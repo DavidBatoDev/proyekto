@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { validateEnv } from './config/env.validation';
 import { SupabaseModule } from './config/supabase.module';
@@ -26,9 +26,15 @@ import { AppController } from './app.controller';
   controllers: [AppController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
-    ThrottlerModule.forRoot({
-      throttlers: [{ ttl: 60_000, limit: 100 }],
-      storage: new ThrottlerStorageRedisService(),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        throttlers: [{ ttl: 60_000, limit: 100 }],
+        storage: new ThrottlerStorageRedisService(
+          configService.get<string>('UPSTASH_REDIS_REST_URL'),
+          configService.get<string>('UPSTASH_REDIS_REST_TOKEN'),
+        ),
+      }),
     }),
     SupabaseModule,
     AuthModule,

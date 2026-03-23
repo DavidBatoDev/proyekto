@@ -5,13 +5,17 @@ import { Redis } from '@upstash/redis';
 
 @Injectable()
 export class ThrottlerStorageRedisService implements ThrottlerStorage {
-  private readonly redis: Redis;
+  private readonly redis: Redis | null;
+  private readonly localHits = new Map<string, { totalHits: number; expiresAt: number }>();
+  private readonly localBlocks = new Map<string, number>();
 
-  constructor() {
-    this.redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL!,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-    });
+  constructor(redisUrl?: string, redisToken?: string) {
+    if (redisUrl && redisToken) {
+      this.redis = new Redis({ url: redisUrl, token: redisToken });
+      return;
+    }
+
+    this.redis = null;
   }
 
   async increment(
@@ -21,6 +25,10 @@ export class ThrottlerStorageRedisService implements ThrottlerStorage {
     blockDuration: number, // milliseconds (ThrottlerModule v6)
     _throttlerName: string,
   ): Promise<ThrottlerStorageRecord> {
+    if (!this.redis) {
+      return this.incrementInMemory(key, ttl, limit, blockDuration);
+    }
+
     const blockKey = `${key}_block`;
     const ttlSec = Math.ceil(ttl / 1000);
     const blockSec = Math.ceil(blockDuration / 1000);
@@ -66,5 +74,56 @@ export class ThrottlerStorageRedisService implements ThrottlerStorage {
     }
 
     return { totalHits, timeToExpire, isBlocked, timeToBlockExpire };
+  }
+
+  private async incrementInMemory(
+    key: string,
+    ttl: number,
+    limit: number,
+    blockDuration: number,
+  ): Promise<ThrottlerStorageRecord> {
+    const now = Date.now();
+    const blockKey = `${key}_block`;
+
+    const blockedUntil = this.localBlocks.get(blockKey);
+    if (blockedUntil && blockedUntil > now) {
+      return {
+        totalHits: limit + 1,
+        timeToExpire: 0,
+        isBlocked: true,
+        timeToBlockExpire: Math.ceil((blockedUntil - now) / 1000),
+      };
+    }
+
+    if (blockedUntil && blockedUntil <= now) {
+      this.localBlocks.delete(blockKey);
+    }
+
+    const current = this.localHits.get(key);
+    if (!current || current.expiresAt <= now) {
+      this.localHits.set(key, { totalHits: 1, expiresAt: now + ttl });
+    } else {
+      current.totalHits += 1;
+      this.localHits.set(key, current);
+    }
+
+    const updated = this.localHits.get(key)!;
+    const isBlocked = updated.totalHits > limit;
+
+    if (isBlocked && blockDuration > 0 && updated.totalHits === limit + 1) {
+      this.localBlocks.set(blockKey, now + blockDuration);
+    }
+
+    const timeToExpire = Math.max(0, Math.ceil((updated.expiresAt - now) / 1000));
+    const blockExpiresAt = this.localBlocks.get(blockKey);
+
+    return {
+      totalHits: updated.totalHits,
+      timeToExpire,
+      isBlocked,
+      timeToBlockExpire: blockExpiresAt
+        ? Math.max(0, Math.ceil((blockExpiresAt - now) / 1000))
+        : 0,
+    };
   }
 }

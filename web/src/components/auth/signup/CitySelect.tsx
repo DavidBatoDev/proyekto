@@ -125,12 +125,12 @@ export function CitySelect({
           padding: "22px 16px 10px",
           height: "52px",
           borderRadius: "10px",
-          border: isActive ? "1px solid #FF962E" : "1px solid #E5E5E5",
+          border: isActive ? "1px solid #334155" : "1px solid #CBD5E1",
           boxShadow: isActive ? "0 0 0 3px rgba(255, 150, 46, 0.12)" : "none",
           background: disabled ? "#F9F9F9" : "white",
-          color: "#2E2E2E",
+          color: "#0F172A",
           fontSize: "14px",
-          fontFamily: "'Open Sans', sans-serif",
+          fontFamily: "'Manrope', sans-serif",
           transition: "border-color 0.2s, box-shadow 0.2s",
           outline: "none",
           width: "100%",
@@ -149,17 +149,17 @@ export function CitySelect({
           transform: floated ? "none" : "translateY(-50%)",
           fontSize: floated ? "10px" : "14px",
           fontWeight: 500,
-          color: isActive ? "#FF962E" : "#BDBDBD",
+          color: isActive ? "#334155" : "#94A3B8",
           transition: "all 0.2s ease",
           pointerEvents: "none",
           lineHeight: 1,
-          fontFamily: "'Open Sans', sans-serif",
+          fontFamily: "'Manrope', sans-serif",
           whiteSpace: "nowrap",
         }}
       >
         City
         {required && (
-          <span style={{ color: "#FF2D75", marginLeft: "2px" }}>*</span>
+          <span style={{ color: "#DC2626", marginLeft: "2px" }}>*</span>
         )}
       </label>
 
@@ -203,8 +203,8 @@ export function CitySelect({
                 borderRadius: "7px",
                 cursor: "pointer",
                 fontSize: "14px",
-                fontFamily: "'Open Sans', sans-serif",
-                color: "#2E2E2E",
+                fontFamily: "'Manrope', sans-serif",
+                color: "#0F172A",
                 background:
                   i === highlighted
                     ? "rgba(255,150,46,0.09)"
@@ -222,3 +222,4 @@ export function CitySelect({
     </div>
   );
 }
+

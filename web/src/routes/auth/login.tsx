@@ -1,4 +1,4 @@
-﻿import {
+import {
   createFileRoute,
   Link,
   useNavigate,
@@ -56,13 +56,13 @@ function RouteComponent() {
     width: "100%",
     height: "52px",
     padding: "0 16px",
-    borderRadius: "10px",
-    border: "1px solid #E5E5E5",
+    borderRadius: "12px",
+    border: "1px solid #CBD5E1",
     fontSize: "0.95rem",
-    color: "#2E2E2E",
+    color: "#0F172A",
     background: "white",
     outline: "none",
-    fontFamily: "'Open Sans', sans-serif",
+    fontFamily: "'Manrope', sans-serif",
     boxSizing: "border-box",
     transition: "border 0.15s, box-shadow 0.15s",
   };
@@ -71,20 +71,20 @@ function RouteComponent() {
     display: "block",
     fontSize: "0.78rem",
     fontWeight: 600,
-    color: "#2E2E2E",
+    color: "#334155",
     marginBottom: "7px",
-    fontFamily: "'Open Sans', sans-serif",
+    fontFamily: "'Manrope', sans-serif",
     textTransform: "uppercase",
     letterSpacing: "0.05em",
   };
 
   function focusInput(e: React.FocusEvent<HTMLInputElement>) {
-    e.currentTarget.style.border = "1px solid #FF962E";
-    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(255,150,46,0.12)";
+    e.currentTarget.style.border = "1px solid #334155";
+    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(51,65,85,0.15)";
   }
 
   function blurInput(e: React.FocusEvent<HTMLInputElement>) {
-    e.currentTarget.style.border = "1px solid #E5E5E5";
+    e.currentTarget.style.border = "1px solid #CBD5E1";
     e.currentTarget.style.boxShadow = "none";
   }
 
@@ -274,17 +274,17 @@ function RouteComponent() {
         <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
           <img
             src="/prodigylogos/light/logo1.svg"
-            alt="Prodigitality"
+            alt="Proyekto"
             style={{ height: "32px", objectFit: "contain", objectPosition: "left" }}
           />
 
           <div>
             <h1
               style={{
-                fontFamily: "'Glacial Indifference', 'Open Sans', sans-serif",
+                fontFamily: "'Sora', 'Manrope', sans-serif",
                 fontSize: "1.9rem",
                 fontWeight: 700,
-                color: "#2E2E2E",
+                color: "#0F172A",
                 margin: "0 0 10px",
               }}
             >
@@ -296,11 +296,11 @@ function RouteComponent() {
                 fontSize: "0.95rem",
                 margin: 0,
                 lineHeight: 1.6,
-                fontFamily: "'Open Sans', sans-serif",
+                fontFamily: "'Manrope', sans-serif",
               }}
             >
               We sent a 6-digit code to{" "}
-              <strong style={{ color: "#2E2E2E" }}>{email}</strong>. Enter it
+              <strong style={{ color: "#0F172A" }}>{email}</strong>. Enter it
               below to finish signing in.
             </p>
           </div>
@@ -371,21 +371,33 @@ function RouteComponent() {
               style={{
                 width: "100%",
                 height: "52px",
-                borderRadius: "10px",
+                borderRadius: "12px",
                 border: "none",
-                background:
-                  "linear-gradient(135deg, #E11C84 0%, #FF2D75 40%, #FF962E 100%)",
+                background: "linear-gradient(135deg, #0F172A 0%, #1E1B4B 52%, #312E81 100%)",
                 color: "white",
                 fontSize: "1rem",
                 fontWeight: 700,
                 cursor: verifyLoading ? "not-allowed" : "pointer",
                 opacity: verifyLoading ? 0.7 : 1,
-                fontFamily: "'Open Sans', sans-serif",
+                fontFamily: "'Manrope', sans-serif",
                 transition: "opacity 0.2s",
+                boxShadow: "0 8px 20px rgba(15,23,42,0.25)",
               }}
             >
               {verifyLoading ? "Verifying..." : "Verify & Sign In"}
             </button>
+            <p
+              style={{
+                textAlign: "center",
+                fontSize: "12px",
+                color: "#64748B",
+                margin: "-6px 0 0",
+                fontFamily: "'Manrope', sans-serif",
+                fontWeight: 600,
+              }}
+            >
+              Takes less than 3 minutes
+            </p>
 
             <div
               style={{
@@ -425,11 +437,12 @@ function RouteComponent() {
                 style={{
                   background: "none",
                   border: "none",
-                  color: "#FF962E",
+                  color: "#1E293B",
                   fontSize: "0.9rem",
                   cursor: isResending ? "not-allowed" : "pointer",
-                  fontFamily: "'Open Sans', sans-serif",
+                  fontFamily: "'Manrope', sans-serif",
                   opacity: isResending ? 0.6 : 1,
+                  fontWeight: 700,
                 }}
               >
                 {isResending ? "Resending..." : "Resend Code"}
@@ -445,13 +458,13 @@ function RouteComponent() {
                 style={{
                   background: "none",
                   border: "none",
-                  color: "#BDBDBD",
+                  color: "#94A3B8",
                   fontSize: "0.85rem",
                   cursor: "pointer",
-                  fontFamily: "'Open Sans', sans-serif",
+                  fontFamily: "'Manrope', sans-serif",
                 }}
               >
-                ← Back to login
+                ? Back to login
               </button>
             </div>
           </form>
@@ -466,7 +479,7 @@ function RouteComponent() {
         {/* Logo */}
         <img
           src="/prodigylogos/light/logo1.svg"
-          alt="Prodigitality"
+          alt="Proyekto"
           style={{ height: "32px", objectFit: "contain", objectPosition: "left" }}
         />
 
@@ -474,24 +487,24 @@ function RouteComponent() {
         <div>
           <h1
             style={{
-              fontFamily: "'Glacial Indifference', 'Open Sans', sans-serif",
+              fontFamily: "'Sora', 'Manrope', sans-serif",
               fontSize: "1.9rem",
               fontWeight: 700,
-              color: "#2E2E2E",
+              color: "#0F172A",
               margin: "0 0 8px",
             }}
           >
-            Welcome back
+            Turn ideas into structured execution.
           </h1>
           <p
             style={{
-              color: "#6B6B6B",
+              color: "#475569",
               fontSize: "0.95rem",
               margin: 0,
-              fontFamily: "'Open Sans', sans-serif",
+              fontFamily: "'Manrope', sans-serif",
             }}
           >
-            Log in to continue building projects faster.
+            Start your roadmap, match with experts, and execute in one system.
           </p>
         </div>
 
@@ -503,8 +516,8 @@ function RouteComponent() {
           style={{
             width: "100%",
             height: "52px",
-            borderRadius: "10px",
-            border: "1px solid #E5E5E5",
+            borderRadius: "12px",
+            border: "1px solid #CBD5E1",
             background: "white",
             display: "flex",
             alignItems: "center",
@@ -512,9 +525,9 @@ function RouteComponent() {
             gap: "10px",
             cursor: isLoading ? "not-allowed" : "pointer",
             fontSize: "0.95rem",
-            fontWeight: 600,
-            color: "#2E2E2E",
-            fontFamily: "'Open Sans', sans-serif",
+            fontWeight: 700,
+            color: "#0F172A",
+            fontFamily: "'Manrope', sans-serif",
             transition: "box-shadow 0.2s",
             opacity: isLoading ? 0.7 : 1,
           }}
@@ -537,19 +550,19 @@ function RouteComponent() {
 
         {/* OR divider */}
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <div style={{ flex: 1, height: "1px", background: "#E5E5E5" }} />
+          <div style={{ flex: 1, height: "1px", background: "#CBD5E1" }} />
           <span
             style={{
               fontSize: "0.78rem",
-              color: "#BDBDBD",
+              color: "#94A3B8",
               fontWeight: 600,
-              fontFamily: "'Open Sans', sans-serif",
+              fontFamily: "'Manrope', sans-serif",
               letterSpacing: "0.05em",
             }}
           >
             OR
           </span>
-          <div style={{ flex: 1, height: "1px", background: "#E5E5E5" }} />
+          <div style={{ flex: 1, height: "1px", background: "#CBD5E1" }} />
         </div>
 
         {/* Login form */}
@@ -589,11 +602,12 @@ function RouteComponent() {
                 style={{
                   background: "none",
                   border: "none",
-                  color: "#FF962E",
+                  color: "#1E293B",
                   fontSize: "0.82rem",
                   cursor: "pointer",
-                  fontFamily: "'Open Sans', sans-serif",
+                  fontFamily: "'Manrope', sans-serif",
                   padding: 0,
+                  fontWeight: 700,
                 }}
               >
                 Forgot password?
@@ -621,7 +635,7 @@ function RouteComponent() {
                   background: "none",
                   border: "none",
                   cursor: "pointer",
-                  color: "#BDBDBD",
+                  color: "#94A3B8",
                   display: "flex",
                   alignItems: "center",
                   padding: 0,
@@ -646,7 +660,7 @@ function RouteComponent() {
               style={{
                 width: "16px",
                 height: "16px",
-                accentColor: "#FF962E",
+                accentColor: "#1E293B",
                 cursor: "pointer",
                 flexShrink: 0,
               }}
@@ -654,8 +668,8 @@ function RouteComponent() {
             <span
               style={{
                 fontSize: "0.9rem",
-                color: "#6B6B6B",
-                fontFamily: "'Open Sans', sans-serif",
+                color: "#475569",
+                fontFamily: "'Manrope', sans-serif",
               }}
             >
               Keep me logged in
@@ -671,18 +685,18 @@ function RouteComponent() {
             style={{
               width: "100%",
               height: "52px",
-              borderRadius: "10px",
+              borderRadius: "12px",
               border: "none",
               marginTop: "4px",
-              background:
-                "linear-gradient(135deg, #E11C84 0%, #FF2D75 40%, #FF962E 100%)",
+              background: "linear-gradient(135deg, #0F172A 0%, #1E1B4B 52%, #312E81 100%)",
               color: "white",
               fontSize: "1rem",
               fontWeight: 700,
               cursor: isLoading ? "not-allowed" : "pointer",
               opacity: isLoading ? 0.7 : 1,
-              fontFamily: "'Open Sans', sans-serif",
+              fontFamily: "'Manrope', sans-serif",
               transition: "opacity 0.2s, transform 0.15s",
+              boxShadow: "0 8px 20px rgba(15,23,42,0.25)",
             }}
             onMouseEnter={(e) => {
               if (!isLoading) e.currentTarget.style.transform = "translateY(-1px)";
@@ -693,6 +707,18 @@ function RouteComponent() {
           >
             {isLoading ? "Signing in..." : "Log In"}
           </button>
+          <p
+            style={{
+              textAlign: "center",
+              fontSize: "12px",
+              color: "#64748B",
+              margin: "-4px 0 0",
+              fontFamily: "'Manrope', sans-serif",
+              fontWeight: 600,
+            }}
+          >
+            Takes less than 3 minutes
+          </p>
         </form>
 
         {/* Sign up link */}
@@ -700,15 +726,15 @@ function RouteComponent() {
           style={{
             textAlign: "center",
             fontSize: "0.9rem",
-            color: "#6B6B6B",
+            color: "#64748B",
             margin: 0,
-            fontFamily: "'Open Sans', sans-serif",
+            fontFamily: "'Manrope', sans-serif",
           }}
         >
-          New to Prodigitality?{" "}
+          New to Proyekto?{" "}
           <Link
             to="/auth/signup"
-            style={{ color: "#FF962E", fontWeight: 600, textDecoration: "none" }}
+            style={{ color: "#1E293B", fontWeight: 700, textDecoration: "none" }}
           >
             Create an account
           </Link>
@@ -717,3 +743,4 @@ function RouteComponent() {
     </SignupLayout>
   );
 }
+

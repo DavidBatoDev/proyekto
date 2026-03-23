@@ -58,19 +58,19 @@ export function ZipInput({
           height: "52px",
           borderRadius: "10px",
           border: hasError
-            ? "1px solid #FF2D75"
+            ? "1px solid #DC2626"
             : isActive
-              ? "1px solid #FF962E"
-              : "1px solid #E5E5E5",
+              ? "1px solid #334155"
+              : "1px solid #CBD5E1",
           boxShadow: hasError
             ? "0 0 0 3px rgba(255,45,117,0.10)"
             : isActive
               ? "0 0 0 3px rgba(255, 150, 46, 0.12)"
               : "none",
           background: disabled ? "#F9F9F9" : "white",
-          color: "#2E2E2E",
+          color: "#0F172A",
           fontSize: "14px",
-          fontFamily: "'Open Sans', sans-serif",
+          fontFamily: "'Manrope', sans-serif",
           transition: "border-color 0.2s, box-shadow 0.2s",
           outline: "none",
           width: "100%",
@@ -89,17 +89,17 @@ export function ZipInput({
           transform: floated ? "none" : "translateY(-50%)",
           fontSize: floated ? "10px" : "14px",
           fontWeight: 500,
-          color: hasError ? "#FF2D75" : isActive ? "#FF962E" : "#BDBDBD",
+          color: hasError ? "#DC2626" : isActive ? "#334155" : "#94A3B8",
           transition: "all 0.2s ease",
           pointerEvents: "none",
           lineHeight: 1,
-          fontFamily: "'Open Sans', sans-serif",
+          fontFamily: "'Manrope', sans-serif",
           whiteSpace: "nowrap",
         }}
       >
         Zip Code
         {required && (
-          <span style={{ color: "#FF2D75", marginLeft: "2px" }}>*</span>
+          <span style={{ color: "#DC2626", marginLeft: "2px" }}>*</span>
         )}
       </label>
 
@@ -111,8 +111,8 @@ export function ZipInput({
             bottom: "-18px",
             left: "2px",
             fontSize: "10px",
-            color: "#FF2D75",
-            fontFamily: "'Open Sans', sans-serif",
+            color: "#DC2626",
+            fontFamily: "'Manrope', sans-serif",
             margin: 0,
           }}
         >
@@ -122,3 +122,4 @@ export function ZipInput({
     </div>
   );
 }
+

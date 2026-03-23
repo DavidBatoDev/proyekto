@@ -1,12 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 
-const FEATURES = [
-  "Smart project matching",
-  "Vetted expert network",
-  "End-to-end collaboration tools",
-];
-
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(
     () =>
@@ -29,16 +23,6 @@ interface SignupLayoutProps {
 
 export function SignupLayout({ children }: SignupLayoutProps) {
   const reducedMotion = useReducedMotion();
-  const [activeFeat, setActiveFeat] = useState(0);
-
-  useEffect(() => {
-    if (reducedMotion) return;
-    const id = setInterval(
-      () => setActiveFeat((f) => (f + 1) % FEATURES.length),
-      3200,
-    );
-    return () => clearInterval(id);
-  }, [reducedMotion]);
 
   function bubbleStyle(delaySec: number): React.CSSProperties {
     if (reducedMotion) return {};
@@ -69,7 +53,7 @@ export function SignupLayout({ children }: SignupLayoutProps) {
           alignItems: "center",
           justifyContent: "center",
           padding: "40px 24px",
-          background: "#FAFAFA",
+          background: "#F8FAFC",
           overflowY: "auto",
         }}
         className="lg:w-[40%]"
@@ -94,7 +78,7 @@ export function SignupLayout({ children }: SignupLayoutProps) {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          background: "linear-gradient(135deg, #E11C84 0%, #FF2D75 40%, #FF962E 100%)",
+          background: "linear-gradient(145deg, #0F172A 0%, #1E1B4B 52%, #312E81 100%)",
           flexShrink: 0,
         }}
       >
@@ -107,7 +91,7 @@ export function SignupLayout({ children }: SignupLayoutProps) {
             width: "520px",
             height: "520px",
             borderRadius: "50%",
-            background: "rgba(255,255,255,0.08)",
+            background: "rgba(125, 211, 252, 0.11)",
             pointerEvents: "none",
             ...bubbleStyle(0),
           }}
@@ -120,7 +104,7 @@ export function SignupLayout({ children }: SignupLayoutProps) {
             width: "620px",
             height: "620px",
             borderRadius: "50%",
-            background: "rgba(255,255,255,0.07)",
+            background: "rgba(99, 102, 241, 0.16)",
             pointerEvents: "none",
             ...bubbleStyle(2),
           }}
@@ -133,7 +117,7 @@ export function SignupLayout({ children }: SignupLayoutProps) {
             width: "80px",
             height: "80px",
             borderRadius: "50%",
-            background: "rgba(255,255,255,0.15)",
+            background: "rgba(148, 163, 184, 0.25)",
             pointerEvents: "none",
             ...bubbleStyle(1),
           }}
@@ -146,7 +130,7 @@ export function SignupLayout({ children }: SignupLayoutProps) {
             width: "48px",
             height: "48px",
             borderRadius: "50%",
-            background: "rgba(255,255,255,0.2)",
+            background: "rgba(165, 180, 252, 0.3)",
             pointerEvents: "none",
             ...bubbleStyle(3),
           }}
@@ -159,7 +143,7 @@ export function SignupLayout({ children }: SignupLayoutProps) {
             width: "200px",
             height: "200px",
             borderRadius: "50%",
-            background: "rgba(255,255,255,0.05)",
+            background: "rgba(30, 41, 59, 0.28)",
             pointerEvents: "none",
             ...bubbleStyle(1.5),
           }}
@@ -170,7 +154,7 @@ export function SignupLayout({ children }: SignupLayoutProps) {
             position: "absolute",
             inset: 0,
             backgroundImage:
-              "radial-gradient(circle, rgba(255,255,255,0.12) 1px, transparent 1px)",
+              "radial-gradient(circle, rgba(148, 163, 184, 0.22) 1px, transparent 1px)",
             backgroundSize: "30px 30px",
             pointerEvents: "none",
           }}
@@ -189,7 +173,7 @@ export function SignupLayout({ children }: SignupLayoutProps) {
           {/* Logo */}
           <img
             src="/prodigylogos/light/logo1.svg"
-            alt="Prodigitality"
+            alt="Proyekto"
             style={{
               height: "36px",
               marginBottom: "56px",
@@ -200,7 +184,7 @@ export function SignupLayout({ children }: SignupLayoutProps) {
           {/* Headline */}
           <h2
             style={{
-              fontFamily: "'Glacial Indifference', 'Open Sans', sans-serif",
+              fontFamily: "'Sora', 'Manrope', sans-serif",
               fontSize: "2.6rem",
               fontWeight: 700,
               lineHeight: 1.2,
@@ -208,7 +192,7 @@ export function SignupLayout({ children }: SignupLayoutProps) {
               margin: "0 0 20px",
             }}
           >
-            Build projects faster with the right experts.
+            Turn ideas into structured execution.
           </h2>
 
           {/* Subline */}
@@ -218,76 +202,18 @@ export function SignupLayout({ children }: SignupLayoutProps) {
               fontSize: "1.05rem",
               lineHeight: 1.65,
               margin: "0 0 48px",
-              fontFamily: "'Open Sans', sans-serif",
+              fontFamily: "'Manrope', sans-serif",
             }}
           >
-            Join thousands of teams who trust Prodigitality to connect with
-            top talent and deliver exceptional results.
+            Start your roadmap, match with experts, and execute in one system.
           </p>
 
-          {/* Feature list */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginBottom: "56px" }}>
-            {FEATURES.map((feature, i) => {
-              const lit = i === activeFeat;
-              return (
-                <div
-                  key={feature}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "14px",
-                    opacity: lit ? 1 : 0.72,
-                    transition: "opacity 0.5s ease",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "28px",
-                      height: "28px",
-                      borderRadius: "50%",
-                      background: lit
-                        ? "rgba(255,255,255,0.28)"
-                        : "rgba(255,255,255,0.18)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                      transition: "background 0.5s ease, box-shadow 0.5s ease",
-                      boxShadow: lit ? "0 0 0 5px rgba(255,255,255,0.10)" : "none",
-                    }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                      <path
-                        d="M1.5 7l3.5 3.5L12.5 3"
-                        stroke="white"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </div>
-                  <span
-                    style={{
-                      color: lit ? "white" : "rgba(255,255,255,0.85)",
-                      fontWeight: lit ? 600 : 500,
-                      fontSize: "0.95rem",
-                      fontFamily: "'Open Sans', sans-serif",
-                      transition: "color 0.5s ease",
-                    }}
-                  >
-                    {feature}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Testimonial card */}
+          {/* Product preview */}
           <div
             style={{
-              background: "rgba(255,255,255,0.12)",
+              background: "rgba(15, 23, 42, 0.4)",
               backdropFilter: "blur(12px)",
-              border: "1px solid rgba(255,255,255,0.22)",
+              border: "1px solid rgba(148, 163, 184, 0.32)",
               borderRadius: "16px",
               padding: "24px",
               ...(reducedMotion
@@ -298,52 +224,53 @@ export function SignupLayout({ children }: SignupLayoutProps) {
                   }),
             }}
           >
-            <p
+            <div
               style={{
-                color: "rgba(255,255,255,0.9)",
-                fontSize: "0.9rem",
-                fontStyle: "italic",
-                lineHeight: 1.6,
-                margin: "0 0 16px",
-                fontFamily: "'Open Sans', sans-serif",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "16px",
               }}
             >
-              "Prodigitality helped us find the right developer in days, not
-              months. The quality of talent is unmatched."
-            </p>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <div
+              <p style={{ margin: 0, color: "rgba(226,232,240,0.9)", fontSize: "11px", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, fontFamily: "'Manrope', sans-serif" }}>
+                Roadmap Studio
+              </p>
+              <span
                 style={{
-                  width: "36px",
-                  height: "36px",
-                  borderRadius: "50%",
-                  background: "rgba(255,255,255,0.28)",
-                  flexShrink: 0,
+                  fontSize: "11px",
+                  color: "#A5B4FC",
+                  border: "1px solid rgba(165,180,252,0.4)",
+                  padding: "2px 8px",
+                  borderRadius: "999px",
                 }}
-              />
-              <div>
-                <p
+              >
+                Live Preview
+              </span>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", opacity: 0.8 }}>
+              {[
+                ["Project Framing", "Complete"],
+                ["Consultant Match", "In Review"],
+                ["Milestone Map", "Ready"],
+                ["Freelancer Sprint", "Pending"],
+              ].map(([title, status]) => (
+                <div
+                  key={title}
                   style={{
-                    color: "white",
-                    fontSize: "0.85rem",
-                    fontWeight: 600,
-                    margin: 0,
-                    fontFamily: "'Open Sans', sans-serif",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "10px 12px",
+                    borderRadius: "10px",
+                    border: "1px solid rgba(148,163,184,0.26)",
+                    background: "rgba(15,23,42,0.28)",
                   }}
                 >
-                  Sarah Chen
-                </p>
-                <p
-                  style={{
-                    color: "rgba(255,255,255,0.6)",
-                    fontSize: "0.75rem",
-                    margin: 0,
-                    fontFamily: "'Open Sans', sans-serif",
-                  }}
-                >
-                  CTO, TechFlow Inc.
-                </p>
-              </div>
+                  <span style={{ color: "rgba(226,232,240,0.92)", fontSize: "13px", fontFamily: "'Manrope', sans-serif" }}>{title}</span>
+                  <span style={{ color: "rgba(148,163,184,0.92)", fontSize: "12px", fontFamily: "'Manrope', sans-serif" }}>{status}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -352,3 +279,4 @@ export function SignupLayout({ children }: SignupLayoutProps) {
     </>
   );
 }
+
