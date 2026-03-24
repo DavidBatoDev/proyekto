@@ -21,10 +21,10 @@ function Index() {
       <main className="pb-20 pt-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10">
           <HeroSection />
+          <TemplatesSection />
           <TrustSection />
           <HowItWorks />
           <ProductExperienceSection />
-          <TemplatesSection />
           <YourRoadmapSection />
           <CTASection />
         </div>

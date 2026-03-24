@@ -1,88 +1,65 @@
 import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import { BarChart3, Clock3, DollarSign, Layers3, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
+import { TemplateEntryCard, type TemplateEntry } from "./TemplateEntryCard";
 
-const categories = ["All", "Web App", "SaaS", "AI", "Marketplace", "Mobile"];
+const categories = ["All", "SaaS", "AI", "Web Apps", "E-commerce"] as const;
 
-type TemplateItem = {
-  id: string;
-  name: string;
-  category: "Web App" | "SaaS" | "AI" | "Marketplace" | "Mobile";
-  difficulty: "Starter" | "Growth" | "Advanced";
-  timeline: string;
-  cost: string;
-  description: string;
-  milestones: string[];
-};
-
-const templates: TemplateItem[] = [
+const templates: TemplateEntry[] = [
   {
-    id: "tpl-1",
-    name: "B2B SaaS Platform Launch",
+    id: "saas-mvp-launch",
+    name: "SaaS MVP Launch",
     category: "SaaS",
-    difficulty: "Advanced",
-    timeline: "14-18 weeks",
-    cost: "$35k-$60k",
-    description: "Full roadmap for launching a subscription SaaS with onboarding, billing, and analytics.",
-    milestones: ["MVP scope", "Activation loop", "Billing + metering", "Growth experiments"],
-  },
-  {
-    id: "tpl-2",
-    name: "AI Assistant for Support",
-    category: "AI",
-    difficulty: "Growth",
-    timeline: "8-12 weeks",
-    cost: "$18k-$32k",
-    description: "Design, evaluate, and deploy an AI assistant tied to product documentation and support history.",
-    milestones: ["Intent mapping", "Knowledge sync", "Guardrails", "Agent handoff"],
-  },
-  {
-    id: "tpl-3",
-    name: "Marketplace MVP",
-    category: "Marketplace",
-    difficulty: "Advanced",
-    timeline: "12-16 weeks",
-    cost: "$28k-$48k",
-    description: "Roadmap for two-sided marketplace launch including matching, transactions, and trust workflows.",
-    milestones: ["Supply onboarding", "Demand funnel", "Payments + escrow", "Quality controls"],
-  },
-  {
-    id: "tpl-4",
-    name: "Web App Modernization",
-    category: "Web App",
-    difficulty: "Growth",
-    timeline: "6-10 weeks",
-    cost: "$14k-$24k",
-    description: "Upgrade a legacy web product into a modern architecture with incremental rollout phases.",
-    milestones: ["Architecture audit", "Core refactor", "Performance hardening", "Release train"],
-  },
-  {
-    id: "tpl-5",
-    name: "Mobile Product Kickoff",
-    category: "Mobile",
-    difficulty: "Starter",
     timeline: "6-8 weeks",
-    cost: "$10k-$18k",
-    description: "Validate, design, and launch a production-ready mobile app roadmap with measurable milestones.",
-    milestones: ["User journey map", "Feature sequencing", "QA system", "Launch + learn"],
+    complexity: "Beginner",
+    description: "Ship a usable SaaS MVP with clear milestones from scope to first paying users.",
+    milestones: ["Scope framing", "Core product sprint", "Billing setup", "Launch checklist"],
   },
   {
-    id: "tpl-6",
-    name: "SaaS Revamp for Scale",
+    id: "ai-copilot",
+    name: "AI Copilot Rollout",
+    category: "AI",
+    timeline: "8-10 weeks",
+    complexity: "Intermediate",
+    description: "Define use cases, safety rules, and deployment steps for a production AI assistant.",
+    milestones: ["Use-case map", "Knowledge integration", "Guardrails", "Pilot rollout"],
+  },
+  {
+    id: "web-app-replatform",
+    name: "Web App Replatform",
+    category: "Web Apps",
+    timeline: "10-12 weeks",
+    complexity: "Advanced",
+    description: "Modernize architecture and delivery velocity without interrupting active users.",
+    milestones: ["Audit + architecture", "Incremental migration", "Performance pass", "Release hardening"],
+  },
+  {
+    id: "ecom-growth-engine",
+    name: "E-commerce Growth Engine",
+    category: "E-commerce",
+    timeline: "7-9 weeks",
+    complexity: "Intermediate",
+    description: "Turn your store into a repeatable conversion system with prioritized growth sprints.",
+    milestones: ["Funnel baseline", "Conversion fixes", "Lifecycle flows", "Experiment cadence"],
+  },
+  {
+    id: "ai-automation-stack",
+    name: "AI Automation Stack",
+    category: "AI",
+    timeline: "5-7 weeks",
+    complexity: "Beginner",
+    description: "Build a practical automation layer that removes repetitive operational bottlenecks.",
+    milestones: ["Workflow discovery", "Integration map", "Automation sprint", "Team handoff"],
+  },
+  {
+    id: "saas-scale-ops",
+    name: "SaaS Scale Operations",
     category: "SaaS",
-    difficulty: "Growth",
-    timeline: "10-14 weeks",
-    cost: "$22k-$38k",
-    description: "Prioritize architecture, growth loops, and delivery operations to unlock scale.",
-    milestones: ["Retention audit", "Workflow redesign", "Ops automation", "Scale QA"],
+    timeline: "9-11 weeks",
+    complexity: "Advanced",
+    description: "Strengthen retention, reliability, and release cadence before the next growth wave.",
+    milestones: ["Retention deep dive", "Workflow redesign", "Ops automation", "Scale QA"],
   },
 ];
-
-const difficultyStyles: Record<TemplateItem["difficulty"], string> = {
-  Starter: "bg-emerald-100 text-emerald-700",
-  Growth: "bg-amber-100 text-amber-700",
-  Advanced: "bg-rose-100 text-rose-700",
-};
 
 export const TemplatesSection = () => {
   const [activeCategory, setActiveCategory] = useState<(typeof categories)[number]>("All");
@@ -96,21 +73,21 @@ export const TemplatesSection = () => {
   );
 
   return (
-    <section id="templates" className="mt-16 lg:mt-20">
+    <section id="templates" className="mt-14 lg:mt-16">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Roadmap Templates</p>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-            Start faster with curated execution blueprints.
+            Start with a proven roadmap
           </h2>
           <p className="mt-2 max-w-2xl text-sm text-slate-600 sm:text-base">
-            Explore proven roadmap structures across product types. Every template includes milestones, complexity, timeline, and expected cost range.
+            Skip the guesswork. Use structured plans designed for real projects.
           </p>
         </div>
 
-        <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
-          <Sparkles className="h-4 w-4 text-amber-500" />
-          Marketplace-ready template system
+        <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm">
+          <Sparkles className="h-4 w-4 text-cyan-600" />
+          Templates as execution entry points
         </div>
       </div>
 
@@ -136,75 +113,7 @@ export const TemplatesSection = () => {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {filteredTemplates.map((template, index) => (
-          <motion.article
-            key={template.id}
-            initial={{ opacity: 0, y: 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-40px" }}
-            transition={{ duration: 0.28, delay: index * 0.05 }}
-            whileHover={{ y: -4 }}
-            className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_18px_rgba(15,23,42,0.06)] transition-shadow hover:shadow-[0_16px_30px_rgba(15,23,42,0.12)]"
-          >
-            <div className="mb-3 flex items-start justify-between gap-2">
-              <div>
-                <p className="text-xs font-medium text-slate-500">{template.category}</p>
-                <h3 className="mt-1 text-lg font-semibold text-slate-900">{template.name}</h3>
-              </div>
-              <span className={`rounded-full px-2 py-1 text-xs font-semibold ${difficultyStyles[template.difficulty]}`}>
-                {template.difficulty}
-              </span>
-            </div>
-
-            <p className="text-sm text-slate-600">{template.description}</p>
-
-            <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-slate-600">
-                <p className="inline-flex items-center gap-1 font-medium text-slate-500">
-                  <Clock3 className="h-3.5 w-3.5" />
-                  Timeline
-                </p>
-                <p className="mt-1 text-slate-800">{template.timeline}</p>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-slate-600">
-                <p className="inline-flex items-center gap-1 font-medium text-slate-500">
-                  <DollarSign className="h-3.5 w-3.5" />
-                  Cost
-                </p>
-                <p className="mt-1 text-slate-800">{template.cost}</p>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-slate-600">
-                <p className="inline-flex items-center gap-1 font-medium text-slate-500">
-                  <BarChart3 className="h-3.5 w-3.5" />
-                  Scope
-                </p>
-                <p className="mt-1 text-slate-800">{template.milestones.length} phases</p>
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="mb-2 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                <Layers3 className="h-3.5 w-3.5" />
-                Milestone Preview
-              </p>
-              <ul className="space-y-1 text-xs text-slate-700">
-                {template.milestones.map((milestone) => (
-                  <li
-                    key={milestone}
-                    className="rounded-md border border-slate-200 bg-white px-2 py-1 transition-colors group-hover:border-slate-300"
-                  >
-                    {milestone}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <button
-              type="button"
-              className="mt-4 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-all hover:border-slate-900 hover:bg-slate-900 hover:text-white"
-            >
-              Preview Template
-            </button>
-          </motion.article>
+          <TemplateEntryCard key={template.id} template={template} index={index} />
         ))}
       </div>
     </section>

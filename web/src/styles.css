@@ -5,6 +5,23 @@
 
 @custom-variant dark (&:is(.dark *));
 
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+#how-it-works,
+#product-experience,
+#templates,
+#your-roadmap {
+  scroll-margin-top: 104px;
+}
+
 body {
   @apply m-0;
   font-family:

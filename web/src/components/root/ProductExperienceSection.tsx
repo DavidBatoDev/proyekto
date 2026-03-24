@@ -1,4 +1,4 @@
-import { type ComponentType, useState } from "react";
+import { type ComponentType, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Workflow, ListChecks, UserRoundSearch } from "lucide-react";
 
@@ -131,6 +131,18 @@ export function ProductExperienceSection() {
   const [activeTab, setActiveTab] = useState<ProductTab>("roadmap");
   const activeConfig = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setActiveTab((prev) => {
+        const currentIndex = tabs.findIndex((tab) => tab.id === prev);
+        const nextIndex = (currentIndex + 1) % tabs.length;
+        return tabs[nextIndex]?.id ?? tabs[0].id;
+      });
+    }, 2600);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
   return (
     <section id="product-experience" className="mt-16 lg:mt-20">
       <div className="rounded-3xl border border-slate-200 bg-linear-to-br from-white to-slate-50 p-6 shadow-[0_16px_32px_rgba(15,23,42,0.08)] sm:p-8">
@@ -151,24 +163,33 @@ export function ProductExperienceSection() {
                 const Icon = tab.icon;
                 const isActive = tab.id === activeTab;
                 return (
-                  <button
+                  <motion.button
                     key={tab.id}
                     type="button"
                     onClick={() => setActiveTab(tab.id)}
-                    className={`w-full rounded-2xl border px-4 py-3 text-left transition-all duration-200 ${
+                    whileTap={{ scale: 0.99 }}
+                    className={`relative w-full overflow-hidden rounded-2xl border px-4 py-3 text-left transition-all duration-200 ${
                       isActive
                         ? "border-slate-900 bg-slate-900 text-white shadow-lg"
                         : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:shadow-sm"
                     }`}
                   >
-                    <div className="flex items-center gap-2">
+                    {isActive ? (
+                      <motion.span
+                        layoutId="product-experience-active"
+                        className="pointer-events-none absolute inset-0 rounded-2xl bg-slate-900"
+                        transition={{ type: "spring", stiffness: 500, damping: 34 }}
+                      />
+                    ) : null}
+
+                    <div className="relative flex items-center gap-2">
                       <Icon className="h-4 w-4" />
                       <span className="text-sm font-semibold">{tab.label}</span>
                     </div>
-                    <p className={`mt-1 text-xs ${isActive ? "text-slate-300" : "text-slate-500"}`}>
+                    <p className={`relative mt-1 text-xs ${isActive ? "text-slate-300" : "text-slate-500"}`}>
                       {tab.copy}
                     </p>
-                  </button>
+                  </motion.button>
                 );
               })}
             </div>
