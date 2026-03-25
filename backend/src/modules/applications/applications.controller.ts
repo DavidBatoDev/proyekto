@@ -52,7 +52,12 @@ export class ApplicationsService {
       'primary_niche',
       'why_join',
     ];
-    const missing = required.filter((f) => !existing[f]);
+    const missing = required.filter((field) => {
+      const value = existing[field];
+      if (value === null || value === undefined) return true;
+      if (typeof value === 'string') return value.trim().length === 0;
+      return false;
+    });
     if (missing.length) {
       throw new BadRequestException(
         `Missing required fields: ${missing.join(', ')}`,

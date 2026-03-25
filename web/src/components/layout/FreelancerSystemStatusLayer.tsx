@@ -10,7 +10,9 @@ export function FreelancerSystemStatusLayer() {
     return null;
   }
 
-  if (pathname.startsWith("/auth") || pathname === "/") {
+  const isFreelancerDashboardPage = pathname.startsWith("/dashboard");
+
+  if (!isFreelancerDashboardPage) {
     return null;
   }
 
@@ -19,7 +21,10 @@ export function FreelancerSystemStatusLayer() {
   const actionLink = stage === "onboarding" ? "/freelancer/go-live" : "/dashboard";
 
   return (
-    <section className="bg-white border-b border-[#e9eaec]" data-system-status="freelancer">
+    <section
+      className="mt-14 bg-white border-b border-[#e9eaec]"
+      data-system-status="freelancer"
+    >
       <div className="max-w-[1440px] mx-auto px-10 py-3 flex items-center justify-between gap-4">
         <div className="min-w-0">
           <p className="text-xs font-semibold text-[#333438]">System Status</p>

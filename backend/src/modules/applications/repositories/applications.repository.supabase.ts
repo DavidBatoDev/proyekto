@@ -26,10 +26,7 @@ export class SupabaseApplicationsRepository implements ApplicationsRepository {
   ): Promise<ConsultantApplication> {
     const { data, error } = await this.supabase
       .from('consultant_applications')
-      .upsert(
-        { user_id: userId, ...dto, status: 'draft' },
-        { onConflict: 'user_id' },
-      )
+      .upsert({ user_id: userId, ...dto }, { onConflict: 'user_id' })
       .select()
       .single();
     if (error) throw new Error(error.message);

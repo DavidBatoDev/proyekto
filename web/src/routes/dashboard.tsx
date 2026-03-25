@@ -24,6 +24,7 @@ function DashboardPage() {
   const { profile } = useAuthStore();
   useProfileQuery();
   const { startTutorial, isActive } = useTutorial();
+  const isFreelancer = profile?.active_persona === "freelancer";
 
   // Auto-start tutorial on first visit
   useEffect(() => {
@@ -42,7 +43,11 @@ function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#f6f7f8]">
-      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10 pt-[88px] pb-8">
+      <div
+        className={`max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10 pb-8 ${
+          isFreelancer ? "pt-6" : "pt-[88px]"
+        }`}
+      >
         <div data-tutorial="projects-section">
           <PrimaryFlow />
         </div>

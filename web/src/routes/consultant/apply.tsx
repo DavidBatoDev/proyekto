@@ -24,6 +24,7 @@ import { EducationModal } from "@/components/profile/EducationModal";
 import { LicenseModal } from "@/components/profile/LicenseModal";
 import { LanguageModal } from "@/components/profile/LanguageModal";
 import { IdentityDocumentModal } from "@/components/profile/IdentityDocumentModal";
+import { useToast } from "@/hooks/useToast";
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 export const Route = createFileRoute("/consultant/apply")({
@@ -559,6 +560,7 @@ function ConsultantApplyPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const qc = useQueryClient();
+  const toast = useToast();
   const [currentStep, setCurrentStep] = useState(1);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [formData, setFormData] = useState<FormData2>({
@@ -599,7 +601,18 @@ function ConsultantApplyPage() {
       });
       return applicationService.submit();
     },
-    onSuccess: () => setShowSuccessModal(true),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["myApplication"] });
+      setShowSuccessModal(true);
+    },
+    onError: (error) => {
+      const message =
+        (error as { response?: { data?: { message?: string | string[] } } })
+          ?.response?.data?.message ??
+        (error instanceof Error ? error.message : "Failed to submit application");
+
+      toast.error(Array.isArray(message) ? message.join(", ") : message);
+    },
   });
 
   const canNext = (step: number) => {

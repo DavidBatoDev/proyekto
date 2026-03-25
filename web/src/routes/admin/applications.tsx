@@ -288,7 +288,10 @@ function ApplicationDetailPanel({
   const name = detail ? applicantName(detail) : "";
   const app = detail;
   const v = detail?.vetting;
-  const isPending = app?.status === "submitted" || app?.status === "under_review";
+  const isActionable =
+    app?.status === "draft" ||
+    app?.status === "submitted" ||
+    app?.status === "under_review";
 
   return (
     <motion.div
@@ -469,7 +472,7 @@ function ApplicationDetailPanel({
       </div>
 
       {/* Fixed Actions Footer */}
-      {app && isPending && (
+      {app && isActionable && (
         <div className="shrink-0 border-t border-gray-100 bg-white p-4 space-y-3">
           {showRejectForm ? (
             <>

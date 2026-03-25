@@ -145,7 +145,7 @@ class AdminService {
   }
 
   async rejectApplication(id: string, reason?: string): Promise<void> {
-    await apiClient.post(`${this.base}/applications/${id}/reject`, { rejection_reason: reason });
+    await apiClient.post(`${this.base}/applications/${id}/reject`, { reason });
   }
 
   // —— Admin Management ————————————————————————————————
