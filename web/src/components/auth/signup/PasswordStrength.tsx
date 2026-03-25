@@ -11,7 +11,7 @@ const checks = [
 ];
 
 const LABELS = ["Too Weak", "Weak", "Fair", "Good", "Strong", "Very Strong"];
-const COLORS = ["#BDBDBD", "#FF2D75", "#FF2D75", "#FF962E", "#4CAF50", "#2E7D32"];
+const COLORS = ["#94A3B8", "#DC2626", "#D97706", "#1E40AF", "#2563EB", "#15803D"];
 
 export function PasswordStrength({ password }: PasswordStrengthProps) {
   if (!password) return null;
@@ -30,7 +30,7 @@ export function PasswordStrength({ password }: PasswordStrengthProps) {
               height: "3px",
               flex: 1,
               borderRadius: "100px",
-              backgroundColor: i < score ? color : "#E5E5E5",
+              backgroundColor: i < score ? color : "#CBD5E1",
               transition: "background-color 0.3s ease",
             }}
           />
@@ -41,7 +41,7 @@ export function PasswordStrength({ password }: PasswordStrengthProps) {
           fontSize: "11px",
           fontWeight: 600,
           color,
-          fontFamily: "'Open Sans', sans-serif",
+          fontFamily: "'Manrope', sans-serif",
           margin: 0,
         }}
       >
@@ -50,3 +50,4 @@ export function PasswordStrength({ password }: PasswordStrengthProps) {
     </div>
   );
 }
+

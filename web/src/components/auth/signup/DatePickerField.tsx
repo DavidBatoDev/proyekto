@@ -225,12 +225,12 @@ export function DatePickerField({
           padding: "22px 42px 10px 16px",
           height: "52px",
           borderRadius: "10px",
-          border: isActive ? "1px solid #FF962E" : "1px solid #E5E5E5",
+          border: isActive ? "1px solid #334155" : "1px solid #CBD5E1",
           boxShadow: isActive ? "0 0 0 3px rgba(255, 150, 46, 0.12)" : "none",
           background: disabled ? "#F9F9F9" : "white",
-          color: "#2E2E2E",
+          color: "#0F172A",
           fontSize: "14px",
-          fontFamily: "'Open Sans', sans-serif",
+          fontFamily: "'Manrope', sans-serif",
           transition: "border-color 0.2s, box-shadow 0.2s",
           cursor: disabled ? "not-allowed" : "text",
           boxSizing: "border-box",
@@ -249,16 +249,16 @@ export function DatePickerField({
           transform: floated ? "none" : "translateY(-50%)",
           fontSize: floated ? "10px" : "14px",
           fontWeight: 500,
-          color: isActive ? "#FF962E" : "#BDBDBD",
+          color: isActive ? "#334155" : "#94A3B8",
           transition: "all 0.2s ease",
           pointerEvents: "none",
           lineHeight: 1,
-          fontFamily: "'Open Sans', sans-serif",
+          fontFamily: "'Manrope', sans-serif",
           whiteSpace: "nowrap",
         }}
       >
         {label}
-        {required && <span style={{ color: "#FF2D75", marginLeft: "2px" }}>*</span>}
+        {required && <span style={{ color: "#DC2626", marginLeft: "2px" }}>*</span>}
       </label>
 
       {/* ── Calendar icon button ─────────────────────────────────────────── */}
@@ -277,7 +277,7 @@ export function DatePickerField({
           cursor: disabled ? "not-allowed" : "pointer",
           padding: "4px",
           borderRadius: "6px",
-          color: isActive ? "#FF962E" : "#BDBDBD",
+          color: isActive ? "#334155" : "#94A3B8",
           display: "flex",
           alignItems: "center",
           transition: "color 0.2s",
@@ -327,7 +327,7 @@ export function DatePickerField({
             border: "1px solid #F0F0F0",
             padding: "14px",
             width: "272px",
-            fontFamily: "'Open Sans', sans-serif",
+            fontFamily: "'Manrope', sans-serif",
           }}
         >
           {/* ── Nav row: ‹ [Month] [Year] › ─────────────────────────────── */}
@@ -388,7 +388,7 @@ export function DatePickerField({
                   textAlign: "center",
                   fontSize: "10px",
                   fontWeight: 700,
-                  color: "#BDBDBD",
+                  color: "#94A3B8",
                   padding: "3px 0",
                   letterSpacing: "0.03em",
                 }}
@@ -455,7 +455,7 @@ function NavButton({
         cursor: "pointer",
         padding: "5px",
         borderRadius: "6px",
-        color: "#2E2E2E",
+        color: "#0F172A",
         display: "flex",
         alignItems: "center",
         flexShrink: 0,
@@ -497,13 +497,13 @@ function DayCell({
         height: "32px",
         borderRadius: "7px",
         border: "none",
-        background: isSelected ? "#FF962E" : "transparent",
-        color: isDisabled ? "#D0D0D0" : isSelected ? "white" : "#2E2E2E",
+        background: isSelected ? "#334155" : "transparent",
+        color: isDisabled ? "#D0D0D0" : isSelected ? "white" : "#0F172A",
         fontSize: "12px",
         fontWeight: isSelected ? 700 : 400,
         cursor: isDisabled ? "not-allowed" : "pointer",
         transition: "background 0.12s",
-        fontFamily: "'Open Sans', sans-serif",
+        fontFamily: "'Manrope', sans-serif",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -570,15 +570,15 @@ function MonthDropdown({
           display: "flex",
           alignItems: "center",
           gap: "4px",
-          border: open ? "1px solid #FF962E" : "1px solid #E5E5E5",
+          border: open ? "1px solid #334155" : "1px solid #CBD5E1",
           borderRadius: "8px",
           padding: "4px 10px",
           background: open ? "rgba(255,150,46,0.06)" : "white",
           cursor: "pointer",
           fontSize: "12px",
           fontWeight: 600,
-          color: open ? "#FF962E" : "#2E2E2E",
-          fontFamily: "'Open Sans', sans-serif",
+          color: open ? "#334155" : "#0F172A",
+          fontFamily: "'Manrope', sans-serif",
           minWidth: "108px",
           justifyContent: "space-between",
           boxShadow: open ? "0 0 0 3px rgba(255,150,46,0.10)" : "none",
@@ -586,11 +586,11 @@ function MonthDropdown({
         }}
         onMouseOver={(e) => {
           if (!open)
-            (e.currentTarget as HTMLButtonElement).style.borderColor = "#FF962E";
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "#334155";
         }}
         onMouseOut={(e) => {
           if (!open)
-            (e.currentTarget as HTMLButtonElement).style.borderColor = "#E5E5E5";
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "#CBD5E1";
         }}
       >
         <span>{MONTHS_FULL[month]}</span>
@@ -608,7 +608,7 @@ function MonthDropdown({
         >
           <path
             d="M1 1l4 4 4-4"
-            stroke="#BDBDBD"
+            stroke="#94A3B8"
             strokeWidth="1.5"
             strokeLinecap="round"
             fill="none"
@@ -653,9 +653,9 @@ function MonthDropdown({
                 cursor: "pointer",
                 fontSize: "11px",
                 fontWeight: i === month ? 700 : 500,
-                background: i === month ? "#FF962E" : "transparent",
-                color: i === month ? "white" : "#2E2E2E",
-                fontFamily: "'Open Sans', sans-serif",
+                background: i === month ? "#334155" : "transparent",
+                color: i === month ? "white" : "#0F172A",
+                fontFamily: "'Manrope', sans-serif",
                 textAlign: "center",
                 transition: "background 0.12s",
               }}
@@ -739,15 +739,15 @@ function YearDropdown({
           display: "flex",
           alignItems: "center",
           gap: "4px",
-          border: open ? "1px solid #FF962E" : "1px solid #E5E5E5",
+          border: open ? "1px solid #334155" : "1px solid #CBD5E1",
           borderRadius: "8px",
           padding: "4px 10px",
           background: open ? "rgba(255,150,46,0.06)" : "white",
           cursor: "pointer",
           fontSize: "12px",
           fontWeight: 600,
-          color: open ? "#FF962E" : "#2E2E2E",
-          fontFamily: "'Open Sans', sans-serif",
+          color: open ? "#334155" : "#0F172A",
+          fontFamily: "'Manrope', sans-serif",
           minWidth: "72px",
           justifyContent: "space-between",
           boxShadow: open ? "0 0 0 3px rgba(255,150,46,0.10)" : "none",
@@ -755,11 +755,11 @@ function YearDropdown({
         }}
         onMouseOver={(e) => {
           if (!open)
-            (e.currentTarget as HTMLButtonElement).style.borderColor = "#FF962E";
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "#334155";
         }}
         onMouseOut={(e) => {
           if (!open)
-            (e.currentTarget as HTMLButtonElement).style.borderColor = "#E5E5E5";
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "#CBD5E1";
         }}
       >
         <span>{year}</span>
@@ -777,7 +777,7 @@ function YearDropdown({
         >
           <path
             d="M1 1l4 4 4-4"
-            stroke="#BDBDBD"
+            stroke="#94A3B8"
             strokeWidth="1.5"
             strokeLinecap="round"
             fill="none"
@@ -820,10 +820,10 @@ function YearDropdown({
               style={{
                 width: "100%",
                 padding: "5px 8px",
-                border: "1px solid #E5E5E5",
+                border: "1px solid #CBD5E1",
                 borderRadius: "6px",
                 fontSize: "12px",
-                fontFamily: "'Open Sans', sans-serif",
+                fontFamily: "'Manrope', sans-serif",
                 outline: "none",
                 boxSizing: "border-box",
               }}
@@ -857,9 +857,9 @@ function YearDropdown({
                   cursor: "pointer",
                   fontSize: "12px",
                   fontWeight: y === year ? 700 : 400,
-                  background: y === year ? "#FF962E" : "transparent",
-                  color: y === year ? "white" : "#2E2E2E",
-                  fontFamily: "'Open Sans', sans-serif",
+                  background: y === year ? "#334155" : "transparent",
+                  color: y === year ? "white" : "#0F172A",
+                  fontFamily: "'Manrope', sans-serif",
                   transition: "background 0.12s",
                 }}
                 onMouseOver={(e) => {
@@ -880,7 +880,7 @@ function YearDropdown({
                 style={{
                   padding: "8px",
                   fontSize: "12px",
-                  color: "#BDBDBD",
+                  color: "#94A3B8",
                   textAlign: "center",
                 }}
               >
@@ -893,3 +893,4 @@ function YearDropdown({
     </div>
   );
 }
+

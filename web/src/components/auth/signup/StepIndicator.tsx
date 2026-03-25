@@ -29,26 +29,26 @@ export function StepIndicator({ currentStep }: StepIndicatorProps) {
                 borderRadius: "100px",
                 fontSize: "13px",
                 fontWeight: 600,
-                fontFamily: "'Open Sans', sans-serif",
+                fontFamily: "'Manrope', sans-serif",
                 whiteSpace: "nowrap",
                 transition: "all 0.3s ease",
                 background: isActive
-                  ? "#FF962E"
+                  ? "#0F172A"
                   : isDone
-                  ? "rgba(255, 150, 46, 0.1)"
-                  : "#F5F5F5",
+                  ? "rgba(51, 65, 85, 0.12)"
+                  : "#F8FAFC",
                 color: isActive
                   ? "white"
                   : isDone
-                  ? "#FF962E"
-                  : "#BDBDBD",
+                  ? "#334155"
+                  : "#94A3B8",
                 border: isActive
-                  ? "1px solid #FF962E"
+                  ? "1px solid #0F172A"
                   : isDone
-                  ? "1px solid rgba(255, 150, 46, 0.4)"
-                  : "1px solid #E5E5E5",
+                  ? "1px solid rgba(51, 65, 85, 0.45)"
+                  : "1px solid #E2E8F0",
                 boxShadow: isActive
-                  ? "0 2px 10px rgba(255, 150, 46, 0.35)"
+                  ? "0 4px 14px rgba(15, 23, 42, 0.22)"
                   : "none",
               }}
             >
@@ -90,7 +90,7 @@ export function StepIndicator({ currentStep }: StepIndicatorProps) {
                   flex: 1,
                   height: "1px",
                   margin: "0 8px",
-                  backgroundColor: isDone ? "#FF962E" : "#E5E5E5",
+                  backgroundColor: isDone ? "#334155" : "#E2E8F0",
                   transition: "background-color 0.4s ease",
                   minWidth: "40px",
                 }}
@@ -102,3 +102,4 @@ export function StepIndicator({ currentStep }: StepIndicatorProps) {
     </div>
   );
 }
+

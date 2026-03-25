@@ -2,80 +2,65 @@ import Logo from "/prodigylogos/light/logo1.svg";
 
 export const RootFooter = () => {
   return (
-    <footer className="bg-gray-50 border-t border-gray-200 mt-24">
-      <div className="container mx-auto px-6 lg:px-12 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+    <footer className="mt-20 border-t border-slate-200 bg-white">
+      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-10">
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-4">
           <div>
-            <img src={Logo} alt="Prodigy" className="h-10 mb-4" />
-            <p className="text-sm text-gray-600">
-              AI-powered platform for creating project roadmaps and connecting
-              with expert consultants.
+            <img src={Logo} alt="Proyekto" className="mb-4 h-10" />
+            <p className="text-sm text-slate-600">
+              The roadmap operating system for teams that want strategic clarity and faster execution.
             </p>
           </div>
+
           <div>
-            <h4 className="font-semibold text-gray-900 mb-4">Product</h4>
-            <ul className="space-y-2 text-sm text-gray-600">
+            <h4 className="mb-4 font-semibold text-slate-900">Platform</h4>
+            <ul className="space-y-2 text-sm text-slate-600">
               <li>
-                <a href="#" className="hover:text-primary transition-colors">
-                  Features
-                </a>
+                <button type="button" className="transition-colors hover:text-slate-900">Roadmap Studio</button>
               </li>
               <li>
-                <a href="#" className="hover:text-primary transition-colors">
-                  Templates
-                </a>
+                <button type="button" className="transition-colors hover:text-slate-900">Consultant Matching</button>
               </li>
               <li>
-                <a href="#" className="hover:text-primary transition-colors">
-                  Pricing
-                </a>
+                <button type="button" className="transition-colors hover:text-slate-900">Execution Layer</button>
               </li>
             </ul>
           </div>
+
           <div>
-            <h4 className="font-semibold text-gray-900 mb-4">Company</h4>
-            <ul className="space-y-2 text-sm text-gray-600">
+            <h4 className="mb-4 font-semibold text-slate-900">Resources</h4>
+            <ul className="space-y-2 text-sm text-slate-600">
               <li>
-                <a href="#" className="hover:text-primary transition-colors">
-                  About
-                </a>
+                <button type="button" className="transition-colors hover:text-slate-900">Case Studies</button>
               </li>
               <li>
-                <a href="#" className="hover:text-primary transition-colors">
-                  Blog
-                </a>
+                <button type="button" className="transition-colors hover:text-slate-900">Playbooks</button>
               </li>
               <li>
-                <a href="#" className="hover:text-primary transition-colors">
-                  Careers
-                </a>
+                <button type="button" className="transition-colors hover:text-slate-900">Roadmap Guides</button>
               </li>
             </ul>
           </div>
+
           <div>
-            <h4 className="font-semibold text-gray-900 mb-4">Legal</h4>
-            <ul className="space-y-2 text-sm text-gray-600">
+            <h4 className="mb-4 font-semibold text-slate-900">Company</h4>
+            <ul className="space-y-2 text-sm text-slate-600">
               <li>
-                <a href="#" className="hover:text-primary transition-colors">
-                  Privacy
-                </a>
+                <button type="button" className="transition-colors hover:text-slate-900">About Proyekto</button>
               </li>
               <li>
-                <a href="#" className="hover:text-primary transition-colors">
-                  Terms
-                </a>
+                <button type="button" className="transition-colors hover:text-slate-900">Security</button>
               </li>
               <li>
-                <a href="#" className="hover:text-primary transition-colors">
-                  Security
-                </a>
+                <button type="button" className="transition-colors hover:text-slate-900">Privacy</button>
               </li>
             </ul>
           </div>
         </div>
-        <div className="border-t border-gray-200 mt-8 pt-8 text-center">
-          <p className="text-sm text-gray-600">
-            © 2026 Prodigitality. All rights reserved.
+
+        <div className="mt-8 border-t border-slate-200 pt-8 text-center">
+          <p className="text-sm text-slate-500">
+            © 2026 Proyekto. All rights reserved.
           </p>
         </div>
       </div>

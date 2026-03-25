@@ -1,99 +1,92 @@
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/ui/button";
 import { motion } from "framer-motion";
-import { ShieldCheck, Award, Star } from "lucide-react";
-import { HeroRoadmapAnimation } from "./HeroRoadmapAnimation";
+import { ArrowRight, Sparkles } from "lucide-react";
+import { HeroLivePreview } from "./HeroLivePreview";
 
 export const HeroSection = () => {
   return (
-    <div className="max-w-[1400px] mx-auto px-4 sm:px-6 md:px-8 pt-4">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-4 items-center">
-        {/* Left Column: Text & Search */}
-        <div className="flex flex-col space-y-4 justify-center py-2 lg:py-4">
-          {/* Trust Badge */}
+    <section className="relative overflow-hidden pt-6 sm:pt-10">
+      <div className="pointer-events-none absolute -top-20 left-[14%] h-72 w-72 rounded-full bg-cyan-200/40 blur-3xl" />
+      <div className="pointer-events-none absolute -right-14 top-1/3 h-72 w-72 rounded-full bg-indigo-200/50 blur-3xl" />
+
+      <div className="relative grid grid-cols-1 items-center gap-10 lg:grid-cols-[1fr_1.06fr]">
+        <div className="flex flex-col justify-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="flex items-center gap-2 bg-gray-50/80 backdrop-blur-sm px-3 py-1.5 rounded-full w-fit border border-gray-100"
+            transition={{ duration: 0.35 }}
+            className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-300/70 bg-white/85 px-3 py-1.5 text-xs font-semibold tracking-[0.08em] text-slate-700"
           >
-            <div className="flex -space-x-2">
-              <img className="w-6 h-6 rounded-full border border-white" src="https://i.pravatar.cc/100?img=1" alt="Avatar" />
-              <img className="w-6 h-6 rounded-full border border-white" src="https://i.pravatar.cc/100?img=2" alt="Avatar" />
-              <img className="w-6 h-6 rounded-full border border-white" src="https://i.pravatar.cc/100?img=3" alt="Avatar" />
-            </div>
-            <span className="text-xs font-medium text-gray-600">Used by teams to plan and execute real projects</span>
+            <Sparkles className="h-3.5 w-3.5 text-cyan-600" />
+            Product Operating System
           </motion.div>
 
-          {/* Headline */}
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 leading-[1.1] tracking-tight"
+            transition={{ duration: 0.35, delay: 0.06 }}
+            className="mt-5 text-4xl font-semibold leading-[1.05] tracking-tight text-slate-900 sm:text-5xl lg:text-6xl"
           >
-            Turn your idea into a <span className="text-primary">structured roadmap</span>, then build it with <span className="text-secondary">the right experts.</span>
+            Turn ideas into
+            <span className="block bg-linear-to-r from-slate-900 via-slate-700 to-slate-400 bg-clip-text text-transparent">
+              structured execution.
+            </span>
           </motion.h1>
 
-          {/* Subheadline */}
           <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="text-xs md:text-sm text-gray-600 max-w-2xl leading-relaxed"
+            transition={{ duration: 0.35, delay: 0.12 }}
+            className="mt-4 max-w-xl text-sm leading-relaxed text-slate-600 sm:text-base"
           >
-            Prodigitality guides delivery from project vision to consultant-backed roadmap to freelancer execution. Clients, consultants, and specialists work inside one execution-ready system.
+            Plan your project, match with experts, and execute in one system.
           </motion.p>
 
-          {/* Action Button */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-            className="pt-2"
+            transition={{ duration: 0.35, delay: 0.2 }}
+            className="mt-7 flex flex-wrap items-center gap-3"
           >
             <Link to="/auth/signup" search={{ redirect: window.location.pathname }}>
               <Button
                 variant="contained"
                 colorScheme="primary"
-                className="rounded-full px-6 py-3 text-sm font-semibold shadow-md hover:shadow-lg transition-all"
+                className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800"
               >
                 Create Your Roadmap
+                <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>
+
+            <a
+              href="#how-it-works"
+              className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition-all hover:border-slate-900 hover:text-slate-900"
+            >
+              See How It Works
+            </a>
           </motion.div>
-          {/* Trust Indicators */}
+
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.4 }}
-            className="flex flex-wrap items-center gap-4 text-xs text-gray-500 font-medium pt-1"
+            transition={{ duration: 0.35, delay: 0.26 }}
+            className="mt-7 max-w-xl rounded-2xl border border-slate-200 bg-white/85 px-4 py-3 text-sm text-slate-600 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
           >
-            <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-secondary" />
-              <span>Verified Pros</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Award className="w-4 h-4 text-secondary" />
-              <span>Licensed Experts</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Star className="w-4 h-4 text-secondary" />
-              <span>4.9/5 Average Rating</span>
-            </div>
+            Built for immediate clarity: frame scope, validate milestones, and start execution without switching tools.
           </motion.div>
         </div>
 
-        {/* Right Column: Animated Roadmap */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="relative lg:h-[300px] w-full flex items-center justify-center rounded-[30px] overflow-hidden"
+          transition={{ duration: 0.45, delay: 0.18 }}
+          className="relative"
         >
-          <HeroRoadmapAnimation />
+          <HeroLivePreview />
         </motion.div>
       </div>
-    </div>
+    </section>
   );
 };

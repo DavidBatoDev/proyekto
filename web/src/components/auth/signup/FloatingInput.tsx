@@ -48,19 +48,19 @@ export function FloatingInput({
           padding: "22px 16px 10px",
           paddingRight: rightElement ? "44px" : "16px",
           height: "52px",
-          borderRadius: "10px",
+          borderRadius: "12px",
           border: focused
-            ? "1px solid #FF962E"
-            : "1px solid #E5E5E5",
+            ? "1px solid #334155"
+            : "1px solid #CBD5E1",
           boxShadow: focused
-            ? "0 0 0 3px rgba(255, 150, 46, 0.12)"
+            ? "0 0 0 3px rgba(51, 65, 85, 0.15)"
             : "none",
           outline: "none",
           width: "100%",
           background: disabled ? "#F9F9F9" : "white",
-          color: "#2E2E2E",
+          color: "#0F172A",
           fontSize: "14px",
-          fontFamily: "'Open Sans', sans-serif",
+          fontFamily: "'Manrope', sans-serif",
           transition: "border-color 0.2s, box-shadow 0.2s",
         }}
       />
@@ -73,11 +73,11 @@ export function FloatingInput({
           transform: floated ? "none" : "translateY(-50%)",
           fontSize: floated ? "10px" : "14px",
           fontWeight: 500,
-          color: focused ? "#FF962E" : "#BDBDBD",
+          color: focused ? "#334155" : "#94A3B8",
           transition: "all 0.2s ease",
           pointerEvents: "none",
           lineHeight: 1,
-          fontFamily: "'Open Sans', sans-serif",
+          fontFamily: "'Manrope', sans-serif",
         }}
       >
         {label}
@@ -98,3 +98,4 @@ export function FloatingInput({
     </div>
   );
 }
+

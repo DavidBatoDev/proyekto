@@ -39,19 +39,19 @@ export function PrimaryButton({
         position: "relative",
         overflow: "hidden",
         width: "100%",
-        height: "48px",
-        borderRadius: "12px",
+        height: "50px",
+        borderRadius: "14px",
         border: "none",
-        background: "#FF962E",
+        background: "#0F172A",
         color: "white",
-        fontFamily: "'Open Sans', sans-serif",
+        fontFamily: "'Manrope', sans-serif",
         fontSize: "14px",
-        fontWeight: 600,
+        fontWeight: 700,
         cursor: isDisabled ? "not-allowed" : "pointer",
         opacity: isDisabled ? 0.7 : 1,
         boxShadow: hovered && !isDisabled
-          ? "0 6px 20px rgba(255, 45, 117, 0.4)"
-          : "0 4px 14px rgba(255, 150, 46, 0.35)",
+          ? "0 10px 26px rgba(15, 23, 42, 0.35)"
+          : "0 6px 18px rgba(15, 23, 42, 0.22)",
         transition: "box-shadow 0.22s ease, opacity 0.15s ease",
         display: "flex",
         alignItems: "center",
@@ -65,7 +65,7 @@ export function PrimaryButton({
         style={{
           position: "absolute",
           inset: 0,
-          backgroundImage: "linear-gradient(135deg, #FF962E 0%, #FF2D75 100%)",
+          backgroundImage: "linear-gradient(135deg, #1E1B4B 0%, #312E81 55%, #4338CA 100%)",
           opacity: hovered && !isDisabled ? 1 : 0,
           transition: "opacity 0.22s ease",
           borderRadius: "inherit",
@@ -120,14 +120,14 @@ export function SecondaryButton({
       onBlur={() => setHovered(false)}
       style={{
         width: "100%",
-        height: "48px",
-        borderRadius: "12px",
-        border: `1px solid ${hovered ? "#BDBDBD" : "#E5E5E5"}`,
-        background: hovered ? "#F9F9F9" : "transparent",
-        color: "#2E2E2E",
-        fontFamily: "'Open Sans', sans-serif",
+        height: "50px",
+        borderRadius: "14px",
+        border: `1px solid ${hovered ? "#475569" : "#CBD5E1"}`,
+        background: hovered ? "#F8FAFC" : "transparent",
+        color: "#334155",
+        fontFamily: "'Manrope', sans-serif",
         fontSize: "14px",
-        fontWeight: 600,
+        fontWeight: 700,
         cursor: disabled ? "not-allowed" : "pointer",
         transition: "background-color 0.2s ease, border-color 0.2s ease",
         display: "flex",
@@ -161,14 +161,14 @@ export function GoogleButton({ onClick, children }: GoogleButtonProps) {
       onBlur={() => setHovered(false)}
       style={{
         width: "100%",
-        height: "48px",
-        borderRadius: "12px",
-        border: `1px solid ${hovered ? "#BDBDBD" : "#E5E5E5"}`,
-        background: hovered ? "#F9F9F9" : "white",
-        color: "#2E2E2E",
-        fontFamily: "'Open Sans', sans-serif",
+        height: "50px",
+        borderRadius: "14px",
+        border: `1px solid ${hovered ? "#475569" : "#CBD5E1"}`,
+        background: hovered ? "#F8FAFC" : "white",
+        color: "#0F172A",
+        fontFamily: "'Manrope', sans-serif",
         fontSize: "14px",
-        fontWeight: 600,
+        fontWeight: 700,
         cursor: "pointer",
         transition: "background-color 0.2s ease, border-color 0.2s ease",
         display: "flex",
@@ -181,3 +181,4 @@ export function GoogleButton({ onClick, children }: GoogleButtonProps) {
     </button>
   );
 }
+

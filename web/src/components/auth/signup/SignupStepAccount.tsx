@@ -119,18 +119,18 @@ export function SignupStepAccount({
 
       {/* Or divider */}
       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-        <div style={{ flex: 1, height: "1px", background: "#E5E5E5" }} />
+        <div style={{ flex: 1, height: "1px", background: "#CBD5E1" }} />
         <span
           style={{
             fontSize: "12px",
-            color: "#BDBDBD",
+            color: "#94A3B8",
             fontWeight: 500,
-            fontFamily: "'Open Sans', sans-serif",
+            fontFamily: "'Manrope', sans-serif",
           }}
         >
           or continue with email
         </span>
-        <div style={{ flex: 1, height: "1px", background: "#E5E5E5" }} />
+        <div style={{ flex: 1, height: "1px", background: "#CBD5E1" }} />
       </div>
 
       {/* Name row */}
@@ -179,7 +179,7 @@ export function SignupStepAccount({
                 border: "none",
                 cursor: "pointer",
                 padding: "2px",
-                color: "#BDBDBD",
+                color: "#94A3B8",
                 display: "flex",
                 alignItems: "center",
               }}
@@ -209,7 +209,7 @@ export function SignupStepAccount({
               border: "none",
               cursor: "pointer",
               padding: "2px",
-              color: "#BDBDBD",
+              color: "#94A3B8",
               display: "flex",
               alignItems: "center",
             }}
@@ -224,21 +224,33 @@ export function SignupStepAccount({
       <PrimaryButton type="submit" style={{ marginTop: "4px" }}>
         Continue →
       </PrimaryButton>
+      <p
+        style={{
+          textAlign: "center",
+          fontSize: "12px",
+          color: "#64748B",
+          margin: "-2px 0 0",
+          fontFamily: "'Manrope', sans-serif",
+          fontWeight: 600,
+        }}
+      >
+        Takes less than 3 minutes
+      </p>
 
       {/* Login link */}
       <p
         style={{
           textAlign: "center",
           fontSize: "13px",
-          color: "#BDBDBD",
+          color: "#94A3B8",
           margin: 0,
-          fontFamily: "'Open Sans', sans-serif",
+          fontFamily: "'Manrope', sans-serif",
         }}
       >
         Already have an account?{" "}
         <Link
           to="/auth/login"
-          style={{ color: "#FF962E", fontWeight: 600, textDecoration: "none" }}
+          style={{ color: "#1E293B", fontWeight: 700, textDecoration: "none" }}
         >
           Sign in
         </Link>
@@ -246,3 +258,4 @@ export function SignupStepAccount({
     </form>
   );
 }
+

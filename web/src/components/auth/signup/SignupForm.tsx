@@ -353,8 +353,9 @@ export function SignupForm(_props: SignupFormProps) {
     <div
       style={{
         background: "white",
-        borderRadius: "18px",
-        boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
+        borderRadius: "20px",
+        border: "1px solid #E2E8F0",
+        boxShadow: "0 12px 30px rgba(15,23,42,0.08)",
         padding: "32px",
         width: "100%",
       }}
@@ -371,27 +372,25 @@ export function SignupForm(_props: SignupFormProps) {
         <div style={{ marginBottom: "24px" }}>
           <h1
             style={{
-              fontFamily: "'Glacial Indifference', 'Open Sans', sans-serif",
+              fontFamily: "'Sora', 'Manrope', sans-serif",
               fontSize: "1.6rem",
               fontWeight: 700,
-              color: "#2E2E2E",
+              color: "#0F172A",
               margin: "0 0 4px",
               lineHeight: 1.25,
             }}
           >
-            {step === 1 ? "Create your account" : "Complete your profile"}
+            Turn ideas into structured execution.
           </h1>
           <p
             style={{
               fontSize: "13px",
-              color: "#BDBDBD",
+              color: "#64748B",
               margin: "0 0 20px",
-              fontFamily: "'Open Sans', sans-serif",
+              fontFamily: "'Manrope', sans-serif",
             }}
           >
-            {step === 1
-              ? "Let's start with the basics."
-              : "Tell us a bit more about yourself."}
+            Start your roadmap, match with experts, and execute in one system.
           </p>
           <StepIndicator currentStep={step as 1 | 2} />
         </div>
@@ -452,7 +451,7 @@ export function SignupForm(_props: SignupFormProps) {
                     width: "64px",
                     height: "64px",
                     borderRadius: "50%",
-                    background: "rgba(255,150,46,0.08)",
+                    background: "rgba(51,65,85,0.1)",
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -462,14 +461,14 @@ export function SignupForm(_props: SignupFormProps) {
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
                     <path
                       d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"
-                      stroke="#FF962E"
+                      stroke="#334155"
                       strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
                     <polyline
                       points="22,6 12,13 2,6"
-                      stroke="#FF962E"
+                      stroke="#334155"
                       strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -478,10 +477,10 @@ export function SignupForm(_props: SignupFormProps) {
                 </div>
                 <h2
                   style={{
-                    fontFamily: "'Glacial Indifference', 'Open Sans', sans-serif",
+                    fontFamily: "'Sora', 'Manrope', sans-serif",
                     fontSize: "1.4rem",
                     fontWeight: 700,
-                    color: "#2E2E2E",
+                    color: "#0F172A",
                     margin: "0 0 8px",
                   }}
                 >
@@ -490,13 +489,13 @@ export function SignupForm(_props: SignupFormProps) {
                 <p
                   style={{
                     fontSize: "13px",
-                    color: "#BDBDBD",
+                    color: "#64748B",
                     margin: 0,
-                    fontFamily: "'Open Sans', sans-serif",
+                    fontFamily: "'Manrope', sans-serif",
                   }}
                 >
                   We sent a 6-digit code to{" "}
-                  <strong style={{ color: "#2E2E2E" }}>{email}</strong>
+                  <strong style={{ color: "#0F172A" }}>{email}</strong>
                 </p>
               </div>
 
@@ -515,23 +514,23 @@ export function SignupForm(_props: SignupFormProps) {
                     width: "100%",
                     height: "64px",
                     borderRadius: "12px",
-                    border: "2px solid #E5E5E5",
+                    border: "2px solid #CBD5E1",
                     textAlign: "center",
                     fontSize: "28px",
                     fontWeight: 700,
                     letterSpacing: "8px",
-                    color: "#2E2E2E",
+                    color: "#0F172A",
                     outline: "none",
                     fontFamily: "monospace",
                     transition: "border-color 0.2s",
                     boxSizing: "border-box",
                   }}
                   onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "#FF962E";
+                    e.currentTarget.style.borderColor = "#334155";
                     e.currentTarget.style.boxShadow = "0 0 0 3px rgba(255,150,46,0.12)";
                   }}
                   onBlur={(e) => {
-                    e.currentTarget.style.borderColor = "#E5E5E5";
+                    e.currentTarget.style.borderColor = "#CBD5E1";
                     e.currentTarget.style.boxShadow = "none";
                   }}
                 />
@@ -541,31 +540,34 @@ export function SignupForm(_props: SignupFormProps) {
                   disabled={isLoading}
                   style={{
                     width: "100%",
-                    height: "48px",
-                    borderRadius: "12px",
+                    height: "50px",
+                    borderRadius: "14px",
                     border: "none",
-                    background: "#FF962E",
+                    background: "linear-gradient(135deg, #0F172A 0%, #1E1B4B 52%, #312E81 100%)",
                     color: "white",
-                    fontFamily: "'Open Sans', sans-serif",
+                    fontFamily: "'Manrope', sans-serif",
                     fontSize: "14px",
-                    fontWeight: 600,
+                    fontWeight: 700,
                     cursor: isLoading ? "not-allowed" : "pointer",
                     opacity: isLoading ? 0.7 : 1,
-                    boxShadow: "0 4px 14px rgba(255, 150, 46, 0.35)",
+                    boxShadow: "0 8px 20px rgba(15,23,42,0.24)",
                     transition: "all 0.2s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isLoading) {
-                      (e.currentTarget as HTMLButtonElement).style.background =
-                        "linear-gradient(135deg, #FF962E, #FF2D75)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.background = "#FF962E";
                   }}
                 >
                   {isLoading ? "Verifying…" : "Verify Code"}
                 </button>
+                <p
+                  style={{
+                    textAlign: "center",
+                    fontSize: "12px",
+                    color: "#64748B",
+                    margin: "-6px 0 0",
+                    fontFamily: "'Manrope', sans-serif",
+                    fontWeight: 600,
+                  }}
+                >
+                  Takes less than 3 minutes
+                </p>
               </form>
 
               {/* Actions */}
@@ -588,20 +590,20 @@ export function SignupForm(_props: SignupFormProps) {
                     border: "none",
                     cursor: "pointer",
                     fontSize: "13px",
-                    color: "#BDBDBD",
-                    fontFamily: "'Open Sans', sans-serif",
+                    color: "#94A3B8",
+                    fontFamily: "'Manrope', sans-serif",
                     padding: 0,
                   }}
                   onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.color = "#FF962E";
+                    (e.currentTarget as HTMLButtonElement).style.color = "#1E293B";
                   }}
                   onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.color = "#BDBDBD";
+                    (e.currentTarget as HTMLButtonElement).style.color = "#94A3B8";
                   }}
                 >
                   ← Back
                 </button>
-                <div style={{ width: "1px", height: "14px", background: "#E5E5E5" }} />
+                <div style={{ width: "1px", height: "14px", background: "#CBD5E1" }} />
                 <button
                   type="button"
                   onClick={handleResendCode}
@@ -611,18 +613,18 @@ export function SignupForm(_props: SignupFormProps) {
                     border: "none",
                     cursor: isResending ? "not-allowed" : "pointer",
                     fontSize: "13px",
-                    color: "#BDBDBD",
-                    fontFamily: "'Open Sans', sans-serif",
+                    color: "#94A3B8",
+                    fontFamily: "'Manrope', sans-serif",
                     padding: 0,
                     opacity: isResending ? 0.5 : 1,
                   }}
                   onMouseEnter={(e) => {
                     if (!isResending) {
-                      (e.currentTarget as HTMLButtonElement).style.color = "#FF962E";
+                      (e.currentTarget as HTMLButtonElement).style.color = "#1E293B";
                     }
                   }}
                   onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.color = "#BDBDBD";
+                    (e.currentTarget as HTMLButtonElement).style.color = "#94A3B8";
                   }}
                 >
                   {isResending ? "Resending…" : "Resend Code"}
@@ -633,15 +635,15 @@ export function SignupForm(_props: SignupFormProps) {
                 style={{
                   textAlign: "center",
                   fontSize: "13px",
-                  color: "#BDBDBD",
+                  color: "#94A3B8",
                   margin: 0,
-                  fontFamily: "'Open Sans', sans-serif",
+                  fontFamily: "'Manrope', sans-serif",
                 }}
               >
                 Already have an account?{" "}
                 <Link
                   to="/auth/login"
-                  style={{ color: "#FF962E", fontWeight: 600, textDecoration: "none" }}
+                  style={{ color: "#1E293B", fontWeight: 700, textDecoration: "none" }}
                 >
                   Sign in
                 </Link>
@@ -653,3 +655,4 @@ export function SignupForm(_props: SignupFormProps) {
     </div>
   );
 }
+

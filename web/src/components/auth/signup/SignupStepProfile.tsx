@@ -55,10 +55,10 @@ export function SignupStepProfile({
           style={{
             fontSize: "11px",
             fontWeight: 600,
-            color: "#BDBDBD",
+            color: "#94A3B8",
             marginBottom: "8px",
             margin: "0 0 8px",
-            fontFamily: "'Open Sans', sans-serif",
+            fontFamily: "'Manrope', sans-serif",
             textTransform: "uppercase",
             letterSpacing: "0.05em",
           }}
@@ -76,16 +76,16 @@ export function SignupStepProfile({
                 style={{
                   flex: 1,
                   height: "48px",
-                  borderRadius: "10px",
-                  border: isSelected ? "1px solid #FF962E" : "1px solid #E5E5E5",
-                  background: isSelected ? "rgba(255, 150, 46, 0.06)" : "white",
-                  color: isSelected ? "#FF962E" : "#BDBDBD",
-                  fontFamily: "'Open Sans', sans-serif",
+                  borderRadius: "12px",
+                  border: isSelected ? "1px solid #334155" : "1px solid #CBD5E1",
+                  background: isSelected ? "rgba(51, 65, 85, 0.08)" : "white",
+                  color: isSelected ? "#0F172A" : "#94A3B8",
+                  fontFamily: "'Manrope', sans-serif",
                   fontSize: "14px",
                   fontWeight: isSelected ? 600 : 500,
                   cursor: "pointer",
                   transition: "all 0.2s ease",
-                  boxShadow: isSelected ? "0 0 0 3px rgba(255,150,46,0.1)" : "none",
+                  boxShadow: isSelected ? "0 0 0 3px rgba(51, 65, 85, 0.12)" : "none",
                 }}
               >
                 {g}
@@ -156,8 +156,8 @@ export function SignupStepProfile({
               width: "18px",
               height: "18px",
               borderRadius: "5px",
-              border: acceptedTerms ? "2px solid #FF962E" : "2px solid #E5E5E5",
-              background: acceptedTerms ? "#FF962E" : "white",
+              border: acceptedTerms ? "2px solid #334155" : "2px solid #CBD5E1",
+              background: acceptedTerms ? "#334155" : "white",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -180,21 +180,21 @@ export function SignupStepProfile({
         <span
           style={{
             fontSize: "13px",
-            color: "#2E2E2E",
+            color: "#0F172A",
             lineHeight: 1.5,
-            fontFamily: "'Open Sans', sans-serif",
+            fontFamily: "'Manrope', sans-serif",
           }}
         >
           I have read and accept the{" "}
-          <a href="/terms" style={{ color: "#FF962E", textDecoration: "none", fontWeight: 600 }}>
+          <a href="/terms" style={{ color: "#1E40AF", textDecoration: "none", fontWeight: 700 }}>
             Terms of Use
           </a>
           ,{" "}
-          <a href="/privacy" style={{ color: "#FF962E", textDecoration: "none", fontWeight: 600 }}>
+          <a href="/privacy" style={{ color: "#1E40AF", textDecoration: "none", fontWeight: 700 }}>
             Privacy Policy
           </a>{" "}
           &{" "}
-          <a href="/conditions" style={{ color: "#FF962E", textDecoration: "none", fontWeight: 600 }}>
+          <a href="/conditions" style={{ color: "#1E40AF", textDecoration: "none", fontWeight: 700 }}>
             Terms &amp; Conditions
           </a>
         </span>
@@ -209,6 +209,18 @@ export function SignupStepProfile({
       >
         Create Account
       </PrimaryButton>
+      <p
+        style={{
+          textAlign: "center",
+          fontSize: "12px",
+          color: "#64748B",
+          margin: "-2px 0 0",
+          fontFamily: "'Manrope', sans-serif",
+          fontWeight: 600,
+        }}
+      >
+        Takes less than 3 minutes
+      </p>
 
       {/* Back */}
       <SecondaryButton type="button" onClick={onBack}>
@@ -217,3 +229,4 @@ export function SignupStepProfile({
     </form>
   );
 }
+
