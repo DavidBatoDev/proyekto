@@ -1,8 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type {
-  AgentPreviewPayload,
-  AgentRoadmapPreviewArtifact,
-} from "@/services/roadmap-agent.service";
+import type { RoadmapArtifactPreview } from "@/types/roadmapArtifact";
 
 export type RoadmapAiChatRole = "user" | "assistant";
 
@@ -14,36 +11,18 @@ export interface RoadmapAiChatMessage {
   parseMode?: string;
   intentType?: "smalltalk" | "question" | "roadmap_edit" | "unclear";
   responseMode?: "chat" | "edit_plan";
-  artifacts?: AgentRoadmapPreviewArtifact[];
-  preview?: AgentPreviewPayload;
+  artifacts?: RoadmapArtifactPreview[];
 }
 
 interface RoadmapAiAssistantPersistedState {
   isOpen: boolean;
-  sessionId: string | null;
   messages: RoadmapAiChatMessage[];
-  latestPreview: AgentPreviewPayload | null;
-  previewAvailable: boolean;
-  previewRecommended: boolean;
-  stagedOperationsVersion: number;
 }
 
 interface UseRoadmapAiAssistantSessionResult {
   isOpen: boolean;
-  sessionId: string | null;
   messages: RoadmapAiChatMessage[];
-  latestPreview: AgentPreviewPayload | null;
-  previewAvailable: boolean;
-  previewRecommended: boolean;
-  stagedOperationsVersion: number;
   setIsOpen: (value: boolean) => void;
-  setSessionId: (value: string | null) => void;
-  setLatestPreview: (value: AgentPreviewPayload | null) => void;
-  setPreviewState: (value: {
-    previewAvailable: boolean;
-    previewRecommended: boolean;
-    stagedOperationsVersion: number;
-  }) => void;
   appendMessage: (message: RoadmapAiChatMessage) => void;
   clearMessages: () => void;
 }
@@ -52,12 +31,7 @@ const STORAGE_PREFIX = "roadmap.ai.assistant.v1";
 
 const DEFAULT_STATE: RoadmapAiAssistantPersistedState = {
   isOpen: false,
-  sessionId: null,
   messages: [],
-  latestPreview: null,
-  previewAvailable: false,
-  previewRecommended: false,
-  stagedOperationsVersion: 0,
 };
 
 const parseStoredState = (
@@ -68,18 +42,7 @@ const parseStoredState = (
     const parsed = JSON.parse(rawValue) as Partial<RoadmapAiAssistantPersistedState>;
     return {
       isOpen: Boolean(parsed.isOpen),
-      sessionId:
-        typeof parsed.sessionId === "string" && parsed.sessionId.length > 0
-          ? parsed.sessionId
-          : null,
       messages: Array.isArray(parsed.messages) ? parsed.messages : [],
-      latestPreview: parsed.latestPreview ?? null,
-      previewAvailable: Boolean(parsed.previewAvailable),
-      previewRecommended: Boolean(parsed.previewRecommended),
-      stagedOperationsVersion:
-        typeof parsed.stagedOperationsVersion === "number"
-          ? parsed.stagedOperationsVersion
-          : 0,
     };
   } catch {
     return DEFAULT_STATE;
@@ -111,28 +74,9 @@ export function useRoadmapAiAssistantSession(
 
   return {
     isOpen: state.isOpen,
-    sessionId: state.sessionId,
     messages: state.messages,
-    latestPreview: state.latestPreview,
-    previewAvailable: state.previewAvailable,
-    previewRecommended: state.previewRecommended,
-    stagedOperationsVersion: state.stagedOperationsVersion,
     setIsOpen: (value) => {
       setState((prev) => ({ ...prev, isOpen: value }));
-    },
-    setSessionId: (value) => {
-      setState((prev) => ({ ...prev, sessionId: value }));
-    },
-    setLatestPreview: (value) => {
-      setState((prev) => ({ ...prev, latestPreview: value }));
-    },
-    setPreviewState: (value) => {
-      setState((prev) => ({
-        ...prev,
-        previewAvailable: value.previewAvailable,
-        previewRecommended: value.previewRecommended,
-        stagedOperationsVersion: value.stagedOperationsVersion,
-      }));
     },
     appendMessage: (message) => {
       setState((prev) => ({
@@ -144,10 +88,6 @@ export function useRoadmapAiAssistantSession(
       setState((prev) => ({
         ...prev,
         messages: [],
-        latestPreview: null,
-        previewAvailable: false,
-        previewRecommended: false,
-        stagedOperationsVersion: 0,
       }));
     },
   };

@@ -1,10 +1,13 @@
 import { Plus } from "lucide-react";
 import { EpicTab } from "./EpicTab";
+import { ArtifactTabView } from "./ArtifactTabView";
 import { MilestonesView } from "../../milestones/MilestonesView";
 import type { RoadmapCanvasProps } from "../models/types";
 import { RoadmapCanvasOverlays } from "./RoadmapCanvasOverlays";
 import { RoadmapView } from "../RoadmapView";
 import { useRoadmapCanvasController } from "../hooks/useRoadmapCanvasController";
+import { useRoadmapStore } from "@/stores/roadmapStore";
+import { useToast } from "@/hooks/useToast";
 
 const RoadmapCanvas = ({
   projectTitle: _projectTitle,
@@ -43,6 +46,7 @@ const RoadmapCanvas = ({
   onOpenTaskDetailHandled: onOpenTaskDetailHandledProp,
   onActiveEpicChange,
 }: RoadmapCanvasProps) => {
+  const toast = useToast();
   const controller = useRoadmapCanvasController({
     roadmap: roadmapProp,
     milestones: milestonesProp,
@@ -142,6 +146,16 @@ const RoadmapCanvas = ({
     handleTaskUpdate,
     handleTaskDelete,
   } = controller;
+  const selectedArtifactId = useRoadmapStore(
+    (state) => state.canvasSelectedArtifactId,
+  );
+  const artifactsById = useRoadmapStore((state) => state.artifactsById);
+  const applyArtifactSnapshot = useRoadmapStore(
+    (state) => state.applyArtifactSnapshot,
+  );
+  const discardArtifact = useRoadmapStore((state) => state.discardArtifact);
+  const selectedArtifact =
+    selectedArtifactId ? artifactsById[selectedArtifactId] : null;
 
   if (!roadmap) {
     return null;
@@ -260,6 +274,34 @@ const RoadmapCanvas = ({
           </div>
         )}
 
+        {viewMode === "artifact" && selectedArtifact && (
+          <ArtifactTabView
+            artifact={selectedArtifact}
+            onApply={(artifactId) => {
+              applyArtifactSnapshot(artifactId);
+              toast.success("Mock artifact applied to roadmap");
+            }}
+            onDiscard={(artifactId) => {
+              discardArtifact(artifactId);
+              toast.success("Artifact discarded");
+            }}
+          />
+        )}
+
+        {viewMode === "artifact" && !selectedArtifact && (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <p className="text-gray-500 mb-4">No artifact selected</p>
+              <button
+                onClick={() => setViewMode("roadmap")}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+              >
+                Go to Roadmap View
+              </button>
+            </div>
+          </div>
+        )}
+
         {viewMode === "milestones" && (
           <MilestonesView
             roadmap={roadmap}
@@ -276,48 +318,50 @@ const RoadmapCanvas = ({
           />
         )}
 
-        <RoadmapCanvasOverlays
-          projectId={roadmap.project_id ?? undefined}
-          epics={epics}
-          selectedTask={selectedTask}
-          sidePanelOpen={sidePanelOpen}
-          selectedTaskId={selectedTaskId}
-          targetFeatureForTask={targetFeatureForTask}
-          closeAddTaskPanel={closeAddTaskPanel}
-          setSidePanelOpen={setSidePanelOpen}
-          setSelectedTaskId={setSelectedTaskId}
-          setTargetFeatureForTask={setTargetFeatureForTask}
-          setIsAddFeatureModalOpen={setIsAddFeatureModalOpen}
-          setTargetEpicForFeature={setTargetEpicForFeature}
-          setIsEditFeatureModalOpen={setIsEditFeatureModalOpen}
-          setEditingFeatureId={setEditingFeatureId}
-          setEditingFeatureEpicId={setEditingFeatureEpicId}
-          isTaskLoading={isTaskLoading}
-          isEpicLoading={isEpicLoading}
-          isFeatureLoading={isFeatureLoading}
-          isAddEpicModalOpen={isAddEpicModalOpen}
-          isEditEpicModalOpen={isEditEpicModalOpen}
-          isAddFeatureModalOpen={isAddFeatureModalOpen}
-          isEditFeatureModalOpen={isEditFeatureModalOpen}
-          editingEpicId={editingEpicId}
-          editingFeatureId={editingFeatureId}
-          editingFeatureEpicId={editingFeatureEpicId}
-          targetEpicForFeature={targetEpicForFeature}
-          deleteConfirm={deleteConfirm}
-          setDeleteConfirm={setDeleteConfirm}
-          setIsAddEpicModalOpen={setIsAddEpicModalOpen}
-          setIsEditEpicModalOpen={setIsEditEpicModalOpen}
-          setEditingEpicId={setEditingEpicId}
-          handleTaskUpdate={handleTaskUpdate}
-          handleTaskDelete={handleTaskDelete}
-          handleTaskCreate={handleTaskCreate}
-          handleCreateEpic={handleCreateEpic}
-          handleUpdateEpicFromModal={handleUpdateEpicFromModal}
-          handleCreateFeature={handleCreateFeature}
-          handleUpdateFeatureFromModal={handleUpdateFeatureFromModal}
-          handleOpenEditFeatureModal={handleOpenEditFeatureModal}
-          handleConfirmDelete={handleConfirmDelete}
-        />
+        {viewMode !== "artifact" && (
+          <RoadmapCanvasOverlays
+            projectId={roadmap.project_id ?? undefined}
+            epics={epics}
+            selectedTask={selectedTask}
+            sidePanelOpen={sidePanelOpen}
+            selectedTaskId={selectedTaskId}
+            targetFeatureForTask={targetFeatureForTask}
+            closeAddTaskPanel={closeAddTaskPanel}
+            setSidePanelOpen={setSidePanelOpen}
+            setSelectedTaskId={setSelectedTaskId}
+            setTargetFeatureForTask={setTargetFeatureForTask}
+            setIsAddFeatureModalOpen={setIsAddFeatureModalOpen}
+            setTargetEpicForFeature={setTargetEpicForFeature}
+            setIsEditFeatureModalOpen={setIsEditFeatureModalOpen}
+            setEditingFeatureId={setEditingFeatureId}
+            setEditingFeatureEpicId={setEditingFeatureEpicId}
+            isTaskLoading={isTaskLoading}
+            isEpicLoading={isEpicLoading}
+            isFeatureLoading={isFeatureLoading}
+            isAddEpicModalOpen={isAddEpicModalOpen}
+            isEditEpicModalOpen={isEditEpicModalOpen}
+            isAddFeatureModalOpen={isAddFeatureModalOpen}
+            isEditFeatureModalOpen={isEditFeatureModalOpen}
+            editingEpicId={editingEpicId}
+            editingFeatureId={editingFeatureId}
+            editingFeatureEpicId={editingFeatureEpicId}
+            targetEpicForFeature={targetEpicForFeature}
+            deleteConfirm={deleteConfirm}
+            setDeleteConfirm={setDeleteConfirm}
+            setIsAddEpicModalOpen={setIsAddEpicModalOpen}
+            setIsEditEpicModalOpen={setIsEditEpicModalOpen}
+            setEditingEpicId={setEditingEpicId}
+            handleTaskUpdate={handleTaskUpdate}
+            handleTaskDelete={handleTaskDelete}
+            handleTaskCreate={handleTaskCreate}
+            handleCreateEpic={handleCreateEpic}
+            handleUpdateEpicFromModal={handleUpdateEpicFromModal}
+            handleCreateFeature={handleCreateFeature}
+            handleUpdateFeatureFromModal={handleUpdateFeatureFromModal}
+            handleOpenEditFeatureModal={handleOpenEditFeatureModal}
+            handleConfirmDelete={handleConfirmDelete}
+          />
+        )}
       </div>
     </div>
   );

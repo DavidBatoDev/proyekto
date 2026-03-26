@@ -2176,6 +2176,8 @@ function WorkItemsViewPage() {
 
       <TryAiFloatingAssistant
         roadmapId={roadmapId}
+        roadmapSnapshot={roadmapFullQuery.data ?? null}
+        epicsSnapshot={epics}
         onOpenChange={setIsAiAssistantOpen}
       />
     </div>

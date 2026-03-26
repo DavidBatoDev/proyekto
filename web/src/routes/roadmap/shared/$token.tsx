@@ -249,6 +249,8 @@ function SharedRoadmapPage() {
       {showTryAiAssistant && (
         <TryAiFloatingAssistant
           roadmapId={roadmap.id}
+          roadmapSnapshot={roadmap}
+          epicsSnapshot={epics}
           onOpenChange={setIsAiAssistantOpen}
         />
       )}

@@ -354,6 +354,8 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
 
       <TryAiFloatingAssistant
         roadmapId={roadmap.id}
+        roadmapSnapshot={roadmap}
+        epicsSnapshot={roadmap.epics || []}
         onOpenChange={setIsAiAssistantOpen}
       />
     </div>
