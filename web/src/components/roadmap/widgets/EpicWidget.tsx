@@ -3,6 +3,7 @@ import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { motion } from "framer-motion";
 import { Edit2, Trash2, Plus, ExternalLink, Calendar } from "lucide-react";
 import type { RoadmapEpic } from "@/types/roadmap";
+import { calculateEpicProgressFromFeatures } from "../shared/featureProgress";
 
 export interface EpicWidgetData extends Record<string, unknown> {
   epic: RoadmapEpic;
@@ -26,6 +27,12 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
   } = data;
   const descriptionRef = useRef<HTMLDivElement>(null);
   const [hasOverflow, setHasOverflow] = useState(false);
+  const computedProgress = calculateEpicProgressFromFeatures(epic.features);
+  const taskCount = (epic.features ?? []).reduce(
+    (count, feature) => count + (feature.tasks?.length ?? 0),
+    0,
+  );
+  const progressToRender = taskCount > 0 ? computedProgress : epic.progress;
 
   useEffect(() => {
     const el = descriptionRef.current;
@@ -198,16 +205,16 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
         )}
 
         {/* Progress Bar */}
-        {epic.progress !== undefined && (
+        {progressToRender !== undefined && (
           <div className="mb-3 shrink-0">
             <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
               <span>Progress</span>
-              <span className="font-medium">{Math.round(epic.progress)}%</span>
+              <span className="font-medium">{Math.round(progressToRender)}%</span>
             </div>
             <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
               <div
                 className="h-full bg-primary transition-all duration-300"
-                style={{ width: `${epic.progress}%` }}
+                style={{ width: `${progressToRender}%` }}
               />
             </div>
           </div>
@@ -225,7 +232,7 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
         {/* Date range */}
         {(epic.start_date || epic.end_date) && (
           <div className="flex items-center gap-1 mt-2 text-xs text-gray-400 shrink-0">
-            <Calendar className="w-3 h-3 flex-shrink-0" />
+            <Calendar className="w-3 h-3 shrink-0" />
             <span>
               {epic.start_date
                 ? new Date(epic.start_date).toLocaleDateString(undefined, {

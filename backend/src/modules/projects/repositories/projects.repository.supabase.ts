@@ -198,7 +198,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         *,
         client:profiles!projects_client_id_fkey(id, display_name, avatar_url, headline, email),
         consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, headline, email),
-        members:project_members(id, project_id, user_id, role, position, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name))
+        members:project_members(id, project_id, user_id, role, position, permissions_json, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name))
       `,
       )
       .eq('id', id)

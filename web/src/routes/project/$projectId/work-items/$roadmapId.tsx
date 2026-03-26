@@ -56,6 +56,10 @@ import {
   removeTaskById,
   restoreTaskAtLocation,
 } from "./workItemsOptimistic";
+import {
+  calculateEpicProgressFromFeatures,
+  calculateFeatureProgressFromTasks,
+} from "@/components/roadmap/shared/featureProgress";
 
 export const Route = createFileRoute(
   "/project/$projectId/work-items/$roadmapId",
@@ -668,9 +672,11 @@ function FeatureRow({
   isFeaturePending: boolean;
   isTaskPending: (taskId: string) => boolean;
 }) {
-  const tasks = useMemo(
+  const allTasks = feature.tasks ?? [];
+
+  const visibleTasks = useMemo(
     () =>
-      (feature.tasks ?? []).filter((t) => {
+      allTasks.filter((t) => {
         if (!matchesTaskAssigneeFilter(t, assigneeFilter, currentUserId))
           return false;
         if (search && !t.title.toLowerCase().includes(search.toLowerCase()))
@@ -678,26 +684,26 @@ function FeatureRow({
         if (statusFilter && t.status !== statusFilter) return false;
         return true;
       }),
-    [assigneeFilter, currentUserId, feature.tasks, search, statusFilter],
+    [allTasks, assigneeFilter, currentUserId, search, statusFilter],
   );
 
-  const hasTasks = tasks.length > 0;
-  const doneTasks = tasks.filter((t) => t.status === "done").length;
-  const progress = hasTasks ? Math.round((doneTasks / tasks.length) * 100) : 0;
+  const hasVisibleTasks = visibleTasks.length > 0;
+  const doneTasks = allTasks.filter((t) => t.status === "done").length;
+  const progress = calculateFeatureProgressFromTasks(allTasks);
   const featureAssignees = useMemo(() => {
     const deduped = new globalThis.Map<
       string,
       NonNullable<RoadmapTask["assignee"]>
     >();
 
-    for (const childTask of tasks) {
+    for (const childTask of allTasks) {
       const assigneeId = childTask.assignee_id ?? childTask.assignee?.id;
       if (!assigneeId || !childTask.assignee) continue;
       if (!deduped.has(assigneeId)) deduped.set(assigneeId, childTask.assignee);
     }
 
     return Array.from(deduped.values());
-  }, [tasks]);
+  }, [allTasks]);
 
   return (
     <>
@@ -721,7 +727,7 @@ function FeatureRow({
           }}
         >
           <span className="w-5 h-px bg-gray-300" />
-          {hasTasks ? (
+          {hasVisibleTasks ? (
             isExpanded ? (
               <ChevronDown className="w-6 h-6 text-gray-500" />
             ) : (
@@ -741,9 +747,9 @@ function FeatureRow({
             {isFeaturePending && (
               <Loader2 className="w-3 h-3 text-gray-400 animate-spin shrink-0" />
             )}
-            {hasTasks && (
+            {allTasks.length > 0 && (
               <span className="text-[10px] text-gray-400 shrink-0 tabular-nums">
-                {doneTasks}/{tasks.length}
+                {doneTasks}/{allTasks.length}
               </span>
             )}
             {feature.is_deliverable && (
@@ -797,7 +803,7 @@ function FeatureRow({
 
         {/* Progress */}
         <div className={`${COL.progress} hidden xl:flex items-center pr-4`}>
-          {hasTasks ? (
+          {allTasks.length > 0 ? (
             <ProgressBar value={progress} />
           ) : (
             <span className="text-[10px] text-gray-300">—</span>
@@ -807,12 +813,12 @@ function FeatureRow({
 
       {/* Task children */}
       {isExpanded &&
-        hasTasks &&
-        tasks.map((task, i) => (
+        hasVisibleTasks &&
+        visibleTasks.map((task, i) => (
           <TaskRow
             key={task.id}
             task={task}
-            isLast={i === tasks.length - 1}
+            isLast={i === visibleTasks.length - 1}
             onOpen={onOpenTask}
             onToggleComplete={onToggleTaskComplete}
             onUpdateStatus={onUpdateTaskStatus}
@@ -894,8 +900,7 @@ function EpicCard({
     (acc, f) => acc + (f.tasks?.filter((t) => t.status === "done").length ?? 0),
     0,
   );
-  const progress =
-    totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+  const progress = calculateEpicProgressFromFeatures(features);
   const epicColor = epic.color ?? "#ff9933";
   const dotCls = PRIORITY_DOT[epic.priority] ?? "bg-gray-300";
 

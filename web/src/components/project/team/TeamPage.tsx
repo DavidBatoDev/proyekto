@@ -19,6 +19,7 @@ import { memberDisplayName } from "./utils";
 import {
   useProjectDetailQuery,
   useProjectMembersQuery,
+  useProjectMyPermissionsQuery,
   useProjectRemoveMemberMutation,
 } from "@/hooks/useProjectQueries";
 
@@ -63,8 +64,10 @@ function getRowPermissions(
   viewerRole: ViewerRole,
   targetType: TargetType,
   isSelf: boolean,
+  canManageMembers: boolean,
 ): RowPermissions {
   if (isSelf) return { canMessage: false, canEdit: false, canRemove: false };
+  const canManageTarget = canManageMembers && targetType === "member";
 
   switch (viewerRole) {
     case "consultant":
@@ -73,20 +76,32 @@ function getRowPermissions(
       if (targetType === "consultant")
         return { canMessage: true, canEdit: false, canRemove: false };
       // member / freelancer
-      return { canMessage: true, canEdit: true, canRemove: true };
+      return {
+        canMessage: true,
+        canEdit: canManageTarget,
+        canRemove: canManageTarget,
+      };
 
     case "client":
       if (targetType === "consultant")
         return { canMessage: true, canEdit: false, canRemove: false };
       // members and other clients: can see, but no message, no edit
-      return { canMessage: false, canEdit: false, canRemove: false };
+      return {
+        canMessage: false,
+        canEdit: canManageTarget,
+        canRemove: canManageTarget,
+      };
 
     case "freelancer":
       if (targetType === "client")
         // Agency protection — hide the message button
         return { canMessage: false, canEdit: false, canRemove: false };
       // consultant or other members
-      return { canMessage: true, canEdit: false, canRemove: false };
+      return {
+        canMessage: true,
+        canEdit: canManageTarget,
+        canRemove: canManageTarget,
+      };
   }
 }
 
@@ -283,6 +298,7 @@ function MemberSection({
   members,
   roleLabel,
   viewerRole,
+  canManageMembers,
   currentUserId,
   onEdit,
   onRemove,
@@ -292,6 +308,7 @@ function MemberSection({
   members: ProjectMember[];
   roleLabel: string;
   viewerRole: ViewerRole;
+  canManageMembers: boolean;
   currentUserId?: string;
   onEdit: (m: ProjectMember) => void;
   onRemove: (m: ProjectMember) => void;
@@ -308,7 +325,12 @@ function MemberSection({
       <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
         {members.map((m, idx) => {
           const isSelf = !!currentUserId && m.user_id === currentUserId;
-          const perms = getRowPermissions(viewerRole, "member", isSelf);
+          const perms = getRowPermissions(
+            viewerRole,
+            "member",
+            isSelf,
+            canManageMembers,
+          );
           const name = memberDisplayName(m);
           return (
             <TeamRow
@@ -457,6 +479,7 @@ export function TeamPage({ projectId }: TeamPageProps) {
 
   const projectQuery = useProjectDetailQuery(projectId);
   const membersQuery = useProjectMembersQuery(projectId);
+  const myPermissionsQuery = useProjectMyPermissionsQuery(projectId);
   const removeMemberMutation = useProjectRemoveMemberMutation(projectId);
   const project = (projectQuery.data as Project | undefined) ?? null;
   const [members, setMembers] = useState<ProjectMember[]>([]);
@@ -518,12 +541,15 @@ export function TeamPage({ projectId }: TeamPageProps) {
     });
   };
 
-  const isLoading = projectQuery.isPending || membersQuery.isPending;
+  const isLoading =
+    projectQuery.isPending || membersQuery.isPending || myPermissionsQuery.isPending;
   const error =
     projectQuery.error instanceof Error
       ? projectQuery.error.message
       : membersQuery.error instanceof Error
         ? membersQuery.error.message
+        : myPermissionsQuery.error instanceof Error
+          ? myPermissionsQuery.error.message
         : null;
 
   if (isLoading) return <TeamSkeleton />;
@@ -542,10 +568,29 @@ export function TeamPage({ projectId }: TeamPageProps) {
 
   // ── Derived permissions ───────────────────────────────────────────────────
   const viewerRole = deriveViewerRole(user?.id, project);
-  const isConsultant = viewerRole === "consultant";
-  // Only consultant can add members / see invite & marketplace tabs
-  const canAddMembers = isConsultant;
-  const canSeePowerTabs = isConsultant;
+  const canManageMembers = Boolean(myPermissionsQuery.data?.members.manage);
+  const canViewMembers = Boolean(
+    myPermissionsQuery.data?.members.view || myPermissionsQuery.data?.members.manage,
+  );
+  const canAddMembers = canManageMembers;
+  const canSeePowerTabs = canManageMembers;
+
+  if (!canViewMembers) {
+    return (
+      <div className="h-full overflow-y-auto bg-gray-50/40">
+        <div className="px-6 py-6 w-full max-w-6xl">
+          <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center">
+            <p className="text-sm font-semibold text-gray-800">
+              You do not have permission to view team privileges.
+            </p>
+            <p className="text-sm text-gray-500 mt-1">
+              Ask a project lead to grant Members View permission.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── Build stakeholders list ───────────────────────────────────────────────
   const client = project?.client;
@@ -723,7 +768,12 @@ export function TeamPage({ projectId }: TeamPageProps) {
                 <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
                   {filteredStakeholders.map((s, idx) => {
                     const isSelf = !!user?.id && s.id === user.id;
-                    const perms = getRowPermissions(viewerRole, s.targetType, isSelf);
+                    const perms = getRowPermissions(
+                      viewerRole,
+                      s.targetType,
+                      isSelf,
+                      canManageMembers,
+                    );
                     return (
                       <TeamRow
                         key={s.id}
@@ -747,14 +797,15 @@ export function TeamPage({ projectId }: TeamPageProps) {
               members={filteredMembers}
               roleLabel="Member"
               viewerRole={viewerRole}
+              canManageMembers={canManageMembers}
               currentUserId={user?.id}
               onEdit={setPermissionMember}
               onRemove={handleRemove}
               removingId={removingId}
             />
 
-            {/* OPEN ROLES — only visible to consultant */}
-            {isConsultant && (
+            {/* OPEN ROLES — visible to members managers */}
+            {canManageMembers && (
               <div>
                 <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-3">
                   Open Roles (1)

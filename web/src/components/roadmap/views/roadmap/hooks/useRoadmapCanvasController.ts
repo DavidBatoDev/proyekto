@@ -189,8 +189,8 @@ export function useRoadmapCanvasController({
 
   const onUpdateEpic = async (...args: Parameters<typeof onUpdateEpicBase>) => {
     try {
-      await onUpdateEpicBase(...args);
       toast.success("Epic updated");
+      await onUpdateEpicBase(...args);
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to update epic"));
       throw error;
@@ -199,8 +199,8 @@ export function useRoadmapCanvasController({
 
   const onAddEpicWithToast = async (...args: Parameters<typeof onAddEpic>) => {
     try {
-      await onAddEpic(...args);
       toast.success("Epic created");
+      await onAddEpic(...args);
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to create epic"));
       throw error;
@@ -211,8 +211,8 @@ export function useRoadmapCanvasController({
     ...args: Parameters<typeof onUpdateFeatureBase>
   ) => {
     try {
-      await onUpdateFeatureBase(...args);
       toast.success("Feature updated");
+      await onUpdateFeatureBase(...args);
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to update feature"));
       throw error;
@@ -224,8 +224,8 @@ export function useRoadmapCanvasController({
     data: Parameters<typeof onAddFeature>[1],
   ) => {
     try {
-      await onAddFeature(epicId, data);
       toast.success("Feature created");
+      await onAddFeature(epicId, data);
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to create feature"));
       throw error;
@@ -266,8 +266,8 @@ export function useRoadmapCanvasController({
     }
 
     try {
-      await onUpdateTaskBase(...args);
       toast.success("Task updated");
+      await onUpdateTaskBase(...args);
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to update task"));
       throw error;
@@ -278,8 +278,8 @@ export function useRoadmapCanvasController({
     ...args: Parameters<typeof onAddMilestoneBase>
   ) => {
     try {
-      await onAddMilestoneBase(...args);
       toast.success("Milestone created");
+      await onAddMilestoneBase(...args);
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to create milestone"));
       throw error;
@@ -290,8 +290,8 @@ export function useRoadmapCanvasController({
     ...args: Parameters<typeof onUpdateMilestone>
   ) => {
     try {
-      await onUpdateMilestone(...args);
       toast.success("Milestone updated");
+      await onUpdateMilestone(...args);
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to update milestone"));
       throw error;
@@ -302,8 +302,8 @@ export function useRoadmapCanvasController({
     ...args: Parameters<typeof onDeleteMilestone>
   ) => {
     try {
-      await onDeleteMilestone(...args);
       toast.success("Milestone deleted");
+      await onDeleteMilestone(...args);
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to delete milestone"));
       throw error;

@@ -12,7 +12,6 @@ import type {
   TaskTimeLog,
 } from "@/services/project-time.service";
 import { liveDurationSecondsFromLog } from "./time-utils";
-import { TaskTreePicker } from "./TaskTreePicker";
 
 type MyLogGridRow = {
   id: string;
@@ -26,33 +25,33 @@ type MyLogGridRow = {
 };
 
 interface TaskPickerCellProps {
-  tasks: ProjectTaskOption[];
   value: string;
-  log: TaskTimeLog;
+  taskTitle: string;
   loadingTasks: boolean;
   taskSyncing: boolean;
-  onTaskChange: (log: TaskTimeLog, taskId: string) => void | Promise<void>;
+  disabled?: boolean;
+  onOpenTaskModal: () => void;
 }
 
 const TaskPickerCell = memo(function TaskPickerCell({
-  tasks,
   value,
-  log,
+  taskTitle,
   loadingTasks,
   taskSyncing,
-  onTaskChange,
+  disabled = false,
+  onOpenTaskModal,
 }: TaskPickerCellProps) {
   return (
     <div className="flex items-center gap-1.5">
-      <TaskTreePicker
-        tasks={tasks}
-        value={value}
-        onChange={(taskId) => void onTaskChange(log, taskId)}
-        disabled={loadingTasks || tasks.length === 0}
-        triggerClassName="w-full rounded-md border border-gray-300 bg-white px-2 py-0.5 text-[11px] leading-tight text-left"
-        selectedLabelMode="task"
-        panelClassName="max-h-72 overflow-auto rounded-md border border-gray-200 bg-white p-1 shadow-lg"
-      />
+      <button
+        type="button"
+        onClick={onOpenTaskModal}
+        disabled={loadingTasks || disabled}
+        className="w-full rounded-md border border-gray-300 bg-white px-2 py-0.5 text-[11px] leading-tight text-left text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        title={taskTitle}
+      >
+        <span className="truncate block">{taskTitle || value || "Select task"}</span>
+      </button>
       {taskSyncing && (
         <Loader2
           className="h-3.5 w-3.5 shrink-0 animate-spin text-[#b35f00]"
@@ -84,7 +83,7 @@ interface MyLogsGridProps {
   loadingTasks: boolean;
   taskSyncById: Record<string, boolean>;
   rowPendingById: Record<string, boolean>;
-  onTaskChange: (log: TaskTimeLog, taskId: string) => void | Promise<void>;
+  onOpenTaskModal: (log: TaskTimeLog) => void;
   onStopLog: (logId: string) => void | Promise<void>;
   onDeleteLog: (logId: string) => void | Promise<void>;
   onEditLog: (log: TaskTimeLog) => void;
@@ -99,7 +98,7 @@ export function MyLogsGrid({
   loadingTasks,
   taskSyncById,
   rowPendingById,
-  onTaskChange,
+  onOpenTaskModal,
   onStopLog,
   onDeleteLog,
   onEditLog,
@@ -241,6 +240,14 @@ export function MyLogsGrid({
     [getHoursWorked, ownRate],
   );
 
+  const taskTitleById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const task of tasks) {
+      map.set(task.id, task.title || "Untitled task");
+    }
+    return map;
+  }, [tasks]);
+
   const columnHelper = createColumnHelper<MyLogGridRow>();
   const columns = useMemo(
     () => [
@@ -258,12 +265,12 @@ export function MyLogsGrid({
           if (row.is_placeholder) return null;
           return (
             <TaskPickerCell
-              tasks={tasks}
               value={row.task_id}
-              log={row.log}
+              taskTitle={row.log.task?.title || taskTitleById.get(row.task_id) || "Task"}
               loadingTasks={loadingTasks}
               taskSyncing={Boolean(taskSyncById[row.id])}
-              onTaskChange={onTaskChange}
+              disabled={Boolean(rowPendingById[row.id])}
+              onOpenTaskModal={() => onOpenTaskModal(row.log)}
             />
           );
         },
@@ -347,8 +354,12 @@ export function MyLogsGrid({
               <button
                 type="button"
                 onClick={() => onEditLog(row.log)}
-                disabled={rowPendingById[row.id]}
-                title="Edit Log"
+                disabled={rowPendingById[row.id] || hasActiveLog}
+                title={
+                  hasActiveLog
+                    ? "Stop the running timer to edit logs"
+                    : "Edit Log"
+                }
                 aria-label="Edit Log"
                 className="inline-flex items-center justify-center h-7 w-8 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -384,12 +395,12 @@ export function MyLogsGrid({
       onDeleteLog,
       onEditLog,
       onOpenAddLog,
+      onOpenTaskModal,
       onStopLog,
-      onTaskChange,
       ownRate?.currency,
       rowPendingById,
+      taskTitleById,
       taskSyncById,
-      tasks,
     ],
   );
 
@@ -412,7 +423,7 @@ export function MyLogsGrid({
           <col className="w-[9%]" />
           <col className="w-[9%]" />
         </colgroup>
-        <thead className="bg-[var(--primary)] text-white">
+        <thead className="bg-primary text-white">
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => (

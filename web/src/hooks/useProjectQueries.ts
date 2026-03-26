@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { projectService } from "@/services/project.service";
 import {
+  fetchMyProjectPermissions,
   fetchLinkedRoadmap,
   fetchProject,
   fetchProjectBrief,
@@ -28,6 +29,17 @@ export function useProjectMembersQuery(projectId: string) {
   return useQuery({
     queryKey: projectKeys.members(projectId),
     queryFn: () => fetchProjectMembers(projectId),
+    enabled: Boolean(projectId),
+    staleTime: STALE_60S,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  });
+}
+
+export function useProjectMyPermissionsQuery(projectId: string) {
+  return useQuery({
+    queryKey: projectKeys.myPermissions(projectId),
+    queryFn: () => fetchMyProjectPermissions(projectId),
     enabled: Boolean(projectId),
     staleTime: STALE_60S,
     refetchOnWindowFocus: true,
@@ -125,6 +137,10 @@ export function useInvalidateProjectQueries(projectId: string) {
       queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) }),
     invalidateMembers: () =>
       queryClient.invalidateQueries({ queryKey: projectKeys.members(projectId) }),
+    invalidateMyPermissions: () =>
+      queryClient.invalidateQueries({
+        queryKey: projectKeys.myPermissions(projectId),
+      }),
     invalidateResources: () =>
       queryClient.invalidateQueries({ queryKey: projectKeys.resources(projectId) }),
     invalidateLinkedRoadmap: () =>

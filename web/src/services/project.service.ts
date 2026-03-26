@@ -56,6 +56,7 @@ export interface ProjectMember {
   user_id: string | null;
   role: "consultant" | "client" | "member";
   position?: string | null;
+  permissions_json?: ProjectPermissions | null;
   joined_at?: string;
   user?: {
     id: string;

@@ -1,5 +1,11 @@
 import { supabase } from "@/lib/supabase";
-import { projectService, type Project, type ProjectMember, type ProjectResourcesPayload } from "@/services/project.service";
+import {
+  projectService,
+  type Project,
+  type ProjectMember,
+  type ProjectPermissions,
+  type ProjectResourcesPayload,
+} from "@/services/project.service";
 import { roadmapService, type FullRoadmap } from "@/services/roadmap.service";
 import type { Roadmap } from "@/types/roadmap";
 
@@ -24,6 +30,8 @@ export const projectKeys = {
   all: ["project"] as const,
   detail: (projectId: string) => ["project", "detail", projectId] as const,
   members: (projectId: string) => ["project", "members", projectId] as const,
+  myPermissions: (projectId: string) =>
+    ["project", "my-permissions", projectId] as const,
   resources: (projectId: string) => ["project", "resources", projectId] as const,
   linkedRoadmap: (projectId: string) =>
     ["project", "linked-roadmap", projectId] as const,
@@ -49,6 +57,12 @@ export async function fetchProject(projectId: string): Promise<Project> {
 
 export async function fetchProjectMembers(projectId: string): Promise<ProjectMember[]> {
   return projectService.getMembers(projectId);
+}
+
+export async function fetchMyProjectPermissions(
+  projectId: string,
+): Promise<ProjectPermissions> {
+  return projectService.getMyPermissions(projectId);
 }
 
 export async function fetchProjectResources(
