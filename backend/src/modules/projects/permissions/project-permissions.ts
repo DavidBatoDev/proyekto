@@ -74,7 +74,7 @@ export const PERMISSION_TEMPLATES = {
       comment: true,
       promote: false,
     },
-    members: { manage: false, view: false },
+    members: { manage: false, view: true },
     project: { settings: false },
     time: {
       log: true,

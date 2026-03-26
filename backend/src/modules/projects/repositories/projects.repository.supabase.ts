@@ -345,8 +345,10 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     if (previousOwnerId !== newOwnerId) {
       const consultantId =
         (currentProject.consultant_id as string | null) ?? null;
+      const previousOwnerIsConsultant = consultantId === previousOwnerId;
 
-      if (consultantId === previousOwnerId) {
+      // Keep consultant identity when the previous owner is also the consultant.
+      if (previousOwnerIsConsultant) {
         const { error: previousConsultantError } = await this.supabase
           .from('project_members')
           .upsert(
@@ -367,19 +369,6 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
           );
         }
       } else {
-        const { data: previousMembership } = await this.supabase
-          .from('project_members')
-          .select('position')
-          .eq('project_id', projectId)
-          .eq('user_id', previousOwnerId)
-          .maybeSingle();
-
-        const previousPosition =
-          typeof previousMembership?.position === 'string' &&
-          previousMembership.position.trim().length > 0
-            ? previousMembership.position.trim()
-            : 'Member';
-
         const { error: previousOwnerMemberError } = await this.supabase
           .from('project_members')
           .upsert(
@@ -387,7 +376,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
               project_id: projectId,
               user_id: previousOwnerId,
               role: ProjectMemberRole.MEMBER,
-              position: previousPosition,
+              position: 'Member',
               permissions_json: getTemplateByKey('member'),
             },
             { onConflict: 'project_id,user_id' },
