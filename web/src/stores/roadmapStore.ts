@@ -933,6 +933,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 				status: task.status,
 				priority: task.priority,
 				position: task.position,
+				assignee_id: task.assignee_id,
 				due_date: task.due_date,
 				completed_at: task.completed_at,
 			});
@@ -1007,6 +1008,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 						status: intentStatus,
 						priority: taskForRequest.priority,
 						position: taskForRequest.position,
+						assignee_id: taskForRequest.assignee_id,
 						due_date: taskForRequest.due_date,
 						completed_at: taskForRequest.completed_at,
 					});

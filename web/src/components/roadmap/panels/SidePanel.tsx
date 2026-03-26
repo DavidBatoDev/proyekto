@@ -404,6 +404,7 @@ export const SidePanel = ({
     () => timeLogs.find((entry) => !entry.ended_at) ?? null,
     [timeLogs],
   );
+  const isTimerRunning = Boolean(activeLog);
 
   const activeDurationSeconds = useMemo(() => {
     if (!activeLog) return null;
@@ -444,6 +445,10 @@ export const SidePanel = ({
   };
 
   const beginEditLog = (log: TaskTimeLog) => {
+    if (isTimerRunning) {
+      setTimeError("Stop the timer before editing logs.");
+      return;
+    }
     setEditingLogId(log.id);
     setEditStartedAt(toLocalDateTimeInput(log.started_at));
     setEditEndedAt(toLocalDateTimeInput(log.ended_at));
@@ -456,6 +461,11 @@ export const SidePanel = ({
   };
 
   const saveEditLog = async (logId: string) => {
+    if (isTimerRunning) {
+      setTimeError("Stop the timer before editing logs.");
+      return;
+    }
+
     try {
       setTimeActionLoading(true);
       setTimeError(null);
@@ -475,6 +485,12 @@ export const SidePanel = ({
       setTimeActionLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!isTimerRunning || editingLogId === null) return;
+    cancelEditLog();
+    setTimeError("Stop the timer before editing logs.");
+  }, [isTimerRunning, editingLogId]);
 
   const handleSave = () => {
     if (isLoading) return false;
@@ -930,7 +946,7 @@ export const SidePanel = ({
                       ) : (
                         timeLogs.map((log) => {
                           const isEditing = editingLogId === log.id;
-                          const canEdit = true;
+                          const canEdit = !isTimerRunning;
                           return (
                             <div
                               key={log.id}
@@ -1017,6 +1033,12 @@ export const SidePanel = ({
                         })
                       )}
                     </div>
+
+                    {isTimerRunning && (
+                      <p className="mt-2 text-xs text-amber-700">
+                        Edit log is unavailable while the timer is running.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

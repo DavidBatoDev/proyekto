@@ -143,7 +143,11 @@ export class ProjectsController {
     @Param('folderId') folderId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.projectsService.deleteProjectResourceFolder(id, folderId, user.id);
+    return this.projectsService.deleteProjectResourceFolder(
+      id,
+      folderId,
+      user.id,
+    );
   }
 
   @Post(':id/resources/links')

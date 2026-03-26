@@ -88,10 +88,12 @@ export class ProjectsService {
   ): Promise<ProjectPermissions> {
     const templateKey = resolvePermissionTemplateKey(project, member);
     const defaults = getTemplateByKey(templateKey);
-    const existing = (member.permissions_json ??
-      null) as Record<string, unknown> | null;
+    const existing = member.permissions_json ?? null;
     const normalized = normalizePermissions(existing, defaults);
-    if (templateKey === 'consultant' || templateKey === 'consultant_incubation') {
+    if (
+      templateKey === 'consultant' ||
+      templateKey === 'consultant_incubation'
+    ) {
       normalized.time = {
         log: true,
         edit_own: true,

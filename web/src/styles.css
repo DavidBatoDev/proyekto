@@ -131,11 +131,11 @@ code {
   --primary-dark: oklch(72% 0.14 60);
   --primary-light: oklch(94% 0.05 65);
 
-  /* Soft Pink/Coral for Secondary */
-  --secondary: oklch(75% 0.16 20);
+  /* Soft Orange for Secondary */
+  --secondary: oklch(82% 0.13 65);
   --secondary-foreground: oklch(0.985 0 0);
-  --secondary-dark: oklch(65% 0.18 20);
-  --secondary-light: oklch(90% 0.08 20);
+  --secondary-dark: oklch(72% 0.14 60);
+  --secondary-light: oklch(94% 0.05 65);
 }
 
 [data-theme="freelancer"] {
@@ -159,11 +159,11 @@ code {
   --primary-dark: oklch(68% 0.18 15);
   --primary-light: oklch(93% 0.06 15);
 
-  /* Soft Orange for Secondary */
-  --secondary: oklch(82% 0.13 65);
+  /* Soft Pink/Coral for Secondary */
+  --secondary: oklch(75% 0.16 20);
   --secondary-foreground: oklch(0.985 0 0);
-  --secondary-dark: oklch(72% 0.14 60);
-  --secondary-light: oklch(94% 0.05 65);
+  --secondary-dark: oklch(65% 0.18 20);
+  --secondary-light: oklch(90% 0.08 20);
 }
 
 @theme inline {

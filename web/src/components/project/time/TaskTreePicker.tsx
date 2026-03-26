@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import type { ProjectTaskOption } from "@/services/project-time.service";
 
 type FeatureGroup = {
@@ -21,6 +21,9 @@ interface TaskTreePickerProps {
   disabled?: boolean;
   placeholder?: string;
   selectedLabelMode?: "task" | "path";
+  guidedSelection?: boolean;
+  enableFind?: boolean;
+  searchPlaceholder?: string;
   triggerClassName?: string;
   panelClassName?: string;
   onChange: (taskId: string) => void;
@@ -29,6 +32,12 @@ interface TaskTreePickerProps {
 const UNTITLED_EPIC = "Untitled epic";
 const UNTITLED_FEATURE = "Untitled feature";
 const UNTITLED_TASK = "Untitled task";
+
+const getEpicLabel = (task?: ProjectTaskOption | null) =>
+  (task?.epic_title || UNTITLED_EPIC).trim() || UNTITLED_EPIC;
+
+const getFeatureLabel = (task?: ProjectTaskOption | null) =>
+  (task?.feature_title || UNTITLED_FEATURE).trim() || UNTITLED_FEATURE;
 
 const getTaskLabel = (task: ProjectTaskOption) => {
   const segments = [task.epic_title, task.feature_title, task.title].filter(
@@ -43,11 +52,20 @@ export function TaskTreePicker({
   disabled = false,
   placeholder = "Select task",
   selectedLabelMode = "task",
+  guidedSelection = false,
+  enableFind = false,
+  searchPlaceholder = "Search epic or task",
   triggerClassName,
   panelClassName,
   onChange,
 }: TaskTreePickerProps) {
   const [open, setOpen] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const [selectedEpicFocus, setSelectedEpicFocus] = useState<string | null>(null);
+  const [selectedFeatureFocus, setSelectedFeatureFocus] = useState<string | null>(
+    null,
+  );
   const [expandedEpics, setExpandedEpics] = useState<Record<string, boolean>>({});
   const [expandedFeatures, setExpandedFeatures] = useState<Record<string, boolean>>(
     {},
@@ -67,6 +85,20 @@ export function TaskTreePicker({
       : selectedTask.title || UNTITLED_TASK
     : placeholder;
 
+  const filteredTasks = useMemo(() => {
+    const normalizedSearch = searchText.trim().toLowerCase();
+    return tasks.filter((task) => {
+      if (!normalizedSearch) {
+        return true;
+      }
+
+      return [getEpicLabel(task), getFeatureLabel(task), task.title || UNTITLED_TASK].some(
+        (label) =>
+        label.toLowerCase().includes(normalizedSearch),
+      );
+    });
+  }, [tasks, searchText]);
+
   const groups = useMemo<EpicGroup[]>(() => {
     const epicMap = new Map<
       string,
@@ -81,7 +113,7 @@ export function TaskTreePicker({
         >;
       }
     >();
-    for (const task of tasks) {
+    for (const task of filteredTasks) {
       const epicTitle = (task.epic_title || UNTITLED_EPIC).trim() || UNTITLED_EPIC;
       const featureTitle =
         (task.feature_title || UNTITLED_FEATURE).trim() || UNTITLED_FEATURE;
@@ -135,7 +167,46 @@ export function TaskTreePicker({
             ),
           })),
       }));
-  }, [tasks]);
+  }, [filteredTasks]);
+
+  const shouldUseTree = !guidedSelection || Boolean(searchText.trim());
+
+  const focusedEpicGroup = useMemo(
+    () => groups.find((group) => group.epicTitle === selectedEpicFocus) ?? null,
+    [groups, selectedEpicFocus],
+  );
+
+  const focusedFeatureGroup = useMemo(
+    () =>
+      focusedEpicGroup?.features.find(
+        (feature) => feature.featureTitle === selectedFeatureFocus,
+      ) ?? null,
+    [focusedEpicGroup, selectedFeatureFocus],
+  );
+
+  useEffect(() => {
+    if (!open || !shouldUseTree) return;
+    if (!searchText.trim()) return;
+
+    const nextExpandedEpics: Record<string, boolean> = {};
+    const nextExpandedFeatures: Record<string, boolean> = {};
+    for (const epicGroup of groups) {
+      nextExpandedEpics[epicGroup.epicTitle] = true;
+      for (const featureGroup of epicGroup.features) {
+        nextExpandedFeatures[`${epicGroup.epicTitle}::${featureGroup.featureTitle}`] =
+          true;
+      }
+    }
+    setExpandedEpics(nextExpandedEpics);
+    setExpandedFeatures(nextExpandedFeatures);
+  }, [open, groups, searchText, shouldUseTree]);
+
+  useEffect(() => {
+    if (!open || !guidedSelection) return;
+    if (searchText.trim()) return;
+    setSelectedEpicFocus(getEpicLabel(selectedTask));
+    setSelectedFeatureFocus(getFeatureLabel(selectedTask));
+  }, [open, guidedSelection, searchText, selectedTask]);
 
   useEffect(() => {
     if (!open) return;
@@ -193,6 +264,186 @@ export function TaskTreePicker({
     setExpandedFeatures((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const renderGroupedTree = () => {
+    if (groups.length === 0) {
+      return (
+        <p className="px-2 py-2 text-xs text-gray-500">
+          No tasks match this search.
+        </p>
+      );
+    }
+
+    return groups.map((epicGroup) => {
+      const isEpicOpen = expandedEpics[epicGroup.epicTitle] ?? false;
+      return (
+        <div key={epicGroup.epicTitle} className="mb-1 last:mb-0">
+          <button
+            type="button"
+            onClick={() => toggleEpic(epicGroup.epicTitle)}
+            className="flex w-full items-center gap-1 rounded px-2 py-1 text-xs font-semibold text-gray-800 hover:bg-gray-100"
+          >
+            {isEpicOpen ? (
+              <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 text-gray-500" />
+            )}
+            <span className="truncate">{epicGroup.epicTitle}</span>
+          </button>
+
+          {isEpicOpen && (
+            <div className="pl-3">
+              {epicGroup.features.map((featureGroup) => {
+                const featureKey = `${epicGroup.epicTitle}::${featureGroup.featureTitle}`;
+                const isFeatureOpen = expandedFeatures[featureKey] ?? false;
+                return (
+                  <div key={featureKey} className="mb-1 last:mb-0">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleFeature(epicGroup.epicTitle, featureGroup.featureTitle)
+                      }
+                      className="flex w-full items-center gap-1 rounded px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                    >
+                      {isFeatureOpen ? (
+                        <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
+                      ) : (
+                        <ChevronRight className="h-3.5 w-3.5 text-gray-500" />
+                      )}
+                      <span className="truncate">{featureGroup.featureTitle}</span>
+                    </button>
+
+                    {isFeatureOpen && (
+                      <div className="pl-4">
+                        {featureGroup.tasks.map((task) => (
+                          <button
+                            key={task.id}
+                            type="button"
+                            onClick={() => {
+                              onChange(task.id);
+                              setOpen(false);
+                            }}
+                            className={`block w-full truncate rounded px-2 py-1 text-left text-xs ${
+                              task.id === value
+                                ? "bg-orange-100 text-orange-800"
+                                : "text-gray-600 hover:bg-gray-100"
+                            }`}
+                            title={task.title || UNTITLED_TASK}
+                          >
+                            {task.title || UNTITLED_TASK}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    });
+  };
+
+  const renderGuidedPicker = () => {
+    if (groups.length === 0) {
+      return (
+        <p className="px-2 py-2 text-xs text-gray-500">
+          No tasks available.
+        </p>
+      );
+    }
+
+    if (!selectedEpicFocus || !focusedEpicGroup) {
+      return groups.map((epicGroup) => (
+        <button
+          key={epicGroup.epicTitle}
+          type="button"
+          onClick={() => {
+            setSelectedEpicFocus(epicGroup.epicTitle);
+            setSelectedFeatureFocus(null);
+          }}
+          className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs font-semibold text-gray-800 hover:bg-gray-100"
+        >
+          <span className="truncate">{epicGroup.epicTitle}</span>
+          <ChevronRight className="h-3.5 w-3.5 text-gray-500" />
+        </button>
+      ));
+    }
+
+    if (!selectedFeatureFocus || !focusedFeatureGroup) {
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedEpicFocus(null);
+              setSelectedFeatureFocus(null);
+            }}
+            className="mb-1 inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            Back to epics
+          </button>
+          {focusedEpicGroup.features.map((featureGroup) => (
+            <button
+              key={`${focusedEpicGroup.epicTitle}::${featureGroup.featureTitle}`}
+              type="button"
+              onClick={() => setSelectedFeatureFocus(featureGroup.featureTitle)}
+              className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs font-medium text-gray-700 hover:bg-gray-100"
+            >
+              <span className="truncate">{featureGroup.featureTitle}</span>
+              <ChevronRight className="h-3.5 w-3.5 text-gray-500" />
+            </button>
+          ))}
+        </>
+      );
+    }
+
+    return (
+      <>
+        <div className="mb-1 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setSelectedFeatureFocus(null)}
+            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            Features
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedEpicFocus(null);
+              setSelectedFeatureFocus(null);
+            }}
+            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            Epics
+          </button>
+        </div>
+        {focusedFeatureGroup.tasks.map((task) => (
+          <button
+            key={task.id}
+            type="button"
+            onClick={() => {
+              onChange(task.id);
+              setOpen(false);
+            }}
+            className={`block w-full truncate rounded px-2 py-1.5 text-left text-xs ${
+              task.id === value
+                ? "bg-orange-100 text-orange-800"
+                : "text-gray-700 hover:bg-gray-100"
+            }`}
+            title={task.title || UNTITLED_TASK}
+          >
+            {task.title || UNTITLED_TASK}
+          </button>
+        ))}
+      </>
+    );
+  };
+
   return (
     <div ref={rootRef} className="relative">
       <button
@@ -221,79 +472,39 @@ export function TaskTreePicker({
           }
           style={panelStyle}
         >
-          {groups.length === 0 ? (
-            <p className="px-2 py-1.5 text-xs text-gray-500">No tasks available.</p>
-          ) : (
-            groups.map((epicGroup) => {
-              const isEpicOpen = expandedEpics[epicGroup.epicTitle] ?? false;
-              return (
-                <div key={epicGroup.epicTitle} className="mb-1 last:mb-0">
-                  <button
-                    type="button"
-                    onClick={() => toggleEpic(epicGroup.epicTitle)}
-                    className="flex w-full items-center gap-1 rounded px-2 py-1 text-xs font-semibold text-gray-800 hover:bg-gray-100"
-                  >
-                    {isEpicOpen ? (
-                      <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
-                    ) : (
-                      <ChevronRight className="h-3.5 w-3.5 text-gray-500" />
-                    )}
-                    <span className="truncate">{epicGroup.epicTitle}</span>
-                  </button>
-
-                  {isEpicOpen && (
-                    <div className="pl-3">
-                      {epicGroup.features.map((featureGroup) => {
-                        const featureKey = `${epicGroup.epicTitle}::${featureGroup.featureTitle}`;
-                        const isFeatureOpen = expandedFeatures[featureKey] ?? false;
-                        return (
-                          <div key={featureKey} className="mb-1 last:mb-0">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                toggleFeature(epicGroup.epicTitle, featureGroup.featureTitle)
-                              }
-                              className="flex w-full items-center gap-1 rounded px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                            >
-                              {isFeatureOpen ? (
-                                <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
-                              ) : (
-                                <ChevronRight className="h-3.5 w-3.5 text-gray-500" />
-                              )}
-                              <span className="truncate">{featureGroup.featureTitle}</span>
-                            </button>
-
-                            {isFeatureOpen && (
-                              <div className="pl-4">
-                                {featureGroup.tasks.map((task) => (
-                                  <button
-                                    key={task.id}
-                                    type="button"
-                                    onClick={() => {
-                                      onChange(task.id);
-                                      setOpen(false);
-                                    }}
-                                    className={`block w-full truncate rounded px-2 py-1 text-left text-xs ${
-                                      task.id === value
-                                        ? "bg-orange-100 text-orange-800"
-                                        : "text-gray-600 hover:bg-gray-100"
-                                    }`}
-                                    title={task.title || UNTITLED_TASK}
-                                  >
-                                    {task.title || UNTITLED_TASK}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+          {enableFind && (
+            <div className="sticky top-0 z-10 border-b border-gray-200 bg-white px-2 py-2">
+              <div className="flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFindOpen((prev) => !prev);
+                    if (findOpen) setSearchText("");
+                  }}
+                  className="inline-flex items-center gap-1 rounded border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100"
+                  title="Find epic/task"
+                  aria-label="Find epic/task"
+                >
+                  <Search className="h-3.5 w-3.5" />
+                  Find
+                </button>
+              </div>
+              {findOpen && (
+                <div className="mt-2 flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1.5">
+                  <Search className="h-3.5 w-3.5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchText}
+                    onChange={(event) => setSearchText(event.target.value)}
+                    placeholder={searchPlaceholder}
+                    className="w-full border-0 bg-transparent text-xs text-gray-700 outline-none placeholder:text-gray-400"
+                  />
                 </div>
-              );
-            })
+              )}
+            </div>
           )}
+
+          {shouldUseTree ? renderGroupedTree() : renderGuidedPicker()}
         </div>
       , document.body)}
     </div>

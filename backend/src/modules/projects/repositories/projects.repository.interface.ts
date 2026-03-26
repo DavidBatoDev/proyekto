@@ -116,7 +116,10 @@ export interface ProjectsRepository {
     folderId: string,
     dto: UpdateProjectResourceFolderDto,
   ): Promise<ProjectResourceFolder>;
-  deleteProjectResourceFolder(projectId: string, folderId: string): Promise<void>;
+  deleteProjectResourceFolder(
+    projectId: string,
+    folderId: string,
+  ): Promise<void>;
   reorderProjectResourceFolders(
     projectId: string,
     dto: ReorderProjectResourceFoldersDto,

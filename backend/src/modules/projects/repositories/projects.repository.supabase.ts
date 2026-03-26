@@ -198,7 +198,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         *,
         client:profiles!projects_client_id_fkey(id, display_name, avatar_url, headline, email),
         consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, headline, email),
-        members:project_members(id, project_id, user_id, role, position, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name))
+        members:project_members(id, project_id, user_id, role, position, permissions_json, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name))
       `,
       )
       .eq('id', id)
@@ -760,23 +760,23 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
 
     if (role === ProjectMemberRole.CONSULTANT) {
       const currentPermissions =
-        ((data as { permissions_json?: Record<string, unknown> }).permissions_json as
-          | Record<string, unknown>
-          | undefined) ?? {};
+        (data as { permissions_json?: Record<string, unknown> })
+          .permissions_json ?? {};
       const normalized = this.enforceConsultantTimePermissions(
         currentPermissions as ProjectPermissions,
         role,
       );
 
-      const { data: updated, error: updatePermissionsError } = await this.supabase
-        .from('project_members')
-        .update({ permissions_json: normalized })
-        .eq('id', memberId)
-        .eq('project_id', projectId)
-        .select(
-          'id, project_id, user_id, role, position, permissions_json, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name)',
-        )
-        .single();
+      const { data: updated, error: updatePermissionsError } =
+        await this.supabase
+          .from('project_members')
+          .update({ permissions_json: normalized })
+          .eq('id', memberId)
+          .eq('project_id', projectId)
+          .select(
+            'id, project_id, user_id, role, position, permissions_json, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name)',
+          )
+          .single();
 
       if (updatePermissionsError) {
         throw new BadRequestException(updatePermissionsError.message);
@@ -928,7 +928,10 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     return data;
   }
 
-  private normalizeRequiredText(value: string | undefined, field: string): string {
+  private normalizeRequiredText(
+    value: string | undefined,
+    field: string,
+  ): string {
     const normalized = typeof value === 'string' ? value.trim() : '';
     if (!normalized) {
       throw new BadRequestException(`${field} is required.`);
@@ -964,7 +967,9 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     }
   }
 
-  private async getNextResourceFolderPosition(projectId: string): Promise<number> {
+  private async getNextResourceFolderPosition(
+    projectId: string,
+  ): Promise<number> {
     const { data, error } = await this.supabase
       .from('project_resource_folders')
       .select('position')
@@ -1074,7 +1079,8 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       throw new BadRequestException(error.message);
     }
 
-    const links = (data as Array<{ id: string; position: number }> | null) ?? [];
+    const links =
+      (data as Array<{ id: string; position: number }> | null) ?? [];
     if (links.length === 0) return;
 
     const maxPosition = links.reduce((max, link) => {
@@ -1108,7 +1114,9 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     }
   }
 
-  async listProjectResources(projectId: string): Promise<ProjectResourcesPayload> {
+  async listProjectResources(
+    projectId: string,
+  ): Promise<ProjectResourcesPayload> {
     const [foldersResult, linksResult] = await Promise.all([
       this.supabase
         .from('project_resource_folders')
@@ -1317,7 +1325,10 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       await this.assertResourceFolderBelongsToProject(projectId, folderId);
     }
 
-    const position = await this.getNextResourceLinkPosition(projectId, folderId);
+    const position = await this.getNextResourceLinkPosition(
+      projectId,
+      folderId,
+    );
 
     const { data, error } = await this.supabase
       .from('project_resource_links')
@@ -1374,11 +1385,15 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       dto,
       'folder_id',
     );
-    let sourceFolderIdForCompaction: string | null = existingLink.folder_id ?? null;
+    let sourceFolderIdForCompaction: string | null =
+      existingLink.folder_id ?? null;
     if (hasFolderIdInPayload) {
       const nextFolderId = dto.folder_id ?? null;
       if (nextFolderId !== null) {
-        await this.assertResourceFolderBelongsToProject(projectId, nextFolderId);
+        await this.assertResourceFolderBelongsToProject(
+          projectId,
+          nextFolderId,
+        );
       }
 
       patch.folder_id = nextFolderId;
@@ -1421,7 +1436,10 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     return data as ProjectResourceLink;
   }
 
-  async deleteProjectResourceLink(projectId: string, linkId: string): Promise<void> {
+  async deleteProjectResourceLink(
+    projectId: string,
+    linkId: string,
+  ): Promise<void> {
     const { data: existing, error: findError } = await this.supabase
       .from('project_resource_links')
       .select('id, folder_id')

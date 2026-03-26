@@ -7,7 +7,11 @@ import {
   type TaskTimeLog,
 } from "@/services/project-time.service";
 import { MyLogsGrid } from "@/components/project/time/MyLogsGrid";
-import { AddLogModal, EditLogModal } from "@/components/project/time/TimeModals";
+import {
+  AddLogModal,
+  DeleteTimeLogModal,
+  EditLogModal,
+} from "@/components/project/time/TimeModals";
 import { TimeRouteFrame } from "@/components/project/time/TimeRouteFrame";
 import {
   fromLocalDateTimeInput,
@@ -82,6 +86,10 @@ function TimeMyLogsPage() {
 
   const [isAddLogModalOpen, setIsAddLogModalOpen] = useState(false);
   const [newLogTaskId, setNewLogTaskId] = useState("");
+  const [isTaskPickerModalOpen, setIsTaskPickerModalOpen] = useState(false);
+  const [taskPickerLogId, setTaskPickerLogId] = useState<string | null>(null);
+  const [taskPickerTaskId, setTaskPickerTaskId] = useState("");
+  const [deleteLogId, setDeleteLogId] = useState<string | null>(null);
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [editStartedAt, setEditStartedAt] = useState("");
   const [editEndedAt, setEditEndedAt] = useState("");
@@ -205,6 +213,11 @@ function TimeMyLogsPage() {
     return `${rejectedAmount.toFixed(2)} ${currency}`;
   }, [rejectedAmount, ownRate?.currency]);
 
+  const hasRunningLog = useMemo(
+    () => myLogs.some((log) => !log.ended_at),
+    [myLogs],
+  );
+
   const formatRateDate = (value?: string | null) => {
     if (!value) return "-";
     const parsed = new Date(value);
@@ -275,6 +288,10 @@ function TimeMyLogsPage() {
   }, []);
 
   const beginEditLog = (log: TaskTimeLog) => {
+    if (hasRunningLog) {
+      setError("Stop the running timer before editing logs.");
+      return;
+    }
     setEditingLogId(log.id);
     setEditStartedAt(toLocalDateTimeInput(log.started_at));
     setEditEndedAt(toLocalDateTimeInput(log.ended_at));
@@ -381,6 +398,12 @@ function TimeMyLogsPage() {
 
   const saveEditedLog = async () => {
     if (!editingLogId) return;
+    if (hasRunningLog) {
+      setError("Stop the running timer before editing logs.");
+      closeEditLogModal();
+      return;
+    }
+
     const logId = editingLogId;
     const started_at = fromLocalDateTimeInput(editStartedAt);
     const ended_at = fromLocalDateTimeInput(editEndedAt);
@@ -458,8 +481,6 @@ function TimeMyLogsPage() {
   };
 
   const deleteLog = async (logId: string) => {
-    const confirmed = window.confirm("Delete this time log?");
-    if (!confirmed) return;
     if (pendingLogByIdRef.current[logId]) return;
 
     const removal = removeLogById(getCachedLogs(), logId);
@@ -480,8 +501,23 @@ function TimeMyLogsPage() {
     } finally {
       setLogPending(logId, false);
       void invalidateMyLogs();
+      setDeleteLogId((current) => (current === logId ? null : current));
     }
   };
+
+  const requestDeleteLog = useCallback((logId: string) => {
+    setDeleteLogId(logId);
+  }, []);
+
+  const closeDeleteLogModal = useCallback(() => {
+    if (deleteLogId && pendingLogByIdRef.current[deleteLogId]) return;
+    setDeleteLogId(null);
+  }, [deleteLogId]);
+
+  const confirmDeleteLog = useCallback(async () => {
+    if (!deleteLogId) return;
+    await deleteLog(deleteLogId);
+  }, [deleteLogId]);
 
   const handleTaskChange = useCallback(
     async (log: TaskTimeLog, nextTaskId: string) => {
@@ -541,10 +577,51 @@ function TimeMyLogsPage() {
     }
   };
 
+  const openTaskPickerModal = useCallback((log: TaskTimeLog) => {
+    setTaskPickerLogId(log.id);
+    setTaskPickerTaskId(log.task_id);
+    setIsTaskPickerModalOpen(true);
+  }, []);
+
+  const closeTaskPickerModal = useCallback(() => {
+    setIsTaskPickerModalOpen(false);
+    setTaskPickerLogId(null);
+    setTaskPickerTaskId("");
+  }, []);
+
+  const saveTaskPickerModal = useCallback(async () => {
+    if (!taskPickerLogId || !taskPickerTaskId) return;
+    const currentLog = findLogById(getCachedLogs(), taskPickerLogId);
+    if (!currentLog) {
+      closeTaskPickerModal();
+      return;
+    }
+    if (currentLog.task_id === taskPickerTaskId) {
+      closeTaskPickerModal();
+      return;
+    }
+
+    setError(null);
+    enqueueTaskChange(taskPickerLogId, taskPickerTaskId);
+    closeTaskPickerModal();
+  }, [
+    closeTaskPickerModal,
+    enqueueTaskChange,
+    getCachedLogs,
+    taskPickerLogId,
+    taskPickerTaskId,
+  ]);
+
   const rowPendingById = useMemo(() => pendingLogById, [pendingLogById]);
   const taskSyncById = useMemo(() => activeLogTaskSyncById, [activeLogTaskSyncById]);
   const savingAddLog = false;
   const savingLogEdit = editingLogId ? Boolean(pendingLogById[editingLogId]) : false;
+
+  useEffect(() => {
+    if (!hasRunningLog || editingLogId === null) return;
+    closeEditLogModal();
+    setError("Stop the running timer before editing logs.");
+  }, [hasRunningLog, editingLogId]);
 
   return (
     <div ref={scrollContainerRef} className="h-full w-full overflow-y-auto">
@@ -597,9 +674,9 @@ function TimeMyLogsPage() {
                     loadingTasks={loadingProjectTasks}
                     taskSyncById={taskSyncById}
                     rowPendingById={rowPendingById}
-                    onTaskChange={handleTaskChange}
+                    onOpenTaskModal={openTaskPickerModal}
                     onStopLog={stopLog}
-                    onDeleteLog={deleteLog}
+                    onDeleteLog={requestDeleteLog}
                     onEditLog={beginEditLog}
                     onOpenAddLog={() => setIsAddLogModalOpen(true)}
                   />
@@ -703,6 +780,32 @@ function TimeMyLogsPage() {
           }}
           onSave={createLogFromModal}
           onChangeTaskId={setNewLogTaskId}
+        />
+
+        <AddLogModal
+          isOpen={isTaskPickerModalOpen}
+          tasks={projectTasks}
+          selectedTaskId={taskPickerTaskId}
+          saving={Boolean(taskPickerLogId && pendingLogById[taskPickerLogId])}
+          title="Update Task"
+          description="Choose a task for this time log."
+          saveLabel="Save Task"
+          onClose={closeTaskPickerModal}
+          onSave={saveTaskPickerModal}
+          onChangeTaskId={setTaskPickerTaskId}
+        />
+
+        <DeleteTimeLogModal
+          isOpen={deleteLogId !== null}
+          deleting={Boolean(deleteLogId && pendingLogById[deleteLogId])}
+          taskLabel={
+            deleteLogId
+              ? findLogById(myLogs, deleteLogId)?.task?.title ??
+                taskTitleById.get(findLogById(myLogs, deleteLogId)?.task_id ?? "")
+              : undefined
+          }
+          onClose={closeDeleteLogModal}
+          onConfirm={confirmDeleteLog}
         />
       </TimeRouteFrame>
 

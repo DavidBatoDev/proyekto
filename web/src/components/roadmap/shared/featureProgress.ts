@@ -1,4 +1,4 @@
-import type { RoadmapTask, TaskStatus } from "@/types/roadmap";
+import type { RoadmapFeature, RoadmapTask, TaskStatus } from "@/types/roadmap";
 
 const TASK_STATUS_PROGRESS_WEIGHT: Record<TaskStatus, number> = {
   todo: 0,
@@ -22,4 +22,13 @@ export function calculateFeatureProgressFromTasks(
 
 export function getCompletedTaskCount(tasks?: RoadmapTask[]): number {
   return tasks?.filter((task) => task.status === "done").length ?? 0;
+}
+
+export function calculateEpicProgressFromFeatures(
+  features?: RoadmapFeature[],
+): number {
+  if (!features?.length) return 0;
+
+  const allTasks = features.flatMap((feature) => feature.tasks ?? []);
+  return calculateFeatureProgressFromTasks(allTasks);
 }
