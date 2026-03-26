@@ -5,7 +5,6 @@ import { Link } from "@tanstack/react-router";
 import {
   RoadmapLeftSidePanel,
   JSONRoadmapSidePanel,
-  type Message,
   RoadmapCanvas,
   ShareRoadmapModal,
   RoadmapMetadataModal,
@@ -13,7 +12,6 @@ import {
 } from "@/components/roadmap";
 import { RoadmapTopBar } from "../../RoadmapTopBar";
 import { RoadmapPageSkeleton } from "../../RoadmapPageSkeleton";
-import { callGeminiAPI } from "@/lib/gemini";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { useProjectSettingsStore } from "@/stores/projectSettingsStore";
 import {
@@ -108,11 +106,6 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
     setSidebarExpanded(false);
   }, [setSidebarExpanded]);
 
-  // Keep chat reset scoped to the current roadmap id
-  useEffect(() => {
-    setMessages([]);
-  }, [roadmapId]);
-
   // Fetch roadmap data with stale-while-revalidate behavior.
   useEffect(() => {
     if (!roadmapLiveQuery.data) return;
@@ -125,17 +118,6 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
       title: fullRoadmap.name || "",
       category: fullRoadmap.category || "",
       description: fullRoadmap.description || "",
-    });
-
-    setMessages((prev) => {
-      if (prev.length > 0) return prev;
-      const welcomeMessage: Message = {
-        id: "1",
-        role: "assistant",
-        content: `Welcome back to your roadmap "${fullRoadmap.name}"! I'm here to help you manage milestones, epics, and features. What would you like to work on?`,
-        timestamp: new Date(),
-      };
-      return [welcomeMessage];
     });
   }, [applyRoadmapSnapshot, roadmapLiveQuery.data]);
 
@@ -159,10 +141,6 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
   // Share Modal state
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
-  // Builder state
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
-
   const roadmapJsonValue = useMemo(() => {
     if (!roadmap) return "{}";
     return JSON.stringify(buildRoadmapJsonDocument(roadmap), null, 2);
@@ -174,57 +152,6 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
   const canCommentRoadmap = canEditRoadmap || currentUserRole === "commenter";
   const showReadOnlyPermissionNote =
     Boolean(currentUserRole) && !canEditRoadmap && !canCommentRoadmap;
-
-  const handleSendMessage = async (message: string) => {
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: message,
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setIsGenerating(true);
-
-    try {
-      const conversationHistory = messages.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      }));
-
-      conversationHistory.push({
-        role: "user",
-        content: message,
-      });
-
-      const projectBrief = roadmap
-        ? `Roadmap: ${roadmap.name}\nDescription: ${roadmap.description || "N/A"}`
-        : "";
-
-      const aiResponse = await callGeminiAPI(conversationHistory, projectBrief);
-
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: aiResponse,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, aiMessage]);
-    } catch (error) {
-      console.error("Error getting response from Gemini:", error);
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content:
-          "Sorry, I encountered an error while processing your request. Please try again.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
 
   const handleModalUpdateFormData = (
     updates: Partial<RoadmapMetadataFormData>,
@@ -287,24 +214,8 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
       });
 
       setIsBriefOpen(false);
-
-      // Add success message to chat
-      const successMessage: Message = {
-        id: Date.now().toString(),
-        role: "assistant",
-        content: `Great! I've updated your roadmap "${formData.title}". The changes have been saved.`,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, successMessage]);
     } catch (error) {
       console.error("Failed to update roadmap:", error);
-      const errorMessage: Message = {
-        id: Date.now().toString(),
-        role: "assistant",
-        content: "Sorry, I couldn't update the roadmap. Please try again.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsUpdatingRoadmap(false);
     }
@@ -372,9 +283,9 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
             style={{ minWidth: 320 }}
           >
             <RoadmapLeftSidePanel
-              messages={messages}
-              onSendMessage={handleSendMessage}
-              isGenerating={isGenerating}
+              messages={[]}
+              onSendMessage={() => {}}
+              isGenerating={false}
               isCollapsed={false}
               onSelectFeature={(epicId, featureId) => {
                 if (activeEpicId) {

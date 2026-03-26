@@ -37,3 +37,6 @@ export { RoadmapModalLayout } from "./modals/RoadmapModalLayout";
 
 // Shared utilities
 export { CommentsSection } from "./shared/CommentsSection";
+
+// AI components
+export { TryAiFloatingAssistant } from "./ai/TryAiFloatingAssistant";

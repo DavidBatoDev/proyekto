@@ -1,6 +1,6 @@
 # AI Roadmap Editor Architecture
 
-> **Status:** Planned (Not Yet Implemented)  
+> **Status:** In Progress (Partially Implemented)  
 > **Scope:** Documentation-only architecture spec for AI-assisted roadmap editing  
 > **Primary goal:** Define a production-safe design before implementation in `agent` (FastAPI) and NestJS
 
@@ -13,7 +13,7 @@
 ---
 
 ## A. Inferred current JSON Roadmap workflow
-**Status Tags:** [Current: implemented today] [Planned: AI-assisted flow not implemented] [Gap: preview/diff/commit pipeline missing]
+**Status Tags:** [Current: JSON roadmap flow implemented + AI preview flow partially implemented] [Planned: artifact workspace completion] [Gap: full preview tab/panel + commit UX integration]
 
 1. The roadmap is edited as a single hierarchical JSON document in Dev Mode (`roadmap_epics -> roadmap_features -> roadmap_tasks`).
 2. The visual roadmap UI is derived from the nested roadmap payload returned by `GET /api/roadmaps/:id/full` and rendered as cards, hierarchy, and timeline views.
@@ -33,7 +33,7 @@
 2. FastAPI and NestJS communicate over API calls, not in-process integration.
 3. NestJS remains the only authoritative mutation/validation/persistence layer for roadmap state.
 4. Supabase remains the storage/auth system of record.
-5. LangChain migration is expected soon, but not used in v1.
+5. LangChain graph orchestration is now active in `agent`, with provider adapters to keep model backends swappable.
 6. Visual roadmap UX is the primary user surface; raw JSON is a developer-mode tool, not end-user UX.
 
 ---
@@ -46,12 +46,12 @@
 3. No explicit roadmap revision token check exists in the current full upsert contract.
 4. Validation is strong on type/schema but lighter on semantic cross-node business rules.
 5. JSON Patch path/index operations are brittle when list order changes.
-6. AI helper in UI currently suggests text only and cannot perform safe structured mutations.
+6. AI edit planning currently covers core node operations, but dependency mutations and rollback remain incomplete.
 
 ---
 
 ## D. Executive recommendation
-**Status Tags:** [Current: not implemented] [Planned: recommended target] [Gap: requires new contracts/services]
+**Status Tags:** [Current: partially implemented] [Planned: finalize artifact workspace + approval lifecycle] [Gap: complete end-user visual preview/approve/discard experience]
 
 Use an **operation-first AI editing model**:
 
@@ -66,20 +66,24 @@ This keeps AI orchestration flexible while preserving backend authority and data
 ---
 
 ## E. Architecture
-**Status Tags:** [Current: partial pieces exist] [Planned: full AI preview/commit pipeline] [Gap: orchestration + preview endpoints]
+**Status Tags:** [Current: chat-first + preview APIs partially implemented] [Planned: full artifact tab UX + commit lifecycle] [Gap: dedicated roadmap preview tab/panel UX]
 
 ### Target interaction flow
 
 ```text
 React (TanStack)
   -> FastAPI /agent (chat/session/tool orchestration)
-    -> OpenAI Responses API (function calling)
+    -> LangChain graph (intent + dynamic system prompt + tools)
       -> FastAPI draft operations
         -> NestJS /api/roadmaps/:id/ai/preview (apply+validate+semantic diff, no write)
-          -> React visual diff preview
-            -> FastAPI /agent commit
-              -> NestJS /api/roadmaps/:id/ai/commit (transactional write + revision)
-                -> Supabase
+          -> FastAPI returns artifact reference in chat response
+            -> React opens preview artifact
+              -> FastAPI /agent/sessions/:sessionId/artifacts/:artifactId
+                -> NestJS /api/roadmaps/:id/ai/previews/:previewId
+                  -> React visual roadmap candidate panel
+                    -> FastAPI /agent commit
+                      -> NestJS /api/roadmaps/:id/ai/commit
+                        -> Supabase
 ```
 
 ### Sample roadmap model (canonical document shape)
@@ -142,7 +146,7 @@ React (TanStack)
 | Layer | Responsibilities |
 |---|---|
 | Frontend (React + TanStack) | Render roadmap UI, show semantic preview diff, collect user confirmation, display validation issues |
-| FastAPI (`agent`) | OpenAI calls, tool orchestration, intent parsing, operation planning, session state |
+| FastAPI (`agent`) | LLM provider calls (Gemini/OpenAI), tool orchestration, intent parsing, operation planning, session state |
 | NestJS | Authoritative apply/validate/diff/commit logic, permission checks, versioning, rollback |
 | Supabase | Storage, relational constraints, auth integration, transactional persistence |
 
@@ -155,14 +159,36 @@ React (TanStack)
 
 ---
 
-## H. Current implementation (OpenAI + FastAPI agent)
-**Status Tags:** [Current: not implemented] [Planned: first AI implementation phase] [Gap: FastAPI service absent]
+## H. Current implementation (Gemini primary + OpenAI fallback in FastAPI agent)
+**Status Tags:** [Current: partially implemented] [Planned: artifact tab UX completion] [Gap: full visual preview workspace integration]
 
-### Phase-1 implementation target (before LangChain)
+### Current implementation snapshot
 
-1. Build FastAPI `agent` service with OpenAI Responses API + function calling.
-2. Keep prompts, tool schemas, and operation planning modular.
-3. Use NestJS preview/commit endpoints for authoritative mutation lifecycle.
+1. FastAPI `agent` runs LangChain graph orchestration with intent routing (`smalltalk`, `question`, `roadmap_edit`, `unclear`).
+2. Dynamic prompts are externalized in `agent/app/core/prompts/*` and composed per mode (`chat_mode`, `edit_mode`).
+3. `/messages` now uses native tool loops for roadmap questions and edit planning:
+   - context tools (`get_roadmap_summary`, `search_nodes`, `get_node_details`, `get_children`)
+   - question/unclear intents with roadmap context -> context-answer tool loop
+   - roadmap_edit intent -> edit planning loop that terminates on `plan_roadmap_operations`
+   - terminal planning tool (`plan_roadmap_operations`)
+4. `/messages` returns chat metadata (`intent_type`, `response_mode`, `preview_available`) and typed `roadmap_preview` artifacts.
+5. NestJS now exposes preview retrieval by ID (`GET /api/roadmaps/:id/ai/previews/:previewId`) for artifact-open flows.
+6. NestJS now exposes AI context APIs (`/api/roadmaps/:id/ai/context/*`) used by the agent tool loop.
+7. Discard lifecycle is implemented:
+   - NestJS: `POST /api/roadmaps/:id/ai/discard`
+   - FastAPI: `POST /agent/sessions/:sessionId/discard`
+8. Chat remains concise while preview payload stays outside chat body and is fetched by artifact reference.
+9. Provider adapter layer is active in `agent`:
+   - primary: `GeminiLangChainAdapter`
+   - fallback: `OpenAILangChainAdapter`
+   - final fallback: rule-based response/planner when both providers fail.
+10. `/messages` includes provider telemetry:
+   - `provider_used`: `gemini | openai | rule_based`
+   - `fallback_used`: boolean
+   - `provider_error_code`: sanitized provider failure code when fallback was needed.
+11. Structured JSON debug tracing is active for `/messages` with request `trace_id` across routing, providers, tool execution, and staging outcome.
+12. `/messages` includes optional `debug_trace_id` to correlate frontend requests with backend logs.
+13. API keys remain server-side only in `agent/.env` (`GEMINI_API_KEY`, `OPENAI_API_KEY`); no frontend `VITE_*` key usage for orchestration.
 
 ### Sample edit intent type
 
@@ -183,7 +209,7 @@ React (TanStack)
 ---
 
 ## I. LangChain migration design
-**Status Tags:** [Current: not using LangChain] [Planned: adapter-based migration] [Gap: adapter implementation pending]
+**Status Tags:** [Current: LangChain graph + provider adapter interfaces implemented in `agent`] [Planned: add provider-specific tuning/observability] [Gap: deeper provider parity testing]
 
 ### Stable interfaces to preserve
 
@@ -196,9 +222,10 @@ React (TanStack)
 
 ### Adapter strategy
 
-1. v1 adapter: `OpenAIResponsesAdapter`.
-2. future adapter: `LangChainAgentAdapter`.
-3. no change to operation schema, validators, or NestJS contracts during migration.
+1. current orchestrator: `LangChainGraphOrchestrator` + `ProviderOrchestrator`.
+2. current adapter contract: `LLMProviderAdapter` with implementations `GeminiLangChainAdapter` and `OpenAILangChainAdapter`.
+3. provider policy: Gemini first, OpenAI fallback, then rule-based fallback if both fail.
+4. keep operation schema, validators, and NestJS contracts stable while swapping model providers.
 
 ---
 
@@ -216,7 +243,11 @@ agent/
     core/
       llm/
         client.py
-        openai_responses_adapter.py
+        providers/
+          base.py
+          gemini_adapter.py
+          openai_adapter.py
+          orchestrator.py
       orchestration/
         agent_service.py
         operation_planner.py
@@ -330,7 +361,7 @@ type ValidationIssue = {
 ---
 
 ## L. Tool calling design
-**Status Tags:** [Current: not implemented] [Planned: operation-first tool calling] [Gap: tool registry + execution engine]
+**Status Tags:** [Current: intent-aware tool calling implemented in agent] [Planned: richer tool catalog coverage] [Gap: expanded read tools + dependency-specific tooling]
 
 ### Safety Rules
 
@@ -340,21 +371,33 @@ type ValidationIssue = {
 4. AI tool execution must be scoped to one roadmap and one base revision.
 5. Any destructive operation must surface impact in semantic diff before commit.
 
-### Planned tool catalog
+### MVP tool catalog (implemented direction)
 
 | Tool | Purpose | Ownership |
 |---|---|---|
-| `find_node` | Resolve node(s) by ID/name/path | FastAPI tool wrapper + NestJS read |
-| `add_epic` / `add_feature` / `add_task` | Create nodes | FastAPI drafts operation |
-| `move_node` | Move/reorder node | FastAPI drafts operation |
-| `update_node` | Partial field update | FastAPI drafts operation |
-| `delete_node` | Remove node with impact awareness | FastAPI drafts operation |
-| `link_dependency` / `unlink_dependency` | Manage dependencies | FastAPI drafts operation |
-| `shift_dates` | Bulk timeline offset | FastAPI drafts operation |
-| `mark_status` | State transitions | FastAPI drafts operation |
-| `preview_changes` | Validate/apply in preview mode | NestJS authoritative |
-| `commit_changes` | Persist approved preview | NestJS authoritative |
-| `rollback` | Restore previous revision | NestJS authoritative |
+| `get_roadmap_summary` | Lightweight roadmap context for planning | FastAPI tool wrapper + NestJS read |
+| `search_nodes` | Resolve fuzzy references to concrete node IDs | FastAPI tool wrapper + NestJS read |
+| `get_node_details` | Fetch details for one roadmap node | FastAPI tool wrapper + NestJS read |
+| `get_children` | Fetch child nodes under roadmap/epic/feature | FastAPI tool wrapper + NestJS read |
+| `plan_roadmap_operations` | Terminal tool that returns `RoadmapOperation[]` | FastAPI (LLM output contract), validated by NestJS on preview |
+
+### Write operation coverage (current DTO contract)
+
+`plan_roadmap_operations` may output:
+
+- `add_epic`
+- `add_feature`
+- `add_task`
+- `update_node`
+- `move_node`
+- `delete_node`
+- `mark_status`
+- `shift_dates`
+
+### Deferred (phase 2)
+
+- dependency mutation operations: `add_dependency`, `remove_dependency`
+- model-autonomous commit/discard tools (commit/discard remain UI-driven)
 
 ### Sample tool contract
 
@@ -379,7 +422,7 @@ type ValidationIssue = {
 ---
 
 ## M. Semantic diff design
-**Status Tags:** [Current: no canonical semantic diff endpoint] [Planned: diff-first approval UX] [Gap: diff generator + frontend integration]
+**Status Tags:** [Current: semantic diff generated by preview endpoint] [Planned: richer visual diff UX] [Gap: full preview workspace integration]
 
 ### Diff types
 
@@ -423,20 +466,22 @@ type ValidationIssue = {
 ---
 
 ## N. End-to-end request flow
-**Status Tags:** [Current: partial non-AI flow exists] [Planned: full preview/commit AI flow] [Gap: missing AI API surfaces]
+**Status Tags:** [Current: chat-first + artifact references implemented] [Planned: dedicated roadmap preview tab/panel] [Gap: full preview workspace with approve/discard UX]
 
 ### Planned full flow
 
 1. User submits natural-language request in roadmap chat UI.
 2. React sends message to FastAPI `agent` session endpoint.
-3. FastAPI calls OpenAI with tool schemas.
-4. Model triggers tools; FastAPI builds draft operation list.
-5. FastAPI requests NestJS preview with `base_revision + operations`.
-6. NestJS returns candidate snapshot, validation issues, and semantic diff.
-7. React renders visual preview and asks for approval.
-8. On approval, FastAPI calls NestJS commit endpoint.
-9. NestJS revalidates and persists transactionally with new revision.
-10. React refreshes roadmap state and displays committed diff summary.
+3. LangChain graph classifies intent and routes:
+   - non-edit intent -> normal assistant chat response
+   - edit intent -> operation planning with tool calling
+4. FastAPI generates preview for edit intent and returns a compact `roadmap_preview` artifact in chat.
+5. User clicks **Open Preview** on artifact card.
+6. React resolves full preview package via FastAPI artifact endpoint.
+7. FastAPI fetches preview package from NestJS by `preview_id`.
+8. React renders candidate roadmap snapshot + semantic diff + validation issues in a dedicated preview surface.
+9. On approval, FastAPI calls NestJS commit endpoint.
+10. NestJS revalidates and persists transactionally with new revision.
 
 ### Sample full flow payload
 
@@ -472,6 +517,26 @@ type ValidationIssue = {
 }
 ```
 
+### Sample chat artifact reference
+
+```json
+{
+  "artifact_id": "artifact_uuid",
+  "type": "roadmap_preview",
+  "roadmap_id": "roadmap_uuid",
+  "base_revision": 42,
+  "preview_id": "preview_uuid",
+  "title": "Roadmap Preview",
+  "summary": "Prepared 3 semantic change(s).",
+  "semantic_diff_summary": {
+    "NODE_MOVED": 1,
+    "STATUS_CHANGED": 1,
+    "DATE_CHANGED": 1
+  },
+  "validation_issue_count": 0
+}
+```
+
 ---
 
 ## O. Risks and tradeoffs
@@ -486,39 +551,46 @@ type ValidationIssue = {
 ---
 
 ## P. Next steps
-**Status Tags:** [Current: pending] [Planned: execution order defined] [Gap: no code changes yet]
+**Status Tags:** [Current: core contracts implemented] [Planned: hardening + UX completion] [Gap: rollback + dependency ops + full commit UX]
 
-1. Implement NestJS planned preview/commit/rollback contracts (without AI coupling).
-2. Implement operation applier + validation + semantic diff services in NestJS.
-3. Implement roadmap revision storage/versioning and rollback support.
-4. Scaffold FastAPI `agent` with OpenAI function-calling and tool registry.
-5. Integrate React visual diff approval UX.
-6. Add contract tests for operation, validation, and diff payloads.
-7. Introduce LangChain adapter only after v1 contracts are stable.
+1. Add automated tests for context tools, tool-loop planning, and discard lifecycle.
+2. Add frontend discard controls to explicitly clear staged edits and preview artifacts.
+3. Implement dependency mutation operations (`add_dependency`, `remove_dependency`) with validation.
+4. Implement true rollback behavior behind existing rollback endpoints.
+5. Add observability for tool-loop traces (tool sequence, turn count, provider fallback path).
+6. Complete visual commit/discard UX in dedicated roadmap preview workspace.
 
 ---
 
-## Planned API/Interface Reference (Not Yet Implemented)
+## API/Interface Reference (Implementation Status)
 
-> All endpoints below are **planned only** and are not currently available.
+> Endpoints below are a mix of **implemented** and **planned**. Status is noted per endpoint.
 
 ### FastAPI `agent` service (separate from NestJS `/api`)
 
 | Method | Path | Status | Description |
 |---|---|---|---|
-| `POST` | `/agent/sessions` | Planned | Create AI editing session |
-| `POST` | `/agent/sessions/:sessionId/messages` | Planned | Submit user prompt and run tool orchestration |
-| `POST` | `/agent/sessions/:sessionId/preview` | Planned | Request preview package from current draft operations |
-| `POST` | `/agent/sessions/:sessionId/commit` | Planned | Commit approved preview |
-| `POST` | `/agent/sessions/:sessionId/rollback` | Planned | Roll back to target revision |
+| `POST` | `/agent/sessions` | Implemented | Create AI editing session |
+| `POST` | `/agent/sessions/:sessionId/messages` | Implemented | Submit prompt, run intent + context-tool loop + planning, return chat metadata + artifacts |
+| `POST` | `/agent/sessions/:sessionId/preview` | Implemented | Request preview package from current draft operations |
+| `GET` | `/agent/sessions/:sessionId/artifacts/:artifactId` | Implemented | Resolve artifact reference to full preview package |
+| `POST` | `/agent/sessions/:sessionId/commit` | Implemented | Commit approved preview |
+| `POST` | `/agent/sessions/:sessionId/discard` | Implemented | Clear staged operations and optionally invalidate preview |
+| `POST` | `/agent/sessions/:sessionId/rollback` | Implemented (placeholder) | Roll back to target revision (currently not implemented in domain service) |
 
 ### NestJS roadmap AI endpoints
 
 | Method | Path | Status | Description |
 |---|---|---|---|
-| `POST` | `/api/roadmaps/:id/ai/preview` | Planned | Apply operations in memory, validate, return semantic diff |
-| `POST` | `/api/roadmaps/:id/ai/commit` | Planned | Revalidate and persist approved operation set |
-| `POST` | `/api/roadmaps/:id/ai/rollback` | Planned | Restore roadmap to prior revision |
+| `POST` | `/api/roadmaps/:id/ai/preview` | Implemented | Apply operations in memory, validate, return semantic diff |
+| `GET` | `/api/roadmaps/:id/ai/previews/:previewId` | Implemented | Fetch stored preview package for artifact-open flow |
+| `POST` | `/api/roadmaps/:id/ai/commit` | Implemented | Revalidate and persist approved operation set |
+| `POST` | `/api/roadmaps/:id/ai/discard` | Implemented | Invalidate preview ID without persisting |
+| `GET` | `/api/roadmaps/:id/ai/context/summary` | Implemented | Lightweight roadmap summary for AI context |
+| `GET` | `/api/roadmaps/:id/ai/context/search` | Implemented | Search roadmap nodes by query |
+| `GET` | `/api/roadmaps/:id/ai/context/nodes/:nodeId` | Implemented | Get roadmap node details |
+| `GET` | `/api/roadmaps/:id/ai/context/nodes/:nodeId/children` | Implemented | Get child nodes for roadmap/epic/feature |
+| `POST` | `/api/roadmaps/:id/ai/rollback` | Implemented (placeholder) | Restore roadmap to prior revision (currently not implemented in domain service) |
 
 ### Planned preview request/response contracts
 

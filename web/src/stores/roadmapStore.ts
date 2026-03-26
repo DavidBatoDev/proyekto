@@ -20,8 +20,9 @@ import type {
 	RoadmapMilestone,
 	RoadmapTask,
 } from "@/types/roadmap";
+import type { RoadmapArtifactPreview } from "@/types/roadmapArtifact";
 
-export type CanvasViewMode = "roadmap" | "epic" | "milestones";
+export type CanvasViewMode = "roadmap" | "epic" | "milestones" | "artifact";
 
 interface RoadmapState {
 	// Data
@@ -49,6 +50,9 @@ interface RoadmapState {
 	canvasViewMode: CanvasViewMode;
 	canvasSelectedEpicId: string | null;
 	canvasOpenEpicTabs: string[];
+	canvasSelectedArtifactId: string | null;
+	canvasOpenArtifactTabs: string[];
+	artifactsById: Record<string, RoadmapArtifactPreview>;
 
 	// UI State - Modal Triggers
 	addFeatureEpicId: string | null;
@@ -146,6 +150,11 @@ interface RoadmapActions {
 		tabs: string[] | ((prev: string[]) => string[]),
 	) => void;
 	closeCanvasEpicTab: (epicId: string) => void;
+	openArtifactTab: (artifact: RoadmapArtifactPreview) => void;
+	setCanvasSelectedArtifactId: (artifactId: string | null) => void;
+	closeCanvasArtifactTab: (artifactId: string) => void;
+	applyArtifactSnapshot: (artifactId: string) => void;
+	discardArtifact: (artifactId: string) => void;
 }
 
 type RoadmapStore = RoadmapState & RoadmapActions;
@@ -241,6 +250,9 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 	canvasViewMode: "roadmap",
 	canvasSelectedEpicId: null,
 	canvasOpenEpicTabs: [],
+	canvasSelectedArtifactId: null,
+	canvasOpenArtifactTabs: [],
+	artifactsById: {},
 
 	// Initialize - Load full roadmap data
 	loadRoadmap: async (roadmapId: string, options?: { force?: boolean }) => {
@@ -311,6 +323,9 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 			canvasViewMode: "roadmap",
 			canvasSelectedEpicId: null,
 			canvasOpenEpicTabs: [],
+			canvasSelectedArtifactId: null,
+			canvasOpenArtifactTabs: [],
+			artifactsById: {},
 		});
 	},
 
@@ -1235,6 +1250,76 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 			}
 		}
 		set(updates);
+	},
+
+	openArtifactTab: (artifact: RoadmapArtifactPreview) => {
+		set((state) => {
+			const isOpen = state.canvasOpenArtifactTabs.includes(artifact.artifactId);
+			return {
+				artifactsById: {
+					...state.artifactsById,
+					[artifact.artifactId]: artifact,
+				},
+				canvasOpenArtifactTabs: isOpen
+					? state.canvasOpenArtifactTabs
+					: [...state.canvasOpenArtifactTabs, artifact.artifactId],
+				canvasSelectedArtifactId: artifact.artifactId,
+				canvasViewMode: "artifact" as CanvasViewMode,
+			};
+		});
+	},
+
+	setCanvasSelectedArtifactId: (artifactId: string | null) => {
+		set({
+			canvasSelectedArtifactId: artifactId,
+			canvasViewMode: artifactId ? "artifact" : "roadmap",
+		});
+	},
+
+	closeCanvasArtifactTab: (artifactId: string) => {
+		set((state) => {
+			const newTabs = state.canvasOpenArtifactTabs.filter((id) => id !== artifactId);
+			const nextArtifacts = { ...state.artifactsById };
+			delete nextArtifacts[artifactId];
+			const updates: Partial<RoadmapStore> = {
+				canvasOpenArtifactTabs: newTabs,
+				artifactsById: nextArtifacts,
+			};
+			if (state.canvasSelectedArtifactId === artifactId) {
+				if (newTabs.length > 0) {
+					updates.canvasSelectedArtifactId = newTabs[newTabs.length - 1];
+					updates.canvasViewMode = "artifact";
+				} else {
+					updates.canvasSelectedArtifactId = null;
+					updates.canvasViewMode = "roadmap";
+				}
+			}
+			return updates;
+		});
+	},
+
+	applyArtifactSnapshot: (artifactId: string) => {
+		set((state) => {
+			const artifact = state.artifactsById[artifactId];
+			if (!artifact) return {};
+			const snapshot = artifact.candidateSnapshot;
+			return {
+				roadmap: snapshot,
+				epics: snapshot.epics || [],
+				milestones: snapshot.milestones || [],
+				artifactsById: {
+					...state.artifactsById,
+					[artifactId]: {
+						...artifact,
+						status: "applied",
+					},
+				},
+			};
+		});
+	},
+
+	discardArtifact: (artifactId: string) => {
+		get().closeCanvasArtifactTab(artifactId);
 	},
 }));
 

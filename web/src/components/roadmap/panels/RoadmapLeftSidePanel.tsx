@@ -1,5 +1,5 @@
 import { ChevronRight, ExternalLink, FolderOpen, GripVertical, Plus, RotateCcw } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
 	DndContext,
 	KeyboardSensor,
@@ -67,6 +67,18 @@ type PendingEpicReorder = {
 	epicTitle: string;
 	previousOrderIds: string[];
 	nextOrderIds: string[];
+};
+
+const areSetsEqual = (a: Set<string>, b: Set<string>) => {
+	if (a.size !== b.size) {
+		return false;
+	}
+	for (const value of a) {
+		if (!b.has(value)) {
+			return false;
+		}
+	}
+	return true;
 };
 
 type SortableEpicRowProps = {
@@ -287,6 +299,10 @@ function ExplorerPanel({
 	} = useRoadmapStore();
 	const explorerConfig = ROADMAP_STRUCTURE_EXPLORER_CONFIG.roadmap;
 	const delayedOpenTimeouts = useRef<number[]>([]);
+	const hasInitializedEpicExpansion = useRef(false);
+	const previousCollapsableEpicIds = useRef<Set<string>>(new Set());
+	const previousCollapsableFeatureIds = useRef<Set<string>>(new Set());
+	const [expandedEpics, setExpandedEpics] = useState<Set<string>>(new Set());
 	const [expandedFeatures, setExpandedFeatures] = useState<Set<string>>(
 		new Set(),
 	);
@@ -366,9 +382,11 @@ function ExplorerPanel({
 
 	const handleSearchResultClick = (result: ExplorerSearchResult) => {
 		if (result.type === "epic") {
+			setExpandedEpics((prev) => new Set(prev).add(result.id));
 			onSelectEpic?.(result.id);
 			onNavigateToNode?.(result.id);
 		} else if (result.type === "feature" && result.epicId) {
+			setExpandedEpics((prev) => new Set(prev).add(result.epicId));
 			if (result.id) {
 				setExpandedFeatures((prev) => new Set(prev).add(result.id));
 			}
@@ -376,6 +394,9 @@ function ExplorerPanel({
 			onNavigateToNode?.(result.id);
 		} else if (result.type === "task") {
 			const featureId = result.featureId;
+			if (result.epicId) {
+				setExpandedEpics((prev) => new Set(prev).add(result.epicId));
+			}
 			if (featureId) {
 				setExpandedFeatures((prev) => new Set(prev).add(featureId));
 			}
@@ -388,32 +409,102 @@ function ExplorerPanel({
 		}
 	};
 
-	const sortedEpics = getSortedEpics(epics);
-	const collapsableFeatureIds =
-		explorerConfig.allowFeatureCollapse && explorerConfig.showTaskRows
-			? sortedEpics.flatMap((epic) =>
-					(epic.features || [])
-						.filter((feature) => (feature.tasks?.length || 0) > 0)
-						.map((feature) => feature.id),
-				)
-			: [];
+	const sortedEpics = useMemo(() => getSortedEpics(epics), [epics]);
+	const collapsableEpicIds = useMemo(
+		() =>
+			sortedEpics
+				.filter((epic) => (epic.features?.length || 0) > 0)
+				.map((epic) => epic.id),
+		[sortedEpics],
+	);
+	const collapsableFeatureIds = useMemo(
+		() =>
+			explorerConfig.allowFeatureCollapse && explorerConfig.showTaskRows
+				? sortedEpics.flatMap((epic) =>
+						(epic.features || [])
+							.filter((feature) => (feature.tasks?.length || 0) > 0)
+							.map((feature) => feature.id),
+				  )
+				: [],
+		[
+			explorerConfig.allowFeatureCollapse,
+			explorerConfig.showTaskRows,
+			sortedEpics,
+		],
+	);
+
+	useEffect(() => {
+		const collapsableEpicIdSet = new Set(collapsableEpicIds);
+		setExpandedEpics((prev) => {
+			const next = new Set(
+				[...prev].filter((epicId) => collapsableEpicIdSet.has(epicId)),
+			);
+
+			if (!hasInitializedEpicExpansion.current) {
+				collapsableEpicIds.forEach((epicId) => {
+					next.add(epicId);
+				});
+				hasInitializedEpicExpansion.current = true;
+			} else {
+				collapsableEpicIds.forEach((epicId) => {
+					if (!previousCollapsableEpicIds.current.has(epicId)) {
+						next.add(epicId);
+					}
+				});
+			}
+
+			return areSetsEqual(prev, next) ? prev : next;
+		});
+		previousCollapsableEpicIds.current = collapsableEpicIdSet;
+	}, [collapsableEpicIds]);
+
+	useEffect(() => {
+		const collapsableFeatureIdSet = new Set(collapsableFeatureIds);
+		setExpandedFeatures((prev) => {
+			const next = new Set(
+				[...prev].filter((featureId) => collapsableFeatureIdSet.has(featureId)),
+			);
+			collapsableFeatureIds.forEach((featureId) => {
+				if (!previousCollapsableFeatureIds.current.has(featureId)) {
+					next.add(featureId);
+				}
+			});
+			return areSetsEqual(prev, next) ? prev : next;
+		});
+		previousCollapsableFeatureIds.current = collapsableFeatureIdSet;
+	}, [collapsableFeatureIds]);
+
+	const toggleEpic = (epicId: string) => {
+		setExpandedEpics((prev) => {
+			const next = new Set(prev);
+			if (next.has(epicId)) {
+				next.delete(epicId);
+			} else {
+				next.add(epicId);
+			}
+			return next;
+		});
+	};
 
 	const hasAnyExpanded =
-		explorerConfig.allowFeatureCollapse &&
-		collapsableFeatureIds.some((id) => expandedFeatures.has(id));
+		collapsableEpicIds.some((id) => expandedEpics.has(id)) ||
+		(explorerConfig.allowFeatureCollapse &&
+			collapsableFeatureIds.some((id) => expandedFeatures.has(id)));
 
 	const handleToggleCollapseAll = () => {
-		if (!explorerConfig.allowFeatureCollapse) {
-			return;
-		}
 		if (hasAnyExpanded) {
+			setExpandedEpics(new Set());
 			setExpandedFeatures(new Set());
 			return;
 		}
-		setExpandedFeatures(new Set(collapsableFeatureIds));
+		setExpandedEpics(new Set(collapsableEpicIds));
+		if (explorerConfig.allowFeatureCollapse) {
+			setExpandedFeatures(new Set(collapsableFeatureIds));
+		}
 	};
 
 	const handleResetToDefaultCollapse = () => {
+		setExpandedEpics(new Set(collapsableEpicIds));
 		setExpandedFeatures(new Set());
 	};
 
@@ -653,11 +744,12 @@ function ExplorerPanel({
 									strategy={verticalListSortingStrategy}
 								>
 									{sortedEpics.map((epic) => {
-										const isEpicExpanded = true;
-										const isEpicHighlighted = highlightedEpicId === epic.id;
 										const features = (epic.features || []).sort(
 											(a, b) => a.position - b.position,
 										);
+										const isEpicExpanded =
+											features.length === 0 || expandedEpics.has(epic.id);
+										const isEpicHighlighted = highlightedEpicId === epic.id;
 
 										return (
 											<SortableEpicRow
@@ -694,13 +786,29 @@ function ExplorerPanel({
 																>
 																	<GripVertical className="h-3.5 w-3.5" />
 																</div>
-																<ChevronRight
-																	className={`w-4 h-4 transition-transform rotate-90 ${
-																		isEpicHighlighted
-																			? "text-primary"
-																			: "text-gray-500"
-																	}`}
-																/>
+																{features.length > 0 ? (
+																	<button
+																		type="button"
+																		onClick={(event) => {
+																			event.stopPropagation();
+																			toggleEpic(epic.id);
+																		}}
+																		className="p-0.5 hover:bg-black/5 rounded cursor-pointer"
+																		aria-label={
+																			isEpicExpanded ? "Collapse epic" : "Expand epic"
+																		}
+																	>
+																		<ChevronRight
+																			className={`w-4 h-4 transition-transform ${
+																				isEpicHighlighted
+																					? "text-primary"
+																					: "text-gray-500"
+																			} ${isEpicExpanded ? "rotate-90" : ""}`}
+																		/>
+																	</button>
+																) : (
+																	<div className="w-2 h-2 rounded-full bg-gray-300 ml-1 mr-0.5" />
+																)}
 																<span
 																	onClick={() => {
 																		onSelectEpic?.(epic.id);

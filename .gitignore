@@ -1,1 +1,10 @@
 AGENTS.md
+agent/.venv/
+agent/.tmp/
+agent/.env
+agent/__pycache__/
+agent/app/__pycache__/
+/__pycache__
+/__pycache__/
+__pycache__/
+*.pyc

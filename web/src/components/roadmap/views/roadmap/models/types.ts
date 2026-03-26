@@ -65,6 +65,7 @@ export interface RoadmapCanvasProps extends RoadmapCanvasControllerProps {
 	onShare?: () => void;
 	onExport?: () => void;
 	canEditTimelineDates?: boolean;
+	hideMiniMap?: boolean;
 }
 
 export type UseRoadmapCanvasControllerArgs = RoadmapCanvasControllerProps;
