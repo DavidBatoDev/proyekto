@@ -84,7 +84,13 @@ export interface AgentMessageResponse {
   session_id: string;
   assistant_message: string;
   parse_mode: string;
+  intent_type: "smalltalk" | "question" | "roadmap_edit" | "unclear";
+  response_mode: "chat" | "edit_plan";
   operations: AgentOperation[];
+  preview_available: boolean;
+  preview_recommended: boolean;
+  staged_operations_version: number;
+  staged_operations_count: number;
 }
 
 export interface AgentPreviewRequest {
@@ -117,8 +123,15 @@ function throwAgentError(error: unknown, operation: string): never {
   if (isAxiosError(error)) {
     const status = error.response?.status;
     const detail = error.response?.data?.detail;
+    const nestedDetailMessage =
+      typeof detail === "object"
+        ? detail?.detail?.message ||
+          detail?.detail?.error ||
+          detail?.detail?.detail
+        : undefined;
     const message =
-      (typeof detail === "string" ? detail : detail?.detail?.message) ||
+      (typeof detail === "string" ? detail : detail?.message) ||
+      nestedDetailMessage ||
       (typeof detail === "object" ? detail?.message : undefined) ||
       error.response?.data?.message ||
       error.message;

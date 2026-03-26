@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Loader2, Minimize2, Send, Sparkles, TriangleAlert } from "lucide-react";
+import {
+  Bot,
+  FileSearch,
+  Loader2,
+  Minimize2,
+  Send,
+  Sparkles,
+  TriangleAlert,
+} from "lucide-react";
 import roadmapAgentService, {
   type AgentPreviewPayload,
+  RoadmapAgentServiceError,
 } from "@/services/roadmap-agent.service";
 import {
   useRoadmapAiAssistantSession,
@@ -25,14 +34,20 @@ const formatPreviewKey = (key: string) =>
 const buildAssistantMessage = (
   content: string,
   parseMode: string,
-  preview?: AgentPreviewPayload,
+  options?: {
+    intentType?: "smalltalk" | "question" | "roadmap_edit" | "unclear";
+    responseMode?: "chat" | "edit_plan";
+    preview?: AgentPreviewPayload;
+  },
 ): RoadmapAiChatMessage => ({
   id: crypto.randomUUID(),
   role: "assistant",
   content,
   timestamp: new Date().toISOString(),
   parseMode,
-  preview,
+  intentType: options?.intentType,
+  responseMode: options?.responseMode,
+  preview: options?.preview,
 });
 
 export function TryAiFloatingAssistant({
@@ -46,14 +61,19 @@ export function TryAiFloatingAssistant({
     isOpen,
     sessionId,
     messages,
+    previewAvailable,
+    previewRecommended,
+    stagedOperationsVersion,
     setIsOpen,
     setSessionId,
     appendMessage,
     setLatestPreview,
+    setPreviewState,
   } = useRoadmapAiAssistantSession(roadmapId);
 
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -73,15 +93,35 @@ export function TryAiFloatingAssistant({
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages.length, isSending]);
+  }, [messages.length, isSending, isPreviewing]);
 
   useEffect(() => {
     onOpenChange?.(isOpen);
   }, [isOpen, onOpenChange]);
 
+  const createFreshSession = async () => {
+    const session = await roadmapAgentService.createSession({
+      roadmap_id: roadmapId,
+      base_revision: baseRevision,
+    });
+    setSessionId(session.session_id);
+    setPreviewState({
+      previewAvailable: false,
+      previewRecommended: false,
+      stagedOperationsVersion: 0,
+    });
+    setLatestPreview(null);
+    return session.session_id;
+  };
+
+  const ensureSession = async () => {
+    if (sessionId) return sessionId;
+    return createFreshSession();
+  };
+
   const handleSend = async () => {
     const trimmedMessage = input.trim();
-    if (!trimmedMessage || isSending) return;
+    if (!trimmedMessage || isSending || isPreviewing) return;
 
     setInput("");
     setErrorMessage(null);
@@ -96,39 +136,41 @@ export function TryAiFloatingAssistant({
     setIsSending(true);
 
     try {
-      let activeSessionId = sessionId;
+      let activeSessionId = await ensureSession();
+      let messageResponse;
 
-      if (!activeSessionId) {
-        const session = await roadmapAgentService.createSession({
-          roadmap_id: roadmapId,
-          base_revision: baseRevision,
+      try {
+        messageResponse = await roadmapAgentService.sendMessage(activeSessionId, {
+          message: trimmedMessage,
         });
-        activeSessionId = session.session_id;
-        setSessionId(activeSessionId);
+      } catch (error) {
+        if (
+          error instanceof RoadmapAgentServiceError &&
+          error.statusCode === 404
+        ) {
+          activeSessionId = await createFreshSession();
+          messageResponse = await roadmapAgentService.sendMessage(
+            activeSessionId,
+            {
+              message: trimmedMessage,
+            },
+          );
+        } else {
+          throw error;
+        }
       }
 
-      const messageResponse = await roadmapAgentService.sendMessage(
-        activeSessionId,
-        {
-          message: trimmedMessage,
-        },
-      );
-
-      const previewResponse = await roadmapAgentService.previewSession(
-        activeSessionId,
-        {
-          base_revision: baseRevision,
-        },
-      );
-
-      setLatestPreview(previewResponse.preview);
+      setPreviewState({
+        previewAvailable: messageResponse.preview_available,
+        previewRecommended: messageResponse.preview_recommended,
+        stagedOperationsVersion: messageResponse.staged_operations_version,
+      });
 
       appendMessage(
-        buildAssistantMessage(
-          messageResponse.assistant_message,
-          messageResponse.parse_mode,
-          previewResponse.preview,
-        ),
+        buildAssistantMessage(messageResponse.assistant_message, messageResponse.parse_mode, {
+          intentType: messageResponse.intent_type,
+          responseMode: messageResponse.response_mode,
+        }),
       );
     } catch (error) {
       const readableError =
@@ -145,6 +187,52 @@ export function TryAiFloatingAssistant({
       );
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handlePreview = async () => {
+    if (isPreviewing || isSending) return;
+    if (!sessionId || !previewAvailable) {
+      setErrorMessage("No staged roadmap edits to preview yet. Ask for an edit first.");
+      return;
+    }
+
+    setErrorMessage(null);
+    setIsPreviewing(true);
+
+    try {
+      const previewResponse = await roadmapAgentService.previewSession(sessionId, {
+        base_revision: baseRevision,
+      });
+
+      setLatestPreview(previewResponse.preview);
+      appendMessage(
+        buildAssistantMessage(
+          "Preview is ready. Review the semantic diff and validation issues below.",
+          "manual_preview",
+          {
+            intentType: "roadmap_edit",
+            responseMode: "edit_plan",
+            preview: previewResponse.preview,
+          },
+        ),
+      );
+    } catch (error) {
+      if (error instanceof RoadmapAgentServiceError && error.statusCode === 404) {
+        await createFreshSession();
+        setErrorMessage(
+          "Your AI session expired. Send the roadmap edit request again, then run Preview.",
+        );
+        return;
+      }
+
+      const readableError =
+        error instanceof Error
+          ? error.message
+          : "Failed to generate preview. Please try again.";
+      setErrorMessage(readableError);
+    } finally {
+      setIsPreviewing(false);
     }
   };
 
@@ -173,7 +261,7 @@ export function TryAiFloatingAssistant({
                 Try AI Assistant
               </p>
               <p className="text-[11px] text-gray-500 mt-0.5">
-                Preview-only mode. Commits are disabled in this phase.
+                Chat-first mode. Generate preview manually when ready.
               </p>
             </div>
             <button
@@ -190,9 +278,9 @@ export function TryAiFloatingAssistant({
             {messages.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center px-4">
                 <Bot className="w-8 h-8 text-gray-400 mb-2" />
-                <p className="text-sm text-gray-700 font-medium">Start with a roadmap instruction</p>
+                <p className="text-sm text-gray-700 font-medium">Chat naturally or request roadmap edits</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Example: "Move feature 123 under epic 456 and mark task 789 done".
+                  Example: "Hi" or "Move feature 123 under epic 456".
                 </p>
               </div>
             ) : (
@@ -296,7 +384,14 @@ export function TryAiFloatingAssistant({
             {isSending && (
               <div className="rounded-xl px-3 py-2.5 border border-gray-200 bg-white mr-4 text-xs text-gray-600 flex items-center gap-2">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                Thinking and building preview...
+                Thinking...
+              </div>
+            )}
+
+            {isPreviewing && (
+              <div className="rounded-xl px-3 py-2.5 border border-gray-200 bg-white mr-4 text-xs text-gray-600 flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Generating preview...
               </div>
             )}
 
@@ -311,20 +406,42 @@ export function TryAiFloatingAssistant({
               </div>
             )}
 
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => void handlePreview()}
+                disabled={!sessionId || !previewAvailable || isSending || isPreviewing}
+                className="h-9 px-3 rounded-xl border border-gray-300 bg-white text-xs text-gray-700 inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                title="Run roadmap preview"
+              >
+                <FileSearch className="w-3.5 h-3.5" />
+                {isPreviewing
+                  ? "Generating..."
+                  : previewRecommended
+                    ? "Preview Changes"
+                    : "Preview"}
+              </button>
+              <span className="text-[10px] text-gray-500">
+                {previewAvailable
+                  ? `Staged edits ready (v${stagedOperationsVersion})`
+                  : "No staged edits yet"}
+              </span>
+            </div>
+
             <div className="flex items-center gap-2">
               <input
                 type="text"
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={handleInputKeyDown}
-                placeholder="Ask AI to edit your roadmap..."
+                placeholder="Chat or request roadmap edits..."
                 className="flex-1 h-10 rounded-xl border border-gray-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300"
-                disabled={isSending}
+                disabled={isSending || isPreviewing}
               />
               <button
                 type="button"
                 onClick={() => void handleSend()}
-                disabled={isSending || !input.trim()}
+                disabled={isSending || isPreviewing || !input.trim()}
                 className="h-10 w-10 rounded-xl bg-[#ff9933] text-white inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#ff880f] transition-colors"
                 title="Send message"
               >
@@ -360,4 +477,3 @@ export function TryAiFloatingAssistant({
     </>
   );
 }
-

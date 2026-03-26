@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -13,6 +13,10 @@ class Message(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+IntentType = Literal['smalltalk', 'question', 'roadmap_edit', 'unclear']
+ResponseMode = Literal['chat', 'edit_plan']
+
+
 class AgentSession(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -20,7 +24,9 @@ class AgentSession(BaseModel):
     roadmap_id: str
     base_revision: int | None = None
     operations: list[RoadmapOperation] = Field(default_factory=list)
+    staged_operations_version: int = 0
     latest_preview_id: str | None = None
+    last_intent_type: IntentType | None = None
     messages: list[Message] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -49,7 +55,13 @@ class MessageResponse(BaseModel):
     session_id: str
     assistant_message: str
     parse_mode: str
+    intent_type: IntentType
+    response_mode: ResponseMode
     operations: list[RoadmapOperation]
+    preview_available: bool
+    preview_recommended: bool
+    staged_operations_version: int
+    staged_operations_count: int
 
 
 class PreviewRequest(BaseModel):

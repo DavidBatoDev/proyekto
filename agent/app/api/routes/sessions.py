@@ -1,4 +1,7 @@
+import logging
+
 from fastapi import APIRouter, Request
+from fastapi.exceptions import HTTPException
 
 from app.core.contracts.sessions import (
     AgentSession,
@@ -15,6 +18,7 @@ from app.core.orchestration.agent_service import AgentService
 from app.core.session_store import SessionStore
 
 router = APIRouter(prefix='/agent/sessions', tags=['agent'])
+logger = logging.getLogger(__name__)
 
 _store = SessionStore()
 _agent_service = AgentService(_store)
@@ -23,6 +27,7 @@ _nest_client = NestRoadmapClient()
 
 @router.post('', response_model=CreateSessionResponse)
 async def create_session(payload: CreateSessionRequest) -> CreateSessionResponse:
+    logger.info('Creating AI session for roadmap_id=%s base_revision=%s', payload.roadmap_id, payload.base_revision)
     session = AgentSession(
         roadmap_id=payload.roadmap_id,
         base_revision=payload.base_revision,
@@ -40,17 +45,23 @@ async def create_session(payload: CreateSessionRequest) -> CreateSessionResponse
 @router.post('/{session_id}/messages', response_model=MessageResponse)
 async def send_message(session_id: str, payload: MessageRequest) -> MessageResponse:
     session = _agent_service.get_session_or_404(session_id)
-    updated, assistant_message, parse_mode = _agent_service.plan_message(
+    outcome = _agent_service.plan_message(
         session,
         payload.message,
         payload.replace_operations,
     )
 
     return MessageResponse(
-        session_id=updated.session_id,
-        assistant_message=assistant_message,
-        parse_mode=parse_mode,
-        operations=updated.operations,
+        session_id=outcome.session.session_id,
+        assistant_message=outcome.assistant_message,
+        parse_mode=outcome.parse_mode,
+        intent_type=outcome.intent_type,
+        response_mode=outcome.response_mode,
+        operations=outcome.operations,
+        preview_available=outcome.preview_available,
+        preview_recommended=outcome.preview_recommended,
+        staged_operations_version=outcome.staged_operations_version,
+        staged_operations_count=outcome.staged_operations_count,
     )
 
 
@@ -65,14 +76,24 @@ async def preview_session(
     operations = payload.operations if payload.operations is not None else session.operations
     base_revision = payload.base_revision if payload.base_revision is not None else session.base_revision
 
-    preview_result = await _nest_client.preview(
-        roadmap_id=session.roadmap_id,
-        payload={
-            'base_revision': base_revision,
-            'operations': [op.model_dump(exclude_none=True) for op in operations],
-        },
-        auth_header=request.headers.get('Authorization'),
-    )
+    try:
+        preview_result = await _nest_client.preview(
+            roadmap_id=session.roadmap_id,
+            payload={
+                'base_revision': base_revision,
+                'operations': [op.model_dump(exclude_none=True) for op in operations],
+            },
+            auth_header=request.headers.get('Authorization'),
+        )
+    except HTTPException as exc:
+        logger.warning(
+            'Preview failed for session_id=%s roadmap_id=%s status=%s detail=%s',
+            session_id,
+            session.roadmap_id,
+            exc.status_code,
+            exc.detail,
+        )
+        raise
 
     preview_id = preview_result.get('preview_id')
     if isinstance(preview_id, str):

@@ -9,6 +9,8 @@ export interface RoadmapAiChatMessage {
   content: string;
   timestamp: string;
   parseMode?: string;
+  intentType?: "smalltalk" | "question" | "roadmap_edit" | "unclear";
+  responseMode?: "chat" | "edit_plan";
   preview?: AgentPreviewPayload;
 }
 
@@ -17,6 +19,9 @@ interface RoadmapAiAssistantPersistedState {
   sessionId: string | null;
   messages: RoadmapAiChatMessage[];
   latestPreview: AgentPreviewPayload | null;
+  previewAvailable: boolean;
+  previewRecommended: boolean;
+  stagedOperationsVersion: number;
 }
 
 interface UseRoadmapAiAssistantSessionResult {
@@ -24,9 +29,17 @@ interface UseRoadmapAiAssistantSessionResult {
   sessionId: string | null;
   messages: RoadmapAiChatMessage[];
   latestPreview: AgentPreviewPayload | null;
+  previewAvailable: boolean;
+  previewRecommended: boolean;
+  stagedOperationsVersion: number;
   setIsOpen: (value: boolean) => void;
   setSessionId: (value: string | null) => void;
   setLatestPreview: (value: AgentPreviewPayload | null) => void;
+  setPreviewState: (value: {
+    previewAvailable: boolean;
+    previewRecommended: boolean;
+    stagedOperationsVersion: number;
+  }) => void;
   appendMessage: (message: RoadmapAiChatMessage) => void;
   clearMessages: () => void;
 }
@@ -38,6 +51,9 @@ const DEFAULT_STATE: RoadmapAiAssistantPersistedState = {
   sessionId: null,
   messages: [],
   latestPreview: null,
+  previewAvailable: false,
+  previewRecommended: false,
+  stagedOperationsVersion: 0,
 };
 
 const parseStoredState = (
@@ -54,6 +70,12 @@ const parseStoredState = (
           : null,
       messages: Array.isArray(parsed.messages) ? parsed.messages : [],
       latestPreview: parsed.latestPreview ?? null,
+      previewAvailable: Boolean(parsed.previewAvailable),
+      previewRecommended: Boolean(parsed.previewRecommended),
+      stagedOperationsVersion:
+        typeof parsed.stagedOperationsVersion === "number"
+          ? parsed.stagedOperationsVersion
+          : 0,
     };
   } catch {
     return DEFAULT_STATE;
@@ -88,6 +110,9 @@ export function useRoadmapAiAssistantSession(
     sessionId: state.sessionId,
     messages: state.messages,
     latestPreview: state.latestPreview,
+    previewAvailable: state.previewAvailable,
+    previewRecommended: state.previewRecommended,
+    stagedOperationsVersion: state.stagedOperationsVersion,
     setIsOpen: (value) => {
       setState((prev) => ({ ...prev, isOpen: value }));
     },
@@ -97,6 +122,14 @@ export function useRoadmapAiAssistantSession(
     setLatestPreview: (value) => {
       setState((prev) => ({ ...prev, latestPreview: value }));
     },
+    setPreviewState: (value) => {
+      setState((prev) => ({
+        ...prev,
+        previewAvailable: value.previewAvailable,
+        previewRecommended: value.previewRecommended,
+        stagedOperationsVersion: value.stagedOperationsVersion,
+      }));
+    },
     appendMessage: (message) => {
       setState((prev) => ({
         ...prev,
@@ -104,8 +137,14 @@ export function useRoadmapAiAssistantSession(
       }));
     },
     clearMessages: () => {
-      setState((prev) => ({ ...prev, messages: [] }));
+      setState((prev) => ({
+        ...prev,
+        messages: [],
+        latestPreview: null,
+        previewAvailable: false,
+        previewRecommended: false,
+        stagedOperationsVersion: 0,
+      }));
     },
   };
 }
-
