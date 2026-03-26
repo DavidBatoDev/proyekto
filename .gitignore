@@ -1,1 +1,4 @@
 AGENTS.md
+agent/.venv/
+agent/.tmp/
+agent/.env
