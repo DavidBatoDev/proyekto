@@ -6,11 +6,20 @@ import { type Project, projectService } from "@/services/project.service";
 import { projectTimeService } from "@/services/project-time.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
 
-type ActionItem = {
+type ActivityItem = {
 	id: string;
-	title: string;
-	subtitle: string;
-	status: string;
+	taskId: string;
+	taskTitle: string;
+	taskStatus: string;
+	assigneeId?: string | null;
+	assigneeName: string;
+	assigneeAvatarUrl?: string | null;
+	projectId?: string | null;
+	projectTitle: string;
+	roadmapName: string;
+	dueDate?: string | null;
+	updatedAt?: string | null;
+	isAssignedToCurrentUser: boolean;
 };
 
 type TimelineItem = {
@@ -57,12 +66,12 @@ const PERSONA_UI: Record<
 		timelineEmptyTitle: "No upcoming milestones",
 		timelineEmptySubtitle:
 			"Milestones with future target dates will appear here.",
-		attentionTitle: "Needs Your Attention",
+		attentionTitle: "Activity",
 		attentionSubtitle:
-			"Review approvals and unblock project work that needs your decision.",
-		attentionEmptyTitle: "No approvals pending",
+			"Track open roadmap tasks that need review and coordination.",
+		attentionEmptyTitle: "No activity right now",
 		attentionEmptySubtitle:
-			"Milestone and roadmap approvals will appear here when consultant updates are ready for your review.",
+			"Open tasks will appear here when roadmap execution starts.",
 	},
 	consultant: {
 		badgeLabel: "Consultant View",
@@ -76,12 +85,11 @@ const PERSONA_UI: Record<
 		timelineEmptyTitle: "No upcoming milestones",
 		timelineEmptySubtitle:
 			"Milestones with future target dates will appear here.",
-		attentionTitle: "Needs Your Attention",
-		attentionSubtitle:
-			"Review paused, draft, and bidding items that need consultant action.",
-		attentionEmptyTitle: "Nothing urgent right now",
+		attentionTitle: "Activity",
+		attentionSubtitle: "Track open roadmap tasks that need consultant action.",
+		attentionEmptyTitle: "No activity right now",
 		attentionEmptySubtitle:
-			"New items will appear here when something needs your action.",
+			"Open task activity will appear here as work progresses.",
 	},
 	freelancer: {
 		badgeLabel: "Freelancer View",
@@ -95,11 +103,11 @@ const PERSONA_UI: Record<
 		timelineEmptyTitle: "No upcoming deadlines",
 		timelineEmptySubtitle:
 			"Task due dates with upcoming deadlines will appear here.",
-		attentionTitle: "Tasks",
-		attentionSubtitle: "Execution-focused items that need your action now.",
-		attentionEmptyTitle: "Nothing urgent right now",
+		attentionTitle: "Activity",
+		attentionSubtitle: "Execution-focused open tasks across your workspaces.",
+		attentionEmptyTitle: "No activity right now",
 		attentionEmptySubtitle:
-			"Task execution priorities will appear here when work is assigned.",
+			"Open assigned task activity will appear here when work is available.",
 	},
 };
 
@@ -141,37 +149,40 @@ function startOfToday(): Date {
 	return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
-function toProjectActionItem(project: Project): ActionItem | null {
-	const status = (project.status || "").toLowerCase();
+function formatTaskStatus(status: string): string {
+	switch (status) {
+		case "todo":
+			return "To Do";
+		case "in_progress":
+			return "In Progress";
+		case "in_review":
+			return "In Review";
+		case "blocked":
+			return "Blocked";
+		default:
+			return "Open";
+	}
+}
 
-	if (status === "draft") {
-		return {
-			id: `draft-${project.id}`,
-			title: `Finalize scope for "${project.title}"`,
-			subtitle: "Confirm scope details so this project can move forward.",
-			status: "Draft",
-		};
+function getInitials(name: string): string {
+	const parts = name.trim().split(/\s+/).filter(Boolean).slice(0, 2);
+	if (parts.length === 0) return "?";
+	return parts.map((part) => part.charAt(0).toUpperCase()).join("");
+}
+
+function getActivityStatusPriority(
+	persona: DashboardRole,
+	status: string,
+): number {
+	if (persona === "freelancer") {
+		if (status === "todo") return 3;
+		if (status === "in_progress") return 2;
+		if (status === "in_review") return 1;
+		return 0;
 	}
 
-	if (status === "bidding") {
-		return {
-			id: `bidding-${project.id}`,
-			title: `Review bids for "${project.title}"`,
-			subtitle: "Compare applicants and approve the best next step.",
-			status: "Bidding",
-		};
-	}
-
-	if (status === "paused") {
-		return {
-			id: `paused-${project.id}`,
-			title: `Unblock paused project "${project.title}"`,
-			subtitle: "Resolve pending blockers to resume roadmap delivery.",
-			status: "Paused",
-		};
-	}
-
-	return null;
+	if (status === "in_review") return 3;
+	return 0;
 }
 
 export function DashboardWidgets({
@@ -302,13 +313,6 @@ export function DashboardWidgets({
 		};
 	}, [timelineQuery.data, user?.id]);
 
-	const personaProjects = useMemo(() => {
-		if (!user?.id) return [] as Project[];
-		return projects.filter(
-			(project) => resolveProjectRole(project, user.id, persona) === persona,
-		);
-	}, [persona, projects, user?.id]);
-
 	const consultantProjects = useMemo(() => {
 		if (!user?.id) return [] as Project[];
 		return projects.filter(
@@ -383,35 +387,94 @@ export function DashboardWidgets({
 			? consultantPendingApprovalQueries.some((query) => query.isPending)
 			: false);
 
-	const freelancerActionItems = useMemo(() => {
-		if (upcomingDeadlines.length > 0) {
-			return upcomingDeadlines.slice(0, 5).map((item) => ({
-				id: `deadline-${item.id}`,
-				title: `Deliver "${item.title}"`,
-				subtitle: `${item.roadmapName} - due ${formatDateLabel(item.targetDate)}`,
-				status: "Due",
-			}));
+	const projectTitleById = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const project of projects) {
+			map.set(project.id, project.title);
 		}
+		return map;
+	}, [projects]);
 
-		return personaProjects.slice(0, 5).map((project) => ({
-			id: `project-${project.id}`,
-			title: `Stay ready for "${project.title}"`,
-			subtitle:
-				"No assigned deadlines yet. Keep your profile and availability updated.",
-			status: "Standby",
-		}));
-	}, [personaProjects, upcomingDeadlines]);
+	const activityItems = useMemo(() => {
+		const validRoadmaps = timelineQuery.data ?? [];
+		const currentUserId = user?.id ?? null;
 
-	const projectActionItems = useMemo(
-		() =>
-			personaProjects
-				.map(toProjectActionItem)
-				.filter((item): item is ActionItem => item !== null)
-				.slice(0, 5),
-		[personaProjects],
-	);
+		const flattened = validRoadmaps.flatMap(
+			(roadmap: any, roadmapIndex: number) =>
+				(roadmap.epics || []).flatMap((epic: any, epicIndex: number) =>
+					(epic.features || []).flatMap((feature: any, featureIndex: number) =>
+						(feature.tasks || [])
+							.filter(
+								(task: any) =>
+									String(task.status || "").toLowerCase() !== "done",
+							)
+							.map((task: any, taskIndex: number) => {
+								const taskStatus = String(task.status || "").toLowerCase();
+								const assigneeName =
+									task.assignee?.display_name ||
+									`${task.assignee?.first_name || ""} ${task.assignee?.last_name || ""}`.trim() ||
+									task.assignee?.email ||
+									(task.assignee_id ? "Assigned user" : "Unassigned");
+								const projectId = roadmap.project_id || null;
+								const projectTitle =
+									roadmap.project?.title ||
+									(projectId ? projectTitleById.get(projectId) : undefined) ||
+									roadmap.name ||
+									"Unlinked project";
 
-	const actionItems = isFreelancer ? freelancerActionItems : projectActionItems;
+								return {
+									id: `activity-${roadmap.id || roadmapIndex}-${feature.id || featureIndex}-${task.id || taskIndex}`,
+									taskId: String(
+										task.id ||
+											`${roadmapIndex}-${epicIndex}-${featureIndex}-${taskIndex}`,
+									),
+									taskTitle: task.title || "Task",
+									taskStatus,
+									assigneeId: task.assignee_id || null,
+									assigneeName,
+									assigneeAvatarUrl: task.assignee?.avatar_url || null,
+									projectId,
+									projectTitle,
+									roadmapName: roadmap.name || "Roadmap",
+									dueDate: task.due_date || null,
+									updatedAt: task.updated_at || roadmap.updated_at || null,
+									isAssignedToCurrentUser: Boolean(
+										currentUserId && task.assignee_id === currentUserId,
+									),
+								} satisfies ActivityItem;
+							}),
+					),
+				),
+		);
+
+		return flattened
+			.sort((a, b) => {
+				const assignedDiff =
+					Number(b.isAssignedToCurrentUser) - Number(a.isAssignedToCurrentUser);
+				if (assignedDiff !== 0) return assignedDiff;
+
+				const statusDiff =
+					getActivityStatusPriority(persona, b.taskStatus) -
+					getActivityStatusPriority(persona, a.taskStatus);
+				if (statusDiff !== 0) return statusDiff;
+
+				const aDue = a.dueDate
+					? new Date(a.dueDate).getTime()
+					: Number.POSITIVE_INFINITY;
+				const bDue = b.dueDate
+					? new Date(b.dueDate).getTime()
+					: Number.POSITIVE_INFINITY;
+				if (aDue !== bDue) return aDue - bDue;
+
+				const aUpdated = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+				const bUpdated = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+				if (aUpdated !== bUpdated) return bUpdated - aUpdated;
+
+				return a.id.localeCompare(b.id);
+			})
+			.slice(0, 5);
+	}, [timelineQuery.data, user?.id, persona, projectTitleById]);
+
 	const primaryMetricValue = isFreelancer
 		? upcomingDeadlines.length
 		: projectActiveCount;
@@ -425,6 +488,7 @@ export function DashboardWidgets({
 		: persona === "consultant"
 			? consultantPendingApprovalsLoading
 			: isProjectsLoading;
+	const activityLoading = isMilestonesLoading;
 
 	const greetingName =
 		profile?.display_name ||
@@ -643,9 +707,9 @@ export function DashboardWidgets({
 							</p>
 						</div>
 
-						{isProjectsLoading ? (
-							<p className="text-sm text-[#61636c]">Loading pending items...</p>
-						) : actionItems.length === 0 ? (
+						{activityLoading ? (
+							<p className="text-sm text-[#61636c]">Loading activity...</p>
+						) : activityItems.length === 0 ? (
 							<div className="bg-white rounded-lg p-4 border border-slate-200">
 								<p className="text-sm font-semibold text-[#333438] mb-1">
 									{ui.attentionEmptyTitle}
@@ -655,26 +719,47 @@ export function DashboardWidgets({
 								</p>
 							</div>
 						) : (
-							<div className="space-y-3">
-								{actionItems.map((item) => (
+							<div className="space-y-2">
+								{activityItems.map((item) => (
 									<div
 										key={item.id}
-										className="bg-white rounded-lg p-4 flex items-start justify-between gap-3 border border-slate-200 transition-shadow hover:shadow-sm"
+										className="bg-white rounded-lg px-3 py-2.5 border border-slate-200 transition-shadow hover:shadow-sm"
 									>
-										<div className="min-w-0 flex items-start gap-3">
-											<span className="w-2 h-2 rounded-full bg-orange-400 mt-1.5 shrink-0" />
-											<div>
-												<p className="text-[14px] font-semibold text-[#333438]">
-													{item.title}
-												</p>
-												<p className="text-xs text-[#61636c] mt-1">
-													{item.subtitle}
+										<div className="flex items-start gap-2.5 min-w-0">
+											<div className="shrink-0 mt-0.5">
+												{item.assigneeAvatarUrl ? (
+													<img
+														src={item.assigneeAvatarUrl}
+														alt={item.assigneeName}
+														className="h-6 w-6 rounded-full object-cover"
+													/>
+												) : (
+													<span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-700">
+														{getInitials(item.assigneeName)}
+													</span>
+												)}
+											</div>
+
+											<div className="min-w-0 flex-1">
+												<div className="flex items-center justify-between gap-2">
+													<p className="text-[13px] font-semibold text-[#333438] truncate">
+														{item.taskTitle}
+													</p>
+													<span className="text-[10px] text-[#92969f] whitespace-nowrap">
+														{formatTaskStatus(item.taskStatus)}
+													</span>
+												</div>
+												<p className="text-[11px] text-[#61636c] truncate">
+													{item.projectTitle} · {item.assigneeName}
 												</p>
 											</div>
+
+											<div className="shrink-0 text-[10px] text-[#92969f] whitespace-nowrap pl-1">
+												{item.dueDate
+													? formatDateLabel(item.dueDate)
+													: item.roadmapName}
+											</div>
 										</div>
-										<span className="text-[11px] text-[#92969f] whitespace-nowrap">
-											{item.status}
-										</span>
 									</div>
 								))}
 							</div>
