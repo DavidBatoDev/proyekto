@@ -1,13 +1,21 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Calendar, Clock } from "lucide-react";
+import { ArrowRight, Calendar, Clock, Inbox, User } from "lucide-react";
 import { useEffect, useMemo } from "react";
+import { openProjectInviteModal } from "@/components/invites/projectInviteModalEvents";
 import { supabase } from "@/lib/supabase";
-import { type Project, projectService } from "@/services/project.service";
+import {
+	type Project,
+	type ProjectInvite,
+	projectService,
+} from "@/services/project.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
 
 type DashboardRole = "client" | "consultant" | "freelancer";
 type ProjectWithRole = { project: Project; role: DashboardRole };
+type DashboardCard =
+	| { kind: "invite"; invite: ProjectInvite }
+	| { kind: "project"; item: ProjectWithRole };
 
 const PROJECT_STATUS_CONFIG: Record<
 	string,
@@ -125,6 +133,19 @@ function primaryEmptyCopy(persona: DashboardRole): {
 	};
 }
 
+function formatInviteSentLabel(value: string): string {
+	const parsed = new Date(value);
+	if (Number.isNaN(parsed.getTime())) return "just now";
+
+	return parsed.toLocaleString(undefined, {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+		hour: "numeric",
+		minute: "2-digit",
+	});
+}
+
 export function ProjectsGrid() {
 	const user = useUser();
 	const { profile } = useAuthStore();
@@ -145,12 +166,35 @@ export function ProjectsGrid() {
 		retry: 1,
 	});
 	const projects = (projectsQuery.data as Project[] | undefined) ?? [];
-	const isLoading = projectsQuery.isPending;
+	const invitesQuery = useQuery({
+		queryKey: ["projects", "my-invites"],
+		queryFn: () => projectService.getMyInvites(),
+		enabled: Boolean(user?.id),
+		staleTime: 0,
+		refetchOnMount: true,
+		refetchOnWindowFocus: true,
+		refetchOnReconnect: true,
+		retry: 1,
+	});
+	const pendingInvites = useMemo(
+		() =>
+			((invitesQuery.data as ProjectInvite[] | undefined) ?? [])
+				.filter((invite) => invite.status === "pending")
+				.sort(
+					(a, b) =>
+						new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+				),
+		[invitesQuery.data],
+	);
+	const shouldMixInvitesIntoPrimary = persona === "freelancer";
+	const isLoading =
+		projectsQuery.isPending ||
+		(shouldMixInvitesIntoPrimary && invitesQuery.isPending);
 
 	const groupedProjects = useMemo(() => {
 		if (!user?.id) {
 			return {
-				primaryProjects: [] as ProjectWithRole[],
+				primaryCards: [] as DashboardCard[],
 				otherProjects: [] as ProjectWithRole[],
 			};
 		}
@@ -160,15 +204,30 @@ export function ProjectsGrid() {
 			role: resolveProjectRole(project, user.id, persona),
 		}));
 
+		const primaryProjectCards: DashboardCard[] = resolved
+			.filter((item) => item.role === persona)
+			.map((item) => ({ kind: "project", item }));
+
+		const inviteCards: DashboardCard[] = shouldMixInvitesIntoPrimary
+			? pendingInvites.map((invite) => ({ kind: "invite", invite }))
+			: [];
+
 		return {
-			primaryProjects: resolved.filter((item) => item.role === persona),
+			primaryCards: [...inviteCards, ...primaryProjectCards],
 			otherProjects: resolved.filter((item) => item.role !== persona),
 		};
-	}, [persona, projects, user?.id]);
+	}, [pendingInvites, persona, projects, shouldMixInvitesIntoPrimary, user?.id]);
 
-	const { primaryProjects, otherProjects } = groupedProjects;
-	const noProjects =
-		!isLoading && primaryProjects.length === 0 && otherProjects.length === 0;
+	const { primaryCards, otherProjects } = groupedProjects;
+	const invitationCards = useMemo(
+		() =>
+			shouldMixInvitesIntoPrimary
+				? []
+				: pendingInvites.map(
+						(invite): DashboardCard => ({ kind: "invite", invite }),
+					),
+		[pendingInvites, shouldMixInvitesIntoPrimary],
+	);
 	const emptyCopy = primaryEmptyCopy(persona);
 
 	useEffect(() => {
@@ -238,17 +297,29 @@ export function ProjectsGrid() {
 
 			<ProjectsSection
 				title={PRIMARY_SECTION_TITLE[persona]}
-				projects={primaryProjects}
+				cards={primaryCards}
 				isLoading={isLoading}
 				emptyTitle={emptyCopy.title}
 				emptyDescription={emptyCopy.description}
 			/>
 
+			{invitationCards.length > 0 && (
+				<div className="mt-8">
+					<ProjectsSection
+						title="Project Invitations"
+						cards={invitationCards}
+						isLoading={invitesQuery.isPending}
+						emptyTitle="No pending invitations"
+						emptyDescription="Pending project invitations will appear here."
+					/>
+				</div>
+			)}
+
 			{otherProjects.length > 0 && (
 				<div className="mt-8">
 					<ProjectsSection
 						title="Other Projects"
-						projects={otherProjects}
+						cards={otherProjects.map((item) => ({ kind: "project", item }))}
 						isLoading={false}
 						emptyTitle="No other projects"
 						emptyDescription="Projects where your role is different from your current persona will appear here."
@@ -256,33 +327,19 @@ export function ProjectsGrid() {
 				</div>
 			)}
 
-			{noProjects ? (
-				<div className="col-span-3 flex flex-col items-center justify-center py-12 text-center px-6">
-					<div className="w-16 h-16 bg-[#ff9933]/10 rounded-full flex items-center justify-center mb-4">
-						<Calendar className="w-8 h-8 text-[#ff9933]" />
-					</div>
-					<h3 className="text-lg font-semibold text-gray-900 mb-2">
-						No projects yet
-					</h3>
-					<p className="text-[#61636c] max-w-sm">
-						Your dashboard projects will appear here once you create, join, or
-						get assigned to a project.
-					</p>
-				</div>
-			) : null}
 		</div>
 	);
 }
 
 function ProjectsSection({
 	title,
-	projects,
+	cards,
 	isLoading,
 	emptyTitle,
 	emptyDescription,
 }: {
 	title: string;
-	projects: ProjectWithRole[];
+	cards: DashboardCard[];
 	isLoading: boolean;
 	emptyTitle: string;
 	emptyDescription: string;
@@ -299,43 +356,56 @@ function ProjectsSection({
 						<ProjectCardSkeleton />
 						<ProjectCardSkeleton />
 					</>
-				) : projects.length === 0 ? (
-					<div className="col-span-3 bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center">
-						<h4 className="text-base font-semibold text-gray-900 mb-1">
-							{emptyTitle}
-						</h4>
-						<p className="text-sm text-[#61636c]">{emptyDescription}</p>
-					</div>
+				) : cards.length === 0 ? (
+					<ProjectsEmptyState
+						title={emptyTitle}
+						description={emptyDescription}
+						className="col-span-3"
+					/>
 				) : (
-					projects.slice(0, 6).map(({ project, role }, index) => {
+					cards.slice(0, 6).map((card, index) => {
+						if (card.kind === "invite") {
+							return (
+								<InviteCard
+									key={card.invite.id}
+									invite={card.invite}
+									number={index + 1}
+								/>
+							);
+						}
+
 						const statusConfig = PROJECT_STATUS_CONFIG[
-							(project.status || "").toLowerCase()
+							(card.item.project.status || "").toLowerCase()
 						] ?? {
-							label: project.status || "Unknown",
+							label: card.item.project.status || "Unknown",
 							color: "#9c27b0",
 							badgeClass: "bg-purple-100 text-purple-700 border-purple-200",
 						};
-						const roleConfig = ROLE_CONFIG[role];
+						const roleConfig = ROLE_CONFIG[card.item.role];
 
 						return (
 							<ProjectCard
-								key={project.id}
+								key={card.item.project.id}
 								number={index + 1}
-								projectId={project.id}
+								projectId={card.item.project.id}
 								status={statusConfig.label}
 								statusColor={statusConfig.color}
 								statusBadgeClass={statusConfig.badgeClass}
 								roleLabel={roleConfig.label}
 								roleBadgeClass={roleConfig.badgeClass}
-								title={project.title}
-								client={project.client?.display_name || "Assigned"}
-								progress={project.status === "completed" ? 100 : null}
+								title={card.item.project.title}
+								client={card.item.project.client?.display_name || "Assigned"}
+								progress={card.item.project.status === "completed" ? 100 : null}
 								progressColor={statusConfig.color}
 								nextUp={
-									project.brief ? "Review project brief" : "Add project brief"
+									card.item.project.brief
+										? "Review project brief"
+										: "Add project brief"
 								}
 								dueDate={
-									project.custom_start_date || project.start_date || null
+									card.item.project.custom_start_date ||
+									card.item.project.start_date ||
+									null
 								}
 							/>
 						);
@@ -343,6 +413,94 @@ function ProjectsSection({
 				)}
 			</div>
 		</section>
+	);
+}
+
+function InviteCard({
+	invite,
+	number,
+}: {
+	invite: ProjectInvite;
+	number: number;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={() => openProjectInviteModal(invite.id)}
+			className="group bg-linear-to-b from-amber-50 to-white rounded-xl shadow-sm p-4 h-[385px] flex flex-col border border-amber-200 transition-all hover:border-amber-300 hover:shadow-xl text-left"
+		>
+			<div className="flex-1 space-y-6">
+				<div>
+					<div className="flex items-center gap-2 mb-2">
+						<span className="text-[16px] font-semibold text-[#b45309]">
+							#{number}
+						</span>
+						<div className="w-px h-[25px] bg-amber-300" />
+						<span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+							Pending Invite
+						</span>
+					</div>
+					<h3 className="text-[18px] font-bold text-[#333438] mb-2 line-clamp-2">
+						{invite.project?.title || "Project invitation"}
+					</h3>
+					<p className="text-[13px] text-[#61636c] mb-1">
+						Invited by{" "}
+						<span className="font-semibold text-[#333438]">
+							{invite.inviter?.display_name || "Team lead"}
+						</span>
+					</p>
+					{invite.invited_position ? (
+						<div className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-white px-2 py-1 text-[12px] text-amber-800">
+							<User className="h-3.5 w-3.5" />
+							<span>{invite.invited_position}</span>
+						</div>
+					) : null}
+				</div>
+
+				<div className="rounded-lg border border-amber-100 bg-white px-3 py-2">
+					<p className="text-[12px] font-semibold uppercase tracking-wide text-amber-700">
+						Next Step
+					</p>
+					<p className="text-[13px] text-[#333438] mt-1">
+						Review this invitation and choose to join or decline.
+					</p>
+				</div>
+
+				<div className="flex items-center gap-2 text-[12px] text-[#61636c]">
+					<Inbox className="h-4 w-4 text-amber-700" />
+					<span>Sent {formatInviteSentLabel(invite.created_at)}</span>
+				</div>
+			</div>
+
+			<div className="pt-4 border-t border-amber-100">
+				<div className="flex items-center justify-end gap-1 text-[14px] font-semibold text-amber-800 uppercase transition-colors group-hover:text-amber-900">
+					<span>Open invite</span>
+					<ArrowRight className="h-4 w-4" />
+				</div>
+			</div>
+		</button>
+	);
+}
+
+function ProjectsEmptyState({
+	title,
+	description,
+	className,
+}: {
+	title: string;
+	description: string;
+	className?: string;
+}) {
+	return (
+		<div
+			className={`rounded-xl border border-gray-200 bg-white px-6 py-10 text-center ${className ?? ""}`}
+		>
+			<div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#ff9933]/10">
+				<Calendar className="h-8 w-8 text-[#ff9933]" />
+			</div>
+			<h4 className="mb-2 text-lg font-semibold text-gray-900">{title}</h4>
+			<p className="mx-auto max-w-md text-sm text-[#61636c]">{description}</p>
+		</div>
 	);
 }
 

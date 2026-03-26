@@ -19,6 +19,7 @@ import UserMenu from "./UserMenu";
 import { MessageCircle, Bell, Search, ChevronDown } from "lucide-react";
 import { notificationsService } from "@/services/notifications.service";
 import { useNotificationsRealtime } from "@/hooks/useNotificationsRealtime";
+import { openProjectInviteModal } from "@/components/invites/projectInviteModalEvents";
 
 const DashboardHeader = () => {
   const { isAuthenticated, profile } = useAuthStore();
@@ -78,11 +79,7 @@ const DashboardHeader = () => {
     closeNotifications();
 
     if (typeName === "project_invite_received" && inviteId) {
-      window.dispatchEvent(
-        new CustomEvent("open-project-invite-modal", {
-          detail: { inviteId },
-        }),
-      );
+      openProjectInviteModal(inviteId);
       markReadMutation.mutate(id);
       return;
     }

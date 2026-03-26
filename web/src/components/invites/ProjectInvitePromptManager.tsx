@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouterState } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
 import { projectService, type ProjectInvite } from "@/services/project.service";
 import {
@@ -8,8 +8,8 @@ import {
   type NotificationItem,
 } from "@/services/notifications.service";
 import { useAuthStore } from "@/stores/authStore";
-
-const MODAL_EVENT = "open-project-invite-modal";
+import { useToast } from "@/hooks/useToast";
+import { OPEN_PROJECT_INVITE_MODAL_EVENT } from "./projectInviteModalEvents";
 
 function getInviteNotificationId(
   inviteId: string,
@@ -37,6 +37,8 @@ function sessionSeenKey(inviteId: string) {
 export function ProjectInvitePromptManager() {
   const queryClient = useQueryClient();
   const routerState = useRouterState();
+  const navigate = useNavigate();
+  const toast = useToast();
   const { isAuthenticated, profile } = useAuthStore();
 
   const [open, setOpen] = useState(false);
@@ -131,10 +133,13 @@ export function ProjectInvitePromptManager() {
       setPendingOpenInviteId(null);
     };
 
-    window.addEventListener(MODAL_EVENT, handleOpenRequest as EventListener);
+    window.addEventListener(
+      OPEN_PROJECT_INVITE_MODAL_EVENT,
+      handleOpenRequest as EventListener,
+    );
     return () => {
       window.removeEventListener(
-        MODAL_EVENT,
+        OPEN_PROJECT_INVITE_MODAL_EVENT,
         handleOpenRequest as EventListener,
       );
     };
@@ -217,30 +222,51 @@ export function ProjectInvitePromptManager() {
   const pendingCount = pendingInvites.length;
 
   const handleRespond = async (status: "accepted" | "declined") => {
-    const notificationId = getInviteNotificationId(
-      currentInvite.id,
-      notificationsQuery.data || [],
-    );
+    try {
+      const acceptedProjectId =
+        status === "accepted" ? currentInvite.project_id : null;
+      const notificationId = getInviteNotificationId(
+        currentInvite.id,
+        notificationsQuery.data || [],
+      );
 
-    await respondMutation.mutateAsync({ inviteId: currentInvite.id, status });
+      if (acceptedProjectId) {
+        toast.info("Joining project... Redirecting", 3000);
+      }
 
-    if (notificationId) {
-      await notificationsService.markRead(notificationId, true);
-      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      await queryClient.invalidateQueries({
-        queryKey: ["notifications", "unread-count"],
+      await respondMutation.mutateAsync({ inviteId: currentInvite.id, status });
+
+      if (notificationId) {
+        await notificationsService.markRead(notificationId, true);
+        await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+        await queryClient.invalidateQueries({
+          queryKey: ["notifications", "unread-count"],
+        });
+      }
+
+      if (acceptedProjectId) {
+        setOpen(false);
+        navigate({
+          to: "/project/$projectId/overview",
+          params: { projectId: acceptedProjectId },
+        });
+        return;
+      }
+
+      if (pendingCount <= 1) {
+        setOpen(false);
+        return;
+      }
+
+      setCurrentIndex((prev) => {
+        if (prev >= pendingCount - 1) return 0;
+        return prev;
       });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to respond to invite.",
+      );
     }
-
-    if (pendingCount <= 1) {
-      setOpen(false);
-      return;
-    }
-
-    setCurrentIndex((prev) => {
-      if (prev >= pendingCount - 1) return 0;
-      return prev;
-    });
   };
 
   return (
