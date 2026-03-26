@@ -153,7 +153,9 @@ export function normalizePermissions(
           ? members.manage
           : defaults.members.manage,
       view:
-        typeof members.view === 'boolean' ? members.view : defaults.members.view,
+        typeof members.view === 'boolean'
+          ? members.view
+          : defaults.members.view,
     },
     project: {
       settings:
@@ -172,7 +174,9 @@ export function normalizePermissions(
           ? time.edit_team
           : defaults.time.edit_team,
       approve:
-        typeof time.approve === 'boolean' ? time.approve : defaults.time.approve,
+        typeof time.approve === 'boolean'
+          ? time.approve
+          : defaults.time.approve,
       manage_rates:
         typeof time.manage_rates === 'boolean'
           ? time.manage_rates

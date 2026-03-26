@@ -46,15 +46,17 @@ describe('ProjectsService (resources)', () => {
       uncategorized_links: [],
     };
     const repo = {
-      findById: jest.fn().mockResolvedValue(buildProject({ client_id: 'lead-1' })),
+      findById: jest
+        .fn()
+        .mockResolvedValue(buildProject({ client_id: 'lead-1' })),
       getMemberByProjectAndUserId: jest.fn().mockResolvedValue(null),
       listProjectResources: jest.fn().mockResolvedValue(payload),
     };
     const service = buildService(repo);
 
-    await expect(service.listProjectResources('project-1', 'lead-1')).resolves.toBe(
-      payload,
-    );
+    await expect(
+      service.listProjectResources('project-1', 'lead-1'),
+    ).resolves.toBe(payload);
     expect(repo.listProjectResources).toHaveBeenCalledWith('project-1');
   });
 

@@ -86,7 +86,10 @@ export type TimeLogsQueryFilters = {
 };
 
 export interface ProjectTimeRepository {
-  hasProjectMemberRate(projectId: string, memberUserId: string): Promise<boolean>;
+  hasProjectMemberRate(
+    projectId: string,
+    memberUserId: string,
+  ): Promise<boolean>;
   findProjectMemberRateById(
     projectId: string,
     rateId: string,

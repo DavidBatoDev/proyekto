@@ -372,7 +372,10 @@ export class ProjectTimeRepositorySupabase implements ProjectTimeRepository {
   }
 
   async deleteLogById(id: string): Promise<void> {
-    const { error } = await this.db.from('task_time_logs').delete().eq('id', id);
+    const { error } = await this.db
+      .from('task_time_logs')
+      .delete()
+      .eq('id', id);
     if (error) throw new Error(error.message);
   }
 
