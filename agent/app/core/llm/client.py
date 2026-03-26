@@ -722,7 +722,7 @@ class LLMPlanner:
             'good evening',
         }:
             return 'smalltalk'
-        if re.search(r'\b(add|create|move|delete|remove|update|mark|shift|link|unlink)\b', text):
+        if re.search(r'\b(add|create|move|delete|remove|update|mark|shift|link|unlink|rename|retitle|change)\b', text):
             return 'roadmap_edit'
         if text.endswith('?') or re.search(r'^(what|why|how|when|where|can you|could you|do we)\b', text):
             return 'question'
@@ -774,6 +774,21 @@ class LLMPlanner:
     def _rule_based_operation_plan(self, user_message: str) -> PlanningResult:
         text = user_message.strip()
         operations: list[RoadmapOperation] = []
+        uuid_match = re.search(r'([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})', text)
+
+        rename_match = re.search(
+            r'(?:rename|retitle|change(?:\s+the)?\s+name(?:\s+of)?)\b.*?(?:to|as)\s+[\"\']([^\"\']+)[\"\']',
+            text,
+            re.IGNORECASE,
+        )
+        if rename_match and uuid_match:
+            operations.append(
+                RoadmapOperation(
+                    op='update_node',
+                    node_id=uuid_match.group(1),
+                    patch={'title': rename_match.group(1).strip()},
+                )
+            )
 
         move_match = re.search(
             r'move\s+([0-9a-fA-F-]{36})\s+under\s+([0-9a-fA-F-]{36})(?:\s+at\s+(\d+))?',
