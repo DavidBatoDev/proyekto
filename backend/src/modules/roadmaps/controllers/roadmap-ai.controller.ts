@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
@@ -13,6 +14,9 @@ import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-request.interface';
 import {
   RoadmapAiCommitDto,
+  RoadmapAiContextChildrenQueryDto,
+  RoadmapAiContextSearchQueryDto,
+  RoadmapAiDiscardDto,
   RoadmapAiPreviewDto,
   RoadmapAiRollbackDto,
 } from '../dto/roadmap-ai.dto';
@@ -41,6 +45,42 @@ export class RoadmapAiController {
     return this.roadmapAiService.getPreview(roadmapId, previewId, user.id);
   }
 
+  @Get('context/summary')
+  getContextSummary(
+    @Param('id') roadmapId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roadmapAiService.getContextSummary(roadmapId, user.id);
+  }
+
+  @Get('context/search')
+  searchContextNodes(
+    @Param('id') roadmapId: string,
+    @Query() query: RoadmapAiContextSearchQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roadmapAiService.searchContextNodes(roadmapId, query, user.id);
+  }
+
+  @Get('context/nodes/:nodeId')
+  getContextNodeDetails(
+    @Param('id') roadmapId: string,
+    @Param('nodeId') nodeId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roadmapAiService.getContextNodeDetails(roadmapId, nodeId, user.id);
+  }
+
+  @Get('context/nodes/:nodeId/children')
+  getContextNodeChildren(
+    @Param('id') roadmapId: string,
+    @Param('nodeId') nodeId: string,
+    @Query() query: RoadmapAiContextChildrenQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roadmapAiService.getContextNodeChildren(roadmapId, nodeId, query, user.id);
+  }
+
   @Post('commit')
   @HttpCode(HttpStatus.OK)
   commit(
@@ -49,6 +89,16 @@ export class RoadmapAiController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.roadmapAiService.commit(roadmapId, dto, user.id);
+  }
+
+  @Post('discard')
+  @HttpCode(HttpStatus.OK)
+  discard(
+    @Param('id') roadmapId: string,
+    @Body() dto: RoadmapAiDiscardDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roadmapAiService.discard(roadmapId, dto, user.id);
   }
 
   @Post('rollback')

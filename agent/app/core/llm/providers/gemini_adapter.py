@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Callable
 
 from pydantic import BaseModel
 
@@ -9,14 +9,22 @@ from app.core.config import Settings
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import IntentType
 from app.core.llm.providers.base import LLMProviderAdapter, ProviderAdapterError
-from app.core.tools.registry import get_operation_tools
+from app.core.tools.registry import PLANNING_TOOL_NAME, parse_plan_tool_args
 
 try:
     from langchain_core.messages import HumanMessage, SystemMessage
-    from langchain_google_genai import ChatGoogleGenerativeAI
 except Exception:  # pragma: no cover
     HumanMessage = None  # type: ignore[assignment]
     SystemMessage = None  # type: ignore[assignment]
+
+try:
+    from langchain_core.messages import ToolMessage
+except Exception:  # pragma: no cover
+    ToolMessage = None  # type: ignore[assignment]
+
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+except Exception:  # pragma: no cover
     ChatGoogleGenerativeAI = None  # type: ignore[assignment]
 
 
@@ -38,6 +46,15 @@ class GeminiLangChainAdapter(LLMProviderAdapter):
             and HumanMessage is not None
             and SystemMessage is not None
         )
+
+    def availability_reason(self) -> str:
+        if not self._settings.gemini_api_key:
+            return 'missing_api_key'
+        if ChatGoogleGenerativeAI is None:
+            return 'missing_langchain_google_genai'
+        if HumanMessage is None or SystemMessage is None:
+            return 'missing_langchain_core_messages'
+        return 'available'
 
     def classify_intent(
         self,
@@ -89,33 +106,117 @@ class GeminiLangChainAdapter(LLMProviderAdapter):
         system_prompt: str,
         planner_prompt: str,
         history_messages: list[Any],
+        tools: list[dict[str, Any]],
+        tool_executor: Callable[[str, dict[str, Any]], dict[str, Any]],
+        max_tool_turns: int,
     ) -> tuple[str, list[RoadmapOperation]]:
         try:
-            tool_model = self._chat_model().bind_tools(get_operation_tools())
-            ai_message = tool_model.invoke(
-                [
-                    SystemMessage(content=system_prompt),
-                    *history_messages,
-                    HumanMessage(content=planner_prompt),
-                ]
-            )
-            tool_calls = getattr(ai_message, 'tool_calls', []) or []
-            tool_call = next((call for call in tool_calls if call.get('name') == 'plan_roadmap_operations'), None)
-            if tool_call is None:
+            if ToolMessage is None:
                 raise ProviderAdapterError(
                     provider=self.provider_name,
-                    code='missing_tool_call',
-                    message='Gemini did not return the required plan_roadmap_operations tool call.',
+                    code='tooling_not_supported',
+                    message='ToolMessage is unavailable in this runtime; tool loop cannot execute.',
                 )
+            tool_model = self._chat_model().bind_tools(tools)
+            messages: list[Any] = [
+                SystemMessage(content=system_prompt),
+                *history_messages,
+                HumanMessage(content=planner_prompt),
+            ]
 
-            args = tool_call.get('args', {})
-            if isinstance(args, str):
-                args = json.loads(args)
+            for turn in range(max_tool_turns):
+                ai_message = tool_model.invoke(messages)
+                messages.append(ai_message)
+                tool_calls = getattr(ai_message, 'tool_calls', []) or []
+                if not tool_calls:
+                    raise ProviderAdapterError(
+                        provider=self.provider_name,
+                        code='missing_tool_call',
+                        message='Gemini did not return any tool call while planning operations.',
+                    )
 
-            raw_operations = args.get('operations', [])
-            operations = [RoadmapOperation.model_validate(item) for item in raw_operations]
-            assistant_message = str(args.get('assistant_message', 'Prepared roadmap operations.'))
-            return assistant_message, operations
+                for index, tool_call in enumerate(tool_calls):
+                    name = str(tool_call.get('name', '')).strip()
+                    args = self._normalize_tool_args(tool_call.get('args'))
+                    if name == PLANNING_TOOL_NAME:
+                        assistant_message, operations = parse_plan_tool_args(args)
+                        if not assistant_message.strip():
+                            assistant_message = 'Prepared roadmap operations.'
+                        return assistant_message, operations
+
+                    tool_result = tool_executor(name, args)
+                    tool_call_id = str(tool_call.get('id') or f'{name}-{turn}-{index}')
+                    messages.append(
+                        ToolMessage(
+                            content=json.dumps(tool_result, ensure_ascii=True),
+                            tool_call_id=tool_call_id,
+                        )
+                    )
+
+            raise ProviderAdapterError(
+                provider=self.provider_name,
+                code='max_tool_turns_exceeded',
+                message='Gemini planning loop reached max tool turns before returning a final operation plan.',
+            )
+        except ProviderAdapterError:
+            raise
+        except Exception as exc:  # pragma: no cover
+            raise self._to_provider_error(exc)
+
+    def answer_with_tools(
+        self,
+        system_prompt: str,
+        question_prompt: str,
+        history_messages: list[Any],
+        tools: list[dict[str, Any]],
+        tool_executor: Callable[[str, dict[str, Any]], dict[str, Any]],
+        max_tool_turns: int,
+    ) -> str:
+        try:
+            if ToolMessage is None:
+                raise ProviderAdapterError(
+                    provider=self.provider_name,
+                    code='tooling_not_supported',
+                    message='ToolMessage is unavailable in this runtime; tool loop cannot execute.',
+                )
+            tool_model = self._chat_model().bind_tools(tools)
+            messages: list[Any] = [
+                SystemMessage(content=system_prompt),
+                *history_messages,
+                HumanMessage(content=question_prompt),
+            ]
+
+            for turn in range(max_tool_turns):
+                ai_message = tool_model.invoke(messages)
+                messages.append(ai_message)
+                tool_calls = getattr(ai_message, 'tool_calls', []) or []
+                if not tool_calls:
+                    content = self._extract_text(ai_message.content)
+                    if content:
+                        return content
+                    raise ProviderAdapterError(
+                        provider=self.provider_name,
+                        code='empty_response',
+                        message='Gemini returned an empty context answer.',
+                    )
+
+                for index, tool_call in enumerate(tool_calls):
+                    name = str(tool_call.get('name', '')).strip()
+                    args = self._normalize_tool_args(tool_call.get('args'))
+                    tool_result = tool_executor(name, args)
+                    tool_call_id = str(tool_call.get('id') or f'{name}-{turn}-{index}')
+                    messages.append(
+                        ToolMessage(
+                            content=json.dumps(tool_result, ensure_ascii=True),
+                            tool_call_id=tool_call_id,
+                        )
+                    )
+
+            raise ProviderAdapterError(
+                provider=self.provider_name,
+                code='max_tool_turns_exceeded',
+                message='Gemini context answer loop reached max tool turns.',
+            )
         except ProviderAdapterError:
             raise
         except Exception as exc:  # pragma: no cover
@@ -126,6 +227,7 @@ class GeminiLangChainAdapter(LLMProviderAdapter):
             model=self._settings.gemini_model,
             google_api_key=self._settings.gemini_api_key,
             temperature=self._settings.gemini_temperature,
+            max_retries=self._settings.gemini_max_retries,
             timeout=30,
         )
 
@@ -139,6 +241,18 @@ class GeminiLangChainAdapter(LLMProviderAdapter):
         if 'timeout' in message:
             return ProviderAdapterError(self.provider_name, 'timeout', message)
         return ProviderAdapterError(self.provider_name, 'provider_error', message)
+
+    def _normalize_tool_args(self, raw_args: Any) -> dict[str, Any]:
+        args = raw_args
+        if isinstance(args, str):
+            args = json.loads(args)
+        if not isinstance(args, dict):
+            raise ProviderAdapterError(
+                provider=self.provider_name,
+                code='invalid_tool_arguments',
+                message='Tool arguments must be a JSON object.',
+            )
+        return args
 
     def _extract_text(self, content: Any) -> str:
         if isinstance(content, str):

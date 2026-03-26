@@ -1,4 +1,5 @@
 from typing import Any
+from urllib.parse import quote_plus
 
 import httpx
 from fastapi import HTTPException, status
@@ -45,6 +46,18 @@ class NestRoadmapClient:
             auth_header,
         )
 
+    async def discard_preview(
+        self,
+        roadmap_id: str,
+        payload: dict[str, Any],
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        return await self._post(
+            f"/roadmaps/{roadmap_id}/ai/discard",
+            payload,
+            auth_header,
+        )
+
     async def rollback(
         self,
         roadmap_id: str,
@@ -54,6 +67,108 @@ class NestRoadmapClient:
         return await self._post(
             f"/roadmaps/{roadmap_id}/ai/rollback",
             payload,
+            auth_header,
+        )
+
+    async def context_summary(
+        self,
+        roadmap_id: str,
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/context/summary",
+            auth_header,
+        )
+
+    async def context_search(
+        self,
+        roadmap_id: str,
+        query: str,
+        limit: int | None,
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        query_string = f"?query={quote_plus(query)}"
+        if limit is not None:
+            query_string += f"&limit={limit}"
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/context/search{query_string}",
+            auth_header,
+        )
+
+    async def context_node_details(
+        self,
+        roadmap_id: str,
+        node_id: str,
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/context/nodes/{node_id}",
+            auth_header,
+        )
+
+    async def context_children(
+        self,
+        roadmap_id: str,
+        node_id: str,
+        limit: int | None,
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        query_string = ''
+        if limit is not None:
+            query_string = f'?limit={limit}'
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/context/nodes/{node_id}/children{query_string}",
+            auth_header,
+        )
+
+    def context_summary_sync(
+        self,
+        roadmap_id: str,
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        return self._get_sync(
+            f"/roadmaps/{roadmap_id}/ai/context/summary",
+            auth_header,
+        )
+
+    def context_search_sync(
+        self,
+        roadmap_id: str,
+        query: str,
+        limit: int | None,
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        query_string = f"?query={quote_plus(query)}"
+        if limit is not None:
+            query_string += f"&limit={limit}"
+        return self._get_sync(
+            f"/roadmaps/{roadmap_id}/ai/context/search{query_string}",
+            auth_header,
+        )
+
+    def context_node_details_sync(
+        self,
+        roadmap_id: str,
+        node_id: str,
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        return self._get_sync(
+            f"/roadmaps/{roadmap_id}/ai/context/nodes/{node_id}",
+            auth_header,
+        )
+
+    def context_children_sync(
+        self,
+        roadmap_id: str,
+        node_id: str,
+        limit: int | None,
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        query_string = ''
+        if limit is not None:
+            query_string = f'?limit={limit}'
+        return self._get_sync(
+            f"/roadmaps/{roadmap_id}/ai/context/nodes/{node_id}/children{query_string}",
             auth_header,
         )
 
@@ -91,6 +206,40 @@ class NestRoadmapClient:
             },
         )
 
+    def _post_sync(
+        self,
+        path: str,
+        payload: dict[str, Any],
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        headers = {'Content-Type': 'application/json'}
+        if auth_header:
+            headers['Authorization'] = auth_header
+
+        url = f"{self._settings.nest_api_base_url}{path}"
+        timeout = self._settings.nest_timeout_seconds
+
+        with httpx.Client(timeout=timeout) as client:
+            response = client.post(url, json=payload, headers=headers)
+
+        if response.is_success:
+            return self._extract_success_payload(response)
+
+        detail: Any
+        try:
+            detail = response.json()
+        except Exception:
+            detail = response.text or 'Unknown NestJS error'
+
+        raise HTTPException(
+            status_code=response.status_code,
+            detail={
+                'upstream': 'nestjs',
+                'path': path,
+                'detail': detail,
+            },
+        )
+
     async def _get(
         self,
         path: str,
@@ -105,6 +254,39 @@ class NestRoadmapClient:
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.get(url, headers=headers)
+
+        if response.is_success:
+            return self._extract_success_payload(response)
+
+        detail: Any
+        try:
+            detail = response.json()
+        except Exception:
+            detail = response.text or 'Unknown NestJS error'
+
+        raise HTTPException(
+            status_code=response.status_code,
+            detail={
+                'upstream': 'nestjs',
+                'path': path,
+                'detail': detail,
+            },
+        )
+
+    def _get_sync(
+        self,
+        path: str,
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        headers = {'Content-Type': 'application/json'}
+        if auth_header:
+            headers['Authorization'] = auth_header
+
+        url = f"{self._settings.nest_api_base_url}{path}"
+        timeout = self._settings.nest_timeout_seconds
+
+        with httpx.Client(timeout=timeout) as client:
+            response = client.get(url, headers=headers)
 
         if response.is_success:
             return self._extract_success_payload(response)

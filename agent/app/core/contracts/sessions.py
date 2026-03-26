@@ -83,6 +83,8 @@ class MessageResponse(BaseModel):
     provider_used: ProviderUsed = 'rule_based'
     fallback_used: bool = False
     provider_error_code: str | None = None
+    debug_trace_id: str | None = None
+    debug_budget_state: dict[str, Any] | None = None
 
 
 class PreviewRequest(BaseModel):
@@ -93,6 +95,19 @@ class PreviewRequest(BaseModel):
 class CommitRequest(BaseModel):
     preview_id: str | None = None
     base_revision: int | None = None
+
+
+class DiscardRequest(BaseModel):
+    preview_id: str | None = None
+
+
+class DiscardResponse(BaseModel):
+    session_id: str
+    roadmap_id: str
+    discarded_preview_id: str | None = None
+    discarded_at: datetime
+    staged_operations_count: int
+    staged_operations_version: int
 
 
 class RollbackRequest(BaseModel):

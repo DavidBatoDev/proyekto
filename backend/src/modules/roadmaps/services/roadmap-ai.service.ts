@@ -23,6 +23,14 @@ import { RoadmapAuthorizationService } from './roadmap-authorization.service';
 import type {
   RoadmapAiCommitDto,
   RoadmapAiCommitResponseDto,
+  RoadmapAiContextChildrenQueryDto,
+  RoadmapAiContextChildrenResponseDto,
+  RoadmapAiContextNodeResponseDto,
+  RoadmapAiContextSearchQueryDto,
+  RoadmapAiContextSearchResponseDto,
+  RoadmapAiContextSummaryResponseDto,
+  RoadmapAiDiscardDto,
+  RoadmapAiDiscardResponseDto,
   RoadmapAiOperationDto,
   RoadmapAiPreviewDto,
   RoadmapAiPreviewResponseDto,
@@ -194,6 +202,230 @@ export class RoadmapAiService {
     };
   }
 
+  async getContextSummary(
+    roadmapId: string,
+    userId: string,
+  ): Promise<RoadmapAiContextSummaryResponseDto> {
+    await this.assertCanEditRoadmap(roadmapId, userId);
+    const full = await this.roadmapsRepo.findFull(roadmapId, userId);
+    if (!full) throw new NotFoundException('Roadmap not found');
+    const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
+
+    const epicCount = state.roadmap_epics?.length ?? 0;
+    const featureCount = (state.roadmap_epics ?? []).reduce(
+      (total, epic) => total + (epic.roadmap_features?.length ?? 0),
+      0,
+    );
+    const taskCount = (state.roadmap_epics ?? []).reduce(
+      (taskTotal, epic) =>
+        taskTotal +
+        (epic.roadmap_features ?? []).reduce(
+          (featureTotal, feature) =>
+            featureTotal + (feature.roadmap_tasks?.length ?? 0),
+          0,
+        ),
+      0,
+    );
+
+    return {
+      roadmap_id: state.id ?? roadmapId,
+      title: state.name,
+      description: state.description,
+      status: state.status,
+      epic_count: epicCount,
+      feature_count: featureCount,
+      task_count: taskCount,
+      epics: (state.roadmap_epics ?? []).map((epic) => ({
+        id: epic.id ?? randomUUID(),
+        title: epic.title ?? 'Untitled epic',
+        status: epic.status,
+        feature_count: epic.roadmap_features?.length ?? 0,
+      })),
+    };
+  }
+
+  async searchContextNodes(
+    roadmapId: string,
+    queryDto: RoadmapAiContextSearchQueryDto,
+    userId: string,
+  ): Promise<RoadmapAiContextSearchResponseDto> {
+    await this.assertCanEditRoadmap(roadmapId, userId);
+    const full = await this.roadmapsRepo.findFull(roadmapId, userId);
+    if (!full) throw new NotFoundException('Roadmap not found');
+    const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
+
+    const query = (queryDto.query ?? '').trim().toLowerCase();
+    if (!query) return { matches: [] };
+    const limit = Math.min(Math.max(queryDto.limit ?? 10, 1), 50);
+    const matches: RoadmapAiContextSearchResponseDto['matches'] = [];
+
+    for (const epic of state.roadmap_epics ?? []) {
+      if (matches.length >= limit) break;
+      if (epic.id && (epic.title ?? '').toLowerCase().includes(query)) {
+        matches.push({
+          id: epic.id,
+          type: 'epic',
+          title: epic.title ?? 'Untitled epic',
+          parent_id: state.id,
+          parent_title: state.name,
+        });
+      }
+
+      for (const feature of epic.roadmap_features ?? []) {
+        if (matches.length >= limit) break;
+        if (feature.id && (feature.title ?? '').toLowerCase().includes(query)) {
+          matches.push({
+            id: feature.id,
+            type: 'feature',
+            title: feature.title ?? 'Untitled feature',
+            parent_id: epic.id,
+            parent_title: epic.title,
+          });
+        }
+
+        for (const task of feature.roadmap_tasks ?? []) {
+          if (matches.length >= limit) break;
+          if (task.id && (task.title ?? '').toLowerCase().includes(query)) {
+            matches.push({
+              id: task.id,
+              type: 'task',
+              title: task.title ?? 'Untitled task',
+              parent_id: feature.id,
+              parent_title: feature.title,
+            });
+          }
+        }
+      }
+    }
+
+    return { matches };
+  }
+
+  async getContextNodeDetails(
+    roadmapId: string,
+    nodeId: string,
+    userId: string,
+  ): Promise<RoadmapAiContextNodeResponseDto> {
+    await this.assertCanEditRoadmap(roadmapId, userId);
+    const full = await this.roadmapsRepo.findFull(roadmapId, userId);
+    if (!full) throw new NotFoundException('Roadmap not found');
+    const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
+
+    if (state.id === nodeId) {
+      return {
+        id: state.id,
+        type: 'roadmap',
+        title: state.name,
+        description: state.description,
+        status: state.status,
+        start_date: state.start_date,
+        end_date: state.end_date,
+      };
+    }
+
+    const locator = this.findNodeById(state, nodeId);
+    if (!locator || locator.type === 'roadmap') {
+      throw new NotFoundException('Node not found');
+    }
+
+    if (locator.type === 'epic') {
+      return {
+        id: locator.epic.id ?? nodeId,
+        type: 'epic',
+        title: locator.epic.title ?? 'Untitled epic',
+        description: locator.epic.description,
+        status: locator.epic.status,
+        priority: locator.epic.priority,
+        start_date: locator.epic.start_date,
+        end_date: locator.epic.end_date,
+        parent_id: state.id,
+      };
+    }
+
+    if (locator.type === 'feature') {
+      return {
+        id: locator.feature.id ?? nodeId,
+        type: 'feature',
+        title: locator.feature.title ?? 'Untitled feature',
+        description: locator.feature.description,
+        status: locator.feature.status,
+        start_date: locator.feature.start_date,
+        end_date: locator.feature.end_date,
+        parent_id: locator.epic.id,
+      };
+    }
+
+    return {
+      id: locator.task.id ?? nodeId,
+      type: 'task',
+      title: locator.task.title ?? 'Untitled task',
+      description: locator.task.description,
+      status: locator.task.status,
+      priority: locator.task.priority,
+      due_date: locator.task.due_date,
+      parent_id: locator.feature.id,
+    };
+  }
+
+  async getContextNodeChildren(
+    roadmapId: string,
+    nodeId: string,
+    query: RoadmapAiContextChildrenQueryDto,
+    userId: string,
+  ): Promise<RoadmapAiContextChildrenResponseDto> {
+    await this.assertCanEditRoadmap(roadmapId, userId);
+    const full = await this.roadmapsRepo.findFull(roadmapId, userId);
+    if (!full) throw new NotFoundException('Roadmap not found');
+    const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
+    const limit = Math.min(Math.max(query.limit ?? 25, 1), 100);
+
+    if (state.id === nodeId) {
+      return {
+        children: (state.roadmap_epics ?? [])
+          .slice(0, limit)
+          .map((epic) => ({
+            id: epic.id ?? randomUUID(),
+            type: 'epic',
+            title: epic.title ?? 'Untitled epic',
+            parent_id: state.id,
+          })),
+      };
+    }
+
+    const locator = this.findNodeById(state, nodeId);
+    if (!locator) {
+      throw new NotFoundException('Node not found');
+    }
+
+    if (locator.type === 'epic') {
+      return {
+        children: (locator.epic.roadmap_features ?? [])
+          .slice(0, limit)
+          .map((feature) => ({
+            id: feature.id ?? randomUUID(),
+            type: 'feature',
+            title: feature.title ?? 'Untitled feature',
+            parent_id: locator.epic.id,
+          })),
+      };
+    }
+
+    if (locator.type === 'feature') {
+      return {
+        children: (locator.feature.roadmap_tasks ?? [])
+          .slice(0, limit)
+          .map((task) => ({
+            id: task.id ?? randomUUID(),
+            type: 'task',
+            title: task.title ?? 'Untitled task',
+            parent_id: locator.feature.id,
+          })),
+      };
+    }
+
+    return { children: [] };
+  }
+
   async commit(
     roadmapId: string,
     dto: RoadmapAiCommitDto,
@@ -258,6 +490,27 @@ export class RoadmapAiService {
       revision_token: persistedMeta?.updated_at ?? new Date().toISOString(),
       semantic_diff: preview.semanticDiff,
       roadmap: persisted as Record<string, unknown>,
+    };
+  }
+
+  async discard(
+    roadmapId: string,
+    dto: RoadmapAiDiscardDto,
+    userId: string,
+  ): Promise<RoadmapAiDiscardResponseDto> {
+    this.clearExpiredPreviews();
+    await this.assertCanEditRoadmap(roadmapId, userId);
+
+    const preview = this.previews.get(dto.preview_id);
+    if (!preview || preview.roadmapId !== roadmapId || preview.userId !== userId) {
+      throw new NotFoundException('Preview not found');
+    }
+
+    this.previews.delete(dto.preview_id);
+    return {
+      ok: true,
+      preview_id: dto.preview_id,
+      discarded_at: new Date().toISOString(),
     };
   }
 

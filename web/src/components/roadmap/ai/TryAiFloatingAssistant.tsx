@@ -145,7 +145,7 @@ export function TryAiFloatingAssistant({
       try {
         messageResponse = await roadmapAgentService.sendMessage(activeSessionId, {
           message: trimmedMessage,
-          auto_preview: true,
+          auto_preview: false,
         });
       } catch (error) {
         if (
@@ -157,7 +157,7 @@ export function TryAiFloatingAssistant({
             activeSessionId,
             {
               message: trimmedMessage,
-              auto_preview: true,
+              auto_preview: false,
             },
           );
         } else {

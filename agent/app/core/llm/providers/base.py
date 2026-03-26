@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import IntentType
@@ -61,5 +61,20 @@ class LLMProviderAdapter(ABC):
         system_prompt: str,
         planner_prompt: str,
         history_messages: list[Any],
+        tools: list[dict[str, Any]],
+        tool_executor: Callable[[str, dict[str, Any]], dict[str, Any]],
+        max_tool_turns: int,
     ) -> tuple[str, list[RoadmapOperation]]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def answer_with_tools(
+        self,
+        system_prompt: str,
+        question_prompt: str,
+        history_messages: list[Any],
+        tools: list[dict[str, Any]],
+        tool_executor: Callable[[str, dict[str, Any]], dict[str, Any]],
+        max_tool_turns: int,
+    ) -> str:
         raise NotImplementedError

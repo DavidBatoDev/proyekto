@@ -4,6 +4,7 @@ import {
   IsBoolean,
   IsEnum,
   IsInt,
+  IsNotEmpty,
   IsObject,
   IsOptional,
   IsString,
@@ -102,6 +103,11 @@ export class RoadmapAiCommitDto {
 export class RoadmapAiRollbackDto {
   @IsInt()
   target_revision: number;
+}
+
+export class RoadmapAiDiscardDto {
+  @IsUUID()
+  preview_id: string;
 }
 
 export type RoadmapValidationIssueCode =
@@ -237,5 +243,168 @@ export class RoadmapAiRollbackResponseDto {
 
   @IsString()
   message: string;
+}
+
+export class RoadmapAiDiscardResponseDto {
+  @IsBoolean()
+  ok: boolean;
+
+  @IsUUID()
+  preview_id: string;
+
+  @IsString()
+  discarded_at: string;
+}
+
+export class RoadmapAiContextSummaryEpicDto {
+  @IsUUID()
+  id: string;
+
+  @IsString()
+  title: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsInt()
+  feature_count: number;
+}
+
+export class RoadmapAiContextSummaryResponseDto {
+  @IsUUID()
+  roadmap_id: string;
+
+  @IsString()
+  title: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsInt()
+  epic_count: number;
+
+  @IsInt()
+  feature_count: number;
+
+  @IsInt()
+  task_count: number;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapAiContextSummaryEpicDto)
+  epics: RoadmapAiContextSummaryEpicDto[];
+}
+
+export class RoadmapAiContextSearchQueryDto {
+  @IsString()
+  @IsNotEmpty()
+  query: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number;
+}
+
+export class RoadmapAiContextSearchMatchDto {
+  @IsUUID()
+  id: string;
+
+  @IsEnum(['epic', 'feature', 'task'])
+  type: Exclude<RoadmapNodeType, 'roadmap'>;
+
+  @IsString()
+  title: string;
+
+  @IsOptional()
+  @IsUUID()
+  parent_id?: string;
+
+  @IsOptional()
+  @IsString()
+  parent_title?: string;
+}
+
+export class RoadmapAiContextSearchResponseDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapAiContextSearchMatchDto)
+  matches: RoadmapAiContextSearchMatchDto[];
+}
+
+export class RoadmapAiContextNodeResponseDto {
+  @IsUUID()
+  id: string;
+
+  @IsEnum(['roadmap', 'epic', 'feature', 'task'])
+  type: RoadmapNodeType;
+
+  @IsString()
+  title: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsOptional()
+  @IsString()
+  priority?: string;
+
+  @IsOptional()
+  @IsString()
+  start_date?: string;
+
+  @IsOptional()
+  @IsString()
+  end_date?: string;
+
+  @IsOptional()
+  @IsString()
+  due_date?: string;
+
+  @IsOptional()
+  @IsUUID()
+  parent_id?: string;
+}
+
+export class RoadmapAiContextChildrenQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number;
+}
+
+export class RoadmapAiContextChildDto {
+  @IsUUID()
+  id: string;
+
+  @IsEnum(['epic', 'feature', 'task'])
+  type: Exclude<RoadmapNodeType, 'roadmap'>;
+
+  @IsString()
+  title: string;
+
+  @IsOptional()
+  @IsUUID()
+  parent_id?: string;
+}
+
+export class RoadmapAiContextChildrenResponseDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapAiContextChildDto)
+  children: RoadmapAiContextChildDto[];
 }
 

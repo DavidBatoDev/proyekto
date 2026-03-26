@@ -109,11 +109,16 @@ export interface AgentMessageResponse {
   provider_used?: "gemini" | "openai" | "rule_based";
   fallback_used?: boolean;
   provider_error_code?: string | null;
+  debug_trace_id?: string | null;
 }
 
 export interface AgentPreviewRequest {
   operations?: AgentOperation[];
   base_revision?: number;
+}
+
+export interface AgentDiscardRequest {
+  preview_id?: string;
 }
 
 export interface AgentPreviewResponse {
@@ -129,6 +134,15 @@ export interface AgentArtifactPreviewResponse {
   roadmap_id: string;
   artifact: AgentRoadmapPreviewArtifact;
   preview: AgentPreviewPayload;
+}
+
+export interface AgentDiscardResponse {
+  session_id: string;
+  roadmap_id: string;
+  discarded_preview_id?: string;
+  discarded_at: string;
+  staged_operations_count: number;
+  staged_operations_version: number;
 }
 
 export class RoadmapAgentServiceError extends Error {
@@ -239,6 +253,21 @@ export const roadmapAgentService = {
       return response.data;
     } catch (error) {
       throwAgentError(error, "Get AI artifact preview");
+    }
+  },
+
+  async discardSession(
+    sessionId: string,
+    payload: AgentDiscardRequest = {},
+  ): Promise<AgentDiscardResponse> {
+    try {
+      const response = await agentApiClient.post<AgentDiscardResponse>(
+        `/agent/sessions/${sessionId}/discard`,
+        payload,
+      );
+      return response.data;
+    } catch (error) {
+      throwAgentError(error, "Discard AI staged edits");
     }
   },
 };
