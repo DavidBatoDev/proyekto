@@ -235,6 +235,20 @@ Example:
 
 ---
 
+## Planned AI Editing Architecture
+
+The AI-assisted roadmap editing architecture is documented in:
+
+- `../Backend-Docs/08-AI-ROADMAP-EDITOR-ARCHITECTURE.md`
+
+Important:
+
+- This JSON guide describes the **current implemented Dev Mode workflow**.
+- The AI architecture document describes the **planned preview/diff/commit AI flow**.
+- Until implementation is complete, `POST /api/roadmaps/full` and `PATCH /api/roadmaps/:id/json-patch` remain the active JSON edit mechanisms.
+
+---
+
 ## Related Files
 
 Frontend:
