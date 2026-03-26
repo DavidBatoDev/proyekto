@@ -198,7 +198,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         *,
         client:profiles!projects_client_id_fkey(id, display_name, avatar_url, headline, email),
         consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, headline, email),
-        members:project_members(id, project_id, user_id, role, position, permissions_json, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name))
+        members:project_members(id, project_id, user_id, role, position, permissions_json, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified))
       `,
       )
       .eq('id', id)
@@ -394,6 +394,75 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     return updatedProject as Project;
   }
 
+  async reassignConsultant(
+    projectId: string,
+    ownerId: string,
+    previousConsultantId: string | null,
+    newConsultantId: string,
+  ): Promise<Project> {
+    const { data: updatedProject, error: updateProjectError } = await this.supabase
+      .from('projects')
+      .update({ consultant_id: newConsultantId, status: 'active' })
+      .eq('id', projectId)
+      .select()
+      .single();
+
+    if (updateProjectError || !updatedProject) {
+      throw new BadRequestException(
+        updateProjectError?.message || 'Failed to reassign consultant.',
+      );
+    }
+
+    const { error: newConsultantError } = await this.supabase
+      .from('project_members')
+      .upsert(
+        {
+          project_id: projectId,
+          user_id: newConsultantId,
+          role: ProjectMemberRole.CONSULTANT,
+          position: 'Main Consultant',
+          permissions_json: getTemplateByKey('consultant'),
+        },
+        { onConflict: 'project_id,user_id' },
+      );
+
+    if (newConsultantError) {
+      throw new BadRequestException(
+        newConsultantError.message || 'Failed to sync new consultant membership.',
+      );
+    }
+
+    if (previousConsultantId && previousConsultantId !== newConsultantId) {
+      const previousConsultantBecomesClient = previousConsultantId === ownerId;
+
+      const { error: previousConsultantError } = await this.supabase
+        .from('project_members')
+        .upsert(
+          {
+            project_id: projectId,
+            user_id: previousConsultantId,
+            role: previousConsultantBecomesClient
+              ? ProjectMemberRole.CLIENT
+              : ProjectMemberRole.MEMBER,
+            position: previousConsultantBecomesClient ? 'Client' : 'Member',
+            permissions_json: previousConsultantBecomesClient
+              ? getTemplateByKey('client')
+              : getTemplateByKey('member'),
+          },
+          { onConflict: 'project_id,user_id' },
+        );
+
+      if (previousConsultantError) {
+        throw new BadRequestException(
+          previousConsultantError.message ||
+            'Failed to sync previous consultant membership.',
+        );
+      }
+    }
+
+    return updatedProject as Project;
+  }
+
   async assignConsultant(
     projectId: string,
     consultantId: string,
@@ -430,6 +499,17 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       .or(`client_id.eq.${userId},consultant_id.eq.${userId}`)
       .single();
     return !!data;
+  }
+
+  async isConsultantVerified(userId: string): Promise<boolean> {
+    const { data, error } = await this.supabase
+      .from('profiles')
+      .select('is_consultant_verified')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error || !data) return false;
+    return data.is_consultant_verified === true;
   }
 
   async addMember(
@@ -482,7 +562,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         }),
       })
       .select(
-        'id, project_id, user_id, role, position, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name)',
+        'id, project_id, user_id, role, position, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
       )
       .single();
 
@@ -737,7 +817,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       .eq('id', memberId)
       .eq('project_id', projectId)
       .select(
-        'id, project_id, user_id, role, position, permissions_json, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name)',
+        'id, project_id, user_id, role, position, permissions_json, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
       )
       .single();
 
@@ -763,7 +843,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
           .eq('id', memberId)
           .eq('project_id', projectId)
           .select(
-            'id, project_id, user_id, role, position, permissions_json, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name)',
+            'id, project_id, user_id, role, position, permissions_json, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
           )
           .single();
 

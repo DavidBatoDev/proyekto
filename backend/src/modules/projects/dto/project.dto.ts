@@ -159,6 +159,11 @@ export class TransferProjectOwnerDto {
   new_owner_id: string;
 }
 
+export class ReassignProjectConsultantDto {
+  @IsUUID()
+  new_consultant_id: string;
+}
+
 class ResourceReorderItemDto {
   @IsUUID()
   id: string;

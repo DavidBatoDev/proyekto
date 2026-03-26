@@ -24,6 +24,7 @@ import {
   CreateProjectResourceLinkDto,
   InviteProjectByEmailDto,
   ProjectInviteQueryDto,
+  ReassignProjectConsultantDto,
   ReorderProjectResourceFoldersDto,
   ReorderProjectResourceLinksDto,
   RespondProjectInviteDto,
@@ -87,6 +88,15 @@ export class ProjectsController {
     @Body() dto: TransferProjectOwnerDto,
   ) {
     return this.projectsService.transferProjectOwner(id, user.id, dto);
+  }
+
+  @Post(':id/reassign-consultant')
+  reassignConsultant(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ReassignProjectConsultantDto,
+  ) {
+    return this.projectsService.reassignProjectConsultant(id, user.id, dto);
   }
 
   @Post(':id/assign-consultant')

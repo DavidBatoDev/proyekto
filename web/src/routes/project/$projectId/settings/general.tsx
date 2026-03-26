@@ -48,6 +48,23 @@ const toRichHtml = (raw: string | null | undefined): string => {
   return `<p>${escapeHtml(trimmed).replace(/\n/g, "<br>")}</p>`;
 };
 
+const MODAL_ANIMATION_MS = 220;
+
+const getMemberDisplayName = (member: ProjectMember): string =>
+  member.user?.display_name ||
+  [member.user?.first_name, member.user?.last_name].filter(Boolean).join(" ") ||
+  member.user?.email ||
+  "Unknown";
+
+const getInitials = (name: string): string =>
+  name
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
 function SettingsPageSkeleton({ projectId }: { projectId: string }) {
   return (
     <ProjectSettingsLayout projectId={projectId}>
@@ -138,14 +155,27 @@ function SettingsGeneralPage() {
   const [isEditingSummary, setIsEditingSummary] = useState(false);
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   const [isSavingSummary, setIsSavingSummary] = useState(false);
-  const [isTransferOpen, setIsTransferOpen] = useState(false);
+  const [isTransferSelectOpen, setIsTransferSelectOpen] = useState(false);
+  const [isTransferConfirmOpen, setIsTransferConfirmOpen] = useState(false);
   const [selectedOwnerId, setSelectedOwnerId] = useState("");
   const [isTransferSaving, setIsTransferSaving] = useState(false);
+  const [isConsultantSelectOpen, setIsConsultantSelectOpen] = useState(false);
+  const [isConsultantConfirmOpen, setIsConsultantConfirmOpen] = useState(false);
+  const [selectedConsultantId, setSelectedConsultantId] = useState("");
+  const [isConsultantTransferSaving, setIsConsultantTransferSaving] =
+    useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteText, setDeleteText] = useState("");
   const [isDeleteSaving, setIsDeleteSaving] = useState(false);
+  const [showTransferSelectModal, setShowTransferSelectModal] = useState(false);
+  const [showConsultantSelectModal, setShowConsultantSelectModal] =
+    useState(false);
+  const [transferSelectEntered, setTransferSelectEntered] = useState(false);
+  const [consultantSelectEntered, setConsultantSelectEntered] = useState(false);
 
   const isOwner = Boolean(user?.id && project?.client_id === user.id);
+  const isConsultant = Boolean(user?.id && project?.consultant_id === user.id);
+  const canReassignConsultant = isOwner || isConsultant;
 
   const loadData = async () => {
     setIsLoading(true);
@@ -180,6 +210,48 @@ function SettingsGeneralPage() {
     void loadData();
   }, [projectId]);
 
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    if (isTransferSelectOpen) {
+      setShowTransferSelectModal(true);
+      const rafId = requestAnimationFrame(() => setTransferSelectEntered(true));
+      return () => cancelAnimationFrame(rafId);
+    }
+
+    setTransferSelectEntered(false);
+    timeoutId = setTimeout(
+      () => setShowTransferSelectModal(false),
+      MODAL_ANIMATION_MS,
+    );
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [isTransferSelectOpen]);
+
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    if (isConsultantSelectOpen) {
+      setShowConsultantSelectModal(true);
+      const rafId = requestAnimationFrame(() =>
+        setConsultantSelectEntered(true),
+      );
+      return () => cancelAnimationFrame(rafId);
+    }
+
+    setConsultantSelectEntered(false);
+    timeoutId = setTimeout(
+      () => setShowConsultantSelectModal(false),
+      MODAL_ANIMATION_MS,
+    );
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [isConsultantSelectOpen]);
+
   const transferrableMembers = useMemo(
     () =>
       members.filter(
@@ -187,6 +259,30 @@ function SettingsGeneralPage() {
           Boolean(member.user_id) && member.user_id !== project?.client_id,
       ),
     [members, project?.client_id],
+  );
+
+  const reassignableConsultantMembers = useMemo(
+    () =>
+      members.filter(
+        (member) =>
+          Boolean(member.user_id) &&
+          member.user_id !== project?.consultant_id &&
+          member.user?.is_consultant_verified === true,
+      ),
+    [members, project?.consultant_id],
+  );
+
+  const selectedOwnerMember = useMemo(
+    () => transferrableMembers.find((member) => member.user_id === selectedOwnerId),
+    [transferrableMembers, selectedOwnerId],
+  );
+
+  const selectedConsultantMember = useMemo(
+    () =>
+      reassignableConsultantMembers.find(
+        (member) => member.user_id === selectedConsultantId,
+      ),
+    [reassignableConsultantMembers, selectedConsultantId],
   );
 
   const saveTitle = async () => {
@@ -263,7 +359,8 @@ function SettingsGeneralPage() {
       );
       setProject(updated);
       setSelectedOwnerId("");
-      setIsTransferOpen(false);
+      setIsTransferConfirmOpen(false);
+      setIsTransferSelectOpen(false);
       toast.success("Project ownership transferred.");
       await loadData();
     } catch (error) {
@@ -272,6 +369,31 @@ function SettingsGeneralPage() {
       );
     } finally {
       setIsTransferSaving(false);
+    }
+  };
+
+  const submitConsultantReassign = async () => {
+    if (!project || !selectedConsultantId) return;
+    setIsConsultantTransferSaving(true);
+    try {
+      const updated = await projectService.reassignConsultant(
+        project.id,
+        selectedConsultantId,
+      );
+      setProject(updated);
+      setSelectedConsultantId("");
+      setIsConsultantConfirmOpen(false);
+      setIsConsultantSelectOpen(false);
+      toast.success("Project consultant reassigned.");
+      await loadData();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to reassign consultant.",
+      );
+    } finally {
+      setIsConsultantTransferSaving(false);
     }
   };
 
@@ -535,7 +657,7 @@ function SettingsGeneralPage() {
                   </p>
                   <button
                     type="button"
-                    onClick={() => setIsTransferOpen(true)}
+                    onClick={() => setIsTransferSelectOpen(true)}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100"
                   >
                     <RefreshCcw className="w-3.5 h-3.5" />
@@ -571,42 +693,71 @@ function SettingsGeneralPage() {
             </section>
           </>
         )}
+
+        {canReassignConsultant && (
+          <section className="space-y-3">
+            <h2 className="text-[30px] leading-none font-semibold text-gray-900">
+              Reassign consultant
+            </h2>
+            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+              <header className="px-5 py-4 border-b border-gray-200 bg-[#f8f8f8] flex items-center justify-between">
+                <p className="text-sm text-gray-600">
+                  Reassign consultant to another verified project member.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsConsultantSelectOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100"
+                >
+                  <RefreshCcw className="w-3.5 h-3.5" />
+                  Reassign consultant
+                </button>
+              </header>
+            </div>
+          </section>
+        )}
       </div>
 
-      {isTransferOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white border border-gray-200 shadow-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+      {showTransferSelectModal && (
+        <div
+          className={`fixed inset-0 z-60 flex items-center justify-center px-4 transition-opacity duration-200 ${
+            transferSelectEntered
+              ? "bg-black/45 backdrop-blur-sm opacity-100"
+              : "bg-black/0 backdrop-blur-none opacity-0 pointer-events-none"
+          }`}
+        >
+          <div
+            className={`w-full max-w-xl rounded-2xl bg-white border border-[#ffd8b3] shadow-2xl overflow-hidden transition-all duration-200 ${
+              transferSelectEntered
+                ? "translate-y-0 scale-100 opacity-100"
+                : "translate-y-3 scale-[0.98] opacity-0"
+            }`}
+          >
+            <div className="px-6 py-4 border-b border-[#ffe8d1] bg-linear-to-r from-[#fff7ed] to-[#fffaf6] flex items-center justify-between">
               <h3 className="text-[16px] font-semibold text-gray-900">
-                Transfer project ownership
+                Select new project owner
               </h3>
               <button
                 type="button"
                 onClick={() => {
-                  setIsTransferOpen(false);
+                  setIsTransferSelectOpen(false);
                   setSelectedOwnerId("");
                 }}
-                className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500"
+                className="p-1.5 rounded-md hover:bg-[#fff0df] text-gray-500"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="px-6 py-4 space-y-3 max-h-[360px] overflow-y-auto">
+            <div className="px-6 py-4 space-y-3 max-h-[380px] overflow-y-auto bg-[#fffefd]">
               {transferrableMembers.length === 0 ? (
                 <p className="text-sm text-gray-500">
                   No eligible members available for transfer.
                 </p>
               ) : (
                 transferrableMembers.map((member) => {
-                  const memberName =
-                    member.user?.display_name ||
-                    [member.user?.first_name, member.user?.last_name]
-                      .filter(Boolean)
-                      .join(" ") ||
-                    member.user?.email ||
-                    "Unknown";
-
+                  const memberName = getMemberDisplayName(member);
+                  const memberInitials = getInitials(memberName);
                   const selected = selectedOwnerId === member.user_id;
 
                   return (
@@ -614,20 +765,35 @@ function SettingsGeneralPage() {
                       key={member.id}
                       type="button"
                       onClick={() => setSelectedOwnerId(member.user_id || "")}
-                      className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors ${
+                      className={`w-full text-left px-3.5 py-3 rounded-xl border transition-all ${
                         selected
-                          ? "border-[#ff9933] bg-[#ff9933]/10"
-                          : "border-gray-200 hover:bg-gray-50"
+                          ? "border-[#ff9933] bg-[#fff3e8] shadow-[0_4px_14px_rgba(255,153,51,0.12)]"
+                          : "border-[#ffe7cf] bg-white hover:bg-[#fffaf4] hover:border-[#ffd3a4]"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {memberName}
-                          </p>
-                          <p className="text-xs text-gray-500 truncate">
-                            {member.user?.email || "No email"}
-                          </p>
+                        <div className="min-w-0 flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-full overflow-hidden border border-[#ffd8b3] bg-[#ffecd6] shrink-0 flex items-center justify-center">
+                            {member.user?.avatar_url ? (
+                              <img
+                                src={member.user.avatar_url}
+                                alt={memberName}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <span className="text-[11px] font-bold text-[#b45f06]">
+                                {memberInitials || "?"}
+                              </span>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {memberName}
+                            </p>
+                            <div className="text-xs text-gray-500 truncate">
+                              {member.user?.email || "No email"}
+                            </div>
+                          </div>
                         </div>
                         {selected ? (
                           <Check className="w-4 h-4 text-[#b45f06]" />
@@ -639,13 +805,71 @@ function SettingsGeneralPage() {
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-2 bg-gray-50">
+            <div className="px-6 py-4 border-t border-[#ffe8d1] flex items-center justify-end gap-2 bg-[#fff9f2]">
               <button
                 type="button"
                 onClick={() => {
-                  setIsTransferOpen(false);
+                  setIsTransferSelectOpen(false);
                   setSelectedOwnerId("");
                 }}
+                className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-md"
+                disabled={isTransferSaving || isConsultantTransferSaving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsTransferSelectOpen(false);
+                  setIsTransferConfirmOpen(true);
+                }}
+                disabled={!selectedOwnerId || isTransferSaving || isConsultantTransferSaving}
+                className="px-3 py-2 text-sm font-semibold text-white bg-[#ff9933] hover:bg-[#ea8b25] rounded-md disabled:opacity-50"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isTransferConfirmOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white border border-gray-200 shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-[16px] font-semibold text-gray-900">
+                Confirm ownership transfer
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsTransferConfirmOpen(false)}
+                className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-6 py-4 space-y-2">
+              <p className="text-sm text-gray-700">
+                You are about to transfer project ownership to:
+              </p>
+              <p className="text-sm font-semibold text-gray-900">
+                {selectedOwnerMember?.user?.display_name ||
+                  [selectedOwnerMember?.user?.first_name, selectedOwnerMember?.user?.last_name]
+                    .filter(Boolean)
+                    .join(" ") ||
+                  selectedOwnerMember?.user?.email ||
+                  "Selected member"}
+              </p>
+              <p className="text-xs text-gray-500">
+                {selectedOwnerMember?.user?.email || "No email"}
+              </p>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-2 bg-gray-50">
+              <button
+                type="button"
+                onClick={() => setIsTransferConfirmOpen(false)}
                 className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-md"
                 disabled={isTransferSaving}
               >
@@ -657,7 +881,186 @@ function SettingsGeneralPage() {
                 disabled={!selectedOwnerId || isTransferSaving}
                 className="px-3 py-2 text-sm font-semibold text-white bg-[#ff9933] hover:bg-[#ea8b25] rounded-md disabled:opacity-50"
               >
-                {isTransferSaving ? "Transferring..." : "Transfer project"}
+                {isTransferSaving ? "Transferring..." : "Confirm transfer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showConsultantSelectModal && (
+        <div
+          className={`fixed inset-0 z-60 flex items-center justify-center px-4 transition-opacity duration-200 ${
+            consultantSelectEntered
+              ? "bg-black/45 backdrop-blur-sm opacity-100"
+              : "bg-black/0 backdrop-blur-none opacity-0 pointer-events-none"
+          }`}
+        >
+          <div
+            className={`w-full max-w-xl rounded-2xl bg-white border border-[#ffd8b3] shadow-2xl overflow-hidden transition-all duration-200 ${
+              consultantSelectEntered
+                ? "translate-y-0 scale-100 opacity-100"
+                : "translate-y-3 scale-[0.98] opacity-0"
+            }`}
+          >
+            <div className="px-6 py-4 border-b border-[#ffe8d1] bg-linear-to-r from-[#fff7ed] to-[#fffaf6] flex items-center justify-between">
+              <h3 className="text-[16px] font-semibold text-gray-900">
+                Select new consultant
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsConsultantSelectOpen(false);
+                  setSelectedConsultantId("");
+                }}
+                className="p-1.5 rounded-md hover:bg-[#fff0df] text-gray-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-6 py-4 space-y-3 max-h-[380px] overflow-y-auto bg-[#fffefd]">
+              {reassignableConsultantMembers.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  No verified project members available for consultant reassignment.
+                </p>
+              ) : (
+                reassignableConsultantMembers.map((member) => {
+                  const memberName = getMemberDisplayName(member);
+                  const memberInitials = getInitials(memberName);
+                  const selected = selectedConsultantId === member.user_id;
+
+                  return (
+                    <button
+                      key={member.id}
+                      type="button"
+                      onClick={() => setSelectedConsultantId(member.user_id || "")}
+                      className={`w-full text-left px-3.5 py-3 rounded-xl border transition-all ${
+                        selected
+                          ? "border-[#ff9933] bg-[#fff3e8] shadow-[0_4px_14px_rgba(255,153,51,0.12)]"
+                          : "border-[#ffe7cf] bg-white hover:bg-[#fffaf4] hover:border-[#ffd3a4]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-full overflow-hidden border border-[#ffd8b3] bg-[#ffecd6] shrink-0 flex items-center justify-center">
+                            {member.user?.avatar_url ? (
+                              <img
+                                src={member.user.avatar_url}
+                                alt={memberName}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <span className="text-[11px] font-bold text-[#b45f06]">
+                                {memberInitials || "?"}
+                              </span>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {memberName}
+                            </p>
+                            <div className="text-xs text-gray-500 truncate">
+                              {member.user?.email || "No email"}
+                            </div>
+                          </div>
+                        </div>
+                        {selected ? (
+                          <Check className="w-4 h-4 text-[#b45f06]" />
+                        ) : null}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-[#ffe8d1] flex items-center justify-end gap-2 bg-[#fff9f2]">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsConsultantSelectOpen(false);
+                  setSelectedConsultantId("");
+                }}
+                className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-md"
+                disabled={isConsultantTransferSaving || isTransferSaving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsConsultantSelectOpen(false);
+                  setIsConsultantConfirmOpen(true);
+                }}
+                disabled={
+                  !selectedConsultantId ||
+                  isConsultantTransferSaving ||
+                  isTransferSaving
+                }
+                className="px-3 py-2 text-sm font-semibold text-white bg-[#ff9933] hover:bg-[#ea8b25] rounded-md disabled:opacity-50"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isConsultantConfirmOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white border border-gray-200 shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-[16px] font-semibold text-gray-900">
+                Confirm consultant reassignment
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsConsultantConfirmOpen(false)}
+                className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-6 py-4 space-y-2">
+              <p className="text-sm text-gray-700">
+                You are about to reassign consultant to:
+              </p>
+              <p className="text-sm font-semibold text-gray-900">
+                {selectedConsultantMember?.user?.display_name ||
+                  [
+                    selectedConsultantMember?.user?.first_name,
+                    selectedConsultantMember?.user?.last_name,
+                  ]
+                    .filter(Boolean)
+                    .join(" ") ||
+                  selectedConsultantMember?.user?.email ||
+                  "Selected member"}
+              </p>
+              <p className="text-xs text-gray-500">
+                {selectedConsultantMember?.user?.email || "No email"}
+              </p>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-2 bg-gray-50">
+              <button
+                type="button"
+                onClick={() => setIsConsultantConfirmOpen(false)}
+                className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-md"
+                disabled={isConsultantTransferSaving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitConsultantReassign()}
+                disabled={!selectedConsultantId || isConsultantTransferSaving}
+                className="px-3 py-2 text-sm font-semibold text-white bg-[#ff9933] hover:bg-[#ea8b25] rounded-md disabled:opacity-50"
+              >
+                {isConsultantTransferSaving
+                  ? "Reassigning..."
+                  : "Confirm reassignment"}
               </button>
             </div>
           </div>

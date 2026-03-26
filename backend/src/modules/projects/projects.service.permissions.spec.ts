@@ -1,3 +1,4 @@
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 import type { ProjectsRepository } from './repositories/projects.repository.interface';
 import type { Project } from '../../common/entities';
@@ -61,6 +62,117 @@ describe('ProjectsService (permissions)', () => {
           view: true,
         }),
       }),
+    );
+  });
+
+  it('rejects consultant reassignment when caller is not project owner or consultant', async () => {
+    const repo = {
+      findById: jest.fn().mockResolvedValue(buildProject({ client_id: 'owner-1' })),
+    };
+    const service = buildService(repo);
+
+    await expect(
+      service.reassignProjectConsultant('project-1', 'not-owner', {
+        new_consultant_id: 'member-1',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('allows consultant to reassign consultant', async () => {
+    const repo = {
+      findById: jest.fn().mockResolvedValue(
+        buildProject({ client_id: 'owner-1', consultant_id: 'consultant-1' }),
+      ),
+      getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
+        id: 'member-row-2',
+        user_id: 'member-2',
+        role: 'member',
+      }),
+      isConsultantVerified: jest.fn().mockResolvedValue(true),
+      reassignConsultant: jest.fn().mockResolvedValue(
+        buildProject({ consultant_id: 'member-2' }),
+      ),
+    };
+    const service = buildService(repo);
+
+    await expect(
+      service.reassignProjectConsultant('project-1', 'consultant-1', {
+        new_consultant_id: 'member-2',
+      }),
+    ).resolves.toBeTruthy();
+  });
+
+  it('rejects consultant reassignment when target is not a project member', async () => {
+    const repo = {
+      findById: jest.fn().mockResolvedValue(buildProject()),
+      getMemberByProjectAndUserId: jest.fn().mockResolvedValue(null),
+    };
+    const service = buildService(repo);
+
+    await expect(
+      service.reassignProjectConsultant('project-1', 'client-1', {
+        new_consultant_id: 'outsider-1',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects consultant reassignment when target is not consultant-verified', async () => {
+    const repo = {
+      findById: jest.fn().mockResolvedValue(buildProject()),
+      getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
+        id: 'member-row-1',
+        user_id: 'member-2',
+        role: 'member',
+      }),
+      isConsultantVerified: jest.fn().mockResolvedValue(false),
+    };
+    const service = buildService(repo);
+
+    await expect(
+      service.reassignProjectConsultant('project-1', 'client-1', {
+        new_consultant_id: 'member-2',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects consultant reassignment when selected member is already consultant', async () => {
+    const repo = {
+      findById: jest.fn().mockResolvedValue(buildProject({ consultant_id: 'consultant-1' })),
+    };
+    const service = buildService(repo);
+
+    await expect(
+      service.reassignProjectConsultant('project-1', 'client-1', {
+        new_consultant_id: 'consultant-1',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('reassigns consultant when owner selects a verified project member', async () => {
+    const repo = {
+      findById: jest.fn().mockResolvedValue(buildProject({ consultant_id: 'consultant-1' })),
+      getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
+        id: 'member-row-2',
+        user_id: 'member-2',
+        role: 'member',
+      }),
+      isConsultantVerified: jest.fn().mockResolvedValue(true),
+      reassignConsultant: jest.fn().mockResolvedValue(
+        buildProject({ consultant_id: 'member-2' }),
+      ),
+    };
+    const service = buildService(repo);
+
+    const updated = await service.reassignProjectConsultant('project-1', 'client-1', {
+      new_consultant_id: 'member-2',
+    });
+
+    expect(updated.consultant_id).toBe('member-2');
+    expect(repo.reassignConsultant).toHaveBeenCalledWith(
+      'project-1',
+      'client-1',
+      'consultant-1',
+      'member-2',
     );
   });
 });

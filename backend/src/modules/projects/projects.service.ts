@@ -14,6 +14,7 @@ import {
   CreateProjectResourceLinkDto,
   InviteProjectByEmailDto,
   ProjectInviteQueryDto,
+  ReassignProjectConsultantDto,
   ReorderProjectResourceFoldersDto,
   ReorderProjectResourceLinksDto,
   RespondProjectInviteDto,
@@ -415,6 +416,72 @@ export class ProjectsService {
     consultantId: string,
   ): Promise<Project> {
     return this.projectsRepo.assignConsultant(projectId, consultantId);
+  }
+
+  async reassignProjectConsultant(
+    projectId: string,
+    callerId: string,
+    dto: ReassignProjectConsultantDto,
+  ): Promise<Project> {
+    const project = await this.getProjectOrThrow(projectId);
+    const isLead =
+      callerId === project.client_id || callerId === project.consultant_id;
+
+    if (!isLead) {
+      throw new ForbiddenException(
+        'Only the current project owner or consultant can reassign consultant.',
+      );
+    }
+
+    const newConsultantId = dto.new_consultant_id;
+    const previousConsultantId = project.consultant_id ?? null;
+
+    if (newConsultantId === previousConsultantId) {
+      throw new BadRequestException(
+        'Selected user is already the current consultant.',
+      );
+    }
+
+    const targetMembership =
+      await this.projectsRepo.getMemberByProjectAndUserId(
+        projectId,
+        newConsultantId,
+      );
+
+    if (!targetMembership) {
+      throw new BadRequestException(
+        'New consultant must already be a member of this project.',
+      );
+    }
+
+    const isVerified =
+      await this.projectsRepo.isConsultantVerified(newConsultantId);
+    if (!isVerified) {
+      throw new BadRequestException(
+        'Selected member is not a verified consultant.',
+      );
+    }
+
+    const updatedProject = await this.projectsRepo.reassignConsultant(
+      projectId,
+      project.client_id,
+      previousConsultantId,
+      newConsultantId,
+    );
+
+    await this.emitNotification({
+      user_id: newConsultantId,
+      project_id: projectId,
+      type_name: 'project_updated',
+      actor_id: callerId,
+      content: {
+        message: `You are now the consultant for ${project.title}.`,
+        previous_consultant_id: previousConsultantId,
+      },
+      link_url: `/project/${projectId}/team`,
+    });
+
+    return updatedProject;
   }
 
   async addMember(

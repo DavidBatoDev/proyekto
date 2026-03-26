@@ -65,6 +65,7 @@ export interface ProjectMember {
     email?: string;
     first_name?: string;
     last_name?: string;
+    is_consultant_verified?: boolean;
   };
 }
 
@@ -651,6 +652,38 @@ class ProjectService {
       const err = await response.json();
       throw new Error(
         err.message || err.error?.message || "Failed to transfer project owner",
+      );
+    }
+
+    const result = await response.json();
+    return result.data ?? result;
+  }
+
+  async reassignConsultant(
+    projectId: string,
+    newConsultantId: string,
+  ): Promise<Project> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) throw new Error("Authentication required");
+
+    const response = await fetch(
+      `${import.meta.env.VITE_API_URL}/api/projects/${projectId}/reassign-consultant`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ new_consultant_id: newConsultantId }),
+      },
+    );
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(
+        err.message || err.error?.message || "Failed to reassign consultant",
       );
     }
 

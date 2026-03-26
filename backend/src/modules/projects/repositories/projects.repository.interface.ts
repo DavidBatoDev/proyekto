@@ -53,8 +53,15 @@ export interface ProjectsRepository {
     previousOwnerId: string,
     newOwnerId: string,
   ): Promise<Project>;
+  reassignConsultant(
+    projectId: string,
+    ownerId: string,
+    previousConsultantId: string | null,
+    newConsultantId: string,
+  ): Promise<Project>;
   assignConsultant(projectId: string, consultantId: string): Promise<Project>;
   isOwner(projectId: string, userId: string): Promise<boolean>;
+  isConsultantVerified(userId: string): Promise<boolean>;
   addMember(projectId: string, dto: AddProjectMemberDto): Promise<unknown>;
   getProfileDisplayName(userId: string): Promise<string | null>;
   inviteByEmail(
