@@ -301,7 +301,25 @@ function ResourcesPage() {
     });
   };
 
-  const mergeLinkIntoState = (nextLink: ProjectResourceLink) => {
+  const isValidResourceLinkPayload = (
+    link: ProjectResourceLink | null | undefined,
+  ): link is ProjectResourceLink =>
+    Boolean(
+      link &&
+      typeof link.id === "string" &&
+      link.id.trim().length > 0 &&
+      typeof link.title === "string" &&
+      link.title.trim().length > 0 &&
+      typeof link.url === "string" &&
+      link.url.trim().length > 0,
+    );
+
+  const mergeLinkIntoState = (nextLink: ProjectResourceLink): boolean => {
+    if (!isValidResourceLinkPayload(nextLink)) {
+      toast.error("Invalid link payload received. Please refresh and try again.");
+      return false;
+    }
+
     setResources((prev) => {
       const cleanedFolders = (prev.folders ?? []).map((folder) => ({
         ...folder,
@@ -336,6 +354,7 @@ function ResourcesPage() {
         ),
       };
     });
+    return true;
   };
 
   const removeLinkFromState = (linkId: string) => {
@@ -373,8 +392,9 @@ function ResourcesPage() {
             description: description || undefined,
             folder_id,
           });
-          mergeLinkIntoState(updatedLink);
-          toast.success("Link updated");
+          if (mergeLinkIntoState(updatedLink)) {
+            toast.success("Link updated");
+          }
         } else {
           const createdLink = await projectService.createResourceLink(projectId, {
             title,
@@ -382,8 +402,9 @@ function ResourcesPage() {
             description: description || undefined,
             folder_id,
           });
-          mergeLinkIntoState(createdLink);
-          toast.success("Link created");
+          if (mergeLinkIntoState(createdLink)) {
+            toast.success("Link created");
+          }
         }
 
         setLinkForm(null);

@@ -145,6 +145,13 @@ export interface ProjectInvite {
 }
 
 class ProjectService {
+  private unwrapDataPayload<T>(raw: unknown): T {
+    if (raw && typeof raw === "object" && "data" in (raw as Record<string, unknown>)) {
+      return (raw as { data: T }).data;
+    }
+    return raw as T;
+  }
+
   private normalizeResourcesPayload(raw: unknown): ProjectResourcesPayload {
     const candidate = (
       raw &&
@@ -799,7 +806,8 @@ class ProjectService {
       );
     }
 
-    return (await response.json()) as ProjectResourceFolder;
+    const result = await response.json();
+    return this.unwrapDataPayload<ProjectResourceFolder>(result);
   }
 
   async updateResourceFolder(
@@ -831,7 +839,8 @@ class ProjectService {
       );
     }
 
-    return (await response.json()) as ProjectResourceFolder;
+    const result = await response.json();
+    return this.unwrapDataPayload<ProjectResourceFolder>(result);
   }
 
   async deleteResourceFolder(projectId: string, folderId: string): Promise<void> {
@@ -886,7 +895,8 @@ class ProjectService {
       );
     }
 
-    return (await response.json()) as ProjectResourceFolder[];
+    const result = await response.json();
+    return this.unwrapDataPayload<ProjectResourceFolder[]>(result);
   }
 
   async createResourceLink(
@@ -922,7 +932,8 @@ class ProjectService {
       );
     }
 
-    return (await response.json()) as ProjectResourceLink;
+    const result = await response.json();
+    return this.unwrapDataPayload<ProjectResourceLink>(result);
   }
 
   async updateResourceLink(
@@ -959,7 +970,8 @@ class ProjectService {
       );
     }
 
-    return (await response.json()) as ProjectResourceLink;
+    const result = await response.json();
+    return this.unwrapDataPayload<ProjectResourceLink>(result);
   }
 
   async deleteResourceLink(projectId: string, linkId: string): Promise<void> {
@@ -1017,7 +1029,8 @@ class ProjectService {
       );
     }
 
-    return (await response.json()) as ProjectResourceLink[];
+    const result = await response.json();
+    return this.unwrapDataPayload<ProjectResourceLink[]>(result);
   }
 }
 
