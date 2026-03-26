@@ -45,6 +45,7 @@ export interface RoadmapCanvasControllerProps {
 	onDeleteTask?: (taskId: string) => void | Promise<void>;
 	focusNodeId?: string | null;
 	focusNodeOffsetX?: number;
+	focusTaskId?: string | null;
 	onFocusComplete?: () => void;
 	navigateToEpicId?: string | null;
 	onNavigateToEpicHandled?: () => void;

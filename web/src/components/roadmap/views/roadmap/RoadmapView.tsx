@@ -40,6 +40,7 @@ interface RoadmapViewProps {
   onUpdateTask: (task: RoadmapTask) => void;
   focusNodeId?: string | null;
   focusNodeOffsetX?: number;
+  focusTaskId?: string | null;
   onFocusComplete?: () => void;
 }
 
@@ -205,12 +206,22 @@ export const RoadmapView = ({
   onNavigateToEpic,
   onUpdateTask,
   focusNodeId,
+  focusTaskId,
   onFocusComplete,
   focusNodeOffsetX = 0,
 }: RoadmapViewProps) => {
   const DEFAULT_ZOOM = 0.67;
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [isPanningCanvas, setIsPanningCanvas] = useState(false);
+  const [pulseNodeFocus, setPulseNodeFocus] = useState<{
+    nodeId: string;
+    token: number;
+  } | null>(null);
+  const [pulseTaskFocus, setPulseTaskFocus] = useState<{
+    featureId: string;
+    taskId: string;
+    token: number;
+  } | null>(null);
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance | null>(null);
 
@@ -258,6 +269,10 @@ export const RoadmapView = ({
         onAddEpicBelow,
         onAddFeature,
         onNavigateToTab: onNavigateToEpic,
+        pulseToken:
+          pulseNodeFocus?.nodeId === epic.id
+            ? pulseNodeFocus.token
+            : undefined,
       },
       position: { x: 0, y: 0 }, // Will be set by dagre
     }));
@@ -282,6 +297,18 @@ export const RoadmapView = ({
           onAddTask,
           onSelectTask,
           onUpdateTask,
+          pulseTaskId:
+            pulseTaskFocus?.featureId === feature.id
+              ? pulseTaskFocus.taskId
+              : null,
+          pulseTaskToken:
+            pulseTaskFocus?.featureId === feature.id
+              ? pulseTaskFocus.token
+              : undefined,
+          pulseToken:
+            pulseNodeFocus?.nodeId === feature.id
+              ? pulseNodeFocus.token
+              : undefined,
         },
         position: { x: 0, y: 0 }, // Will be set by dagre
       }),
@@ -346,6 +373,8 @@ export const RoadmapView = ({
     onNavigateToEpic,
     onAddTask,
     onSelectTask,
+    pulseNodeFocus,
+    pulseTaskFocus,
     getEdgeColor,
   ]);
 
@@ -370,8 +399,35 @@ export const RoadmapView = ({
       duration: 600,
     });
 
+    setPulseNodeFocus((previous) => ({
+      nodeId: focusNodeId,
+      token:
+        previous && previous.nodeId === focusNodeId ? previous.token + 1 : 1,
+    }));
+
+    if (focusTaskId) {
+      setPulseTaskFocus((previous) => ({
+        featureId: focusNodeId,
+        taskId: focusTaskId,
+        token:
+          previous &&
+          previous.featureId === focusNodeId &&
+          previous.taskId === focusTaskId
+            ? previous.token + 1
+            : 1,
+      }));
+    } else {
+      setPulseTaskFocus(null);
+    }
+
     onFocusComplete?.();
-  }, [focusNodeId, focusNodeOffsetX, onFocusComplete, reactFlowInstance]);
+  }, [
+    focusNodeId,
+    focusNodeOffsetX,
+    focusTaskId,
+    onFocusComplete,
+    reactFlowInstance,
+  ]);
 
   const extraRightPadding = useMemo(() => {
     const maxTaskCount = epics.reduce((maxCount, epic) => {

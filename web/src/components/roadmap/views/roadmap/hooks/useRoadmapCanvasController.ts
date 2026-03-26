@@ -25,6 +25,7 @@ export function useRoadmapCanvasController({
   onDeleteTask: onDeleteTaskProp,
   focusNodeId: focusNodeIdProp,
   focusNodeOffsetX: focusNodeOffsetXProp,
+  focusTaskId: focusTaskIdProp,
   onFocusComplete: onFocusCompleteProp,
   navigateToEpicId: navigateToEpicIdProp,
   onNavigateToEpicHandled: onNavigateToEpicHandledProp,
@@ -95,6 +96,7 @@ export function useRoadmapCanvasController({
   const storeFocusNodeOffsetX = useRoadmapStore(
     (state) => state.focusNodeOffsetX,
   );
+  const storeFocusTaskId = useRoadmapStore((state) => state.focusTaskId);
   const storeNavigateToEpicId = useRoadmapStore(
     (state) => state.navigateToEpicId,
   );
@@ -169,6 +171,7 @@ export function useRoadmapCanvasController({
   const onDeleteTask = onDeleteTaskProp ?? storeDeleteTask;
   const focusNodeId = focusNodeIdProp ?? storeFocusNodeId;
   const focusNodeOffsetX = focusNodeOffsetXProp ?? storeFocusNodeOffsetX;
+  const focusTaskId = focusTaskIdProp ?? storeFocusTaskId;
   const navigateToEpicId = navigateToEpicIdProp ?? storeNavigateToEpicId;
   const navigateToFeature = navigateToFeatureProp ?? storeNavigateToFeature;
   const openEpicEditorId = openEpicEditorIdProp ?? storeOpenEpicEditorId;
@@ -721,6 +724,7 @@ export function useRoadmapCanvasController({
     selectedTask,
     focusNodeId,
     focusNodeOffsetX,
+    focusTaskId,
     onAddMilestone,
     onUpdateMilestone: onUpdateMilestoneWithToast,
     onDeleteMilestone: onDeleteMilestoneWithToast,

@@ -26,7 +26,10 @@ interface LeftSidePanelProps {
   onOpenEpicEditor?: (epicId: string) => void;
   onOpenFeatureEditor?: (epicId: string, featureId: string) => void;
   onOpenTaskDetail?: (taskId: string) => void;
-  onNavigateToNode?: (nodeId: string, options?: { offsetX?: number }) => void;
+  onNavigateToNode?: (
+    nodeId: string,
+    options?: { offsetX?: number; taskId?: string },
+  ) => void;
   onNavigateToEpicTab?: (epicId: string) => void;
   highlightedEpicId?: string | null;
 }
@@ -77,7 +80,10 @@ interface ExplorerPanelProps {
   onOpenEpicEditor?: (epicId: string) => void;
   onOpenFeatureEditor?: (epicId: string, featureId: string) => void;
   onOpenTaskDetail?: (taskId: string) => void;
-  onNavigateToNode?: (nodeId: string, options?: { offsetX?: number }) => void;
+  onNavigateToNode?: (
+    nodeId: string,
+    options?: { offsetX?: number; taskId?: string },
+  ) => void;
   onNavigateToEpicTab?: (epicId: string) => void;
   highlightedEpicId?: string | null;
 }
@@ -276,6 +282,7 @@ function ExplorerPanel({
       if (result.featureId) {
         onNavigateToNode?.(result.featureId, {
           offsetX: TASK_NAVIGATE_OFFSET_X,
+          taskId: result.id,
         });
       }
     }
@@ -659,6 +666,7 @@ function ExplorerPanel({
                                       onSelectTask?.(task.id);
                                       onNavigateToNode?.(feature.id, {
                                         offsetX: TASK_NAVIGATE_OFFSET_X,
+                                        taskId: task.id,
                                       });
                                     }}
                                     className="w-full flex items-center gap-2 px-2 py-1 text-xs hover:bg-white rounded transition-colors"
@@ -671,6 +679,7 @@ function ExplorerPanel({
                                         event.stopPropagation();
                                         onNavigateToNode?.(feature.id, {
                                           offsetX: TASK_NAVIGATE_OFFSET_X,
+                                          taskId: task.id,
                                         });
                                       }}
                                       onDoubleClick={(event) => {

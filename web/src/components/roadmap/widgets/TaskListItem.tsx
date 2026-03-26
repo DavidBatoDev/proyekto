@@ -10,6 +10,7 @@ interface TaskListItemProps {
   onToggleComplete?: (taskId: string) => void;
   onUpdateStatus?: (taskId: string, status: TaskStatus) => void;
   density?: "normal" | "compact";
+  pulseToken?: number;
 }
 
 const STATUS_OPTIONS: TaskStatus[] = [
@@ -84,6 +85,7 @@ export const TaskListItem = memo(
     onToggleComplete,
     onUpdateStatus,
     density = "normal",
+    pulseToken,
   }: TaskListItemProps) => {
     const isCompleted = task.status === "done";
     const categoryLabel = getCategoryLabel(task);
@@ -102,6 +104,7 @@ export const TaskListItem = memo(
       top: 0,
       left: 0,
     });
+    const [isPulsing, setIsPulsing] = useState(false);
 
     const checkboxStyle = getCheckboxStyle(task.status);
 
@@ -159,11 +162,23 @@ export const TaskListItem = memo(
       };
     }, [isStatusOpen, isCheckboxMenuOpen]);
 
+    useEffect(() => {
+      if (!pulseToken) return;
+      setIsPulsing(true);
+      const timeoutId = window.setTimeout(() => {
+        setIsPulsing(false);
+      }, 900);
+      return () => {
+        window.clearTimeout(timeoutId);
+      };
+    }, [pulseToken]);
+
     return (
       <div
+        data-task-id={task.id}
         className={`flex items-center transition-colors border border-transparent hover:border-gray-200 group ${
           isCompact ? "gap-2 px-0 py-0" : "gap-3 px-4 py-3"
-        } hover:bg-gray-50`}
+        } hover:bg-gray-50 ${isPulsing ? "roadmap-task-row-pulse" : ""}`}
         onClick={() => onClick?.(task)}
       >
         {/* Checkbox */}

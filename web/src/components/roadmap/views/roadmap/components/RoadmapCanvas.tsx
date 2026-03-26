@@ -33,6 +33,7 @@ const RoadmapCanvas = ({
   hideMiniMap = false,
   focusNodeId: focusNodeIdProp,
   focusNodeOffsetX: focusNodeOffsetXProp,
+  focusTaskId: focusTaskIdProp,
   onFocusComplete: onFocusCompleteProp,
   navigateToEpicId: navigateToEpicIdProp,
   onNavigateToEpicHandled: onNavigateToEpicHandledProp,
@@ -65,6 +66,7 @@ const RoadmapCanvas = ({
     onDeleteTask: onDeleteTaskProp,
     focusNodeId: focusNodeIdProp,
     focusNodeOffsetX: focusNodeOffsetXProp,
+    focusTaskId: focusTaskIdProp,
     onFocusComplete: onFocusCompleteProp,
     navigateToEpicId: navigateToEpicIdProp,
     onNavigateToEpicHandled: onNavigateToEpicHandledProp,
@@ -105,6 +107,7 @@ const RoadmapCanvas = ({
     selectedTask,
     focusNodeId,
     focusNodeOffsetX,
+    focusTaskId,
     onAddMilestone,
     onUpdateMilestone,
     onDeleteMilestone,
@@ -230,6 +233,7 @@ const RoadmapCanvas = ({
             onUpdateTask={onUpdateTask}
             focusNodeId={focusNodeId}
             focusNodeOffsetX={focusNodeOffsetX}
+            focusTaskId={focusTaskId}
             onFocusComplete={onFocusComplete}
           />
         ) : null}

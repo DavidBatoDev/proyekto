@@ -12,6 +12,7 @@ export interface EpicWidgetData extends Record<string, unknown> {
   onAddEpicBelow?: (epicId: string) => void;
   onAddFeature?: (epicId: string) => void;
   onNavigateToTab?: (tabId: string) => void;
+  pulseToken?: number;
 }
 
 type EpicWidgetNode = Node<EpicWidgetData>;
@@ -24,9 +25,11 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
     onAddEpicBelow,
     onAddFeature,
     onNavigateToTab,
+    pulseToken,
   } = data;
   const descriptionRef = useRef<HTMLDivElement>(null);
   const [hasOverflow, setHasOverflow] = useState(false);
+  const [isPulsing, setIsPulsing] = useState(false);
   const computedProgress = calculateEpicProgressFromFeatures(epic.features);
   const taskCount = (epic.features ?? []).reduce(
     (count, feature) => count + (feature.tasks?.length ?? 0),
@@ -40,9 +43,22 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
     setHasOverflow(el.scrollHeight > el.clientHeight + 1);
   }, [epic.description]);
 
+  useEffect(() => {
+    if (!pulseToken) return;
+    setIsPulsing(true);
+    const timeoutId = window.setTimeout(() => {
+      setIsPulsing(false);
+    }, 900);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [pulseToken]);
+
   return (
     <motion.div
-      className="group relative bg-white border-2 border-gray-300 rounded-4xl shadow-md hover:shadow-lg transition-shadow w-[500px] max-h-[420px] flex flex-col cursor-pointer"
+      className={`group relative bg-white border-2 border-gray-300 rounded-4xl shadow-md hover:shadow-lg transition-shadow w-[500px] max-h-[420px] flex flex-col cursor-pointer ${
+        isPulsing ? "roadmap-widget-light-pulse" : ""
+      }`}
       onClick={() => onEdit?.(epic)}
       initial={{ opacity: 0, y: 12, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}

@@ -27,6 +27,9 @@ export interface FeatureWidgetData extends Record<string, unknown> {
   onAddTask?: (featureId: string) => void;
   onSelectTask?: (task: RoadmapTask) => void;
   onUpdateTask?: (task: RoadmapTask) => void;
+  pulseTaskId?: string | null;
+  pulseTaskToken?: number;
+  pulseToken?: number;
 }
 
 type FeatureWidgetNode = Node<FeatureWidgetData>;
@@ -41,6 +44,9 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     onAddTask,
     onSelectTask,
     onUpdateTask,
+    pulseTaskId,
+    pulseTaskToken,
+    pulseToken,
   } = data;
   const safelyUpdateTask = (task: RoadmapTask) => {
     if (!onUpdateTask) return;
@@ -48,6 +54,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   };
   const descriptionRef = useRef<HTMLDivElement>(null);
   const [hasOverflow, setHasOverflow] = useState(false);
+  const [isPulsing, setIsPulsing] = useState(false);
 
   const getStatusColor = (status: RoadmapFeature["status"]) => {
     switch (status) {
@@ -100,6 +107,17 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     setHasOverflow(el.scrollHeight > el.clientHeight + 1);
   }, [feature.description]);
 
+  useEffect(() => {
+    if (!pulseToken) return;
+    setIsPulsing(true);
+    const timeoutId = window.setTimeout(() => {
+      setIsPulsing(false);
+    }, 900);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [pulseToken]);
+
   const renderAssigneeAvatar = (
     assignee: NonNullable<RoadmapTask["assignee"]>,
   ) => {
@@ -131,7 +149,9 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   return (
     <>
       <motion.div
-        className="relative group bg-white border-2 border-amber-300 rounded-4xl shadow-md hover:shadow-lg transition-all w-[500px] max-h-80 flex flex-col cursor-pointer hover:border-amber-400"
+        className={`relative group bg-white border-2 border-amber-300 rounded-4xl shadow-md hover:shadow-lg transition-all w-[500px] max-h-80 flex flex-col cursor-pointer hover:border-amber-400 ${
+          isPulsing ? "roadmap-widget-light-pulse" : ""
+        }`}
         onClick={() => onClick?.(feature)}
         initial={{ opacity: 0, y: 12, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -333,6 +353,9 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
                   <TaskListItem
                     task={task}
                     density="compact"
+                    pulseToken={
+                      pulseTaskId === task.id ? pulseTaskToken : undefined
+                    }
                     onClick={onSelectTask}
                     onToggleComplete={(taskId) => {
                       const taskToUpdate = feature.tasks?.find(

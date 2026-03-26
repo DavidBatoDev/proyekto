@@ -39,6 +39,7 @@ interface RoadmapState {
 	// UI State - Canvas Navigation
 	focusNodeId: string | null;
 	focusNodeOffsetX: number;
+	focusTaskId: string | null;
 	navigateToEpicId: string | null;
 	navigateToFeature: { epicId: string; featureId: string } | null;
 	openEpicEditorId: string | null;
@@ -129,7 +130,10 @@ interface RoadmapActions {
 	closeAddFeatureModal: () => void;
 	openAddTaskPanel: (featureId: string) => void;
 	closeAddTaskPanel: () => void;
-	navigateToNode: (nodeId: string, options?: { offsetX?: number }) => void;
+	navigateToNode: (
+		nodeId: string,
+		options?: { offsetX?: number; taskId?: string },
+	) => void;
 	clearNodeFocus: () => void;
 	navigateToEpicTab: (epicId: string) => void;
 	clearNavigateToEpicTab: () => void;
@@ -235,6 +239,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 	taskStatusRollbackById: {},
 	focusNodeId: null,
 	focusNodeOffsetX: 0,
+	focusTaskId: null,
 	navigateToEpicId: null,
 	navigateToFeature: null,
 	openEpicEditorId: null,
@@ -312,6 +317,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 			taskStatusRollbackById: {},
 			focusNodeId: null,
 			focusNodeOffsetX: 0,
+			focusTaskId: null,
 			navigateToEpicId: null,
 			navigateToFeature: null,
 			openEpicEditorId: null,
@@ -1163,10 +1169,14 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 		set({ addTaskFeatureId: null });
 	},
 
-	navigateToNode: (nodeId: string, options?: { offsetX?: number }) => {
+	navigateToNode: (
+		nodeId: string,
+		options?: { offsetX?: number; taskId?: string },
+	) => {
 		set({
 			focusNodeId: nodeId,
 			focusNodeOffsetX: options?.offsetX ?? 0,
+			focusTaskId: options?.taskId ?? null,
 		});
 	},
 
@@ -1174,6 +1184,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 		set({
 			focusNodeId: null,
 			focusNodeOffsetX: 0,
+			focusTaskId: null,
 		});
 	},
 

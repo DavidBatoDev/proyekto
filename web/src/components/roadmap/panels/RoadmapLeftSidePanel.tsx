@@ -43,7 +43,10 @@ interface RoadmapLeftSidePanelProps {
 	onOpenEpicEditor?: (epicId: string) => void;
 	onOpenFeatureEditor?: (epicId: string, featureId: string) => void;
 	onOpenTaskDetail?: (taskId: string) => void;
-	onNavigateToNode?: (nodeId: string, options?: { offsetX?: number }) => void;
+	onNavigateToNode?: (
+		nodeId: string,
+		options?: { offsetX?: number; taskId?: string },
+	) => void;
 	onNavigateToEpicTab?: (epicId: string) => void;
 	highlightedEpicId?: string | null;
 }
@@ -121,7 +124,10 @@ type SortableFeatureRowProps = {
 	taskCount: number;
 	onToggleFeature: (featureId: string) => void;
 	onSelectFeature?: (epicId: string, featureId: string) => void;
-	onNavigateToNode?: (nodeId: string, options?: { offsetX?: number }) => void;
+	onNavigateToNode?: (
+		nodeId: string,
+		options?: { offsetX?: number; taskId?: string },
+	) => void;
 	onOpenFeatureEditor?: (epicId: string, featureId: string) => void;
 	onOpenAddTaskPanel: (featureId: string) => void;
 	runAfterNavigationDelay: (callback: () => void) => void;
@@ -267,7 +273,10 @@ interface ExplorerPanelProps {
 	onOpenEpicEditor?: (epicId: string) => void;
 	onOpenFeatureEditor?: (epicId: string, featureId: string) => void;
 	onOpenTaskDetail?: (taskId: string) => void;
-	onNavigateToNode?: (nodeId: string, options?: { offsetX?: number }) => void;
+	onNavigateToNode?: (
+		nodeId: string,
+		options?: { offsetX?: number; taskId?: string },
+	) => void;
 	onNavigateToEpicTab?: (epicId: string) => void;
 	highlightedEpicId?: string | null;
 }
@@ -385,17 +394,18 @@ function ExplorerPanel({
 			setExpandedEpics((prev) => new Set(prev).add(result.id));
 			onSelectEpic?.(result.id);
 			onNavigateToNode?.(result.id);
-		} else if (result.type === "feature" && result.epicId) {
-			setExpandedEpics((prev) => new Set(prev).add(result.epicId));
-			if (result.id) {
-				setExpandedFeatures((prev) => new Set(prev).add(result.id));
-			}
-			onSelectFeature?.(result.epicId, result.id);
+		} else if (result.type === "feature") {
+			const epicId = result.epicId;
+			if (!epicId) return;
+			setExpandedEpics((prev) => new Set(prev).add(epicId));
+			setExpandedFeatures((prev) => new Set(prev).add(result.id));
+			onSelectFeature?.(epicId, result.id);
 			onNavigateToNode?.(result.id);
 		} else if (result.type === "task") {
 			const featureId = result.featureId;
-			if (result.epicId) {
-				setExpandedEpics((prev) => new Set(prev).add(result.epicId));
+			const epicId = result.epicId;
+			if (epicId) {
+				setExpandedEpics((prev) => new Set(prev).add(epicId));
 			}
 			if (featureId) {
 				setExpandedFeatures((prev) => new Set(prev).add(featureId));
@@ -404,6 +414,7 @@ function ExplorerPanel({
 			if (featureId) {
 				onNavigateToNode?.(featureId, {
 					offsetX: TASK_NAVIGATE_OFFSET_X,
+					taskId: result.id,
 				});
 			}
 		}
@@ -908,6 +919,7 @@ function ExplorerPanel({
 																												{
 																													offsetX:
 																														TASK_NAVIGATE_OFFSET_X,
+																													taskId: task.id,
 																												},
 																											);
 																										}}
@@ -924,6 +936,7 @@ function ExplorerPanel({
 																													{
 																														offsetX:
 																															TASK_NAVIGATE_OFFSET_X,
+																														taskId: task.id,
 																													},
 																												);
 																											}}
