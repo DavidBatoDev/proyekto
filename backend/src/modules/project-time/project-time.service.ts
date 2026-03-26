@@ -80,7 +80,10 @@ export class ProjectTimeService {
     return existing;
   }
 
-  private normalizePaging(query: TimeLogsQueryDto): { page: number; limit: number } {
+  private normalizePaging(query: TimeLogsQueryDto): {
+    page: number;
+    limit: number;
+  } {
     return {
       page: query.page && query.page > 0 ? query.page : 1,
       limit: query.limit && query.limit > 0 ? query.limit : 20,
@@ -165,7 +168,11 @@ export class ProjectTimeService {
     userId: string,
     projectId: string,
   ): Promise<ProjectMemberTimeRateRecord> {
-    await this.projectsService.assertProjectPermission(projectId, userId, 'time.view');
+    await this.projectsService.assertProjectPermission(
+      projectId,
+      userId,
+      'time.view',
+    );
     const rate = await this.repo.findProjectMemberRateByUser(projectId, userId);
     if (!rate) {
       throw new ForbiddenException(ProjectTimeService.RATE_REQUIRED_MESSAGE);
@@ -197,7 +204,10 @@ export class ProjectTimeService {
       'time.manage_rates',
     );
 
-    const targetMember = await this.getProjectMemberTargetOrThrow(projectId, dto);
+    const targetMember = await this.getProjectMemberTargetOrThrow(
+      projectId,
+      dto,
+    );
     if (!targetMember.user_id) {
       throw new BadRequestException(
         'Cannot configure rate for a member without a linked user.',
@@ -209,7 +219,9 @@ export class ProjectTimeService {
       targetMember.user_id,
     );
     if (existing) {
-      throw new BadRequestException('Time rate already exists for this member.');
+      throw new BadRequestException(
+        'Time rate already exists for this member.',
+      );
     }
 
     return this.repo.createProjectMemberRate({
@@ -236,7 +248,10 @@ export class ProjectTimeService {
       'time.manage_rates',
     );
 
-    const existing = await this.repo.findProjectMemberRateById(projectId, rateId);
+    const existing = await this.repo.findProjectMemberRateById(
+      projectId,
+      rateId,
+    );
     if (!existing) {
       throw new NotFoundException('Project member time rate not found.');
     }
@@ -283,7 +298,10 @@ export class ProjectTimeService {
       'time.manage_rates',
     );
 
-    const existing = await this.repo.findProjectMemberRateById(projectId, rateId);
+    const existing = await this.repo.findProjectMemberRateById(
+      projectId,
+      rateId,
+    );
     if (!existing) {
       throw new NotFoundException('Project member time rate not found.');
     }
@@ -291,7 +309,10 @@ export class ProjectTimeService {
     await this.repo.deleteProjectMemberRateById(existing.id);
   }
 
-  async start(userId: string, dto: StartTimeLogDto): Promise<TaskTimeLogRecord> {
+  async start(
+    userId: string,
+    dto: StartTimeLogDto,
+  ): Promise<TaskTimeLogRecord> {
     await this.projectsService.assertProjectPermission(
       dto.project_id,
       userId,
@@ -484,7 +505,11 @@ export class ProjectTimeService {
     projectId: string,
     query: TimeLogsQueryDto,
   ): Promise<TimeLogsListResult> {
-    await this.projectsService.assertProjectPermission(projectId, userId, 'time.view');
+    await this.projectsService.assertProjectPermission(
+      projectId,
+      userId,
+      'time.view',
+    );
     await this.assertTimeRateEnabled(projectId, userId);
     const { page, limit } = this.normalizePaging(query);
     return this.repo.listProjectLogs(projectId, {
@@ -548,7 +573,11 @@ export class ProjectTimeService {
     taskId: string,
     query: TimeLogsQueryDto,
   ): Promise<TimeLogsListResult> {
-    await this.projectsService.assertProjectPermission(projectId, userId, 'time.view');
+    await this.projectsService.assertProjectPermission(
+      projectId,
+      userId,
+      'time.view',
+    );
     await this.assertTimeRateEnabled(projectId, userId);
     await this.assertTaskBelongsToProject(taskId, projectId);
     const { page, limit } = this.normalizePaging(query);

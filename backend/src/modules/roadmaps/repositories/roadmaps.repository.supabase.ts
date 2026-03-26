@@ -9,6 +9,37 @@ import { CreateRoadmapDto, UpdateRoadmapDto } from '../dto/roadmaps.dto';
 export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
   constructor(@Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient) {}
 
+  private async getAccessibleProjectIds(userId: string): Promise<string[]> {
+    const [
+      { data: principalProjects, error: principalError },
+      { data: memberProjects, error: memberError },
+    ] = await Promise.all([
+      this.db
+        .from('projects')
+        .select('id')
+        .or(`client_id.eq.${userId},consultant_id.eq.${userId}`),
+      this.db
+        .from('project_members')
+        .select('project_id')
+        .eq('user_id', userId),
+    ]);
+
+    if (principalError) throw new Error(principalError.message);
+    if (memberError) throw new Error(memberError.message);
+
+    const ids = new Set<string>();
+
+    for (const project of principalProjects ?? []) {
+      if (project?.id) ids.add(String(project.id));
+    }
+
+    for (const member of memberProjects ?? []) {
+      if (member?.project_id) ids.add(String(member.project_id));
+    }
+
+    return [...ids];
+  }
+
   private isMissingRoadmapCategoryColumn(error: unknown): boolean {
     if (!error || typeof error !== 'object') return false;
     const maybeError = error as { message?: string; details?: string };
@@ -57,13 +88,38 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
   }
 
   async findAll(userId: string): Promise<any[]> {
-    const { data, error } = await this.db
+    const accessibleProjectIds = await this.getAccessibleProjectIds(userId);
+
+    const { data: ownedRoadmaps, error: ownedError } = await this.db
       .from('roadmaps')
       .select('*, project:projects(id, title)')
       .eq('owner_id', userId)
       .order('created_at', { ascending: false });
-    if (error) throw new Error(error.message);
-    return data ?? [];
+    if (ownedError) throw new Error(ownedError.message);
+
+    let sharedRoadmaps: any[] = [];
+    if (accessibleProjectIds.length > 0) {
+      const { data, error } = await this.db
+        .from('roadmaps')
+        .select('*, project:projects(id, title)')
+        .in('project_id', accessibleProjectIds)
+        .neq('owner_id', userId)
+        .order('created_at', { ascending: false });
+      if (error) throw new Error(error.message);
+      sharedRoadmaps = data ?? [];
+    }
+
+    const deduped = new Map<string, any>();
+    for (const roadmap of [...(ownedRoadmaps ?? []), ...sharedRoadmaps]) {
+      if (!roadmap?.id) continue;
+      deduped.set(String(roadmap.id), roadmap);
+    }
+
+    return [...deduped.values()].sort(
+      (a, b) =>
+        new Date(b.created_at || 0).getTime() -
+        new Date(a.created_at || 0).getTime(),
+    );
   }
 
   async findByProjectId(
@@ -145,15 +201,40 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
   }
 
   async findPreviews(userId: string): Promise<any[]> {
-    // Step 1: fetch roadmaps
-    const { data: roadmaps, error: roadmapsError } = await this.db
+    const accessibleProjectIds = await this.getAccessibleProjectIds(userId);
+
+    // Step 1: fetch owned roadmaps
+    const { data: ownedRoadmaps, error: ownedRoadmapsError } = await this.db
       .from('roadmaps')
       .select(
         'id, name, description, status, project_id, preview_url, created_at, updated_at, project:projects(id, title)',
       )
       .eq('owner_id', userId)
       .order('updated_at', { ascending: false });
-    if (roadmapsError) throw new Error(roadmapsError.message);
+    if (ownedRoadmapsError) throw new Error(ownedRoadmapsError.message);
+
+    // Step 1b: fetch project roadmaps user can access but does not own
+    let sharedRoadmaps: any[] = [];
+    if (accessibleProjectIds.length > 0) {
+      const { data, error } = await this.db
+        .from('roadmaps')
+        .select(
+          'id, name, description, status, project_id, preview_url, created_at, updated_at, project:projects(id, title)',
+        )
+        .in('project_id', accessibleProjectIds)
+        .neq('owner_id', userId)
+        .order('updated_at', { ascending: false });
+      if (error) throw new Error(error.message);
+      sharedRoadmaps = data ?? [];
+    }
+
+    const dedupedRoadmaps = new Map<string, any>();
+    for (const roadmap of [...(ownedRoadmaps ?? []), ...sharedRoadmaps]) {
+      if (!roadmap?.id) continue;
+      dedupedRoadmaps.set(String(roadmap.id), roadmap);
+    }
+    const roadmaps = [...dedupedRoadmaps.values()];
+
     if (!roadmaps || roadmaps.length === 0) return [];
 
     const roadmapIds = roadmaps.map((r) => r.id);

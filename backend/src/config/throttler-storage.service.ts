@@ -6,7 +6,10 @@ import { Redis } from '@upstash/redis';
 @Injectable()
 export class ThrottlerStorageRedisService implements ThrottlerStorage {
   private readonly redis: Redis | null;
-  private readonly localHits = new Map<string, { totalHits: number; expiresAt: number }>();
+  private readonly localHits = new Map<
+    string,
+    { totalHits: number; expiresAt: number }
+  >();
   private readonly localBlocks = new Map<string, number>();
 
   constructor(redisUrl?: string, redisToken?: string) {
@@ -114,7 +117,10 @@ export class ThrottlerStorageRedisService implements ThrottlerStorage {
       this.localBlocks.set(blockKey, now + blockDuration);
     }
 
-    const timeToExpire = Math.max(0, Math.ceil((updated.expiresAt - now) / 1000));
+    const timeToExpire = Math.max(
+      0,
+      Math.ceil((updated.expiresAt - now) / 1000),
+    );
     const blockExpiresAt = this.localBlocks.get(blockKey);
 
     return {

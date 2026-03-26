@@ -84,6 +84,10 @@ const EpicOverview = ({ preview }: { preview: RoadmapPreview }) => {
 	);
 };
 
+function getProjectSettingsPath(projectId: string): string {
+	return `/project/${projectId}/settings/general`;
+}
+
 export function RoadmapsGrid() {
 	const { profile } = useAuthStore();
 	const queryClient = useQueryClient();
@@ -138,7 +142,12 @@ export function RoadmapsGrid() {
 	const handleDeleteRoadmap = async (
 		roadmapId: string,
 		roadmapName: string,
+		projectId?: string | null,
 	) => {
+		if (projectId) {
+			return;
+		}
+
 		const confirmed = window.confirm(
 			`Delete roadmap "${roadmapName}"?\n\nThis action cannot be undone.`,
 		);
@@ -276,19 +285,34 @@ export function RoadmapsGrid() {
 
 								{openMenuRoadmapId === template.id ? (
 									<div className="absolute right-0 mt-2 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-										<button
-											type="button"
-											onClick={() =>
-												handleDeleteRoadmap(template.id, template.title)
-											}
-											disabled={deletingRoadmapId === template.id}
-											className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-										>
-											<Trash2 className="h-4 w-4" />
-											{deletingRoadmapId === template.id
-												? "Deleting..."
-												: "Delete roadmap"}
-										</button>
+										{template.preview.project_id ? (
+											<Link
+												to={getProjectSettingsPath(template.preview.project_id)}
+												className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50"
+												onClick={() => setOpenMenuRoadmapId(null)}
+											>
+												<Briefcase className="h-4 w-4" />
+												Project settings
+											</Link>
+										) : (
+											<button
+												type="button"
+												onClick={() =>
+													handleDeleteRoadmap(
+														template.id,
+														template.title,
+														template.preview.project_id,
+													)
+												}
+												disabled={deletingRoadmapId === template.id}
+												className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+											>
+												<Trash2 className="h-4 w-4" />
+												{deletingRoadmapId === template.id
+													? "Deleting..."
+													: "Delete roadmap"}
+											</button>
+										)}
 									</div>
 								) : null}
 							</div>
