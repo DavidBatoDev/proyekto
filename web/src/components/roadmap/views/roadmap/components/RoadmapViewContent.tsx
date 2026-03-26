@@ -9,7 +9,6 @@ import {
   ShareRoadmapModal,
   RoadmapMetadataModal,
   type RoadmapMetadataFormData,
-  TryAiFloatingAssistant,
 } from "@/components/roadmap";
 import { RoadmapTopBar } from "../../RoadmapTopBar";
 import { RoadmapPageSkeleton } from "../../RoadmapPageSkeleton";
@@ -96,7 +95,6 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
   const [roadmapError, setRoadmapError] = useState<string | null>(null);
   const [isJsonPanelOpen, setIsJsonPanelOpen] = useState(false);
   const [isSavingRoadmapJson, setIsSavingRoadmapJson] = useState(false);
-  const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
   const roadmapLiveQuery = useRoadmapFullLiveQuery(roadmapId);
 
   const setSidebarExpanded = useProjectSettingsStore(
@@ -308,7 +306,7 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
 
         {/* Right: Roadmap Canvas */}
         <div className="flex-1 relative">
-          <RoadmapCanvas roadmap={roadmap} hideMiniMap={isAiAssistantOpen} />
+          <RoadmapCanvas roadmap={roadmap} />
         </div>
       </div>
 
@@ -351,13 +349,6 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
           </div>
         </div>
       )}
-
-      <TryAiFloatingAssistant
-        roadmapId={roadmap.id}
-        roadmapSnapshot={roadmap}
-        epicsSnapshot={roadmap.epics || []}
-        onOpenChange={setIsAiAssistantOpen}
-      />
     </div>
   );
 }
