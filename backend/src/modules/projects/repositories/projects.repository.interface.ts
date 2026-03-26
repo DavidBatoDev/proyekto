@@ -84,6 +84,10 @@ export interface ProjectsRepository {
     dto: UpdateProjectMemberDto,
   ): Promise<unknown>;
   removeMember(projectId: string, memberId: string): Promise<void>;
+  unassignTasksForMemberInProject(
+    projectId: string,
+    userId: string,
+  ): Promise<number>;
   getMemberById(
     projectId: string,
     memberId: string,

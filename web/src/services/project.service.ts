@@ -533,6 +533,35 @@ class ProjectService {
     }
   }
 
+  async leaveProject(
+    projectId: string,
+  ): Promise<{ unassigned_task_count?: number } | void> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) throw new Error("Authentication required");
+
+    const response = await fetch(
+      `${import.meta.env.VITE_API_URL}/api/projects/${projectId}/members/leave`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(
+        err.message || err.error?.message || "Failed to leave project",
+      );
+    }
+
+    const result = await response.json();
+    return result.data ?? result;
+  }
+
   async getMemberPermissions(
     projectId: string,
     memberId: string,

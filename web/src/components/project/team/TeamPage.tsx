@@ -6,9 +6,6 @@ import {
   Edit2,
   Trash2,
   MessageSquare,
-  RefreshCw,
-  X,
-  Clock,
 } from "lucide-react";
 import type { Project, ProjectMember } from "@/services/project.service";
 import { useUser } from "@/stores/authStore";
@@ -105,16 +102,6 @@ function getRowPermissions(
   }
 }
 
-// ─── Pending Invite type ──────────────────────────────────────────────────────
-
-interface PendingInvite {
-  id: string;
-  name: string;
-  email: string;
-  avatarUrl?: string;
-  position: string;
-  sentAt: string;
-}
 
 interface TeamPageProps {
   projectId: string;
@@ -353,129 +340,10 @@ function MemberSection({
   );
 }
 
-// ─── Pending Invite Row ───────────────────────────────────────────────────────
-
-function PendingInviteRow({
-  invite,
-  isLast,
-  onResend,
-  onCancel,
-  resending,
-  cancelling,
-}: {
-  invite: PendingInvite;
-  isLast: boolean;
-  onResend: () => void;
-  onCancel: () => void;
-  resending: boolean;
-  cancelling: boolean;
-}) {
-  const initials = invite.name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-
-  return (
-    <div
-      className={`flex items-center justify-between py-4 px-6 ${
-        !isLast ? "border-b border-gray-100" : ""
-      } hover:bg-gray-50/60 transition-colors`}
-    >
-      {/* Left: Avatar + Name/Email */}
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="w-9 h-9 rounded-full shrink-0 overflow-hidden flex items-center justify-center bg-orange-100 font-semibold text-orange-500 text-sm">
-          {invite.avatarUrl ? (
-            <img
-              src={invite.avatarUrl}
-              alt={invite.name}
-              className="w-full h-full object-cover object-top"
-            />
-          ) : (
-            <span>{initials || "?"}</span>
-          )}
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-gray-800 truncate">
-            {invite.name}
-          </p>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <p className="text-[11px] text-gray-400 truncate">{invite.email}</p>
-            <span className="text-gray-300">·</span>
-            <span className="text-[11px] text-gray-400 shrink-0">
-              {invite.position}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Right: time + Cancel (gray) → Resend (orange primary) */}
-      <div className="flex items-center gap-3 shrink-0 ml-4">
-        <div className="hidden sm:flex items-center gap-1 text-[11px] text-gray-400">
-          <Clock className="w-3 h-3" />
-          <span>{invite.sentAt}</span>
-        </div>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={resending || cancelling}
-          className="inline-flex items-center gap-1.5 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-md transition-colors disabled:opacity-50"
-        >
-          {cancelling ? (
-            <span className="w-3.5 h-3.5 border-2 border-gray-400/40 border-t-gray-600 rounded-full animate-spin" />
-          ) : (
-            <X className="w-3.5 h-3.5" />
-          )}
-          Cancel Invite
-        </button>
-        <button
-          type="button"
-          onClick={onResend}
-          disabled={resending || cancelling}
-          className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-400 hover:bg-orange-500 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
-        >
-          {resending ? (
-            <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-          ) : (
-            <RefreshCw className="w-3.5 h-3.5" />
-          )}
-          Resend Invite
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Mock pending invites — swap for real API when ready ─────────────────────
-
-const MOCK_PENDING_INVITES: PendingInvite[] = [
-  {
-    id: "inv-1",
-    name: "Alex Morgan",
-    email: "alex.morgan@example.com",
-    position: "Frontend Developer",
-    sentAt: "2 days ago",
-  },
-  {
-    id: "inv-2",
-    name: "Jamie Rivera",
-    email: "jamie.rivera@example.com",
-    position: "UX Designer",
-    sentAt: "5 days ago",
-  },
-];
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function TeamPage({ projectId }: TeamPageProps) {
   const user = useUser();
-  const [activeTab, setActiveTab] = useState<"team" | "invites" | "marketplace">("team");
   const [search, setSearch] = useState("");
-
-  const [inviteAction, setInviteAction] = useState<Record<string, string>>({});
-  const [pendingInvites, setPendingInvites] =
-    useState<PendingInvite[]>(MOCK_PENDING_INVITES);
 
   const projectQuery = useProjectDetailQuery(projectId);
   const membersQuery = useProjectMembersQuery(projectId);
@@ -484,7 +352,8 @@ export function TeamPage({ projectId }: TeamPageProps) {
   const project = (projectQuery.data as Project | undefined) ?? null;
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [permissionMember, setPermissionMember] = useState<ProjectMember | null>(null);
+  const [permissionMember, setPermissionMember] =
+    useState<ProjectMember | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -507,8 +376,9 @@ export function TeamPage({ projectId }: TeamPageProps) {
 
   const handleRemove = useCallback(
     async (member: ProjectMember) => {
-      if (!window.confirm(`Remove "${memberDisplayName(member)}" from the team?`))
+      if (!window.confirm(`Remove "${memberDisplayName(member)}" from the team?`)) {
         return;
+      }
       setRemovingId(member.id);
       try {
         await removeMemberMutation.mutateAsync(member.id);
@@ -520,29 +390,10 @@ export function TeamPage({ projectId }: TeamPageProps) {
     [removeMemberMutation],
   );
 
-  const handleResendInvite = async (id: string) => {
-    setInviteAction((prev) => ({ ...prev, [id]: "resending" }));
-    await new Promise((r) => setTimeout(r, 800)); // TODO: real API
-    setInviteAction((prev) => {
-      const s = { ...prev };
-      delete s[id];
-      return s;
-    });
-  };
-
-  const handleCancelInvite = async (id: string) => {
-    setInviteAction((prev) => ({ ...prev, [id]: "cancelling" }));
-    await new Promise((r) => setTimeout(r, 600)); // TODO: real API
-    setPendingInvites((prev) => prev.filter((i) => i.id !== id));
-    setInviteAction((prev) => {
-      const s = { ...prev };
-      delete s[id];
-      return s;
-    });
-  };
-
   const isLoading =
-    projectQuery.isPending || membersQuery.isPending || myPermissionsQuery.isPending;
+    projectQuery.isPending ||
+    membersQuery.isPending ||
+    myPermissionsQuery.isPending;
   const error =
     projectQuery.error instanceof Error
       ? projectQuery.error.message
@@ -550,7 +401,7 @@ export function TeamPage({ projectId }: TeamPageProps) {
         ? membersQuery.error.message
         : myPermissionsQuery.error instanceof Error
           ? myPermissionsQuery.error.message
-        : null;
+          : null;
 
   if (isLoading) return <TeamSkeleton />;
 
@@ -566,14 +417,12 @@ export function TeamPage({ projectId }: TeamPageProps) {
     );
   }
 
-  // ── Derived permissions ───────────────────────────────────────────────────
   const viewerRole = deriveViewerRole(user?.id, project);
   const canManageMembers = Boolean(myPermissionsQuery.data?.members.manage);
   const canViewMembers = Boolean(
     myPermissionsQuery.data?.members.view || myPermissionsQuery.data?.members.manage,
   );
   const canAddMembers = canManageMembers;
-  const canSeePowerTabs = canManageMembers;
 
   if (!canViewMembers) {
     return (
@@ -592,7 +441,6 @@ export function TeamPage({ projectId }: TeamPageProps) {
     );
   }
 
-  // ── Build stakeholders list ───────────────────────────────────────────────
   const client = project?.client;
   const consultant = project?.consultant;
 
@@ -623,7 +471,7 @@ export function TeamPage({ projectId }: TeamPageProps) {
       avatarUrl: client.avatar_url,
       email: client.email,
       roleLabel: "Client & Consultant",
-      targetType: "consultant", // treat combined principal as consultant for perms
+      targetType: "consultant",
     });
     void isSelf;
   } else {
@@ -649,7 +497,6 @@ export function TeamPage({ projectId }: TeamPageProps) {
     }
   }
 
-  // ── Search filter ─────────────────────────────────────────────────────────
   const q = search.toLowerCase();
 
   const filteredStakeholders = stakeholders.filter(
@@ -669,57 +516,18 @@ export function TeamPage({ projectId }: TeamPageProps) {
   return (
     <div className="h-full overflow-y-auto bg-gray-50/40">
       <div className="px-6 py-6 w-full max-w-6xl">
-
-        {/* ── 1. Sub-Navigation Tabs ──────────────────────────────────────── */}
-        <div className="inline-flex items-center gap-1 bg-gray-100 rounded-full p-1 mb-6">
+        <div className="inline-flex items-center gap-1 bg-orange-50 border border-orange-100 rounded-full p-1 mb-6">
           <button
             type="button"
-            onClick={() => setActiveTab("team")}
-            className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all ${
-              activeTab === "team"
-                ? "bg-blue-600 text-white shadow-sm"
-                : "text-gray-600 hover:text-gray-900 hover:bg-gray-200/60"
-            }`}
+            className="px-4 py-1.5 rounded-full text-sm font-semibold transition-all bg-primary text-white shadow-sm"
           >
             Team
           </button>
-
-          {/* Pending Invites — consultant only */}
-          {canSeePowerTabs && (
-            <button
-              type="button"
-              onClick={() => setActiveTab("invites")}
-              className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all ${
-                activeTab === "invites"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-200/60"
-              }`}
-            >
-              Pending Invites ({pendingInvites.length})
-            </button>
-          )}
-
-          {/* Marketplace Roles — consultant only */}
-          {canSeePowerTabs && (
-            <button
-              type="button"
-              onClick={() => setActiveTab("marketplace")}
-              className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all ${
-                activeTab === "marketplace"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-200/60"
-              }`}
-            >
-              Marketplace Roles (1)
-            </button>
-          )}
         </div>
 
-        {/* ── 2. Action Bar ────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between mt-2 mb-8 gap-4">
-          {/* Left: Search + Filter (filter only on team tab) */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 w-56 focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-300 transition-all">
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 w-56 focus-within:ring-2 focus-within:ring-orange-100 focus-within:border-orange-300 transition-all">
               <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
               <input
                 type="text"
@@ -730,18 +538,15 @@ export function TeamPage({ projectId }: TeamPageProps) {
               />
             </div>
 
-            {activeTab === "team" && (
-              <button
-                type="button"
-                className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 hover:border-gray-300 transition-all"
-              >
-                All Roles
-                <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
-              </button>
-            )}
+            <button
+              type="button"
+              className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 hover:border-gray-300 transition-all"
+            >
+              All Roles
+              <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+            </button>
           </div>
 
-          {/* Right: Add Member — consultant only */}
           {canAddMembers && (
             <button
               type="button"
@@ -754,139 +559,55 @@ export function TeamPage({ projectId }: TeamPageProps) {
           )}
         </div>
 
-        {/* ── 3. Team Tab ──────────────────────────────────────────────────── */}
-        {activeTab === "team" && (
-          <div className="space-y-8">
-
-            {/* PROJECT PRINCIPALS */}
-            {filteredStakeholders.length > 0 && (
-              <div>
-                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-3">
-                  Project Principals ({filteredStakeholders.length})
-                </p>
-                <ColumnHeaders />
-                <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
-                  {filteredStakeholders.map((s, idx) => {
-                    const isSelf = !!user?.id && s.id === user.id;
-                    const perms = getRowPermissions(
-                      viewerRole,
-                      s.targetType,
-                      isSelf,
-                      canManageMembers,
-                    );
-                    return (
-                      <TeamRow
-                        key={s.id}
-                        name={s.name}
-                        avatarUrl={s.avatarUrl}
-                        email={s.email}
-                        roleLabel={s.roleLabel}
-                        isLast={idx === filteredStakeholders.length - 1}
-                        isSelf={isSelf}
-                        permissions={perms}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* TEAM */}
-            <MemberSection
-              title="Team"
-              members={filteredMembers}
-              roleLabel="Member"
-              viewerRole={viewerRole}
-              canManageMembers={canManageMembers}
-              currentUserId={user?.id}
-              onEdit={setPermissionMember}
-              onRemove={handleRemove}
-              removingId={removingId}
-            />
-
-            {/* OPEN ROLES — visible to members managers */}
-            {canManageMembers && (
-              <div>
-                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-3">
-                  Open Roles (1)
-                </p>
-                <div className="bg-white border border-gray-100 rounded-lg p-4 flex items-center justify-between shadow-sm">
-                  <span className="text-sm font-medium text-gray-700">
-                    QA Tester
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("marketplace")}
-                    className="bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm rounded-full px-4 py-1 transition-colors"
-                  >
-                    Review 4 Applicants →
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── 4. Pending Invites Tab ──────────────────────────────────────── */}
-        {activeTab === "invites" && canSeePowerTabs && (() => {
-          const filtered = pendingInvites.filter(
-            (i) =>
-              !q ||
-              i.name.toLowerCase().includes(q) ||
-              i.email.toLowerCase().includes(q) ||
-              i.position.toLowerCase().includes(q),
-          );
-
-          return (
+        <div className="space-y-8">
+          {filteredStakeholders.length > 0 && (
             <div>
-              <p className="text-sm font-bold text-gray-800 mb-4">
-                Pendings ({filtered.length})
+              <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-3">
+                Project Principals ({filteredStakeholders.length})
               </p>
-
-              {filtered.length === 0 ? (
-                <div className="bg-white border border-gray-100 rounded-lg py-14 text-center">
-                  <div className="w-10 h-10 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center mx-auto mb-3">
-                    <Clock className="w-4 h-4 text-gray-300" />
-                  </div>
-                  <p className="text-sm text-gray-400">
-                    {search
-                      ? "No invites match your search."
-                      : "No pending invites."}
-                  </p>
-                </div>
-              ) : (
-                <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
-                  {filtered.map((invite, idx) => (
-                    <PendingInviteRow
-                      key={invite.id}
-                      invite={invite}
-                      isLast={idx === filtered.length - 1}
-                      onResend={() => void handleResendInvite(invite.id)}
-                      onCancel={() => void handleCancelInvite(invite.id)}
-                      resending={inviteAction[invite.id] === "resending"}
-                      cancelling={inviteAction[invite.id] === "cancelling"}
+              <ColumnHeaders />
+              <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
+                {filteredStakeholders.map((s, idx) => {
+                  const isSelf = !!user?.id && s.id === user.id;
+                  const perms = getRowPermissions(
+                    viewerRole,
+                    s.targetType,
+                    isSelf,
+                    canManageMembers,
+                  );
+                  return (
+                    <TeamRow
+                      key={s.id}
+                      name={s.name}
+                      avatarUrl={s.avatarUrl}
+                      email={s.email}
+                      roleLabel={s.roleLabel}
+                      isLast={idx === filteredStakeholders.length - 1}
+                      isSelf={isSelf}
+                      permissions={perms}
                     />
-                  ))}
-                </div>
-              )}
+                  );
+                })}
+              </div>
             </div>
-          );
-        })()}
+          )}
 
-        {/* ── 5. Marketplace Roles Tab ────────────────────────────────────── */}
-        {activeTab === "marketplace" && canSeePowerTabs && (
-          <div className="py-16 text-center text-gray-400 text-sm">
-            Marketplace role listings will appear here.
-          </div>
-        )}
+          <MemberSection
+            title="Team"
+            members={filteredMembers}
+            roleLabel="Member"
+            viewerRole={viewerRole}
+            canManageMembers={canManageMembers}
+            currentUserId={user?.id}
+            onEdit={setPermissionMember}
+            onRemove={handleRemove}
+            removingId={removingId}
+          />
+        </div>
       </div>
 
-      {/* Modals / Drawers */}
       {showModal && (
-        <AddMemberModal
-          projectId={projectId}
-          onClose={() => setShowModal(false)}
-        />
+        <AddMemberModal projectId={projectId} onClose={() => setShowModal(false)} />
       )}
 
       <PermissionsDrawer
@@ -899,3 +620,4 @@ export function TeamPage({ projectId }: TeamPageProps) {
     </div>
   );
 }
+

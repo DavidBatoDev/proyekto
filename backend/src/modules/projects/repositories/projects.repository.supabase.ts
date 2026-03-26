@@ -886,6 +886,82 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     if (error) throw new BadRequestException(error.message);
   }
 
+  async unassignTasksForMemberInProject(
+    projectId: string,
+    userId: string,
+  ): Promise<number> {
+    const { data: roadmapRows, error: roadmapError } = await this.supabase
+      .from('roadmaps')
+      .select('id')
+      .eq('project_id', projectId);
+
+    if (roadmapError) {
+      throw new BadRequestException(
+        roadmapError.message || 'Failed to resolve project roadmaps.',
+      );
+    }
+
+    const roadmapIds = (roadmapRows || [])
+      .map((row) => String((row as { id?: string }).id || ''))
+      .filter((id) => id.length > 0);
+
+    if (roadmapIds.length === 0) {
+      return 0;
+    }
+
+    const { data: featureRows, error: featureError } = await this.supabase
+      .from('roadmap_features')
+      .select('id')
+      .in('roadmap_id', roadmapIds);
+
+    if (featureError) {
+      throw new BadRequestException(
+        featureError.message || 'Failed to resolve roadmap features.',
+      );
+    }
+
+    const featureIds = (featureRows || [])
+      .map((row) => String((row as { id?: string }).id || ''))
+      .filter((id) => id.length > 0);
+
+    if (featureIds.length === 0) {
+      return 0;
+    }
+
+    const { data: tasksToUnassign, error: taskSelectError } = await this.supabase
+      .from('roadmap_tasks')
+      .select('id')
+      .in('feature_id', featureIds)
+      .eq('assignee_id', userId);
+
+    if (taskSelectError) {
+      throw new BadRequestException(
+        taskSelectError.message || 'Failed to resolve assigned tasks.',
+      );
+    }
+
+    const targetTaskIds = (tasksToUnassign || [])
+      .map((row) => String((row as { id?: string }).id || ''))
+      .filter((id) => id.length > 0);
+
+    if (targetTaskIds.length === 0) {
+      return 0;
+    }
+
+    const { error: unassignError } = await this.supabase
+      .from('roadmap_tasks')
+      .update({ assignee_id: null })
+      .in('id', targetTaskIds);
+
+    if (unassignError) {
+      throw new BadRequestException(
+        unassignError.message || 'Failed to unassign roadmap tasks.',
+      );
+    }
+
+    return targetTaskIds.length;
+  }
+
   async getMemberById(
     projectId: string,
     memberId: string,

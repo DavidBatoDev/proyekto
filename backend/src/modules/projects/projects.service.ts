@@ -700,6 +700,38 @@ export class ProjectsService {
     return this.projectsRepo.removeMember(projectId, memberId);
   }
 
+  async leaveProject(
+    projectId: string,
+    callerId: string,
+  ): Promise<{ unassigned_task_count: number }> {
+    const project = await this.getProjectOrThrow(projectId);
+
+    if (callerId === project.client_id || callerId === project.consultant_id) {
+      throw new ForbiddenException(
+        'Project leads cannot leave the project. Transfer ownership or reassign consultant instead.',
+      );
+    }
+
+    const member = await this.projectsRepo.getMemberByProjectAndUserId(
+      projectId,
+      callerId,
+    );
+
+    if (!member) {
+      throw new ForbiddenException('You are not a member of this project.');
+    }
+
+    const unassignedTaskCount =
+      await this.projectsRepo.unassignTasksForMemberInProject(
+        projectId,
+        callerId,
+      );
+
+    await this.projectsRepo.removeMember(projectId, member.id);
+
+    return { unassigned_task_count: unassignedTaskCount };
+  }
+
   async getMemberPermissions(
     projectId: string,
     memberId: string,

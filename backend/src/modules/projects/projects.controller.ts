@@ -280,6 +280,14 @@ export class ProjectsController {
     );
   }
 
+  @Post(':id/members/leave')
+  leaveProject(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.projectsService.leaveProject(id, user.id);
+  }
+
   @Delete(':id/members/:memberId')
   removeMember(
     @Param('id') id: string,

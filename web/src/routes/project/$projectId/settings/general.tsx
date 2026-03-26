@@ -6,6 +6,7 @@ import {
   Check,
   Edit2,
   Loader2,
+  LogOut,
   RefreshCcw,
   Save,
   Settings,
@@ -167,6 +168,8 @@ function SettingsGeneralPage() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteText, setDeleteText] = useState("");
   const [isDeleteSaving, setIsDeleteSaving] = useState(false);
+  const [isLeaveOpen, setIsLeaveOpen] = useState(false);
+  const [isLeaveSaving, setIsLeaveSaving] = useState(false);
   const [showTransferSelectModal, setShowTransferSelectModal] = useState(false);
   const [showConsultantSelectModal, setShowConsultantSelectModal] =
     useState(false);
@@ -176,6 +179,18 @@ function SettingsGeneralPage() {
   const isOwner = Boolean(user?.id && project?.client_id === user.id);
   const isConsultant = Boolean(user?.id && project?.consultant_id === user.id);
   const canReassignConsultant = isOwner || isConsultant;
+  const currentMember = useMemo(
+    () => members.find((member) => member.user_id === user?.id) ?? null,
+    [members, user?.id],
+  );
+  const canLeaveProject = Boolean(
+    user?.id &&
+      project?.id &&
+      currentMember &&
+      currentMember.role === "member" &&
+      !isOwner &&
+      !isConsultant,
+  );
 
   const loadData = async () => {
     setIsLoading(true);
@@ -410,6 +425,34 @@ function SettingsGeneralPage() {
       );
     } finally {
       setIsDeleteSaving(false);
+    }
+  };
+
+  const submitLeaveProject = async () => {
+    if (!project || !canLeaveProject) return;
+    setIsLeaveSaving(true);
+    try {
+      const result = await projectService.leaveProject(project.id);
+      const unassignedCount =
+        typeof result === "object" &&
+        result !== null &&
+        "unassigned_task_count" in result
+          ? Number(result.unassigned_task_count ?? 0)
+          : 0;
+
+      toast.success(
+        unassignedCount > 0
+          ? `You left the project. ${unassignedCount} assigned task${unassignedCount === 1 ? "" : "s"} were unassigned.`
+          : "You left the project.",
+      );
+      navigate({ to: "/dashboard" });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to leave project.",
+      );
+    } finally {
+      setIsLeaveSaving(false);
+      setIsLeaveOpen(false);
     }
   };
 
@@ -711,6 +754,30 @@ function SettingsGeneralPage() {
                 >
                   <RefreshCcw className="w-3.5 h-3.5" />
                   Reassign consultant
+                </button>
+              </header>
+            </div>
+          </section>
+        )}
+
+        {canLeaveProject && (
+          <section className="space-y-3">
+            <h2 className="text-[30px] leading-none font-semibold text-gray-900">
+              Leave project
+            </h2>
+            <div className="rounded-xl border border-amber-200 bg-white overflow-hidden">
+              <header className="px-5 py-4 border-b border-amber-100 bg-amber-50/50 flex items-center justify-between">
+                <p className="text-sm text-amber-800">
+                  Leave this project. Tasks currently assigned to you will be
+                  unassigned.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsLeaveOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-amber-300 text-amber-800 rounded-md hover:bg-amber-100"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  Leave project
                 </button>
               </header>
             </div>
@@ -1109,6 +1176,46 @@ function SettingsGeneralPage() {
                 className="px-3 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-md disabled:opacity-50"
               >
                 {isDeleteSaving ? "Deleting..." : "Delete project"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isLeaveOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white border border-amber-200 shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-amber-100 bg-amber-50/70">
+              <h3 className="text-[16px] font-semibold text-amber-900">
+                Leave project
+              </h3>
+              <p className="mt-1 text-sm text-amber-800">
+                This will remove your project membership and unassign tasks
+                currently assigned to you across this project&apos;s roadmaps.
+              </p>
+            </div>
+
+            <div className="px-6 py-4 border-t border-amber-100 bg-amber-50/30 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsLeaveOpen(false)}
+                className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-md"
+                disabled={isLeaveSaving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitLeaveProject()}
+                disabled={isLeaveSaving}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-md disabled:opacity-50"
+              >
+                {isLeaveSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <LogOut className="w-4 h-4" />
+                )}
+                {isLeaveSaving ? "Leaving..." : "Leave project"}
               </button>
             </div>
           </div>
