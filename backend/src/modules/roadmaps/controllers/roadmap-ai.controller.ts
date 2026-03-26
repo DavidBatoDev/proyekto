@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -29,6 +30,15 @@ export class RoadmapAiController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.roadmapAiService.preview(roadmapId, dto, user.id);
+  }
+
+  @Get('previews/:previewId')
+  getPreview(
+    @Param('id') roadmapId: string,
+    @Param('previewId') previewId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roadmapAiService.getPreview(roadmapId, previewId, user.id);
   }
 
   @Post('commit')

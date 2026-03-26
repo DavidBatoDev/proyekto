@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 
 from app.core.config import get_settings
 from app.core.contracts.operations import RoadmapOperation
-from app.core.contracts.sessions import AgentSession, IntentType, ResponseMode
+from app.core.contracts.sessions import AgentSession, IntentType, ProviderUsed, ResponseMode
 from app.core.llm.client import LLMPlanner
 from app.core.session_store import SessionStore
 
@@ -23,6 +23,9 @@ class MessagePlanningOutcome:
     preview_recommended: bool
     staged_operations_version: int
     staged_operations_count: int
+    provider_used: ProviderUsed
+    fallback_used: bool
+    provider_error_code: str | None
 
 
 class AgentService:
@@ -85,6 +88,9 @@ class AgentService:
             preview_recommended=preview_recommended,
             staged_operations_version=session.staged_operations_version,
             staged_operations_count=len(session.operations),
+            provider_used=planning.provider_used,
+            fallback_used=planning.fallback_used,
+            provider_error_code=planning.provider_error_code,
         )
 
     def _build_session_context(self, session: AgentSession) -> dict:

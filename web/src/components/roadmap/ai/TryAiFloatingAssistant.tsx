@@ -9,6 +9,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import roadmapAgentService, {
+  type AgentRoadmapPreviewArtifact,
   type AgentPreviewPayload,
   RoadmapAgentServiceError,
 } from "@/services/roadmap-agent.service";
@@ -37,6 +38,7 @@ const buildAssistantMessage = (
   options?: {
     intentType?: "smalltalk" | "question" | "roadmap_edit" | "unclear";
     responseMode?: "chat" | "edit_plan";
+    artifacts?: AgentRoadmapPreviewArtifact[];
     preview?: AgentPreviewPayload;
   },
 ): RoadmapAiChatMessage => ({
@@ -47,6 +49,7 @@ const buildAssistantMessage = (
   parseMode,
   intentType: options?.intentType,
   responseMode: options?.responseMode,
+  artifacts: options?.artifacts,
   preview: options?.preview,
 });
 
@@ -142,6 +145,7 @@ export function TryAiFloatingAssistant({
       try {
         messageResponse = await roadmapAgentService.sendMessage(activeSessionId, {
           message: trimmedMessage,
+          auto_preview: true,
         });
       } catch (error) {
         if (
@@ -153,6 +157,7 @@ export function TryAiFloatingAssistant({
             activeSessionId,
             {
               message: trimmedMessage,
+              auto_preview: true,
             },
           );
         } else {
@@ -170,6 +175,7 @@ export function TryAiFloatingAssistant({
         buildAssistantMessage(messageResponse.assistant_message, messageResponse.parse_mode, {
           intentType: messageResponse.intent_type,
           responseMode: messageResponse.response_mode,
+          artifacts: messageResponse.artifacts,
         }),
       );
     } catch (error) {
@@ -236,6 +242,41 @@ export function TryAiFloatingAssistant({
     }
   };
 
+  const handleOpenArtifact = async (artifact: AgentRoadmapPreviewArtifact) => {
+    if (!sessionId) {
+      setErrorMessage("Session missing. Send a message again before opening preview.");
+      return;
+    }
+    setErrorMessage(null);
+    setIsPreviewing(true);
+    try {
+      const artifactPreview = await roadmapAgentService.getArtifactPreview(
+        sessionId,
+        artifact.artifact_id,
+      );
+      setLatestPreview(artifactPreview.preview);
+      appendMessage(
+        buildAssistantMessage(
+          `Opened ${artifact.title}. Review semantic diff and validation details.`,
+          "artifact_preview",
+          {
+            intentType: "roadmap_edit",
+            responseMode: "edit_plan",
+            preview: artifactPreview.preview,
+          },
+        ),
+      );
+    } catch (error) {
+      const readableError =
+        error instanceof Error
+          ? error.message
+          : "Failed to open preview artifact.";
+      setErrorMessage(readableError);
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
+
   const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
@@ -261,7 +302,7 @@ export function TryAiFloatingAssistant({
                 Try AI Assistant
               </p>
               <p className="text-[11px] text-gray-500 mt-0.5">
-                Chat-first mode. Generate preview manually when ready.
+                Chat-first mode. Edit requests return preview artifacts.
               </p>
             </div>
             <button
@@ -296,6 +337,7 @@ export function TryAiFloatingAssistant({
                 const warningIssues = issues.filter(
                   (issue) => issue.severity === "warning",
                 ).length;
+                const artifacts = message.artifacts ?? [];
 
                 return (
                   <article
@@ -324,6 +366,34 @@ export function TryAiFloatingAssistant({
                     <p className="text-xs text-gray-800 whitespace-pre-wrap leading-relaxed">
                       {message.content}
                     </p>
+
+                    {artifacts.length > 0 && (
+                      <div className="mt-2.5 space-y-2">
+                        {artifacts.map((artifact) => (
+                          <div
+                            key={artifact.artifact_id}
+                            className="rounded-lg border border-orange-200 bg-orange-50/60 p-2.5"
+                          >
+                            <p className="text-[11px] font-semibold text-orange-700">
+                              {artifact.title}
+                            </p>
+                            <p className="text-[10px] text-orange-700/90 mt-0.5">
+                              {artifact.summary}
+                            </p>
+                            <div className="mt-1.5 text-[10px] text-orange-800/90">
+                              Issues: {artifact.validation_issue_count}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void handleOpenArtifact(artifact)}
+                              className="mt-2 h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100"
+                            >
+                              Open Preview
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     {preview && (
                       <div className="mt-2.5 rounded-lg border border-gray-200 bg-gray-50 p-2.5">

@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AgentPreviewPayload } from "@/services/roadmap-agent.service";
+import type {
+  AgentPreviewPayload,
+  AgentRoadmapPreviewArtifact,
+} from "@/services/roadmap-agent.service";
 
 export type RoadmapAiChatRole = "user" | "assistant";
 
@@ -11,6 +14,7 @@ export interface RoadmapAiChatMessage {
   parseMode?: string;
   intentType?: "smalltalk" | "question" | "roadmap_edit" | "unclear";
   responseMode?: "chat" | "edit_plan";
+  artifacts?: AgentRoadmapPreviewArtifact[];
   preview?: AgentPreviewPayload;
 }
 

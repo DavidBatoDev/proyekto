@@ -1,34 +1,25 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any, TypedDict
 
-from pydantic import BaseModel
-
 from app.core.config import get_settings
 from app.core.contracts.operations import RoadmapOperation
-from app.core.contracts.sessions import IntentType, ResponseMode
+from app.core.contracts.sessions import IntentType, ProviderUsed, ResponseMode
+from app.core.llm.providers import ProviderAdapterError, ProviderOrchestrator
 from app.core.prompts import PromptRepository
-from app.core.tools.registry import get_operation_tools
 
 try:
-    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-    from langchain_openai import ChatOpenAI
+    from langchain_core.messages import AIMessage, HumanMessage
     from langgraph.graph import END, StateGraph
 except Exception:  # pragma: no cover
     AIMessage = None  # type: ignore[assignment]
     HumanMessage = None  # type: ignore[assignment]
-    SystemMessage = None  # type: ignore[assignment]
-    ChatOpenAI = None  # type: ignore[assignment]
     StateGraph = None  # type: ignore[assignment]
     END = None  # type: ignore[assignment]
-
-
-class IntentClassification(BaseModel):
-    intent_type: IntentType
-    rationale: str
 
 
 class PlannerState(TypedDict, total=False):
@@ -42,6 +33,9 @@ class PlannerState(TypedDict, total=False):
     planned_operations: list[RoadmapOperation]
     parse_mode: str
     preview_recommended: bool
+    provider_used: ProviderUsed
+    fallback_used: bool
+    provider_error_code: str | None
 
 
 @dataclass
@@ -52,13 +46,25 @@ class PlanningResult:
     intent_type: IntentType
     response_mode: ResponseMode
     preview_recommended: bool
+    provider_used: ProviderUsed
+    fallback_used: bool
+    provider_error_code: str | None
 
 
 class LLMPlanner:
     def __init__(self) -> None:
+        self._logger = logging.getLogger(__name__)
         self._settings = get_settings()
         self._prompt_repository = PromptRepository()
-        self._langchain_graph = self._build_graph() if self._can_use_langchain() else None
+        self._provider_orchestrator = ProviderOrchestrator(self._settings)
+        self._langgraph_disabled_reason = self._get_langgraph_disabled_reason()
+        self._langgraph = self._build_graph() if self._langgraph_disabled_reason is None else None
+
+        if self._langgraph_disabled_reason is not None:
+            self._logger.warning(
+                'LangGraph disabled; using rule-based planner. Reason: %s',
+                self._langgraph_disabled_reason,
+            )
 
     def plan(
         self,
@@ -66,42 +72,28 @@ class LLMPlanner:
         existing_operations: list[RoadmapOperation],
         session_context: dict[str, Any] | None = None,
     ) -> PlanningResult:
-        if self._langchain_graph is not None:
-            langchain_result = self._plan_with_langchain(
+        if self._langgraph is not None:
+            graph_result = self._plan_with_langgraph(
                 user_message=user_message,
                 existing_operations=existing_operations,
                 session_context=session_context or {},
             )
-            if langchain_result is not None:
-                return langchain_result
+            if graph_result is not None:
+                return graph_result
+            self._logger.warning('LangGraph returned no result; falling back to rule-based planner.')
 
         return self._plan_with_rules(
             user_message=user_message,
             existing_operations=existing_operations,
-            session_context=session_context or {},
         )
 
-    def _can_use_langchain(self) -> bool:
-        return bool(
-            self._settings.openai_api_key
-            and ChatOpenAI is not None
-            and StateGraph is not None
-            and SystemMessage is not None
-            and HumanMessage is not None
-            and AIMessage is not None
-        )
-
-    def _create_chat_model(self) -> Any:
-        return ChatOpenAI(
-            api_key=self._settings.openai_api_key,
-            model=self._settings.openai_model,
-            temperature=self._settings.openai_temperature,
-            timeout=30,
-        )
+    def _get_langgraph_disabled_reason(self) -> str | None:
+        if StateGraph is None or END is None:
+            return 'langgraph import failed'
+        return None
 
     def _build_graph(self) -> Any:
         graph = StateGraph(PlannerState)
-
         graph.add_node('classify_intent', self._classify_intent)
         graph.add_node('compose_dynamic_system_prompt', self._compose_dynamic_system_prompt)
         graph.add_node('generate_chat_reply', self._generate_chat_reply)
@@ -121,61 +113,73 @@ class LLMPlanner:
         graph.add_edge('generate_chat_reply', 'persist_session_state')
         graph.add_edge('plan_operations', 'persist_session_state')
         graph.add_edge('persist_session_state', END)
-
         return graph.compile()
 
-    def _plan_with_langchain(
+    def _plan_with_langgraph(
         self,
         user_message: str,
         existing_operations: list[RoadmapOperation],
         session_context: dict[str, Any],
     ) -> PlanningResult | None:
         try:
-            graph_result: PlannerState = self._langchain_graph.invoke(  # type: ignore[call-arg]
+            state: PlannerState = self._langgraph.invoke(  # type: ignore[call-arg]
                 {
                     'user_message': user_message,
                     'existing_operations': existing_operations,
                     'session_context': session_context,
                 }
             )
-        except Exception:
+        except Exception as exc:  # pragma: no cover
+            self._logger.exception('LangGraph invocation failed: %s', exc)
             return None
 
-        operations = graph_result.get('planned_operations', [])
         return PlanningResult(
-            assistant_message=graph_result.get('assistant_message', 'I can help with that.'),
-            operations=operations,
-            parse_mode=graph_result.get('parse_mode', 'langchain_fallback'),
-            intent_type=graph_result.get('intent_type', 'unclear'),
-            response_mode=graph_result.get('response_mode', 'chat'),
-            preview_recommended=bool(graph_result.get('preview_recommended', False)),
+            assistant_message=state.get('assistant_message', 'I can help with that.'),
+            operations=state.get('planned_operations', []),
+            parse_mode=state.get('parse_mode', 'rule_based_chat'),
+            intent_type=state.get('intent_type', 'unclear'),
+            response_mode=state.get('response_mode', 'chat'),
+            preview_recommended=bool(state.get('preview_recommended', False)),
+            provider_used=state.get('provider_used', 'rule_based'),
+            fallback_used=bool(state.get('fallback_used', False)),
+            provider_error_code=state.get('provider_error_code'),
         )
 
     def _classify_intent(self, state: PlannerState) -> PlannerState:
         user_message = state.get('user_message', '')
         session_context = state.get('session_context', {})
-        fallback_intent = self._heuristic_intent(user_message)
+        heuristic_intent = self._heuristic_intent(user_message)
 
-        if not self._can_use_langchain():
-            return {'intent_type': fallback_intent, 'parse_mode': 'rule_based_intent'}
-
-        classifier_model = self._create_chat_model().with_structured_output(IntentClassification)
         classifier_prompt = self._prompt_repository.intent_classifier_prompt()
         classifier_input = self._build_classifier_input(user_message, session_context)
 
         try:
-            classification: IntentClassification = classifier_model.invoke(
-                [
-                    SystemMessage(content=classifier_prompt),
-                    HumanMessage(content=classifier_input),
-                ]
+            result = self._provider_orchestrator.call(
+                lambda adapter: adapter.classify_intent(
+                    classifier_prompt=classifier_prompt,
+                    classifier_input=classifier_input,
+                )
             )
             return {
-                'intent_type': classification.intent_type,
-                'parse_mode': 'langchain_intent_classifier',
+                'intent_type': result.value,
+                'parse_mode': f'{result.provider_used}_intent_classifier',
+                'provider_used': result.provider_used,  # may be overwritten later
+                'fallback_used': result.fallback_used,
+                'provider_error_code': result.provider_error_code,
             }
-        except Exception:
-            return {'intent_type': fallback_intent, 'parse_mode': 'rule_based_intent'}
+        except ProviderAdapterError as exc:
+            self._logger.warning(
+                'Intent classifier failed for providers, using heuristic fallback. code=%s message=%s',
+                exc.code,
+                exc.message,
+            )
+            return {
+                'intent_type': heuristic_intent,
+                'parse_mode': 'rule_based_intent',
+                'provider_used': 'rule_based',
+                'fallback_used': False,
+                'provider_error_code': exc.code,
+            }
 
     def _compose_dynamic_system_prompt(self, state: PlannerState) -> PlannerState:
         intent_type = state.get('intent_type', 'unclear')
@@ -198,49 +202,50 @@ class LLMPlanner:
     def _generate_chat_reply(self, state: PlannerState) -> PlannerState:
         user_message = state.get('user_message', '')
         system_prompt = state.get('system_prompt', '')
-        session_context = state.get('session_context', {})
-        history_messages = self._build_history_messages(session_context)
-
-        if not self._can_use_langchain():
-            return self._rule_based_chat_response(user_message, state.get('intent_type', 'unclear'))
+        history_messages = self._build_history_messages(state.get('session_context', {}))
+        fallback_response = self._rule_based_chat_response(user_message, state.get('intent_type', 'unclear'))
 
         try:
-            chat_model = self._create_chat_model()
-            ai_message = chat_model.invoke(
-                [
-                    SystemMessage(content=system_prompt),
-                    *history_messages,
-                    HumanMessage(content=user_message),
-                ]
+            result = self._provider_orchestrator.call(
+                lambda adapter: adapter.generate_chat_reply(
+                    system_prompt=system_prompt,
+                    user_message=user_message,
+                    history_messages=history_messages,
+                )
             )
-            content = self._extract_text_content(ai_message.content)
-            if not content:
-                content = 'I can help with roadmap planning or general roadmap questions.'
             return {
-                'assistant_message': content,
+                'assistant_message': result.value,
                 'planned_operations': [],
                 'response_mode': 'chat',
                 'preview_recommended': False,
-                'parse_mode': 'langchain_chat',
+                'parse_mode': f'{result.provider_used}_chat',
+                'provider_used': result.provider_used,
+                'fallback_used': result.fallback_used,
+                'provider_error_code': result.provider_error_code,
             }
-        except Exception:
-            return self._rule_based_chat_response(user_message, state.get('intent_type', 'unclear'))
+        except ProviderAdapterError as exc:
+            self._logger.warning(
+                'Provider chat reply failed, using rule-based chat fallback. code=%s message=%s',
+                exc.code,
+                exc.message,
+            )
+            return {
+                'assistant_message': fallback_response,
+                'planned_operations': [],
+                'response_mode': 'chat',
+                'preview_recommended': False,
+                'parse_mode': 'rule_based_chat',
+                'provider_used': 'rule_based',
+                'fallback_used': False,
+                'provider_error_code': exc.code,
+            }
 
     def _plan_operations(self, state: PlannerState) -> PlannerState:
         user_message = state.get('user_message', '')
         existing_operations = state.get('existing_operations', [])
         system_prompt = state.get('system_prompt', '')
-        session_context = state.get('session_context', {})
-
-        if not self._can_use_langchain():
-            fallback = self._rule_based_operation_plan(user_message)
-            return {
-                'assistant_message': fallback.assistant_message,
-                'planned_operations': fallback.operations,
-                'response_mode': 'edit_plan',
-                'preview_recommended': bool(fallback.operations),
-                'parse_mode': 'rule_based_edit',
-            }
+        history_messages = self._build_history_messages(state.get('session_context', {}))
+        fallback = self._rule_based_operation_plan(user_message)
 
         planner_prompt = (
             'Create roadmap edit operations using tool calling.\n'
@@ -252,46 +257,39 @@ class LLMPlanner:
         )
 
         try:
-            tool_model = self._create_chat_model().bind_tools(
-                get_operation_tools(),
-                tool_choice={'type': 'function', 'function': {'name': 'plan_roadmap_operations'}},
+            result = self._provider_orchestrator.call(
+                lambda adapter: adapter.plan_operations_with_tools(
+                    system_prompt=system_prompt,
+                    planner_prompt=planner_prompt,
+                    history_messages=history_messages,
+                )
             )
-            ai_message = tool_model.invoke(
-                [
-                    SystemMessage(content=system_prompt),
-                    *self._build_history_messages(session_context),
-                    HumanMessage(content=planner_prompt),
-                ]
-            )
-            tool_calls = getattr(ai_message, 'tool_calls', []) or []
-            tool_call = next((call for call in tool_calls if call.get('name') == 'plan_roadmap_operations'), None)
-
-            if tool_call is None:
-                raise ValueError('Expected plan_roadmap_operations tool call.')
-
-            args = tool_call.get('args', {})
-            if isinstance(args, str):
-                args = json.loads(args)
-
-            raw_operations = args.get('operations', [])
-            operations = [RoadmapOperation.model_validate(item) for item in raw_operations]
-            assistant_message = str(args.get('assistant_message', 'Prepared roadmap operations.'))
-
+            assistant_message, operations = result.value
             return {
                 'assistant_message': assistant_message,
                 'planned_operations': operations,
                 'response_mode': 'edit_plan',
                 'preview_recommended': bool(operations),
-                'parse_mode': 'langchain_tool_calling',
+                'parse_mode': f'{result.provider_used}_tool_calling',
+                'provider_used': result.provider_used,
+                'fallback_used': result.fallback_used,
+                'provider_error_code': result.provider_error_code,
             }
-        except Exception:
-            fallback = self._rule_based_operation_plan(user_message)
+        except ProviderAdapterError as exc:
+            self._logger.warning(
+                'Provider operation planning failed, using rule-based edit fallback. code=%s message=%s',
+                exc.code,
+                exc.message,
+            )
             return {
                 'assistant_message': fallback.assistant_message,
                 'planned_operations': fallback.operations,
                 'response_mode': 'edit_plan',
                 'preview_recommended': bool(fallback.operations),
-                'parse_mode': 'rule_based_edit',
+                'parse_mode': fallback.parse_mode,
+                'provider_used': 'rule_based',
+                'fallback_used': False,
+                'provider_error_code': exc.code,
             }
 
     def _persist_session_state(self, _state: PlannerState) -> PlannerState:
@@ -307,6 +305,9 @@ class LLMPlanner:
         return json.dumps(payload, ensure_ascii=True, indent=2)
 
     def _build_history_messages(self, session_context: dict[str, Any]) -> list[Any]:
+        if AIMessage is None or HumanMessage is None:
+            return []
+
         history = session_context.get('recent_messages', [])
         messages: list[Any] = []
         for item in history[-self._settings.max_chat_history_messages :]:
@@ -320,21 +321,6 @@ class LLMPlanner:
                 messages.append(HumanMessage(content=content))
         return messages
 
-    def _extract_text_content(self, content: Any) -> str:
-        if isinstance(content, str):
-            return content.strip()
-        if isinstance(content, list):
-            chunks: list[str] = []
-            for item in content:
-                if isinstance(item, str):
-                    chunks.append(item)
-                elif isinstance(item, dict):
-                    text = item.get('text')
-                    if isinstance(text, str):
-                        chunks.append(text)
-            return '\n'.join(part for part in chunks if part).strip()
-        return ''
-
     def _heuristic_intent(self, user_message: str) -> IntentType:
         text = user_message.strip().lower()
         if not text:
@@ -347,45 +333,21 @@ class LLMPlanner:
             return 'question'
         return 'unclear'
 
-    def _rule_based_chat_response(self, user_message: str, intent_type: IntentType) -> PlannerState:
+    def _rule_based_chat_response(self, user_message: str, intent_type: IntentType) -> str:
         lowered = user_message.strip().lower()
         if intent_type == 'smalltalk':
-            return {
-                'assistant_message': 'Hi. I can chat normally and help you prepare roadmap edits when you are ready.',
-                'planned_operations': [],
-                'response_mode': 'chat',
-                'preview_recommended': False,
-                'parse_mode': 'rule_based_chat',
-            }
+            return 'Hi. I can chat normally and help you prepare roadmap edits when you are ready.'
         if intent_type == 'question':
-            return {
-                'assistant_message': (
-                    'I can help explain roadmap structure, suggest planning steps, and prepare safe edit operations '
-                    'that you can preview manually.'
-                ),
-                'planned_operations': [],
-                'response_mode': 'chat',
-                'preview_recommended': False,
-                'parse_mode': 'rule_based_chat',
-            }
+            return (
+                'I can help explain roadmap structure, suggest planning steps, and prepare safe edit operations '
+                'that you can preview manually.'
+            )
         if lowered:
-            return {
-                'assistant_message': (
-                    'I can help with normal chat or roadmap edits. If you want edits, describe the action and the target '
-                    'node IDs, then we can generate a preview.'
-                ),
-                'planned_operations': [],
-                'response_mode': 'chat',
-                'preview_recommended': False,
-                'parse_mode': 'rule_based_chat',
-            }
-        return {
-            'assistant_message': 'Tell me what you want to do, and I will help.',
-            'planned_operations': [],
-            'response_mode': 'chat',
-            'preview_recommended': False,
-            'parse_mode': 'rule_based_chat',
-        }
+            return (
+                'I can help with normal chat or roadmap edits. If you want edits, describe the action and the target '
+                'node IDs, then we can generate a preview.'
+            )
+        return 'Tell me what you want to do, and I will help.'
 
     def _rule_based_operation_plan(self, user_message: str) -> PlanningResult:
         text = user_message.strip()
@@ -454,6 +416,9 @@ class LLMPlanner:
                 intent_type='roadmap_edit',
                 response_mode='edit_plan',
                 preview_recommended=True,
+                provider_used='rule_based',
+                fallback_used=False,
+                provider_error_code=None,
             )
 
         return PlanningResult(
@@ -467,24 +432,28 @@ class LLMPlanner:
             intent_type='roadmap_edit',
             response_mode='edit_plan',
             preview_recommended=False,
+            provider_used='rule_based',
+            fallback_used=False,
+            provider_error_code='missing_tool_call',
         )
 
     def _plan_with_rules(
         self,
         user_message: str,
         existing_operations: list[RoadmapOperation],
-        session_context: dict[str, Any],
     ) -> PlanningResult:
         intent_type = self._heuristic_intent(user_message)
         if intent_type == 'roadmap_edit':
             return self._rule_based_operation_plan(user_message)
 
-        chat_state = self._rule_based_chat_response(user_message, intent_type)
         return PlanningResult(
-            assistant_message=chat_state['assistant_message'],
+            assistant_message=self._rule_based_chat_response(user_message, intent_type),
             operations=[],
-            parse_mode=chat_state['parse_mode'],
+            parse_mode='rule_based_chat',
             intent_type=intent_type,
             response_mode='chat',
             preview_recommended=False,
+            provider_used='rule_based',
+            fallback_used=False,
+            provider_error_code='no_provider_available',
         )

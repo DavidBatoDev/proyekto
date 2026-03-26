@@ -6,4 +6,5 @@ pydantic-settings==2.10.1
 openai>=1.40.0
 langchain==0.3.27
 langchain-openai==0.3.30
+langchain-google-genai==2.1.9
 langgraph==0.6.6

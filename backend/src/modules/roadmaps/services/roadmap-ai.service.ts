@@ -171,6 +171,29 @@ export class RoadmapAiService {
     };
   }
 
+  async getPreview(
+    roadmapId: string,
+    previewId: string,
+    userId: string,
+  ): Promise<RoadmapAiPreviewResponseDto> {
+    this.clearExpiredPreviews();
+    await this.assertCanEditRoadmap(roadmapId, userId);
+
+    const preview = this.previews.get(previewId);
+    if (!preview || preview.roadmapId !== roadmapId || preview.userId !== userId) {
+      throw new NotFoundException('Preview not found');
+    }
+
+    return {
+      preview_id: previewId,
+      base_revision: preview.baseRevision,
+      base_updated_at: preview.baseUpdatedAt,
+      semantic_diff: preview.semanticDiff,
+      validation_issues: preview.validationIssues,
+      candidate_snapshot: preview.candidate as unknown as Record<string, unknown>,
+    };
+  }
+
   async commit(
     roadmapId: string,
     dto: RoadmapAiCommitDto,

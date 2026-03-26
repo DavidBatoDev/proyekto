@@ -62,6 +62,19 @@ export interface AgentPreviewPayload {
   candidate_snapshot: Record<string, unknown>;
 }
 
+export interface AgentRoadmapPreviewArtifact {
+  artifact_id: string;
+  type: "roadmap_preview";
+  roadmap_id: string;
+  base_revision?: number;
+  preview_id: string;
+  title: string;
+  summary: string;
+  semantic_diff_summary: Record<string, number>;
+  validation_issue_count: number;
+  created_at: string;
+}
+
 export interface AgentCreateSessionRequest {
   roadmap_id: string;
   base_revision?: number;
@@ -78,6 +91,7 @@ export interface AgentCreateSessionResponse {
 export interface AgentMessageRequest {
   message: string;
   replace_operations?: boolean;
+  auto_preview?: boolean;
 }
 
 export interface AgentMessageResponse {
@@ -91,6 +105,10 @@ export interface AgentMessageResponse {
   preview_recommended: boolean;
   staged_operations_version: number;
   staged_operations_count: number;
+  artifacts: AgentRoadmapPreviewArtifact[];
+  provider_used?: "gemini" | "openai" | "rule_based";
+  fallback_used?: boolean;
+  provider_error_code?: string | null;
 }
 
 export interface AgentPreviewRequest {
@@ -103,6 +121,13 @@ export interface AgentPreviewResponse {
   roadmap_id: string;
   base_revision?: number;
   operations: AgentOperation[];
+  preview: AgentPreviewPayload;
+}
+
+export interface AgentArtifactPreviewResponse {
+  session_id: string;
+  roadmap_id: string;
+  artifact: AgentRoadmapPreviewArtifact;
   preview: AgentPreviewPayload;
 }
 
@@ -200,6 +225,20 @@ export const roadmapAgentService = {
       return response.data;
     } catch (error) {
       throwAgentError(error, "Preview AI operations");
+    }
+  },
+
+  async getArtifactPreview(
+    sessionId: string,
+    artifactId: string,
+  ): Promise<AgentArtifactPreviewResponse> {
+    try {
+      const response = await agentApiClient.get<AgentArtifactPreviewResponse>(
+        `/agent/sessions/${sessionId}/artifacts/${artifactId}`,
+      );
+      return response.data;
+    } catch (error) {
+      throwAgentError(error, "Get AI artifact preview");
     }
   },
 };
