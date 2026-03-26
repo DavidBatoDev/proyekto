@@ -276,7 +276,11 @@ export function ProjectsGrid() {
 	}, [projectsQueryKey, queryClient, user?.id]);
 
 	return (
-		<div data-tutorial="projects-grid" className="scroll-mt-6">
+		<div
+			id="my-project-visions"
+			data-tutorial="projects-grid"
+			className="scroll-mt-6"
+		>
 			<div className="flex items-center justify-between mb-4">
 				<div className="flex items-center gap-2">
 					<div

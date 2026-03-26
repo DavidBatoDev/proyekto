@@ -92,16 +92,16 @@ const DashboardHeader = () => {
   };
 
   const navItems = [
-    { label: "Home", href: "/dashboard" },
-    { label: "Projects", href: "/" },
+    { label: "Home", to: "/dashboard" },
+    { label: "Projects", to: "/dashboard", hash: "my-project-visions" },
     {
       label: "Market place",
-      href: profile?.is_consultant_verified
+      to: profile?.is_consultant_verified
         ? "/consultant/marketplace"
         : "/consultant/browse",
     },
     ...(profile?.is_consultant_verified
-      ? [{ label: "Templates", href: "/consultant/templates" }]
+      ? [{ label: "Templates", to: "/consultant/templates" }]
       : []),
   ];
 
@@ -215,7 +215,8 @@ const DashboardHeader = () => {
             {navItems.map((item) => (
               <Link
                 key={item.label}
-                to={item.href}
+                to={item.to}
+                hash={item.hash}
                 style={{ textDecoration: "none" }}
               >
                 <Typography
