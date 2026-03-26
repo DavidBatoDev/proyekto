@@ -435,6 +435,7 @@ export function DashboardWidgets({
 		const projectsSection =
 			document.querySelector('[data-tutorial="projects-grid"]') ??
 			document.getElementById("my-project-visions") ??
+			document.querySelector('[data-roadmaps-section="my-roadmaps-section"]') ??
 			document.getElementById("my-roadmaps-section") ??
 			document.querySelector('[data-tutorial="projects-grid"]');
 		if (projectsSection instanceof HTMLElement) {
