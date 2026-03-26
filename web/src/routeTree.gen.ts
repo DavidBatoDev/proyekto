@@ -45,6 +45,7 @@ import { Route as ProjectProjectIdResourcesRouteImport } from './routes/project/
 import { Route as ProjectProjectIdPaymentsRouteImport } from './routes/project/$projectId/payments'
 import { Route as ProjectProjectIdOverviewRouteImport } from './routes/project/$projectId/overview'
 import { Route as ProjectProjectIdLogsRouteImport } from './routes/project/$projectId/logs'
+import { Route as ProjectProjectIdChatRouteImport } from './routes/project/$projectId/chat'
 import { Route as AuthAdminSigninRouteImport } from './routes/auth/admin/signin'
 import { Route as AuthAdminLoginRouteImport } from './routes/auth/admin/login'
 import { Route as ProjectProjectIdTimeIndexRouteImport } from './routes/project/$projectId/time/index'
@@ -242,6 +243,11 @@ const ProjectProjectIdLogsRoute = ProjectProjectIdLogsRouteImport.update({
   path: '/logs',
   getParentRoute: () => ProjectProjectIdRoute,
 } as any)
+const ProjectProjectIdChatRoute = ProjectProjectIdChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => ProjectProjectIdRoute,
+} as any)
 const AuthAdminSigninRoute = AuthAdminSigninRouteImport.update({
   id: '/auth/admin/signin',
   path: '/auth/admin/signin',
@@ -343,6 +349,7 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
+  '/project/$projectId/chat': typeof ProjectProjectIdChatRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
   '/project/$projectId/overview': typeof ProjectProjectIdOverviewRoute
   '/project/$projectId/payments': typeof ProjectProjectIdPaymentsRoute
@@ -392,6 +399,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
+  '/project/$projectId/chat': typeof ProjectProjectIdChatRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
   '/project/$projectId/overview': typeof ProjectProjectIdOverviewRoute
   '/project/$projectId/payments': typeof ProjectProjectIdPaymentsRoute
@@ -443,6 +451,7 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
+  '/project/$projectId/chat': typeof ProjectProjectIdChatRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
   '/project/$projectId/overview': typeof ProjectProjectIdOverviewRoute
   '/project/$projectId/payments': typeof ProjectProjectIdPaymentsRoute
@@ -495,6 +504,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/auth/admin/login'
     | '/auth/admin/signin'
+    | '/project/$projectId/chat'
     | '/project/$projectId/logs'
     | '/project/$projectId/overview'
     | '/project/$projectId/payments'
@@ -544,6 +554,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/auth/admin/login'
     | '/auth/admin/signin'
+    | '/project/$projectId/chat'
     | '/project/$projectId/logs'
     | '/project/$projectId/overview'
     | '/project/$projectId/payments'
@@ -594,6 +605,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/auth/admin/login'
     | '/auth/admin/signin'
+    | '/project/$projectId/chat'
     | '/project/$projectId/logs'
     | '/project/$projectId/overview'
     | '/project/$projectId/payments'
@@ -898,6 +910,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectProjectIdLogsRouteImport
       parentRoute: typeof ProjectProjectIdRoute
     }
+    '/project/$projectId/chat': {
+      id: '/project/$projectId/chat'
+      path: '/chat'
+      fullPath: '/project/$projectId/chat'
+      preLoaderRoute: typeof ProjectProjectIdChatRouteImport
+      parentRoute: typeof ProjectProjectIdRoute
+    }
     '/auth/admin/signin': {
       id: '/auth/admin/signin'
       path: '/auth/admin/signin'
@@ -1051,6 +1070,7 @@ const ProjectProjectIdTimeTeamLogsRouteWithChildren =
   )
 
 interface ProjectProjectIdRouteChildren {
+  ProjectProjectIdChatRoute: typeof ProjectProjectIdChatRoute
   ProjectProjectIdLogsRoute: typeof ProjectProjectIdLogsRoute
   ProjectProjectIdOverviewRoute: typeof ProjectProjectIdOverviewRoute
   ProjectProjectIdPaymentsRoute: typeof ProjectProjectIdPaymentsRoute
@@ -1067,6 +1087,7 @@ interface ProjectProjectIdRouteChildren {
 }
 
 const ProjectProjectIdRouteChildren: ProjectProjectIdRouteChildren = {
+  ProjectProjectIdChatRoute: ProjectProjectIdChatRoute,
   ProjectProjectIdLogsRoute: ProjectProjectIdLogsRoute,
   ProjectProjectIdOverviewRoute: ProjectProjectIdOverviewRoute,
   ProjectProjectIdPaymentsRoute: ProjectProjectIdPaymentsRoute,

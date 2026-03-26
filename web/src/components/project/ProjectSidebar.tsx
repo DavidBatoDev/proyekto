@@ -6,6 +6,7 @@ import {
   Clock,
   ClipboardList,
   Users,
+  MessageSquare,
   BookOpen,
   Settings,
 } from "lucide-react";
@@ -85,6 +86,12 @@ export function ProjectSidebar({
           label: "Team",
           icon: Users,
           to: `/project/${projectId}/team`,
+          requiresProject: true,
+        },
+        {
+          label: "Chat",
+          icon: MessageSquare,
+          to: `/project/${projectId}/chat`,
           requiresProject: true,
         },
         {
