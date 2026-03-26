@@ -1,5 +1,5 @@
 import { ChevronRight, ExternalLink, FolderOpen, GripVertical, Plus, RotateCcw } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
 	DndContext,
 	KeyboardSensor,
@@ -67,6 +67,18 @@ type PendingEpicReorder = {
 	epicTitle: string;
 	previousOrderIds: string[];
 	nextOrderIds: string[];
+};
+
+const areSetsEqual = (a: Set<string>, b: Set<string>) => {
+	if (a.size !== b.size) {
+		return false;
+	}
+	for (const value of a) {
+		if (!b.has(value)) {
+			return false;
+		}
+	}
+	return true;
 };
 
 type SortableEpicRowProps = {
@@ -397,18 +409,29 @@ function ExplorerPanel({
 		}
 	};
 
-	const sortedEpics = getSortedEpics(epics);
-	const collapsableEpicIds = sortedEpics
-		.filter((epic) => (epic.features?.length || 0) > 0)
-		.map((epic) => epic.id);
-	const collapsableFeatureIds =
-		explorerConfig.allowFeatureCollapse && explorerConfig.showTaskRows
-			? sortedEpics.flatMap((epic) =>
-					(epic.features || [])
-						.filter((feature) => (feature.tasks?.length || 0) > 0)
-						.map((feature) => feature.id),
-				)
-			: [];
+	const sortedEpics = useMemo(() => getSortedEpics(epics), [epics]);
+	const collapsableEpicIds = useMemo(
+		() =>
+			sortedEpics
+				.filter((epic) => (epic.features?.length || 0) > 0)
+				.map((epic) => epic.id),
+		[sortedEpics],
+	);
+	const collapsableFeatureIds = useMemo(
+		() =>
+			explorerConfig.allowFeatureCollapse && explorerConfig.showTaskRows
+				? sortedEpics.flatMap((epic) =>
+						(epic.features || [])
+							.filter((feature) => (feature.tasks?.length || 0) > 0)
+							.map((feature) => feature.id),
+				  )
+				: [],
+		[
+			explorerConfig.allowFeatureCollapse,
+			explorerConfig.showTaskRows,
+			sortedEpics,
+		],
+	);
 
 	useEffect(() => {
 		const collapsableEpicIdSet = new Set(collapsableEpicIds);
@@ -430,7 +453,7 @@ function ExplorerPanel({
 				});
 			}
 
-			return next;
+			return areSetsEqual(prev, next) ? prev : next;
 		});
 		previousCollapsableEpicIds.current = collapsableEpicIdSet;
 	}, [collapsableEpicIds]);
@@ -446,7 +469,7 @@ function ExplorerPanel({
 					next.add(featureId);
 				}
 			});
-			return next;
+			return areSetsEqual(prev, next) ? prev : next;
 		});
 		previousCollapsableFeatureIds.current = collapsableFeatureIdSet;
 	}, [collapsableFeatureIds]);

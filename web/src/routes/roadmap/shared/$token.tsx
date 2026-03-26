@@ -13,6 +13,7 @@ import {
   type Message,
   RoadmapCanvas,
   RoadmapTopBar,
+  TryAiFloatingAssistant,
 } from "@/components/roadmap";
 import { roadmapSharesServiceAPI } from "@/services/roadmap-shares.service";
 import { useUser } from "@/stores/authStore";
@@ -41,6 +42,7 @@ function SharedRoadmapPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
   const canvasViewMode = useRoadmapStore((state) => state.canvasViewMode);
 
   // Messages for the AI chat panel (read-only for shared viewers)
@@ -135,6 +137,7 @@ function SharedRoadmapPage() {
 
   const isReadOnly = currentUserRole === "viewer";
   const canEdit = currentUserRole === "editor";
+  const showTryAiAssistant = Boolean(user && roadmap.id);
 
   // No-op handlers for read-only mode
   const noOpHandler = () => {
@@ -230,6 +233,7 @@ function SharedRoadmapPage() {
               roadmap={roadmap}
               milestones={milestones}
               epics={epics}
+              hideMiniMap={isAiAssistantOpen}
               canEditTimelineDates={canEdit}
               onUpdateRoadmap={canEdit ? () => {} : noOpHandler}
               onAddMilestone={canEdit ? () => {} : noOpHandler}
@@ -241,6 +245,13 @@ function SharedRoadmapPage() {
           </div>
         </div>
       </div>
+
+      {showTryAiAssistant && (
+        <TryAiFloatingAssistant
+          roadmapId={roadmap.id}
+          onOpenChange={setIsAiAssistantOpen}
+        />
+      )}
     </div>
   );
 }

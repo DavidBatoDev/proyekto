@@ -27,6 +27,7 @@ import { useUser } from "@/stores/authStore";
 import { EpicModal } from "@/components/roadmap/modals/EpicModal";
 import { FeatureModal } from "@/components/roadmap/modals/FeatureModal";
 import { SidePanel } from "@/components/roadmap/panels/SidePanel";
+import { TryAiFloatingAssistant } from "@/components/roadmap";
 import type {
   RoadmapEpic,
   RoadmapFeature,
@@ -896,10 +897,6 @@ function EpicCard({
     (acc, f) => acc + (f.tasks?.length ?? 0),
     0,
   );
-  const doneTasks = features.reduce(
-    (acc, f) => acc + (f.tasks?.filter((t) => t.status === "done").length ?? 0),
-    0,
-  );
   const progress = calculateEpicProgressFromFeatures(features);
   const epicColor = epic.color ?? "#ff9933";
   const dotCls = PRIORITY_DOT[epic.priority] ?? "bg-gray-300";
@@ -1028,6 +1025,7 @@ function WorkItemsViewPage() {
   const [error, setError] = useState<string | null>(null);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
+  const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
 
   // Expansion
   const [expandedEpics, setExpandedEpics] = useState<Set<string>>(new Set());
@@ -2095,7 +2093,10 @@ function WorkItemsViewPage() {
       </div>
 
       {(canScrollUp || canScrollDown) && (
-        <div className="fixed right-5 bottom-5 z-50 flex flex-col gap-1.5">
+        <div
+          className="fixed right-5 z-50 flex flex-col gap-1.5"
+          style={{ bottom: isAiAssistantOpen ? 400 : 20 }}
+        >
           <div className="h-7 w-7">
             {canScrollUp && (
               <button
@@ -2171,6 +2172,11 @@ function WorkItemsViewPage() {
         onDeleteTask={handleTaskDelete}
         projectMembers={projectMembers}
         isLoading={selectedTask ? Boolean(pendingTaskById[selectedTask.id]) : false}
+      />
+
+      <TryAiFloatingAssistant
+        roadmapId={roadmapId}
+        onOpenChange={setIsAiAssistantOpen}
       />
     </div>
   );

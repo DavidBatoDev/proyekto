@@ -24,6 +24,7 @@ import type {
 interface RoadmapViewProps {
   roadmap: Roadmap;
   epics: RoadmapEpic[];
+  showMiniMap?: boolean;
   onUpdateEpic: (epic: RoadmapEpic) => void;
   onDeleteEpic: (epicId: string) => void;
   onUpdateFeature: (feature: RoadmapFeature) => void;
@@ -189,6 +190,7 @@ const getLayoutedElements = (
 
 export const RoadmapView = ({
   epics,
+  showMiniMap = true,
   onUpdateEpic,
   onDeleteEpic,
   onUpdateFeature,
@@ -460,24 +462,26 @@ export const RoadmapView = ({
         }}
       >
         <Controls position="top-right" />
-        <MiniMap
-          position="bottom-right"
-          nodeStrokeWidth={1.5}
-          nodeStrokeColor={(node) => {
-            if (node.type === "epicWidget") return "#9ca3af";
-            if (node.type === "featureWidget") return "#f59e0b";
-            return "#9ca3af";
-          }}
-          nodeColor={(node) => {
-            if (node.type === "epicWidget") return "#f8fafc";
-            if (node.type === "featureWidget") return "#fff7ed";
-            return "#e5e7eb";
-          }}
-          nodeBorderRadius={6}
-          maskColor="rgba(0, 0, 0, 0.04)"
-          className="bg-gray-50 border border-gray-300 rounded-lg"
-          style={{ width: 200, height: 140 }}
-        />
+        {showMiniMap && (
+          <MiniMap
+            position="bottom-right"
+            nodeStrokeWidth={1.5}
+            nodeStrokeColor={(node) => {
+              if (node.type === "epicWidget") return "#9ca3af";
+              if (node.type === "featureWidget") return "#f59e0b";
+              return "#9ca3af";
+            }}
+            nodeColor={(node) => {
+              if (node.type === "epicWidget") return "#f8fafc";
+              if (node.type === "featureWidget") return "#fff7ed";
+              return "#e5e7eb";
+            }}
+            nodeBorderRadius={6}
+            maskColor="rgba(0, 0, 0, 0.04)"
+            className="bg-gray-50 border border-gray-300 rounded-lg"
+            style={{ width: 200, height: 140 }}
+          />
+        )}
       </ReactFlow>
       <div className="absolute bottom-4 right-4 bg-white/90 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-700 shadow-sm">
         Zoom {Math.round(zoom * 100)}%

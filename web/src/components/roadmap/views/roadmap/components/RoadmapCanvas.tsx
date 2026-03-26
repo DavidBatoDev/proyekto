@@ -27,6 +27,7 @@ const RoadmapCanvas = ({
   onShare: _onShare,
   onExport: _onExport,
   canEditTimelineDates = true,
+  hideMiniMap = false,
   focusNodeId: focusNodeIdProp,
   focusNodeOffsetX: focusNodeOffsetXProp,
   onFocusComplete: onFocusCompleteProp,
@@ -187,6 +188,7 @@ const RoadmapCanvas = ({
           <RoadmapView
             roadmap={roadmap}
             epics={epics}
+            showMiniMap={!hideMiniMap}
             onUpdateEpic={onUpdateEpic}
             onDeleteEpic={handleDeleteEpic}
             onUpdateFeature={onUpdateFeature}
