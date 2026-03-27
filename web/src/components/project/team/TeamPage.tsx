@@ -5,7 +5,6 @@ import {
   Plus,
   Edit2,
   Trash2,
-  MessageSquare,
 } from "lucide-react";
 import type { Project, ProjectMember } from "@/services/project.service";
 import { useUser } from "@/stores/authStore";
@@ -38,7 +37,6 @@ type ViewerRole = "consultant" | "client" | "freelancer";
 type TargetType = "client" | "consultant" | "member";
 
 interface RowPermissions {
-  canMessage: boolean;
   canEdit: boolean;
   canRemove: boolean;
 }
@@ -64,39 +62,35 @@ function getRowPermissions(
   isSelf: boolean,
   canManageMembers: boolean,
 ): RowPermissions {
-  if (isSelf) return { canMessage: false, canEdit: false, canRemove: false };
+  if (isSelf) return { canEdit: false, canRemove: false };
   const canManageTarget = canManageMembers && targetType === "member";
 
   switch (viewerRole) {
     case "consultant":
       if (targetType === "client")
-        return { canMessage: true, canEdit: false, canRemove: false };
+        return { canEdit: false, canRemove: false };
       if (targetType === "consultant")
-        return { canMessage: true, canEdit: false, canRemove: false };
+        return { canEdit: false, canRemove: false };
       // member / freelancer
       return {
-        canMessage: true,
         canEdit: canManageTarget,
         canRemove: canManageTarget,
       };
 
     case "client":
       if (targetType === "consultant")
-        return { canMessage: true, canEdit: false, canRemove: false };
-      // members and other clients: can see, but no message, no edit
+        return { canEdit: false, canRemove: false };
+      // members and other clients: can see, but no edit
       return {
-        canMessage: false,
         canEdit: canManageTarget,
         canRemove: canManageTarget,
       };
 
     case "freelancer":
       if (targetType === "client")
-        // Agency protection — hide the message button
-        return { canMessage: false, canEdit: false, canRemove: false };
+        return { canEdit: false, canRemove: false };
       // consultant or other members
       return {
-        canMessage: true,
         canEdit: canManageTarget,
         canRemove: canManageTarget,
       };
@@ -158,9 +152,13 @@ function StatusBadge({ status }: { status: "Active" | "Offline" | "Away" }) {
 
 // ─── Column Headers ────────────────────────────────────────────────────────────
 
-function ColumnHeaders() {
+function ColumnHeaders({ showActions }: { showActions: boolean }) {
   return (
-    <div className="grid grid-cols-[2fr_1fr_1fr_48px_80px] gap-4 items-center px-4 mb-2">
+    <div
+      className={`grid gap-4 items-center px-4 mb-2 ${
+        showActions ? "grid-cols-[2fr_1fr_1fr_80px]" : "grid-cols-[2fr_1fr_1fr]"
+      }`}
+    >
       <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
         Name
       </span>
@@ -170,12 +168,11 @@ function ColumnHeaders() {
       <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
         Status
       </span>
-      <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide text-center">
-        Msg
-      </span>
-      <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide text-right">
-        Actions
-      </span>
+      {showActions && (
+        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide text-right">
+          Actions
+        </span>
+      )}
     </div>
   );
 }
@@ -191,6 +188,7 @@ function TeamRow({
   isLast,
   isSelf,
   permissions,
+  showActions,
   onEdit,
   onRemove,
   removing,
@@ -202,13 +200,16 @@ function TeamRow({
   isLast: boolean;
   isSelf: boolean;
   permissions: RowPermissions;
+  showActions: boolean;
   onEdit?: () => void;
   onRemove?: () => void;
   removing?: boolean;
 }) {
   return (
     <div
-      className={`grid grid-cols-[2fr_1fr_1fr_48px_80px] gap-4 items-center px-4 py-3 ${
+      className={`grid gap-4 items-center px-4 py-3 ${
+        showActions ? "grid-cols-[2fr_1fr_1fr_80px]" : "grid-cols-[2fr_1fr_1fr]"
+      } ${
         !isLast ? "border-b border-gray-100" : ""
       } hover:bg-gray-50/60 transition-colors`}
     >
@@ -238,43 +239,31 @@ function TeamRow({
       {/* Col 3: Status */}
       <StatusBadge status="Active" />
 
-      {/* Col 4: Message — hidden if not permitted */}
-      <div className="flex justify-center">
-        {permissions.canMessage && (
-          <button
-            type="button"
-            className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
-            title="Send message"
-          >
-            <MessageSquare className="w-4 h-4" />
-          </button>
-        )}
-      </div>
-
-      {/* Col 5: Edit / Remove — hidden if not permitted */}
-      <div className="flex items-center justify-end gap-1">
-        {permissions.canEdit && onEdit && (
-          <button
-            type="button"
-            onClick={onEdit}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-            title="Edit member"
-          >
-            <Edit2 className="w-3.5 h-3.5" />
-          </button>
-        )}
-        {permissions.canRemove && onRemove && (
-          <button
-            type="button"
-            onClick={onRemove}
-            disabled={removing}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-30"
-            title="Remove member"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        )}
-      </div>
+      {showActions && (
+        <div className="flex items-center justify-end gap-1">
+          {permissions.canEdit && onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              title="Edit member"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {permissions.canRemove && onRemove && (
+            <button
+              type="button"
+              onClick={onRemove}
+              disabled={removing}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-30"
+              title="Remove member"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -291,6 +280,7 @@ function MemberSection({
   onEdit,
   onRemove,
   removingId,
+  showActions,
 }: {
   title: string;
   members: ProjectMember[];
@@ -301,6 +291,7 @@ function MemberSection({
   onEdit: (m: ProjectMember) => void;
   onRemove: (m: ProjectMember) => void;
   removingId: string | null;
+  showActions: boolean;
 }) {
   if (members.length === 0) return null;
 
@@ -309,7 +300,7 @@ function MemberSection({
       <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-3">
         {title} ({members.length})
       </p>
-      <ColumnHeaders />
+      <ColumnHeaders showActions={showActions} />
       <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
         {members.map((m, idx) => {
           const isSelf = !!currentUserId && m.user_id === currentUserId;
@@ -330,6 +321,7 @@ function MemberSection({
               isLast={idx === members.length - 1}
               isSelf={isSelf}
               permissions={perms}
+              showActions={showActions}
               onEdit={() => onEdit(m)}
               onRemove={() => onRemove(m)}
               removing={removingId === m.id}
@@ -578,7 +570,7 @@ export function TeamPage({ projectId }: TeamPageProps) {
               <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-3">
                 Project Principals ({filteredStakeholders.length})
               </p>
-              <ColumnHeaders />
+              <ColumnHeaders showActions={canManageMembers} />
               <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
                 {filteredStakeholders.map((s, idx) => {
                   const isSelf = !!user?.id && s.id === user.id;
@@ -598,6 +590,7 @@ export function TeamPage({ projectId }: TeamPageProps) {
                       isLast={idx === filteredStakeholders.length - 1}
                       isSelf={isSelf}
                       permissions={perms}
+                      showActions={canManageMembers}
                     />
                   );
                 })}
@@ -615,6 +608,7 @@ export function TeamPage({ projectId }: TeamPageProps) {
             onEdit={setPermissionMember}
             onRemove={handleRemove}
             removingId={removingId}
+            showActions={canManageMembers}
           />
         </div>
       </div>
