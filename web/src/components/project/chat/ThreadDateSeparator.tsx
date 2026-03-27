@@ -1,0 +1,9 @@
+export function ThreadDateSeparator({ label }: { label: string }) {
+  return (
+    <div className="my-3 flex items-center gap-3">
+      <div className="h-px flex-1 bg-gray-300/70" />
+      <span className="text-sm font-semibold text-gray-500">{label}</span>
+      <div className="h-px flex-1 bg-gray-300/70" />
+    </div>
+  );
+}

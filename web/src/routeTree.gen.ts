@@ -56,6 +56,7 @@ import { Route as ProjectProjectIdSettingsTeamRouteImport } from './routes/proje
 import { Route as ProjectProjectIdSettingsGeneralRouteImport } from './routes/project/$projectId/settings/general'
 import { Route as ProjectProjectIdRoadmapCreateRouteImport } from './routes/project/$projectId/roadmap/create'
 import { Route as ProjectProjectIdRoadmapRoadmapIdRouteImport } from './routes/project/$projectId/roadmap/$roadmapId'
+import { Route as ProjectProjectIdChatChatRefRouteImport } from './routes/project/$projectId/chat/$chatRef'
 import { Route as ProjectProjectIdTimeTeamLogsProjectMemberIdRouteImport } from './routes/project/$projectId/time/team-logs/$projectMemberId'
 
 const ProjectPostingRoute = ProjectPostingRouteImport.update({
@@ -306,6 +307,12 @@ const ProjectProjectIdRoadmapRoadmapIdRoute =
     path: '/$roadmapId',
     getParentRoute: () => ProjectProjectIdRoadmapRoute,
   } as any)
+const ProjectProjectIdChatChatRefRoute =
+  ProjectProjectIdChatChatRefRouteImport.update({
+    id: '/chat/$chatRef',
+    path: '/chat/$chatRef',
+    getParentRoute: () => ProjectProjectIdRoute,
+  } as any)
 const ProjectProjectIdTimeTeamLogsProjectMemberIdRoute =
   ProjectProjectIdTimeTeamLogsProjectMemberIdRouteImport.update({
     id: '/$projectMemberId',
@@ -352,6 +359,7 @@ export interface FileRoutesByFullPath {
   '/project/$projectId/work-items': typeof ProjectProjectIdWorkItemsRouteWithChildren
   '/roadmap/shared/$token': typeof RoadmapSharedTokenRoute
   '/project/roadmap': typeof ProjectRoadmapIndexRoute
+  '/project/$projectId/chat/$chatRef': typeof ProjectProjectIdChatChatRefRoute
   '/project/$projectId/roadmap/$roadmapId': typeof ProjectProjectIdRoadmapRoadmapIdRoute
   '/project/$projectId/roadmap/create': typeof ProjectProjectIdRoadmapCreateRoute
   '/project/$projectId/settings/general': typeof ProjectProjectIdSettingsGeneralRoute
@@ -401,6 +409,7 @@ export interface FileRoutesByTo {
   '/project/$projectId/work-items': typeof ProjectProjectIdWorkItemsRouteWithChildren
   '/roadmap/shared/$token': typeof RoadmapSharedTokenRoute
   '/project/roadmap': typeof ProjectRoadmapIndexRoute
+  '/project/$projectId/chat/$chatRef': typeof ProjectProjectIdChatChatRefRoute
   '/project/$projectId/roadmap/$roadmapId': typeof ProjectProjectIdRoadmapRoadmapIdRoute
   '/project/$projectId/roadmap/create': typeof ProjectProjectIdRoadmapCreateRoute
   '/project/$projectId/settings/general': typeof ProjectProjectIdSettingsGeneralRoute
@@ -452,6 +461,7 @@ export interface FileRoutesById {
   '/project/$projectId/work-items': typeof ProjectProjectIdWorkItemsRouteWithChildren
   '/roadmap/shared/$token': typeof RoadmapSharedTokenRoute
   '/project/roadmap/': typeof ProjectRoadmapIndexRoute
+  '/project/$projectId/chat/$chatRef': typeof ProjectProjectIdChatChatRefRoute
   '/project/$projectId/roadmap/$roadmapId': typeof ProjectProjectIdRoadmapRoadmapIdRoute
   '/project/$projectId/roadmap/create': typeof ProjectProjectIdRoadmapCreateRoute
   '/project/$projectId/settings/general': typeof ProjectProjectIdSettingsGeneralRoute
@@ -504,6 +514,7 @@ export interface FileRouteTypes {
     | '/project/$projectId/work-items'
     | '/roadmap/shared/$token'
     | '/project/roadmap'
+    | '/project/$projectId/chat/$chatRef'
     | '/project/$projectId/roadmap/$roadmapId'
     | '/project/$projectId/roadmap/create'
     | '/project/$projectId/settings/general'
@@ -553,6 +564,7 @@ export interface FileRouteTypes {
     | '/project/$projectId/work-items'
     | '/roadmap/shared/$token'
     | '/project/roadmap'
+    | '/project/$projectId/chat/$chatRef'
     | '/project/$projectId/roadmap/$roadmapId'
     | '/project/$projectId/roadmap/create'
     | '/project/$projectId/settings/general'
@@ -603,6 +615,7 @@ export interface FileRouteTypes {
     | '/project/$projectId/work-items'
     | '/roadmap/shared/$token'
     | '/project/roadmap/'
+    | '/project/$projectId/chat/$chatRef'
     | '/project/$projectId/roadmap/$roadmapId'
     | '/project/$projectId/roadmap/create'
     | '/project/$projectId/settings/general'
@@ -975,6 +988,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectProjectIdRoadmapRoadmapIdRouteImport
       parentRoute: typeof ProjectProjectIdRoadmapRoute
     }
+    '/project/$projectId/chat/$chatRef': {
+      id: '/project/$projectId/chat/$chatRef'
+      path: '/chat/$chatRef'
+      fullPath: '/project/$projectId/chat/$chatRef'
+      preLoaderRoute: typeof ProjectProjectIdChatChatRefRouteImport
+      parentRoute: typeof ProjectProjectIdRoute
+    }
     '/project/$projectId/time/team-logs/$projectMemberId': {
       id: '/project/$projectId/time/team-logs/$projectMemberId'
       path: '/$projectMemberId'
@@ -1058,6 +1078,7 @@ interface ProjectProjectIdRouteChildren {
   ProjectProjectIdRoadmapRoute: typeof ProjectProjectIdRoadmapRouteWithChildren
   ProjectProjectIdTeamRoute: typeof ProjectProjectIdTeamRoute
   ProjectProjectIdWorkItemsRoute: typeof ProjectProjectIdWorkItemsRouteWithChildren
+  ProjectProjectIdChatChatRefRoute: typeof ProjectProjectIdChatChatRefRoute
   ProjectProjectIdSettingsGeneralRoute: typeof ProjectProjectIdSettingsGeneralRoute
   ProjectProjectIdSettingsTeamRoute: typeof ProjectProjectIdSettingsTeamRoute
   ProjectProjectIdTimeMyLogsRoute: typeof ProjectProjectIdTimeMyLogsRoute
@@ -1074,6 +1095,7 @@ const ProjectProjectIdRouteChildren: ProjectProjectIdRouteChildren = {
   ProjectProjectIdRoadmapRoute: ProjectProjectIdRoadmapRouteWithChildren,
   ProjectProjectIdTeamRoute: ProjectProjectIdTeamRoute,
   ProjectProjectIdWorkItemsRoute: ProjectProjectIdWorkItemsRouteWithChildren,
+  ProjectProjectIdChatChatRefRoute: ProjectProjectIdChatChatRefRoute,
   ProjectProjectIdSettingsGeneralRoute: ProjectProjectIdSettingsGeneralRoute,
   ProjectProjectIdSettingsTeamRoute: ProjectProjectIdSettingsTeamRoute,
   ProjectProjectIdTimeMyLogsRoute: ProjectProjectIdTimeMyLogsRoute,
