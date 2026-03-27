@@ -519,15 +519,6 @@ function TimeMyLogsPage() {
     await deleteLog(deleteLogId);
   }, [deleteLogId]);
 
-  const handleTaskChange = useCallback(
-    async (log: TaskTimeLog, nextTaskId: string) => {
-      if (!nextTaskId || nextTaskId === log.task_id) return;
-      setError(null);
-      enqueueTaskChange(log.id, nextTaskId);
-    },
-    [enqueueTaskChange],
-  );
-
   const createLogFromModal = async () => {
     if (!newLogTaskId) {
       setError("Select a task.");
