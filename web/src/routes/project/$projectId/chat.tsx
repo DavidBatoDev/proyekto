@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, MessageSquare, Plus, Send } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useUser } from "@/stores/authStore";
+import { useChatTyping } from "@/hooks/useChatTyping";
+import { profileService } from "@/services/profile.service";
 import {
   findMemberCandidate,
   findRoomByCounterpart,
@@ -14,7 +15,20 @@ import {
   useSendChatMessageMutation,
 } from "@/hooks/useChatQueries";
 import { chatKeys } from "@/queries/chat";
-import type { ChatMemberCandidate, ChatRoom } from "@/services/chat.service";
+import {
+  ChatComposer,
+  ChatHeader,
+  ChatProfilePanel,
+  ChatShell,
+  ChatSidebar,
+  MessageList,
+} from "@/components/project/chat";
+import type {
+  ChatMemberCandidate,
+  ChatMemberRole,
+  ChatRoom,
+} from "@/services/chat.service";
+import type { ThreadUiMessage } from "@/components/project/chat/thread";
 
 export const Route = createFileRoute("/project/$projectId/chat")({
   component: ChatPage,
@@ -29,41 +43,33 @@ function getDisplayName(member: ChatMemberCandidate | null): string {
   return member.user?.display_name || member.user?.email || member.user_id;
 }
 
-function Avatar({
-  name,
-  avatarUrl,
-}: {
-  name: string;
-  avatarUrl?: string | null;
-}) {
-  const initials = name
-    .split(" ")
-    .map((part) => part[0] || "")
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
-  if (avatarUrl) {
-    return (
-      <img
-        src={avatarUrl}
-        alt={name}
-        className="w-7 h-7 rounded-full object-cover object-top shrink-0"
-      />
-    );
-  }
-
-  return (
-    <div className="w-7 h-7 rounded-full bg-orange-100 text-orange-600 text-[11px] font-semibold flex items-center justify-center shrink-0">
-      {initials || "?"}
-    </div>
-  );
+function getRoleLabel(role: ChatMemberRole | undefined): string {
+  if (!role) return "Member";
+  return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
 function ChatPage() {
   const { projectId } = Route.useParams();
   const queryClient = useQueryClient();
   const user = useUser();
+  const [showPeoplePicker, setShowPeoplePicker] = useState(false);
+  const [showSidebarMobile, setShowSidebarMobile] = useState(false);
+  const [isProfilePanelOpen, setIsProfilePanelOpen] = useState(true);
+  const [selectedProfileUserId, setSelectedProfileUserId] = useState<string | null>(
+    null,
+  );
+  const [messageInput, setMessageInput] = useState("");
+  const messagesViewportRef = useRef<HTMLDivElement | null>(null);
+  const shouldStickToBottomRef = useRef(true);
+  const fetchingOlderRef = useRef(false);
+  const prependAnchorRef = useRef<{
+    roomId: string | null;
+    scrollTop: number;
+    scrollHeight: number;
+  } | null>(null);
+  const [optimisticByConversation, setOptimisticByConversation] = useState<
+    Record<string, ThreadUiMessage[]>
+  >({});
 
   const roomsQuery = useProjectChatRoomsQuery(projectId);
   const membersQuery = useProjectChatMembersQuery(projectId);
@@ -71,12 +77,11 @@ function ChatPage() {
 
   const rooms = roomsQuery.data ?? [];
   const members = membersQuery.data ?? [];
-  const [showPeoplePicker, setShowPeoplePicker] = useState(false);
-  const [messageInput, setMessageInput] = useState("");
+
   const [activeTarget, setActiveTarget] = useState<ActiveTarget>({
     kind: "channel",
     slug: "general",
-    roomId: rooms.find((room) => room.type === "channel" && room.slug === "general")?.id ?? null,
+    roomId: null,
   });
 
   useEffect(() => {
@@ -95,8 +100,21 @@ function ChatPage() {
   }, [rooms]);
 
   const activeRoomId = activeTarget.roomId;
+  const conversationKey =
+    activeTarget.kind === "channel"
+      ? "channel:general"
+      : `dm:${activeTarget.userId}`;
   const messagesQuery = useRoomMessagesQuery(projectId, activeRoomId ?? "");
   const messages = flattenRoomMessages(messagesQuery.data);
+  const optimisticMessages = optimisticByConversation[conversationKey] ?? [];
+  const displayedMessages = useMemo(() => {
+    return [...messages, ...optimisticMessages].sort(
+      (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
+  }, [messages, optimisticMessages]);
+  const activeRoom =
+    activeRoomId != null ? rooms.find((room) => room.id === activeRoomId) : null;
 
   const dmEntries = useMemo(() => {
     return members
@@ -104,21 +122,24 @@ function ChatPage() {
         const existingRoom = findRoomByCounterpart(rooms, member.user_id);
         return {
           member,
-          room: existingRoom,
+          roomId: existingRoom?.id ?? null,
+          preview: existingRoom?.last_message?.content || "Start a conversation",
+          avatarUrl:
+            member.user?.avatar_url ??
+            existingRoom?.counterpart?.user?.avatar_url ??
+            null,
+          lastAt: existingRoom?.last_message?.created_at ?? "",
+          lastSenderId: existingRoom?.last_message?.sender_id ?? "",
         };
       })
       .sort((a, b) => {
-        const aHasRoom = !!a.room;
-        const bHasRoom = !!b.room;
+        const aHasRoom = !!a.roomId;
+        const bHasRoom = !!b.roomId;
         if (aHasRoom && !bHasRoom) return -1;
         if (!aHasRoom && bHasRoom) return 1;
-
-        const aTime = a.room?.last_message?.created_at || "";
-        const bTime = b.room?.last_message?.created_at || "";
-        if (aTime && bTime) {
-          return new Date(bTime).getTime() - new Date(aTime).getTime();
+        if (a.lastAt && b.lastAt) {
+          return new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime();
         }
-
         const aName = getDisplayName(a.member).toLowerCase();
         const bName = getDisplayName(b.member).toLowerCase();
         return aName.localeCompare(bName);
@@ -129,6 +150,59 @@ function ChatPage() {
     activeTarget.kind === "dm"
       ? findMemberCandidate(members, activeTarget.userId)
       : null;
+  const activeProfileUserId =
+    activeTarget.kind === "dm" ? activeDmMember?.user_id ?? null : selectedProfileUserId;
+  const senderMap = useMemo(() => {
+    const map: Record<string, { name: string; avatarUrl?: string | null }> = {};
+
+    for (const member of members) {
+      map[member.user_id] = {
+        name: getDisplayName(member),
+        avatarUrl: member.user?.avatar_url ?? null,
+      };
+    }
+
+    for (const participant of activeRoom?.participants ?? []) {
+      if (!map[participant.user_id]) {
+        map[participant.user_id] = {
+          name:
+            participant.user?.display_name ||
+            participant.user?.email ||
+            participant.user_id,
+          avatarUrl: participant.user?.avatar_url ?? null,
+        };
+      }
+    }
+
+    if (user?.id && !map[user.id]) {
+      map[user.id] = {
+        name: user.email || "You",
+        avatarUrl: null,
+      };
+    }
+
+    return map;
+  }, [members, activeRoom?.participants, user?.id, user?.email]);
+
+  useEffect(() => {
+    if (activeTarget.kind === "dm") {
+      setSelectedProfileUserId(activeDmMember?.user_id ?? null);
+      return;
+    }
+
+    if (!selectedProfileUserId) return;
+    const senderExists = displayedMessages.some(
+      (message) => message.sender_id === selectedProfileUserId,
+    );
+    if (!senderExists) {
+      setSelectedProfileUserId(null);
+    }
+  }, [
+    activeTarget.kind,
+    activeDmMember?.user_id,
+    displayedMessages,
+    selectedProfileUserId,
+  ]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -145,7 +219,6 @@ function ChatPage() {
         },
         (payload) => {
           const roomId = String((payload.new as { room_id?: string })?.room_id ?? "");
-
           void queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
           if (roomId) {
             void queryClient.invalidateQueries({
@@ -161,11 +234,177 @@ function ChatPage() {
     };
   }, [projectId, queryClient]);
 
+  const { typingNames, startTyping, stopTyping } = useChatTyping({
+    projectId,
+    roomId: activeRoomId,
+    userId: user?.id,
+    displayName: user?.email || "You",
+  });
+
+  const activeMemberCandidate = useMemo(() => {
+    if (!activeProfileUserId) return null;
+    const fromMembers = findMemberCandidate(members, activeProfileUserId);
+    if (fromMembers) return fromMembers;
+
+    const fromParticipants = activeRoom?.participants.find(
+      (participant) => participant.user_id === activeProfileUserId,
+    );
+    if (!fromParticipants) return null;
+
+    return {
+      user_id: fromParticipants.user_id,
+      role: "freelancer" as ChatMemberRole,
+      position: null,
+      user: fromParticipants.user,
+    } satisfies ChatMemberCandidate;
+  }, [activeProfileUserId, activeRoom?.participants, members]);
+
+  const activeProfileQuery = useQuery({
+    queryKey: ["chat-member-profile", activeProfileUserId],
+    queryFn: () => profileService.getProfile(activeProfileUserId as string),
+    enabled: Boolean(isProfilePanelOpen && activeProfileUserId),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  const activeProfilePreview = useMemo(() => {
+    if (!activeProfileUserId) return null;
+    const name =
+      activeMemberCandidate?.user?.display_name ||
+      activeMemberCandidate?.user?.email ||
+      senderMap[activeProfileUserId]?.name ||
+      "Unknown member";
+    const avatarUrl =
+      activeMemberCandidate?.user?.avatar_url ||
+      senderMap[activeProfileUserId]?.avatarUrl ||
+      null;
+
+    const positionLabel =
+      activeMemberCandidate?.position?.trim() ||
+      getRoleLabel(activeMemberCandidate?.role) ||
+      "Member";
+
+    return {
+      userId: activeProfileUserId,
+      name,
+      roleLabel: getRoleLabel(activeMemberCandidate?.role),
+      positionLabel,
+      avatarUrl,
+      bannerUrl: activeProfileQuery.data?.banner_url ?? null,
+    };
+  }, [activeProfileQuery.data?.banner_url, activeMemberCandidate, activeProfileUserId, senderMap]);
+
+  const projectMemberPreviews = useMemo(() => {
+    return members.map((member) => {
+      const name = getDisplayName(member);
+      return {
+        userId: member.user_id,
+        name,
+        roleLabel: getRoleLabel(member.role),
+        positionLabel: member.position?.trim() || getRoleLabel(member.role),
+        avatarUrl: member.user?.avatar_url ?? null,
+        bannerUrl: null,
+      };
+    });
+  }, [members]);
+
+  const fetchOlderMessages = async () => {
+    const viewport = messagesViewportRef.current;
+    if (!viewport || !activeRoomId) return;
+    if (!messagesQuery.hasNextPage || messagesQuery.isFetchingNextPage) return;
+    if (fetchingOlderRef.current) return;
+
+    fetchingOlderRef.current = true;
+    prependAnchorRef.current = {
+      roomId: activeRoomId,
+      scrollTop: viewport.scrollTop,
+      scrollHeight: viewport.scrollHeight,
+    };
+
+    try {
+      await messagesQuery.fetchNextPage();
+    } finally {
+      requestAnimationFrame(() => {
+        const nextViewport = messagesViewportRef.current;
+        const anchor = prependAnchorRef.current;
+        if (
+          nextViewport &&
+          anchor &&
+          anchor.roomId === activeRoomId &&
+          nextViewport.scrollHeight >= anchor.scrollHeight
+        ) {
+          const delta = nextViewport.scrollHeight - anchor.scrollHeight;
+          nextViewport.scrollTop = anchor.scrollTop + delta;
+        }
+        prependAnchorRef.current = null;
+        fetchingOlderRef.current = false;
+      });
+    }
+  };
+
+  useEffect(() => {
+    const viewport = messagesViewportRef.current;
+    if (!viewport) return;
+
+    const onScroll = () => {
+      if (
+        viewport.scrollTop <= 120 &&
+        messagesQuery.hasNextPage &&
+        !messagesQuery.isFetchingNextPage
+      ) {
+        void fetchOlderMessages();
+      }
+
+      const distanceToBottom =
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+      shouldStickToBottomRef.current = distanceToBottom <= 140;
+    };
+
+    onScroll();
+    viewport.addEventListener("scroll", onScroll, { passive: true });
+    return () => viewport.removeEventListener("scroll", onScroll);
+  }, [activeRoomId, messagesQuery.hasNextPage, messagesQuery.isFetchingNextPage]);
+
+  useEffect(() => {
+    shouldStickToBottomRef.current = true;
+    prependAnchorRef.current = null;
+    fetchingOlderRef.current = false;
+  }, [activeRoomId]);
+
+  useEffect(() => {
+    const viewport = messagesViewportRef.current;
+    if (!viewport) return;
+    if (!shouldStickToBottomRef.current) return;
+
+    requestAnimationFrame(() => {
+      viewport.scrollTop = viewport.scrollHeight;
+    });
+  }, [activeRoomId, displayedMessages.length, typingNames.length]);
+
   const sendMessage = async () => {
     if (!user || sendMessageMutation.isPending) return;
 
     const content = messageInput.trim();
     if (!content) return;
+    const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const nowIso = new Date().toISOString();
+
+    const optimisticMessage: ThreadUiMessage = {
+      id: tempId,
+      room_id: activeRoomId ?? "pending",
+      project_id: projectId,
+      sender_id: user.id,
+      content,
+      created_at: nowIso,
+      updated_at: nowIso,
+      optimisticStatus: "sending",
+    };
+
+    setOptimisticByConversation((prev) => ({
+      ...prev,
+      [conversationKey]: [...(prev[conversationKey] ?? []), optimisticMessage],
+    }));
+    shouldStickToBottomRef.current = true;
 
     try {
       let result:
@@ -203,275 +442,160 @@ function ChatPage() {
           });
         } else {
           setActiveTarget((prev) =>
-            prev.kind === "dm"
-              ? { ...prev, roomId: result.room.id }
-              : prev,
+            prev.kind === "dm" ? { ...prev, roomId: result.room.id } : prev,
           );
         }
       }
 
       setMessageInput("");
+      setOptimisticByConversation((prev) => ({
+        ...prev,
+        [conversationKey]: (prev[conversationKey] ?? []).filter(
+          (message) => message.id !== tempId,
+        ),
+      }));
+      await stopTyping();
     } catch {
+      setOptimisticByConversation((prev) => ({
+        ...prev,
+        [conversationKey]: (prev[conversationKey] ?? []).map((message) =>
+          message.id === tempId
+            ? { ...message, optimisticStatus: "failed" }
+            : message,
+        ),
+      }));
+      await stopTyping();
       return;
     }
   };
 
   const isLoading = roomsQuery.isPending || membersQuery.isPending;
-  const hasRoomMessages = !!activeRoomId && messages.length > 0;
+  const hasRoomMessages = displayedMessages.length > 0;
+  const activeTitle =
+    activeTarget.kind === "channel" ? "#general" : getDisplayName(activeDmMember);
+  const activeSubtitle = activeTarget.kind === "channel" ? "Channel" : "Direct Message";
+  const activeAvatarUrl =
+    activeTarget.kind === "dm" ? activeDmMember?.user?.avatar_url : null;
 
   return (
-    <div className="h-full overflow-hidden">
-      <div className="h-full grid grid-cols-1 lg:grid-cols-[300px_1fr]">
-        <aside className="border-r border-gray-200 bg-white h-full overflow-y-auto">
-          <div className="p-4 border-b border-gray-200">
-            <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold">
-              Project Chat
-            </p>
-            <h1 className="text-lg font-semibold text-gray-900 mt-1">Conversations</h1>
-          </div>
-
-          <div className="p-3">
-            <button
-              type="button"
-              onClick={() => {
-                setShowPeoplePicker((value) => !value);
-              }}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              <Plus className="w-4 h-4" />
-              New Message
-            </button>
-          </div>
-
-          {showPeoplePicker && (
-            <div className="px-3 pb-3">
-              <div className="rounded-lg border border-gray-200 bg-gray-50 max-h-56 overflow-y-auto">
-                {members.map((member) => (
-                  <button
-                    key={member.user_id}
-                    type="button"
-                    onClick={() => {
-                      const existingRoom = findRoomByCounterpart(rooms, member.user_id);
-                      setActiveTarget({
-                        kind: "dm",
-                        userId: member.user_id,
-                        roomId: existingRoom?.id ?? null,
-                      });
-                      setShowPeoplePicker(false);
-                    }}
-                    className="w-full px-3 py-2 text-left hover:bg-white border-b border-gray-200 last:border-b-0"
-                  >
-                    <p className="text-sm font-medium text-gray-900">
-                      {getDisplayName(member)}
-                    </p>
-                    <p className="text-xs text-gray-500 uppercase">{member.role}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="px-3 pb-4">
-            <p className="px-1 text-xs uppercase tracking-wide text-gray-400 font-semibold">
-              Channels
-            </p>
-            <button
-              type="button"
-              onClick={() =>
-                setActiveTarget({
-                  kind: "channel",
-                  slug: "general",
-                  roomId:
-                    rooms.find(
-                      (room) => room.type === "channel" && room.slug === "general",
-                    )?.id ?? null,
-                })
+    <ChatShell
+      messagesContainerRef={messagesViewportRef}
+      sidebar={
+        <ChatSidebar
+          show={showSidebarMobile}
+          dmEntries={dmEntries}
+          members={members}
+          currentUserId={user?.id}
+          activeDmUserId={activeTarget.kind === "dm" ? activeTarget.userId : null}
+          activeChannel={activeTarget.kind === "channel"}
+          showPeoplePicker={showPeoplePicker}
+          onTogglePeoplePicker={() => setShowPeoplePicker((value) => !value)}
+          onSelectGeneral={() => {
+            setActiveTarget({
+              kind: "channel",
+              slug: "general",
+              roomId:
+                rooms.find((room) => room.type === "channel" && room.slug === "general")
+                  ?.id ?? null,
+            });
+            setShowSidebarMobile(false);
+          }}
+          onSelectMember={(userId, roomId) => {
+            setActiveTarget({
+              kind: "dm",
+              userId,
+              roomId,
+            });
+            setShowSidebarMobile(false);
+          }}
+          onCloseMobile={() => setShowSidebarMobile(false)}
+        />
+      }
+      header={
+        <ChatHeader
+          title={activeTitle}
+          subtitle={activeSubtitle}
+          isChannel={activeTarget.kind === "channel"}
+          avatarUrl={activeAvatarUrl}
+          isProfilePanelOpen={isProfilePanelOpen}
+          onToggleProfilePanel={() => {
+            setIsProfilePanelOpen((value) => {
+              const next = !value;
+              if (next && activeTarget.kind === "dm" && activeDmMember?.user_id) {
+                setSelectedProfileUserId(activeDmMember.user_id);
               }
-              className={`mt-2 w-full rounded-lg px-3 py-2 text-left ${
-                activeTarget.kind === "channel"
-                  ? "bg-[#ff9933] text-white"
-                  : "hover:bg-gray-100 text-gray-700"
-              }`}
-            >
-              # general
-            </button>
-          </div>
-
-          <div className="px-3 pb-6">
-            <p className="px-1 text-xs uppercase tracking-wide text-gray-400 font-semibold">
-              Direct Messages
-            </p>
-            <div className="mt-2 space-y-1">
-              {dmEntries.map((entry) => {
-                const isActive =
-                  activeTarget.kind === "dm" &&
-                  activeTarget.userId === entry.member.user_id;
-                const label = getDisplayName(entry.member);
-                const preview =
-                  entry.room?.last_message?.content || "Start a conversation";
-                const avatarUrl =
-                  entry.member.user?.avatar_url ??
-                  entry.room?.counterpart?.user?.avatar_url ??
-                  null;
-                return (
-                  <button
-                    key={entry.member.user_id}
-                    type="button"
-                    onClick={() =>
-                      setActiveTarget({
-                        kind: "dm",
-                        userId: entry.member.user_id,
-                        roomId: entry.room?.id ?? null,
-                      })
-                    }
-                    className={`w-full rounded-lg px-3 py-2 text-left ${
-                      isActive
-                        ? "bg-[#ff9933] text-white"
-                        : "hover:bg-gray-100 text-gray-700"
-                    }`}
-                  >
-                    <div className="flex items-start gap-2">
-                      <Avatar name={label} avatarUrl={avatarUrl} />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium truncate">{label}</p>
-                        <p
-                          className={`text-xs truncate ${
-                            isActive ? "text-white/85" : "text-gray-500"
-                          }`}
-                        >
-                          {preview}
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-              {dmEntries.length === 0 && (
-                <p className="px-1 py-2 text-sm text-gray-500">No direct members available.</p>
-              )}
-            </div>
-          </div>
-        </aside>
-
-        <section className="h-full flex flex-col bg-[#f6f7f8]">
-          <header className="border-b border-gray-200 bg-white px-5 py-4">
-            {activeTarget.kind === "channel" ? (
-              <div>
-                <p className="text-xs uppercase text-gray-400 font-semibold tracking-wide">
-                  Channel
-                </p>
-                <h2 className="text-lg font-semibold text-gray-900"># general</h2>
-              </div>
-            ) : (
-              <div>
-                <p className="text-xs uppercase text-gray-400 font-semibold tracking-wide">
-                  Direct Message
-                </p>
-                <h2 className="text-lg font-semibold text-gray-900">
-                  {getDisplayName(activeDmMember)}
-                </h2>
-              </div>
-            )}
-          </header>
-
-          <div className="flex-1 overflow-y-auto px-5 py-4">
-            {isLoading ? (
-              <div className="h-full flex items-center justify-center">
-                <Loader2 className="w-8 h-8 animate-spin text-[#ff9933]" />
-              </div>
-            ) : hasRoomMessages ? (
-              <div className="max-w-3xl space-y-3">
-                {messagesQuery.hasNextPage && (
-                  <button
-                    type="button"
-                    onClick={() => void messagesQuery.fetchNextPage()}
-                    disabled={messagesQuery.isFetchingNextPage}
-                    className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-                  >
-                    {messagesQuery.isFetchingNextPage ? "Loading..." : "Load older messages"}
-                  </button>
-                )}
-
-                {messages.map((message) => {
-                  const isOwnMessage = message.sender_id === user?.id;
-                  return (
-                    <div
-                      key={message.id}
-                      className={`flex ${isOwnMessage ? "justify-end" : "justify-start"}`}
-                    >
-                      <div
-                        className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
-                          isOwnMessage
-                            ? "bg-[#ff9933] text-white"
-                            : "bg-white text-gray-800 border border-gray-200"
-                        }`}
-                      >
-                        <p className="whitespace-pre-wrap break-words">{message.content}</p>
-                        <p
-                          className={`mt-1 text-[11px] ${
-                            isOwnMessage ? "text-white/80" : "text-gray-400"
-                          }`}
-                        >
-                          {new Date(message.created_at).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center px-4">
-                <div className="w-14 h-14 rounded-2xl bg-orange-100 text-orange-500 flex items-center justify-center mb-4">
-                  <MessageSquare className="w-7 h-7" />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900">
-                  {activeTarget.kind === "channel"
-                    ? "Start #general"
-                    : `Message ${getDisplayName(activeDmMember)}`}
-                </h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  {activeTarget.kind === "channel"
-                    ? "This channel appears in recents after the first message."
-                    : "This DM room is created when you send the first message."}
-                </p>
-              </div>
-            )}
-          </div>
-
-          <footer className="border-t border-gray-200 bg-white p-4">
-            <div className="flex items-center gap-2">
-              <input
-                value={messageInput}
-                onChange={(event) => setMessageInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void sendMessage();
-                  }
-                }}
-                placeholder={
-                  activeTarget.kind === "channel"
-                    ? "Send a message to #general"
-                    : `Message ${getDisplayName(activeDmMember)}`
-                }
-                className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-300"
-              />
-              <button
-                type="button"
-                onClick={() => void sendMessage()}
-                disabled={sendMessageMutation.isPending || messageInput.trim().length === 0}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#ff9933] text-white hover:bg-[#e68829] disabled:opacity-60"
-              >
-                {sendMessageMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
-              </button>
-            </div>
-          </footer>
-        </section>
-      </div>
-    </div>
+              return next;
+            });
+          }}
+          onOpenSidebar={() => setShowSidebarMobile(true)}
+        />
+      }
+      messages={
+        <MessageList
+          isLoading={isLoading}
+          hasMessages={hasRoomMessages}
+          messages={displayedMessages}
+          senderMap={senderMap}
+          selectedSenderId={
+            activeTarget.kind === "channel" ? selectedProfileUserId : null
+          }
+          onSelectSender={(userId) => {
+            if (activeTarget.kind !== "channel") return;
+            setSelectedProfileUserId(userId);
+            setIsProfilePanelOpen(true);
+          }}
+          hasNextPage={!!messagesQuery.hasNextPage}
+          isFetchingNextPage={messagesQuery.isFetchingNextPage}
+          emptyTitle={
+            activeTarget.kind === "channel"
+              ? "Start #general"
+              : `Message ${getDisplayName(activeDmMember)}`
+          }
+          emptySubtitle={
+            activeTarget.kind === "channel"
+              ? "This channel appears in recents after the first message."
+              : "This DM room is created when you send the first message."
+          }
+          typingNames={typingNames}
+        />
+      }
+      profilePanel={
+        <ChatProfilePanel
+          member={activeProfilePreview}
+          isOpen={isProfilePanelOpen}
+          mode={activeTarget.kind}
+          projectMembers={projectMemberPreviews}
+          onToggle={() => setIsProfilePanelOpen((value) => !value)}
+          onClose={() => setIsProfilePanelOpen(false)}
+        />
+      }
+      isProfilePanelOpen={isProfilePanelOpen}
+      onCloseProfilePanel={() => setIsProfilePanelOpen(false)}
+      composer={
+        <ChatComposer
+          value={messageInput}
+          onChange={(nextValue) => {
+            setMessageInput(nextValue);
+            if (nextValue.trim()) {
+              void startTyping();
+            } else {
+              void stopTyping();
+            }
+          }}
+          onBlur={() => {
+            void stopTyping();
+          }}
+          onSend={() => {
+            void sendMessage();
+          }}
+          isSending={sendMessageMutation.isPending}
+          placeholder={
+            activeTarget.kind === "channel"
+              ? "Message #general"
+              : `Message ${getDisplayName(activeDmMember)}`
+          }
+        />
+      }
+    />
   );
 }

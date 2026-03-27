@@ -19,6 +19,7 @@ interface ProjectSidebarProps {
   hasProject?: boolean;
   /** The id of the roadmap linked to this project, if any */
   roadmapId?: string;
+  compactMode?: boolean;
 }
 
 export function ProjectSidebar({
@@ -26,6 +27,7 @@ export function ProjectSidebar({
   projectId,
   hasProject,
   roadmapId,
+  compactMode = false,
 }: ProjectSidebarProps) {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
@@ -133,10 +135,14 @@ export function ProjectSidebar({
   return (
     <div className="relative w-14 shrink-0 z-50 h-full">
       <aside
-        onMouseEnter={() => setIsExpanded(true)}
-        onMouseLeave={() => setIsExpanded(false)}
+        onMouseEnter={() => {
+          if (!compactMode) setIsExpanded(true);
+        }}
+        onMouseLeave={() => {
+          if (!compactMode) setIsExpanded(false);
+        }}
         className={`absolute top-0 left-0 h-full flex bg-gray-50 border-r border-gray-200 transition-all duration-300 ease-in-out overflow-hidden shadow-sm ${
-          isExpanded ? "w-56 shadow-xl" : "w-14"
+          compactMode ? "w-14" : isExpanded ? "w-56 shadow-xl" : "w-14"
         }`}
       >
         <div className="w-full flex flex-col py-3 overflow-y-auto">
@@ -163,7 +169,7 @@ export function ProjectSidebar({
                     <Link
                       key={item.label}
                       to={item.to}
-                      title={!isExpanded ? item.label : undefined}
+                      title={!isExpanded || compactMode ? item.label : undefined}
                       className={`flex items-center p-2 mx-2 rounded-lg transition-all overflow-hidden ${
                         isActive
                           ? "bg-[#ff9933] text-white shadow-sm"
@@ -175,7 +181,7 @@ export function ProjectSidebar({
                       </div>
                       <span
                         className={`text-sm font-medium transition-all duration-300 ml-3 whitespace-nowrap ${
-                          isExpanded
+                          isExpanded && !compactMode
                             ? "opacity-100 translate-x-0"
                             : "opacity-0 -translate-x-4"
                         }`}
