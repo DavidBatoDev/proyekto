@@ -63,7 +63,7 @@ export function MessageList({
   const blocks = buildThreadBlocks(messages, senderMap);
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="w-full max-w-4xl mr-auto min-w-0 overflow-x-hidden">
       {hasNextPage && isFetchingNextPage && (
         <div className="space-y-3 pb-2">
           {Array.from({ length: 6 }).map((_, index) => (

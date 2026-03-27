@@ -22,14 +22,14 @@ export function ChatShell({
 }) {
   return (
     <div className="h-full overflow-hidden bg-[#f2f3f5]">
-      <div className="h-full grid grid-cols-1 md:grid-cols-[320px_1fr] xl:grid-cols-[320px_1fr_auto]">
+      <div className="h-full grid grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_minmax(320px,340px)]">
         {sidebar}
 
-        <section className="h-full min-h-0 flex flex-col">
+        <section className="h-full min-h-0 min-w-0 max-w-full overflow-hidden flex flex-col">
           {header}
           <div
             ref={messagesContainerRef}
-            className="flex-1 min-h-0 overflow-y-auto px-3 py-4 md:px-6 md:py-5"
+            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-4 md:px-6 md:py-5"
           >
             {messages}
           </div>

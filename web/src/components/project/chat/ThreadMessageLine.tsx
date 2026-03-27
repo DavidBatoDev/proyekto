@@ -14,8 +14,8 @@ export function ThreadMessageLine({
   onRequestUnsend?: (message: ThreadUiMessage, bypassConfirm: boolean) => void;
 }) {
   return (
-    <div className="group/line relative">
-      <p className="text-[15px] leading-relaxed text-gray-900 whitespace-pre-wrap break-words">
+    <div className="group/line relative min-w-0 overflow-hidden">
+      <p className="text-[15px] leading-relaxed text-gray-900 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
         {message.content}
       </p>
 

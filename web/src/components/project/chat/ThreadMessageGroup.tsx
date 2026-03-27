@@ -4,8 +4,7 @@ import { Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ChatAvatar } from "./Avatar";
 import { ThreadMessageLine } from "./ThreadMessageLine";
-import type { ThreadMessageGroup as Group } from "./thread";
-import type { ThreadUiMessage } from "./thread";
+import type { ThreadMessageGroup as Group, ThreadUiMessage } from "./thread";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😄", "😢", "🙏", "👎", "😡"];
 
@@ -69,7 +68,7 @@ export function ThreadMessageGroup({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.16, ease: "easeOut" }}
-      className={`group relative -mx-3 px-3 py-2 rounded-md mb-1 transition-colors ${
+      className={`group relative -mx-3 px-3 py-2 rounded-md mb-1 min-w-0 transition-colors ${
         isSelected ? "bg-orange-100/70" : "hover:bg-gray-200/35"
       }`}
     >
@@ -136,7 +135,7 @@ export function ThreadMessageGroup({
         )}
       </AnimatePresence>
 
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-3 min-w-0">
         <div
           className={canSelect ? "shrink-0 rounded-full" : "shrink-0"}
           onClick={canSelect ? () => onSelectSender?.(group.senderId) : undefined}
@@ -180,7 +179,7 @@ export function ThreadMessageGroup({
             </span>
             <span className="text-[12px] text-gray-500">{startedAt}</span>
           </div>
-          <div className="mt-1 space-y-1">
+          <div className="mt-1 space-y-1 min-w-0">
             {group.messages.map((message) => (
               <ThreadMessageLine
                 key={message.id}

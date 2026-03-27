@@ -9,6 +9,7 @@ import {
   findMemberCandidate,
   findRoomByCounterpart,
   flattenRoomMessages,
+  useDeleteChatMessageMutation,
   useProjectChatMembersQuery,
   useProjectChatRoomsQuery,
   useRoomMessagesQuery,
@@ -22,6 +23,7 @@ import {
   ChatProfilePanel,
   ChatShell,
   ChatSidebar,
+  ChatUnsendConfirmModal,
   MessageList,
 } from "@/components/project/chat";
 import type {
@@ -76,6 +78,10 @@ function ChatPage() {
   const membersQuery = useProjectChatMembersQuery(projectId);
   const sendMessageMutation = useSendChatMessageMutation(projectId);
   const toggleReactionMutation = useToggleChatReactionMutation(projectId);
+  const deleteMessageMutation = useDeleteChatMessageMutation(projectId);
+  const [pendingUnsendMessage, setPendingUnsendMessage] = useState<ThreadUiMessage | null>(
+    null,
+  );
 
   const rooms = roomsQuery.data ?? [];
   const members = membersQuery.data ?? [];
@@ -214,13 +220,19 @@ function ChatPage() {
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "chat_room_messages",
           filter: `project_id=eq.${projectId}`,
         },
         (payload) => {
-          const roomId = String((payload.new as { room_id?: string })?.room_id ?? "");
+          const roomId = String(
+            (
+              (payload.new as { room_id?: string }) ??
+              (payload.old as { room_id?: string }) ??
+              {}
+            ).room_id ?? "",
+          );
           void queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
           if (roomId) {
             void queryClient.invalidateQueries({
@@ -434,6 +446,7 @@ function ChatPage() {
       ...prev,
       [conversationKey]: [...(prev[conversationKey] ?? []), optimisticMessage],
     }));
+    setMessageInput("");
     shouldStickToBottomRef.current = true;
 
     try {
@@ -477,7 +490,6 @@ function ChatPage() {
         }
       }
 
-      setMessageInput("");
       setOptimisticByConversation((prev) => ({
         ...prev,
         [conversationKey]: (prev[conversationKey] ?? []).filter(
@@ -499,6 +511,24 @@ function ChatPage() {
     }
   };
 
+  const requestUnsend = async (
+    message: ThreadUiMessage,
+    bypassConfirm: boolean,
+  ) => {
+    if (!activeRoomId) return;
+    if (message.sender_id !== user?.id) return;
+
+    if (bypassConfirm) {
+      await deleteMessageMutation.mutateAsync({
+        roomId: message.room_id || activeRoomId,
+        messageId: message.id,
+      });
+      return;
+    }
+
+    setPendingUnsendMessage(message);
+  };
+
   const isLoading = roomsQuery.isPending || membersQuery.isPending;
   const hasRoomMessages = displayedMessages.length > 0;
   const activeTitle =
@@ -508,7 +538,8 @@ function ChatPage() {
     activeTarget.kind === "dm" ? activeDmMember?.user?.avatar_url : null;
 
   return (
-    <ChatShell
+    <>
+      <ChatShell
       messagesContainerRef={messagesViewportRef}
       sidebar={
         <ChatSidebar
@@ -566,6 +597,7 @@ function ChatPage() {
           hasMessages={hasRoomMessages}
           messages={displayedMessages}
           senderMap={senderMap}
+          currentUserId={user?.id}
           selectedSenderId={
             activeTarget.kind === "channel" ? selectedProfileUserId : null
           }
@@ -580,6 +612,9 @@ function ChatPage() {
               roomId,
               emoji,
             });
+          }}
+          onRequestUnsend={(message, bypassConfirm) => {
+            void requestUnsend(message, bypassConfirm);
           }}
           hasNextPage={!!messagesQuery.hasNextPage}
           isFetchingNextPage={messagesQuery.isFetchingNextPage}
@@ -633,6 +668,43 @@ function ChatPage() {
           }
         />
       }
-    />
+      />
+      <ChatUnsendConfirmModal
+        open={!!pendingUnsendMessage}
+        senderName={
+          (pendingUnsendMessage &&
+            (senderMap[pendingUnsendMessage.sender_id]?.name || "You")) ||
+          "You"
+        }
+        senderAvatarUrl={
+          (pendingUnsendMessage &&
+            (senderMap[pendingUnsendMessage.sender_id]?.avatarUrl ?? null)) ||
+          null
+        }
+        sentAt={
+          pendingUnsendMessage
+            ? new Date(pendingUnsendMessage.created_at).toLocaleTimeString([], {
+                hour: "numeric",
+                minute: "2-digit",
+              })
+            : ""
+        }
+        content={pendingUnsendMessage?.content ?? ""}
+        isSubmitting={deleteMessageMutation.isPending}
+        onCancel={() => {
+          if (deleteMessageMutation.isPending) return;
+          setPendingUnsendMessage(null);
+        }}
+        onConfirm={() => {
+          const targetMessage = pendingUnsendMessage;
+          if (!targetMessage) return;
+          setPendingUnsendMessage(null);
+          void deleteMessageMutation.mutateAsync({
+            roomId: targetMessage.room_id || activeRoomId || "",
+            messageId: targetMessage.id,
+          });
+        }}
+      />
+    </>
   );
 }
