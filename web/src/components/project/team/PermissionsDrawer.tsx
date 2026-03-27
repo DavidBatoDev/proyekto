@@ -101,6 +101,7 @@ interface PermissionsDrawerProps {
   open: boolean;
   member: ProjectMember | null;
   projectId: string;
+  canEditPermissions: boolean;
   onMemberUpdated: (updated: ProjectMember) => void;
   onClose: () => void;
 }
@@ -109,6 +110,7 @@ export function PermissionsDrawer({
   open,
   member,
   projectId,
+  canEditPermissions,
   onMemberUpdated,
   onClose,
 }: PermissionsDrawerProps) {
@@ -207,12 +209,14 @@ export function PermissionsDrawer({
       );
       onMemberUpdated(updatedMember);
 
-      const updatedPermissions = await projectService.updateMemberPermissions(
-        projectId,
-        member.id,
-        permissions,
-      );
-      setPermissions(updatedPermissions);
+      if (canEditPermissions) {
+        const updatedPermissions = await projectService.updateMemberPermissions(
+          projectId,
+          member.id,
+          permissions,
+        );
+        setPermissions(updatedPermissions);
+      }
       await invalidateMembers();
       await invalidateProject();
       onClose();
@@ -321,8 +325,15 @@ export function PermissionsDrawer({
             </div>
           )}
 
+          {!loading && !canEditPermissions && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Clients can edit member position, but cannot modify member permissions.
+            </div>
+          )}
+
           {!loading &&
             permissions &&
+            canEditPermissions &&
             permissionSections.map((section) => (
               <section
                 key={String(section.key)}

@@ -15,6 +15,7 @@ import {
 import { useState } from "react";
 import type { Project } from "@/services/project.service";
 import { chatKeys, fetchProjectChatRooms } from "@/queries/chat";
+import { fetchMyProjectPermissions, projectKeys } from "@/queries/project";
 import { useUser } from "@/stores/authStore";
 import type { ChatRoom } from "@/services/chat.service";
 
@@ -53,6 +54,14 @@ export function ProjectSidebar({
   const isRoadmapView = currentPath.includes("/roadmap");
   const isProjectActive = hasProject ?? (!isRoadmapView || project !== null);
   const isChatRoute = currentPath.includes(`/project/${projectId}/chat`);
+  const permissionsQuery = useQuery({
+    queryKey: projectKeys.myPermissions(projectId),
+    queryFn: () => fetchMyProjectPermissions(projectId),
+    enabled: Boolean(projectId && projectId !== "n" && isProjectActive),
+    staleTime: 60 * 1000,
+    retry: 1,
+  });
+  const canViewTime = permissionsQuery.data?.time?.view === true;
 
   const chatRoomsQuery = useQuery({
     queryKey: chatKeys.rooms(projectId),
@@ -123,6 +132,7 @@ export function ProjectSidebar({
           icon: Clock,
           to: `/project/${projectId}/time`,
           requiresProject: true,
+          requiresTimeView: true,
         },
       ],
     },
@@ -172,7 +182,9 @@ export function ProjectSidebar({
     .map((section) => ({
       ...section,
       items: section.items.filter(
-        (item) => !item.requiresProject || isProjectActive,
+        (item) =>
+          (!item.requiresProject || isProjectActive) &&
+          (!item.requiresTimeView || canViewTime),
       ),
     }))
     .filter((section) => section.items.length > 0);

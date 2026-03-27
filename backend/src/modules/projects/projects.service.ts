@@ -549,6 +549,26 @@ export class ProjectsService {
       });
     }
 
+    if (
+      callerId === project.client_id &&
+      project.consultant_id &&
+      project.consultant_id !== callerId
+    ) {
+      await this.emitNotification({
+        user_id: project.consultant_id,
+        project_id: projectId,
+        type_name: 'project_updated',
+        actor_id: callerId,
+        content: {
+          message: `Client ${inviterName} has invited ${dto.email.trim()} to the project.`,
+          invite_id: invite.id,
+          invitee_email: dto.email.trim(),
+          invited_position: invitedPosition,
+        },
+        link_url: `/project/${projectId}/team`,
+      });
+    }
+
     return invite;
   }
 
@@ -697,7 +717,47 @@ export class ProjectsService {
   ): Promise<void> {
     const project = await this.getProjectOrThrow(projectId);
     await this.assertCanManageMembers(project, callerId);
-    return this.projectsRepo.removeMember(projectId, memberId);
+    const targetMember = await this.projectsRepo.getMemberById(
+      projectId,
+      memberId,
+    );
+    if (!targetMember) {
+      throw new NotFoundException('Member not found');
+    }
+
+    if (targetMember.user_id) {
+      await this.projectsRepo.unassignTasksForMemberInProject(
+        projectId,
+        targetMember.user_id,
+      );
+    }
+
+    await this.projectsRepo.removeMember(projectId, memberId);
+
+    if (
+      callerId === project.client_id &&
+      project.consultant_id &&
+      project.consultant_id !== callerId
+    ) {
+      const removedMemberName = targetMember.user_id
+        ? await this.projectsRepo.getProfileDisplayName(targetMember.user_id)
+        : null;
+
+      await this.emitNotification({
+        user_id: project.consultant_id,
+        project_id: projectId,
+        type_name: 'project_updated',
+        actor_id: callerId,
+        content: {
+          message: `A member has been removed by the client.`,
+          removed_member_id: targetMember.id,
+          removed_user_id: targetMember.user_id,
+          removed_member_role: targetMember.role,
+          removed_member_name: removedMemberName,
+        },
+        link_url: `/project/${projectId}/team`,
+      });
+    }
   }
 
   async leaveProject(
@@ -807,6 +867,11 @@ export class ProjectsService {
   ): Promise<unknown> {
     const project = await this.getProjectOrThrow(projectId);
     await this.assertCanManageMembers(project, callerId);
+    if (callerId === project.client_id) {
+      throw new ForbiddenException(
+        'Project clients cannot modify member permissions.',
+      );
+    }
 
     const targetMember = await this.projectsRepo.getMemberById(
       projectId,

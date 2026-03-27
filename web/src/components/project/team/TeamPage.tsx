@@ -12,6 +12,7 @@ import { useUser } from "@/stores/authStore";
 import { TeamSkeleton } from "./TeamSkeleton";
 import { AddMemberModal } from "./AddMemberModal";
 import { PermissionsDrawer } from "./PermissionsDrawer";
+import { RemoveMemberModal } from "./RemoveMemberModal";
 import { memberDisplayName } from "./utils";
 import {
   useProjectDetailQuery,
@@ -354,6 +355,9 @@ export function TeamPage({ projectId }: TeamPageProps) {
   const [showModal, setShowModal] = useState(false);
   const [permissionMember, setPermissionMember] =
     useState<ProjectMember | null>(null);
+  const [removeCandidate, setRemoveCandidate] = useState<ProjectMember | null>(
+    null,
+  );
   const [removingId, setRemovingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -375,20 +379,29 @@ export function TeamPage({ projectId }: TeamPageProps) {
   }, []);
 
   const handleRemove = useCallback(
-    async (member: ProjectMember) => {
-      if (!window.confirm(`Remove "${memberDisplayName(member)}" from the team?`)) {
-        return;
-      }
-      setRemovingId(member.id);
-      try {
-        await removeMemberMutation.mutateAsync(member.id);
-        setMembers((prev) => prev.filter((m) => m.id !== member.id));
-      } finally {
-        setRemovingId(null);
-      }
+    (member: ProjectMember) => {
+      setRemoveCandidate(member);
     },
-    [removeMemberMutation],
+    [],
   );
+
+  const handleConfirmRemove = useCallback(async () => {
+    if (!removeCandidate) return;
+
+    setRemovingId(removeCandidate.id);
+    try {
+      await removeMemberMutation.mutateAsync(removeCandidate.id);
+      setMembers((prev) => prev.filter((m) => m.id !== removeCandidate.id));
+      setRemoveCandidate(null);
+    } finally {
+      setRemovingId(null);
+    }
+  }, [removeCandidate, removeMemberMutation]);
+
+  const handleCloseRemoveModal = useCallback(() => {
+    if (removingId) return;
+    setRemoveCandidate(null);
+  }, [removingId]);
 
   const isLoading =
     projectQuery.isPending ||
@@ -614,8 +627,19 @@ export function TeamPage({ projectId }: TeamPageProps) {
         open={permissionMember !== null}
         member={permissionMember}
         projectId={projectId}
+        canEditPermissions={canManageMembers && viewerRole !== "client"}
         onMemberUpdated={handleUpdate}
         onClose={() => setPermissionMember(null)}
+      />
+
+      <RemoveMemberModal
+        open={removeCandidate !== null}
+        memberName={removeCandidate ? memberDisplayName(removeCandidate) : ""}
+        loading={Boolean(
+          removeCandidate && removingId && removingId === removeCandidate.id,
+        )}
+        onClose={handleCloseRemoveModal}
+        onConfirm={() => void handleConfirmRemove()}
       />
     </div>
   );

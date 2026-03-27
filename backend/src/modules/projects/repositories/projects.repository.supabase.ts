@@ -30,6 +30,7 @@ import {
   UpdateProjectResourceLinkDto,
 } from '../dto/project.dto';
 import {
+  applyClientInviteRestrictions,
   getTemplateByKey,
   resolvePermissionTemplateKey,
 } from '../permissions/project-permissions';
@@ -771,6 +772,18 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         throw new NotFoundException('Project not found.');
       }
 
+      const defaultPermissions = this.getDefaultPermissionsForMember({
+        projectId: invite.project_id as string,
+        clientId: projectRow.client_id as string,
+        consultantId: (projectRow.consultant_id as string | null) || null,
+        member: {
+          user_id: userId,
+          role: ProjectMemberRole.MEMBER,
+        },
+      });
+      const invitedByClient =
+        String(invite.invited_by || '') === String(projectRow.client_id || '');
+
       const { error: memberError } = await this.supabase
         .from('project_members')
         .upsert(
@@ -779,15 +792,10 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
             user_id: userId,
             role: ProjectMemberRole.MEMBER,
             position: invite.invited_position || 'Member',
-            permissions_json: this.getDefaultPermissionsForMember({
-              projectId: invite.project_id as string,
-              clientId: projectRow.client_id as string,
-              consultantId: (projectRow.consultant_id as string | null) || null,
-              member: {
-                user_id: userId,
-                role: ProjectMemberRole.MEMBER,
-              },
-            }),
+            permissions_json: applyClientInviteRestrictions(
+              defaultPermissions,
+              invitedByClient,
+            ),
           },
           { onConflict: 'project_id,user_id' },
         );

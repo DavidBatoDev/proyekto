@@ -119,6 +119,18 @@ export function getTemplateByKey(
   return clonePermissions(PERMISSION_TEMPLATES[key]);
 }
 
+export function applyClientInviteRestrictions(
+  permissions: ProjectPermissions,
+  invitedByClient: boolean,
+): ProjectPermissions {
+  const normalized = clonePermissions(permissions);
+  if (!invitedByClient) return normalized;
+
+  normalized.roadmap.edit = false;
+  normalized.time.view = false;
+  return normalized;
+}
+
 export function normalizePermissions(
   candidate: Record<string, unknown> | null | undefined,
   defaults: ProjectPermissions,

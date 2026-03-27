@@ -29,6 +29,10 @@ describe('ProjectsService (permissions)', () => {
     return new ProjectsService(repo, notificationsService as any);
   };
 
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('uses member defaults with team-page view enabled', () => {
     const permissions = getTemplateByKey('member');
 
@@ -61,6 +65,131 @@ describe('ProjectsService (permissions)', () => {
           manage: false,
           view: true,
         }),
+      }),
+    );
+  });
+
+  it('rejects permission updates when caller is project client', async () => {
+    const repo = {
+      findById: jest.fn().mockResolvedValue(buildProject()),
+      getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
+        id: 'client-row-1',
+        user_id: 'client-1',
+        role: 'client',
+        permissions_json: getTemplateByKey('client'),
+      }),
+      getMemberById: jest.fn().mockResolvedValue({
+        id: 'member-row-1',
+        user_id: 'member-1',
+        role: 'member',
+      }),
+      updateMemberPermissions: jest.fn().mockResolvedValue({}),
+    };
+    const service = buildService(repo);
+
+    await expect(
+      service.updateMemberPermissions('project-1', 'member-row-1', 'client-1', {
+        roadmap: {
+          edit: true,
+          view_internal: false,
+          comment: true,
+          promote: false,
+        },
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(repo.updateMemberPermissions).not.toHaveBeenCalled();
+  });
+
+  it('allows permission updates when caller is project consultant', async () => {
+    const repo = {
+      findById: jest.fn().mockResolvedValue(buildProject()),
+      getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
+        id: 'consultant-row-1',
+        user_id: 'consultant-1',
+        role: 'consultant',
+        permissions_json: getTemplateByKey('consultant'),
+      }),
+      getMemberById: jest.fn().mockResolvedValue({
+        id: 'member-row-1',
+        user_id: 'member-1',
+        role: 'member',
+      }),
+      updateMemberPermissions: jest.fn().mockResolvedValue({ ok: true }),
+    };
+    const service = buildService(repo);
+
+    await expect(
+      service.updateMemberPermissions(
+        'project-1',
+        'member-row-1',
+        'consultant-1',
+        {
+          roadmap: {
+            edit: true,
+            view_internal: true,
+            comment: true,
+            promote: true,
+          },
+        },
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(repo.updateMemberPermissions).toHaveBeenCalled();
+  });
+
+  it('sends consultant notification when client invites a freelancer', async () => {
+    const repo = {
+      findById: jest.fn().mockResolvedValue(buildProject()),
+      getMemberByProjectAndUserId: jest.fn().mockResolvedValue(null),
+      inviteByEmail: jest.fn().mockResolvedValue({
+        id: 'invite-1',
+        invitee_id: null,
+        invited_position: 'Backend Developer',
+      }),
+      getProfileDisplayName: jest.fn().mockResolvedValue('Client Owner'),
+    };
+    const service = buildService(repo);
+
+    await service.inviteByEmail('project-1', 'client-1', {
+      email: 'freelancer@example.com',
+      position: 'Backend Developer',
+    });
+
+    expect(notificationsService.createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: 'consultant-1',
+        type_name: 'project_updated',
+        actor_id: 'client-1',
+      }),
+    );
+  });
+
+  it('unassigns tasks then removes member when client removes freelancer', async () => {
+    const repo = {
+      findById: jest.fn().mockResolvedValue(buildProject()),
+      getMemberByProjectAndUserId: jest.fn().mockResolvedValue(null),
+      getMemberById: jest.fn().mockResolvedValue({
+        id: 'member-row-1',
+        user_id: 'member-1',
+        role: 'member',
+      }),
+      unassignTasksForMemberInProject: jest.fn().mockResolvedValue(3),
+      removeMember: jest.fn().mockResolvedValue(undefined),
+      getProfileDisplayName: jest.fn().mockResolvedValue('Freelancer One'),
+    };
+    const service = buildService(repo);
+
+    await service.removeMember('project-1', 'member-row-1', 'client-1');
+
+    expect(repo.unassignTasksForMemberInProject).toHaveBeenCalledWith(
+      'project-1',
+      'member-1',
+    );
+    expect(repo.removeMember).toHaveBeenCalledWith('project-1', 'member-row-1');
+    expect(notificationsService.createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: 'consultant-1',
+        type_name: 'project_updated',
+        actor_id: 'client-1',
       }),
     );
   });
