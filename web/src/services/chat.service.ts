@@ -26,6 +26,13 @@ export interface ChatMessage {
   content: string;
   created_at: string;
   updated_at: string;
+  reactions?: ChatMessageReaction[];
+}
+
+export interface ChatMessageReaction {
+  emoji: string;
+  count: number;
+  reacted_by_me: boolean;
 }
 
 export interface ChatRoom {
@@ -145,6 +152,32 @@ class ChatService {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
+      },
+    );
+  }
+
+  toggleReaction(
+    projectId: string,
+    messageId: string,
+    emoji: string,
+  ): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>(
+      `/projects/${projectId}/chat/messages/${messageId}/reactions`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ emoji }),
+      },
+    );
+  }
+
+  deleteMessage(projectId: string, messageId: string): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>(
+      `/projects/${projectId}/chat/messages/${messageId}`,
+      {
+        method: "DELETE",
       },
     );
   }

@@ -138,12 +138,27 @@ export class ChatService {
     });
 
     const chronologicalMessages = [...messages].reverse();
+    const messageIds = chronologicalMessages.map((message) => message.id);
+    const reactionsByMessage =
+      messageIds.length > 0
+        ? await this.chatRepo.listReactionsForMessages({
+            projectId,
+            messageIds,
+            viewerUserId: userId,
+          })
+        : new Map<string, { emoji: string; count: number; reacted_by_me: boolean }[]>();
+
+    const enrichedMessages = chronologicalMessages.map((message) => ({
+      ...message,
+      reactions: reactionsByMessage.get(message.id) ?? [],
+    }));
+
     const nextBefore =
       messages.length === safeLimit ? messages[messages.length - 1]?.created_at : null;
 
     return {
       room_id: roomId,
-      messages: chronologicalMessages,
+      messages: enrichedMessages,
       next_before: nextBefore,
     };
   }
@@ -247,7 +262,69 @@ export class ChatService {
 
     return {
       room,
-      message,
+      message: {
+        ...message,
+        reactions: [],
+      },
     };
+  }
+
+  async toggleMessageReaction(
+    projectId: string,
+    messageId: string,
+    userId: string,
+    emoji: string,
+  ) {
+    await this.assertProjectAccess(projectId, userId);
+
+    const normalizedEmoji = emoji?.trim();
+    if (!normalizedEmoji) {
+      throw new BadRequestException('Emoji is required.');
+    }
+
+    const message = await this.chatRepo.findMessageById(projectId, messageId);
+    if (!message) {
+      throw new NotFoundException('Chat message not found.');
+    }
+
+    const isParticipant = await this.chatRepo.isRoomParticipant(message.room_id, userId);
+    if (!isParticipant) {
+      throw new ForbiddenException('You are not a participant in this room.');
+    }
+
+    await this.chatRepo.toggleMessageReaction({
+      projectId,
+      messageId,
+      userId,
+      emoji: normalizedEmoji,
+    });
+
+    return { ok: true };
+  }
+
+  async unsendMessage(projectId: string, messageId: string, userId: string) {
+    await this.assertProjectAccess(projectId, userId);
+
+    const message = await this.chatRepo.findMessageById(projectId, messageId);
+    if (!message) {
+      throw new NotFoundException('Chat message not found.');
+    }
+
+    const isParticipant = await this.chatRepo.isRoomParticipant(message.room_id, userId);
+    if (!isParticipant) {
+      throw new ForbiddenException('You are not a participant in this room.');
+    }
+
+    if (message.sender_id !== userId) {
+      throw new ForbiddenException('You can only unsend your own messages.');
+    }
+
+    await this.chatRepo.deleteMessage({
+      projectId,
+      messageId,
+      senderId: userId,
+    });
+
+    return { ok: true };
   }
 }

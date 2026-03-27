@@ -1,5 +1,17 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { chatService, type ChatMemberCandidate, type ChatMessage, type ChatRoom } from "@/services/chat.service";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query";
+import {
+  chatService,
+  type ChatMemberCandidate,
+  type ChatMessage,
+  type ChatMessagesPage,
+  type ChatRoom,
+} from "@/services/chat.service";
 import {
   chatKeys,
   fetchProjectChatMembers,
@@ -61,6 +73,127 @@ export function useSendChatMessageMutation(projectId: string) {
       await queryClient.invalidateQueries({
         queryKey: chatKeys.roomMessages(projectId, result.room.id),
       });
+    },
+  });
+}
+
+export function useToggleChatReactionMutation(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { roomId: string; messageId: string; emoji: string }) =>
+      chatService.toggleReaction(projectId, payload.messageId, payload.emoji),
+    onMutate: async (payload) => {
+      const key = chatKeys.roomMessages(projectId, payload.roomId);
+      await queryClient.cancelQueries({ queryKey: key });
+
+      const previous =
+        queryClient.getQueryData<InfiniteData<ChatMessagesPage>>(key);
+
+      queryClient.setQueryData<InfiniteData<ChatMessagesPage>>(key, (current) => {
+        if (!current) return current;
+
+        return {
+          ...current,
+          pages: current.pages.map((page) => ({
+            ...page,
+            messages: page.messages.map((message) => {
+              if (message.id !== payload.messageId) return message;
+              const currentReactions = [...(message.reactions ?? [])];
+              const index = currentReactions.findIndex(
+                (reaction) => reaction.emoji === payload.emoji,
+              );
+
+              if (index === -1) {
+                currentReactions.push({
+                  emoji: payload.emoji,
+                  count: 1,
+                  reacted_by_me: true,
+                });
+              } else {
+                const reaction = currentReactions[index];
+                if (reaction.reacted_by_me) {
+                  const nextCount = Math.max(0, reaction.count - 1);
+                  if (nextCount === 0) {
+                    currentReactions.splice(index, 1);
+                  } else {
+                    currentReactions[index] = {
+                      ...reaction,
+                      count: nextCount,
+                      reacted_by_me: false,
+                    };
+                  }
+                } else {
+                  currentReactions[index] = {
+                    ...reaction,
+                    count: reaction.count + 1,
+                    reacted_by_me: true,
+                  };
+                }
+              }
+
+              return {
+                ...message,
+                reactions: currentReactions.sort((a, b) =>
+                  a.emoji.localeCompare(b.emoji),
+                ),
+              };
+            }),
+          })),
+        };
+      });
+
+      return { previous, key };
+    },
+    onError: (_error, _payload, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(context.key, context.previous);
+      }
+    },
+    onSettled: async (_data, _error, payload) => {
+      await queryClient.invalidateQueries({
+        queryKey: chatKeys.roomMessages(projectId, payload.roomId),
+      });
+      await queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
+    },
+  });
+}
+
+export function useDeleteChatMessageMutation(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { roomId: string; messageId: string }) =>
+      chatService.deleteMessage(projectId, payload.messageId),
+    onMutate: async (payload) => {
+      const key = chatKeys.roomMessages(projectId, payload.roomId);
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous =
+        queryClient.getQueryData<InfiniteData<ChatMessagesPage>>(key);
+
+      queryClient.setQueryData<InfiniteData<ChatMessagesPage>>(key, (current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          pages: current.pages.map((page) => ({
+            ...page,
+            messages: page.messages.filter((message) => message.id !== payload.messageId),
+          })),
+        };
+      });
+
+      return { previous, key };
+    },
+    onError: (_error, _payload, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(context.key, context.previous);
+      }
+    },
+    onSettled: async (_data, _error, payload) => {
+      await queryClient.invalidateQueries({
+        queryKey: chatKeys.roomMessages(projectId, payload.roomId),
+      });
+      await queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
     },
   });
 }

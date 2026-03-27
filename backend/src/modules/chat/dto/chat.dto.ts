@@ -51,3 +51,9 @@ export class SendChatMessageDto {
   @MaxLength(4000)
   content: string;
 }
+
+export class ToggleChatReactionDto {
+  @IsString()
+  @MaxLength(32)
+  emoji: string;
+}

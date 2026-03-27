@@ -14,8 +14,11 @@ export function MessageList({
   hasMessages,
   messages,
   senderMap,
+  currentUserId,
   selectedSenderId,
   onSelectSender,
+  onToggleReaction,
+  onRequestUnsend,
   hasNextPage,
   isFetchingNextPage,
   emptyTitle,
@@ -26,8 +29,11 @@ export function MessageList({
   hasMessages: boolean;
   messages: ThreadUiMessage[];
   senderMap: Record<string, ThreadSender>;
+  currentUserId?: string;
   selectedSenderId?: string | null;
   onSelectSender?: (userId: string) => void;
+  onToggleReaction?: (messageId: string, roomId: string, emoji: string) => void;
+  onRequestUnsend?: (message: ThreadUiMessage, bypassConfirm: boolean) => void;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   emptyTitle: string;
@@ -87,7 +93,10 @@ export function MessageList({
               key={block.key}
               group={block}
               isSelected={selectedSenderId === block.senderId}
+              currentUserId={currentUserId}
               onSelectSender={onSelectSender}
+              onToggleReaction={onToggleReaction}
+              onRequestUnsend={onRequestUnsend}
             />
           );
         })}

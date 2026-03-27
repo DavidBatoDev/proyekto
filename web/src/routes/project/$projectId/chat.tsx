@@ -13,6 +13,7 @@ import {
   useProjectChatRoomsQuery,
   useRoomMessagesQuery,
   useSendChatMessageMutation,
+  useToggleChatReactionMutation,
 } from "@/hooks/useChatQueries";
 import { chatKeys } from "@/queries/chat";
 import {
@@ -74,6 +75,7 @@ function ChatPage() {
   const roomsQuery = useProjectChatRoomsQuery(projectId);
   const membersQuery = useProjectChatMembersQuery(projectId);
   const sendMessageMutation = useSendChatMessageMutation(projectId);
+  const toggleReactionMutation = useToggleChatReactionMutation(projectId);
 
   const rooms = roomsQuery.data ?? [];
   const members = membersQuery.data ?? [];
@@ -207,7 +209,7 @@ function ChatPage() {
   useEffect(() => {
     if (!projectId) return;
 
-    const channel = supabase
+    const messageChannel = supabase
       .channel(`chat-room-messages:${projectId}`)
       .on(
         "postgres_changes",
@@ -229,8 +231,36 @@ function ChatPage() {
       )
       .subscribe();
 
+    const reactionChannel = supabase
+      .channel(`chat-message-reactions:${projectId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chat_room_message_reactions",
+          filter: `project_id=eq.${projectId}`,
+        },
+        (payload) => {
+          const roomId = String(
+            (
+              (payload.new as { room_id?: string }) ??
+              (payload.old as { room_id?: string }) ??
+              {}
+            ).room_id ?? "",
+          );
+          if (roomId) {
+            void queryClient.invalidateQueries({
+              queryKey: chatKeys.roomMessages(projectId, roomId),
+            });
+          }
+        },
+      )
+      .subscribe();
+
     return () => {
-      void supabase.removeChannel(channel);
+      void supabase.removeChannel(messageChannel);
+      void supabase.removeChannel(reactionChannel);
     };
   }, [projectId, queryClient]);
 
@@ -543,6 +573,13 @@ function ChatPage() {
             if (activeTarget.kind !== "channel") return;
             setSelectedProfileUserId(userId);
             setIsProfilePanelOpen(true);
+          }}
+          onToggleReaction={(messageId, roomId, emoji) => {
+            void toggleReactionMutation.mutateAsync({
+              messageId,
+              roomId,
+              emoji,
+            });
           }}
           hasNextPage={!!messagesQuery.hasNextPage}
           isFetchingNextPage={messagesQuery.isFetchingNextPage}

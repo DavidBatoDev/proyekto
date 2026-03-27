@@ -20,6 +20,24 @@ export type ChatMessage = {
   content: string;
   created_at: string;
   updated_at: string;
+  reactions?: ChatMessageReactionSummary[];
+};
+
+export type ChatMessageReaction = {
+  id: string;
+  message_id: string;
+  room_id: string;
+  project_id: string;
+  user_id: string;
+  emoji: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChatMessageReactionSummary = {
+  emoji: string;
+  count: number;
+  reacted_by_me: boolean;
 };
 
 export type ChatUser = {
@@ -89,4 +107,21 @@ export interface ChatRepository {
     senderId: string;
     content: string;
   }): Promise<ChatMessage>;
+  findMessageById(projectId: string, messageId: string): Promise<ChatMessage | null>;
+  listReactionsForMessages(params: {
+    projectId: string;
+    messageIds: string[];
+    viewerUserId: string;
+  }): Promise<Map<string, ChatMessageReactionSummary[]>>;
+  toggleMessageReaction(params: {
+    projectId: string;
+    messageId: string;
+    userId: string;
+    emoji: string;
+  }): Promise<void>;
+  deleteMessage(params: {
+    projectId: string;
+    messageId: string;
+    senderId: string;
+  }): Promise<void>;
 }

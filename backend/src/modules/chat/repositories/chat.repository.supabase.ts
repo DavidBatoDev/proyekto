@@ -4,6 +4,8 @@ import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import type {
   ChatMemberCandidate,
   ChatMessage,
+  ChatMessageReaction,
+  ChatMessageReactionSummary,
   ChatParticipant,
   ChatRepository,
   ChatRole,
@@ -90,6 +92,17 @@ type RawParticipantRow = {
         email: string | null;
       }>
     | null;
+};
+
+type RawReactionRow = {
+  id: string;
+  message_id: string;
+  room_id: string;
+  project_id: string;
+  user_id: string;
+  emoji: string;
+  created_at: string;
+  updated_at: string;
 };
 
 @Injectable()
@@ -498,5 +511,132 @@ export class SupabaseChatRepository implements ChatRepository {
     }
 
     return data as ChatMessage;
+  }
+
+  async findMessageById(
+    projectId: string,
+    messageId: string,
+  ): Promise<ChatMessage | null> {
+    const { data, error } = await this.supabase
+      .from('chat_room_messages')
+      .select('id, room_id, project_id, sender_id, content, created_at, updated_at')
+      .eq('project_id', projectId)
+      .eq('id', messageId)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return data as ChatMessage;
+  }
+
+  async listReactionsForMessages(params: {
+    projectId: string;
+    messageIds: string[];
+    viewerUserId: string;
+  }): Promise<Map<string, ChatMessageReactionSummary[]>> {
+    const map = new Map<string, ChatMessageReactionSummary[]>();
+    if (params.messageIds.length === 0) return map;
+
+    const { data, error } = await this.supabase
+      .from('chat_room_message_reactions')
+      .select(
+        'id, message_id, room_id, project_id, user_id, emoji, created_at, updated_at',
+      )
+      .eq('project_id', params.projectId)
+      .in('message_id', params.messageIds);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const grouped = new Map<string, Map<string, ChatMessageReactionSummary>>();
+    for (const row of (data || []) as RawReactionRow[]) {
+      const byEmoji = grouped.get(row.message_id) ?? new Map();
+      const existing = byEmoji.get(row.emoji);
+      if (existing) {
+        existing.count += 1;
+        if (row.user_id === params.viewerUserId) {
+          existing.reacted_by_me = true;
+        }
+      } else {
+        byEmoji.set(row.emoji, {
+          emoji: row.emoji,
+          count: 1,
+          reacted_by_me: row.user_id === params.viewerUserId,
+        });
+      }
+      grouped.set(row.message_id, byEmoji);
+    }
+
+    for (const [messageId, byEmoji] of grouped.entries()) {
+      map.set(
+        messageId,
+        Array.from(byEmoji.values()).sort((a, b) =>
+          a.emoji.localeCompare(b.emoji),
+        ),
+      );
+    }
+
+    return map;
+  }
+
+  async toggleMessageReaction(params: {
+    projectId: string;
+    messageId: string;
+    userId: string;
+    emoji: string;
+  }): Promise<void> {
+    const message = await this.findMessageById(params.projectId, params.messageId);
+    if (!message) {
+      throw new Error('Message not found');
+    }
+
+    const { data: existing, error: existingError } = await this.supabase
+      .from('chat_room_message_reactions')
+      .select('id')
+      .eq('project_id', params.projectId)
+      .eq('message_id', params.messageId)
+      .eq('user_id', params.userId)
+      .eq('emoji', params.emoji)
+      .maybeSingle();
+
+    if (existingError && existingError.code !== 'PGRST116') {
+      throw new Error(existingError.message);
+    }
+
+    if (existing?.id) {
+      const { error: deleteError } = await this.supabase
+        .from('chat_room_message_reactions')
+        .delete()
+        .eq('id', existing.id);
+      if (deleteError) throw new Error(deleteError.message);
+      return;
+    }
+
+    const { error: insertError } = await this.supabase
+      .from('chat_room_message_reactions')
+      .insert({
+        message_id: params.messageId,
+        room_id: message.room_id,
+        project_id: params.projectId,
+        user_id: params.userId,
+        emoji: params.emoji,
+      } satisfies Omit<ChatMessageReaction, 'id' | 'created_at' | 'updated_at'>);
+
+    if (insertError) throw new Error(insertError.message);
+  }
+
+  async deleteMessage(params: {
+    projectId: string;
+    messageId: string;
+    senderId: string;
+  }): Promise<void> {
+    const { error } = await this.supabase
+      .from('chat_room_messages')
+      .delete()
+      .eq('project_id', params.projectId)
+      .eq('id', params.messageId)
+      .eq('sender_id', params.senderId);
+
+    if (error) throw new Error(error.message);
   }
 }

@@ -1,9 +1,22 @@
-import { Controller, Get, Param, Post, Query, Body, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Query,
+  Body,
+  UseGuards,
+} from '@nestjs/common';
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
 import { ChatService } from './chat.service';
-import { ChatMessagesQueryDto, SendChatMessageDto } from './dto/chat.dto';
+import {
+  ChatMessagesQueryDto,
+  SendChatMessageDto,
+  ToggleChatReactionDto,
+} from './dto/chat.dto';
 
 @UseGuards(SupabaseAuthGuard)
 @Controller('projects/:projectId/chat')
@@ -49,5 +62,29 @@ export class ChatController {
     @Body() dto: SendChatMessageDto,
   ) {
     return this.chatService.sendMessage(projectId, user.id, dto);
+  }
+
+  @Post('messages/:messageId/reactions')
+  toggleReaction(
+    @Param('projectId') projectId: string,
+    @Param('messageId') messageId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ToggleChatReactionDto,
+  ) {
+    return this.chatService.toggleMessageReaction(
+      projectId,
+      messageId,
+      user.id,
+      dto.emoji,
+    );
+  }
+
+  @Delete('messages/:messageId')
+  unsendMessage(
+    @Param('projectId') projectId: string,
+    @Param('messageId') messageId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.chatService.unsendMessage(projectId, messageId, user.id);
   }
 }
