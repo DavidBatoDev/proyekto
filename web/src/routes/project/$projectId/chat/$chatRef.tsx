@@ -1,8 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import { useUser } from "@/stores/authStore";
+import { useProfile, useUser } from "@/stores/authStore";
 import { useChatTyping } from "@/hooks/useChatTyping";
 import { profileService } from "@/services/profile.service";
 import {
@@ -22,25 +22,37 @@ import {
   ChatComposer,
   ChatHeader,
   ChatProfilePanel,
+  ChatProfilePanelSkeleton,
   ChatShell,
   ChatSidebar,
+  ChatSidebarSkeleton,
+  ChatCenterShellSkeleton,
   ChatUnsendConfirmModal,
   MessageList,
 } from "@/components/project/chat";
+import {
+  parseChatRef,
+  roomRef,
+  toChannelRef,
+  toDmRef,
+} from "@/components/project/chat/chatRef";
 import type {
   ChatMemberCandidate,
+  ChatMessage,
   ChatMemberRole,
   ChatRoom,
 } from "@/services/chat.service";
 import type { ThreadUiMessage } from "@/components/project/chat/thread";
+import { useToast } from "@/hooks/useToast";
 
-export const Route = createFileRoute("/project/$projectId/chat")({
+export const Route = createFileRoute("/project/$projectId/chat/$chatRef")({
   component: ChatPage,
 });
 
 type ActiveTarget =
   | { kind: "channel"; slug: "general"; roomId: string | null }
   | { kind: "dm"; userId: string; roomId: string | null };
+type ResolvedTarget = ActiveTarget | { kind: "invalid" };
 
 function getDisplayName(member: ChatMemberCandidate | null): string {
   if (!member) return "Unknown member";
@@ -75,9 +87,12 @@ function hasUnreadForRoom(room: ChatRoom, userId?: string): boolean {
 }
 
 function ChatPage() {
-  const { projectId } = Route.useParams();
+  const { projectId, chatRef } = Route.useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const user = useUser();
+  const profile = useProfile();
+  const toast = useToast();
   const [showPeoplePicker, setShowPeoplePicker] = useState(false);
   const [showSidebarMobile, setShowSidebarMobile] = useState(false);
   const [isProfilePanelOpen, setIsProfilePanelOpen] = useState(true);
@@ -96,6 +111,9 @@ function ChatPage() {
   const [optimisticByConversation, setOptimisticByConversation] = useState<
     Record<string, ThreadUiMessage[]>
   >({});
+  const [transientRoomTargets, setTransientRoomTargets] = useState<
+    Record<string, ActiveTarget>
+  >({});
 
   const roomsQuery = useProjectChatRoomsQuery(projectId);
   const membersQuery = useProjectChatMembersQuery(projectId);
@@ -108,30 +126,96 @@ function ChatPage() {
   );
   const readMarkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightReadRoomRef = useRef<string | null>(null);
+  const roomSwitchSkeletonTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const threadReadyRef = useRef(false);
+  const [showRoomSwitchSkeletonPulse, setShowRoomSwitchSkeletonPulse] = useState(false);
 
   const rooms = roomsQuery.data ?? [];
   const members = membersQuery.data ?? [];
 
-  const [activeTarget, setActiveTarget] = useState<ActiveTarget>({
-    kind: "channel",
-    slug: "general",
-    roomId: null,
-  });
+  const generalRoomBySlug = useMemo(
+    () => rooms.find((room) => room.type === "channel" && room.slug === "general") ?? null,
+    [rooms],
+  );
 
-  useEffect(() => {
-    const generalRoom = rooms.find(
-      (room) => room.type === "channel" && room.slug === "general",
-    );
+  const resolvedTarget = useMemo<ResolvedTarget>(() => {
+    const parsed = parseChatRef(chatRef);
 
-    setActiveTarget((previous) => {
-      if (previous.kind === "channel") {
-        return { ...previous, roomId: generalRoom?.id ?? null };
+    if (parsed.kind === "channel") {
+      return {
+        kind: "channel",
+        slug: "general",
+        roomId: generalRoomBySlug?.id ?? null,
+      };
+    }
+
+    if (parsed.kind === "dm") {
+      const memberExists = members.some((member) => member.user_id === parsed.userId);
+      if (!memberExists && !membersQuery.isPending) {
+        return { kind: "invalid" };
+      }
+      const linkedRoom = findRoomByCounterpart(rooms, parsed.userId);
+      return {
+        kind: "dm",
+        userId: parsed.userId,
+        roomId: linkedRoom?.id ?? null,
+      };
+    }
+
+    if (parsed.kind === "room") {
+      const room = rooms.find((item) => item.id === parsed.roomId);
+      if (!room) {
+        const transient = transientRoomTargets[parsed.roomId];
+        if (transient) {
+          return transient;
+        }
+        if (roomsQuery.isPending) {
+          return {
+            kind: "channel",
+            slug: "general",
+            roomId: generalRoomBySlug?.id ?? null,
+          };
+        }
+        return { kind: "invalid" };
       }
 
-      const linkedRoom = findRoomByCounterpart(rooms, previous.userId);
-      return { ...previous, roomId: linkedRoom?.id ?? null };
-    });
-  }, [rooms]);
+      if (room.type === "channel") {
+        return {
+          kind: "channel",
+          slug: "general",
+          roomId: room.id,
+        };
+      }
+
+      const counterpart =
+        room.participants.find((participant) => participant.user_id !== user?.id) ?? null;
+      if (!counterpart?.user_id) {
+        return { kind: "invalid" };
+      }
+
+      return {
+        kind: "dm",
+        userId: counterpart.user_id,
+        roomId: room.id,
+      };
+    }
+
+    return { kind: "invalid" };
+  }, [
+    chatRef,
+    generalRoomBySlug?.id,
+    members,
+    membersQuery.isPending,
+    rooms,
+    roomsQuery.isPending,
+    transientRoomTargets,
+    user?.id,
+  ]);
+
+  const activeTarget: ActiveTarget =
+    resolvedTarget.kind === "invalid"
+      ? { kind: "channel", slug: "general", roomId: generalRoomBySlug?.id ?? null }
+      : resolvedTarget;
 
   const activeRoomId = activeTarget.roomId;
   const conversationKey =
@@ -142,13 +226,61 @@ function ChatPage() {
   const messages = flattenRoomMessages(messagesQuery.data);
   const optimisticMessages = optimisticByConversation[conversationKey] ?? [];
   const displayedMessages = useMemo(() => {
-    return [...messages, ...optimisticMessages].sort(
+    const byId = new Map<string, ThreadUiMessage>();
+
+    for (const message of messages) {
+      byId.set(message.id, message);
+    }
+
+    for (const message of optimisticMessages) {
+      if (byId.has(message.id)) continue;
+      byId.set(message.id, message);
+    }
+
+    return Array.from(byId.values()).sort(
       (a, b) =>
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     );
   }, [messages, optimisticMessages]);
   const activeRoom =
     activeRoomId != null ? rooms.find((room) => room.id === activeRoomId) : null;
+  const isInitialChatBootLoading =
+    (roomsQuery.isPending || membersQuery.isPending) &&
+    rooms.length === 0 &&
+    members.length === 0;
+
+  useEffect(() => {
+    if (resolvedTarget.kind !== "invalid") return;
+    if (roomsQuery.isPending || membersQuery.isPending) return;
+    toast.error("Chat thread not found or unavailable. Showing #general.");
+    void navigate({
+      to: "/project/$projectId/chat/$chatRef",
+      params: { projectId, chatRef: toChannelRef() },
+      replace: true,
+    });
+  }, [
+    membersQuery.isPending,
+    navigate,
+    projectId,
+    resolvedTarget.kind,
+    roomsQuery.isPending,
+    toast,
+  ]);
+
+  useEffect(() => {
+    if (Object.keys(transientRoomTargets).length === 0) return;
+    const next = { ...transientRoomTargets };
+    let changed = false;
+    for (const roomId of Object.keys(next)) {
+      if (rooms.some((room) => room.id === roomId)) {
+        delete next[roomId];
+        changed = true;
+      }
+    }
+    if (changed) {
+      setTransientRoomTargets(next);
+    }
+  }, [rooms, transientRoomTargets]);
 
   const dmEntries = useMemo(() => {
     return members
@@ -181,11 +313,9 @@ function ChatPage() {
       });
   }, [members, rooms, user?.id]);
 
-  const generalRoom = useMemo(
-    () => rooms.find((room) => room.type === "channel" && room.slug === "general") ?? null,
-    [rooms],
-  );
-  const generalHasUnread = generalRoom ? hasUnreadForRoom(generalRoom, user?.id) : false;
+  const generalHasUnread = generalRoomBySlug
+    ? hasUnreadForRoom(generalRoomBySlug, user?.id)
+    : false;
 
   const activeDmMember =
     activeTarget.kind === "dm"
@@ -217,13 +347,13 @@ function ChatPage() {
 
     if (user?.id && !map[user.id]) {
       map[user.id] = {
-        name: user.email || "You",
-        avatarUrl: null,
+        name: profile?.display_name?.trim() || "You",
+        avatarUrl: profile?.avatar_url ?? null,
       };
     }
 
     return map;
-  }, [members, activeRoom?.participants, user?.id, user?.email]);
+  }, [activeRoom?.participants, members, profile?.avatar_url, profile?.display_name, user?.id]);
 
   useEffect(() => {
     if (activeTarget.kind === "dm") {
@@ -560,7 +690,7 @@ function ChatPage() {
       let result:
         | {
             room: ChatRoom;
-            message: unknown;
+            message: ChatMessage;
           }
         | undefined;
 
@@ -584,23 +714,45 @@ function ChatPage() {
       }
 
       if (result?.room) {
-        if (activeTarget.kind === "channel") {
-          setActiveTarget({
-            kind: "channel",
-            slug: "general",
+        setTransientRoomTargets((prev) => ({
+          ...prev,
+          [result.room.id]: {
+            kind: activeTarget.kind,
+            ...(activeTarget.kind === "dm"
+              ? { userId: activeTarget.userId }
+              : { slug: "general" }),
             roomId: result.room.id,
+          } as ActiveTarget,
+        }));
+
+        const nextRef = roomRef(result.room);
+        if (chatRef !== nextRef) {
+          void navigate({
+            to: "/project/$projectId/chat/$chatRef",
+            params: {
+              projectId,
+              chatRef: nextRef,
+            },
+            replace: true,
           });
-        } else {
-          setActiveTarget((prev) =>
-            prev.kind === "dm" ? { ...prev, roomId: result.room.id } : prev,
-          );
         }
       }
 
       setOptimisticByConversation((prev) => ({
         ...prev,
-        [conversationKey]: (prev[conversationKey] ?? []).filter(
-          (message) => message.id !== tempId,
+        [conversationKey]: (prev[conversationKey] ?? []).map((message) =>
+          message.id === tempId
+            ? {
+                id: result?.message?.id ?? message.id,
+                room_id: result?.message?.room_id ?? result?.room?.id ?? message.room_id,
+                project_id: result?.message?.project_id ?? message.project_id,
+                sender_id: result?.message?.sender_id ?? message.sender_id,
+                content: result?.message?.content ?? message.content,
+                created_at: result?.message?.created_at ?? message.created_at,
+                updated_at: result?.message?.updated_at ?? message.updated_at,
+                reactions: result?.message?.reactions ?? [],
+              }
+            : message,
         ),
       }));
       await stopTyping();
@@ -637,6 +789,15 @@ function ChatPage() {
   };
 
   const isLoading = roomsQuery.isPending || membersQuery.isPending;
+  const isThreadReady =
+    resolvedTarget.kind !== "invalid" &&
+    (!activeRoomId || !messagesQuery.isPending) &&
+    !roomsQuery.isPending &&
+    !membersQuery.isPending;
+  const isRoomSwitchLoading = !isInitialChatBootLoading && !isThreadReady;
+  const shouldShowCenterSkeleton = isInitialChatBootLoading || isRoomSwitchLoading;
+  const shouldAnimateCenterSkeleton =
+    isInitialChatBootLoading || showRoomSwitchSkeletonPulse;
   const hasRoomMessages = displayedMessages.length > 0;
   const activeTitle =
     activeTarget.kind === "channel" ? "#general" : getDisplayName(activeDmMember);
@@ -644,40 +805,80 @@ function ChatPage() {
   const activeAvatarUrl =
     activeTarget.kind === "dm" ? activeDmMember?.user?.avatar_url : null;
 
+  useEffect(() => {
+    threadReadyRef.current = isThreadReady;
+  }, [isThreadReady]);
+
+  useEffect(() => {
+    if (roomSwitchSkeletonTimerRef.current) {
+      clearTimeout(roomSwitchSkeletonTimerRef.current);
+      roomSwitchSkeletonTimerRef.current = null;
+    }
+
+    setShowRoomSwitchSkeletonPulse(false);
+
+    if (isInitialChatBootLoading || !isRoomSwitchLoading) return;
+
+    roomSwitchSkeletonTimerRef.current = setTimeout(() => {
+      if (!threadReadyRef.current) {
+        setShowRoomSwitchSkeletonPulse(true);
+      }
+    }, 120);
+
+    return () => {
+      if (roomSwitchSkeletonTimerRef.current) {
+        clearTimeout(roomSwitchSkeletonTimerRef.current);
+        roomSwitchSkeletonTimerRef.current = null;
+      }
+    };
+  }, [chatRef, isInitialChatBootLoading, isRoomSwitchLoading]);
+
   return (
     <>
       <ChatShell
-      messagesContainerRef={messagesViewportRef}
+      messagesContainerRef={shouldShowCenterSkeleton ? undefined : messagesViewportRef}
+      centerShellOverride={
+        shouldShowCenterSkeleton ? (
+          <ChatCenterShellSkeleton animated={shouldAnimateCenterSkeleton} />
+        ) : undefined
+      }
       sidebar={
-        <ChatSidebar
-          show={showSidebarMobile}
-          dmEntries={dmEntries}
-          members={members}
-          generalHasUnread={generalHasUnread}
-          activeDmUserId={activeTarget.kind === "dm" ? activeTarget.userId : null}
-          activeChannel={activeTarget.kind === "channel"}
-          showPeoplePicker={showPeoplePicker}
-          onTogglePeoplePicker={() => setShowPeoplePicker((value) => !value)}
-          onSelectGeneral={() => {
-            setActiveTarget({
-              kind: "channel",
-              slug: "general",
-              roomId:
-                rooms.find((room) => room.type === "channel" && room.slug === "general")
-                  ?.id ?? null,
-            });
-            setShowSidebarMobile(false);
-          }}
-          onSelectMember={(userId, roomId) => {
-            setActiveTarget({
-              kind: "dm",
-              userId,
-              roomId,
-            });
-            setShowSidebarMobile(false);
-          }}
-          onCloseMobile={() => setShowSidebarMobile(false)}
-        />
+        isInitialChatBootLoading ? (
+          <ChatSidebarSkeleton />
+        ) : (
+          <ChatSidebar
+            show={showSidebarMobile}
+            dmEntries={dmEntries}
+            members={members}
+            currentUserId={user?.id}
+            generalHasUnread={generalHasUnread}
+            activeDmUserId={activeTarget.kind === "dm" ? activeTarget.userId : null}
+            activeChannel={activeTarget.kind === "channel"}
+            showPeoplePicker={showPeoplePicker}
+            onTogglePeoplePicker={() => setShowPeoplePicker((value) => !value)}
+            onSelectGeneral={() => {
+              void navigate({
+                to: "/project/$projectId/chat/$chatRef",
+                params: {
+                  projectId,
+                  chatRef: toChannelRef(),
+                },
+              });
+              setShowSidebarMobile(false);
+            }}
+            onSelectMember={(userId, roomId) => {
+              void navigate({
+                to: "/project/$projectId/chat/$chatRef",
+                params: {
+                  projectId,
+                  chatRef: roomId || toDmRef(userId),
+                },
+              });
+              setShowSidebarMobile(false);
+            }}
+            onCloseMobile={() => setShowSidebarMobile(false)}
+          />
+        )
       }
       header={
         <ChatHeader
@@ -705,14 +906,8 @@ function ChatPage() {
           messages={displayedMessages}
           senderMap={senderMap}
           currentUserId={user?.id}
-          selectedSenderId={
-            activeTarget.kind === "channel" ? selectedProfileUserId : null
-          }
-          onSelectSender={(userId) => {
-            if (activeTarget.kind !== "channel") return;
-            setSelectedProfileUserId(userId);
-            setIsProfilePanelOpen(true);
-          }}
+          selectedSenderId={null}
+          onSelectSender={undefined}
           onToggleReaction={(messageId, roomId, emoji) => {
             void toggleReactionMutation.mutateAsync({
               messageId,
@@ -739,16 +934,20 @@ function ChatPage() {
         />
       }
       profilePanel={
-        <ChatProfilePanel
-          member={activeProfilePreview}
-          isOpen={isProfilePanelOpen}
-          mode={activeTarget.kind}
-          projectMembers={projectMemberPreviews}
-          onToggle={() => setIsProfilePanelOpen((value) => !value)}
-          onClose={() => setIsProfilePanelOpen(false)}
-        />
+        isInitialChatBootLoading ? (
+          <ChatProfilePanelSkeleton />
+        ) : (
+          <ChatProfilePanel
+            member={activeProfilePreview}
+            isOpen={isProfilePanelOpen}
+            mode={activeTarget.kind}
+            projectMembers={projectMemberPreviews}
+            onToggle={() => setIsProfilePanelOpen((value) => !value)}
+            onClose={() => setIsProfilePanelOpen(false)}
+          />
+        )
       }
-      isProfilePanelOpen={isProfilePanelOpen}
+      isProfilePanelOpen={isInitialChatBootLoading ? true : isProfilePanelOpen}
       onCloseProfilePanel={() => setIsProfilePanelOpen(false)}
       composer={
         <ChatComposer

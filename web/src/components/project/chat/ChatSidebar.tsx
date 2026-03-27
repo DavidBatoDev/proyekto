@@ -18,6 +18,7 @@ export function ChatSidebar({
   show,
   dmEntries,
   members,
+  currentUserId,
   generalHasUnread,
   activeDmUserId,
   activeChannel,
@@ -30,6 +31,7 @@ export function ChatSidebar({
   show: boolean;
   dmEntries: DmEntry[];
   members: ChatMemberCandidate[];
+  currentUserId?: string;
   generalHasUnread?: boolean;
   activeDmUserId: string | null;
   activeChannel: boolean;
@@ -192,6 +194,14 @@ export function ChatSidebar({
                   entry.member.user_id;
                 const isActive = activeDmUserId === entry.member.user_id;
                 const isUnread = !isActive && !!entry.hasUnread;
+                const shouldPrefixYou =
+                  !!entry.lastSenderId &&
+                  !!currentUserId &&
+                  entry.lastSenderId === currentUserId &&
+                  entry.preview !== "Start a conversation";
+                const previewText = shouldPrefixYou
+                  ? `You: ${entry.preview}`
+                  : entry.preview;
                 return (
                   <motion.button
                     layout
@@ -228,7 +238,7 @@ export function ChatSidebar({
                             isUnread ? "font-semibold text-gray-700" : "text-gray-500"
                           }`}
                         >
-                          {entry.preview}
+                          {previewText}
                         </p>
                       </div>
                       <span className="h-5 w-5 shrink-0 inline-flex items-center justify-center" aria-hidden="true">
