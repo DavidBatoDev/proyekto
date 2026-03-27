@@ -90,6 +90,7 @@ export function ProjectHeader() {
               if (isRoadmapOnly) return "Roadmap";
               const path = location.pathname;
               if (path.includes("/roadmap")) return "Roadmap";
+              if (path.includes("/chat")) return "Chat";
               if (path.includes("/settings")) return "Settings";
               if (path.includes("/team")) return "Team";
               if (path.includes("/files")) return "Files";

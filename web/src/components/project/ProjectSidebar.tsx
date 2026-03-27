@@ -205,8 +205,11 @@ export function ProjectSidebar({
                   const isChatItem = item.label === "Chat";
                   const showChatUnreadDot =
                     isChatItem && hasUnreadChat && !isChatRoute;
+                  const chatBasePath = `/project/${projectId}/chat`;
                   const isActive =
-                    currentPath.startsWith(item.to) ||
+                    (isChatItem
+                      ? currentPath.startsWith(chatBasePath)
+                      : currentPath.startsWith(item.to)) ||
                     (item.label === "Settings" &&
                       currentPath.includes("/settings")) ||
                     (item.label === "Roadmap" &&
