@@ -55,6 +55,15 @@ export class ChatController {
     );
   }
 
+  @Post('rooms/:roomId/read')
+  markRoomRead(
+    @Param('projectId') projectId: string,
+    @Param('roomId') roomId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.chatService.markRoomRead(projectId, roomId, user.id);
+  }
+
   @Post('messages')
   sendMessage(
     @Param('projectId') projectId: string,

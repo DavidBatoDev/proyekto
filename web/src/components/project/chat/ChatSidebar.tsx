@@ -11,13 +11,14 @@ type DmEntry = {
   avatarUrl?: string | null;
   lastAt?: string;
   lastSenderId?: string;
+  hasUnread?: boolean;
 };
 
 export function ChatSidebar({
   show,
   dmEntries,
   members,
-  currentUserId,
+  generalHasUnread,
   activeDmUserId,
   activeChannel,
   onTogglePeoplePicker,
@@ -29,7 +30,7 @@ export function ChatSidebar({
   show: boolean;
   dmEntries: DmEntry[];
   members: ChatMemberCandidate[];
-  currentUserId?: string;
+  generalHasUnread?: boolean;
   activeDmUserId: string | null;
   activeChannel: boolean;
   onTogglePeoplePicker: () => void;
@@ -41,8 +42,7 @@ export function ChatSidebar({
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
 
   const dmList = useMemo(() => {
-    // v1: visual-only unread toggle. No filtering yet until unread state exists.
-    if (showUnreadOnly) return dmEntries;
+    if (showUnreadOnly) return dmEntries.filter((entry) => !!entry.hasUnread);
     return dmEntries;
   }, [dmEntries, showUnreadOnly]);
 
@@ -167,7 +167,16 @@ export function ChatSidebar({
               }`}
             >
               <Hash className="w-4 h-4" />
-              <span className="font-medium">general</span>
+              <span
+                className={`font-medium ${
+                  !activeChannel && generalHasUnread ? "font-bold text-gray-900" : ""
+                }`}
+              >
+                general
+              </span>
+              {!activeChannel && generalHasUnread ? (
+                <span className="ml-auto h-2.5 w-2.5 rounded-full bg-[#ff9933]" />
+              ) : null}
             </button>
           </div>
 
@@ -182,12 +191,7 @@ export function ChatSidebar({
                   entry.member.user?.email ||
                   entry.member.user_id;
                 const isActive = activeDmUserId === entry.member.user_id;
-                const isUnread =
-                  !isActive &&
-                  !!entry.roomId &&
-                  !!entry.lastSenderId &&
-                  !!currentUserId &&
-                  entry.lastSenderId !== currentUserId;
+                const isUnread = !isActive && !!entry.hasUnread;
                 return (
                   <motion.button
                     layout

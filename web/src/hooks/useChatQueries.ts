@@ -198,6 +198,67 @@ export function useDeleteChatMessageMutation(projectId: string) {
   });
 }
 
+export function useMarkRoomReadMutation(projectId: string, currentUserId?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { roomId: string }) =>
+      chatService.markRoomRead(projectId, payload.roomId),
+    onMutate: async (payload) => {
+      const key = chatKeys.rooms(projectId);
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<ChatRoom[]>(key);
+      const optimisticReadAt = new Date().toISOString();
+
+      queryClient.setQueryData<ChatRoom[]>(key, (current) => {
+        if (!current) return current;
+        return current.map((room) => {
+          if (room.id !== payload.roomId) return room;
+
+          return {
+            ...room,
+            has_unread: false,
+            viewer_last_read_at: optimisticReadAt,
+            participants: room.participants.map((participant) =>
+              currentUserId && participant.user_id === currentUserId
+                ? { ...participant, last_read_at: optimisticReadAt }
+                : participant,
+            ),
+          };
+        });
+      });
+
+      return { previous, key };
+    },
+    onError: (_error, _payload, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(context.key, context.previous);
+      }
+    },
+    onSuccess: (result, payload) => {
+      queryClient.setQueryData<ChatRoom[]>(chatKeys.rooms(projectId), (current) => {
+        if (!current) return current;
+        return current.map((room) => {
+          if (room.id !== payload.roomId) return room;
+          return {
+            ...room,
+            has_unread: false,
+            viewer_last_read_at: result.last_read_at,
+            participants: room.participants.map((participant) =>
+              currentUserId && participant.user_id === currentUserId
+                ? { ...participant, last_read_at: result.last_read_at }
+                : participant,
+            ),
+          };
+        });
+      });
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
+    },
+  });
+}
+
 export function flattenRoomMessages(data: {
   pages: Array<{ messages: ChatMessage[] }>;
 } | null | undefined): ChatMessage[] {

@@ -46,6 +46,8 @@ export interface ChatRoom {
   last_message: ChatMessage | null;
   participants: ChatParticipant[];
   counterpart?: ChatParticipant | null;
+  viewer_last_read_at?: string | null;
+  has_unread?: boolean;
 }
 
 export type ChatMemberRole = "consultant" | "client" | "freelancer";
@@ -178,6 +180,18 @@ class ChatService {
       `/projects/${projectId}/chat/messages/${messageId}`,
       {
         method: "DELETE",
+      },
+    );
+  }
+
+  markRoomRead(
+    projectId: string,
+    roomId: string,
+  ): Promise<{ ok: boolean; room_id: string; last_read_at: string }> {
+    return this.request<{ ok: boolean; room_id: string; last_read_at: string }>(
+      `/projects/${projectId}/chat/rooms/${roomId}/read`,
+      {
+        method: "POST",
       },
     );
   }

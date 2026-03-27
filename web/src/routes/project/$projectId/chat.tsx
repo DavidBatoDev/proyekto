@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useUser } from "@/stores/authStore";
@@ -15,6 +15,7 @@ import {
   useRoomMessagesQuery,
   useSendChatMessageMutation,
   useToggleChatReactionMutation,
+  useMarkRoomReadMutation,
 } from "@/hooks/useChatQueries";
 import { chatKeys } from "@/queries/chat";
 import {
@@ -51,6 +52,28 @@ function getRoleLabel(role: ChatMemberRole | undefined): string {
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
+function hasUnreadForRoom(room: ChatRoom, userId?: string): boolean {
+  if (!userId) return false;
+  if (typeof room.has_unread === "boolean") return room.has_unread;
+
+  const latestMessage = room.last_message;
+  if (!latestMessage) return false;
+
+  const viewerLastReadAt =
+    room.viewer_last_read_at ??
+    room.participants.find((participant) => participant.user_id === userId)?.last_read_at ??
+    null;
+
+  if (!viewerLastReadAt) {
+    return latestMessage.sender_id !== userId;
+  }
+
+  return (
+    new Date(latestMessage.created_at).getTime() >
+    new Date(viewerLastReadAt).getTime()
+  );
+}
+
 function ChatPage() {
   const { projectId } = Route.useParams();
   const queryClient = useQueryClient();
@@ -79,9 +102,12 @@ function ChatPage() {
   const sendMessageMutation = useSendChatMessageMutation(projectId);
   const toggleReactionMutation = useToggleChatReactionMutation(projectId);
   const deleteMessageMutation = useDeleteChatMessageMutation(projectId);
+  const markRoomReadMutation = useMarkRoomReadMutation(projectId, user?.id);
   const [pendingUnsendMessage, setPendingUnsendMessage] = useState<ThreadUiMessage | null>(
     null,
   );
+  const readMarkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlightReadRoomRef = useRef<string | null>(null);
 
   const rooms = roomsQuery.data ?? [];
   const members = membersQuery.data ?? [];
@@ -138,6 +164,7 @@ function ChatPage() {
             null,
           lastAt: existingRoom?.last_message?.created_at ?? "",
           lastSenderId: existingRoom?.last_message?.sender_id ?? "",
+          hasUnread: existingRoom ? hasUnreadForRoom(existingRoom, user?.id) : false,
         };
       })
       .sort((a, b) => {
@@ -152,7 +179,13 @@ function ChatPage() {
         const bName = getDisplayName(b.member).toLowerCase();
         return aName.localeCompare(bName);
       });
-  }, [members, rooms]);
+  }, [members, rooms, user?.id]);
+
+  const generalRoom = useMemo(
+    () => rooms.find((room) => room.type === "channel" && room.slug === "general") ?? null,
+    [rooms],
+  );
+  const generalHasUnread = generalRoom ? hasUnreadForRoom(generalRoom, user?.id) : false;
 
   const activeDmMember =
     activeTarget.kind === "dm"
@@ -270,11 +303,38 @@ function ChatPage() {
       )
       .subscribe();
 
+    const readPointerChannel = user?.id
+      ? supabase
+          .channel(`chat-room-read-pointers:${projectId}:${user.id}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "chat_room_participants",
+              filter: `project_id=eq.${projectId}`,
+            },
+            (payload) => {
+              const userId = String(
+                ((payload.new as { user_id?: string }) ?? {}).user_id ?? "",
+              );
+              if (!userId || userId !== user.id) return;
+              void queryClient.invalidateQueries({
+                queryKey: chatKeys.rooms(projectId),
+              });
+            },
+          )
+          .subscribe()
+      : null;
+
     return () => {
       void supabase.removeChannel(messageChannel);
       void supabase.removeChannel(reactionChannel);
+      if (readPointerChannel) {
+        void supabase.removeChannel(readPointerChannel);
+      }
     };
-  }, [projectId, queryClient]);
+  }, [projectId, queryClient, user?.id]);
 
   const { typingNames, startTyping, stopTyping } = useChatTyping({
     projectId,
@@ -350,6 +410,31 @@ function ChatPage() {
     });
   }, [members]);
 
+  const scheduleMarkActiveRoomRead = useCallback(
+    (delayMs = 550) => {
+      if (!activeRoomId || !user?.id) return;
+      if (!activeRoom || !hasUnreadForRoom(activeRoom, user.id)) return;
+      if (inFlightReadRoomRef.current === activeRoomId) return;
+
+      if (readMarkTimerRef.current) {
+        clearTimeout(readMarkTimerRef.current);
+      }
+
+      readMarkTimerRef.current = setTimeout(() => {
+        if (inFlightReadRoomRef.current === activeRoomId) return;
+        inFlightReadRoomRef.current = activeRoomId;
+        void markRoomReadMutation
+          .mutateAsync({ roomId: activeRoomId })
+          .finally(() => {
+            if (inFlightReadRoomRef.current === activeRoomId) {
+              inFlightReadRoomRef.current = null;
+            }
+          });
+      }, delayMs);
+    },
+    [activeRoom, activeRoomId, markRoomReadMutation, user?.id],
+  );
+
   const fetchOlderMessages = async () => {
     const viewport = messagesViewportRef.current;
     if (!viewport || !activeRoomId) return;
@@ -400,12 +485,20 @@ function ChatPage() {
       const distanceToBottom =
         viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
       shouldStickToBottomRef.current = distanceToBottom <= 140;
+      if (distanceToBottom <= 140) {
+        scheduleMarkActiveRoomRead(500);
+      }
     };
 
     onScroll();
     viewport.addEventListener("scroll", onScroll, { passive: true });
     return () => viewport.removeEventListener("scroll", onScroll);
-  }, [activeRoomId, messagesQuery.hasNextPage, messagesQuery.isFetchingNextPage]);
+  }, [
+    activeRoomId,
+    messagesQuery.hasNextPage,
+    messagesQuery.isFetchingNextPage,
+    scheduleMarkActiveRoomRead,
+  ]);
 
   useEffect(() => {
     shouldStickToBottomRef.current = true;
@@ -420,8 +513,22 @@ function ChatPage() {
 
     requestAnimationFrame(() => {
       viewport.scrollTop = viewport.scrollHeight;
+      scheduleMarkActiveRoomRead(450);
     });
-  }, [activeRoomId, displayedMessages.length, typingNames.length]);
+  }, [
+    activeRoomId,
+    displayedMessages.length,
+    typingNames.length,
+    scheduleMarkActiveRoomRead,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (readMarkTimerRef.current) {
+        clearTimeout(readMarkTimerRef.current);
+      }
+    };
+  }, []);
 
   const sendMessage = async () => {
     if (!user || sendMessageMutation.isPending) return;
@@ -546,7 +653,7 @@ function ChatPage() {
           show={showSidebarMobile}
           dmEntries={dmEntries}
           members={members}
-          currentUserId={user?.id}
+          generalHasUnread={generalHasUnread}
           activeDmUserId={activeTarget.kind === "dm" ? activeTarget.userId : null}
           activeChannel={activeTarget.kind === "channel"}
           showPeoplePicker={showPeoplePicker}

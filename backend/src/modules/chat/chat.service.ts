@@ -79,13 +79,33 @@ export class ChatService {
         return new Date(bTime).getTime() - new Date(aTime).getTime();
       })
       .map((room) => {
-        if (room.type !== 'dm') return room;
+        const viewerParticipant =
+          room.participants.find((participant) => participant.user_id === userId) ??
+          null;
+        const viewerLastReadAt = viewerParticipant?.last_read_at ?? null;
+        const latestMessage = room.last_message;
+        const hasUnread = latestMessage
+          ? viewerLastReadAt
+            ? new Date(latestMessage.created_at).getTime() >
+              new Date(viewerLastReadAt).getTime()
+            : latestMessage.sender_id !== userId
+          : false;
+
+        if (room.type !== 'dm') {
+          return {
+            ...room,
+            viewer_last_read_at: viewerLastReadAt,
+            has_unread: hasUnread,
+          };
+        }
         const counterpart =
           room.participants.find((participant) => participant.user_id !== userId) ??
           null;
         return {
           ...room,
           counterpart,
+          viewer_last_read_at: viewerLastReadAt,
+          has_unread: hasUnread,
         };
       });
   }
@@ -326,5 +346,33 @@ export class ChatService {
     });
 
     return { ok: true };
+  }
+
+  async markRoomRead(projectId: string, roomId: string, userId: string) {
+    await this.assertProjectAccess(projectId, userId);
+
+    const room = await this.chatRepo.findRoomById(projectId, roomId);
+    if (!room) {
+      throw new NotFoundException('Chat room not found.');
+    }
+
+    await this.ensureChannelMembership(room, projectId, userId);
+
+    const isParticipant = await this.chatRepo.isRoomParticipant(roomId, userId);
+    if (!isParticipant) {
+      throw new ForbiddenException('You are not a participant in this room.');
+    }
+
+    const lastReadAt = await this.chatRepo.markRoomRead({
+      roomId,
+      userId,
+      readAt: new Date().toISOString(),
+    });
+
+    return {
+      ok: true,
+      room_id: roomId,
+      last_read_at: lastReadAt,
+    };
   }
 }

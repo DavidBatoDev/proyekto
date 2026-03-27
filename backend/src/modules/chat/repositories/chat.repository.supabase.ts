@@ -639,4 +639,44 @@ export class SupabaseChatRepository implements ChatRepository {
 
     if (error) throw new Error(error.message);
   }
+
+  async markRoomRead(params: {
+    roomId: string;
+    userId: string;
+    readAt?: string;
+  }): Promise<string> {
+    const readAt = params.readAt ?? new Date().toISOString();
+
+    const { data: existing, error: existingError } = await this.supabase
+      .from('chat_room_participants')
+      .select('last_read_at')
+      .eq('room_id', params.roomId)
+      .eq('user_id', params.userId)
+      .maybeSingle();
+
+    if (existingError && existingError.code !== 'PGRST116') {
+      throw new Error(existingError.message);
+    }
+
+    const existingReadAt =
+      existing?.last_read_at && typeof existing.last_read_at === 'string'
+        ? existing.last_read_at
+        : null;
+
+    if (existingReadAt && new Date(existingReadAt).getTime() >= new Date(readAt).getTime()) {
+      return existingReadAt;
+    }
+
+    const { data, error } = await this.supabase
+      .from('chat_room_participants')
+      .update({ last_read_at: readAt })
+      .eq('room_id', params.roomId)
+      .eq('user_id', params.userId)
+      .select('last_read_at')
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    return typeof data?.last_read_at === 'string' ? data.last_read_at : readAt;
+  }
 }

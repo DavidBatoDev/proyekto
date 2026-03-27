@@ -124,4 +124,9 @@ export interface ChatRepository {
     messageId: string;
     senderId: string;
   }): Promise<void>;
+  markRoomRead(params: {
+    roomId: string;
+    userId: string;
+    readAt?: string;
+  }): Promise<string>;
 }
