@@ -6,6 +6,7 @@ export function ChatShell({
   centerShellOverride,
   header,
   messages,
+  typingIndicator,
   composer,
   profilePanel,
   isProfilePanelOpen = false,
@@ -16,6 +17,7 @@ export function ChatShell({
   centerShellOverride?: ReactNode;
   header: ReactNode;
   messages: ReactNode;
+  typingIndicator?: ReactNode;
   composer: ReactNode;
   profilePanel?: ReactNode;
   isProfilePanelOpen?: boolean;
@@ -39,7 +41,14 @@ export function ChatShell({
               >
                 {messages}
               </div>
-              {composer}
+              <div className="relative">
+                {typingIndicator ? (
+                  <div className="pointer-events-none absolute left-3 bottom-full z-20 mb-2 md:left-6">
+                    {typingIndicator}
+                  </div>
+                ) : null}
+                {composer}
+              </div>
             </>
           )}
         </section>

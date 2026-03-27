@@ -1,5 +1,4 @@
 import { Loader2 } from "lucide-react";
-import { TypingIndicator } from "./TypingIndicator";
 import {
   buildThreadBlocks,
   type ThreadSender,
@@ -23,7 +22,6 @@ export function MessageList({
   isFetchingNextPage,
   emptyTitle,
   emptySubtitle,
-  typingNames,
 }: {
   isLoading: boolean;
   hasMessages: boolean;
@@ -38,7 +36,6 @@ export function MessageList({
   isFetchingNextPage: boolean;
   emptyTitle: string;
   emptySubtitle: string;
-  typingNames: string[];
 }) {
   if (isLoading) {
     return (
@@ -53,9 +50,6 @@ export function MessageList({
       <div className="h-full flex flex-col items-center justify-center text-center px-6">
         <h3 className="text-xl font-semibold text-gray-900">{emptyTitle}</h3>
         <p className="mt-2 text-sm text-gray-500">{emptySubtitle}</p>
-        <div className="mt-4">
-          <TypingIndicator names={typingNames} />
-        </div>
       </div>
     );
   }
@@ -100,10 +94,6 @@ export function MessageList({
             />
           );
         })}
-      </div>
-
-      <div className="mt-3">
-        <TypingIndicator names={typingNames} />
       </div>
     </div>
   );

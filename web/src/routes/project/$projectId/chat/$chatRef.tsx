@@ -29,6 +29,7 @@ import {
   ChatCenterShellSkeleton,
   ChatUnsendConfirmModal,
   MessageList,
+  TypingIndicator,
 } from "@/components/project/chat";
 import {
   parseChatRef,
@@ -100,6 +101,7 @@ function ChatPage() {
     null,
   );
   const [messageInput, setMessageInput] = useState("");
+  const optimisticOrderCounterRef = useRef(0);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const fetchingOlderRef = useRef(false);
@@ -226,6 +228,20 @@ function ChatPage() {
   const messages = flattenRoomMessages(messagesQuery.data);
   const optimisticMessages = optimisticByConversation[conversationKey] ?? [];
   const displayedMessages = useMemo(() => {
+    const confirmedMessages = messages;
+    const hasConfirmedMatchForOptimistic = (optimistic: ThreadUiMessage) => {
+      if (optimistic.optimisticStatus !== "sending") return false;
+      const optimisticTime = new Date(optimistic.created_at).getTime();
+      const matchWindowMs = 15_000;
+
+      return confirmedMessages.some((confirmed) => {
+        if (confirmed.sender_id !== optimistic.sender_id) return false;
+        if (confirmed.content !== optimistic.content) return false;
+        const confirmedTime = new Date(confirmed.created_at).getTime();
+        return Math.abs(confirmedTime - optimisticTime) <= matchWindowMs;
+      });
+    };
+
     const byId = new Map<string, ThreadUiMessage>();
 
     for (const message of messages) {
@@ -233,14 +249,30 @@ function ChatPage() {
     }
 
     for (const message of optimisticMessages) {
+      if (hasConfirmedMatchForOptimistic(message)) {
+        continue;
+      }
       if (byId.has(message.id)) continue;
       byId.set(message.id, message);
     }
 
-    return Array.from(byId.values()).sort(
-      (a, b) =>
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-    );
+    return Array.from(byId.values()).sort((a, b) => {
+      const aPending = a.optimisticStatus === "sending" ? 1 : 0;
+      const bPending = b.optimisticStatus === "sending" ? 1 : 0;
+      if (aPending !== bPending) return aPending - bPending;
+
+      const createdDiff =
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      if (createdDiff !== 0) return createdDiff;
+
+      const aOrder = a.optimistic_order ?? 0;
+      const bOrder = b.optimistic_order ?? 0;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+
+      const aStableKey = a.render_key ?? a.id;
+      const bStableKey = b.render_key ?? b.id;
+      return aStableKey.localeCompare(bStableKey);
+    });
   }, [messages, optimisticMessages]);
   const activeRoom =
     activeRoomId != null ? rooms.find((room) => room.id === activeRoomId) : null;
@@ -667,9 +699,13 @@ function ChatPage() {
     if (!content) return;
     const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const nowIso = new Date().toISOString();
+    const optimisticOrder =
+      Date.now() * 1000 + (optimisticOrderCounterRef.current++ % 1000);
 
     const optimisticMessage: ThreadUiMessage = {
       id: tempId,
+      render_key: tempId,
+      optimistic_order: optimisticOrder,
       room_id: activeRoomId ?? "pending",
       project_id: projectId,
       sender_id: user.id,
@@ -685,6 +721,11 @@ function ChatPage() {
     }));
     setMessageInput("");
     shouldStickToBottomRef.current = true;
+    requestAnimationFrame(() => {
+      const viewport = messagesViewportRef.current;
+      if (!viewport) return;
+      viewport.scrollTop = viewport.scrollHeight;
+    });
 
     try {
       let result:
@@ -751,6 +792,8 @@ function ChatPage() {
                 created_at: result?.message?.created_at ?? message.created_at,
                 updated_at: result?.message?.updated_at ?? message.updated_at,
                 reactions: result?.message?.reactions ?? [],
+                render_key: message.render_key ?? message.id,
+                optimistic_order: message.optimistic_order,
               }
             : message,
         ),
@@ -930,9 +973,9 @@ function ChatPage() {
               ? "This channel appears in recents after the first message."
               : "This DM room is created when you send the first message."
           }
-          typingNames={typingNames}
         />
       }
+      typingIndicator={<TypingIndicator names={typingNames} />}
       profilePanel={
         isInitialChatBootLoading ? (
           <ChatProfilePanelSkeleton />

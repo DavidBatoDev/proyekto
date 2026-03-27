@@ -64,10 +64,7 @@ export function ThreadMessageGroup({
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.16, ease: "easeOut" }}
+    <div
       className={`group relative -mx-3 px-3 py-2 rounded-md mb-1 min-w-0 transition-colors ${
         isSelected ? "bg-orange-100/70" : "hover:bg-gray-200/35"
       }`}
@@ -182,7 +179,7 @@ export function ThreadMessageGroup({
           <div className="mt-1 space-y-1 min-w-0">
             {group.messages.map((message) => (
               <ThreadMessageLine
-                key={message.id}
+                key={message.render_key ?? message.id}
                 message={message}
                 canUnsend={message.sender_id === currentUserId}
                 onToggleReaction={onToggleReaction}
@@ -192,6 +189,6 @@ export function ThreadMessageGroup({
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

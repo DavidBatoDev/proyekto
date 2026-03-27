@@ -13,8 +13,13 @@ export function ThreadMessageLine({
   onToggleReaction?: (messageId: string, roomId: string, emoji: string) => void;
   onRequestUnsend?: (message: ThreadUiMessage, bypassConfirm: boolean) => void;
 }) {
+  const isSending = message.optimisticStatus === "sending";
   return (
-    <div className="group/line relative min-w-0 overflow-hidden">
+    <div
+      className={`group/line relative min-w-0 overflow-hidden ${
+        isSending ? "opacity-70" : ""
+      }`}
+    >
       <p className="text-[15px] leading-relaxed text-gray-900 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
         {message.content}
       </p>
@@ -56,9 +61,6 @@ export function ThreadMessageLine({
         </div>
       )}
 
-      {message.optimisticStatus === "sending" && (
-        <p className="text-[11px] text-orange-500 mt-0.5">Sending...</p>
-      )}
       {message.optimisticStatus === "failed" && (
         <p className="text-[11px] text-red-500 mt-0.5">Failed to send</p>
       )}

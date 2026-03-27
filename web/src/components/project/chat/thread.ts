@@ -2,6 +2,8 @@ import type { ChatMessage } from "@/services/chat.service";
 
 export type ThreadUiMessage = ChatMessage & {
   optimisticStatus?: "sending" | "failed";
+  render_key?: string;
+  optimistic_order?: number;
 };
 
 export type ThreadSender = {
@@ -65,6 +67,7 @@ export function buildThreadBlocks(
   inputMessages: ThreadUiMessage[],
   senderMap: Record<string, ThreadSender>,
 ): ThreadRenderBlock[] {
+  const renderKeyFor = (message: ThreadUiMessage) => message.render_key ?? message.id;
   const messages = [...inputMessages].sort(
     (a, b) =>
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
@@ -95,7 +98,7 @@ export function buildThreadBlocks(
       flushGroup();
       blocks.push({
         type: "gap_separator",
-        key: `gap-${message.id}`,
+        key: `gap-${renderKeyFor(message)}`,
         gapLabel: formatGapLabel(messageDate),
       });
     }
@@ -121,7 +124,7 @@ export function buildThreadBlocks(
 
       currentGroup = {
         type: "message_group",
-        key: `group-${message.id}`,
+        key: `group-${renderKeyFor(message)}`,
         senderId: message.sender_id,
         sender,
         startedAt: message.created_at,
