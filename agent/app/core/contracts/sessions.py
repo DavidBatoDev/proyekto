@@ -40,6 +40,7 @@ class ResolverCandidate(BaseModel):
     parent_id: str | None = None
     parent_title: str | None = None
     confidence: float | None = None
+    matched_fields: list[str] | None = None
 
 
 class PendingDisambiguation(BaseModel):

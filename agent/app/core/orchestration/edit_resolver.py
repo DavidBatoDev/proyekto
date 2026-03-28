@@ -95,7 +95,10 @@ def resolve_candidates(
             continue
         if node_type is not None and match_type != node_type:
             continue
-        score = _score_title_match(normalized_label, normalize_text(title), node_type, match_type)
+        score = _safe_float(raw.get('score'))
+        if score is None:
+            score = _score_title_match(normalized_label, normalize_text(title), node_type, match_type)
+        matched_fields = _safe_str_list(raw.get('matched_fields'))
         scored.append(
             ResolverCandidate(
                 id=match_id,
@@ -104,6 +107,7 @@ def resolve_candidates(
                 parent_id=_safe_str(raw.get('parent_id')),
                 parent_title=_safe_str(raw.get('parent_title')),
                 confidence=round(score, 4),
+                matched_fields=matched_fields if matched_fields else None,
             )
         )
 
@@ -197,6 +201,18 @@ def _safe_str(value: Any) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return None
+
+
+def _safe_float(value: Any) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _safe_str_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if isinstance(item, str) and item.strip()]
 
 
 def _normalize_selection_text(text: str) -> str:

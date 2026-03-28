@@ -105,6 +105,15 @@ type FlatNodeSnapshot = {
   dependencies?: string[];
 };
 
+type ContextSearchCandidate = {
+  id: string;
+  type: Exclude<RoadmapNodeType, 'roadmap'>;
+  title: string;
+  description?: string;
+  parent_id: string;
+  parent_title?: string;
+};
+
 const PREVIEW_TTL_MS = 1000 * 60 * 30;
 const EPIC_STATUS = [
   'backlog',
@@ -275,57 +284,74 @@ export class RoadmapAiService {
     const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
     const roadmapNodeId = this.requireNodeId(state.id, 'roadmap');
 
-    const query = (queryDto.query ?? '').trim().toLowerCase();
+    const query = this.normalizeSearchText(queryDto.query ?? '');
     if (!query) return { matches: [] };
     const limit = Math.min(Math.max(queryDto.limit ?? 10, 1), 50);
-    const matches: RoadmapAiContextSearchResponseDto['matches'] = [];
+    const queryTokens = this.tokenizeSearchQuery(query);
+    const typeHint = this.extractTypeHint(queryTokens);
+    const candidates: ContextSearchCandidate[] = [];
 
     for (const epic of state.roadmap_epics ?? []) {
-      if (matches.length >= limit) break;
-      if (epic.id && (epic.title ?? '').toLowerCase().includes(query)) {
-        matches.push({
-          id: epic.id,
-          type: 'epic',
-          title: epic.title ?? 'Untitled epic',
-          parent_id: roadmapNodeId,
-          parent_title: state.name,
-        });
+      if (!epic.id) {
+        continue;
       }
+      candidates.push({
+        id: epic.id,
+        type: 'epic',
+        title: epic.title ?? 'Untitled epic',
+        description: epic.description,
+        parent_id: roadmapNodeId,
+        parent_title: state.name,
+      });
 
       for (const feature of epic.roadmap_features ?? []) {
-        if (matches.length >= limit) break;
-        if (feature.id && (feature.title ?? '').toLowerCase().includes(query)) {
-          if (!epic.id) {
-            continue;
-          }
-          matches.push({
-            id: feature.id,
-            type: 'feature',
-            title: feature.title ?? 'Untitled feature',
-            parent_id: epic.id,
-            parent_title: epic.title,
-          });
+        if (!feature.id) {
+          continue;
         }
+        candidates.push({
+          id: feature.id,
+          type: 'feature',
+          title: feature.title ?? 'Untitled feature',
+          description: feature.description,
+          parent_id: epic.id,
+          parent_title: epic.title,
+        });
 
         for (const task of feature.roadmap_tasks ?? []) {
-          if (matches.length >= limit) break;
-          if (task.id && (task.title ?? '').toLowerCase().includes(query)) {
-            if (!feature.id) {
-              continue;
-            }
-            matches.push({
-              id: task.id,
-              type: 'task',
-              title: task.title ?? 'Untitled task',
-              parent_id: feature.id,
-              parent_title: feature.title,
-            });
+          if (!task.id) {
+            continue;
           }
+          candidates.push({
+            id: task.id,
+            type: 'task',
+            title: task.title ?? 'Untitled task',
+            description: task.description,
+            parent_id: feature.id,
+            parent_title: feature.title,
+          });
         }
       }
     }
 
-    return { matches };
+    const scored = candidates
+      .map((candidate) => this.scoreContextSearchCandidate(candidate, query, queryTokens, typeHint))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.title.localeCompare(b.title) || a.id.localeCompare(b.id);
+      })
+      .slice(0, limit)
+      .map((item) => ({
+        id: item.id,
+        type: item.type,
+        title: item.title,
+        parent_id: item.parent_id,
+        parent_title: item.parent_title,
+        score: Number(item.score.toFixed(4)),
+        matched_fields: item.matched_fields.length ? item.matched_fields : undefined,
+      }));
+
+    return { matches: scored };
   }
 
   async getContextNodeDetails(
@@ -1862,6 +1888,91 @@ export class RoadmapAiService {
       due_date: this.readString(raw, 'due_date'),
       position: this.readNumber(raw, 'position') ?? taskIndex,
     };
+  }
+
+  private tokenizeSearchQuery(query: string): string[] {
+    return this.normalizeSearchText(query)
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0);
+  }
+
+  private normalizeSearchText(value: string): string {
+    return value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private extractTypeHint(
+    tokens: string[],
+  ): Exclude<RoadmapNodeType, 'roadmap'> | undefined {
+    if (tokens.includes('epic')) return 'epic';
+    if (tokens.includes('feature')) return 'feature';
+    if (tokens.includes('task')) return 'task';
+    return undefined;
+  }
+
+  private scoreContextSearchCandidate(
+    candidate: ContextSearchCandidate,
+    query: string,
+    queryTokens: string[],
+    typeHint: Exclude<RoadmapNodeType, 'roadmap'> | undefined,
+  ): ContextSearchCandidate & { score: number; matched_fields: string[] } {
+    const matchedFields: string[] = [];
+    let score = 0;
+
+    const titleScore = this.scoreFieldMatch(candidate.title, query, queryTokens);
+    if (titleScore > 0) {
+      score += titleScore * 1.0;
+      matchedFields.push('title');
+    }
+
+    const descriptionScore = this.scoreFieldMatch(candidate.description, query, queryTokens);
+    if (descriptionScore > 0) {
+      score += descriptionScore * 0.45;
+      matchedFields.push('description');
+    }
+
+    const parentTitleScore = this.scoreFieldMatch(candidate.parent_title, query, queryTokens);
+    if (parentTitleScore > 0) {
+      score += parentTitleScore * 0.35;
+      matchedFields.push('parent_title');
+    }
+
+    if (typeHint && candidate.type === typeHint) {
+      score += 0.2;
+      matchedFields.push('type_hint');
+    }
+    const boundedScore = Math.max(0, Math.min(1, score));
+
+    return {
+      ...candidate,
+      score: boundedScore,
+      matched_fields: [...new Set(matchedFields)],
+    };
+  }
+
+  private scoreFieldMatch(
+    value: string | undefined,
+    query: string,
+    queryTokens: string[],
+  ): number {
+    if (!value) return 0;
+    const normalized = this.normalizeSearchText(value);
+    if (!normalized.trim()) return 0;
+
+    if (normalized === query) return 1.0;
+    if (normalized.startsWith(query)) return 0.9;
+    if (normalized.includes(query)) return 0.72;
+
+    if (queryTokens.length > 1) {
+      const matchedTokenCount = queryTokens.filter((token) => normalized.includes(token)).length;
+      if (matchedTokenCount === queryTokens.length) return 0.55;
+      if (matchedTokenCount > 0) return 0.35;
+    }
+    return 0;
   }
 
   private readArray(

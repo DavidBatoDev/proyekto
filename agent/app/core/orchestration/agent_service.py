@@ -197,6 +197,17 @@ class AgentService:
                 label=rename_intent.label,
                 node_type=rename_intent.node_type,
             )
+            top_score = resolution.candidates[0].confidence if resolution.candidates else None
+            second_score = (
+                resolution.candidates[1].confidence
+                if len(resolution.candidates) > 1
+                else None
+            )
+            score_margin = (
+                round((top_score or 0) - (second_score or 0), 4)
+                if top_score is not None and second_score is not None
+                else None
+            )
             log_event(
                 self._logger,
                 'resolver_result',
@@ -205,6 +216,14 @@ class AgentService:
                 roadmap_id=roadmap_id,
                 status=resolution.status,
                 candidates_count=len(resolution.candidates),
+                top_score=top_score,
+                second_score=second_score,
+                score_margin=score_margin,
+                top_matched_fields=(
+                    resolution.candidates[0].matched_fields
+                    if resolution.candidates
+                    else None
+                ),
             )
             if resolution.status == 'unique' and resolution.selected is not None:
                 session.metadata.pending_disambiguation = None

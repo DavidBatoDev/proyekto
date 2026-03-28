@@ -34,5 +34,14 @@
       "roadmap_id",
       "label"
     ]
-  }
+  },
+  "context_search_match_fields": [
+    "id",
+    "type",
+    "title",
+    "parent_id",
+    "parent_title",
+    "score",
+    "matched_fields"
+  ]
 }

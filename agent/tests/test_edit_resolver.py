@@ -26,6 +26,8 @@ class EditResolverTests(unittest.TestCase):
                     'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
                     'type': 'epic',
                     'title': 'Platform Foundation',
+                    'score': 1.2,
+                    'matched_fields': ['title', 'type_hint'],
                 }
             ],
             label='Platform Foundation',
@@ -35,12 +37,13 @@ class EditResolverTests(unittest.TestCase):
         self.assertIsNotNone(result.selected)
         assert result.selected is not None
         self.assertEqual(result.selected.id, 'dad5697a-8962-4f80-8bc3-8a964edd8e56')
+        self.assertEqual(result.selected.matched_fields, ['title', 'type_hint'])
 
     def test_resolve_ambiguous_candidates(self) -> None:
         result = resolve_candidates(
             [
-                {'id': '1', 'type': 'epic', 'title': 'Platform Foundation'},
-                {'id': '2', 'type': 'epic', 'title': 'Platform Foundation'},
+                {'id': '1', 'type': 'epic', 'title': 'Platform Foundation', 'score': 1.0},
+                {'id': '2', 'type': 'epic', 'title': 'Platform Foundation', 'score': 0.95},
             ],
             label='Platform Foundation',
             node_type='epic',
@@ -49,6 +52,17 @@ class EditResolverTests(unittest.TestCase):
         self.assertEqual(len(result.candidates), 2)
         message = build_ambiguity_message('Platform Foundation', result.candidates)
         self.assertIn('Please choose one', message)
+
+    def test_resolve_falls_back_when_backend_score_missing(self) -> None:
+        result = resolve_candidates(
+            [
+                {'id': '1', 'type': 'epic', 'title': 'Platform Foundation'},
+            ],
+            label='Platform Foundation',
+            node_type='epic',
+        )
+        self.assertEqual(result.status, 'unique')
+        self.assertIsNotNone(result.selected)
 
     def test_parse_selection_index(self) -> None:
         self.assertEqual(parse_selection_index('first'), 1)

@@ -115,6 +115,27 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(result.operations[0].patch, {'title': 'Legacy Epic Renamed'})
         self.assertIsNone(session.metadata.pending_disambiguation)
 
+    def test_backend_close_scores_keep_ambiguity(self) -> None:
+        service = self._service(
+            {
+                'matches': [
+                    {'id': 'n1', 'type': 'epic', 'title': 'Platform Foundation', 'score': 1.0},
+                    {'id': 'n2', 'type': 'epic', 'title': 'Platform Foundation v2', 'score': 0.93},
+                ]
+            }
+        )
+        session = AgentSession(roadmap_id='roadmap-1')
+        result = service._apply_deterministic_resolution(
+            session=session,
+            user_message='Rename Platform Foundation epic to Platform Foundation1',
+            planning=self._planning(),
+            auth_header=None,
+            trace_id='trace-3',
+        )
+        self.assertEqual(result.parse_mode, 'deterministic_resolver_disambiguation')
+        self.assertEqual(len(result.operations), 0)
+        self.assertIsNotNone(session.metadata.pending_disambiguation)
+
 
 class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
     async def test_store_unavailable_response_is_sanitized(self) -> None:

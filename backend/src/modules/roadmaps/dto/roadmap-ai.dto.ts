@@ -5,6 +5,7 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsObject,
   IsOptional,
   IsString,
@@ -341,6 +342,14 @@ export class RoadmapAiContextSearchMatchDto {
   @IsOptional()
   @IsString()
   parent_title?: string;
+
+  @IsNumber()
+  score: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  matched_fields?: string[];
 }
 
 export class RoadmapAiContextSearchResponseDto {

@@ -147,6 +147,11 @@ function main() {
         schema.resolver_tool?.name ?? 'resolve_node_reference',
       ),
     ),
+    compare(
+      'backend.context_search_match_fields',
+      schema.context_search_match_fields ?? [],
+      extractTsClassFields(backendContent, 'RoadmapAiContextSearchMatchDto'),
+    ),
   ];
 
   for (const check of checks) {
