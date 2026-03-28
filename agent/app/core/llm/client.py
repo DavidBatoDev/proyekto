@@ -57,7 +57,6 @@ class PlanningResult:
     provider_used: ProviderUsed
     fallback_used: bool
     provider_error_code: str | None
-    debug_budget_state: dict[str, Any] | None = None
 
 
 class LLMPlanner:
@@ -157,7 +156,6 @@ class LLMPlanner:
             provider_used=state.get('provider_used', 'rule_based'),
             fallback_used=bool(state.get('fallback_used', False)),
             provider_error_code=state.get('provider_error_code'),
-            debug_budget_state=state.get('debug_budget_state'),
         )
 
     def _classify_intent(self, state: PlannerState) -> PlannerState:
@@ -170,11 +168,7 @@ class LLMPlanner:
             user_message=user_message,
             session_context=session_context,
         )
-        parse_mode = (
-            'low_quota_heuristic_intent'
-            if self._settings.agent_low_quota_mode
-            else 'heuristic_prerouter'
-        )
+        parse_mode = 'heuristic_prerouter'
         log_event(
             self._logger,
             'intent_classified',
@@ -256,7 +250,6 @@ class LLMPlanner:
                 ),
                 trace_context={'trace_id': trace_id, 'phase': 'chat_reply'},
             )
-            budget_state = self._provider_orchestrator.budget_state(result.provider_used)
             return {
                 'assistant_message': result.value,
                 'planned_operations': [],
@@ -266,7 +259,6 @@ class LLMPlanner:
                 'provider_used': result.provider_used,
                 'fallback_used': result.fallback_used,
                 'provider_error_code': result.provider_error_code,
-                'debug_budget_state': budget_state,
             }
         except ProviderAdapterError as exc:
             self._logger.warning(
@@ -357,7 +349,6 @@ class LLMPlanner:
                 fallback_used=result.fallback_used,
             )
             self._context_answer_cache.set(cache_key, result.value)
-            budget_state = self._provider_orchestrator.budget_state(result.provider_used)
             return {
                 'assistant_message': result.value,
                 'planned_operations': [],
@@ -367,7 +358,6 @@ class LLMPlanner:
                 'provider_used': result.provider_used,
                 'fallback_used': result.fallback_used,
                 'provider_error_code': result.provider_error_code,
-                'debug_budget_state': budget_state,
             }
         except ProviderAdapterError as exc:
             self._logger.warning(
@@ -395,7 +385,7 @@ class LLMPlanner:
         trace_id = session_context.get('trace_id')
         fallback = self._rule_based_operation_plan(user_message)
         tool_definitions = get_edit_mode_tools()
-        edit_turns = 2 if self._settings.agent_low_quota_mode else self._settings.max_edit_tool_turns
+        edit_turns = self._settings.max_edit_tool_turns
 
         planner_prompt = (
             'You are in edit planning mode.\n'
@@ -434,7 +424,6 @@ class LLMPlanner:
                 operations_count=len(operations),
                 operation_types=[op.op.value for op in operations],
             )
-            budget_state = self._provider_orchestrator.budget_state(result.provider_used)
             return {
                 'assistant_message': assistant_message,
                 'planned_operations': operations,
@@ -444,7 +433,6 @@ class LLMPlanner:
                 'provider_used': result.provider_used,
                 'fallback_used': result.fallback_used,
                 'provider_error_code': result.provider_error_code,
-                'debug_budget_state': budget_state,
             }
         except ProviderAdapterError as exc:
             self._logger.warning(

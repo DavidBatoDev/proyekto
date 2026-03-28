@@ -16,7 +16,7 @@ class Message(BaseModel):
 IntentType = Literal['smalltalk', 'question', 'roadmap_edit', 'unclear']
 ResponseMode = Literal['chat', 'edit_plan']
 ArtifactType = Literal['roadmap_preview']
-ProviderUsed = Literal['gemini', 'openai', 'rule_based']
+ProviderUsed = Literal['openai', 'rule_based']
 
 
 class RoadmapPreviewArtifact(BaseModel):
@@ -84,7 +84,6 @@ class MessageResponse(BaseModel):
     fallback_used: bool = False
     provider_error_code: str | None = None
     debug_trace_id: str | None = None
-    debug_budget_state: dict[str, Any] | None = None
 
 
 class PreviewRequest(BaseModel):

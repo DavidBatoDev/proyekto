@@ -133,7 +133,6 @@ async def send_message(
             fallback_used=outcome.fallback_used,
             provider_error_code=outcome.provider_error_code,
             debug_trace_id=trace_id,
-            debug_budget_state=outcome.debug_budget_state,
         )
     except HTTPException as exc:
         error_code = exc.status_code

@@ -28,7 +28,6 @@ class MessagePlanningOutcome:
     provider_used: ProviderUsed
     fallback_used: bool
     provider_error_code: str | None
-    debug_budget_state: dict | None
 
 
 class AgentService:
@@ -117,7 +116,6 @@ class AgentService:
             provider_used=planning.provider_used,
             fallback_used=planning.fallback_used,
             provider_error_code=planning.provider_error_code,
-            debug_budget_state=planning.debug_budget_state,
         )
 
     def _build_session_context(

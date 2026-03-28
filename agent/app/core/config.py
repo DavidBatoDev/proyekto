@@ -24,15 +24,8 @@ class Settings(BaseSettings):
     nest_timeout_seconds: float = Field(default=20.0, alias='NEST_TIMEOUT_SECONDS')
 
     openai_api_key: str | None = Field(default=None, alias='OPENAI_API_KEY')
-    openai_model: str = Field(default='gpt-5-mini', alias='OPENAI_MODEL')
+    openai_model: str = Field(default='gpt-5.3-mini', alias='OPENAI_MODEL')
     openai_temperature: float = Field(default=0.2, alias='OPENAI_TEMPERATURE')
-    gemini_api_key: str | None = Field(default=None, alias='GEMINI_API_KEY')
-    gemini_model: str = Field(default='gemini-2.5-flash', alias='GEMINI_MODEL')
-    gemini_temperature: float = Field(default=0.2, alias='GEMINI_TEMPERATURE')
-    gemini_max_retries: int = Field(default=0, alias='GEMINI_MAX_RETRIES')
-
-    llm_primary_provider: str = Field(default='gemini', alias='LLM_PRIMARY_PROVIDER')
-    llm_fallback_provider: str = Field(default='openai', alias='LLM_FALLBACK_PROVIDER')
 
     session_ttl_seconds: int = Field(default=1800, alias='SESSION_TTL_SECONDS')
     max_operations_per_request: int = Field(default=25, alias='MAX_OPERATIONS_PER_REQUEST')
@@ -43,8 +36,6 @@ class Settings(BaseSettings):
     agent_log_level: str = Field(default='DEBUG', alias='AGENT_LOG_LEVEL')
     agent_log_json: bool = Field(default=True, alias='AGENT_LOG_JSON')
     agent_log_include_content: bool = Field(default=False, alias='AGENT_LOG_INCLUDE_CONTENT')
-    agent_low_quota_mode: bool = Field(default=False, alias='AGENT_LOW_QUOTA_MODE')
-    agent_quota_daily_limit: int = Field(default=0, alias='AGENT_QUOTA_DAILY_LIMIT')
     agent_cache_ttl_seconds: int = Field(default=600, alias='AGENT_CACHE_TTL_SECONDS')
 
     @field_validator('nest_api_base_url')

@@ -12,7 +12,6 @@ _SENSITIVE_KEYS = {
     'auth_header',
     'api_key',
     'openai_api_key',
-    'gemini_api_key',
     'token',
     'password',
     'secret',
