@@ -35,6 +35,7 @@ import {
   ROADMAP_PATCH_REPOSITORY,
 } from './services/roadmap-patch.service';
 import { RoadmapAiService } from './services/roadmap-ai.service';
+import { RoadmapAiPreviewStoreService } from './services/roadmap-ai-preview-store.service';
 
 // Repository implementations
 import { RoadmapsRepositorySupabase } from './repositories/roadmaps.repository.supabase';
@@ -63,6 +64,7 @@ import { RoadmapAuthorizationService } from './services/roadmap-authorization.se
     RoadmapsService,
     { provide: ROADMAPS_REPOSITORY, useClass: RoadmapsRepositorySupabase },
     RoadmapAiService,
+    RoadmapAiPreviewStoreService,
     RoadmapPatchService,
     {
       provide: ROADMAP_PATCH_REPOSITORY,

@@ -85,6 +85,10 @@ export class RoadmapAiPreviewDto {
   @IsInt()
   base_revision?: number;
 
+  @IsOptional()
+  @IsString()
+  revision_token?: string;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => RoadmapAiOperationDto)
@@ -98,6 +102,10 @@ export class RoadmapAiCommitDto {
   @IsOptional()
   @IsInt()
   base_revision?: number;
+
+  @IsOptional()
+  @IsString()
+  revision_token?: string;
 }
 
 export class RoadmapAiRollbackDto {
@@ -208,6 +216,9 @@ export class RoadmapAiPreviewResponseDto {
 
   @IsString()
   base_updated_at: string;
+
+  @IsString()
+  revision_token: string;
 
   @ValidateNested()
   @Type(() => SemanticDiffDto)

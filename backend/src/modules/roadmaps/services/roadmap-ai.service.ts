@@ -42,6 +42,7 @@ import type {
   SemanticDiffChangeDto,
   SemanticDiffDto,
 } from '../dto/roadmap-ai.dto';
+import { RoadmapAiPreviewStoreService } from './roadmap-ai-preview-store.service';
 
 type Severity = 'error' | 'warning';
 
@@ -84,6 +85,7 @@ type PreviewRecord = {
   roadmapId: string;
   userId: string;
   baseUpdatedAt: string;
+  revisionToken: string;
   baseRevision?: number;
   createdAt: string;
   candidate: FullRoadmapState;
@@ -124,14 +126,13 @@ const ROADMAP_STATUS = ['draft', 'active', 'paused', 'completed', 'archived'];
 
 @Injectable()
 export class RoadmapAiService {
-  private readonly previews = new Map<string, PreviewRecord>();
-
   constructor(
     @Inject(ROADMAPS_REPOSITORY)
     private readonly roadmapsRepo: IRoadmapsRepository,
     @Inject(ROADMAP_PATCH_REPOSITORY)
     private readonly patchRepo: IRoadmapPatchRepository,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
+    private readonly previewStore: RoadmapAiPreviewStoreService,
   ) {}
 
   async preview(
@@ -140,6 +141,7 @@ export class RoadmapAiService {
     userId: string,
   ): Promise<RoadmapAiPreviewResponseDto> {
     const baseRoadmap = await this.assertCanEditRoadmap(roadmapId, userId);
+    const currentRevisionToken = this.requireRevisionToken(baseRoadmap.updated_at);
     const full = await this.roadmapsRepo.findFull(roadmapId, userId);
     if (!full) throw new NotFoundException('Roadmap not found');
 
@@ -148,10 +150,16 @@ export class RoadmapAiService {
     );
     const candidate = this.clone(base);
     const operationIssues = this.applyOperations(candidate, dto.operations);
+    if (dto.revision_token && dto.revision_token !== currentRevisionToken) {
+      throw new ConflictException({
+        message: 'Revision token does not match current roadmap revision',
+        code: 'STALE_REVISION',
+      });
+    }
     const validationIssues = [
       ...operationIssues,
       ...this.validateState(candidate),
-      ...this.validateOptimisticRevision(dto.base_revision, baseRoadmap.updated_at),
+      ...this.validateOptimisticRevision(dto.base_revision),
     ];
     const semanticDiff = this.computeSemanticDiff(base, candidate);
 
@@ -159,20 +167,25 @@ export class RoadmapAiService {
     const record: PreviewRecord = {
       roadmapId,
       userId,
-      baseUpdatedAt: baseRoadmap.updated_at ?? new Date().toISOString(),
+      baseUpdatedAt: currentRevisionToken,
+      revisionToken: currentRevisionToken,
       baseRevision: dto.base_revision,
       createdAt: new Date().toISOString(),
       candidate,
       semanticDiff,
       validationIssues,
     };
-    this.previews.set(previewId, record);
-    this.clearExpiredPreviews();
+    await this.previewStore.setPreview(
+      previewId,
+      record as unknown as Record<string, unknown>,
+      Math.ceil(PREVIEW_TTL_MS / 1000),
+    );
 
     return {
       preview_id: previewId,
       base_revision: dto.base_revision,
       base_updated_at: record.baseUpdatedAt,
+      revision_token: record.revisionToken,
       semantic_diff: semanticDiff,
       validation_issues: validationIssues,
       candidate_snapshot: candidate as unknown as Record<string, unknown>,
@@ -184,10 +197,9 @@ export class RoadmapAiService {
     previewId: string,
     userId: string,
   ): Promise<RoadmapAiPreviewResponseDto> {
-    this.clearExpiredPreviews();
     await this.assertCanEditRoadmap(roadmapId, userId);
 
-    const preview = this.previews.get(previewId);
+    const preview = await this.previewStore.getPreview<PreviewRecord>(previewId);
     if (!preview || preview.roadmapId !== roadmapId || preview.userId !== userId) {
       throw new NotFoundException('Preview not found');
     }
@@ -196,6 +208,7 @@ export class RoadmapAiService {
       preview_id: previewId,
       base_revision: preview.baseRevision,
       base_updated_at: preview.baseUpdatedAt,
+      revision_token: preview.revisionToken,
       semantic_diff: preview.semanticDiff,
       validation_issues: preview.validationIssues,
       candidate_snapshot: preview.candidate as unknown as Record<string, unknown>,
@@ -210,6 +223,7 @@ export class RoadmapAiService {
     const full = await this.roadmapsRepo.findFull(roadmapId, userId);
     if (!full) throw new NotFoundException('Roadmap not found');
     const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
+    const roadmapNodeId = this.requireNodeId(state.id, 'roadmap');
 
     const epicCount = state.roadmap_epics?.length ?? 0;
     const featureCount = (state.roadmap_epics ?? []).reduce(
@@ -228,19 +242,25 @@ export class RoadmapAiService {
     );
 
     return {
-      roadmap_id: state.id ?? roadmapId,
+      roadmap_id: roadmapNodeId,
       title: state.name,
       description: state.description,
       status: state.status,
       epic_count: epicCount,
       feature_count: featureCount,
       task_count: taskCount,
-      epics: (state.roadmap_epics ?? []).map((epic) => ({
-        id: epic.id ?? randomUUID(),
-        title: epic.title ?? 'Untitled epic',
-        status: epic.status,
-        feature_count: epic.roadmap_features?.length ?? 0,
-      })),
+      epics: (state.roadmap_epics ?? []).flatMap((epic) =>
+        epic.id
+          ? [
+              {
+                id: epic.id,
+                title: epic.title ?? 'Untitled epic',
+                status: epic.status,
+                feature_count: epic.roadmap_features?.length ?? 0,
+              },
+            ]
+          : [],
+      ),
     };
   }
 
@@ -253,6 +273,7 @@ export class RoadmapAiService {
     const full = await this.roadmapsRepo.findFull(roadmapId, userId);
     if (!full) throw new NotFoundException('Roadmap not found');
     const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
+    const roadmapNodeId = this.requireNodeId(state.id, 'roadmap');
 
     const query = (queryDto.query ?? '').trim().toLowerCase();
     if (!query) return { matches: [] };
@@ -266,7 +287,7 @@ export class RoadmapAiService {
           id: epic.id,
           type: 'epic',
           title: epic.title ?? 'Untitled epic',
-          parent_id: state.id,
+          parent_id: roadmapNodeId,
           parent_title: state.name,
         });
       }
@@ -274,6 +295,9 @@ export class RoadmapAiService {
       for (const feature of epic.roadmap_features ?? []) {
         if (matches.length >= limit) break;
         if (feature.id && (feature.title ?? '').toLowerCase().includes(query)) {
+          if (!epic.id) {
+            continue;
+          }
           matches.push({
             id: feature.id,
             type: 'feature',
@@ -286,6 +310,9 @@ export class RoadmapAiService {
         for (const task of feature.roadmap_tasks ?? []) {
           if (matches.length >= limit) break;
           if (task.id && (task.title ?? '').toLowerCase().includes(query)) {
+            if (!feature.id) {
+              continue;
+            }
             matches.push({
               id: task.id,
               type: 'task',
@@ -310,10 +337,11 @@ export class RoadmapAiService {
     const full = await this.roadmapsRepo.findFull(roadmapId, userId);
     if (!full) throw new NotFoundException('Roadmap not found');
     const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
+    const roadmapNodeId = this.requireNodeId(state.id, 'roadmap');
 
-    if (state.id === nodeId) {
+    if (roadmapNodeId === nodeId) {
       return {
-        id: state.id,
+        id: roadmapNodeId,
         type: 'roadmap',
         title: state.name,
         description: state.description,
@@ -330,7 +358,7 @@ export class RoadmapAiService {
 
     if (locator.type === 'epic') {
       return {
-        id: locator.epic.id ?? nodeId,
+        id: this.requireNodeId(locator.epic.id, 'epic'),
         type: 'epic',
         title: locator.epic.title ?? 'Untitled epic',
         description: locator.epic.description,
@@ -338,32 +366,32 @@ export class RoadmapAiService {
         priority: locator.epic.priority,
         start_date: locator.epic.start_date,
         end_date: locator.epic.end_date,
-        parent_id: state.id,
+        parent_id: roadmapNodeId,
       };
     }
 
     if (locator.type === 'feature') {
       return {
-        id: locator.feature.id ?? nodeId,
+        id: this.requireNodeId(locator.feature.id, 'feature'),
         type: 'feature',
         title: locator.feature.title ?? 'Untitled feature',
         description: locator.feature.description,
         status: locator.feature.status,
         start_date: locator.feature.start_date,
         end_date: locator.feature.end_date,
-        parent_id: locator.epic.id,
+        parent_id: this.requireNodeId(locator.epic.id, 'epic'),
       };
     }
 
     return {
-      id: locator.task.id ?? nodeId,
+      id: this.requireNodeId(locator.task.id, 'task'),
       type: 'task',
       title: locator.task.title ?? 'Untitled task',
       description: locator.task.description,
       status: locator.task.status,
       priority: locator.task.priority,
       due_date: locator.task.due_date,
-      parent_id: locator.feature.id,
+      parent_id: this.requireNodeId(locator.feature.id, 'feature'),
     };
   }
 
@@ -377,18 +405,25 @@ export class RoadmapAiService {
     const full = await this.roadmapsRepo.findFull(roadmapId, userId);
     if (!full) throw new NotFoundException('Roadmap not found');
     const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
+    const roadmapNodeId = this.requireNodeId(state.id, 'roadmap');
     const limit = Math.min(Math.max(query.limit ?? 25, 1), 100);
 
-    if (state.id === nodeId) {
+    if (roadmapNodeId === nodeId) {
       return {
         children: (state.roadmap_epics ?? [])
           .slice(0, limit)
-          .map((epic) => ({
-            id: epic.id ?? randomUUID(),
-            type: 'epic',
-            title: epic.title ?? 'Untitled epic',
-            parent_id: state.id,
-          })),
+          .flatMap((epic) =>
+            epic.id
+              ? [
+                  {
+                    id: epic.id,
+                    type: 'epic' as const,
+                    title: epic.title ?? 'Untitled epic',
+                    parent_id: roadmapNodeId,
+                  },
+                ]
+              : [],
+          ),
       };
     }
 
@@ -398,28 +433,42 @@ export class RoadmapAiService {
     }
 
     if (locator.type === 'epic') {
+      const parentId = this.requireNodeId(locator.epic.id, 'epic');
       return {
         children: (locator.epic.roadmap_features ?? [])
           .slice(0, limit)
-          .map((feature) => ({
-            id: feature.id ?? randomUUID(),
-            type: 'feature',
-            title: feature.title ?? 'Untitled feature',
-            parent_id: locator.epic.id,
-          })),
+          .flatMap((feature) =>
+            feature.id
+              ? [
+                  {
+                    id: feature.id,
+                    type: 'feature' as const,
+                    title: feature.title ?? 'Untitled feature',
+                    parent_id: parentId,
+                  },
+                ]
+              : [],
+          ),
       };
     }
 
     if (locator.type === 'feature') {
+      const parentId = this.requireNodeId(locator.feature.id, 'feature');
       return {
         children: (locator.feature.roadmap_tasks ?? [])
           .slice(0, limit)
-          .map((task) => ({
-            id: task.id ?? randomUUID(),
-            type: 'task',
-            title: task.title ?? 'Untitled task',
-            parent_id: locator.feature.id,
-          })),
+          .flatMap((task) =>
+            task.id
+              ? [
+                  {
+                    id: task.id,
+                    type: 'task' as const,
+                    title: task.title ?? 'Untitled task',
+                    parent_id: parentId,
+                  },
+                ]
+              : [],
+          ),
       };
     }
 
@@ -431,17 +480,16 @@ export class RoadmapAiService {
     dto: RoadmapAiCommitDto,
     userId: string,
   ): Promise<RoadmapAiCommitResponseDto> {
-    const preview = this.previews.get(dto.preview_id);
+    const preview = await this.previewStore.getPreview<PreviewRecord>(dto.preview_id);
     if (!preview || preview.roadmapId !== roadmapId || preview.userId !== userId) {
       throw new NotFoundException('Preview not found');
     }
 
-    const staleByRevision =
-      dto.base_revision !== undefined &&
-      preview.baseRevision !== undefined &&
-      dto.base_revision !== preview.baseRevision;
-    if (staleByRevision) {
-      throw new ConflictException('Preview base revision does not match request');
+    if (dto.revision_token && dto.revision_token !== preview.revisionToken) {
+      throw new ConflictException({
+        message: 'Preview revision token does not match request',
+        code: 'STALE_REVISION',
+      });
     }
 
     const errorIssues = preview.validationIssues.filter(
@@ -455,7 +503,8 @@ export class RoadmapAiService {
     }
 
     const current = await this.assertCanEditRoadmap(roadmapId, userId);
-    if ((current.updated_at ?? '') !== preview.baseUpdatedAt) {
+    const currentRevisionToken = this.requireRevisionToken(current.updated_at);
+    if (currentRevisionToken !== preview.revisionToken) {
       throw new ConflictException({
         message: 'Roadmap changed since preview was generated',
         code: 'STALE_REVISION',
@@ -483,7 +532,7 @@ export class RoadmapAiService {
     }
 
     const persistedMeta = await this.roadmapsRepo.findById(roadmapId, userId);
-    this.previews.delete(dto.preview_id);
+    await this.previewStore.deletePreview(dto.preview_id);
 
     return {
       committed_at: new Date().toISOString(),
@@ -498,15 +547,14 @@ export class RoadmapAiService {
     dto: RoadmapAiDiscardDto,
     userId: string,
   ): Promise<RoadmapAiDiscardResponseDto> {
-    this.clearExpiredPreviews();
     await this.assertCanEditRoadmap(roadmapId, userId);
 
-    const preview = this.previews.get(dto.preview_id);
+    const preview = await this.previewStore.getPreview<PreviewRecord>(dto.preview_id);
     if (!preview || preview.roadmapId !== roadmapId || preview.userId !== userId) {
       throw new NotFoundException('Preview not found');
     }
 
-    this.previews.delete(dto.preview_id);
+    await this.previewStore.deletePreview(dto.preview_id);
     return {
       ok: true,
       preview_id: dto.preview_id,
@@ -545,10 +593,16 @@ export class RoadmapAiService {
 
   private validateOptimisticRevision(
     baseRevision: number | undefined,
-    updatedAt: string | undefined,
   ): RoadmapValidationIssueDto[] {
-    if (baseRevision === undefined || !updatedAt) return [];
-    return [];
+    if (baseRevision === undefined) return [];
+    return [
+      this.issue(
+        'STALE_REVISION',
+        'warning',
+        '/base_revision',
+        'base_revision is deprecated and ignored. Use revision_token for concurrency safety.',
+      ),
+    ];
   }
 
   private applyOperations(
@@ -1739,7 +1793,7 @@ export class RoadmapAiService {
     );
 
     return {
-      id: this.readString(state, 'id') ?? randomUUID(),
+      id: this.readUuid(state, 'id'),
       name: this.readString(state, 'name') ?? 'Untitled roadmap',
       description: this.readString(state, 'description'),
       project_id: this.readString(state, 'project_id'),
@@ -1759,7 +1813,7 @@ export class RoadmapAiService {
       this.readArray(raw, 'roadmap_features') ?? this.readArray(raw, 'features') ?? [];
 
     return {
-      id: this.readString(raw, 'id') ?? randomUUID(),
+      id: this.readUuid(raw, 'id'),
       title: this.readString(raw, 'title') ?? 'Untitled epic',
       description: this.readString(raw, 'description'),
       status: this.readString(raw, 'status') ?? 'backlog',
@@ -1783,7 +1837,7 @@ export class RoadmapAiService {
       this.readArray(raw, 'roadmap_tasks') ?? this.readArray(raw, 'tasks') ?? [];
 
     return {
-      id: this.readString(raw, 'id') ?? randomUUID(),
+      id: this.readUuid(raw, 'id'),
       title: this.readString(raw, 'title') ?? 'Untitled feature',
       description: this.readString(raw, 'description'),
       status: this.readString(raw, 'status') ?? 'not_started',
@@ -1799,7 +1853,7 @@ export class RoadmapAiService {
 
   private normalizeTask(raw: Record<string, unknown>, taskIndex: number): FullRoadmapTaskDto {
     return {
-      id: this.readString(raw, 'id') ?? randomUUID(),
+      id: this.readUuid(raw, 'id'),
       title: this.readString(raw, 'title') ?? 'Untitled task',
       description: this.readString(raw, 'description'),
       status: this.readString(raw, 'status') ?? 'todo',
@@ -1841,17 +1895,21 @@ export class RoadmapAiService {
     return typeof value === 'number' ? value : undefined;
   }
 
-  private clearExpiredPreviews() {
-    const now = Date.now();
-    for (const [previewId, preview] of this.previews.entries()) {
-      const age = now - new Date(preview.createdAt).getTime();
-      if (age > PREVIEW_TTL_MS) {
-        this.previews.delete(previewId);
-      }
-    }
-  }
-
   private clone<T>(value: T): T {
     return structuredClone(value);
+  }
+
+  private requireNodeId(id: string | undefined, nodeType: RoadmapNodeType): string {
+    if (id) return id;
+    throw new InternalServerErrorException(
+      `Context node is missing a persisted ${nodeType} id`,
+    );
+  }
+
+  private requireRevisionToken(updatedAt: string | undefined): string {
+    if (updatedAt) return updatedAt;
+    throw new InternalServerErrorException(
+      'Roadmap revision token is missing (updated_at is required for optimistic concurrency).',
+    );
   }
 }

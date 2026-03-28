@@ -1,0 +1,31 @@
+{
+  "operation_types": [
+    "add_epic",
+    "add_feature",
+    "add_task",
+    "update_node",
+    "move_node",
+    "delete_node",
+    "mark_status",
+    "shift_dates"
+  ],
+  "node_types": [
+    "roadmap",
+    "epic",
+    "feature",
+    "task"
+  ],
+  "operation_fields": [
+    "op",
+    "node_type",
+    "node_id",
+    "parent_id",
+    "new_parent_id",
+    "position",
+    "patch",
+    "status",
+    "delta_days",
+    "scope",
+    "data"
+  ]
+}

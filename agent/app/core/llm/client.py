@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import hashlib
 import logging
@@ -195,6 +196,7 @@ class LLMPlanner:
         prompt_context = {
             'roadmap_id': session_context.get('roadmap_id'),
             'base_revision': session_context.get('base_revision'),
+            'revision_token': session_context.get('revision_token'),
             'staged_operations_count': len(state.get('existing_operations', [])),
             'recent_messages': session_context.get('recent_messages', []),
             'intent_type': intent_type,
@@ -288,7 +290,10 @@ class LLMPlanner:
         cache_key = self._build_context_cache_key(
             roadmap_id=str(session_context.get('roadmap_id') or ''),
             user_message=user_message,
-            roadmap_updated_token=session_context.get('base_revision'),
+            roadmap_updated_token=(
+                session_context.get('revision_token')
+                or session_context.get('base_revision')
+            ),
         )
         cached_answer = self._context_answer_cache.get(cache_key)
         if cached_answer:
@@ -528,9 +533,11 @@ class LLMPlanner:
         try:
             result: dict[str, Any]
             if tool_name == 'get_roadmap_summary':
-                result = self._nest_client.context_summary_sync(
-                    roadmap_id=roadmap_id,
-                    auth_header=auth_value,
+                result = self._run_async_context_call(
+                    self._nest_client.context_summary(
+                        roadmap_id=roadmap_id,
+                        auth_header=auth_value,
+                    )
                 )
                 log_event(
                     self._logger,
@@ -563,11 +570,13 @@ class LLMPlanner:
                     return result
                 limit_raw = args.get('limit')
                 limit = int(limit_raw) if isinstance(limit_raw, int) else None
-                result = self._nest_client.context_search_sync(
-                    roadmap_id=roadmap_id,
-                    query=query,
-                    limit=limit,
-                    auth_header=auth_value,
+                result = self._run_async_context_call(
+                    self._nest_client.context_search(
+                        roadmap_id=roadmap_id,
+                        query=query,
+                        limit=limit,
+                        auth_header=auth_value,
+                    )
                 )
                 log_event(
                     self._logger,
@@ -598,10 +607,12 @@ class LLMPlanner:
                         result_summary=summarize_tool_result(result),
                     )
                     return result
-                result = self._nest_client.context_node_details_sync(
-                    roadmap_id=roadmap_id,
-                    node_id=node_id,
-                    auth_header=auth_value,
+                result = self._run_async_context_call(
+                    self._nest_client.context_node_details(
+                        roadmap_id=roadmap_id,
+                        node_id=node_id,
+                        auth_header=auth_value,
+                    )
                 )
                 log_event(
                     self._logger,
@@ -633,11 +644,13 @@ class LLMPlanner:
                 return result
             limit_raw = args.get('limit')
             limit = int(limit_raw) if isinstance(limit_raw, int) else None
-            result = self._nest_client.context_children_sync(
-                roadmap_id=roadmap_id,
-                node_id=parent_id,
-                limit=limit,
-                auth_header=auth_value,
+            result = self._run_async_context_call(
+                self._nest_client.context_children(
+                    roadmap_id=roadmap_id,
+                    node_id=parent_id,
+                    limit=limit,
+                    auth_header=auth_value,
+                )
             )
             log_event(
                 self._logger,
@@ -674,11 +687,21 @@ class LLMPlanner:
     def _persist_session_state(self, _state: PlannerState) -> PlannerState:
         return {}
 
+    def _run_async_context_call(self, coro: Any) -> dict[str, Any]:
+        # Planner execution runs in a worker thread, so this safely drives async I/O
+        # for context tools without blocking the main event loop.
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        raise RuntimeError('Context tool call attempted on running event loop thread')
+
     def _build_classifier_input(self, user_message: str, session_context: dict[str, Any]) -> str:
         payload = {
             'user_message': user_message,
             'roadmap_id': session_context.get('roadmap_id'),
             'base_revision': session_context.get('base_revision'),
+            'revision_token': session_context.get('revision_token'),
             'recent_messages': session_context.get('recent_messages', []),
         }
         return json.dumps(payload, ensure_ascii=True, indent=2)

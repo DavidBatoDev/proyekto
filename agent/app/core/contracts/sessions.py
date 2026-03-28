@@ -24,6 +24,7 @@ class RoadmapPreviewArtifact(BaseModel):
     type: ArtifactType = 'roadmap_preview'
     roadmap_id: str
     base_revision: int | None = None
+    revision_token: str | None = None
     preview_id: str
     title: str
     summary: str
@@ -38,6 +39,7 @@ class AgentSession(BaseModel):
     session_id: str = Field(default_factory=lambda: str(uuid4()))
     roadmap_id: str
     base_revision: int | None = None
+    revision_token: str | None = None
     operations: list[RoadmapOperation] = Field(default_factory=list)
     staged_operations_version: int = 0
     latest_preview_id: str | None = None
@@ -52,6 +54,7 @@ class AgentSession(BaseModel):
 class CreateSessionRequest(BaseModel):
     roadmap_id: str
     base_revision: int | None = None
+    revision_token: str | None = None
     metadata: dict[str, Any] | None = None
 
 
@@ -59,6 +62,7 @@ class CreateSessionResponse(BaseModel):
     session_id: str
     roadmap_id: str
     base_revision: int | None = None
+    revision_token: str | None = None
     created_at: datetime
 
 
@@ -89,11 +93,13 @@ class MessageResponse(BaseModel):
 class PreviewRequest(BaseModel):
     operations: list[RoadmapOperation] | None = None
     base_revision: int | None = None
+    revision_token: str | None = None
 
 
 class CommitRequest(BaseModel):
     preview_id: str | None = None
     base_revision: int | None = None
+    revision_token: str | None = None
 
 
 class DiscardRequest(BaseModel):

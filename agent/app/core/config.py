@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     openai_temperature: float = Field(default=0.2, alias='OPENAI_TEMPERATURE')
 
     session_ttl_seconds: int = Field(default=1800, alias='SESSION_TTL_SECONDS')
+    upstash_redis_rest_url: str | None = Field(default=None, alias='UPSTASH_REDIS_REST_URL')
+    upstash_redis_rest_token: str | None = Field(default=None, alias='UPSTASH_REDIS_REST_TOKEN')
+    redis_session_key_prefix: str = Field(default='roadmap:ai:session', alias='REDIS_SESSION_KEY_PREFIX')
     max_operations_per_request: int = Field(default=25, alias='MAX_OPERATIONS_PER_REQUEST')
     max_chat_history_messages: int = Field(default=8, alias='MAX_CHAT_HISTORY_MESSAGES')
     max_edit_tool_turns: int = Field(default=6, alias='MAX_EDIT_TOOL_TURNS')

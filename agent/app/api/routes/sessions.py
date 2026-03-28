@@ -1,6 +1,8 @@
 import logging
+import asyncio
 from time import perf_counter
 from uuid import uuid4
+from typing import cast
 
 from fastapi import APIRouter, Request
 from fastapi.exceptions import HTTPException
@@ -29,24 +31,78 @@ router = APIRouter(prefix='/agent/sessions', tags=['agent'])
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-_store = SessionStore()
-_agent_service = AgentService(_store)
+_store: SessionStore | None = None
+_agent_service: AgentService | None = None
+_session_service_unavailable_reason: str | None = None
 _nest_client = NestRoadmapClient()
+
+
+def _get_agent_runtime() -> tuple[SessionStore, AgentService]:
+    global _store, _agent_service, _session_service_unavailable_reason
+
+    if _store is not None and _agent_service is not None:
+        return _store, _agent_service
+
+    if _session_service_unavailable_reason is not None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                'code': 'SERVICE_UNAVAILABLE',
+                'message': (
+                    'Agent session service is unavailable. Configure Redis and restart the agent.'
+                ),
+                'reason': _session_service_unavailable_reason,
+            },
+        )
+
+    try:
+        store = SessionStore()
+        service = AgentService(store)
+        _store = store
+        _agent_service = service
+        return store, service
+    except Exception as exc:
+        _session_service_unavailable_reason = str(exc)
+        logger.error('Session runtime unavailable: %s', _session_service_unavailable_reason)
+        raise HTTPException(
+            status_code=503,
+            detail={
+                'code': 'SERVICE_UNAVAILABLE',
+                'message': (
+                    'Agent session service is unavailable. Configure Redis and restart the agent.'
+                ),
+                'reason': _session_service_unavailable_reason,
+            },
+        )
+
+
+async def _get_agent_runtime_async() -> tuple[SessionStore, AgentService]:
+    return await asyncio.to_thread(_get_agent_runtime)
+
+
+async def _get_session_or_404_async(
+    agent_service: AgentService,
+    session_id: str,
+) -> AgentSession:
+    return await asyncio.to_thread(agent_service.get_session_or_404, session_id)
 
 
 @router.post('', response_model=CreateSessionResponse)
 async def create_session(payload: CreateSessionRequest) -> CreateSessionResponse:
+    store, _ = await _get_agent_runtime_async()
     logger.info('Creating AI session for roadmap_id=%s base_revision=%s', payload.roadmap_id, payload.base_revision)
     session = AgentSession(
         roadmap_id=payload.roadmap_id,
         base_revision=payload.base_revision,
+        revision_token=payload.revision_token,
         metadata=payload.metadata or {},
     )
-    _store.create(session)
+    await asyncio.to_thread(store.create, session)
     return CreateSessionResponse(
         session_id=session.session_id,
         roadmap_id=session.roadmap_id,
         base_revision=session.base_revision,
+        revision_token=session.revision_token,
         created_at=session.created_at,
     )
 
@@ -57,9 +113,10 @@ async def send_message(
     payload: MessageRequest,
     request: Request,
 ) -> MessageResponse:
+    store, agent_service = await _get_agent_runtime_async()
     trace_id = str(uuid4())
     started_at = perf_counter()
-    session = _agent_service.get_session_or_404(session_id)
+    session = await _get_session_or_404_async(agent_service, session_id)
     log_event(
         logger,
         'message_received',
@@ -75,7 +132,8 @@ async def send_message(
     artifacts: list[RoadmapPreviewArtifact] = []
     error_code: int | None = None
     try:
-        outcome = _agent_service.plan_message(
+        outcome = await asyncio.to_thread(
+            agent_service.plan_message,
             session,
             payload.message,
             payload.replace_operations,
@@ -93,6 +151,7 @@ async def send_message(
                     roadmap_id=outcome.session.roadmap_id,
                     payload={
                         'base_revision': outcome.session.base_revision,
+                        'revision_token': outcome.session.revision_token,
                         'operations': [
                             op.model_dump(exclude_none=True)
                             for op in outcome.session.operations
@@ -103,11 +162,14 @@ async def send_message(
                 preview_id = preview_result.get('preview_id')
                 if isinstance(preview_id, str):
                     outcome.session.latest_preview_id = preview_id
+                    revision_token = preview_result.get('revision_token')
+                    if isinstance(revision_token, str):
+                        outcome.session.revision_token = revision_token
                     artifact = _build_preview_artifact(outcome.session, preview_result)
                     if artifact is not None:
                         outcome.session.artifacts.append(artifact)
                         artifacts.append(artifact)
-                    _store.update(outcome.session)
+                    await asyncio.to_thread(store.update, outcome.session)
             except HTTPException as exc:
                 logger.warning(
                     'Auto-preview artifact generation failed for session_id=%s roadmap_id=%s status=%s detail=%s',
@@ -165,16 +227,23 @@ async def preview_session(
     payload: PreviewRequest,
     request: Request,
 ) -> dict:
-    session = _agent_service.get_session_or_404(session_id)
+    store, agent_service = await _get_agent_runtime_async()
+    session = await _get_session_or_404_async(agent_service, session_id)
 
     operations = payload.operations if payload.operations is not None else session.operations
     base_revision = payload.base_revision if payload.base_revision is not None else session.base_revision
+    revision_token = (
+        payload.revision_token
+        if payload.revision_token is not None
+        else session.revision_token
+    )
 
     try:
         preview_result = await _nest_client.preview(
             roadmap_id=session.roadmap_id,
             payload={
                 'base_revision': base_revision,
+                'revision_token': revision_token,
                 'operations': [op.model_dump(exclude_none=True) for op in operations],
             },
             auth_header=request.headers.get('Authorization'),
@@ -190,14 +259,24 @@ async def preview_session(
         raise
 
     preview_id = preview_result.get('preview_id')
+    preview_revision_token = preview_result.get('revision_token')
+    effective_revision_token = (
+        preview_revision_token if isinstance(preview_revision_token, str) else revision_token
+    )
     if isinstance(preview_id, str):
         session.latest_preview_id = preview_id
-        _store.update(session)
+        if isinstance(preview_revision_token, str):
+            session.revision_token = preview_revision_token
+            effective_revision_token = preview_revision_token
+        else:
+            effective_revision_token = cast(str | None, session.revision_token) or revision_token
+        await asyncio.to_thread(store.update, session)
 
     return {
         'session_id': session.session_id,
         'roadmap_id': session.roadmap_id,
         'base_revision': base_revision,
+        'revision_token': effective_revision_token,
         'operations': [op.model_dump(exclude_none=True) for op in operations],
         'preview': preview_result,
     }
@@ -209,7 +288,8 @@ async def commit_session(
     payload: CommitRequest,
     request: Request,
 ) -> dict:
-    session = _agent_service.get_session_or_404(session_id)
+    store, agent_service = await _get_agent_runtime_async()
+    session = await _get_session_or_404_async(agent_service, session_id)
 
     preview_id = payload.preview_id or session.latest_preview_id
     if not preview_id:
@@ -223,9 +303,16 @@ async def commit_session(
         payload={
             'preview_id': preview_id,
             'base_revision': payload.base_revision or session.base_revision,
+            'revision_token': payload.revision_token or session.revision_token,
         },
         auth_header=request.headers.get('Authorization'),
     )
+
+    committed_revision_token = commit_result.get('revision_token')
+    if isinstance(committed_revision_token, str):
+        session.revision_token = committed_revision_token
+    session.latest_preview_id = None
+    await asyncio.to_thread(store.update, session)
 
     return {
         'session_id': session.session_id,
@@ -240,7 +327,8 @@ async def discard_session(
     payload: DiscardRequest,
     request: Request,
 ) -> DiscardResponse:
-    session = _agent_service.get_session_or_404(session_id)
+    store, agent_service = await _get_agent_runtime_async()
+    session = await _get_session_or_404_async(agent_service, session_id)
     preview_id = payload.preview_id or session.latest_preview_id
 
     discarded_preview_id: str | None = None
@@ -260,7 +348,7 @@ async def discard_session(
     session.staged_operations_version += 1
     session.latest_preview_id = None
     session.artifacts = []
-    _store.update(session)
+    await asyncio.to_thread(store.update, session)
 
     return DiscardResponse(
         session_id=session.session_id,
@@ -278,7 +366,8 @@ async def rollback_session(
     payload: RollbackRequest,
     request: Request,
 ) -> dict:
-    session = _agent_service.get_session_or_404(session_id)
+    _, agent_service = await _get_agent_runtime_async()
+    session = await _get_session_or_404_async(agent_service, session_id)
 
     rollback_result = await _nest_client.rollback(
         roadmap_id=session.roadmap_id,
@@ -299,7 +388,8 @@ async def get_artifact_preview(
     artifact_id: str,
     request: Request,
 ) -> ArtifactPreviewResponse:
-    session = _agent_service.get_session_or_404(session_id)
+    _, agent_service = await _get_agent_runtime_async()
+    session = await _get_session_or_404_async(agent_service, session_id)
     artifact = next(
         (item for item in session.artifacts if item.artifact_id == artifact_id),
         None,
@@ -344,6 +434,7 @@ def _build_preview_artifact(
     return RoadmapPreviewArtifact(
         roadmap_id=session.roadmap_id,
         base_revision=session.base_revision,
+        revision_token=session.revision_token,
         preview_id=preview_id,
         title='Roadmap Preview',
         summary=f'Prepared {total_changes} semantic change(s).',

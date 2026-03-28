@@ -131,6 +131,7 @@ class AgentService:
         return {
             'roadmap_id': session.roadmap_id,
             'base_revision': session.base_revision,
+            'revision_token': session.revision_token,
             'staged_operations_count': len(session.operations),
             'last_intent_type': session.last_intent_type,
             'recent_messages': recent_messages,
