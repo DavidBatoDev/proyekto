@@ -283,7 +283,7 @@ const RoadmapCanvas = ({
             artifact={selectedArtifact}
             onApply={(artifactId) => {
               applyArtifactSnapshot(artifactId);
-              toast.success("Mock artifact applied to roadmap");
+              toast.success("Artifact preview applied to roadmap");
             }}
             onDiscard={(artifactId) => {
               discardArtifact(artifactId);

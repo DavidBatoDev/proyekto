@@ -106,7 +106,7 @@ export interface AgentMessageResponse {
   staged_operations_version: number;
   staged_operations_count: number;
   artifacts: AgentRoadmapPreviewArtifact[];
-  provider_used?: "gemini" | "openai" | "rule_based";
+  provider_used?: "openai" | "rule_based";
   fallback_used?: boolean;
   provider_error_code?: string | null;
   debug_trace_id?: string | null;
