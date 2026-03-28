@@ -11,13 +11,17 @@ from typing import Any, Literal, TypedDict
 from app.core.config import get_settings
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import IntentType, ProviderUsed, ResponseMode
-from app.core.logging_utils import log_event, summarize_tool_result
+from app.core.logging_utils import log_event
+from app.core.llm.context_answer_service import ContextAnswerService
+from app.core.llm.context_tools_executor import ContextToolsExecutor
+from app.core.llm.deterministic_context import ContextResolutionOutcome
+from app.core.llm.deterministic_context_adapter import DeterministicContextAdapter
+from app.core.llm.deterministic_intents import DeterministicContextIntent
 from app.core.llm.providers import ProviderAdapterError, ProviderOrchestrator
 from app.core.nest_client import NestRoadmapClient
-from app.core.orchestration.edit_resolver import resolve_candidates
 from app.core.prompts import PromptRepository
 from app.core.response_cache import ContextAnswerCache
-from app.core.tools.registry import CONTEXT_TOOL_NAMES, get_context_tools, get_edit_mode_tools
+from app.core.tools.registry import get_edit_mode_tools
 
 try:
     from langchain_core.messages import AIMessage, HumanMessage
@@ -46,6 +50,8 @@ class PlannerState(TypedDict, total=False):
     tokens_input: int | None
     tokens_output: int | None
     tokens_total: int | None
+    pending_context_resolution: dict[str, Any] | None
+    clear_pending_context_resolution: bool
     is_roadmap_question: bool
     tool_mode: Literal['none', 'context_answer', 'edit_plan']
     trace_id: str | None
@@ -65,6 +71,8 @@ class PlanningResult:
     tokens_input: int | None = None
     tokens_output: int | None = None
     tokens_total: int | None = None
+    pending_context_resolution: dict[str, Any] | None = None
+    clear_pending_context_resolution: bool = False
 
 
 class LLMPlanner:
@@ -75,6 +83,26 @@ class LLMPlanner:
         self._provider_orchestrator = ProviderOrchestrator(self._settings)
         self._nest_client = NestRoadmapClient()
         self._context_answer_cache = ContextAnswerCache(self._settings.agent_cache_ttl_seconds)
+        self._context_tools_executor = ContextToolsExecutor(
+            settings=self._settings,
+            logger=self._logger,
+            nest_client=self._nest_client,
+            run_async_context_call=self._run_async_context_call,
+        )
+        self._deterministic_context_adapter = DeterministicContextAdapter(
+            settings=self._settings,
+            logger=self._logger,
+            execute_context_tool=self._execute_context_tool,
+        )
+        self._context_answer_service = ContextAnswerService(
+            settings=self._settings,
+            logger=self._logger,
+            provider_orchestrator=self._provider_orchestrator,
+            context_answer_cache=self._context_answer_cache,
+            execute_context_tool=self._execute_context_tool,
+            build_context_cache_key=self._build_context_cache_key,
+            chat_fallback_builder=self._rule_based_chat_response,
+        )
         self._langgraph_disabled_reason = self._get_langgraph_disabled_reason()
         self._langgraph = self._build_graph() if self._langgraph_disabled_reason is None else None
 
@@ -167,6 +195,8 @@ class LLMPlanner:
             tokens_input=state.get('tokens_input'),
             tokens_output=state.get('tokens_output'),
             tokens_total=state.get('tokens_total'),
+            pending_context_resolution=state.get('pending_context_resolution'),
+            clear_pending_context_resolution=bool(state.get('clear_pending_context_resolution', False)),
         )
 
     def _classify_intent(self, state: PlannerState) -> PlannerState:
@@ -300,108 +330,28 @@ class LLMPlanner:
         system_prompt = state.get('system_prompt', '')
         session_context = state.get('session_context', {})
         history_messages = self._build_history_messages(session_context)
-        trace_id = session_context.get('trace_id')
-        context_tools = get_context_tools()
-        fallback_response = self._rule_based_chat_response(user_message, state.get('intent_type', 'question'))
-        cache_key = self._build_context_cache_key(
-            roadmap_id=str(session_context.get('roadmap_id') or ''),
+        return self._get_context_answer_service().generate(
             user_message=user_message,
-            roadmap_updated_token=(
-                session_context.get('revision_token')
-                or session_context.get('base_revision')
-            ),
-        )
-        cached_answer = self._context_answer_cache.get(cache_key)
-        if cached_answer:
-            log_event(
-                self._logger,
-                'cache_hit',
-                settings=self._settings,
-                trace_id=trace_id,
-                cache_scope='context_answer',
-                roadmap_id=session_context.get('roadmap_id'),
-            )
-            return {
-                'assistant_message': cached_answer,
-                'planned_operations': [],
-                'response_mode': 'chat',
-                'preview_recommended': False,
-                'parse_mode': 'context_cache_hit',
-                'provider_used': 'rule_based',
-                'fallback_used': False,
-                'provider_error_code': None,
-            }
-        log_event(
-            self._logger,
-            'cache_miss',
-            settings=self._settings,
-            trace_id=trace_id,
-            cache_scope='context_answer',
-            roadmap_id=session_context.get('roadmap_id'),
-        )
-        context_turns = self._settings.max_context_tool_turns
-
-        question_prompt = (
-            'Answer the user question about the roadmap.\n'
-            'Use available context tools when the answer depends on roadmap data.\n'
-            'Do not plan edit operations in this mode.\n\n'
-            f'Roadmap ID: {session_context.get("roadmap_id")}\n'
-            f'User question: {user_message}'
+            system_prompt=system_prompt,
+            session_context=session_context,
+            history_messages=history_messages,
+            intent_type=state.get('intent_type', 'question'),
         )
 
-        try:
-            result = self._provider_orchestrator.call(
-                lambda adapter: adapter.answer_with_tools(
-                    system_prompt=system_prompt,
-                    question_prompt=question_prompt,
-                    history_messages=history_messages,
-                    tools=context_tools,
-                    tool_executor=lambda name, args: self._execute_context_tool(name, args, session_context),
-                    max_tool_turns=context_turns,
-                ),
-                trace_context={'trace_id': trace_id, 'phase': 'context_answer'},
-            )
-            log_event(
-                self._logger,
-                'context_answer_generated',
+    def _get_context_answer_service(self) -> ContextAnswerService:
+        service = getattr(self, '_context_answer_service', None)
+        if service is None:
+            service = ContextAnswerService(
                 settings=self._settings,
-                trace_id=trace_id,
-                provider_used=result.provider_used,
-                fallback_used=result.fallback_used,
+                logger=self._logger,
+                provider_orchestrator=self._provider_orchestrator,
+                context_answer_cache=self._context_answer_cache,
+                execute_context_tool=self._execute_context_tool,
+                build_context_cache_key=self._build_context_cache_key,
+                chat_fallback_builder=self._rule_based_chat_response,
             )
-            self._context_answer_cache.set(cache_key, result.value)
-            return {
-                'assistant_message': result.value,
-                'planned_operations': [],
-                'response_mode': 'chat',
-                'preview_recommended': False,
-                'parse_mode': f'{result.provider_used}_context_tools',
-                'provider_used': result.provider_used,
-                'fallback_used': result.fallback_used,
-                'provider_error_code': result.provider_error_code,
-                'tokens_input': result.tokens_input,
-                'tokens_output': result.tokens_output,
-                'tokens_total': result.tokens_total,
-            }
-        except ProviderAdapterError as exc:
-            self._logger.warning(
-                'Provider context answer failed, using chat fallback. code=%s message=%s',
-                exc.code,
-                exc.message,
-            )
-            return {
-                'assistant_message': fallback_response,
-                'planned_operations': [],
-                'response_mode': 'chat',
-                'preview_recommended': False,
-                'parse_mode': 'rule_based_context_chat',
-                'provider_used': 'rule_based',
-                'fallback_used': False,
-                'provider_error_code': exc.code,
-                'tokens_input': exc.tokens_input,
-                'tokens_output': exc.tokens_output,
-                'tokens_total': exc.tokens_total,
-            }
+            self._context_answer_service = service
+        return service
 
     def _plan_operations(self, state: PlannerState) -> PlannerState:
         user_message = state.get('user_message', '')
@@ -467,6 +417,8 @@ class LLMPlanner:
                 'tokens_input': result.tokens_input,
                 'tokens_output': result.tokens_output,
                 'tokens_total': result.tokens_total,
+                'pending_context_resolution': None,
+                'clear_pending_context_resolution': False,
             }
         except ProviderAdapterError as exc:
             if exc.code == 'invalid_operation_payload':
@@ -499,6 +451,8 @@ class LLMPlanner:
                 'tokens_input': exc.tokens_input,
                 'tokens_output': exc.tokens_output,
                 'tokens_total': exc.tokens_total,
+                'pending_context_resolution': None,
+                'clear_pending_context_resolution': False,
             }
 
     def _execute_context_tool(
@@ -507,289 +461,114 @@ class LLMPlanner:
         args: dict[str, Any],
         session_context: dict[str, Any],
     ) -> dict[str, Any]:
-        trace_id = session_context.get('trace_id')
-        if tool_name not in CONTEXT_TOOL_NAMES:
-            result = {
-                'error': {
-                    'code': 'UNKNOWN_TOOL',
-                    'message': f'Tool {tool_name} is not available in edit mode.',
-                }
-            }
-            log_event(
-                self._logger,
-                'tool_call_result',
-                settings=self._settings,
-                level=logging.WARNING,
-                trace_id=trace_id,
-                tool_name=tool_name,
-                result_summary=summarize_tool_result(result),
-            )
-            return result
-
-        roadmap_id = str(args.get('roadmap_id') or session_context.get('roadmap_id') or '').strip()
-        session_roadmap_id = str(session_context.get('roadmap_id') or '').strip()
-        if not roadmap_id:
-            result = {
-                'error': {
-                    'code': 'MISSING_ROADMAP_ID',
-                    'message': 'roadmap_id is required for context tools.',
-                }
-            }
-            log_event(
-                self._logger,
-                'tool_call_result',
-                settings=self._settings,
-                level=logging.WARNING,
-                trace_id=trace_id,
-                tool_name=tool_name,
-                result_summary=summarize_tool_result(result),
-            )
-            return result
-        if session_roadmap_id and roadmap_id != session_roadmap_id:
-            result = {
-                'error': {
-                    'code': 'ROADMAP_SCOPE_MISMATCH',
-                    'message': 'Context tools must use the active session roadmap_id.',
-                }
-            }
-            log_event(
-                self._logger,
-                'tool_call_result',
-                settings=self._settings,
-                level=logging.WARNING,
-                trace_id=trace_id,
-                tool_name=tool_name,
-                result_summary=summarize_tool_result(result),
-            )
-            return result
-
-        auth_header = session_context.get('auth_header')
-        auth_value = auth_header if isinstance(auth_header, str) and auth_header else None
-        log_event(
-            self._logger,
-            'tool_call_requested',
-            settings=self._settings,
-            trace_id=trace_id,
+        return self._get_context_tools_executor().execute(
             tool_name=tool_name,
-            tool_args=args,
-            arg_keys=sorted(args.keys()),
-            roadmap_id=roadmap_id,
+            args=args,
+            session_context=session_context,
         )
 
-        try:
-            result: dict[str, Any]
-            if tool_name == 'get_roadmap_summary':
-                result = self._run_async_context_call(
-                    self._nest_client.context_summary(
-                        roadmap_id=roadmap_id,
-                        auth_header=auth_value,
-                    )
-                )
-                log_event(
-                    self._logger,
-                    'tool_call_result',
-                    settings=self._settings,
-                    trace_id=trace_id,
-                    tool_name=tool_name,
-                    result_summary=summarize_tool_result(result),
-                )
-                return result
-
-            if tool_name == 'search_nodes':
-                query = str(args.get('query', '')).strip()
-                if not query:
-                    result = {
-                        'error': {
-                            'code': 'MISSING_QUERY',
-                            'message': 'query is required for search_nodes.',
-                        }
-                    }
-                    log_event(
-                        self._logger,
-                        'tool_call_result',
-                        settings=self._settings,
-                        level=logging.WARNING,
-                        trace_id=trace_id,
-                        tool_name=tool_name,
-                        result_summary=summarize_tool_result(result),
-                    )
-                    return result
-                limit_raw = args.get('limit')
-                limit = int(limit_raw) if isinstance(limit_raw, int) else None
-                result = self._run_async_context_call(
-                    self._nest_client.context_search(
-                        roadmap_id=roadmap_id,
-                        query=query,
-                        limit=limit,
-                        auth_header=auth_value,
-                    )
-                )
-                log_event(
-                    self._logger,
-                    'tool_call_result',
-                    settings=self._settings,
-                    trace_id=trace_id,
-                    tool_name=tool_name,
-                    result_summary=summarize_tool_result(result),
-                )
-                return result
-
-            if tool_name == 'resolve_node_reference':
-                label = str(args.get('label', '')).strip()
-                if not label:
-                    result = {
-                        'error': {
-                            'code': 'MISSING_LABEL',
-                            'message': 'label is required for resolve_node_reference.',
-                        }
-                    }
-                    log_event(
-                        self._logger,
-                        'tool_call_result',
-                        settings=self._settings,
-                        level=logging.WARNING,
-                        trace_id=trace_id,
-                        tool_name=tool_name,
-                        result_summary=summarize_tool_result(result),
-                    )
-                    return result
-                node_type_raw = str(args.get('node_type', '')).strip().lower()
-                node_type = node_type_raw if node_type_raw in {'epic', 'feature', 'task'} else None
-                limit_raw = args.get('limit')
-                limit = int(limit_raw) if isinstance(limit_raw, int) else 20
-                search_result = self._run_async_context_call(
-                    self._nest_client.context_search(
-                        roadmap_id=roadmap_id,
-                        query=label,
-                        limit=limit,
-                        auth_header=auth_value,
-                    )
-                )
-                raw_matches = search_result.get('matches', [])
-                if not isinstance(raw_matches, list):
-                    raw_matches = []
-                resolved = resolve_candidates(
-                    raw_matches,
-                    label=label,
-                    node_type=node_type,
-                )
-                result = {
-                    'status': resolved.status,
-                    'selected': (
-                        resolved.selected.model_dump(exclude_none=True)
-                        if resolved.selected is not None
-                        else None
-                    ),
-                    'matches': [
-                        item.model_dump(exclude_none=True)
-                        for item in resolved.candidates[:5]
-                    ],
-                }
-                log_event(
-                    self._logger,
-                    'tool_call_result',
-                    settings=self._settings,
-                    trace_id=trace_id,
-                    tool_name=tool_name,
-                    result_summary=summarize_tool_result(result),
-                )
-                return result
-
-            if tool_name == 'get_node_details':
-                node_id = str(args.get('node_id', '')).strip()
-                if not node_id:
-                    result = {
-                        'error': {
-                            'code': 'MISSING_NODE_ID',
-                            'message': 'node_id is required for get_node_details.',
-                        }
-                    }
-                    log_event(
-                        self._logger,
-                        'tool_call_result',
-                        settings=self._settings,
-                        level=logging.WARNING,
-                        trace_id=trace_id,
-                        tool_name=tool_name,
-                        result_summary=summarize_tool_result(result),
-                    )
-                    return result
-                result = self._run_async_context_call(
-                    self._nest_client.context_node_details(
-                        roadmap_id=roadmap_id,
-                        node_id=node_id,
-                        auth_header=auth_value,
-                    )
-                )
-                log_event(
-                    self._logger,
-                    'tool_call_result',
-                    settings=self._settings,
-                    trace_id=trace_id,
-                    tool_name=tool_name,
-                    result_summary=summarize_tool_result(result),
-                )
-                return result
-
-            parent_id = str(args.get('parent_id', '')).strip()
-            if not parent_id:
-                result = {
-                    'error': {
-                        'code': 'MISSING_PARENT_ID',
-                        'message': 'parent_id is required for get_children.',
-                    }
-                }
-                log_event(
-                    self._logger,
-                    'tool_call_result',
-                    settings=self._settings,
-                    level=logging.WARNING,
-                    trace_id=trace_id,
-                    tool_name=tool_name,
-                    result_summary=summarize_tool_result(result),
-                )
-                return result
-            limit_raw = args.get('limit')
-            limit = int(limit_raw) if isinstance(limit_raw, int) else None
-            result = self._run_async_context_call(
-                self._nest_client.context_children(
-                    roadmap_id=roadmap_id,
-                    node_id=parent_id,
-                    limit=limit,
-                    auth_header=auth_value,
-                )
-            )
-            log_event(
-                self._logger,
-                'tool_call_result',
+    def _get_context_tools_executor(self) -> ContextToolsExecutor:
+        executor = getattr(self, '_context_tools_executor', None)
+        if executor is None:
+            executor = ContextToolsExecutor(
                 settings=self._settings,
-                trace_id=trace_id,
-                tool_name=tool_name,
-                result_summary=summarize_tool_result(result),
+                logger=self._logger,
+                nest_client=self._nest_client,
+                run_async_context_call=self._run_async_context_call,
             )
-            return result
-        except Exception as exc:  # pragma: no cover
-            self._logger.warning(
-                'Context tool execution failed. tool=%s roadmap_id=%s error=%s',
-                tool_name,
-                roadmap_id,
-                exc,
-            )
-            log_event(
-                self._logger,
-                'tool_call_result',
+            self._context_tools_executor = executor
+        return executor
+
+    def _get_deterministic_context_adapter(self) -> DeterministicContextAdapter:
+        adapter = getattr(self, '_deterministic_context_adapter', None)
+        if adapter is None:
+            adapter = DeterministicContextAdapter(
                 settings=self._settings,
-                level=logging.WARNING,
-                trace_id=trace_id,
-                tool_name=tool_name,
-                result_summary={'result_type': 'error', 'error_code': 'CONTEXT_TOOL_FAILED'},
+                logger=self._logger,
+                execute_context_tool=self._execute_context_tool,
             )
-            return {
-                'error': {
-                    'code': 'CONTEXT_TOOL_FAILED',
-                    'message': 'Failed to fetch roadmap context from backend.',
-                }
-            }
+            self._deterministic_context_adapter = adapter
+        return adapter
+
+    def _try_pending_context_selection(
+        self,
+        *,
+        user_message: str,
+        session_context: dict[str, Any],
+        trace_id: str | None,
+    ) -> ContextResolutionOutcome | None:
+        return self._get_deterministic_context_adapter().try_pending_context_selection(
+            user_message=user_message,
+            session_context=session_context,
+            trace_id=trace_id,
+        )
+
+    def _try_deterministic_features_answer(
+        self,
+        *,
+        user_message: str,
+        session_context: dict[str, Any],
+        trace_id: str | None,
+    ) -> ContextResolutionOutcome | None:
+        return self._get_deterministic_context_adapter().try_deterministic_features_answer(
+            user_message=user_message,
+            session_context=session_context,
+            trace_id=trace_id,
+        )
+
+    def _try_deterministic_tasks_answer(
+        self,
+        *,
+        user_message: str,
+        session_context: dict[str, Any],
+        trace_id: str | None,
+    ) -> ContextResolutionOutcome | None:
+        return self._get_deterministic_context_adapter().try_deterministic_tasks_answer(
+            user_message=user_message,
+            session_context=session_context,
+            trace_id=trace_id,
+        )
+
+    def _match_deterministic_context_intent(
+        self,
+        user_message: str,
+    ) -> tuple[DeterministicContextIntent, str] | None:
+        return self._get_deterministic_context_adapter().match_deterministic_context_intent(user_message)
+
+    def _get_deterministic_context_intent(
+        self,
+        pending_kind: str,
+    ) -> DeterministicContextIntent | None:
+        return self._get_deterministic_context_adapter().get_deterministic_context_intent(pending_kind)
+
+    def _match_global_overview_intent(
+        self,
+        user_message: str,
+    ) -> tuple[DeterministicContextIntent, str] | None:
+        return self._get_deterministic_context_adapter().match_global_overview_intent(user_message)
+
+    def _try_deterministic_list_answer(
+        self,
+        *,
+        intent: DeterministicContextIntent,
+        label: str,
+        include_ids: bool,
+        session_context: dict[str, Any],
+        trace_id: str | None,
+    ) -> ContextResolutionOutcome | None:
+        return self._get_deterministic_context_adapter().try_deterministic_list_answer(
+            intent=intent,
+            label=label,
+            include_ids=include_ids,
+            session_context=session_context,
+            trace_id=trace_id,
+        )
+
+    def _normalize_context_label(self, label: str) -> str:
+        return self._get_deterministic_context_adapter().normalize_context_label(label)
+
+    def _should_include_ids(self, user_message: str) -> bool:
+        return self._get_deterministic_context_adapter().should_include_ids(user_message)
 
     def _persist_session_state(self, _state: PlannerState) -> PlannerState:
         return {}

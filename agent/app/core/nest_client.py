@@ -95,6 +95,37 @@ class NestRoadmapClient:
             auth_header,
         )
 
+    async def context_children_from_resolution(
+        self,
+        roadmap_id: str,
+        resolution_id: str,
+        choice: int,
+        limit: int | None,
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        query_string = f"?choice={choice}"
+        if limit is not None:
+            query_string += f"&limit={limit}"
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/context/resolutions/{resolution_id}/children{query_string}",
+            auth_header,
+        )
+
+    async def context_features(
+        self,
+        roadmap_id: str,
+        epic_id: str,
+        limit: int | None,
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        query_string = f"?epic_id={quote_plus(epic_id)}"
+        if limit is not None:
+            query_string += f"&limit={limit}"
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/context/features{query_string}",
+            auth_header,
+        )
+
     async def context_node_details(
         self,
         roadmap_id: str,

@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 
 from app.core.config import get_settings
 from app.core.contracts.operations import RoadmapOperation
-from app.core.contracts.sessions import PendingDisambiguation
+from app.core.contracts.sessions import PendingContextResolution, PendingDisambiguation
 from app.core.contracts.sessions import AgentSession, IntentType, ProviderUsed, ResponseMode
 from app.core.llm.client import LLMPlanner, PlanningResult
 from app.core.logging_utils import log_event
@@ -100,6 +100,13 @@ class AgentService:
                 session.operations.extend(operations)
             if operations:
                 session.staged_operations_version += 1
+
+        if planning.clear_pending_context_resolution:
+            session.metadata.pending_context_resolution = None
+        if planning.pending_context_resolution is not None:
+            session.metadata.pending_context_resolution = PendingContextResolution.model_validate(
+                planning.pending_context_resolution
+            )
 
         session.last_intent_type = planning.intent_type
         self._store.append_message(session, 'assistant', planning.assistant_message)
@@ -353,4 +360,9 @@ class AgentService:
             'recent_messages': recent_messages,
             'auth_header': auth_header,
             'trace_id': trace_id,
+            'pending_context_resolution': (
+                session.metadata.pending_context_resolution.model_dump(exclude_none=True)
+                if session.metadata.pending_context_resolution is not None
+                else None
+            ),
         }

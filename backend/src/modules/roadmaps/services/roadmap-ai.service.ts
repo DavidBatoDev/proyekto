@@ -25,7 +25,10 @@ import type {
   RoadmapAiCommitResponseDto,
   RoadmapAiContextChildrenQueryDto,
   RoadmapAiContextChildrenResponseDto,
+  RoadmapAiContextFeaturesQueryDto,
   RoadmapAiContextNodeResponseDto,
+  RoadmapAiContextResolutionChildrenQueryDto,
+  RoadmapAiContextSearchMatchDto,
   RoadmapAiContextSearchQueryDto,
   RoadmapAiContextSearchResponseDto,
   RoadmapAiContextSummaryResponseDto,
@@ -114,7 +117,15 @@ type ContextSearchCandidate = {
   parent_title?: string;
 };
 
+type ResolutionRecord = {
+  roadmapId: string;
+  userId: string;
+  createdAt: string;
+  matches: RoadmapAiContextSearchMatchDto[];
+};
+
 const PREVIEW_TTL_MS = 1000 * 60 * 30;
+const RESOLUTION_TTL_SECONDS = 60 * 10;
 const EPIC_STATUS = [
   'backlog',
   'planned',
@@ -351,7 +362,106 @@ export class RoadmapAiService {
         matched_fields: item.matched_fields.length ? item.matched_fields : undefined,
       }));
 
-    return { matches: scored };
+    const resolutionId = randomUUID();
+    const record: ResolutionRecord = {
+      roadmapId,
+      userId,
+      createdAt: new Date().toISOString(),
+      matches: scored,
+    };
+    await this.previewStore.setResolution(
+      resolutionId,
+      record as unknown as Record<string, unknown>,
+      RESOLUTION_TTL_SECONDS,
+    );
+    return { resolution_id: resolutionId, matches: scored };
+  }
+
+  async getContextChildrenFromResolution(
+    roadmapId: string,
+    resolutionId: string,
+    query: RoadmapAiContextResolutionChildrenQueryDto,
+    userId: string,
+  ): Promise<RoadmapAiContextChildrenResponseDto> {
+    await this.assertCanEditRoadmap(roadmapId, userId);
+    if (!this.isUuid(resolutionId)) {
+      throw this.contextBadRequest(
+        'INVALID_UUID',
+        'resolutionId must be a valid UUID.',
+      );
+    }
+    const limit = Math.min(Math.max(query.limit ?? 25, 1), 100);
+    const choice = query.choice;
+    if (choice < 1) {
+      throw this.contextBadRequest('INVALID_ARGUMENT', 'choice must be >= 1');
+    }
+
+    const resolution = await this.previewStore.getResolution<ResolutionRecord>(
+      resolutionId,
+    );
+    if (
+      !resolution ||
+      resolution.roadmapId !== roadmapId ||
+      resolution.userId !== userId
+    ) {
+      throw this.contextNotFound(
+        'RESOLUTION_NOT_FOUND',
+        'Resolution handle not found or expired.',
+      );
+    }
+
+    const selected = resolution.matches[choice - 1];
+    if (!selected?.id) {
+      throw this.contextBadRequest(
+        'INVALID_ARGUMENT',
+        'choice is out of range for the current resolution.',
+      );
+    }
+
+    return this.getContextNodeChildren(
+      roadmapId,
+      selected.id,
+      { limit },
+      userId,
+    );
+  }
+
+  async getContextFeatures(
+    roadmapId: string,
+    query: RoadmapAiContextFeaturesQueryDto,
+    userId: string,
+  ): Promise<RoadmapAiContextChildrenResponseDto> {
+    await this.assertCanEditRoadmap(roadmapId, userId);
+    const full = await this.roadmapsRepo.findFull(roadmapId, userId);
+    if (!full) throw this.contextNotFound('NODE_NOT_FOUND', 'Roadmap not found');
+    const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
+
+    const epicId = query.epic_id;
+    if (!this.isUuid(epicId)) {
+      throw this.contextBadRequest('INVALID_UUID', 'epic_id must be a valid UUID.');
+    }
+
+    const epic = (state.roadmap_epics ?? []).find((item) => item.id === epicId);
+    if (!epic) {
+      throw this.contextNotFound('NODE_NOT_FOUND', 'Epic node not found.');
+    }
+
+    const limit = Math.min(Math.max(query.limit ?? 25, 1), 100);
+    const children = (epic.roadmap_features ?? [])
+      .slice(0, limit)
+      .flatMap((feature) =>
+        feature.id
+          ? [
+              {
+                id: feature.id,
+                type: 'feature' as const,
+                title: feature.title ?? 'Untitled feature',
+                parent_id: epicId,
+              },
+            ]
+          : [],
+      );
+    return { children };
   }
 
   async getContextNodeDetails(
@@ -360,8 +470,11 @@ export class RoadmapAiService {
     userId: string,
   ): Promise<RoadmapAiContextNodeResponseDto> {
     await this.assertCanEditRoadmap(roadmapId, userId);
+    if (!this.isUuid(nodeId)) {
+      throw this.contextBadRequest('INVALID_UUID', 'nodeId must be a valid UUID.');
+    }
     const full = await this.roadmapsRepo.findFull(roadmapId, userId);
-    if (!full) throw new NotFoundException('Roadmap not found');
+    if (!full) throw this.contextNotFound('NODE_NOT_FOUND', 'Roadmap not found');
     const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
     const roadmapNodeId = this.requireNodeId(state.id, 'roadmap');
 
@@ -379,7 +492,7 @@ export class RoadmapAiService {
 
     const locator = this.findNodeById(state, nodeId);
     if (!locator || locator.type === 'roadmap') {
-      throw new NotFoundException('Node not found');
+      throw this.contextNotFound('NODE_NOT_FOUND', 'Node not found');
     }
 
     if (locator.type === 'epic') {
@@ -428,8 +541,11 @@ export class RoadmapAiService {
     userId: string,
   ): Promise<RoadmapAiContextChildrenResponseDto> {
     await this.assertCanEditRoadmap(roadmapId, userId);
+    if (!this.isUuid(nodeId)) {
+      throw this.contextBadRequest('INVALID_UUID', 'nodeId must be a valid UUID.');
+    }
     const full = await this.roadmapsRepo.findFull(roadmapId, userId);
-    if (!full) throw new NotFoundException('Roadmap not found');
+    if (!full) throw this.contextNotFound('NODE_NOT_FOUND', 'Roadmap not found');
     const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
     const roadmapNodeId = this.requireNodeId(state.id, 'roadmap');
     const limit = Math.min(Math.max(query.limit ?? 25, 1), 100);
@@ -455,7 +571,7 @@ export class RoadmapAiService {
 
     const locator = this.findNodeById(state, nodeId);
     if (!locator) {
-      throw new NotFoundException('Node not found');
+      throw this.contextNotFound('NODE_NOT_FOUND', 'Node not found');
     }
 
     if (locator.type === 'epic') {
@@ -603,18 +719,42 @@ export class RoadmapAiService {
     if (!existing) throw new NotFoundException('Roadmap not found');
 
     if (existing.project_id) {
-      await this.roadmapAuthz.assertRoadmapPermission(
-        roadmapId,
-        userId,
-        'roadmap.edit',
-      );
+      try {
+        await this.roadmapAuthz.assertRoadmapPermission(
+          roadmapId,
+          userId,
+          'roadmap.edit',
+        );
+      } catch (err) {
+        throw new ForbiddenException({
+          code: 'FORBIDDEN',
+          message: 'Insufficient permissions for roadmap context access.',
+        });
+      }
       return existing;
     }
 
     if (existing.owner_id !== userId) {
-      throw new ForbiddenException('Not the owner');
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        message: 'Not the owner',
+      });
     }
     return existing;
+  }
+
+  private contextBadRequest(code: string, message: string): BadRequestException {
+    return new BadRequestException({ code, message });
+  }
+
+  private contextNotFound(code: string, message: string): NotFoundException {
+    return new NotFoundException({ code, message });
+  }
+
+  private isUuid(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      value,
+    );
   }
 
   private validateOptimisticRevision(

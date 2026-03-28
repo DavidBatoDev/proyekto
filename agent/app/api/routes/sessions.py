@@ -324,6 +324,7 @@ async def commit_session(
         session.revision_token = committed_revision_token
     session.latest_preview_id = None
     session.metadata.pending_disambiguation = None
+    session.metadata.pending_context_resolution = None
     await _run_store_call(store.update, session)
 
     return {
@@ -361,6 +362,7 @@ async def discard_session(
     session.latest_preview_id = None
     session.artifacts = []
     session.metadata.pending_disambiguation = None
+    session.metadata.pending_context_resolution = None
     await _run_store_call(store.update, session)
 
     return DiscardResponse(

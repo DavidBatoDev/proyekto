@@ -52,9 +52,19 @@ class PendingDisambiguation(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class PendingContextResolution(BaseModel):
+    kind: Literal['features_of_epic', 'tasks_of_feature']
+    resolution_id: str
+    label: str
+    node_type: Literal['epic', 'feature', 'task'] | None = None
+    option_choices: list[int] | None = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class SessionMetadata(BaseModel):
     model_config = ConfigDict(extra='allow')
     pending_disambiguation: PendingDisambiguation | None = None
+    pending_context_resolution: PendingContextResolution | None = None
 
 
 class AgentSession(BaseModel):

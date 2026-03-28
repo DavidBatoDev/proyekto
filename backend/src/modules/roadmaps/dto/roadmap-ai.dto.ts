@@ -353,6 +353,10 @@ export class RoadmapAiContextSearchMatchDto {
 }
 
 export class RoadmapAiContextSearchResponseDto {
+  @IsOptional()
+  @IsUUID()
+  resolution_id?: string;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => RoadmapAiContextSearchMatchDto)
@@ -399,6 +403,30 @@ export class RoadmapAiContextNodeResponseDto {
 }
 
 export class RoadmapAiContextChildrenQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number;
+}
+
+export class RoadmapAiContextResolutionChildrenQueryDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  choice: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number;
+}
+
+export class RoadmapAiContextFeaturesQueryDto {
+  @IsUUID()
+  epic_id: string;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()

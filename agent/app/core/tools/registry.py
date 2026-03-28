@@ -14,6 +14,8 @@ CONTEXT_TOOL_NAMES = {
     'search_nodes',
     'get_node_details',
     'get_children',
+    'get_children_from_resolution',
+    'get_features',
 }
 
 
@@ -101,6 +103,42 @@ def get_context_tools() -> list[dict[str, Any]]:
                     'properties': {
                         'roadmap_id': {'type': 'string'},
                         'parent_id': {'type': 'string'},
+                        'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
+                    },
+                },
+            },
+        },
+        {
+            'type': 'function',
+            'function': {
+                'name': 'get_children_from_resolution',
+                'description': (
+                    'Get child nodes by selecting a candidate from resolve_node_reference '
+                    'using a backend-issued resolution_id and choice index.'
+                ),
+                'parameters': {
+                    'type': 'object',
+                    'required': ['roadmap_id', 'resolution_id', 'choice'],
+                    'properties': {
+                        'roadmap_id': {'type': 'string'},
+                        'resolution_id': {'type': 'string'},
+                        'choice': {'type': 'integer', 'minimum': 1},
+                        'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
+                    },
+                },
+            },
+        },
+        {
+            'type': 'function',
+            'function': {
+                'name': 'get_features',
+                'description': 'Get features under an epic id.',
+                'parameters': {
+                    'type': 'object',
+                    'required': ['roadmap_id', 'epic_id'],
+                    'properties': {
+                        'roadmap_id': {'type': 'string'},
+                        'epic_id': {'type': 'string'},
                         'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
                     },
                 },

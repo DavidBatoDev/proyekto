@@ -42,8 +42,37 @@ export class RoadmapAiPreviewStoreService {
     await redis.del(this.previewKey(previewId));
   }
 
+  async setResolution<T extends Record<string, unknown>>(
+    resolutionId: string,
+    payload: T,
+    ttlSeconds: number,
+  ): Promise<void> {
+    const redis = this.requireRedis();
+    await redis.set(this.resolutionKey(resolutionId), JSON.stringify(payload), {
+      ex: ttlSeconds,
+    });
+  }
+
+  async getResolution<T extends Record<string, unknown>>(
+    resolutionId: string,
+  ): Promise<T | null> {
+    const redis = this.requireRedis();
+    const value = await redis.get<string | null>(this.resolutionKey(resolutionId));
+    if (!value || typeof value !== 'string') return null;
+    return JSON.parse(value) as T;
+  }
+
+  async deleteResolution(resolutionId: string): Promise<void> {
+    const redis = this.requireRedis();
+    await redis.del(this.resolutionKey(resolutionId));
+  }
+
   private previewKey(previewId: string): string {
     return `roadmap:ai:preview:${previewId}`;
+  }
+
+  private resolutionKey(resolutionId: string): string {
+    return `roadmap:ai:resolution:${resolutionId}`;
   }
 
   private requireRedis(): Redis {

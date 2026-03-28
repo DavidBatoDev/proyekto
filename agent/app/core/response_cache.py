@@ -3,11 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from threading import Lock
+from typing import Any
 
 
 @dataclass
 class CacheEntry:
-    value: str
+    value: dict[str, Any] | str
     expires_at: datetime
 
 
@@ -17,7 +18,7 @@ class ContextAnswerCache:
         self._entries: dict[str, CacheEntry] = {}
         self._lock = Lock()
 
-    def get(self, key: str) -> str | None:
+    def get(self, key: str) -> dict[str, Any] | str | None:
         with self._lock:
             self._purge_expired_locked()
             entry = self._entries.get(key)
@@ -25,7 +26,7 @@ class ContextAnswerCache:
                 return None
             return entry.value
 
-    def set(self, key: str, value: str) -> None:
+    def set(self, key: str, value: dict[str, Any] | str) -> None:
         with self._lock:
             self._purge_expired_locked()
             self._entries[key] = CacheEntry(

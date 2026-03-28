@@ -15,6 +15,8 @@ import type { AuthenticatedUser } from '../../../common/interfaces/authenticated
 import {
   RoadmapAiCommitDto,
   RoadmapAiContextChildrenQueryDto,
+  RoadmapAiContextFeaturesQueryDto,
+  RoadmapAiContextResolutionChildrenQueryDto,
   RoadmapAiContextSearchQueryDto,
   RoadmapAiDiscardDto,
   RoadmapAiPreviewDto,
@@ -79,6 +81,30 @@ export class RoadmapAiController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.roadmapAiService.getContextNodeChildren(roadmapId, nodeId, query, user.id);
+  }
+
+  @Get('context/resolutions/:resolutionId/children')
+  getContextResolutionChildren(
+    @Param('id') roadmapId: string,
+    @Param('resolutionId') resolutionId: string,
+    @Query() query: RoadmapAiContextResolutionChildrenQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roadmapAiService.getContextChildrenFromResolution(
+      roadmapId,
+      resolutionId,
+      query,
+      user.id,
+    );
+  }
+
+  @Get('context/features')
+  getContextFeatures(
+    @Param('id') roadmapId: string,
+    @Query() query: RoadmapAiContextFeaturesQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roadmapAiService.getContextFeatures(roadmapId, query, user.id);
   }
 
   @Post('commit')
