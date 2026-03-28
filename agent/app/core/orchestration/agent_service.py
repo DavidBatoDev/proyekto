@@ -28,6 +28,9 @@ class MessagePlanningOutcome:
     provider_used: ProviderUsed
     fallback_used: bool
     provider_error_code: str | None
+    tokens_input: int | None
+    tokens_output: int | None
+    tokens_total: int | None
 
 
 class AgentService:
@@ -116,6 +119,9 @@ class AgentService:
             provider_used=planning.provider_used,
             fallback_used=planning.fallback_used,
             provider_error_code=planning.provider_error_code,
+            tokens_input=planning.tokens_input,
+            tokens_output=planning.tokens_output,
+            tokens_total=planning.tokens_total,
         )
 
     def _build_session_context(

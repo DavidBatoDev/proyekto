@@ -42,6 +42,9 @@ class PlannerState(TypedDict, total=False):
     provider_used: ProviderUsed
     fallback_used: bool
     provider_error_code: str | None
+    tokens_input: int | None
+    tokens_output: int | None
+    tokens_total: int | None
     is_roadmap_question: bool
     tool_mode: Literal['none', 'context_answer', 'edit_plan']
     trace_id: str | None
@@ -58,6 +61,9 @@ class PlanningResult:
     provider_used: ProviderUsed
     fallback_used: bool
     provider_error_code: str | None
+    tokens_input: int | None = None
+    tokens_output: int | None = None
+    tokens_total: int | None = None
 
 
 class LLMPlanner:
@@ -157,6 +163,9 @@ class LLMPlanner:
             provider_used=state.get('provider_used', 'rule_based'),
             fallback_used=bool(state.get('fallback_used', False)),
             provider_error_code=state.get('provider_error_code'),
+            tokens_input=state.get('tokens_input'),
+            tokens_output=state.get('tokens_output'),
+            tokens_total=state.get('tokens_total'),
         )
 
     def _classify_intent(self, state: PlannerState) -> PlannerState:
@@ -261,6 +270,9 @@ class LLMPlanner:
                 'provider_used': result.provider_used,
                 'fallback_used': result.fallback_used,
                 'provider_error_code': result.provider_error_code,
+                'tokens_input': result.tokens_input,
+                'tokens_output': result.tokens_output,
+                'tokens_total': result.tokens_total,
             }
         except ProviderAdapterError as exc:
             self._logger.warning(
@@ -277,6 +289,9 @@ class LLMPlanner:
                 'provider_used': 'rule_based',
                 'fallback_used': False,
                 'provider_error_code': exc.code,
+                'tokens_input': exc.tokens_input,
+                'tokens_output': exc.tokens_output,
+                'tokens_total': exc.tokens_total,
             }
 
     def _generate_context_answer(self, state: PlannerState) -> PlannerState:
@@ -363,6 +378,9 @@ class LLMPlanner:
                 'provider_used': result.provider_used,
                 'fallback_used': result.fallback_used,
                 'provider_error_code': result.provider_error_code,
+                'tokens_input': result.tokens_input,
+                'tokens_output': result.tokens_output,
+                'tokens_total': result.tokens_total,
             }
         except ProviderAdapterError as exc:
             self._logger.warning(
@@ -379,6 +397,9 @@ class LLMPlanner:
                 'provider_used': 'rule_based',
                 'fallback_used': False,
                 'provider_error_code': exc.code,
+                'tokens_input': exc.tokens_input,
+                'tokens_output': exc.tokens_output,
+                'tokens_total': exc.tokens_total,
             }
 
     def _plan_operations(self, state: PlannerState) -> PlannerState:
@@ -428,6 +449,9 @@ class LLMPlanner:
                 fallback_used=result.fallback_used,
                 operations_count=len(operations),
                 operation_types=[op.op.value for op in operations],
+                tokens_input=result.tokens_input,
+                tokens_output=result.tokens_output,
+                tokens_total=result.tokens_total,
             )
             return {
                 'assistant_message': assistant_message,
@@ -438,8 +462,24 @@ class LLMPlanner:
                 'provider_used': result.provider_used,
                 'fallback_used': result.fallback_used,
                 'provider_error_code': result.provider_error_code,
+                'tokens_input': result.tokens_input,
+                'tokens_output': result.tokens_output,
+                'tokens_total': result.tokens_total,
             }
         except ProviderAdapterError as exc:
+            if exc.code == 'invalid_operation_payload':
+                log_event(
+                    self._logger,
+                    'plan_payload_invalid',
+                    settings=self._settings,
+                    level=logging.WARNING,
+                    trace_id=trace_id,
+                    error_code=exc.code,
+                    error_message=exc.message,
+                    tokens_input=exc.tokens_input,
+                    tokens_output=exc.tokens_output,
+                    tokens_total=exc.tokens_total,
+                )
             self._logger.warning(
                 'Provider operation planning failed, using rule-based edit fallback. code=%s message=%s',
                 exc.code,
@@ -454,6 +494,9 @@ class LLMPlanner:
                 'provider_used': 'rule_based',
                 'fallback_used': False,
                 'provider_error_code': exc.code,
+                'tokens_input': exc.tokens_input,
+                'tokens_output': exc.tokens_output,
+                'tokens_total': exc.tokens_total,
             }
 
     def _execute_context_tool(
@@ -526,6 +569,7 @@ class LLMPlanner:
             settings=self._settings,
             trace_id=trace_id,
             tool_name=tool_name,
+            tool_args=args,
             arg_keys=sorted(args.keys()),
             roadmap_id=roadmap_id,
         )

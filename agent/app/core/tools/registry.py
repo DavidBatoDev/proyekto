@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from pydantic import ValidationError
+
 from app.core.contracts.operations import OperationType, RoadmapOperation
 
 PLANNING_TOOL_NAME = 'plan_roadmap_operations'
@@ -151,6 +153,52 @@ def parse_plan_tool_args(raw_args: Any) -> tuple[str, list[RoadmapOperation]]:
     if not isinstance(raw_operations, list):
         raise ValueError('Plan tool operations must be an array.')
 
-    operations = [RoadmapOperation.model_validate(item) for item in raw_operations]
+    operations: list[RoadmapOperation] = []
+    for index, item in enumerate(raw_operations):
+        normalized = _normalize_operation_payload(item)
+        try:
+            operations.append(RoadmapOperation.model_validate(normalized))
+        except ValidationError as exc:
+            raise ValueError(
+                f'Invalid operation payload at index {index}: {exc.errors(include_url=False)}'
+            ) from exc
     assistant_message = str(args.get('assistant_message', 'Prepared roadmap operations.'))
     return assistant_message, operations
+
+
+def _normalize_operation_payload(item: Any) -> dict[str, Any]:
+    if not isinstance(item, dict):
+        return item
+
+    payload = dict(item)
+    op = payload.get('op')
+    if op != 'update_node':
+        return payload
+
+    patch = payload.get('patch')
+    if patch is None:
+        patch = {}
+    if not isinstance(patch, dict):
+        return payload
+
+    top_level_patch_aliases = {
+        'title',
+        'description',
+        'priority',
+        'color',
+        'start_date',
+        'end_date',
+        'tags',
+        'is_deliverable',
+        'assignee_id',
+        'due_date',
+        'name',
+        'settings',
+    }
+    for key in top_level_patch_aliases:
+        if key in payload and key not in patch:
+            patch[key] = payload.pop(key)
+
+    if patch:
+        payload['patch'] = patch
+    return payload

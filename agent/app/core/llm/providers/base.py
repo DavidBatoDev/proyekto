@@ -24,11 +24,23 @@ class ProviderCallFailure:
 
 
 class ProviderAdapterError(RuntimeError):
-    def __init__(self, provider: str, code: str, message: str) -> None:
+    def __init__(
+        self,
+        provider: str,
+        code: str,
+        message: str,
+        *,
+        tokens_input: int | None = None,
+        tokens_output: int | None = None,
+        tokens_total: int | None = None,
+    ) -> None:
         super().__init__(message)
         self.provider = provider
         self.code = code
         self.message = message
+        self.tokens_input = tokens_input
+        self.tokens_output = tokens_output
+        self.tokens_total = tokens_total
 
 
 class LLMProviderAdapter(ABC):
@@ -77,4 +89,8 @@ class LLMProviderAdapter(ABC):
         tool_executor: Callable[[str, dict[str, Any]], dict[str, Any]],
         max_tool_turns: int,
     ) -> str:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_last_usage(self) -> dict[str, int] | None:
         raise NotImplementedError

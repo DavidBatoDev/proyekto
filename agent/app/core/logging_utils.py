@@ -7,6 +7,22 @@ from typing import Any
 
 from app.core.config import Settings, get_settings
 
+_KEY_PRIORITY = (
+    'ts',
+    'trace_id',
+    'session_id',
+    'roadmap_id',
+    'intent_type',
+    'response_mode',
+    'provider',
+    'provider_used',
+    'phase',
+    'fallback_used',
+    'provider_error_code',
+    'error_code',
+    'elapsed_ms',
+)
+
 _SENSITIVE_KEYS = {
     'authorization',
     'auth_header',
@@ -36,6 +52,13 @@ def configure_logging(settings: Settings | None = None) -> None:
         format='%(message)s' if cfg.agent_log_json else '%(asctime)s %(levelname)s %(name)s %(message)s',
         force=True,
     )
+    # Keep agent logs structured and useful by suppressing transport-level noise.
+    logging.getLogger('httpx').setLevel(logging.WARNING)
+    logging.getLogger('httpcore').setLevel(logging.WARNING)
+    logging.getLogger('openai').setLevel(logging.WARNING)
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
+    logging.getLogger('watchfiles').setLevel(logging.WARNING)
+    logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
 
 
 def log_event(
@@ -55,7 +78,7 @@ def log_event(
     if cfg.agent_log_json:
         logger.log(level, json.dumps(payload, ensure_ascii=True, default=str))
         return
-    logger.log(level, f'{event} | {payload}')
+    logger.log(level, _render_pretty_payload(payload))
 
 
 def summarize_tool_result(result: dict[str, Any]) -> dict[str, Any]:
@@ -106,3 +129,65 @@ def _truncate(text: str) -> dict[str, Any]:
         'len': len(text),
         'preview': cleaned[:120],
     }
+
+
+def _render_pretty_payload(payload: dict[str, Any]) -> str:
+    event = payload.get('event', 'event')
+    lines = [f'event: {event}']
+    for key in _ordered_keys(payload):
+        if key == 'event':
+            continue
+        _append_pretty_value(lines, key, payload[key], indent=5)
+    return '\n'.join(lines)
+
+
+def _ordered_keys(payload: dict[str, Any]) -> list[str]:
+    priorities = {key: index for index, key in enumerate(_KEY_PRIORITY)}
+    return sorted(
+        payload.keys(),
+        key=lambda key: (priorities.get(key, len(_KEY_PRIORITY)), key),
+    )
+
+
+def _append_pretty_value(lines: list[str], key: str, value: Any, *, indent: int) -> None:
+    prefix = ' ' * indent
+    if isinstance(value, dict):
+        lines.append(f'{prefix}- {key}:')
+        for child_key in _ordered_mapping_keys(value):
+            _append_pretty_value(lines, child_key, value[child_key], indent=indent + 2)
+        return
+
+    if isinstance(value, list):
+        if not value:
+            lines.append(f'{prefix}- {key}: []')
+            return
+        lines.append(f'{prefix}- {key}:')
+        for item in value:
+            _append_pretty_list_item(lines, item, indent=indent + 2)
+        return
+
+    lines.append(f'{prefix}- {key}: {value}')
+
+
+def _append_pretty_list_item(lines: list[str], value: Any, *, indent: int) -> None:
+    prefix = ' ' * indent
+    if isinstance(value, dict):
+        lines.append(f'{prefix}-')
+        for key in _ordered_mapping_keys(value):
+            _append_pretty_value(lines, key, value[key], indent=indent + 2)
+        return
+
+    if isinstance(value, list):
+        if not value:
+            lines.append(f'{prefix}- []')
+            return
+        lines.append(f'{prefix}-')
+        for item in value:
+            _append_pretty_list_item(lines, item, indent=indent + 2)
+        return
+
+    lines.append(f'{prefix}- {value}')
+
+
+def _ordered_mapping_keys(value: dict[str, Any]) -> list[str]:
+    return sorted(value.keys())

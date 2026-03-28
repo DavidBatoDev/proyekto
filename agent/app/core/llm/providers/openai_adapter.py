@@ -38,6 +38,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._last_usage: dict[str, int] | None = None
 
     def is_available(self) -> bool:
         return bool(
@@ -62,6 +63,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
         classifier_input: str,
     ) -> IntentType:
         try:
+            self._last_usage = None
             model = self._chat_model().with_structured_output(_IntentClassification)
             classification: _IntentClassification = model.invoke(
                 [
@@ -69,6 +71,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                     HumanMessage(content=classifier_input),
                 ]
             )
+            self._last_usage = self._extract_usage(classification)
             return classification.intent_type
         except Exception as exc:  # pragma: no cover
             raise self._to_provider_error(exc)
@@ -80,6 +83,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
         history_messages: list[Any],
     ) -> str:
         try:
+            self._last_usage = None
             model = self._chat_model()
             ai_message = model.invoke(
                 [
@@ -88,6 +92,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                     HumanMessage(content=user_message),
                 ]
             )
+            self._last_usage = self._extract_usage(ai_message)
             content = self._extract_text(ai_message.content)
             if not content:
                 raise ProviderAdapterError(
@@ -111,6 +116,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
         max_tool_turns: int,
     ) -> tuple[str, list[RoadmapOperation]]:
         try:
+            self._last_usage = None
             if ToolMessage is None:
                 raise ProviderAdapterError(
                     provider=self.provider_name,
@@ -123,9 +129,11 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                 *history_messages,
                 HumanMessage(content=planner_prompt),
             ]
+            usage_totals = {'tokens_input': 0, 'tokens_output': 0, 'tokens_total': 0}
 
             for turn in range(max_tool_turns):
                 ai_message = tool_model.invoke(messages)
+                self._add_usage(usage_totals, self._extract_usage(ai_message))
                 messages.append(ai_message)
                 tool_calls = getattr(ai_message, 'tool_calls', []) or []
                 if not tool_calls:
@@ -139,9 +147,21 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                     name = str(tool_call.get('name', '')).strip()
                     args = self._normalize_tool_args(tool_call.get('args'))
                     if name == PLANNING_TOOL_NAME:
-                        assistant_message, operations = parse_plan_tool_args(args)
+                        try:
+                            assistant_message, operations = parse_plan_tool_args(args)
+                        except ValueError as exc:
+                            self._last_usage = usage_totals
+                            raise ProviderAdapterError(
+                                provider=self.provider_name,
+                                code='invalid_operation_payload',
+                                message=str(exc),
+                                tokens_input=usage_totals['tokens_input'],
+                                tokens_output=usage_totals['tokens_output'],
+                                tokens_total=usage_totals['tokens_total'],
+                            ) from exc
                         if not assistant_message.strip():
                             assistant_message = 'Prepared roadmap operations.'
+                        self._last_usage = usage_totals
                         return assistant_message, operations
 
                     tool_result = tool_executor(name, args)
@@ -153,10 +173,14 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                         )
                     )
 
+            self._last_usage = usage_totals
             raise ProviderAdapterError(
                 provider=self.provider_name,
                 code='max_tool_turns_exceeded',
                 message='OpenAI planning loop reached max tool turns before returning a final operation plan.',
+                tokens_input=usage_totals['tokens_input'],
+                tokens_output=usage_totals['tokens_output'],
+                tokens_total=usage_totals['tokens_total'],
             )
         except ProviderAdapterError:
             raise
@@ -173,6 +197,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
         max_tool_turns: int,
     ) -> str:
         try:
+            self._last_usage = None
             if ToolMessage is None:
                 raise ProviderAdapterError(
                     provider=self.provider_name,
@@ -185,14 +210,17 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                 *history_messages,
                 HumanMessage(content=question_prompt),
             ]
+            usage_totals = {'tokens_input': 0, 'tokens_output': 0, 'tokens_total': 0}
 
             for turn in range(max_tool_turns):
                 ai_message = tool_model.invoke(messages)
+                self._add_usage(usage_totals, self._extract_usage(ai_message))
                 messages.append(ai_message)
                 tool_calls = getattr(ai_message, 'tool_calls', []) or []
                 if not tool_calls:
                     content = self._extract_text(ai_message.content)
                     if content:
+                        self._last_usage = usage_totals
                         return content
                     raise ProviderAdapterError(
                         provider=self.provider_name,
@@ -212,10 +240,14 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                         )
                     )
 
+            self._last_usage = usage_totals
             raise ProviderAdapterError(
                 provider=self.provider_name,
                 code='max_tool_turns_exceeded',
                 message='OpenAI context answer loop reached max tool turns.',
+                tokens_input=usage_totals['tokens_input'],
+                tokens_output=usage_totals['tokens_output'],
+                tokens_total=usage_totals['tokens_total'],
             )
         except ProviderAdapterError:
             raise
@@ -233,13 +265,39 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
     def _to_provider_error(self, exc: Exception) -> ProviderAdapterError:
         exc_name = exc.__class__.__name__.lower()
         message = str(exc)
+        usage = self.get_last_usage() or {}
+        kwargs = {
+            'tokens_input': usage.get('tokens_input'),
+            'tokens_output': usage.get('tokens_output'),
+            'tokens_total': usage.get('tokens_total'),
+        }
         if 'insufficient_quota' in message or 'quota' in message:
-            return ProviderAdapterError(self.provider_name, 'insufficient_quota', message)
+            return ProviderAdapterError(
+                self.provider_name,
+                'insufficient_quota',
+                message,
+                **kwargs,
+            )
         if 'rate' in message or '429' in message or 'ratelimit' in exc_name:
-            return ProviderAdapterError(self.provider_name, 'rate_limited', message)
+            return ProviderAdapterError(
+                self.provider_name,
+                'rate_limited',
+                message,
+                **kwargs,
+            )
         if 'timeout' in message:
-            return ProviderAdapterError(self.provider_name, 'timeout', message)
-        return ProviderAdapterError(self.provider_name, 'provider_error', message)
+            return ProviderAdapterError(
+                self.provider_name,
+                'timeout',
+                message,
+                **kwargs,
+            )
+        return ProviderAdapterError(
+            self.provider_name,
+            'provider_error',
+            message,
+            **kwargs,
+        )
 
     def _normalize_tool_args(self, raw_args: Any) -> dict[str, Any]:
         args = raw_args
@@ -267,3 +325,47 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                         chunks.append(text)
             return '\n'.join(part for part in chunks if part).strip()
         return ''
+
+    def get_last_usage(self) -> dict[str, int] | None:
+        return self._last_usage
+
+    def _extract_usage(self, message: Any) -> dict[str, int] | None:
+        usage_metadata = getattr(message, 'usage_metadata', None)
+        if isinstance(usage_metadata, dict):
+            input_tokens = int(usage_metadata.get('input_tokens') or 0)
+            output_tokens = int(usage_metadata.get('output_tokens') or 0)
+            total_tokens = int(
+                usage_metadata.get('total_tokens') or input_tokens + output_tokens
+            )
+            return {
+                'tokens_input': input_tokens,
+                'tokens_output': output_tokens,
+                'tokens_total': total_tokens,
+            }
+
+        response_metadata = getattr(message, 'response_metadata', None)
+        if isinstance(response_metadata, dict):
+            token_usage = response_metadata.get('token_usage')
+            if isinstance(token_usage, dict):
+                input_tokens = int(token_usage.get('prompt_tokens') or 0)
+                output_tokens = int(token_usage.get('completion_tokens') or 0)
+                total_tokens = int(
+                    token_usage.get('total_tokens') or input_tokens + output_tokens
+                )
+                return {
+                    'tokens_input': input_tokens,
+                    'tokens_output': output_tokens,
+                    'tokens_total': total_tokens,
+                }
+        return None
+
+    def _add_usage(
+        self,
+        totals: dict[str, int],
+        usage: dict[str, int] | None,
+    ) -> None:
+        if not usage:
+            return
+        totals['tokens_input'] += int(usage.get('tokens_input') or 0)
+        totals['tokens_output'] += int(usage.get('tokens_output') or 0)
+        totals['tokens_total'] += int(usage.get('tokens_total') or 0)

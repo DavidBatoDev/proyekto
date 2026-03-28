@@ -18,6 +18,9 @@ class ProviderCallOutcome(Generic[T]):
     provider_used: str
     fallback_used: bool
     provider_error_code: str | None = None
+    tokens_input: int | None = None
+    tokens_output: int | None = None
+    tokens_total: int | None = None
 
 
 class ProviderOrchestrator:
@@ -64,6 +67,7 @@ class ProviderOrchestrator:
                 **(trace_context or {}),
             )
             value = operation(self._adapter)
+            usage = self._adapter.get_last_usage() or {}
             log_event(
                 self._logger,
                 'provider_success',
@@ -71,6 +75,9 @@ class ProviderOrchestrator:
                 provider=provider_name,
                 fallback_used=False,
                 initial_error_code=None,
+                tokens_input=usage.get('tokens_input'),
+                tokens_output=usage.get('tokens_output'),
+                tokens_total=usage.get('tokens_total'),
                 **(trace_context or {}),
             )
             return ProviderCallOutcome(
@@ -78,6 +85,9 @@ class ProviderOrchestrator:
                 provider_used=provider_name,
                 fallback_used=False,
                 provider_error_code=None,
+                tokens_input=usage.get('tokens_input'),
+                tokens_output=usage.get('tokens_output'),
+                tokens_total=usage.get('tokens_total'),
             )
         except ProviderAdapterError as exc:
             if exc.code in {'insufficient_quota', 'rate_limited'}:
@@ -97,6 +107,9 @@ class ProviderOrchestrator:
                 provider=provider_name,
                 error_code=exc.code,
                 error_message=exc.message,
+                tokens_input=exc.tokens_input,
+                tokens_output=exc.tokens_output,
+                tokens_total=exc.tokens_total,
                 **(trace_context or {}),
             )
             raise
