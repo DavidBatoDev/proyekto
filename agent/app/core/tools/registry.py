@@ -16,6 +16,7 @@ CONTEXT_TOOL_NAMES = {
     'get_children',
     'get_children_from_resolution',
     'get_features',
+    'get_tasks_assigned_to_me',
 }
 
 
@@ -140,6 +141,24 @@ def get_context_tools() -> list[dict[str, Any]]:
                         'roadmap_id': {'type': 'string'},
                         'epic_id': {'type': 'string'},
                         'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
+                    },
+                },
+            },
+        },
+        {
+            'type': 'function',
+            'function': {
+                'name': 'get_tasks_assigned_to_me',
+                'description': (
+                    'Get roadmap tasks assigned to the authenticated actor in the current roadmap.'
+                ),
+                'parameters': {
+                    'type': 'object',
+                    'required': ['roadmap_id'],
+                    'properties': {
+                        'roadmap_id': {'type': 'string'},
+                        'status': {'type': 'string', 'enum': ['open', 'all']},
+                        'limit': {'type': 'integer', 'minimum': 1, 'maximum': 200},
                     },
                 },
             },

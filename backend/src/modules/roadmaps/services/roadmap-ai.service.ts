@@ -9,6 +9,8 @@ import {
   NotImplementedException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { SupabaseClient } from '@supabase/supabase-js';
+import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import type {
   FullRoadmapEpicDto,
   FullRoadmapFeatureDto,
@@ -25,6 +27,9 @@ import type {
   RoadmapAiCommitResponseDto,
   RoadmapAiContextChildrenQueryDto,
   RoadmapAiContextChildrenResponseDto,
+  RoadmapAiContextActorResponseDto,
+  RoadmapAiContextTasksAssignedQueryDto,
+  RoadmapAiContextTasksAssignedResponseDto,
   RoadmapAiContextFeaturesQueryDto,
   RoadmapAiContextNodeResponseDto,
   RoadmapAiContextResolutionChildrenQueryDto,
@@ -147,6 +152,8 @@ const ROADMAP_STATUS = ['draft', 'active', 'paused', 'completed', 'archived'];
 @Injectable()
 export class RoadmapAiService {
   constructor(
+    @Inject(SUPABASE_ADMIN)
+    private readonly db: SupabaseClient,
     @Inject(ROADMAPS_REPOSITORY)
     private readonly roadmapsRepo: IRoadmapsRepository,
     @Inject(ROADMAP_PATCH_REPOSITORY)
@@ -281,6 +288,25 @@ export class RoadmapAiService {
             ]
           : [],
       ),
+    };
+  }
+
+  async getContextActor(
+    roadmapId: string,
+    userId: string,
+  ): Promise<RoadmapAiContextActorResponseDto> {
+    const existing = await this.assertCanEditRoadmap(roadmapId, userId);
+    const displayName = await this.readActorDisplayName(userId);
+
+    const roadmapRole: 'owner' | 'editor' =
+      existing.owner_id === userId ? 'owner' : 'editor';
+
+    return {
+      actor_id: userId,
+      display_name: displayName,
+      roadmap_role: roadmapRole,
+      locale: null,
+      timezone: null,
     };
   }
 
@@ -462,6 +488,47 @@ export class RoadmapAiService {
           : [],
       );
     return { children };
+  }
+
+  async getContextTasksAssignedToMe(
+    roadmapId: string,
+    query: RoadmapAiContextTasksAssignedQueryDto,
+    userId: string,
+  ): Promise<RoadmapAiContextTasksAssignedResponseDto> {
+    await this.assertCanEditRoadmap(roadmapId, userId);
+    const full = await this.roadmapsRepo.findFull(roadmapId, userId);
+    if (!full) throw this.contextNotFound('NODE_NOT_FOUND', 'Roadmap not found');
+    const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
+
+    const statusMode = query.status ?? 'open';
+    const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
+    const tasks: RoadmapAiContextTasksAssignedResponseDto['tasks'] = [];
+
+    for (const epic of state.roadmap_epics ?? []) {
+      if (tasks.length >= limit) break;
+      const epicId = epic.id;
+      for (const feature of epic.roadmap_features ?? []) {
+        if (tasks.length >= limit) break;
+        const featureId = feature.id;
+        for (const task of feature.roadmap_tasks ?? []) {
+          if (tasks.length >= limit) break;
+          if (!task.id || task.assignee_id !== userId) continue;
+          if (statusMode === 'open' && !this.isOpenTaskStatus(task.status)) continue;
+          tasks.push({
+            id: task.id,
+            type: 'task',
+            title: task.title ?? 'Untitled task',
+            status: task.status,
+            feature_id: featureId,
+            feature_title: feature.title ?? 'Untitled feature',
+            epic_id: epicId,
+            epic_title: epic.title ?? 'Untitled epic',
+          });
+        }
+      }
+    }
+
+    return { tasks };
   }
 
   async getContextNodeDetails(
@@ -755,6 +822,30 @@ export class RoadmapAiService {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
       value,
     );
+  }
+
+  private isOpenTaskStatus(status: string | undefined): boolean {
+    if (!status) return true;
+    return !['done', 'completed', 'archived'].includes(status.toLowerCase());
+  }
+
+  private async readActorDisplayName(userId: string): Promise<string | null> {
+    const { data, error } = await this.db
+      .from('profiles')
+      .select('display_name')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error) {
+      return null;
+    }
+    if (!data) {
+      return null;
+    }
+    const value = (data as { display_name?: unknown }).display_name;
+    return typeof value === 'string' && value.trim().length > 0
+      ? value.trim()
+      : null;
   }
 
   private validateOptimisticRevision(

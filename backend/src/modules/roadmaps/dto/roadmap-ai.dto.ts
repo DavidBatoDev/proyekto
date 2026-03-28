@@ -456,3 +456,73 @@ export class RoadmapAiContextChildrenResponseDto {
   children: RoadmapAiContextChildDto[];
 }
 
+export class RoadmapAiContextActorResponseDto {
+  @IsUUID()
+  actor_id: string;
+
+  @IsOptional()
+  @IsString()
+  display_name?: string | null;
+
+  @IsEnum(['owner', 'editor'])
+  roadmap_role: 'owner' | 'editor';
+
+  @IsOptional()
+  @IsString()
+  locale?: string | null;
+
+  @IsOptional()
+  @IsString()
+  timezone?: string | null;
+}
+
+export class RoadmapAiContextTasksAssignedQueryDto {
+  @IsOptional()
+  @IsEnum(['open', 'all'])
+  status?: 'open' | 'all';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number;
+}
+
+export class RoadmapAiContextAssignedTaskDto {
+  @IsUUID()
+  id: string;
+
+  @IsEnum(['task'])
+  type: 'task';
+
+  @IsString()
+  title: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsOptional()
+  @IsUUID()
+  feature_id?: string;
+
+  @IsOptional()
+  @IsString()
+  feature_title?: string;
+
+  @IsOptional()
+  @IsUUID()
+  epic_id?: string;
+
+  @IsOptional()
+  @IsString()
+  epic_title?: string;
+}
+
+export class RoadmapAiContextTasksAssignedResponseDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapAiContextAssignedTaskDto)
+  tasks: RoadmapAiContextAssignedTaskDto[];
+}
+

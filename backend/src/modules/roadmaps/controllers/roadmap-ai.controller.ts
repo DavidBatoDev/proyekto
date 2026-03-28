@@ -15,6 +15,7 @@ import type { AuthenticatedUser } from '../../../common/interfaces/authenticated
 import {
   RoadmapAiCommitDto,
   RoadmapAiContextChildrenQueryDto,
+  RoadmapAiContextTasksAssignedQueryDto,
   RoadmapAiContextFeaturesQueryDto,
   RoadmapAiContextResolutionChildrenQueryDto,
   RoadmapAiContextSearchQueryDto,
@@ -53,6 +54,14 @@ export class RoadmapAiController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.roadmapAiService.getContextSummary(roadmapId, user.id);
+  }
+
+  @Get('context/actor')
+  getContextActor(
+    @Param('id') roadmapId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roadmapAiService.getContextActor(roadmapId, user.id);
   }
 
   @Get('context/search')
@@ -105,6 +114,19 @@ export class RoadmapAiController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.roadmapAiService.getContextFeatures(roadmapId, query, user.id);
+  }
+
+  @Get('context/tasks-assigned-to-me')
+  getContextTasksAssignedToMe(
+    @Param('id') roadmapId: string,
+    @Query() query: RoadmapAiContextTasksAssignedQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roadmapAiService.getContextTasksAssignedToMe(
+      roadmapId,
+      query,
+      user.id,
+    );
   }
 
   @Post('commit')

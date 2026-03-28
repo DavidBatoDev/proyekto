@@ -80,6 +80,16 @@ class NestRoadmapClient:
             auth_header,
         )
 
+    async def context_actor(
+        self,
+        roadmap_id: str,
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/context/actor",
+            auth_header,
+        )
+
     async def context_search(
         self,
         roadmap_id: str,
@@ -123,6 +133,24 @@ class NestRoadmapClient:
             query_string += f"&limit={limit}"
         return await self._get(
             f"/roadmaps/{roadmap_id}/ai/context/features{query_string}",
+            auth_header,
+        )
+
+    async def context_tasks_assigned_to_me(
+        self,
+        roadmap_id: str,
+        status: str | None,
+        limit: int | None,
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        query_parts: list[str] = []
+        if status:
+            query_parts.append(f"status={quote_plus(status)}")
+        if limit is not None:
+            query_parts.append(f"limit={limit}")
+        query_string = f"?{'&'.join(query_parts)}" if query_parts else ''
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/context/tasks-assigned-to-me{query_string}",
             auth_header,
         )
 

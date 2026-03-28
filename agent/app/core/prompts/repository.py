@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -31,4 +32,15 @@ class PromptRepository:
         return self.load('intent_classifier.md')
 
     def _format_context(self, context: dict[str, Any]) -> str:
-        return json.dumps(context, ensure_ascii=True, indent=2)
+        return json.dumps(
+            context,
+            ensure_ascii=True,
+            indent=2,
+            default=self._safe_default,
+        )
+
+    @staticmethod
+    def _safe_default(value: Any) -> str:
+        if isinstance(value, (datetime, date)):
+            return value.isoformat()
+        return str(value)

@@ -70,6 +70,7 @@ class DeterministicContextAdapter:
             intent=intent,
             label=label,
             include_ids=False,
+            user_message=user_message,
             session_context=session_context,
             trace_id=trace_id,
         )
@@ -94,6 +95,7 @@ class DeterministicContextAdapter:
             intent=intent,
             label=label,
             include_ids=False,
+            user_message=user_message,
             session_context=session_context,
             trace_id=trace_id,
         )
@@ -122,6 +124,7 @@ class DeterministicContextAdapter:
         intent: DeterministicContextIntent,
         label: str,
         include_ids: bool,
+        user_message: str | None = None,
         session_context: dict[str, Any],
         trace_id: str | None,
     ) -> ContextResolutionOutcome | None:
@@ -129,6 +132,7 @@ class DeterministicContextAdapter:
             intent=intent,
             label=label,
             include_ids=include_ids,
+            user_message=user_message,
             session_context=session_context,
             trace_id=trace_id,
             logger=self._logger,

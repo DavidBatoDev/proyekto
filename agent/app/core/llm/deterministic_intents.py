@@ -8,7 +8,13 @@ from typing import Literal
 @dataclass(frozen=True)
 class DeterministicContextIntent:
     name: str
-    pending_kind: Literal['roadmap_overview', 'features_of_epic', 'tasks_of_feature', 'epics_in_roadmap']
+    pending_kind: Literal[
+        'roadmap_overview',
+        'my_tasks',
+        'features_of_epic',
+        'tasks_of_feature',
+        'epics_in_roadmap',
+    ]
     resolver_node_type: Literal['epic', 'feature'] | None
     entity_plural: str
     item_plural: str
@@ -28,6 +34,20 @@ DETERMINISTIC_CONTEXT_INTENTS: tuple[DeterministicContextIntent, ...] = (
         item_singular='item',
         parse_mode='deterministic_context_overview',
         question_pattern=None,
+        requires_label=False,
+    ),
+    DeterministicContextIntent(
+        name='my_tasks',
+        pending_kind='my_tasks',
+        resolver_node_type=None,
+        entity_plural='tasks',
+        item_plural='tasks',
+        item_singular='task',
+        parse_mode='deterministic_context_my_tasks',
+        question_pattern=re.compile(
+            r'\b(?:my\s+tasks?|tasks?\s+(?:assigned\s+to|for)\s+me|assigned\s+to\s+me)\b',
+            re.IGNORECASE,
+        ),
         requires_label=False,
     ),
     DeterministicContextIntent(

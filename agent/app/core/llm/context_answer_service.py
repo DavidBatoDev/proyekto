@@ -66,6 +66,11 @@ class ContextAnswerService:
                 session_context.get('revision_token')
                 or session_context.get('base_revision')
             ),
+            actor_id=(
+                str(session_context.get('actor_context', {}).get('actor_id') or '').strip()
+                if isinstance(session_context.get('actor_context'), dict)
+                else None
+            ),
         )
         cached_answer = self._context_answer_cache.get(cache_key)
         if cached_answer:
@@ -93,6 +98,7 @@ class ContextAnswerService:
                 intent=overview_intent,
                 label=overview_label,
                 include_ids=should_include_ids(user_message),
+                user_message=user_message,
                 session_context=session_context,
                 trace_id=trace_id,
             )
@@ -138,6 +144,7 @@ class ContextAnswerService:
                 intent=intent,
                 label=label,
                 include_ids=should_include_ids(user_message),
+                user_message=user_message,
                 session_context=session_context,
                 trace_id=trace_id,
             )
@@ -163,6 +170,7 @@ class ContextAnswerService:
             'Use available context tools when the answer depends on roadmap data.\n'
             'Prefer get_children_from_resolution over raw id chaining after resolve_node_reference.\n'
             'Use get_features for feature-list questions under a resolved epic.\n'
+            'Use get_tasks_assigned_to_me when the user asks for tasks assigned to them.\n'
             'Do not plan edit operations in this mode.\n\n'
             f'Roadmap ID: {session_context.get("roadmap_id")}\n'
             f'User question: {user_message}'
@@ -248,6 +256,7 @@ class ContextAnswerService:
         intent: DeterministicContextIntent,
         label: str,
         include_ids: bool,
+        user_message: str | None,
         session_context: dict[str, Any],
         trace_id: str | None,
     ) -> ContextResolutionOutcome | None:
@@ -255,6 +264,7 @@ class ContextAnswerService:
             intent=intent,
             label=label,
             include_ids=include_ids,
+            user_message=user_message,
             session_context=session_context,
             trace_id=trace_id,
             logger=self._logger,

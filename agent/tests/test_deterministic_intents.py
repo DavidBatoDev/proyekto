@@ -30,6 +30,14 @@ class DeterministicIntentsTests(unittest.TestCase):
         self.assertEqual(intent.pending_kind, 'tasks_of_feature')
         self.assertEqual(label, 'Authentication System')
 
+    def test_match_deterministic_context_intent_for_my_tasks(self) -> None:
+        match = match_deterministic_context_intent('Can you give me all tasks assigned to me?')
+        self.assertIsNotNone(match)
+        assert match is not None
+        intent, label = match
+        self.assertEqual(intent.pending_kind, 'my_tasks')
+        self.assertEqual(label, '')
+
     def test_normalize_context_label(self) -> None:
         self.assertEqual(normalize_context_label('the epic Platform Foundation?'), 'Platform Foundation')
 

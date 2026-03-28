@@ -9,7 +9,11 @@ from fastapi import HTTPException, status
 
 from app.core.config import get_settings
 from app.core.contracts.operations import RoadmapOperation
-from app.core.contracts.sessions import PendingContextResolution, PendingDisambiguation
+from app.core.contracts.sessions import (
+    ActorContext,
+    PendingContextResolution,
+    PendingDisambiguation,
+)
 from app.core.contracts.sessions import AgentSession, IntentType, ProviderUsed, ResponseMode
 from app.core.llm.client import LLMPlanner, PlanningResult
 from app.core.logging_utils import log_event
@@ -50,6 +54,7 @@ class AgentService:
         self._planner = LLMPlanner()
         self._nest_client = NestRoadmapClient()
         self._logger = logging.getLogger(__name__)
+        self._actor_refresh_failures_key = 'actor_context_refresh_failures'
 
     def get_session_or_404(self, session_id: str) -> AgentSession:
         session = self._store.get(session_id)
@@ -68,6 +73,11 @@ class AgentService:
         auth_header: str | None = None,
         trace_id: str | None = None,
     ) -> MessagePlanningOutcome:
+        self._ensure_actor_context(
+            session=session,
+            auth_header=auth_header,
+            trace_id=trace_id,
+        )
         planning = self._planner.plan(
             user_message=user_message,
             existing_operations=session.operations,
@@ -128,6 +138,17 @@ class AgentService:
             preview_recommended=preview_recommended,
             intent_type=planning.intent_type,
             response_mode=planning.response_mode,
+            actor_present=session.metadata.actor_context is not None,
+            roadmap_role=(
+                session.metadata.actor_context.roadmap_role
+                if session.metadata.actor_context is not None
+                else None
+            ),
+            actor_context_source=(
+                session.metadata.actor_context.actor_context_source
+                if session.metadata.actor_context is not None
+                else None
+            ),
         )
 
         return MessagePlanningOutcome(
@@ -147,6 +168,108 @@ class AgentService:
             tokens_input=planning.tokens_input,
             tokens_output=planning.tokens_output,
             tokens_total=planning.tokens_total,
+        )
+
+    def _ensure_actor_context(
+        self,
+        *,
+        session: AgentSession,
+        auth_header: str | None,
+        trace_id: str | None,
+    ) -> None:
+        actor_refresh_failures_key = getattr(
+            self,
+            '_actor_refresh_failures_key',
+            'actor_context_refresh_failures',
+        )
+        if not auth_header:
+            if session.metadata.actor_context is not None:
+                session.metadata.actor_context = None
+                log_event(
+                    self._logger,
+                    'actor_context_cleared',
+                    settings=self._settings,
+                    trace_id=trace_id,
+                    roadmap_id=session.roadmap_id,
+                    reason='missing_auth_header',
+                )
+            setattr(session.metadata, actor_refresh_failures_key, 0)
+            return
+
+        previous_actor_context = session.metadata.actor_context
+        try:
+            actor_payload = self._run_async_call(
+                self._nest_client.context_actor(
+                    roadmap_id=session.roadmap_id,
+                    auth_header=auth_header,
+                )
+            )
+            session.metadata.actor_context = ActorContext.model_validate(
+                {
+                    **actor_payload,
+                    'actor_context_source': 'backend_context_actor',
+                }
+            )
+            setattr(session.metadata, actor_refresh_failures_key, 0)
+        except HTTPException as exc:
+            refresh_failures = int(
+                getattr(session.metadata, actor_refresh_failures_key, 0) or 0
+            ) + 1
+            setattr(session.metadata, actor_refresh_failures_key, refresh_failures)
+            keep_previous = (
+                previous_actor_context is not None
+                and previous_actor_context.actor_context_source == 'backend_context_actor'
+                and refresh_failures <= 1
+            )
+            if not keep_previous:
+                session.metadata.actor_context = None
+            log_event(
+                self._logger,
+                'actor_context_refresh_failed',
+                settings=self._settings,
+                level=logging.WARNING,
+                trace_id=trace_id,
+                roadmap_id=session.roadmap_id,
+                status_code=exc.status_code,
+                error='http_exception',
+                keep_previous=keep_previous,
+                refresh_failures=refresh_failures,
+            )
+            return
+        except Exception:  # pragma: no cover
+            refresh_failures = int(
+                getattr(session.metadata, actor_refresh_failures_key, 0) or 0
+            ) + 1
+            setattr(session.metadata, actor_refresh_failures_key, refresh_failures)
+            keep_previous = (
+                previous_actor_context is not None
+                and previous_actor_context.actor_context_source == 'backend_context_actor'
+                and refresh_failures <= 1
+            )
+            if not keep_previous:
+                session.metadata.actor_context = None
+            log_event(
+                self._logger,
+                'actor_context_refresh_failed',
+                settings=self._settings,
+                level=logging.WARNING,
+                trace_id=trace_id,
+                roadmap_id=session.roadmap_id,
+                error='unexpected_exception',
+                keep_previous=keep_previous,
+                refresh_failures=refresh_failures,
+            )
+            return
+
+        log_event(
+            self._logger,
+            'actor_context_loaded',
+            settings=self._settings,
+            trace_id=trace_id,
+            roadmap_id=session.roadmap_id,
+            actor_present=True,
+            roadmap_role=session.metadata.actor_context.roadmap_role,
+            actor_context_source=session.metadata.actor_context.actor_context_source,
         )
 
     def _apply_deterministic_resolution(
@@ -360,8 +483,27 @@ class AgentService:
             'recent_messages': recent_messages,
             'auth_header': auth_header,
             'trace_id': trace_id,
+            'actor_context': (
+                session.metadata.actor_context.model_dump(mode='json', exclude_none=True)
+                if session.metadata.actor_context is not None
+                else None
+            ),
+            'actor_present': session.metadata.actor_context is not None,
+            'roadmap_role': (
+                session.metadata.actor_context.roadmap_role
+                if session.metadata.actor_context is not None
+                else None
+            ),
+            'actor_context_source': (
+                session.metadata.actor_context.actor_context_source
+                if session.metadata.actor_context is not None
+                else None
+            ),
             'pending_context_resolution': (
-                session.metadata.pending_context_resolution.model_dump(exclude_none=True)
+                session.metadata.pending_context_resolution.model_dump(
+                    mode='json',
+                    exclude_none=True,
+                )
                 if session.metadata.pending_context_resolution is not None
                 else None
             ),

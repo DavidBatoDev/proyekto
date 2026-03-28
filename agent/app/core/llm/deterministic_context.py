@@ -129,6 +129,7 @@ def try_deterministic_list_answer(
     intent: DeterministicContextIntent,
     label: str,
     include_ids: bool,
+    user_message: str | None = None,
     session_context: dict[str, Any],
     trace_id: str | None,
     logger: logging.Logger,
@@ -149,6 +150,115 @@ def try_deterministic_list_answer(
             logger=logger,
             settings=settings,
             execute_context_tool=execute_context_tool,
+        )
+
+    if intent.pending_kind == 'my_tasks':
+        actor_context = session_context.get('actor_context')
+        actor_present = isinstance(actor_context, dict) and bool(
+            str(actor_context.get('actor_id') or '').strip()
+        )
+        roadmap_role = (
+            str(actor_context.get('roadmap_role') or '').strip()
+            if isinstance(actor_context, dict)
+            else None
+        )
+        actor_context_source = (
+            str(actor_context.get('actor_context_source') or '').strip()
+            if isinstance(actor_context, dict)
+            else None
+        )
+        if not actor_present:
+            log_event(
+                logger,
+                'deterministic_context_my_tasks',
+                settings=settings,
+                trace_id=trace_id,
+                parse_mode=intent.parse_mode,
+                actor_present=False,
+                roadmap_role=roadmap_role or None,
+                actor_context_source=actor_context_source or None,
+                task_count=0,
+                status_filter='open',
+                actor_missing=True,
+            )
+            return ContextResolutionOutcome(
+                answer=(
+                    'I could not confirm your actor context for this roadmap yet. '
+                    'Please retry in a moment, and I will fetch tasks assigned to you.'
+                ),
+                clear_pending_context_resolution=True,
+            )
+
+        status_filter = _determine_my_tasks_status(user_message)
+        tasks_result = execute_context_tool(
+            'get_tasks_assigned_to_me',
+            {
+                'roadmap_id': roadmap_id,
+                'status': status_filter,
+                'limit': 100,
+            },
+            session_context,
+        )
+        if isinstance(tasks_result.get('error'), dict):
+            return None
+        tasks = tasks_result.get('tasks')
+        if not isinstance(tasks, list):
+            return None
+
+        actor_label = (
+            str(actor_context.get('display_name') or '').strip()
+            if isinstance(actor_context, dict)
+            else ''
+        )
+        assignee_label = actor_label or 'you'
+        if not tasks:
+            status_text = 'open ' if status_filter == 'open' else ''
+            answer = f'I found no {status_text}tasks assigned to {assignee_label} in this roadmap.'
+        else:
+            lines = [
+                f'Tasks assigned to {assignee_label} ({status_filter}):',
+            ]
+            for task in tasks[:30]:
+                if not isinstance(task, dict):
+                    continue
+                title = str(task.get('title') or 'Untitled task')
+                status = str(task.get('status') or 'unknown')
+                feature_title = str(task.get('feature_title') or '').strip()
+                epic_title = str(task.get('epic_title') or '').strip()
+                context_suffix_parts: list[str] = []
+                if feature_title:
+                    context_suffix_parts.append(feature_title)
+                if epic_title:
+                    context_suffix_parts.append(epic_title)
+                context_suffix = ''
+                if context_suffix_parts:
+                    context_suffix = f' ({", ".join(context_suffix_parts)})'
+                task_line = f'- {title} [status: {status}]{context_suffix}'
+                if include_ids:
+                    task_id = str(task.get('id') or '').strip()
+                    if task_id:
+                        task_line += f' [id: {task_id}]'
+                lines.append(task_line)
+            if len(tasks) > 30:
+                lines.append(f'- ...and {len(tasks) - 30} more task(s)')
+            answer = '\n'.join(lines)
+
+        log_event(
+            logger,
+            'deterministic_context_my_tasks',
+            settings=settings,
+            trace_id=trace_id,
+            parse_mode=intent.parse_mode,
+            actor_present=True,
+            roadmap_role=roadmap_role or None,
+            actor_context_source=actor_context_source or None,
+            task_count=len(tasks),
+            status_filter=status_filter,
+            include_ids=include_ids,
+        )
+        return ContextResolutionOutcome(
+            answer=answer,
+            clear_pending_context_resolution=True,
         )
 
     if is_generic_roadmap_label(label):
@@ -486,3 +596,22 @@ def _build_deterministic_overview_answer(
         answer='\n'.join(lines),
         clear_pending_context_resolution=True,
     )
+
+
+def _determine_my_tasks_status(user_message: str | None) -> str:
+    if not user_message:
+        return 'open'
+    lowered = user_message.lower()
+    if any(
+        phrase in lowered
+        for phrase in (
+            'all tasks',
+            'including completed',
+            'include completed',
+            'completed tasks',
+            'done tasks',
+            'archived tasks',
+        )
+    ):
+        return 'all'
+    return 'open'

@@ -36,6 +36,17 @@ _agent_service: AgentService | None = None
 _session_service_unavailable_reason: str | None = None
 _nest_client = NestRoadmapClient()
 
+_ACTOR_METADATA_KEYS = {
+    'actor_context',
+    'actor_id',
+    'roadmap_role',
+    'actor_context_source',
+    'display_name',
+    'locale',
+    'timezone',
+    'fetched_at',
+}
+
 
 def _service_unavailable(reason: str) -> HTTPException:
     return HTTPException(
@@ -94,15 +105,53 @@ async def _get_session_or_404_async(
     return await _run_store_call(agent_service.get_session_or_404, session_id)
 
 
+def _sanitize_session_metadata(
+    metadata: dict | None,
+) -> tuple[dict, bool]:
+    if not isinstance(metadata, dict):
+        return {}, False
+
+    stripped = False
+
+    def _walk(value):
+        nonlocal stripped
+        if isinstance(value, dict):
+            cleaned: dict = {}
+            for key, nested in value.items():
+                key_text = str(key).strip().lower()
+                if key_text in _ACTOR_METADATA_KEYS:
+                    stripped = True
+                    continue
+                cleaned[key] = _walk(nested)
+            return cleaned
+        if isinstance(value, list):
+            return [_walk(item) for item in value]
+        return value
+
+    sanitized = _walk(metadata)
+    if not isinstance(sanitized, dict):
+        return {}, stripped
+    return sanitized, stripped
+
+
 @router.post('', response_model=CreateSessionResponse)
 async def create_session(payload: CreateSessionRequest) -> CreateSessionResponse:
     store, _ = await _get_agent_runtime_async()
     logger.info('Creating AI session for roadmap_id=%s base_revision=%s', payload.roadmap_id, payload.base_revision)
+    sanitized_metadata, actor_metadata_stripped = _sanitize_session_metadata(payload.metadata)
+    if actor_metadata_stripped:
+        log_event(
+            logger,
+            'session_metadata_sanitized',
+            settings=settings,
+            roadmap_id=payload.roadmap_id,
+            actor_context_stripped=True,
+        )
     session = AgentSession(
         roadmap_id=payload.roadmap_id,
         base_revision=payload.base_revision,
         revision_token=payload.revision_token,
-        metadata=payload.metadata or {},
+        metadata=sanitized_metadata,
     )
     await _run_store_call(store.create, session)
     return CreateSessionResponse(
@@ -134,6 +183,17 @@ async def send_message(
         message=payload.message,
         replace_operations=payload.replace_operations,
         auto_preview=payload.auto_preview,
+        actor_present=session.metadata.actor_context is not None,
+        roadmap_role=(
+            session.metadata.actor_context.roadmap_role
+            if session.metadata.actor_context is not None
+            else None
+        ),
+        actor_context_source=(
+            session.metadata.actor_context.actor_context_source
+            if session.metadata.actor_context is not None
+            else None
+        ),
     )
     outcome = None
     artifacts: list[RoadmapPreviewArtifact] = []
@@ -228,6 +288,29 @@ async def send_message(
             operations_count=len(outcome.operations) if outcome else 0,
             artifacts_count=len(artifacts),
             preview_available=outcome.preview_available if outcome else False,
+            actor_present=(
+                outcome.session.metadata.actor_context is not None
+                if outcome is not None
+                else session.metadata.actor_context is not None
+            ),
+            roadmap_role=(
+                outcome.session.metadata.actor_context.roadmap_role
+                if outcome is not None and outcome.session.metadata.actor_context is not None
+                else (
+                    session.metadata.actor_context.roadmap_role
+                    if session.metadata.actor_context is not None
+                    else None
+                )
+            ),
+            actor_context_source=(
+                outcome.session.metadata.actor_context.actor_context_source
+                if outcome is not None and outcome.session.metadata.actor_context is not None
+                else (
+                    session.metadata.actor_context.actor_context_source
+                    if session.metadata.actor_context is not None
+                    else None
+                )
+            ),
             error_code=error_code,
         )
 

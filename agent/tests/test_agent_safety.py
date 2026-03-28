@@ -1,5 +1,6 @@
 import logging
 import unittest
+from datetime import datetime
 from types import SimpleNamespace
 
 from fastapi import HTTPException
@@ -7,7 +8,10 @@ from fastapi import HTTPException
 from app.api.routes import sessions as sessions_routes
 from app.core.config import get_settings
 from app.core.contracts.sessions import (
+    ActorContext,
     AgentSession,
+    CreateSessionRequest,
+    PendingContextResolution,
     PendingDisambiguation,
     ResolverCandidate,
     SessionMetadata,
@@ -21,9 +25,20 @@ from app.core.session_store import SessionStoreUnavailableError
 class _FakeNestClient:
     def __init__(self, response: dict) -> None:
         self._response = response
+        self.actor_calls = 0
 
     def context_search(self, **_kwargs):  # sync by design for this unit test
         return self._response
+
+    def context_actor(self, **_kwargs):  # sync by design for this unit test
+        self.actor_calls += 1
+        return {
+            'actor_id': 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+            'display_name': 'Alice',
+            'roadmap_role': 'editor',
+            'locale': None,
+            'timezone': None,
+        }
 
 
 class AgentSafetyTests(unittest.TestCase):
@@ -138,6 +153,156 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(len(result.operations), 0)
         self.assertIsNotNone(session.metadata.pending_disambiguation)
 
+    def test_ensure_actor_context_refreshes_when_authenticated(self) -> None:
+        service = self._service({'matches': []})
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                actor_context=ActorContext(
+                    actor_id='stale-actor',
+                    display_name='Stale',
+                    roadmap_role='owner',
+                    actor_context_source='backend_context_actor',
+                )
+            ),
+        )
+
+        service._ensure_actor_context(
+            session=session,
+            auth_header='Bearer test-token',
+            trace_id='trace-refresh',
+        )
+
+        self.assertIsNotNone(session.metadata.actor_context)
+        assert session.metadata.actor_context is not None
+        self.assertEqual(
+            session.metadata.actor_context.actor_id,
+            'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+        )
+
+    def test_ensure_actor_context_clears_when_no_auth_header(self) -> None:
+        service = self._service({'matches': []})
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                actor_context=ActorContext(
+                    actor_id='f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+                    display_name='Alice',
+                    roadmap_role='editor',
+                    actor_context_source='backend_context_actor',
+                )
+            ),
+        )
+
+        service._ensure_actor_context(
+            session=session,
+            auth_header=None,
+            trace_id='trace-clear',
+        )
+
+        self.assertIsNone(session.metadata.actor_context)
+
+    def test_ensure_actor_context_keeps_previous_backend_snapshot_on_failure(self) -> None:
+        service = self._service({'matches': []})
+
+        def fail_context_actor(**_kwargs):
+            raise HTTPException(status_code=503, detail='service unavailable')
+
+        service._nest_client.context_actor = fail_context_actor  # type: ignore[attr-defined]
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                actor_context=ActorContext(
+                    actor_id='f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+                    display_name='Alice',
+                    roadmap_role='editor',
+                    actor_context_source='backend_context_actor',
+                )
+            ),
+        )
+
+        service._ensure_actor_context(
+            session=session,
+            auth_header='Bearer test-token',
+            trace_id='trace-fail-keep',
+        )
+
+        self.assertIsNotNone(session.metadata.actor_context)
+        assert session.metadata.actor_context is not None
+        self.assertEqual(
+            session.metadata.actor_context.actor_id,
+            'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+        )
+
+    def test_ensure_actor_context_clears_after_consecutive_failures(self) -> None:
+        service = self._service({'matches': []})
+
+        def fail_context_actor(**_kwargs):
+            raise HTTPException(status_code=503, detail='service unavailable')
+
+        service._nest_client.context_actor = fail_context_actor  # type: ignore[attr-defined]
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                actor_context=ActorContext(
+                    actor_id='f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+                    display_name='Alice',
+                    roadmap_role='editor',
+                    actor_context_source='backend_context_actor',
+                )
+            ),
+        )
+
+        service._ensure_actor_context(
+            session=session,
+            auth_header='Bearer test-token',
+            trace_id='trace-fail-1',
+        )
+        self.assertIsNotNone(session.metadata.actor_context)
+
+        service._ensure_actor_context(
+            session=session,
+            auth_header='Bearer test-token',
+            trace_id='trace-fail-2',
+        )
+        self.assertIsNone(session.metadata.actor_context)
+
+    def test_build_session_context_serializes_datetime_fields(self) -> None:
+        service = self._service({'matches': []})
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                actor_context=ActorContext(
+                    actor_id='f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+                    display_name='Alice',
+                    roadmap_role='editor',
+                    actor_context_source='backend_context_actor',
+                    fetched_at=datetime(2026, 3, 28, 19, 26, 26),
+                ),
+                pending_context_resolution=PendingContextResolution(
+                    kind='my_tasks',
+                    resolution_id='res-123',
+                    label='Assigned to me',
+                    created_at=datetime(2026, 3, 28, 19, 26, 27),
+                ),
+            ),
+        )
+
+        context = service._build_session_context(
+            session=session,
+            auth_header='Bearer test-token',
+            trace_id='trace-json-context',
+        )
+
+        actor_context = context['actor_context']
+        pending_context = context['pending_context_resolution']
+        self.assertIsInstance(actor_context, dict)
+        self.assertIsInstance(pending_context, dict)
+        assert isinstance(actor_context, dict)
+        assert isinstance(pending_context, dict)
+        self.assertIsInstance(actor_context['fetched_at'], str)
+        self.assertIsInstance(pending_context['created_at'], str)
+
 
 class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
     async def test_store_unavailable_response_is_sanitized(self) -> None:
@@ -152,6 +317,42 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(exc.detail.get('code'), 'SERVICE_UNAVAILABLE')
         self.assertTrue(exc.detail.get('retryable'))
         self.assertNotIn('reason', exc.detail)
+
+    async def test_create_session_sanitizes_actor_context_metadata(self) -> None:
+        captured = {'session': None}
+
+        class _FakeStore:
+            def create(self, session):
+                captured['session'] = session
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), object()))
+        )
+        try:
+            payload = CreateSessionRequest(
+                roadmap_id='55e431e2-e416-468c-a973-94d97280e97d',
+                metadata={
+                    'actor_context': {
+                        'actor_id': 'spoofed',
+                        'roadmap_role': 'owner',
+                    },
+                    'other_metadata': {'keep': True},
+                },
+            )
+            await sessions_routes.create_session(payload)
+        finally:
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+
+        session = captured['session']
+        self.assertIsNotNone(session)
+        assert session is not None
+        self.assertIsNone(session.metadata.actor_context)
+        self.assertEqual(session.metadata.other_metadata, {'keep': True})
+
+
+async def _async_runtime_result(value):
+    return value
 
 
 class PlannerContextSafetyTests(unittest.TestCase):
@@ -368,6 +569,36 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertIsNotNone(outcome)
         assert outcome is not None
         self.assertIn('Tasks under "Authentication System"', outcome.answer)
+        self.assertTrue(outcome.clear_pending_context_resolution)
+
+    def test_my_tasks_missing_actor_clears_pending_context_resolution(self) -> None:
+        planner = self._planner()
+
+        def fake_execute(_name: str, _args: dict, _ctx: dict):
+            return {'error': {'code': 'UNKNOWN'}}
+
+        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
+        intent = planner._get_deterministic_context_intent('my_tasks')
+        self.assertIsNotNone(intent)
+        assert intent is not None
+        outcome = planner._try_deterministic_list_answer(
+            intent=intent,
+            label='',
+            include_ids=False,
+            user_message='What tasks are assigned to me?',
+            session_context={
+                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                'pending_context_resolution': {
+                    'kind': 'features_of_epic',
+                    'resolution_id': 'res-old',
+                    'label': 'Old label',
+                    'node_type': 'epic',
+                },
+            },
+            trace_id='trace-my-tasks-missing-actor',
+        )
+        self.assertIsNotNone(outcome)
+        assert outcome is not None
         self.assertTrue(outcome.clear_pending_context_resolution)
 
     def test_deterministic_epics_fast_path_without_ids(self) -> None:

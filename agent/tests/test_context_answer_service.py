@@ -26,8 +26,14 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
         cache = ContextAnswerCache(ttl_seconds=60)
         provider = _FakeProviderOrchestrator()
 
-        def build_key(*, roadmap_id: str, user_message: str, roadmap_updated_token):
-            return f'{roadmap_id}:{roadmap_updated_token}:{user_message}'
+        def build_key(
+            *,
+            roadmap_id: str,
+            user_message: str,
+            roadmap_updated_token,
+            actor_id=None,
+        ):
+            return f'{roadmap_id}:{roadmap_updated_token}:{actor_id}:{user_message}'
 
         service = ContextAnswerService(
             settings=self.settings,
@@ -86,6 +92,7 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             roadmap_id=session_context['roadmap_id'],
             user_message=message,
             roadmap_updated_token=None,
+            actor_id=None,
         )
         self.assertIsNone(cache.get(cache_key))
 
@@ -186,6 +193,51 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
         self.assertTrue(second.get('fallback_used'))
         self.assertEqual(second.get('provider_error_code'), 'transient_error')
         self.assertEqual(second.get('tokens_total'), 150)
+
+    def test_my_tasks_deterministic_path_bypasses_provider_loop(self) -> None:
+        calls = {'my_tasks': 0}
+
+        def execute_tool(name: str, args: dict, _context: dict):
+            if name == 'get_tasks_assigned_to_me':
+                calls['my_tasks'] += 1
+                self.assertEqual(args.get('status'), 'open')
+                return {
+                    'tasks': [
+                        {
+                            'id': 't1',
+                            'type': 'task',
+                            'title': 'Implement login API',
+                            'status': 'in_progress',
+                            'feature_title': 'Authentication System',
+                            'epic_title': 'Platform Foundation',
+                        }
+                    ]
+                }
+            return {'error': {'code': 'UNKNOWN'}}
+
+        service, _cache, provider, _build_key = self._service(execute_tool)
+        session_context = {
+            'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+            'trace_id': 'trace-my-tasks',
+            'actor_context': {
+                'actor_id': 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+                'display_name': 'Alice',
+                'roadmap_role': 'editor',
+                'actor_context_source': 'backend_context_actor',
+            },
+        }
+        response = service.generate(
+            user_message='Can you give me the tasks assigned to me?',
+            system_prompt='system',
+            session_context=session_context,
+            history_messages=[],
+            intent_type='question',
+        )
+
+        self.assertEqual(calls['my_tasks'], 1)
+        self.assertEqual(provider.calls, 0)
+        self.assertEqual(response.get('parse_mode'), 'deterministic_context_my_tasks')
+        self.assertIn('Tasks assigned to Alice (open):', response.get('assistant_message', ''))
 
 
 if __name__ == '__main__':

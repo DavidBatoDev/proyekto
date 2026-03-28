@@ -53,7 +53,7 @@ class PendingDisambiguation(BaseModel):
 
 
 class PendingContextResolution(BaseModel):
-    kind: Literal['features_of_epic', 'tasks_of_feature']
+    kind: Literal['features_of_epic', 'tasks_of_feature', 'my_tasks']
     resolution_id: str
     label: str
     node_type: Literal['epic', 'feature', 'task'] | None = None
@@ -61,10 +61,21 @@ class PendingContextResolution(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class ActorContext(BaseModel):
+    actor_id: str
+    display_name: str | None = None
+    roadmap_role: Literal['owner', 'editor']
+    locale: str | None = None
+    timezone: str | None = None
+    actor_context_source: str = 'backend_context_actor'
+    fetched_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class SessionMetadata(BaseModel):
     model_config = ConfigDict(extra='allow')
     pending_disambiguation: PendingDisambiguation | None = None
     pending_context_resolution: PendingContextResolution | None = None
+    actor_context: ActorContext | None = None
 
 
 class AgentSession(BaseModel):

@@ -88,7 +88,7 @@ def summarize_tool_result(result: dict[str, Any]) -> dict[str, Any]:
         summary['error_code'] = error.get('code')
         return summary
 
-    for key in ('matches', 'children', 'epics', 'operations'):
+    for key in ('matches', 'children', 'epics', 'operations', 'tasks'):
         value = result.get(key)
         if isinstance(value, list):
             summary[f'{key}_count'] = len(value)

@@ -359,6 +359,51 @@ class ContextToolsExecutor:
                 )
                 return result
 
+            if tool_name == 'get_tasks_assigned_to_me':
+                status_raw = args.get('status')
+                status_filter: str | None = None
+                if isinstance(status_raw, str) and status_raw.strip():
+                    normalized_status = status_raw.strip().lower()
+                    if normalized_status not in {'open', 'all'}:
+                        result = self._invalid_argument_result(
+                            arg_name='status',
+                            arg_value=status_raw,
+                            message='status must be one of: open, all.',
+                        )
+                        log_event(
+                            self._logger,
+                            'tool_call_result',
+                            settings=self._settings,
+                            level=logging.WARNING,
+                            trace_id=trace_id,
+                            tool_name=tool_name,
+                            result_summary=summarize_tool_result(result),
+                            tool_error_code='INVALID_ARGUMENT',
+                            invalid_arg_name='status',
+                            arg_value_preview=status_raw[:40],
+                        )
+                        return result
+                    status_filter = normalized_status
+                limit_raw = args.get('limit')
+                limit = int(limit_raw) if isinstance(limit_raw, int) else None
+                result = self._run_async_context_call(
+                    self._nest_client.context_tasks_assigned_to_me(
+                        roadmap_id=roadmap_id,
+                        status=status_filter,
+                        limit=limit,
+                        auth_header=auth_value,
+                    )
+                )
+                log_event(
+                    self._logger,
+                    'tool_call_result',
+                    settings=self._settings,
+                    trace_id=trace_id,
+                    tool_name=tool_name,
+                    result_summary=summarize_tool_result(result),
+                )
+                return result
+
             if tool_name == 'get_node_details':
                 node_id = str(args.get('node_id', '')).strip()
                 if not node_id:

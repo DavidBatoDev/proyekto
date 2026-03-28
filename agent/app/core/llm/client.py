@@ -239,6 +239,7 @@ class LLMPlanner:
             'revision_token': session_context.get('revision_token'),
             'staged_operations_count': len(state.get('existing_operations', [])),
             'recent_messages': session_context.get('recent_messages', []),
+            'actor_context': session_context.get('actor_context'),
             'intent_type': intent_type,
         }
         system_prompt = self._prompt_repository.build_system_prompt(mode=mode, context=prompt_context)
@@ -553,6 +554,7 @@ class LLMPlanner:
         intent: DeterministicContextIntent,
         label: str,
         include_ids: bool,
+        user_message: str | None = None,
         session_context: dict[str, Any],
         trace_id: str | None,
     ) -> ContextResolutionOutcome | None:
@@ -560,6 +562,7 @@ class LLMPlanner:
             intent=intent,
             label=label,
             include_ids=include_ids,
+            user_message=user_message,
             session_context=session_context,
             trace_id=trace_id,
         )
@@ -798,8 +801,10 @@ class LLMPlanner:
         roadmap_id: str,
         user_message: str,
         roadmap_updated_token: Any,
+        actor_id: str | None = None,
     ) -> str:
         normalized_question = ' '.join(user_message.strip().lower().split())
         token = str(roadmap_updated_token if roadmap_updated_token is not None else 'none')
+        actor_scope = actor_id or 'anonymous'
         hashed_question = hashlib.sha256(normalized_question.encode('utf-8')).hexdigest()
-        return f'{roadmap_id}:{token}:{hashed_question}'
+        return f'{roadmap_id}:{actor_scope}:{token}:{hashed_question}'

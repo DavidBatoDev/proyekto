@@ -120,6 +120,79 @@ class DeterministicContextTests(unittest.TestCase):
         )
         self.assertIsNone(outcome)
 
+    def test_my_tasks_deterministic_answer_uses_actor_context(self) -> None:
+        observed = SimpleNamespace(status=None)
+
+        def fake_tool(name: str, args: dict, _ctx: dict):
+            if name == 'get_tasks_assigned_to_me':
+                observed.status = args.get('status')
+                return {
+                    'tasks': [
+                        {
+                            'id': 't1',
+                            'type': 'task',
+                            'title': 'Implement login API',
+                            'status': 'in_progress',
+                            'feature_title': 'Authentication System',
+                            'epic_title': 'Platform Foundation',
+                        }
+                    ]
+                }
+            return {'error': {'code': 'UNKNOWN'}}
+
+        intent = get_deterministic_context_intent('my_tasks')
+        self.assertIsNotNone(intent)
+        assert intent is not None
+
+        outcome = try_deterministic_list_answer(
+            intent=intent,
+            label='',
+            include_ids=False,
+            user_message='Show me all tasks assigned to me',
+            session_context={
+                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                'actor_context': {
+                    'actor_id': 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+                    'display_name': 'Alice',
+                    'roadmap_role': 'editor',
+                    'actor_context_source': 'backend_context_actor',
+                },
+            },
+            trace_id='trace-my-tasks',
+            logger=self.logger,
+            settings=self.settings,
+            execute_context_tool=fake_tool,
+        )
+        self.assertIsNotNone(outcome)
+        assert outcome is not None
+        self.assertEqual(observed.status, 'all')
+        self.assertIn('Tasks assigned to Alice (all):', outcome.answer)
+        self.assertIn('- Implement login API', outcome.answer)
+
+    def test_my_tasks_missing_actor_context_returns_guidance(self) -> None:
+        def fake_tool(_name: str, _args: dict, _ctx: dict):
+            return {'error': {'code': 'UNKNOWN'}}
+
+        intent = get_deterministic_context_intent('my_tasks')
+        self.assertIsNotNone(intent)
+        assert intent is not None
+
+        outcome = try_deterministic_list_answer(
+            intent=intent,
+            label='',
+            include_ids=False,
+            user_message='What tasks are assigned to me?',
+            session_context={'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'},
+            trace_id='trace-my-tasks-missing-actor',
+            logger=self.logger,
+            settings=self.settings,
+            execute_context_tool=fake_tool,
+        )
+        self.assertIsNotNone(outcome)
+        assert outcome is not None
+        self.assertIn('could not confirm your actor context', outcome.answer)
+        self.assertTrue(outcome.clear_pending_context_resolution)
+
 
 if __name__ == '__main__':
     unittest.main()
