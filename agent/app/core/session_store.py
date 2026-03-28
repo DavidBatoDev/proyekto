@@ -34,12 +34,16 @@ class SessionStore:
         return session
 
     def get(self, session_id: str) -> AgentSession | None:
-        payload = self._redis.get(self._key(session_id))
-        if payload is None:
-            return None
-        session = AgentSession.model_validate_json(payload)
-        self._redis.expire(self._key(session_id), self._ttl_seconds)
-        return session
+        key = self._key(session_id)
+        try:
+            payload = self._redis.get(key)
+            if payload is None:
+                return None
+            session = AgentSession.model_validate_json(payload)
+            self._redis.expire(key, self._ttl_seconds)
+            return session
+        except Exception as exc:  # pragma: no cover
+            raise SessionStoreUnavailableError('get', str(exc)) from exc
 
     def update(self, session: AgentSession) -> AgentSession:
         session.updated_at = datetime.now(UTC).replace(tzinfo=None)
@@ -53,5 +57,15 @@ class SessionStore:
     def _save(self, session: AgentSession) -> None:
         payload = json.dumps(session.model_dump(mode='json'))
         key = self._key(session.session_id)
-        self._redis.set(key, payload)
-        self._redis.expire(key, self._ttl_seconds)
+        try:
+            self._redis.set(key, payload)
+            self._redis.expire(key, self._ttl_seconds)
+        except Exception as exc:  # pragma: no cover
+            raise SessionStoreUnavailableError('save', str(exc)) from exc
+
+
+class SessionStoreUnavailableError(RuntimeError):
+    def __init__(self, operation: str, reason: str) -> None:
+        super().__init__(f'Session store operation failed: {operation}. {reason}')
+        self.operation = operation
+        self.reason = reason

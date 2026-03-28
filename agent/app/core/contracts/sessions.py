@@ -33,6 +33,29 @@ class RoadmapPreviewArtifact(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class ResolverCandidate(BaseModel):
+    id: str
+    type: str
+    title: str
+    parent_id: str | None = None
+    parent_title: str | None = None
+    confidence: float | None = None
+
+
+class PendingDisambiguation(BaseModel):
+    kind: Literal['rename_node']
+    label: str
+    node_type: Literal['epic', 'feature', 'task'] | None = None
+    new_title: str | None = None
+    candidates: list[ResolverCandidate] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SessionMetadata(BaseModel):
+    model_config = ConfigDict(extra='allow')
+    pending_disambiguation: PendingDisambiguation | None = None
+
+
 class AgentSession(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -46,7 +69,7 @@ class AgentSession(BaseModel):
     last_intent_type: IntentType | None = None
     artifacts: list[RoadmapPreviewArtifact] = Field(default_factory=list)
     messages: list[Message] = Field(default_factory=list)
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: SessionMetadata = Field(default_factory=SessionMetadata)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

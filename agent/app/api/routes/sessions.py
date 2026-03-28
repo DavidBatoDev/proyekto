@@ -25,7 +25,7 @@ from app.core.contracts.sessions import (
 from app.core.nest_client import NestRoadmapClient
 from app.core.logging_utils import log_event
 from app.core.orchestration.agent_service import AgentService
-from app.core.session_store import SessionStore
+from app.core.session_store import SessionStore, SessionStoreUnavailableError
 
 router = APIRouter(prefix='/agent/sessions', tags=['agent'])
 logger = logging.getLogger(__name__)
@@ -37,6 +37,31 @@ _session_service_unavailable_reason: str | None = None
 _nest_client = NestRoadmapClient()
 
 
+def _service_unavailable(reason: str) -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail={
+            'code': 'SERVICE_UNAVAILABLE',
+            'message': (
+                'Agent session service is unavailable. Configure Redis and restart the agent.'
+            ),
+            'retryable': True,
+        },
+    )
+
+
+async def _run_store_call(func, *args):
+    try:
+        return await asyncio.to_thread(func, *args)
+    except SessionStoreUnavailableError as exc:
+        logger.error(
+            'Session store unavailable. operation=%s reason=%s',
+            exc.operation,
+            exc.reason,
+        )
+        raise _service_unavailable(exc.reason) from exc
+
+
 def _get_agent_runtime() -> tuple[SessionStore, AgentService]:
     global _store, _agent_service, _session_service_unavailable_reason
 
@@ -44,16 +69,7 @@ def _get_agent_runtime() -> tuple[SessionStore, AgentService]:
         return _store, _agent_service
 
     if _session_service_unavailable_reason is not None:
-        raise HTTPException(
-            status_code=503,
-            detail={
-                'code': 'SERVICE_UNAVAILABLE',
-                'message': (
-                    'Agent session service is unavailable. Configure Redis and restart the agent.'
-                ),
-                'reason': _session_service_unavailable_reason,
-            },
-        )
+        raise _service_unavailable(_session_service_unavailable_reason)
 
     try:
         store = SessionStore()
@@ -64,27 +80,18 @@ def _get_agent_runtime() -> tuple[SessionStore, AgentService]:
     except Exception as exc:
         _session_service_unavailable_reason = str(exc)
         logger.error('Session runtime unavailable: %s', _session_service_unavailable_reason)
-        raise HTTPException(
-            status_code=503,
-            detail={
-                'code': 'SERVICE_UNAVAILABLE',
-                'message': (
-                    'Agent session service is unavailable. Configure Redis and restart the agent.'
-                ),
-                'reason': _session_service_unavailable_reason,
-            },
-        )
+        raise _service_unavailable(_session_service_unavailable_reason)
 
 
 async def _get_agent_runtime_async() -> tuple[SessionStore, AgentService]:
-    return await asyncio.to_thread(_get_agent_runtime)
+    return await _run_store_call(_get_agent_runtime)
 
 
 async def _get_session_or_404_async(
     agent_service: AgentService,
     session_id: str,
 ) -> AgentSession:
-    return await asyncio.to_thread(agent_service.get_session_or_404, session_id)
+    return await _run_store_call(agent_service.get_session_or_404, session_id)
 
 
 @router.post('', response_model=CreateSessionResponse)
@@ -97,7 +104,7 @@ async def create_session(payload: CreateSessionRequest) -> CreateSessionResponse
         revision_token=payload.revision_token,
         metadata=payload.metadata or {},
     )
-    await asyncio.to_thread(store.create, session)
+    await _run_store_call(store.create, session)
     return CreateSessionResponse(
         session_id=session.session_id,
         roadmap_id=session.roadmap_id,
@@ -132,7 +139,7 @@ async def send_message(
     artifacts: list[RoadmapPreviewArtifact] = []
     error_code: int | None = None
     try:
-        outcome = await asyncio.to_thread(
+        outcome = await _run_store_call(
             agent_service.plan_message,
             session,
             payload.message,
@@ -169,7 +176,7 @@ async def send_message(
                     if artifact is not None:
                         outcome.session.artifacts.append(artifact)
                         artifacts.append(artifact)
-                    await asyncio.to_thread(store.update, outcome.session)
+                    await _run_store_call(store.update, outcome.session)
             except HTTPException as exc:
                 logger.warning(
                     'Auto-preview artifact generation failed for session_id=%s roadmap_id=%s status=%s detail=%s',
@@ -274,7 +281,7 @@ async def preview_session(
             effective_revision_token = preview_revision_token
         else:
             effective_revision_token = cast(str | None, session.revision_token) or revision_token
-        await asyncio.to_thread(store.update, session)
+        await _run_store_call(store.update, session)
 
     return {
         'session_id': session.session_id,
@@ -316,7 +323,8 @@ async def commit_session(
     if isinstance(committed_revision_token, str):
         session.revision_token = committed_revision_token
     session.latest_preview_id = None
-    await asyncio.to_thread(store.update, session)
+    session.metadata.pending_disambiguation = None
+    await _run_store_call(store.update, session)
 
     return {
         'session_id': session.session_id,
@@ -352,7 +360,8 @@ async def discard_session(
     session.staged_operations_version += 1
     session.latest_preview_id = None
     session.artifacts = []
-    await asyncio.to_thread(store.update, session)
+    session.metadata.pending_disambiguation = None
+    await _run_store_call(store.update, session)
 
     return DiscardResponse(
         session_id=session.session_id,

@@ -1,15 +1,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import asyncio
 import logging
+from typing import Any
 
 from fastapi import HTTPException, status
 
 from app.core.config import get_settings
 from app.core.contracts.operations import RoadmapOperation
+from app.core.contracts.sessions import PendingDisambiguation
 from app.core.contracts.sessions import AgentSession, IntentType, ProviderUsed, ResponseMode
-from app.core.llm.client import LLMPlanner
+from app.core.llm.client import LLMPlanner, PlanningResult
 from app.core.logging_utils import log_event
+from app.core.nest_client import NestRoadmapClient
+from app.core.orchestration.edit_resolver import (
+    build_ambiguity_message,
+    extract_rename_intent,
+    parse_selection_index,
+    resolve_candidates,
+)
 from app.core.session_store import SessionStore
 
 
@@ -38,6 +48,7 @@ class AgentService:
         self._settings = get_settings()
         self._store = store
         self._planner = LLMPlanner()
+        self._nest_client = NestRoadmapClient()
         self._logger = logging.getLogger(__name__)
 
     def get_session_or_404(self, session_id: str) -> AgentSession:
@@ -61,6 +72,13 @@ class AgentService:
             user_message=user_message,
             existing_operations=session.operations,
             session_context=self._build_session_context(session, auth_header, trace_id),
+        )
+        planning = self._apply_deterministic_resolution(
+            session=session,
+            user_message=user_message,
+            planning=planning,
+            auth_header=auth_header,
+            trace_id=trace_id,
         )
 
         operations = planning.operations
@@ -123,6 +141,179 @@ class AgentService:
             tokens_output=planning.tokens_output,
             tokens_total=planning.tokens_total,
         )
+
+    def _apply_deterministic_resolution(
+        self,
+        *,
+        session: AgentSession,
+        user_message: str,
+        planning: PlanningResult,
+        auth_header: str | None,
+        trace_id: str | None,
+    ) -> PlanningResult:
+        if planning.intent_type != 'roadmap_edit':
+            return planning
+
+        if planning.operations:
+            session.metadata.pending_disambiguation = None
+            return planning
+
+        fallback_used = bool(
+            planning.provider_error_code is not None
+            or planning.provider_used != 'rule_based'
+            or planning.fallback_used
+        )
+        rename_intent = extract_rename_intent(user_message)
+        roadmap_id = session.roadmap_id.strip()
+
+        if rename_intent is not None and roadmap_id:
+            log_event(
+                self._logger,
+                'resolver_attempt',
+                settings=self._settings,
+                trace_id=trace_id,
+                roadmap_id=roadmap_id,
+                label=rename_intent.label,
+                node_type=rename_intent.node_type,
+            )
+            try:
+                search_result = self._run_async_call(
+                    self._nest_client.context_search(
+                        roadmap_id=roadmap_id,
+                        query=rename_intent.label,
+                        limit=20,
+                        auth_header=auth_header,
+                    )
+                )
+            except Exception as exc:
+                self._logger.warning('Deterministic resolver search failed: %s', exc)
+                return planning
+
+            raw_matches = search_result.get('matches', [])
+            if not isinstance(raw_matches, list):
+                raw_matches = []
+            resolution = resolve_candidates(
+                raw_matches,
+                label=rename_intent.label,
+                node_type=rename_intent.node_type,
+            )
+            log_event(
+                self._logger,
+                'resolver_result',
+                settings=self._settings,
+                trace_id=trace_id,
+                roadmap_id=roadmap_id,
+                status=resolution.status,
+                candidates_count=len(resolution.candidates),
+            )
+            if resolution.status == 'unique' and resolution.selected is not None:
+                session.metadata.pending_disambiguation = None
+                operation = RoadmapOperation(
+                    op='update_node',
+                    node_id=resolution.selected.id,
+                    patch={'title': rename_intent.new_title},
+                )
+                return PlanningResult(
+                    assistant_message=(
+                        f'Rename {resolution.selected.type} "{resolution.selected.title}" '
+                        f'to "{rename_intent.new_title}".'
+                    ),
+                    operations=[operation],
+                    parse_mode='deterministic_resolver_rename',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='rule_based',
+                    fallback_used=fallback_used,
+                    provider_error_code=planning.provider_error_code,
+                    tokens_input=planning.tokens_input,
+                    tokens_output=planning.tokens_output,
+                    tokens_total=planning.tokens_total,
+                )
+
+            if resolution.status == 'ambiguous':
+                session.metadata.pending_disambiguation = PendingDisambiguation(
+                    kind='rename_node',
+                    label=rename_intent.label,
+                    node_type=rename_intent.node_type,
+                    new_title=rename_intent.new_title,
+                    candidates=resolution.candidates[:5],
+                )
+                return PlanningResult(
+                    assistant_message=build_ambiguity_message(
+                        rename_intent.label,
+                        resolution.candidates,
+                    ),
+                    operations=[],
+                    parse_mode='deterministic_resolver_disambiguation',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=False,
+                    provider_used='rule_based',
+                    fallback_used=fallback_used,
+                    provider_error_code=planning.provider_error_code,
+                    tokens_input=planning.tokens_input,
+                    tokens_output=planning.tokens_output,
+                    tokens_total=planning.tokens_total,
+                )
+
+            session.metadata.pending_disambiguation = None
+            return PlanningResult(
+                assistant_message=(
+                    f'I could not find a unique roadmap node for "{rename_intent.label}". '
+                    'Please add more context (for example parent epic/feature) and I will resolve it.'
+                ),
+                operations=[],
+                parse_mode='deterministic_resolver_not_found',
+                intent_type='roadmap_edit',
+                response_mode='edit_plan',
+                preview_recommended=False,
+                provider_used='rule_based',
+                fallback_used=fallback_used,
+                provider_error_code=planning.provider_error_code,
+                tokens_input=planning.tokens_input,
+                tokens_output=planning.tokens_output,
+                tokens_total=planning.tokens_total,
+            )
+
+        pending = session.metadata.pending_disambiguation
+        if pending is not None:
+            selected_index = parse_selection_index(user_message)
+            if selected_index is not None and 1 <= selected_index <= len(pending.candidates):
+                selected = pending.candidates[selected_index - 1]
+                if pending.kind == 'rename_node' and pending.new_title:
+                    session.metadata.pending_disambiguation = None
+                    operation = RoadmapOperation(
+                        op='update_node',
+                        node_id=selected.id,
+                        patch={'title': pending.new_title},
+                    )
+                    return PlanningResult(
+                        assistant_message=(
+                            f'Great, I will rename {selected.type} "{selected.title}" '
+                            f'to "{pending.new_title}".'
+                        ),
+                        operations=[operation],
+                        parse_mode='deterministic_disambiguation_selected',
+                        intent_type='roadmap_edit',
+                        response_mode='edit_plan',
+                        preview_recommended=True,
+                        provider_used='rule_based',
+                        fallback_used=fallback_used,
+                        provider_error_code=planning.provider_error_code,
+                        tokens_input=planning.tokens_input,
+                        tokens_output=planning.tokens_output,
+                        tokens_total=planning.tokens_total,
+                    )
+
+        return planning
+
+    def _run_async_call(self, coro: Any) -> dict[str, Any]:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        raise RuntimeError('Async call attempted on running event loop thread')
 
     def _build_session_context(
         self,

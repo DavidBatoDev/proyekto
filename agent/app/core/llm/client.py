@@ -14,6 +14,7 @@ from app.core.contracts.sessions import IntentType, ProviderUsed, ResponseMode
 from app.core.logging_utils import log_event, summarize_tool_result
 from app.core.llm.providers import ProviderAdapterError, ProviderOrchestrator
 from app.core.nest_client import NestRoadmapClient
+from app.core.orchestration.edit_resolver import resolve_candidates
 from app.core.prompts import PromptRepository
 from app.core.response_cache import ContextAnswerCache
 from app.core.tools.registry import CONTEXT_TOOL_NAMES, get_context_tools, get_edit_mode_tools
@@ -415,6 +416,7 @@ class LLMPlanner:
 
         planner_prompt = (
             'You are in edit planning mode.\n'
+            'Resolve named targets to node IDs with resolve_node_reference before asking for IDs.\n'
             'Use context tools when needed to resolve node IDs and hierarchy before drafting operations.\n'
             'When ready, call plan_roadmap_operations exactly once with assistant_message and operations.\n'
             'Do not call commit or discard tools. Commit remains a UI action.\n'
@@ -622,6 +624,67 @@ class LLMPlanner:
                         auth_header=auth_value,
                     )
                 )
+                log_event(
+                    self._logger,
+                    'tool_call_result',
+                    settings=self._settings,
+                    trace_id=trace_id,
+                    tool_name=tool_name,
+                    result_summary=summarize_tool_result(result),
+                )
+                return result
+
+            if tool_name == 'resolve_node_reference':
+                label = str(args.get('label', '')).strip()
+                if not label:
+                    result = {
+                        'error': {
+                            'code': 'MISSING_LABEL',
+                            'message': 'label is required for resolve_node_reference.',
+                        }
+                    }
+                    log_event(
+                        self._logger,
+                        'tool_call_result',
+                        settings=self._settings,
+                        level=logging.WARNING,
+                        trace_id=trace_id,
+                        tool_name=tool_name,
+                        result_summary=summarize_tool_result(result),
+                    )
+                    return result
+                node_type_raw = str(args.get('node_type', '')).strip().lower()
+                node_type = node_type_raw if node_type_raw in {'epic', 'feature', 'task'} else None
+                limit_raw = args.get('limit')
+                limit = int(limit_raw) if isinstance(limit_raw, int) else 20
+                search_result = self._run_async_context_call(
+                    self._nest_client.context_search(
+                        roadmap_id=roadmap_id,
+                        query=label,
+                        limit=limit,
+                        auth_header=auth_value,
+                    )
+                )
+                raw_matches = search_result.get('matches', [])
+                if not isinstance(raw_matches, list):
+                    raw_matches = []
+                resolved = resolve_candidates(
+                    raw_matches,
+                    label=label,
+                    node_type=node_type,
+                )
+                result = {
+                    'status': resolved.status,
+                    'selected': (
+                        resolved.selected.model_dump(exclude_none=True)
+                        if resolved.selected is not None
+                        else None
+                    ),
+                    'matches': [
+                        item.model_dump(exclude_none=True)
+                        for item in resolved.candidates[:5]
+                    ],
+                }
                 log_event(
                     self._logger,
                     'tool_call_result',

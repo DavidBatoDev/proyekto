@@ -10,6 +10,7 @@ from app.core.contracts.operations import OperationType, RoadmapOperation
 PLANNING_TOOL_NAME = 'plan_roadmap_operations'
 CONTEXT_TOOL_NAMES = {
     'get_roadmap_summary',
+    'resolve_node_reference',
     'search_nodes',
     'get_node_details',
     'get_children',
@@ -31,6 +32,26 @@ def get_context_tools() -> list[dict[str, Any]]:
                     'required': ['roadmap_id'],
                     'properties': {
                         'roadmap_id': {'type': 'string'},
+                    },
+                },
+            },
+        },
+        {
+            'type': 'function',
+            'function': {
+                'name': 'resolve_node_reference',
+                'description': (
+                    'Resolve a user-provided node label to a concrete node id. '
+                    'Use this before asking for manual IDs.'
+                ),
+                'parameters': {
+                    'type': 'object',
+                    'required': ['roadmap_id', 'label'],
+                    'properties': {
+                        'roadmap_id': {'type': 'string'},
+                        'label': {'type': 'string'},
+                        'node_type': {'type': 'string', 'enum': ['epic', 'feature', 'task']},
+                        'limit': {'type': 'integer', 'minimum': 1, 'maximum': 50},
                     },
                 },
             },

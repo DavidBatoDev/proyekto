@@ -24,6 +24,14 @@ const agentOpsPath = path.join(
   'contracts',
   'operations.py',
 );
+const agentRegistryPath = path.join(
+  root,
+  'agent',
+  'app',
+  'core',
+  'tools',
+  'registry.py',
+);
 
 function readUtf8(filePath) {
   return fs.readFileSync(filePath, 'utf8');
@@ -97,6 +105,7 @@ function main() {
   const schema = JSON.parse(readUtf8(schemaPath));
   const backendContent = readUtf8(backendDtoPath);
   const agentContent = readUtf8(agentOpsPath);
+  const registryContent = readUtf8(agentRegistryPath);
 
   const failures = [];
   const checks = [
@@ -130,6 +139,14 @@ function main() {
       schema.operation_fields ?? [],
       extractPythonClassFields(agentContent, 'RoadmapOperation'),
     ),
+    compare(
+      'agent.resolver_tool.required',
+      schema.resolver_tool?.required ?? [],
+      extractRegistryToolRequiredArgs(
+        registryContent,
+        schema.resolver_tool?.name ?? 'resolve_node_reference',
+      ),
+    ),
   ];
 
   for (const check of checks) {
@@ -145,6 +162,23 @@ function main() {
   }
 
   console.log('Roadmap AI operation schema check passed.');
+}
+
+function extractRegistryToolRequiredArgs(content, toolName) {
+  const namePattern = new RegExp(
+    `'name':\\s*'${toolName}'([\\s\\S]*?)'parameters':\\s*\\{([\\s\\S]*?)\\}\\s*,?\\s*\\},`,
+    'm',
+  );
+  const nameMatch = content.match(namePattern);
+  if (!nameMatch) {
+    throw new Error(`Could not find tool definition in registry: ${toolName}`);
+  }
+  const parametersChunk = nameMatch[2];
+  const requiredMatch = parametersChunk.match(/'required':\s*\[([^\]]*)\]/m);
+  if (!requiredMatch) {
+    throw new Error(`Could not find required args for tool: ${toolName}`);
+  }
+  return [...requiredMatch[1].matchAll(/'([^']+)'/g)].map((item) => item[1]);
 }
 
 main();

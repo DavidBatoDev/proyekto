@@ -27,5 +27,12 @@
     "delta_days",
     "scope",
     "data"
-  ]
+  ],
+  "resolver_tool": {
+    "name": "resolve_node_reference",
+    "required": [
+      "roadmap_id",
+      "label"
+    ]
+  }
 }
