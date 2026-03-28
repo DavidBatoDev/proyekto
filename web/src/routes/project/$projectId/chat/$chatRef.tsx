@@ -43,7 +43,10 @@ import type {
   ChatMemberRole,
   ChatRoom,
 } from "@/services/chat.service";
-import type { ThreadUiMessage } from "@/components/project/chat/thread";
+import {
+  mergeThreadMessages,
+  type ThreadUiMessage,
+} from "@/components/project/chat/thread";
 import { useToast } from "@/hooks/useToast";
 
 export const Route = createFileRoute("/project/$projectId/chat/$chatRef")({
@@ -228,51 +231,7 @@ function ChatPage() {
   const messages = flattenRoomMessages(messagesQuery.data);
   const optimisticMessages = optimisticByConversation[conversationKey] ?? [];
   const displayedMessages = useMemo(() => {
-    const confirmedMessages = messages;
-    const hasConfirmedMatchForOptimistic = (optimistic: ThreadUiMessage) => {
-      if (optimistic.optimisticStatus !== "sending") return false;
-      const optimisticTime = new Date(optimistic.created_at).getTime();
-      const matchWindowMs = 15_000;
-
-      return confirmedMessages.some((confirmed) => {
-        if (confirmed.sender_id !== optimistic.sender_id) return false;
-        if (confirmed.content !== optimistic.content) return false;
-        const confirmedTime = new Date(confirmed.created_at).getTime();
-        return Math.abs(confirmedTime - optimisticTime) <= matchWindowMs;
-      });
-    };
-
-    const byId = new Map<string, ThreadUiMessage>();
-
-    for (const message of messages) {
-      byId.set(message.id, message);
-    }
-
-    for (const message of optimisticMessages) {
-      if (hasConfirmedMatchForOptimistic(message)) {
-        continue;
-      }
-      if (byId.has(message.id)) continue;
-      byId.set(message.id, message);
-    }
-
-    return Array.from(byId.values()).sort((a, b) => {
-      const aPending = a.optimisticStatus === "sending" ? 1 : 0;
-      const bPending = b.optimisticStatus === "sending" ? 1 : 0;
-      if (aPending !== bPending) return aPending - bPending;
-
-      const createdDiff =
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      if (createdDiff !== 0) return createdDiff;
-
-      const aOrder = a.optimistic_order ?? 0;
-      const bOrder = b.optimistic_order ?? 0;
-      if (aOrder !== bOrder) return aOrder - bOrder;
-
-      const aStableKey = a.render_key ?? a.id;
-      const bStableKey = b.render_key ?? b.id;
-      return aStableKey.localeCompare(bStableKey);
-    });
+    return mergeThreadMessages(messages, optimisticMessages);
   }, [messages, optimisticMessages]);
   const activeRoom =
     activeRoomId != null ? rooms.find((room) => room.id === activeRoomId) : null;
@@ -698,7 +657,18 @@ function ChatPage() {
     const content = messageInput.trim();
     if (!content) return;
     const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const nowIso = new Date().toISOString();
+    const latestDisplayedCreatedAt =
+      displayedMessages.length > 0
+        ? displayedMessages[displayedMessages.length - 1]?.created_at
+        : null;
+    const latestDisplayedMs = latestDisplayedCreatedAt
+      ? new Date(latestDisplayedCreatedAt).getTime()
+      : Number.NaN;
+    const safeLatestDisplayedMs = Number.isFinite(latestDisplayedMs)
+      ? latestDisplayedMs
+      : 0;
+    const optimisticCreatedAtMs = Math.max(Date.now(), safeLatestDisplayedMs + 1);
+    const nowIso = new Date(optimisticCreatedAtMs).toISOString();
     const optimisticOrder =
       Date.now() * 1000 + (optimisticOrderCounterRef.current++ % 1000);
 
