@@ -45,7 +45,7 @@ DETERMINISTIC_CONTEXT_INTENTS: tuple[DeterministicContextIntent, ...] = (
         item_singular='task',
         parse_mode='deterministic_context_my_tasks',
         question_pattern=re.compile(
-            r'\b(?:my\s+tasks?|tasks?\s+(?:assigned\s+to|for)\s+me|assigned\s+to\s+me)\b',
+            r'\b(?:my(?:\s+\w+){0,2}\s+tasks?|tasks?\s+(?:assigned\s+to|for)\s+me|assigned\s+to\s+me)\b',
             re.IGNORECASE,
         ),
         requires_label=False,

@@ -133,6 +133,8 @@ def try_deterministic_list_answer(
     label: str,
     include_ids: bool,
     user_message: str | None = None,
+    status_scope_override: str | None = None,
+    status_scope_source: str = 'deterministic',
     session_context: dict[str, Any],
     trace_id: str | None,
     logger: logging.Logger,
@@ -200,7 +202,7 @@ def try_deterministic_list_answer(
                 },
             )
 
-        status_filter = _determine_my_tasks_status(user_message)
+        status_filter = status_scope_override or _determine_my_tasks_status(user_message)
         tasks_result = execute_context_tool(
             'get_tasks_assigned_to_me',
             {
@@ -259,6 +261,7 @@ def try_deterministic_list_answer(
             'status_filter': status_filter,
             'task_count': len(tasks),
             'tasks': tasks,
+            'status_scope_source': status_scope_source,
         }
         telemetry = {
             'actor_present': True,
@@ -268,6 +271,7 @@ def try_deterministic_list_answer(
             'status_filter': status_filter,
             'include_ids': include_ids,
             'actor_missing': False,
+            'status_scope_source': status_scope_source,
         }
 
         log_event(
@@ -661,3 +665,43 @@ def is_rich_my_tasks_request(user_message: str | None) -> bool:
         r'\bparent\s+(?:feature|epic)s?\b',
     )
     return any(re.search(pattern, lowered) for pattern in rich_patterns)
+
+
+def assess_my_tasks_status_confidence(
+    user_message: str | None,
+) -> tuple[str | None, bool]:
+    if not user_message:
+        return None, False
+    lowered = user_message.lower()
+    normalized = re.sub(r'[^a-z0-9\s]', ' ', lowered)
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+
+    explicit_open_patterns = (
+        r'\bopen\s+tasks?\b',
+        r'\bin\s*progress\s+tasks?\b',
+        r'\bactive\s+tasks?\b',
+        r'\bpending\s+tasks?\b',
+        r'\btodo\s+tasks?\b',
+        r'\bnot\s+done\b',
+    )
+    if any(re.search(pattern, normalized) for pattern in explicit_open_patterns):
+        return 'open', True
+
+    explicit_all_patterns = (
+        r'\ball\s+tasks?\b',
+        r'\bevery\s+tasks?\b',
+        r'\bevry\s+tasks?\b',
+        r'\bcompleted\s+tasks?\b',
+        r'\bdone\s+tasks?\b',
+        r'\barchived\s+tasks?\b',
+        r'\binclude\s+completed\b',
+        r'\bincluding\s+completed\b',
+    )
+    if any(re.search(pattern, normalized) for pattern in explicit_all_patterns):
+        return 'all', True
+
+    if re.search(r'\b(my\s+tasks?|tasks?\s+(assigned\s+to|for)\s+me|assigned\s+to\s+me)\b', normalized):
+        # Intent is my_tasks, but status scope is unclear; discovery lane should decide.
+        return None, False
+
+    return None, False

@@ -264,7 +264,7 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             },
         }
         response = service.generate(
-            user_message='Can you give me the tasks assigned to me?',
+            user_message='Can you give me my open tasks?',
             system_prompt='system',
             session_context=session_context,
             history_messages=[],
@@ -319,7 +319,7 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             },
         }
         response = service.generate(
-            user_message='Show tasks assigned to me as well as parent feature and epic',
+            user_message='Show my open tasks as well as parent feature and epic',
             system_prompt='system',
             session_context=session_context,
             history_messages=[],
@@ -367,7 +367,7 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             },
         }
         response = service.generate(
-            user_message='Show tasks assigned to me as well as parent feature and epic',
+            user_message='Show my open tasks as well as parent feature and epic',
             system_prompt='system',
             session_context=session_context,
             history_messages=[],
@@ -379,6 +379,201 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
         self.assertEqual(response.get('provider_used'), 'rule_based')
         self.assertEqual(response.get('parse_mode'), 'deterministic_context_my_tasks')
         self.assertIn('Tasks assigned to Alice (open):', response.get('assistant_message', ''))
+
+    def test_my_tasks_ambiguous_scope_uses_discovery_and_executes_all(self) -> None:
+        observed = {'status': None}
+
+        def execute_tool(name: str, args: dict, _context: dict):
+            if name == 'get_tasks_assigned_to_me':
+                observed['status'] = args.get('status')
+                return {
+                    'tasks': [
+                        {
+                            'id': 't1',
+                            'type': 'task',
+                            'title': 'Implement login API',
+                            'status': 'in_progress',
+                            'feature_title': 'Authentication System',
+                            'epic_title': 'Platform Foundation',
+                        },
+                        {
+                            'id': 't2',
+                            'type': 'task',
+                            'title': 'Archive legacy auth flow',
+                            'status': 'done',
+                            'feature_title': 'Authentication System',
+                            'epic_title': 'Platform Foundation',
+                        },
+                    ]
+                }
+            return {'error': {'code': 'UNKNOWN'}}
+
+        service, _cache, _provider, _build_key = self._service(execute_tool)
+
+        def discovery_call(operation, trace_context=None):  # noqa: ANN001
+            class _Adapter:
+                def generate_chat_reply(self, *, system_prompt, user_message, history_messages):
+                    return '{"status_scope":"all","confidence":"high","clarifier_prompt":null}'
+
+            value = operation(_Adapter())
+            return SimpleNamespace(
+                value=value,
+                provider_used='openai',
+                fallback_used=False,
+                provider_error_code=None,
+                tokens_input=10,
+                tokens_output=5,
+                tokens_total=15,
+            )
+
+        service._provider_orchestrator.call = discovery_call  # type: ignore[assignment]
+        session_context = {
+            'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+            'trace_id': 'trace-my-tasks-discovery-all',
+            'actor_context': {
+                'actor_id': 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+                'display_name': 'Alice',
+                'roadmap_role': 'editor',
+                'actor_context_source': 'backend_context_actor',
+            },
+        }
+        response = service.generate(
+            user_message='Tell me all the task that are assigned to me',
+            system_prompt='system',
+            session_context=session_context,
+            history_messages=[],
+            intent_type='question',
+        )
+
+        self.assertEqual(observed['status'], 'all')
+        self.assertEqual(response.get('route_lane'), 'deterministic_fastpath')
+        self.assertIn('Tasks assigned to Alice (all):', response.get('assistant_message', ''))
+
+    def test_my_tasks_discovery_low_confidence_returns_specific_parse_mode(self) -> None:
+        def execute_tool(_name: str, _args: dict, _context: dict):
+            return {'error': {'code': 'UNUSED'}}
+
+        service, _cache, _provider, _build_key = self._service(execute_tool)
+
+        def discovery_call(operation, trace_context=None):  # noqa: ANN001
+            class _Adapter:
+                def generate_chat_reply(self, *, system_prompt, user_message, history_messages):
+                    return '{"status_scope":"open","confidence":"low","clarifier_prompt":"Should I show only open tasks, or all tasks including completed ones?"}'
+
+            value = operation(_Adapter())
+            return SimpleNamespace(
+                value=value,
+                provider_used='openai',
+                fallback_used=False,
+                provider_error_code=None,
+                tokens_input=10,
+                tokens_output=5,
+                tokens_total=15,
+            )
+
+        service._provider_orchestrator.call = discovery_call  # type: ignore[assignment]
+        response = service.generate(
+            user_message='Tasks assigned to me please',
+            system_prompt='system',
+            session_context={
+                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                'trace_id': 'trace-my-tasks-low-confidence',
+                'actor_context': {
+                    'actor_id': 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+                    'display_name': 'Alice',
+                    'roadmap_role': 'editor',
+                    'actor_context_source': 'backend_context_actor',
+                },
+            },
+            history_messages=[],
+            intent_type='question',
+        )
+
+        self.assertEqual(response.get('parse_mode'), 'deterministic_context_my_tasks_low_confidence')
+        self.assertEqual(response.get('provider_error_code'), 'low_confidence')
+        self.assertEqual(response.get('discovery_stop_reason'), 'low_confidence')
+        self.assertTrue(response.get('clarifier_returned'))
+
+    def test_my_tasks_discovery_invalid_payload_returns_specific_parse_mode(self) -> None:
+        def execute_tool(_name: str, _args: dict, _context: dict):
+            return {'error': {'code': 'UNUSED'}}
+
+        service, _cache, _provider, _build_key = self._service(execute_tool)
+
+        def discovery_call(operation, trace_context=None):  # noqa: ANN001
+            class _Adapter:
+                def generate_chat_reply(self, *, system_prompt, user_message, history_messages):
+                    return 'not-json'
+
+            value = operation(_Adapter())
+            return SimpleNamespace(
+                value=value,
+                provider_used='openai',
+                fallback_used=False,
+                provider_error_code=None,
+                tokens_input=10,
+                tokens_output=5,
+                tokens_total=15,
+            )
+
+        service._provider_orchestrator.call = discovery_call  # type: ignore[assignment]
+        response = service.generate(
+            user_message='Tasks assigned to me please',
+            system_prompt='system',
+            session_context={
+                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                'trace_id': 'trace-my-tasks-invalid-payload',
+                'actor_context': {
+                    'actor_id': 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+                    'display_name': 'Alice',
+                    'roadmap_role': 'editor',
+                    'actor_context_source': 'backend_context_actor',
+                },
+            },
+            history_messages=[],
+            intent_type='question',
+        )
+
+        self.assertEqual(response.get('parse_mode'), 'deterministic_context_my_tasks_invalid_payload')
+        self.assertEqual(response.get('provider_error_code'), 'invalid_payload')
+        self.assertEqual(response.get('discovery_stop_reason'), 'invalid_payload')
+        self.assertTrue(response.get('clarifier_returned'))
+
+    def test_my_tasks_discovery_provider_error_returns_specific_parse_mode(self) -> None:
+        def execute_tool(_name: str, _args: dict, _context: dict):
+            return {'error': {'code': 'UNUSED'}}
+
+        service, _cache, _provider, _build_key = self._service(execute_tool)
+
+        def discovery_call(operation, trace_context=None):  # noqa: ANN001
+            raise ProviderAdapterError(
+                provider='openai',
+                code='provider_timeout',
+                message='timeout',
+            )
+
+        service._provider_orchestrator.call = discovery_call  # type: ignore[assignment]
+        response = service.generate(
+            user_message='Tasks assigned to me please',
+            system_prompt='system',
+            session_context={
+                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                'trace_id': 'trace-my-tasks-provider-error',
+                'actor_context': {
+                    'actor_id': 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+                    'display_name': 'Alice',
+                    'roadmap_role': 'editor',
+                    'actor_context_source': 'backend_context_actor',
+                },
+            },
+            history_messages=[],
+            intent_type='question',
+        )
+
+        self.assertEqual(response.get('parse_mode'), 'deterministic_context_my_tasks_provider_error')
+        self.assertEqual(response.get('provider_error_code'), 'provider_timeout')
+        self.assertEqual(response.get('discovery_stop_reason'), 'provider_error')
+        self.assertTrue(response.get('clarifier_returned'))
 
     def test_context_discovery_budget_exhaustion_returns_clarifier(self) -> None:
         def execute_tool(name: str, args: dict, _context: dict):

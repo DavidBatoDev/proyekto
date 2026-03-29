@@ -13,6 +13,7 @@ from app.core.tools.registry import get_context_tools
 
 from .deterministic_context import (
     ContextResolutionOutcome,
+    assess_my_tasks_status_confidence,
     is_rich_my_tasks_request,
     try_deterministic_list_answer,
     try_pending_context_selection,
@@ -111,6 +112,8 @@ class ContextAnswerService:
                 label=overview_label,
                 include_ids=should_include_ids(user_message),
                 user_message=user_message,
+                status_scope_override=None,
+                status_scope_source='deterministic',
                 session_context=session_context,
                 trace_id=trace_id,
             )
@@ -176,11 +179,62 @@ class ContextAnswerService:
         deterministic_match = match_deterministic_context_intent(user_message)
         if deterministic_match is not None:
             intent, label = deterministic_match
+            status_scope_override: str | None = None
+            status_scope_source = 'deterministic'
+            if intent.pending_kind == 'my_tasks':
+                inferred_scope, confident = assess_my_tasks_status_confidence(user_message)
+                if confident and inferred_scope is not None:
+                    status_scope_override = inferred_scope
+                else:
+                    discovery_response = self._discover_my_tasks_scope(
+                        user_message=user_message,
+                        system_prompt=system_prompt,
+                        session_context=session_context,
+                        trace_id=trace_id,
+                    )
+                    if discovery_response.get('needs_clarification'):
+                        stop_reason = str(
+                            discovery_response.get('stop_reason') or 'low_confidence'
+                        )
+                        parse_mode = self._my_tasks_discovery_parse_mode(stop_reason)
+                        provider_error_code = (
+                            str(discovery_response.get('provider_error_code'))
+                            if discovery_response.get('provider_error_code')
+                            else stop_reason
+                        )
+                        return {
+                            'assistant_message': discovery_response['clarifier_prompt'],
+                            'planned_operations': [],
+                            'response_mode': 'chat',
+                            'preview_recommended': False,
+                            'parse_mode': parse_mode,
+                            'provider_used': 'rule_based',
+                            'fallback_used': False,
+                            'provider_error_code': provider_error_code,
+                            'route_lane': 'discovery_lane',
+                            'discovery_calls_used': discovery_response.get('discovery_calls_used', 0),
+                            'discovery_repeat_hits': discovery_response.get('discovery_repeat_hits', 0),
+                            'discovery_stop_reason': stop_reason,
+                            'clarifier_returned': True,
+                            'discovery_contract': self._build_discovery_contract(
+                                capability='my_tasks',
+                                resolved_targets=[],
+                                status_scope=None,
+                                needs_clarification=True,
+                                clarifier_prompt=discovery_response.get('clarifier_prompt'),
+                            ),
+                        }
+                    discovered_scope = discovery_response.get('status_scope')
+                    if isinstance(discovered_scope, str) and discovered_scope in {'open', 'all'}:
+                        status_scope_override = discovered_scope
+                        status_scope_source = 'discovery'
             deterministic_outcome = self._try_deterministic_list_answer(
                 intent=intent,
                 label=label,
                 include_ids=should_include_ids(user_message),
                 user_message=user_message,
+                status_scope_override=status_scope_override,
+                status_scope_source=status_scope_source,
                 session_context=session_context,
                 trace_id=trace_id,
             )
@@ -214,7 +268,7 @@ class ContextAnswerService:
                     'discovery_contract': self._build_discovery_contract(
                         capability=intent.pending_kind,
                         resolved_targets=[],
-                        status_scope=None,
+                        status_scope=status_scope_override if intent.pending_kind == 'my_tasks' else None,
                         needs_clarification=False,
                         clarifier_prompt=None,
                     ),
@@ -428,6 +482,7 @@ class ContextAnswerService:
             actor_context_source=telemetry.get('actor_context_source'),
             task_count=telemetry.get('task_count'),
             status_filter=telemetry.get('status_filter'),
+            status_scope_source=telemetry.get('status_scope_source'),
         )
 
         return {
@@ -452,7 +507,9 @@ class ContextAnswerService:
             'discovery_contract': self._build_discovery_contract(
                 capability='my_tasks',
                 resolved_targets=[],
-                status_scope=None,
+                status_scope=str(deterministic_outcome.synthesis_payload.get('status_filter') or '')
+                if isinstance(deterministic_outcome.synthesis_payload, dict)
+                else None,
                 needs_clarification=False,
                 clarifier_prompt=None,
             ),
@@ -629,6 +686,8 @@ class ContextAnswerService:
         label: str,
         include_ids: bool,
         user_message: str | None,
+        status_scope_override: str | None,
+        status_scope_source: str,
         session_context: dict[str, Any],
         trace_id: str | None,
     ) -> ContextResolutionOutcome | None:
@@ -637,12 +696,108 @@ class ContextAnswerService:
             label=label,
             include_ids=include_ids,
             user_message=user_message,
+            status_scope_override=status_scope_override,
+            status_scope_source=status_scope_source,
             session_context=session_context,
             trace_id=trace_id,
             logger=self._logger,
             settings=self._settings,
             execute_context_tool=self._execute_context_tool,
         )
+
+    def _discover_my_tasks_scope(
+        self,
+        *,
+        user_message: str,
+        system_prompt: str,
+        session_context: dict[str, Any],
+        trace_id: str | None,
+    ) -> dict[str, Any]:
+        clarifier_template_id = 'my_tasks_scope_clarifier_v1'
+        stop_reason = 'low_confidence'
+        provider_error_code: str | None = None
+        clarifier_prompt = (
+            'Should I show only open tasks, or all tasks including completed ones?'
+        )
+        try:
+            result = self._provider_orchestrator.call(
+                lambda adapter: adapter.generate_chat_reply(
+                    system_prompt=(
+                        f'{system_prompt}\n\n'
+                        'Classify my-tasks status scope only.\n'
+                        'Return strict JSON with keys: status_scope, confidence, clarifier_prompt.\n'
+                        'status_scope must be "open" or "all".\n'
+                        'If uncertain, return confidence "low" and a focused clarifier question.'
+                    ),
+                    user_message=user_message,
+                    history_messages=[],
+                ),
+                trace_context={'trace_id': trace_id, 'phase': 'my_tasks_discovery'},
+            )
+            payload_raw = str(result.value or '').strip()
+            try:
+                payload = json.loads(payload_raw)
+            except json.JSONDecodeError:
+                stop_reason = 'invalid_payload'
+                payload = None
+            if not isinstance(payload, dict):
+                stop_reason = 'invalid_payload'
+                payload = None
+            if payload is None:
+                raise ValueError('invalid_payload')
+            status_scope = payload.get('status_scope')
+            confidence = str(payload.get('confidence') or '').lower().strip()
+            if status_scope in {'open', 'all'} and confidence in {'high', 'medium'}:
+                return {
+                    'status_scope': status_scope,
+                    'needs_clarification': False,
+                    'clarifier_prompt': None,
+                    'stop_reason': 'resolved',
+                    'discovery_calls_used': 1,
+                    'discovery_repeat_hits': 0,
+                }
+            if confidence == 'low':
+                stop_reason = 'low_confidence'
+            else:
+                stop_reason = 'invalid_payload'
+        except ProviderAdapterError as exc:
+            stop_reason = 'provider_error'
+            provider_error_code = exc.code
+        except Exception:
+            if stop_reason != 'invalid_payload':
+                stop_reason = 'provider_error'
+
+        log_event(
+            self._logger,
+            'context_discovery_stopped',
+            settings=self._settings,
+            trace_id=trace_id,
+            discovery_calls_used=1,
+            discovery_repeat_hits=0,
+            discovery_stop_reason=stop_reason,
+            clarifier_returned=True,
+            clarifier_template_id=clarifier_template_id,
+            provider_error_code=provider_error_code,
+        )
+        return {
+            'status_scope': None,
+            'needs_clarification': True,
+            'clarifier_prompt': clarifier_prompt,
+            'stop_reason': stop_reason,
+            'discovery_calls_used': 1,
+            'discovery_repeat_hits': 0,
+            'provider_error_code': provider_error_code,
+        }
+
+    @staticmethod
+    def _my_tasks_discovery_parse_mode(stop_reason: str) -> str:
+        if stop_reason == 'low_confidence':
+            return 'deterministic_context_my_tasks_low_confidence'
+        if stop_reason == 'provider_error':
+            return 'deterministic_context_my_tasks_provider_error'
+        if stop_reason == 'invalid_payload':
+            return 'deterministic_context_my_tasks_invalid_payload'
+        return 'deterministic_context_budget_exhausted'
 
     def _build_cached_response(self, cached_value: dict[str, Any] | str) -> dict[str, Any]:
         if isinstance(cached_value, str):
