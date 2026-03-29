@@ -9,7 +9,7 @@ const AGENT_API_BASE_URL =
 
 const agentApiClient: AxiosInstance = axios.create({
   baseURL: AGENT_API_BASE_URL,
-  timeout: 30000,
+  timeout: 90000,
   headers: {
     "Content-Type": "application/json",
   },

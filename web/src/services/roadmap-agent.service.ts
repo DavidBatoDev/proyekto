@@ -168,6 +168,24 @@ function safeStringify(value: unknown): string | undefined {
   }
 }
 
+export function isAgentTimeoutError(error: unknown): boolean {
+  const timeoutPattern = /(timeout|aborted|econnaborted|network error)/i;
+  if (error instanceof RoadmapAgentServiceError) {
+    return timeoutPattern.test(error.message);
+  }
+
+  if (isAxiosError(error)) {
+    if (error.code && timeoutPattern.test(error.code)) return true;
+    if (error.message && timeoutPattern.test(error.message)) return true;
+  }
+
+  if (error instanceof Error) {
+    return timeoutPattern.test(error.message);
+  }
+
+  return false;
+}
+
 function extractNestedMessage(value: unknown, depth = 0): string | undefined {
   if (depth > 4 || value == null) return undefined;
   if (typeof value === "string" && value.trim()) return value;

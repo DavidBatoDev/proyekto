@@ -11,6 +11,7 @@ import roadmapAgentService, {
   type AgentMessageResponse,
   type AgentPreviewPayload,
   type AgentRoadmapPreviewArtifact,
+  isAgentTimeoutError,
   RoadmapAgentServiceError,
 } from "@/services/roadmap-agent.service";
 import {
@@ -274,8 +275,9 @@ export function TryAiFloatingAssistant({
     });
 
     setIsSending(true);
+    let activeSessionId: string | null = null;
     try {
-      const activeSessionId = await ensureSession();
+      activeSessionId = await ensureSession();
       const response = await roadmapAgentService.sendMessage(activeSessionId, {
         message: trimmedMessage,
         auto_preview: true,
@@ -322,11 +324,23 @@ export function TryAiFloatingAssistant({
         toast.warning(`Artifact preview unavailable: ${artifactErrorText}`);
       }
     } catch (error) {
+      const timeoutError = isAgentTimeoutError(error);
+      const timeoutMessage = "AI response is taking longer than expected. Please wait or retry.";
       const readableError = error instanceof Error ? error.message : "Failed to reach AI agent service.";
-      setErrorMessage(readableError);
+      const userFacingMessage = timeoutError ? timeoutMessage : readableError;
+      setErrorMessage(userFacingMessage);
+      if (timeoutError) {
+        console.warn("[TryAiFloatingAssistant] send_message_timeout", {
+          session_id: activeSessionId,
+          roadmap_id: roadmapId,
+          error: readableError,
+        });
+      }
       appendMessage(
         buildAssistantMessage(
-          "I couldn't complete that request. Please try again.",
+          timeoutError
+            ? timeoutMessage
+            : "I couldn't complete that request. Please try again.",
           "agent_error",
         ),
       );
