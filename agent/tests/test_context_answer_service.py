@@ -492,6 +492,104 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
         self.assertEqual(raised.exception.provider, 'orchestrator')
         self.assertEqual(raised.exception.code, 'discovery_repeat_limit_exhausted')
 
+    def test_context_turns_never_below_discovery_budget(self) -> None:
+        def execute_tool(name: str, args: dict, _context: dict):
+            return {'ok': True, 'name': name, 'args': args}
+
+        service, _cache, _provider, _build_key = self._service(execute_tool)
+        service._settings.max_context_tool_turns = 1
+        service._settings.max_discovery_tool_calls = 4
+        observed = {'max_tool_turns': None}
+
+        def call(operation, trace_context=None):  # noqa: ANN001
+            class _Adapter:
+                def answer_with_tools(
+                    self,
+                    *,
+                    system_prompt,
+                    question_prompt,
+                    history_messages,
+                    tools,
+                    tool_executor,
+                    max_tool_turns,
+                ):
+                    observed['max_tool_turns'] = max_tool_turns
+                    return 'resolved'
+
+            value = operation(_Adapter())
+            return SimpleNamespace(
+                value=value,
+                provider_used='openai',
+                fallback_used=False,
+                provider_error_code=None,
+                tokens_input=1,
+                tokens_output=1,
+                tokens_total=2,
+            )
+
+        service._provider_orchestrator.call = call  # type: ignore[assignment]
+        response = service.generate(
+            user_message='This is ambiguous and should use discovery lane',
+            system_prompt='system',
+            session_context={
+                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                'trace_id': 'trace-turn-budget',
+            },
+            history_messages=[],
+            intent_type='question',
+        )
+        self.assertEqual(observed['max_tool_turns'], 4)
+        self.assertEqual(response.get('route_lane'), 'discovery_lane')
+
+    def test_context_turns_never_exceed_discovery_budget(self) -> None:
+        def execute_tool(name: str, args: dict, _context: dict):
+            return {'ok': True, 'name': name, 'args': args}
+
+        service, _cache, _provider, _build_key = self._service(execute_tool)
+        service._settings.max_context_tool_turns = 12
+        service._settings.max_discovery_tool_calls = 4
+        observed = {'max_tool_turns': None}
+
+        def call(operation, trace_context=None):  # noqa: ANN001
+            class _Adapter:
+                def answer_with_tools(
+                    self,
+                    *,
+                    system_prompt,
+                    question_prompt,
+                    history_messages,
+                    tools,
+                    tool_executor,
+                    max_tool_turns,
+                ):
+                    observed['max_tool_turns'] = max_tool_turns
+                    return 'resolved'
+
+            value = operation(_Adapter())
+            return SimpleNamespace(
+                value=value,
+                provider_used='openai',
+                fallback_used=False,
+                provider_error_code=None,
+                tokens_input=1,
+                tokens_output=1,
+                tokens_total=2,
+            )
+
+        service._provider_orchestrator.call = call  # type: ignore[assignment]
+        response = service.generate(
+            user_message='This is ambiguous and should use discovery lane',
+            system_prompt='system',
+            session_context={
+                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                'trace_id': 'trace-turn-ceiling',
+            },
+            history_messages=[],
+            intent_type='question',
+        )
+        self.assertEqual(observed['max_tool_turns'], 4)
+        self.assertEqual(response.get('route_lane'), 'discovery_lane')
+
 
 if __name__ == '__main__':
     unittest.main()

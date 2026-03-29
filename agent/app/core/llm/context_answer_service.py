@@ -126,6 +126,18 @@ class ContextAnswerService:
                     'provider_error_code': None,
                     'pending_context_resolution': deterministic_outcome.pending_context_resolution,
                     'clear_pending_context_resolution': True,
+                    'route_lane': 'deterministic_fastpath',
+                    'discovery_calls_used': 0,
+                    'discovery_repeat_hits': 0,
+                    'discovery_stop_reason': 'resolved',
+                    'clarifier_returned': False,
+                    'discovery_contract': self._build_discovery_contract(
+                        capability='roadmap_overview',
+                        resolved_targets=[],
+                        status_scope=None,
+                        needs_clarification=False,
+                        clarifier_prompt=None,
+                    ),
                 }
                 self._cache_response_if_safe(cache_key, response)
                 return response
@@ -147,6 +159,18 @@ class ContextAnswerService:
                 'provider_error_code': None,
                 'pending_context_resolution': pending_selection_outcome.pending_context_resolution,
                 'clear_pending_context_resolution': pending_selection_outcome.clear_pending_context_resolution,
+                'route_lane': 'deterministic_fastpath',
+                'discovery_calls_used': 0,
+                'discovery_repeat_hits': 0,
+                'discovery_stop_reason': 'resolved',
+                'clarifier_returned': False,
+                'discovery_contract': self._build_discovery_contract(
+                    capability='pending_selection',
+                    resolved_targets=[],
+                    status_scope=None,
+                    needs_clarification=False,
+                    clarifier_prompt=None,
+                ),
             }
 
         deterministic_match = match_deterministic_context_intent(user_message)
@@ -182,11 +206,25 @@ class ContextAnswerService:
                     'provider_error_code': None,
                     'pending_context_resolution': deterministic_outcome.pending_context_resolution,
                     'clear_pending_context_resolution': deterministic_outcome.clear_pending_context_resolution,
+                    'route_lane': 'deterministic_fastpath',
+                    'discovery_calls_used': 0,
+                    'discovery_repeat_hits': 0,
+                    'discovery_stop_reason': 'resolved',
+                    'clarifier_returned': False,
+                    'discovery_contract': self._build_discovery_contract(
+                        capability=intent.pending_kind,
+                        resolved_targets=[],
+                        status_scope=None,
+                        needs_clarification=False,
+                        clarifier_prompt=None,
+                    ),
                 }
                 self._cache_response_if_safe(cache_key, response)
                 return response
 
-        context_turns = min(self._settings.max_context_tool_turns, 4)
+        # Discovery lane is fixed-budget: provider loop turns should not exceed
+        # the configured discovery call budget.
+        context_turns = max(1, int(self._settings.max_discovery_tool_calls))
         discovery_guard, discovery_state = self._build_discovery_guard(
             session_context=session_context,
             trace_id=trace_id,
@@ -237,6 +275,18 @@ class ContextAnswerService:
                 'tokens_input': result.tokens_input,
                 'tokens_output': result.tokens_output,
                 'tokens_total': result.tokens_total,
+                'route_lane': 'discovery_lane',
+                'discovery_calls_used': discovery_state.calls_used,
+                'discovery_repeat_hits': discovery_state.repeat_hits,
+                'discovery_stop_reason': 'resolved',
+                'clarifier_returned': False,
+                'discovery_contract': self._build_discovery_contract(
+                    capability='context_answer',
+                    resolved_targets=[],
+                    status_scope=None,
+                    needs_clarification=False,
+                    clarifier_prompt=None,
+                ),
             }
             self._context_answer_cache.set(cache_key, self._cache_payload(response))
             return response
@@ -263,6 +313,14 @@ class ContextAnswerService:
                     'discovery_repeat_hits': discovery_state.repeat_hits,
                     'discovery_stop_reason': discovery_state.stop_reason,
                     'clarifier_returned': True,
+                    'route_lane': 'discovery_lane',
+                    'discovery_contract': self._build_discovery_contract(
+                        capability='context_answer',
+                        resolved_targets=[],
+                        status_scope=None,
+                        needs_clarification=True,
+                        clarifier_prompt=exc.message,
+                    ),
                 }
             self._logger.warning(
                 'Provider context answer failed, using chat fallback. code=%s message=%s',
@@ -291,6 +349,18 @@ class ContextAnswerService:
                 'tokens_input': exc.tokens_input,
                 'tokens_output': exc.tokens_output,
                 'tokens_total': exc.tokens_total,
+                'route_lane': 'discovery_lane',
+                'discovery_calls_used': discovery_state.calls_used,
+                'discovery_repeat_hits': discovery_state.repeat_hits,
+                'discovery_stop_reason': 'tool_error',
+                'clarifier_returned': False,
+                'discovery_contract': self._build_discovery_contract(
+                    capability='context_answer',
+                    resolved_targets=[],
+                    status_scope=None,
+                    needs_clarification=False,
+                    clarifier_prompt=None,
+                ),
             }
 
     def _maybe_synthesize_my_tasks_response(
@@ -374,6 +444,18 @@ class ContextAnswerService:
             'tokens_input': tokens_input,
             'tokens_output': tokens_output,
             'tokens_total': tokens_total,
+            'route_lane': 'deterministic_fastpath',
+            'discovery_calls_used': 0,
+            'discovery_repeat_hits': 0,
+            'discovery_stop_reason': 'resolved',
+            'clarifier_returned': False,
+            'discovery_contract': self._build_discovery_contract(
+                capability='my_tasks',
+                resolved_targets=[],
+                status_scope=None,
+                needs_clarification=False,
+                clarifier_prompt=None,
+            ),
         }
 
     def _synthesize_my_tasks_answer(
@@ -507,6 +589,23 @@ class ContextAnswerService:
         )
         return f'{tool_name}:{normalized_args}'
 
+    @staticmethod
+    def _build_discovery_contract(
+        *,
+        capability: str,
+        resolved_targets: list[dict[str, Any]],
+        status_scope: str | None,
+        needs_clarification: bool,
+        clarifier_prompt: str | None,
+    ) -> dict[str, Any]:
+        return {
+            'capability': capability,
+            'resolved_targets': resolved_targets,
+            'status_scope': status_scope,
+            'needs_clarification': needs_clarification,
+            'clarifier_prompt': clarifier_prompt,
+        }
+
     def _try_pending_context_selection(
         self,
         *,
@@ -556,6 +655,18 @@ class ContextAnswerService:
                 'provider_used': 'rule_based',
                 'fallback_used': False,
                 'provider_error_code': None,
+                'route_lane': 'deterministic_fastpath',
+                'discovery_calls_used': 0,
+                'discovery_repeat_hits': 0,
+                'discovery_stop_reason': 'resolved',
+                'clarifier_returned': False,
+                'discovery_contract': self._build_discovery_contract(
+                    capability='context_cache_hit',
+                    resolved_targets=[],
+                    status_scope=None,
+                    needs_clarification=False,
+                    clarifier_prompt=None,
+                ),
             }
 
         response = {
@@ -574,6 +685,22 @@ class ContextAnswerService:
             'tokens_input': cached_value.get('tokens_input'),
             'tokens_output': cached_value.get('tokens_output'),
             'tokens_total': cached_value.get('tokens_total'),
+            'route_lane': str(cached_value.get('route_lane') or 'deterministic_fastpath'),
+            'discovery_calls_used': int(cached_value.get('discovery_calls_used') or 0),
+            'discovery_repeat_hits': int(cached_value.get('discovery_repeat_hits') or 0),
+            'discovery_stop_reason': cached_value.get('discovery_stop_reason'),
+            'clarifier_returned': bool(cached_value.get('clarifier_returned', False)),
+            'discovery_contract': (
+                cached_value.get('discovery_contract')
+                if isinstance(cached_value.get('discovery_contract'), dict)
+                else self._build_discovery_contract(
+                    capability='context_cache_hit',
+                    resolved_targets=[],
+                    status_scope=None,
+                    needs_clarification=False,
+                    clarifier_prompt=None,
+                )
+            ),
         }
         return response
 
@@ -597,4 +724,10 @@ class ContextAnswerService:
             'tokens_input': response.get('tokens_input'),
             'tokens_output': response.get('tokens_output'),
             'tokens_total': response.get('tokens_total'),
+            'route_lane': response.get('route_lane'),
+            'discovery_calls_used': response.get('discovery_calls_used'),
+            'discovery_repeat_hits': response.get('discovery_repeat_hits'),
+            'discovery_stop_reason': response.get('discovery_stop_reason'),
+            'clarifier_returned': response.get('clarifier_returned'),
+            'discovery_contract': response.get('discovery_contract'),
         }
