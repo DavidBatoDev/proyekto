@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from app.core.config import get_settings
 from app.core.llm.deterministic_context import (
+    is_rich_my_tasks_request,
     try_deterministic_list_answer,
     try_pending_context_selection,
 )
@@ -192,6 +193,14 @@ class DeterministicContextTests(unittest.TestCase):
         assert outcome is not None
         self.assertIn('could not confirm your actor context', outcome.answer)
         self.assertTrue(outcome.clear_pending_context_resolution)
+
+    def test_is_rich_my_tasks_request_detects_parent_context_ask(self) -> None:
+        self.assertTrue(
+            is_rich_my_tasks_request(
+                'Tell me all the tasks assigned to me as well as their parent features and epic'
+            )
+        )
+        self.assertFalse(is_rich_my_tasks_request('Show me tasks assigned to me'))
 
 
 if __name__ == '__main__':

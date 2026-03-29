@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -26,6 +27,8 @@ class ContextResolutionOutcome:
     answer: str
     pending_context_resolution: dict[str, Any] | None = None
     clear_pending_context_resolution: bool = False
+    synthesis_payload: dict[str, Any] | None = None
+    telemetry: dict[str, Any] | None = None
 
 
 def try_pending_context_selection(
@@ -187,6 +190,14 @@ def try_deterministic_list_answer(
                     'Please retry in a moment, and I will fetch tasks assigned to you.'
                 ),
                 clear_pending_context_resolution=True,
+                telemetry={
+                    'actor_present': False,
+                    'roadmap_role': roadmap_role or None,
+                    'actor_context_source': actor_context_source or None,
+                    'task_count': 0,
+                    'status_filter': 'open',
+                    'actor_missing': True,
+                },
             )
 
         status_filter = _determine_my_tasks_status(user_message)
@@ -243,6 +254,22 @@ def try_deterministic_list_answer(
                 lines.append(f'- ...and {len(tasks) - 30} more task(s)')
             answer = '\n'.join(lines)
 
+        synthesis_payload = {
+            'assignee_label': assignee_label,
+            'status_filter': status_filter,
+            'task_count': len(tasks),
+            'tasks': tasks,
+        }
+        telemetry = {
+            'actor_present': True,
+            'roadmap_role': roadmap_role or None,
+            'actor_context_source': actor_context_source or None,
+            'task_count': len(tasks),
+            'status_filter': status_filter,
+            'include_ids': include_ids,
+            'actor_missing': False,
+        }
+
         log_event(
             logger,
             'deterministic_context_my_tasks',
@@ -259,6 +286,8 @@ def try_deterministic_list_answer(
         return ContextResolutionOutcome(
             answer=answer,
             clear_pending_context_resolution=True,
+            synthesis_payload=synthesis_payload,
+            telemetry=telemetry,
         )
 
     if is_generic_roadmap_label(label):
@@ -615,3 +644,20 @@ def _determine_my_tasks_status(user_message: str | None) -> str:
     ):
         return 'all'
     return 'open'
+
+
+def is_rich_my_tasks_request(user_message: str | None) -> bool:
+    if not user_message:
+        return False
+    lowered = user_message.lower()
+    rich_patterns = (
+        r'\bas well as\b',
+        r'\balso\b',
+        r'\binclude\b.*\b(parent|feature|epic)\b',
+        r'\bgroup(?:ed|ing)?\b',
+        r'\bsummar(?:y|ize)\b',
+        r'\borgani[sz]e\b',
+        r'\bby\s+(?:feature|epic|status)\b',
+        r'\bparent\s+(?:feature|epic)s?\b',
+    )
+    return any(re.search(pattern, lowered) for pattern in rich_patterns)

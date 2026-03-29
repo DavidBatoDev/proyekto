@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     max_chat_history_messages: int = Field(default=8, alias='MAX_CHAT_HISTORY_MESSAGES')
     max_edit_tool_turns: int = Field(default=6, alias='MAX_EDIT_TOOL_TURNS')
     max_context_tool_turns: int = Field(default=4, alias='MAX_CONTEXT_TOOL_TURNS')
+    max_discovery_tool_calls: int = Field(default=4, alias='MAX_DISCOVERY_TOOL_CALLS')
+    max_repeated_tool_calls_per_signature: int = Field(
+        default=2,
+        alias='MAX_REPEATED_TOOL_CALLS_PER_SIGNATURE',
+    )
 
     agent_log_level: str = Field(default='DEBUG', alias='AGENT_LOG_LEVEL')
     agent_log_json: bool = Field(default=True, alias='AGENT_LOG_JSON')
