@@ -1,0 +1,221 @@
+import io
+import json
+import logging
+import unittest
+from types import SimpleNamespace
+
+from app.core import logging_utils
+
+
+class LoggingUtilsLifecycleTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.stream = io.StringIO()
+        self.logger = logging.getLogger(f'logging-utils-tests-{id(self)}')
+        self.logger.handlers.clear()
+        self.logger.propagate = False
+        self.logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler(self.stream)
+        handler.setFormatter(logging.Formatter('%(message)s'))
+        self.logger.addHandler(handler)
+        logging_utils._LIFECYCLE_TRACES.clear()
+        self.settings_pretty = SimpleNamespace(
+            agent_log_json=False,
+            agent_log_include_content=False,
+        )
+        self.settings_json = SimpleNamespace(
+            agent_log_json=True,
+            agent_log_include_content=False,
+        )
+
+    def _emit_minimal_lifecycle(self) -> str:
+        trace_id = 'trace-1'
+        logging_utils.log_event(
+            self.logger,
+            'message_received',
+            settings=self.settings_pretty,
+            trace_id=trace_id,
+            session_id='session-1',
+            roadmap_id='roadmap-1',
+            message='Tell me all tasks assigned to me',
+            replace_operations=False,
+            auto_preview=True,
+            actor_present=True,
+            roadmap_role='editor',
+            actor_context_source='backend_context_actor',
+        )
+        logging_utils.log_event(
+            self.logger,
+            'intent_classified',
+            settings=self.settings_pretty,
+            trace_id=trace_id,
+            intent_type='question',
+            is_roadmap_question=True,
+            parse_mode='deterministic_context_my_tasks',
+        )
+        logging_utils.log_event(
+            self.logger,
+            'route_selected',
+            settings=self.settings_pretty,
+            trace_id=trace_id,
+            response_mode='chat',
+            tool_mode='context_answer',
+            intent_type='question',
+        )
+        logging_utils.log_event(
+            self.logger,
+            'tool_call_requested',
+            settings=self.settings_pretty,
+            trace_id=trace_id,
+            tool_name='get_tasks_assigned_to_me',
+            tool_args={'status': 'all', 'limit': 100},
+            arg_keys=['limit', 'status'],
+            roadmap_id='roadmap-1',
+        )
+        logging_utils.log_event(
+            self.logger,
+            'tool_call_result',
+            settings=self.settings_pretty,
+            trace_id=trace_id,
+            tool_name='get_tasks_assigned_to_me',
+            result_summary={'result_type': 'dict', 'tasks_count': 2},
+        )
+        logging_utils.log_event(
+            self.logger,
+            'message_completed',
+            settings=self.settings_pretty,
+            trace_id=trace_id,
+            session_id='session-1',
+            roadmap_id='roadmap-1',
+            intent_type='question',
+            response_mode='chat',
+            provider_used='rule_based',
+            fallback_used=False,
+            provider_error_code=None,
+            assistant_message='Tasks assigned to you: Task A, Task B',
+            tokens_input=None,
+            tokens_output=None,
+            tokens_total=None,
+            operations_count=0,
+            artifacts_count=0,
+            preview_available=False,
+            elapsed_ms=1234,
+            actor_present=True,
+            roadmap_role='editor',
+            actor_context_source='backend_context_actor',
+            route_lane='deterministic_fastpath',
+            discovery_stop_reason='resolved',
+            clarifier_returned=False,
+        )
+        return self.stream.getvalue()
+
+    def test_pretty_mode_emits_consolidated_lifecycle_block(self) -> None:
+        output = self._emit_minimal_lifecycle()
+        self.assertIn('EVENT: INTENT_CLASSIFIED', output)
+        self.assertIn('EVENT: ROUTE_SELECTED', output)
+        self.assertIn('EVENT: TOOL_CALL_REQUESTED', output)
+        self.assertIn('EVENT: TOOL_CALL_RESULT', output)
+        self.assertIn('AI REQUEST: MY TASKS', output)
+        self.assertIn('trace_id     trace-1', output)
+        self.assertIn('USER', output)
+        self.assertIn('ROUTING', output)
+        self.assertIn('TOOL CALL', output)
+        self.assertIn('get_tasks_assigned_to_me', output)
+        self.assertIn('RESPONSE', output)
+        self.assertIn('ASSISTANT', output)
+        self.assertIn('lane        deterministic_fastpath', output)
+        self.assertIn('EVENT: MESSAGE_COMPLETED', output)
+
+    def test_lifecycle_title_prefers_deterministic_parse_mode(self) -> None:
+        trace_id = 'trace-overview-title'
+        logging_utils.log_event(
+            self.logger,
+            'message_received',
+            settings=self.settings_pretty,
+            trace_id=trace_id,
+            session_id='session-overview',
+            roadmap_id='roadmap-overview',
+            message='Tell me all the features in this roadmap',
+        )
+        logging_utils.log_event(
+            self.logger,
+            'intent_classified',
+            settings=self.settings_pretty,
+            trace_id=trace_id,
+            intent_type='unclear',
+            parse_mode='heuristic_prerouter',
+        )
+        logging_utils.log_event(
+            self.logger,
+            'deterministic_context_overview',
+            settings=self.settings_pretty,
+            trace_id=trace_id,
+            parse_mode='deterministic_context_overview',
+        )
+        logging_utils.log_event(
+            self.logger,
+            'message_completed',
+            settings=self.settings_pretty,
+            trace_id=trace_id,
+            session_id='session-overview',
+            roadmap_id='roadmap-overview',
+            intent_type='unclear',
+            parse_mode='deterministic_context_overview',
+            provider_used='rule_based',
+        )
+        output = self.stream.getvalue()
+        self.assertIn('AI REQUEST: ROADMAP OVERVIEW', output)
+        self.assertNotIn('AI REQUEST: UNCLEAR', output)
+
+    def test_lifecycle_block_keeps_redaction_and_preview_policy(self) -> None:
+        trace_id = 'trace-redaction'
+        logging_utils.log_event(
+            self.logger,
+            'message_received',
+            settings=self.settings_pretty,
+            trace_id=trace_id,
+            session_id='session-redaction',
+            roadmap_id='roadmap-redaction',
+            message='x' * 600,
+        )
+        logging_utils.log_event(
+            self.logger,
+            'tool_call_requested',
+            settings=self.settings_pretty,
+            trace_id=trace_id,
+            tool_name='search_nodes',
+            tool_args={'query': 'platform', 'api_key': 'super-secret'},
+        )
+        logging_utils.log_event(
+            self.logger,
+            'message_completed',
+            settings=self.settings_pretty,
+            trace_id=trace_id,
+            session_id='session-redaction',
+            roadmap_id='roadmap-redaction',
+            assistant_message='y' * 550,
+            provider_used='rule_based',
+        )
+        output = self.stream.getvalue()
+        self.assertNotIn('super-secret', output)
+        self.assertIn('[REDACTED]', output)
+        self.assertIn('(len=600)', output)
+        self.assertIn('(len=550)', output)
+
+    def test_json_mode_remains_json_only(self) -> None:
+        logging_utils.log_event(
+            self.logger,
+            'message_received',
+            settings=self.settings_json,
+            trace_id='trace-json',
+            session_id='session-json',
+            roadmap_id='roadmap-json',
+            message='hello',
+        )
+        raw = self.stream.getvalue().strip()
+        parsed = json.loads(raw)
+        self.assertEqual(parsed['event'], 'message_received')
+        self.assertNotIn('AI REQUEST:', raw)
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+import time
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
@@ -42,6 +45,28 @@ _CONTENT_KEYS = {
     'planner_prompt',
 }
 
+_LIFECYCLE_TRACE_TTL_SECONDS = 15 * 60
+_MAX_TOOL_CALLS_PER_TRACE = 20
+_TRACE_LOCK = threading.Lock()
+
+
+@dataclass
+class _LifecycleTrace:
+    trace_id: str
+    created_monotonic: float
+    last_seen_monotonic: float
+    session_id: str | None = None
+    roadmap_id: str | None = None
+    request: dict[str, Any] = field(default_factory=dict)
+    actor: dict[str, Any] = field(default_factory=dict)
+    routing: dict[str, Any] = field(default_factory=dict)
+    tools: list[dict[str, Any]] = field(default_factory=list)
+    response: dict[str, Any] = field(default_factory=dict)
+    assistant: dict[str, Any] = field(default_factory=dict)
+
+
+_LIFECYCLE_TRACES: dict[str, _LifecycleTrace] = {}
+
 
 def configure_logging(settings: Settings | None = None) -> None:
     cfg = settings or get_settings()
@@ -78,7 +103,10 @@ def log_event(
     if cfg.agent_log_json:
         logger.log(level, json.dumps(payload, ensure_ascii=True, default=str))
         return
-    logger.log(level, _render_pretty_payload(payload))
+    lifecycle_block = _capture_lifecycle_block(payload)
+    logger.log(level, _render_event_block(payload))
+    if lifecycle_block:
+        logger.log(level, lifecycle_block)
 
 
 def summarize_tool_result(result: dict[str, Any]) -> dict[str, Any]:
@@ -131,14 +159,289 @@ def _truncate(text: str) -> dict[str, Any]:
     }
 
 
-def _render_pretty_payload(payload: dict[str, Any]) -> str:
-    event = payload.get('event', 'event')
-    lines = [f'event: {event}']
+def _render_event_block(payload: dict[str, Any]) -> str:
+    event = str(payload.get('event', 'event')).upper()
+    divider = '-' * 62
+    lines = [
+        divider,
+        f'EVENT: {event}',
+        divider,
+    ]
     for key in _ordered_keys(payload):
         if key == 'event':
             continue
-        _append_pretty_value(lines, key, payload[key], indent=5)
+        _append_event_field(lines, key, payload[key], indent=2)
+    lines.append(divider)
     return '\n'.join(lines)
+
+
+def _capture_lifecycle_block(payload: dict[str, Any]) -> str | None:
+    trace_id = payload.get('trace_id')
+    if not isinstance(trace_id, str) or not trace_id.strip():
+        return None
+    event = str(payload.get('event') or '')
+    now = time.monotonic()
+    with _TRACE_LOCK:
+        _evict_expired_traces(now)
+        trace = _LIFECYCLE_TRACES.get(trace_id)
+        if event == 'message_received' or trace is None:
+            trace = _LifecycleTrace(
+                trace_id=trace_id,
+                created_monotonic=now,
+                last_seen_monotonic=now,
+            )
+            _LIFECYCLE_TRACES[trace_id] = trace
+        trace.last_seen_monotonic = now
+        _apply_lifecycle_payload(trace, payload)
+        if event != 'message_completed':
+            return None
+        block = _render_lifecycle_block(trace)
+        _LIFECYCLE_TRACES.pop(trace_id, None)
+        return block
+
+
+def _evict_expired_traces(now: float) -> None:
+    expired: list[str] = []
+    for trace_id, trace in _LIFECYCLE_TRACES.items():
+        if now - trace.last_seen_monotonic > _LIFECYCLE_TRACE_TTL_SECONDS:
+            expired.append(trace_id)
+    for trace_id in expired:
+        _LIFECYCLE_TRACES.pop(trace_id, None)
+
+
+def _apply_lifecycle_payload(trace: _LifecycleTrace, payload: dict[str, Any]) -> None:
+    event = str(payload.get('event') or '')
+    if payload.get('parse_mode') is not None:
+        trace.routing['parse_mode'] = payload.get('parse_mode')
+    elif event.startswith('deterministic_context_'):
+        trace.routing['parse_mode'] = event
+    trace.session_id = _text_or_none(payload.get('session_id')) or trace.session_id
+    trace.roadmap_id = _text_or_none(payload.get('roadmap_id')) or trace.roadmap_id
+    trace.actor = {
+        **trace.actor,
+        **{
+            'source': payload.get('actor_context_source'),
+            'present': payload.get('actor_present'),
+            'role': payload.get('roadmap_role'),
+        },
+    }
+    if event == 'message_received':
+        trace.request = {
+            'message': payload.get('message'),
+            'replace_operations': payload.get('replace_operations'),
+            'auto_preview': payload.get('auto_preview'),
+            'ts': payload.get('ts'),
+        }
+        return
+    if event == 'intent_classified':
+        trace.routing['classified'] = payload.get('intent_type')
+        trace.routing['is_roadmap_question'] = payload.get('is_roadmap_question')
+        trace.routing['parse_mode'] = payload.get('parse_mode')
+        return
+    if event == 'route_selected':
+        trace.routing['mode'] = payload.get('response_mode')
+        trace.routing['tool_mode'] = payload.get('tool_mode')
+        trace.routing['intent_type'] = payload.get('intent_type')
+        return
+    if event == 'tool_call_requested':
+        tool_entry = {
+            'tool_name': payload.get('tool_name'),
+            'tool_args': payload.get('tool_args'),
+            'arg_keys': payload.get('arg_keys'),
+            'requested_ts': payload.get('ts'),
+            'result_summary': None,
+            'tool_error_code': None,
+        }
+        trace.tools.append(tool_entry)
+        if len(trace.tools) > _MAX_TOOL_CALLS_PER_TRACE:
+            trace.tools = trace.tools[-_MAX_TOOL_CALLS_PER_TRACE:]
+        return
+    if event == 'tool_call_result':
+        tool_name = payload.get('tool_name')
+        target = _find_latest_tool_entry(trace.tools, tool_name)
+        if target is None:
+            target = {
+                'tool_name': tool_name,
+                'tool_args': None,
+                'arg_keys': None,
+                'requested_ts': None,
+                'result_summary': None,
+                'tool_error_code': None,
+            }
+            trace.tools.append(target)
+        target['result_summary'] = payload.get('result_summary')
+        target['tool_error_code'] = payload.get('tool_error_code')
+        if payload.get('resolution_id') is not None:
+            target['resolution_id'] = payload.get('resolution_id')
+        return
+    if event in {'provider_attempt', 'provider_success', 'provider_failure'}:
+        trace.response['provider_event'] = event
+        trace.response['provider'] = payload.get('provider')
+        trace.response['phase'] = payload.get('phase')
+        trace.response['provider_error_code'] = payload.get('error_code') or payload.get(
+            'provider_error_code'
+        )
+        trace.response['tokens_input'] = payload.get('tokens_input')
+        trace.response['tokens_output'] = payload.get('tokens_output')
+        trace.response['tokens_total'] = payload.get('tokens_total')
+        trace.response['fallback_used'] = payload.get('fallback_used')
+        return
+    if event == 'message_completed':
+        trace.response = {
+            **trace.response,
+            **{
+                'provider_used': payload.get('provider_used'),
+                'fallback_used': payload.get('fallback_used'),
+                'provider_error_code': payload.get('provider_error_code'),
+                'elapsed_ms': payload.get('elapsed_ms'),
+                'preview_available': payload.get('preview_available'),
+                'operations_count': payload.get('operations_count'),
+                'artifacts_count': payload.get('artifacts_count'),
+                'route_lane': payload.get('route_lane'),
+                'discovery_stop_reason': payload.get('discovery_stop_reason'),
+                'clarifier_returned': payload.get('clarifier_returned'),
+                'tokens_input': payload.get('tokens_input'),
+                'tokens_output': payload.get('tokens_output'),
+                'tokens_total': payload.get('tokens_total'),
+            },
+        }
+        trace.routing['intent_type'] = payload.get('intent_type') or trace.routing.get('intent_type')
+        trace.routing['mode'] = payload.get('response_mode') or trace.routing.get('mode')
+        trace.routing['parse_mode'] = payload.get('parse_mode') or trace.routing.get('parse_mode')
+        trace.assistant = {'assistant_message': payload.get('assistant_message')}
+
+
+def _find_latest_tool_entry(
+    tools: list[dict[str, Any]],
+    tool_name: Any,
+) -> dict[str, Any] | None:
+    for tool in reversed(tools):
+        if tool.get('tool_name') == tool_name and tool.get('result_summary') is None:
+            return tool
+    return None
+
+
+def _render_lifecycle_block(trace: _LifecycleTrace) -> str:
+    sep = '-' * 78
+    title = _lifecycle_title(trace)
+    lines = [
+        sep,
+        f'AI REQUEST: {title}',
+        sep,
+        f'trace_id     {trace.trace_id}',
+        f'session_id   {trace.session_id or "-"}',
+        f'roadmap_id   {trace.roadmap_id or "-"}',
+        '',
+        'USER',
+        f'  {_format_message_summary(trace.request.get("message"))}',
+        '',
+        'ACTOR',
+        f'  source      {trace.actor.get("source")}',
+        f'  present     {_yes_no(trace.actor.get("present"))}',
+        f'  role        {trace.actor.get("role")}',
+        '',
+        'ROUTING',
+        f'  classified  {trace.routing.get("classified")}',
+        f'  mode        {trace.routing.get("mode")}',
+        f'  tool_mode   {trace.routing.get("tool_mode")}',
+        f'  recovery    parse_mode: {trace.routing.get("parse_mode")}',
+        '',
+        'TOOL CALL',
+    ]
+    lines.extend(_render_tool_calls(trace.tools))
+    lines.extend(
+        [
+            '',
+            'RESPONSE',
+            f'  provider    {trace.response.get("provider_used") or trace.response.get("provider")}',
+            f'  fallback    {_yes_no(trace.response.get("fallback_used"))}',
+            f'  preview     {_yes_no(trace.response.get("preview_available"))}',
+            f'  ops         {trace.response.get("operations_count")}',
+            f'  elapsed     {trace.response.get("elapsed_ms")} ms',
+            f'  lane        {trace.response.get("route_lane")}',
+            f'  stop        {trace.response.get("discovery_stop_reason")}',
+            f'  clarifier   {_yes_no(trace.response.get("clarifier_returned"))}',
+            f'  tokens      in={trace.response.get("tokens_input")} out={trace.response.get("tokens_output")} total={trace.response.get("tokens_total")}',
+            '',
+            'ASSISTANT',
+            f'  {_format_message_summary(trace.assistant.get("assistant_message"))}',
+            sep,
+        ]
+    )
+    return '\n'.join(lines)
+
+
+def _render_tool_calls(tools: list[dict[str, Any]]) -> list[str]:
+    if not tools:
+        return ['  none']
+    rendered: list[str] = []
+    for index, tool in enumerate(tools, start=1):
+        rendered.append(f'  {index}. {tool.get("tool_name")}')
+        args = tool.get('tool_args')
+        if isinstance(args, dict) and args:
+            for key in sorted(args.keys()):
+                rendered.append(f'     - {key}: {args.get(key)}')
+        result_summary = tool.get('result_summary')
+        if isinstance(result_summary, dict) and result_summary:
+            rendered.append('     - result:')
+            for key in sorted(result_summary.keys()):
+                rendered.append(f'       - {key}: {result_summary.get(key)}')
+        if tool.get('tool_error_code'):
+            rendered.append(f'     - tool_error_code: {tool.get("tool_error_code")}')
+    return rendered
+
+
+def _lifecycle_title(trace: _LifecycleTrace) -> str:
+    parse_mode = str(trace.routing.get('parse_mode') or '').strip().lower()
+    intent_type = str(trace.routing.get('intent_type') or '').strip()
+    title_from_mode = _title_from_parse_mode(parse_mode)
+    if title_from_mode is not None:
+        return title_from_mode
+    if intent_type:
+        return intent_type.replace('_', ' ').upper()
+    return 'REQUEST'
+
+
+def _title_from_parse_mode(parse_mode: str) -> str | None:
+    if not parse_mode:
+        return None
+    if 'my_tasks' in parse_mode:
+        return 'MY TASKS'
+    if 'overview' in parse_mode:
+        return 'ROADMAP OVERVIEW'
+    if parse_mode.endswith('_context_tools'):
+        return 'CONTEXT TOOLS'
+    if parse_mode.startswith('deterministic_context_'):
+        label = parse_mode.removeprefix('deterministic_context_')
+        return label.replace('_', ' ').upper()
+    return None
+
+
+def _format_message_summary(value: Any) -> str:
+    if isinstance(value, dict):
+        preview = value.get('preview')
+        length = value.get('len')
+        if preview is not None and length is not None:
+            return f'"{preview}" (len={length})'
+        return json.dumps(value, ensure_ascii=True, default=str)
+    if value is None:
+        return '-'
+    return f'"{value}"'
+
+
+def _text_or_none(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _yes_no(value: Any) -> str:
+    if value is True:
+        return 'yes'
+    if value is False:
+        return 'no'
+    return str(value)
 
 
 def _ordered_keys(payload: dict[str, Any]) -> list[str]:
@@ -149,32 +452,32 @@ def _ordered_keys(payload: dict[str, Any]) -> list[str]:
     )
 
 
-def _append_pretty_value(lines: list[str], key: str, value: Any, *, indent: int) -> None:
+def _append_event_field(lines: list[str], key: str, value: Any, *, indent: int) -> None:
     prefix = ' ' * indent
     if isinstance(value, dict):
-        lines.append(f'{prefix}- {key}:')
+        lines.append(f'{prefix}{key}:')
         for child_key in _ordered_mapping_keys(value):
-            _append_pretty_value(lines, child_key, value[child_key], indent=indent + 2)
+            _append_event_field(lines, child_key, value[child_key], indent=indent + 2)
         return
 
     if isinstance(value, list):
         if not value:
-            lines.append(f'{prefix}- {key}: []')
+            lines.append(f'{prefix}{key}: []')
             return
-        lines.append(f'{prefix}- {key}:')
+        lines.append(f'{prefix}{key}:')
         for item in value:
-            _append_pretty_list_item(lines, item, indent=indent + 2)
+            _append_event_list_item(lines, item, indent=indent + 2)
         return
 
-    lines.append(f'{prefix}- {key}: {value}')
+    lines.append(f'{prefix}{key}: {value}')
 
 
-def _append_pretty_list_item(lines: list[str], value: Any, *, indent: int) -> None:
+def _append_event_list_item(lines: list[str], value: Any, *, indent: int) -> None:
     prefix = ' ' * indent
     if isinstance(value, dict):
         lines.append(f'{prefix}-')
         for key in _ordered_mapping_keys(value):
-            _append_pretty_value(lines, key, value[key], indent=indent + 2)
+            _append_event_field(lines, key, value[key], indent=indent + 2)
         return
 
     if isinstance(value, list):
@@ -183,7 +486,7 @@ def _append_pretty_list_item(lines: list[str], value: Any, *, indent: int) -> No
             return
         lines.append(f'{prefix}-')
         for item in value:
-            _append_pretty_list_item(lines, item, indent=indent + 2)
+            _append_event_list_item(lines, item, indent=indent + 2)
         return
 
     lines.append(f'{prefix}- {value}')

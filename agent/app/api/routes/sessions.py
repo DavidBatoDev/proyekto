@@ -281,6 +281,7 @@ async def send_message(
             provider_used=outcome.provider_used if outcome else None,
             fallback_used=outcome.fallback_used if outcome else None,
             provider_error_code=outcome.provider_error_code if outcome else None,
+            parse_mode=outcome.parse_mode if outcome else None,
             assistant_message=outcome.assistant_message if outcome else None,
             tokens_input=outcome.tokens_input if outcome else None,
             tokens_output=outcome.tokens_output if outcome else None,
