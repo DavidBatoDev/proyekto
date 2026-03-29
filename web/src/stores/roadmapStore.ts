@@ -1314,6 +1314,13 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 			const artifact = state.artifactsById[artifactId];
 			if (!artifact) return {};
 			const snapshot = artifact.candidateSnapshot;
+			if (!Array.isArray(snapshot.epics)) {
+				console.warn("[RoadmapStore] invalid artifact snapshot shape", {
+					artifactId,
+					roadmapId: snapshot.id,
+				});
+				return {};
+			}
 			return {
 				roadmap: snapshot,
 				epics: snapshot.epics || [],

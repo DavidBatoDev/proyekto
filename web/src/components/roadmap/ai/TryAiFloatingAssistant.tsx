@@ -2,12 +2,22 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Boxes, Minimize2, Send, Sparkles, TriangleAlert } from "lucide-react";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import type { Roadmap, RoadmapEpic } from "@/types/roadmap";
-import type { ArtifactSemanticDiffSummary, RoadmapArtifactPreview } from "@/types/roadmapArtifact";
+import type {
+  ArtifactSemanticDiffChange,
+  ArtifactSemanticDiffSummary,
+  RoadmapArtifactPreview,
+} from "@/types/roadmapArtifact";
 import roadmapAgentService, {
   type AgentMessageResponse,
   type AgentPreviewPayload,
   type AgentRoadmapPreviewArtifact,
+  RoadmapAgentServiceError,
 } from "@/services/roadmap-agent.service";
+import {
+  ArtifactSnapshotNormalizationError,
+  normalizeArtifactCandidateSnapshot,
+} from "@/services/roadmap-artifact-adapter";
+import { useToast } from "@/hooks/useToast";
 import { useRoadmapAiAssistantSession, type RoadmapAiChatMessage } from "./useRoadmapAiAssistantSession";
 
 interface TryAiFloatingAssistantProps {
@@ -49,23 +59,41 @@ const buildAssistantMessage = (
 });
 
 const toDiffSummary = (summary: Record<string, number> | undefined): ArtifactSemanticDiffSummary => ({
-  node_added: Number(summary?.node_added ?? 0),
-  node_removed: Number(summary?.node_removed ?? 0),
-  node_moved: Number(summary?.node_moved ?? 0),
-  status_changed: Number(summary?.status_changed ?? 0),
-  date_changed: Number(summary?.date_changed ?? 0),
-  dependency_changed: Number(summary?.dependency_changed ?? 0),
+  node_added: Number(summary?.node_added ?? summary?.NODE_ADDED ?? 0),
+  node_removed: Number(summary?.node_removed ?? summary?.NODE_REMOVED ?? 0),
+  node_moved: Number(summary?.node_moved ?? summary?.NODE_MOVED ?? 0),
+  status_changed: Number(summary?.status_changed ?? summary?.STATUS_CHANGED ?? 0),
+  date_changed: Number(summary?.date_changed ?? summary?.DATE_CHANGED ?? 0),
+  dependency_changed: Number(summary?.dependency_changed ?? summary?.DEPENDENCY_CHANGED ?? 0),
 });
 
-const resolveCandidateSnapshot = (
-  candidateSnapshot: Record<string, unknown> | undefined,
-  fallbackRoadmap: Roadmap | null,
-): Roadmap => {
-  if (candidateSnapshot && typeof candidateSnapshot === "object") {
-    return candidateSnapshot as unknown as Roadmap;
-  }
-  if (fallbackRoadmap) return fallbackRoadmap;
-  throw new Error("Artifact preview is missing candidate roadmap snapshot.");
+const toDiffChanges = (changes: unknown): ArtifactSemanticDiffChange[] => {
+  if (!Array.isArray(changes)) return [];
+  return changes.flatMap((change) => {
+    if (!change || typeof change !== "object" || Array.isArray(change)) return [];
+    const record = change as Record<string, unknown>;
+    const node = record.node;
+    if (!node || typeof node !== "object" || Array.isArray(node)) return [];
+    const nodeRecord = node as Record<string, unknown>;
+    if (typeof nodeRecord.id !== "string" || typeof nodeRecord.type !== "string") return [];
+    return [
+      {
+        type: typeof record.type === "string" ? record.type : "UNKNOWN",
+        node: {
+          type: nodeRecord.type as ArtifactSemanticDiffChange["node"]["type"],
+          id: nodeRecord.id,
+        },
+        from:
+          record.from && typeof record.from === "object" && !Array.isArray(record.from)
+            ? (record.from as Record<string, unknown>)
+            : undefined,
+        to:
+          record.to && typeof record.to === "object" && !Array.isArray(record.to)
+            ? (record.to as Record<string, unknown>)
+            : undefined,
+      },
+    ];
+  });
 };
 
 const mapPreviewToArtifact = (
@@ -74,6 +102,11 @@ const mapPreviewToArtifact = (
   metadata?: AgentRoadmapPreviewArtifact,
   fallbackRoadmap?: Roadmap | null,
 ): RoadmapArtifactPreview => {
+  const normalizedSnapshot = normalizeArtifactCandidateSnapshot({
+    candidateSnapshot: payload.candidate_snapshot,
+    baseUpdatedAt: payload.base_updated_at,
+    fallbackRoadmap: fallbackRoadmap || null,
+  });
   return {
     artifactId: metadata?.artifact_id || payload.preview_id,
     title: metadata?.title || "AI Artifact Preview",
@@ -81,8 +114,9 @@ const mapPreviewToArtifact = (
     createdAt: metadata?.created_at || new Date().toISOString(),
     baseRoadmapId: roadmapId,
     baseRevision: metadata?.base_revision,
-    candidateSnapshot: resolveCandidateSnapshot(payload.candidate_snapshot, fallbackRoadmap || null),
+    candidateSnapshot: normalizedSnapshot,
     semanticDiffSummary: toDiffSummary(payload.semantic_diff?.summary),
+    semanticDiffChanges: toDiffChanges(payload.semantic_diff?.changes),
     validationIssues: (payload.validation_issues || []).map((issue) => ({
       code: issue.code,
       severity: issue.severity,
@@ -93,6 +127,9 @@ const mapPreviewToArtifact = (
   };
 };
 
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => window.setTimeout(resolve, ms));
+
 export function TryAiFloatingAssistant({
   roadmapId,
   baseRevision,
@@ -101,7 +138,8 @@ export function TryAiFloatingAssistant({
   rightOffsetPx = 20,
   onOpenChange,
 }: TryAiFloatingAssistantProps) {
-  const { isOpen, messages, setIsOpen, appendMessage } = useRoadmapAiAssistantSession(roadmapId);
+  const { isOpen, messages, setIsOpen, appendMessage, updateMessage } = useRoadmapAiAssistantSession(roadmapId);
+  const toast = useToast();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -142,12 +180,75 @@ export function TryAiFloatingAssistant({
     response: AgentMessageResponse,
   ): Promise<RoadmapArtifactPreview[]> => {
     const hydrated: RoadmapArtifactPreview[] = [];
+    let fallbackPreviewPayload: AgentPreviewPayload | null = null;
+
+    const fetchArtifactDetailWithRecovery = async (
+      artifactMeta: AgentRoadmapPreviewArtifact,
+    ) => {
+      try {
+        return await roadmapAgentService.getArtifactPreview(
+          activeSessionId,
+          artifactMeta.artifact_id,
+        );
+      } catch (firstError) {
+        const isNotFound =
+          firstError instanceof RoadmapAgentServiceError &&
+          firstError.statusCode === 404;
+        if (!isNotFound) {
+          console.warn("[TryAiFloatingAssistant] artifact hydration request failed", {
+            trace_id: response.debug_trace_id || null,
+            session_id: activeSessionId,
+            artifact_id: artifactMeta.artifact_id,
+            preview_id: artifactMeta.preview_id,
+            error: firstError instanceof Error ? firstError.message : String(firstError),
+          });
+          throw firstError;
+        }
+
+        await delay(250);
+
+        try {
+          return await roadmapAgentService.getArtifactPreview(
+            activeSessionId,
+            artifactMeta.artifact_id,
+          );
+        } catch (retryError) {
+          const retryNotFound =
+            retryError instanceof RoadmapAgentServiceError &&
+            retryError.statusCode === 404;
+          if (!retryNotFound) throw retryError;
+
+          if (fallbackPreviewPayload === null) {
+            try {
+              const previewResponse = await roadmapAgentService.previewSession(activeSessionId, {
+                base_revision: baseRevision,
+              });
+              fallbackPreviewPayload = previewResponse.preview;
+            } catch (fallbackError) {
+              console.warn("[TryAiFloatingAssistant] artifact hydration fallback failed", {
+                trace_id: response.debug_trace_id || null,
+                session_id: activeSessionId,
+                artifact_id: artifactMeta.artifact_id,
+                preview_id: artifactMeta.preview_id,
+                error:
+                  fallbackError instanceof Error
+                    ? fallbackError.message
+                    : String(fallbackError),
+              });
+              throw fallbackError;
+            }
+          }
+
+          return {
+            artifact: artifactMeta,
+            preview: fallbackPreviewPayload,
+          };
+        }
+      }
+    };
 
     for (const artifactMeta of response.artifacts || []) {
-      const artifactDetail = await roadmapAgentService.getArtifactPreview(
-        activeSessionId,
-        artifactMeta.artifact_id,
-      );
+      const artifactDetail = await fetchArtifactDetailWithRecovery(artifactMeta);
       hydrated.push(
         mapPreviewToArtifact(
           roadmapId,
@@ -189,18 +290,46 @@ export function TryAiFloatingAssistant({
         auto_preview: true,
       });
 
-      const artifacts = await hydrateArtifacts(activeSessionId, response);
+      const assistantId = crypto.randomUUID();
       appendMessage(
-        buildAssistantMessage(
-          response.assistant_message || "I analyzed your request.",
-          response.parse_mode || "agent_response",
-          {
-            intentType: response.intent_type,
-            responseMode: response.response_mode,
-            artifacts,
-          },
-        ),
+        {
+          ...buildAssistantMessage(
+            response.assistant_message || "I analyzed your request.",
+            response.parse_mode || "agent_response",
+            {
+              intentType: response.intent_type,
+              responseMode: response.response_mode,
+              artifacts: [],
+            },
+          ),
+          id: assistantId,
+        },
       );
+
+      try {
+        const artifacts = await hydrateArtifacts(activeSessionId, response);
+        if (artifacts.length > 0) {
+          updateMessage(assistantId, (message) => ({
+            ...message,
+            artifacts,
+          }));
+        }
+      } catch (artifactError) {
+        const isNormalizationError =
+          artifactError instanceof ArtifactSnapshotNormalizationError;
+        const artifactErrorText =
+          artifactError instanceof Error
+            ? artifactError.message
+            : "Unable to load artifact preview.";
+        console.warn("[TryAiFloatingAssistant] artifact hydration failed", {
+          trace_id: response.debug_trace_id || null,
+          session_id: activeSessionId,
+          error: artifactErrorText,
+          error_code: isNormalizationError ? artifactError.code : null,
+          error_path: isNormalizationError ? artifactError.path : null,
+        });
+        toast.warning(`Artifact preview unavailable: ${artifactErrorText}`);
+      }
     } catch (error) {
       const readableError = error instanceof Error ? error.message : "Failed to reach AI agent service.";
       setErrorMessage(readableError);

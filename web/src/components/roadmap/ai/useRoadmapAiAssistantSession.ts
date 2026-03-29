@@ -24,6 +24,10 @@ interface UseRoadmapAiAssistantSessionResult {
   messages: RoadmapAiChatMessage[];
   setIsOpen: (value: boolean) => void;
   appendMessage: (message: RoadmapAiChatMessage) => void;
+  updateMessage: (
+    messageId: string,
+    updater: (message: RoadmapAiChatMessage) => RoadmapAiChatMessage,
+  ) => void;
   clearMessages: () => void;
 }
 
@@ -82,6 +86,14 @@ export function useRoadmapAiAssistantSession(
       setState((prev) => ({
         ...prev,
         messages: [...prev.messages, message],
+      }));
+    },
+    updateMessage: (messageId, updater) => {
+      setState((prev) => ({
+        ...prev,
+        messages: prev.messages.map((message) =>
+          message.id === messageId ? updater(message) : message,
+        ),
       }));
     },
     clearMessages: () => {

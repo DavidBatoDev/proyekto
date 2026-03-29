@@ -30,6 +30,7 @@ export function ArtifactTabView({
       ),
     [artifact.semanticDiffSummary],
   );
+  const changeRows = artifact.semanticDiffChanges ?? [];
 
   return (
     <div className="relative h-full bg-white">
@@ -105,6 +106,31 @@ export function ArtifactTabView({
                   ))
                 ) : (
                   <p className="text-xs text-gray-500">No semantic changes.</p>
+                )}
+              </div>
+            </section>
+
+            <section>
+              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                Change Details
+              </h4>
+              <div className="space-y-2">
+                {changeRows.length > 0 ? (
+                  changeRows.map((change, index) => (
+                    <div
+                      key={`${change.type}-${change.node.id}-${index}`}
+                      className="rounded-md border border-gray-200 px-2.5 py-2 text-xs"
+                    >
+                      <p className="font-semibold text-gray-900">
+                        {change.type.replaceAll("_", " ")}
+                      </p>
+                      <p className="mt-0.5 text-gray-600">
+                        {change.node.type} · {change.node.id}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-gray-500">No detailed changes.</p>
                 )}
               </div>
             </section>

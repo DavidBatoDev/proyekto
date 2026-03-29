@@ -48,6 +48,53 @@ _ACTOR_METADATA_KEYS = {
 }
 
 
+def _normalize_artifact_preview_error(exc: HTTPException) -> dict:
+    detail = exc.detail if isinstance(exc.detail, dict) else {'message': str(exc.detail)}
+    upstream_status = int(exc.status_code)
+    code = 'ARTIFACT_PREVIEW_FAILED'
+    message = 'Failed to load artifact preview.'
+
+    upstream_error = detail.get('detail') if isinstance(detail, dict) else None
+    if isinstance(upstream_error, dict):
+        nested_error = upstream_error.get('error')
+        if isinstance(nested_error, dict):
+            nested_message = nested_error.get('message')
+            if isinstance(nested_message, str) and nested_message.strip():
+                message = nested_message
+            nested_code = nested_error.get('code')
+            if isinstance(nested_code, str) and nested_code.strip():
+                code = nested_code
+
+    if isinstance(detail, dict):
+        maybe_message = detail.get('message')
+        if isinstance(maybe_message, str) and maybe_message.strip():
+            message = maybe_message
+        maybe_code = detail.get('code')
+        if isinstance(maybe_code, str) and maybe_code.strip():
+            code = maybe_code
+
+    retryable = upstream_status >= 500 or upstream_status in {408, 429}
+    return {
+        'code': code,
+        'message': message,
+        'retryable': retryable,
+        'upstream_status': upstream_status,
+    }
+
+
+def _is_preview_not_found_error(normalized: dict) -> bool:
+    upstream_status = normalized.get('upstream_status')
+    if upstream_status != 404:
+        return False
+
+    code = str(normalized.get('code') or '').strip().upper()
+    if code in {'PREVIEW_NOT_FOUND', 'NOT_FOUND'}:
+        return True
+
+    message = str(normalized.get('message') or '').strip().lower()
+    return 'preview' in message and 'not found' in message
+
+
 def _service_unavailable(reason: str) -> HTTPException:
     return HTTPException(
         status_code=503,
@@ -487,7 +534,7 @@ async def get_artifact_preview(
     artifact_id: str,
     request: Request,
 ) -> ArtifactPreviewResponse:
-    _, agent_service = await _get_agent_runtime_async()
+    store, agent_service = await _get_agent_runtime_async()
     session = await _get_session_or_404_async(agent_service, session_id)
     artifact = next(
         (item for item in session.artifacts if item.artifact_id == artifact_id),
@@ -496,11 +543,94 @@ async def get_artifact_preview(
     if artifact is None:
         raise HTTPException(status_code=404, detail=f'Artifact {artifact_id} not found for session {session_id}.')
 
-    preview_result = await _nest_client.get_preview(
-        roadmap_id=session.roadmap_id,
-        preview_id=artifact.preview_id,
-        auth_header=request.headers.get('Authorization'),
-    )
+    trace_id = str(uuid4())
+    try:
+        preview_result = await _nest_client.get_preview(
+            roadmap_id=session.roadmap_id,
+            preview_id=artifact.preview_id,
+            auth_header=request.headers.get('Authorization'),
+        )
+    except HTTPException as exc:
+        normalized = _normalize_artifact_preview_error(exc)
+        self_heal_attempted = _is_preview_not_found_error(normalized)
+        if self_heal_attempted:
+            log_event(
+                logger,
+                'artifact_fetch_self_heal_attempted',
+                settings=settings,
+                level=logging.WARNING,
+                trace_id=trace_id,
+                session_id=session_id,
+                roadmap_id=session.roadmap_id,
+                artifact_id=artifact_id,
+                preview_id=artifact.preview_id,
+            )
+            try:
+                regenerated_preview = await _nest_client.preview(
+                    roadmap_id=session.roadmap_id,
+                    payload={
+                        'base_revision': session.base_revision,
+                        'revision_token': session.revision_token,
+                        'operations': [
+                            op.model_dump(exclude_none=True)
+                            for op in session.operations
+                        ],
+                    },
+                    auth_header=request.headers.get('Authorization'),
+                )
+
+                regenerated_preview_id = regenerated_preview.get('preview_id')
+                regenerated_revision_token = regenerated_preview.get('revision_token')
+
+                if isinstance(regenerated_preview_id, str):
+                    artifact.preview_id = regenerated_preview_id
+                    session.latest_preview_id = regenerated_preview_id
+                if isinstance(regenerated_revision_token, str):
+                    artifact.revision_token = regenerated_revision_token
+                    session.revision_token = regenerated_revision_token
+                if isinstance(session.base_revision, int):
+                    artifact.base_revision = session.base_revision
+
+                await _run_store_call(store.update, session)
+                log_event(
+                    logger,
+                    'artifact_fetch_self_heal_succeeded',
+                    settings=settings,
+                    trace_id=trace_id,
+                    session_id=session_id,
+                    roadmap_id=session.roadmap_id,
+                    artifact_id=artifact_id,
+                    preview_id=artifact.preview_id,
+                    self_healed=True,
+                )
+                return ArtifactPreviewResponse(
+                    session_id=session.session_id,
+                    roadmap_id=session.roadmap_id,
+                    artifact=artifact,
+                    preview=regenerated_preview,
+                )
+            except HTTPException as self_heal_exc:
+                normalized = _normalize_artifact_preview_error(self_heal_exc)
+
+        log_event(
+            logger,
+            'artifact_fetch_error',
+            settings=settings,
+            level=logging.WARNING,
+            trace_id=trace_id,
+            session_id=session_id,
+            roadmap_id=session.roadmap_id,
+            artifact_id=artifact_id,
+            preview_id=artifact.preview_id,
+            error_code=normalized.get('code'),
+            upstream_status=normalized.get('upstream_status'),
+            retryable=normalized.get('retryable'),
+            self_healed=False,
+            self_heal_attempted=self_heal_attempted,
+        )
+        status_code = int(normalized.get('upstream_status') or exc.status_code)
+        raise HTTPException(status_code=status_code, detail=normalized) from exc
+
     return ArtifactPreviewResponse(
         session_id=session.session_id,
         roadmap_id=session.roadmap_id,

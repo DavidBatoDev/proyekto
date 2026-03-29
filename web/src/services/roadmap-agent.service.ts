@@ -156,23 +156,46 @@ export class RoadmapAgentServiceError extends Error {
   }
 }
 
+function safeStringify(value: unknown): string | undefined {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    try {
+      return String(value);
+    } catch {
+      return undefined;
+    }
+  }
+}
+
+function extractNestedMessage(value: unknown, depth = 0): string | undefined {
+  if (depth > 4 || value == null) return undefined;
+  if (typeof value === "string" && value.trim()) return value;
+  if (typeof value !== "object") return undefined;
+
+  const record = value as Record<string, unknown>;
+  const candidates = [record.message, record.detail, record.error];
+  for (const candidate of candidates) {
+    const extracted = extractNestedMessage(candidate, depth + 1);
+    if (extracted) return extracted;
+  }
+
+  const compact = safeStringify(record);
+  if (compact && compact !== "{}") return compact;
+  return undefined;
+}
+
 function throwAgentError(error: unknown, operation: string): never {
   console.error(`[RoadmapAgentService] ${operation} failed:`, error);
 
   if (isAxiosError(error)) {
     const status = error.response?.status;
-    const detail = error.response?.data?.detail;
-    const nestedDetailMessage =
-      typeof detail === "object"
-        ? detail?.detail?.message ||
-          detail?.detail?.error ||
-          detail?.detail?.detail
-        : undefined;
+    const detail = error.response?.data?.detail as unknown;
+    const nestedDetailMessage = extractNestedMessage(detail);
+    const responseMessage = extractNestedMessage(error.response?.data);
     const message =
-      (typeof detail === "string" ? detail : detail?.message) ||
       nestedDetailMessage ||
-      (typeof detail === "object" ? detail?.message : undefined) ||
-      error.response?.data?.message ||
+      responseMessage ||
       error.message;
 
     throw new RoadmapAgentServiceError(

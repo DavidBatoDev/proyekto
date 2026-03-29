@@ -16,6 +16,18 @@ export interface ArtifactValidationIssue {
   message: string;
 }
 
+export interface ArtifactSemanticDiffChange {
+  type: string;
+  node: {
+    type: "roadmap" | "epic" | "feature" | "task";
+    id: string;
+  };
+  from?: Record<string, unknown>;
+  to?: Record<string, unknown>;
+}
+
+export type NormalizedArtifactSnapshot = Roadmap;
+
 export interface RoadmapArtifactPreview {
   artifactId: string;
   title: string;
@@ -23,8 +35,9 @@ export interface RoadmapArtifactPreview {
   createdAt: string;
   baseRoadmapId: string;
   baseRevision?: number;
-  candidateSnapshot: Roadmap;
+  candidateSnapshot: NormalizedArtifactSnapshot;
   semanticDiffSummary: ArtifactSemanticDiffSummary;
+  semanticDiffChanges: ArtifactSemanticDiffChange[];
   validationIssues: ArtifactValidationIssue[];
   status: "draft" | "applied";
 }
