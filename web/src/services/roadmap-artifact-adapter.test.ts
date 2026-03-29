@@ -79,4 +79,67 @@ describe("roadmap artifact adapter", () => {
       }),
     ).toThrowError(ArtifactSnapshotNormalizationError);
   });
+
+  it("uses fallback milestones when candidate snapshot omits milestones", () => {
+    const normalized = normalizeArtifactCandidateSnapshot({
+      candidateSnapshot: {
+        id: "roadmap-1",
+        name: "Preview Roadmap",
+        roadmap_epics: [],
+      },
+      baseUpdatedAt: "2026-03-29T10:00:00.000Z",
+      fallbackRoadmap: {
+        id: "roadmap-1",
+        project_id: "project-1",
+        name: "Fallback",
+        owner_id: "owner-1",
+        status: "active",
+        created_at: "2026-03-01T00:00:00.000Z",
+        updated_at: "2026-03-01T00:00:00.000Z",
+        milestones: [
+          {
+            id: "ms-1",
+            roadmap_id: "roadmap-1",
+            title: "Milestone A",
+            target_date: "2026-05-01",
+            status: "in_progress",
+            position: 0,
+            created_at: "2026-03-01T00:00:00.000Z",
+            updated_at: "2026-03-01T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+
+    expect(normalized.milestones).toHaveLength(1);
+    expect(normalized.milestones?.[0]?.id).toBe("ms-1");
+  });
+
+  it("uses candidate milestones when provided and keeps only valid ids", () => {
+    const normalized = normalizeArtifactCandidateSnapshot({
+      candidateSnapshot: {
+        id: "roadmap-1",
+        name: "Preview Roadmap",
+        roadmap_epics: [],
+        milestones: [
+          {
+            id: "ms-1",
+            roadmap_id: "roadmap-1",
+            title: "Milestone A",
+            target_date: "2026-05-01",
+            status: "completed",
+            position: 0,
+          },
+          {
+            title: "Invalid milestone missing id",
+          },
+        ],
+      },
+      baseUpdatedAt: "2026-03-29T10:00:00.000Z",
+    });
+
+    expect(normalized.milestones).toHaveLength(1);
+    expect(normalized.milestones?.[0]?.id).toBe("ms-1");
+    expect(normalized.milestones?.[0]?.status).toBe("completed");
+  });
 });

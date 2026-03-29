@@ -30,15 +30,6 @@ interface TryAiFloatingAssistantProps {
   onOpenChange?: (isOpen: boolean) => void;
 }
 
-const DEFAULT_DIFF_SUMMARY: ArtifactSemanticDiffSummary = {
-  node_added: 0,
-  node_removed: 0,
-  node_moved: 0,
-  status_changed: 0,
-  date_changed: 0,
-  dependency_changed: 0,
-};
-
 const buildAssistantMessage = (
   content: string,
   parseMode: string,

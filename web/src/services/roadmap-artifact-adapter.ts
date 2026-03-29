@@ -1,4 +1,10 @@
-import type { Roadmap, RoadmapEpic, RoadmapFeature, RoadmapTask } from "@/types/roadmap";
+import type {
+  Roadmap,
+  RoadmapEpic,
+  RoadmapFeature,
+  RoadmapMilestone,
+  RoadmapTask,
+} from "@/types/roadmap";
 
 export class ArtifactSnapshotNormalizationError extends Error {
   constructor(
@@ -160,6 +166,43 @@ function normalizeEpics(
   });
 }
 
+function normalizeMilestones(
+  snapshotRecord: Record<string, unknown>,
+  roadmapId: string,
+  fallbackRoadmap: Roadmap | null | undefined,
+  fallbackTimestamp: string,
+): RoadmapMilestone[] {
+  const hasCandidateMilestones = Object.prototype.hasOwnProperty.call(
+    snapshotRecord,
+    "milestones",
+  );
+  const candidateMilestoneRecords = asArray(snapshotRecord.milestones);
+
+  if (hasCandidateMilestones && Array.isArray(snapshotRecord.milestones)) {
+    return candidateMilestoneRecords.flatMap((milestoneRecord, milestoneIndex) => {
+      const milestoneId = readString(milestoneRecord.id);
+      if (!milestoneId || !milestoneId.trim()) return [];
+      return [
+        {
+          id: milestoneId,
+          roadmap_id: readString(milestoneRecord.roadmap_id) ?? roadmapId,
+          title: readString(milestoneRecord.title) ?? "Untitled milestone",
+          description: readString(milestoneRecord.description),
+          target_date: readString(milestoneRecord.target_date) ?? fallbackTimestamp,
+          completed_date: readString(milestoneRecord.completed_date),
+          status: (readString(milestoneRecord.status) ?? "not_started") as RoadmapMilestone["status"],
+          position: readNumber(milestoneRecord.position) ?? milestoneIndex,
+          color: readString(milestoneRecord.color),
+          created_at: readString(milestoneRecord.created_at) ?? fallbackTimestamp,
+          updated_at: readString(milestoneRecord.updated_at) ?? fallbackTimestamp,
+        },
+      ];
+    });
+  }
+
+  return [...(fallbackRoadmap?.milestones ?? [])];
+}
+
 export function normalizeArtifactCandidateSnapshot({
   candidateSnapshot,
   baseUpdatedAt,
@@ -215,7 +258,12 @@ export function normalizeArtifactCandidateSnapshot({
         })),
       })),
     })),
-    milestones: [],
+    milestones: normalizeMilestones(
+      snapshotRecord,
+      roadmapId,
+      fallbackRoadmap,
+      fallbackTimestamp,
+    ),
   };
 
   return normalizedRoadmap;
