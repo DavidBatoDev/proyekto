@@ -419,7 +419,20 @@ async def send_message(
             ),
             error_code=error_code,
             route_lane=outcome.route_lane if outcome else None,
+            fastpath_reason=outcome.fastpath_reason if outcome else None,
             fastpath_bypass_reason=outcome.fastpath_bypass_reason if outcome else None,
+            llm_skipped_for_simple_edit=(
+                outcome.llm_skipped_for_simple_edit if outcome else False
+            ),
+            actor_fetch_attempted=(
+                outcome.actor_fetch_attempted if outcome else False
+            ),
+            actor_fetch_skipped_reason=(
+                outcome.actor_fetch_skipped_reason if outcome else None
+            ),
+            actor_fetch_ms=(
+                outcome.actor_fetch_ms if outcome else None
+            ),
             phase_timings=outcome.phase_timings if outcome else None,
             preview_generation_ms=preview_generation_ms,
             total_edit_turn_ms=total_edit_turn_ms,

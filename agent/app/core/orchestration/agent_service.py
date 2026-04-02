@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import asyncio
 import logging
 from time import perf_counter
 from typing import Any
 import re
-import inspect
 
 from fastapi import HTTPException, status
 
@@ -16,6 +15,7 @@ from app.core.contracts.sessions import (
     ActorContext,
     PendingContextResolution,
     PendingDisambiguation,
+    ResolverCandidate,
 )
 from app.core.contracts.sessions import AgentSession, IntentType, ProviderUsed, ResponseMode
 from app.core.llm.client import LLMPlanner, PlanningResult
@@ -51,11 +51,24 @@ class MessagePlanningOutcome:
     tokens_output: int | None
     tokens_total: int | None
     route_lane: str | None
-    fastpath_bypass_reason: str | None
-    phase_timings: dict[str, Any]
-    invalid_operation_detected: bool
-    invalid_operation_reason: str | None
-    invalid_operation_index: int | None
+    fastpath_reason: str | None = None
+    fastpath_bypass_reason: str | None = None
+    phase_timings: dict[str, Any] = field(default_factory=dict)
+    invalid_operation_detected: bool = False
+    invalid_operation_reason: str | None = None
+    invalid_operation_index: int | None = None
+    llm_skipped_for_simple_edit: bool = False
+    actor_fetch_attempted: bool = False
+    actor_fetch_skipped_reason: str | None = None
+    actor_fetch_ms: int | None = None
+
+
+@dataclass
+class CandidateLookupResult:
+    status: str
+    selected: ResolverCandidate | None = None
+    candidates: list[ResolverCandidate] = field(default_factory=list)
+    bypass_reason: str | None = None
 
 
 class AgentService:
@@ -88,11 +101,6 @@ class AgentService:
         trace_id: str | None = None,
     ) -> MessagePlanningOutcome:
         phase_timings: dict[str, Any] = {}
-        self._ensure_actor_context(
-            session=session,
-            auth_header=auth_header,
-            trace_id=trace_id,
-        )
         session_context = self._build_session_context(session, auth_header, trace_id)
 
         classify_started = perf_counter()
@@ -103,10 +111,46 @@ class AgentService:
         phase_timings['intent_classification_ms'] = int(
             (perf_counter() - classify_started) * 1000
         )
+        simple_edit_detected = self._is_simple_edit_turn(
+            session=session,
+            user_message=user_message,
+        )
+
+        actor_fetch_attempted = False
+        actor_fetch_skipped_reason: str | None = None
+        actor_fetch_ms: int | None = None
+        should_fetch_actor, actor_skip_reason = self._should_fetch_actor_context(
+            preview_intent=preview_intent,
+            user_message=user_message,
+            auth_header=auth_header,
+            simple_edit_detected=simple_edit_detected,
+            actor_context_present=session.metadata.actor_context is not None,
+        )
+        if should_fetch_actor:
+            actor_fetch_attempted = True
+            actor_started = perf_counter()
+            self._ensure_actor_context(
+                session=session,
+                auth_header=auth_header,
+                trace_id=trace_id,
+            )
+            actor_fetch_ms = int((perf_counter() - actor_started) * 1000)
+            phase_timings['actor_fetch_ms'] = actor_fetch_ms
+        else:
+            actor_fetch_skipped_reason = actor_skip_reason
+            if actor_skip_reason == 'missing_auth_header':
+                self._clear_actor_context_for_missing_auth(
+                    session=session,
+                    trace_id=trace_id,
+                )
+
+        session_context = self._build_session_context(session, auth_header, trace_id)
 
         planning: PlanningResult
         route_lane: str | None = None
+        fastpath_reason: str | None = None
         fastpath_bypass_reason: str | None = None
+        llm_skipped_for_simple_edit = False
         invalid_operation_detected = False
         invalid_operation_reason: str | None = None
         invalid_operation_index: int | None = None
@@ -126,6 +170,8 @@ class AgentService:
             if fastpath_result is not None:
                 planning = fastpath_result
                 route_lane = 'deterministic_edit_fastpath'
+                fastpath_reason = fastpath_result.parse_mode
+                llm_skipped_for_simple_edit = simple_edit_detected
             else:
                 planner_started = perf_counter()
                 planning = self._planner.plan(
@@ -136,13 +182,14 @@ class AgentService:
                 phase_timings['provider_planning_ms'] = int(
                     (perf_counter() - planner_started) * 1000
                 )
-                planning = self._apply_deterministic_resolution(
-                    session=session,
-                    user_message=user_message,
-                    planning=planning,
-                    auth_header=auth_header,
-                    trace_id=trace_id,
-                )
+                if not simple_edit_detected:
+                    planning = self._apply_deterministic_resolution(
+                        session=session,
+                        user_message=user_message,
+                        planning=planning,
+                        auth_header=auth_header,
+                        trace_id=trace_id,
+                    )
                 route_lane = 'llm_edit_plan'
         else:
             planner_started = perf_counter()
@@ -257,10 +304,15 @@ class AgentService:
                 else None
             ),
             route_lane=route_lane,
+            fastpath_reason=fastpath_reason,
             fastpath_bypass_reason=fastpath_bypass_reason,
             invalid_operation_detected=invalid_operation_detected,
             invalid_operation_reason=invalid_operation_reason,
             invalid_operation_index=invalid_operation_index,
+            llm_skipped_for_simple_edit=llm_skipped_for_simple_edit,
+            actor_fetch_attempted=actor_fetch_attempted,
+            actor_fetch_skipped_reason=actor_fetch_skipped_reason,
+            actor_fetch_ms=actor_fetch_ms,
             phase_timings=phase_timings,
         )
 
@@ -282,11 +334,16 @@ class AgentService:
             tokens_output=planning.tokens_output,
             tokens_total=planning.tokens_total,
             route_lane=route_lane,
+            fastpath_reason=fastpath_reason,
             fastpath_bypass_reason=fastpath_bypass_reason,
             phase_timings=phase_timings,
             invalid_operation_detected=invalid_operation_detected,
             invalid_operation_reason=invalid_operation_reason,
             invalid_operation_index=invalid_operation_index,
+            llm_skipped_for_simple_edit=llm_skipped_for_simple_edit,
+            actor_fetch_attempted=actor_fetch_attempted,
+            actor_fetch_skipped_reason=actor_fetch_skipped_reason,
+            actor_fetch_ms=actor_fetch_ms,
         )
 
     def _try_deterministic_edit_fastpath(
@@ -302,9 +359,43 @@ class AgentService:
         if pending is not None:
             selected_index = parse_selection_index(user_message)
             if selected_index is None:
-                return None, 'pending_disambiguation_requires_selection'
+                return (
+                    PlanningResult(
+                        assistant_message=(
+                            'Please choose one of the listed options by number '
+                            '(for example, "1").'
+                        ),
+                        operations=[],
+                        parse_mode='deterministic_disambiguation_pending_selection',
+                        intent_type='roadmap_edit',
+                        response_mode='chat',
+                        preview_recommended=False,
+                        provider_used='rule_based',
+                        fallback_used=False,
+                        provider_error_code=None,
+                        route_lane='deterministic_edit_fastpath',
+                    ),
+                    None,
+                )
             if not (1 <= selected_index <= len(pending.candidates)):
-                return None, 'pending_disambiguation_selection_out_of_range'
+                return (
+                    PlanningResult(
+                        assistant_message=(
+                            f'That option is out of range. Please reply with a number '
+                            f'between 1 and {len(pending.candidates)}.'
+                        ),
+                        operations=[],
+                        parse_mode='deterministic_disambiguation_selection_out_of_range',
+                        intent_type='roadmap_edit',
+                        response_mode='chat',
+                        preview_recommended=False,
+                        provider_used='rule_based',
+                        fallback_used=False,
+                        provider_error_code=None,
+                        route_lane='deterministic_edit_fastpath',
+                    ),
+                    None,
+                )
             selected = pending.candidates[selected_index - 1]
             if pending.kind != 'rename_node' or not pending.new_title:
                 return None, 'pending_disambiguation_unsupported_kind'
@@ -336,7 +427,7 @@ class AgentService:
 
         rename_intent = extract_rename_intent(user_message)
         if rename_intent is not None:
-            candidate, resolve_bypass_reason = self._resolve_unique_candidate(
+            candidate_lookup = self._resolve_unique_candidate(
                 session=session,
                 trace_id=trace_id,
                 auth_header=auth_header,
@@ -344,9 +435,37 @@ class AgentService:
                 label=rename_intent.label,
                 node_type=rename_intent.node_type,
             )
-            if resolve_bypass_reason is not None:
-                return None, resolve_bypass_reason
+            if candidate_lookup.bypass_reason is not None:
+                return None, candidate_lookup.bypass_reason
+            candidate = candidate_lookup.selected
             if candidate is None:
+                if candidate_lookup.status == 'ambiguous':
+                    session.metadata.pending_disambiguation = PendingDisambiguation(
+                        kind='rename_node',
+                        label=rename_intent.label,
+                        node_type=rename_intent.node_type,
+                        new_title=rename_intent.new_title,
+                        candidates=candidate_lookup.candidates[:5],
+                    )
+                    return (
+                        PlanningResult(
+                            assistant_message=build_ambiguity_message(
+                                rename_intent.label,
+                                candidate_lookup.candidates[:5],
+                            ),
+                            operations=[],
+                            parse_mode='deterministic_fastpath_disambiguation',
+                            intent_type='roadmap_edit',
+                            response_mode='edit_plan',
+                            preview_recommended=False,
+                            provider_used='rule_based',
+                            fallback_used=False,
+                            provider_error_code=None,
+                            route_lane='deterministic_edit_fastpath',
+                        ),
+                        None,
+                    )
+                session.metadata.pending_disambiguation = None
                 return None, 'rename_target_ambiguous_or_not_found'
             return (
                 PlanningResult(
@@ -375,7 +494,7 @@ class AgentService:
 
         mark_status_intent = extract_mark_status_intent(user_message)
         if mark_status_intent is not None:
-            candidate, resolve_bypass_reason = self._resolve_unique_candidate(
+            candidate_lookup = self._resolve_unique_candidate(
                 session=session,
                 trace_id=trace_id,
                 auth_header=auth_header,
@@ -383,8 +502,9 @@ class AgentService:
                 label=mark_status_intent.label,
                 node_type=mark_status_intent.node_type,
             )
-            if resolve_bypass_reason is not None:
-                return None, resolve_bypass_reason
+            if candidate_lookup.bypass_reason is not None:
+                return None, candidate_lookup.bypass_reason
+            candidate = candidate_lookup.selected
             if candidate is None:
                 return None, 'status_target_ambiguous_or_not_found'
             return (
@@ -413,7 +533,7 @@ class AgentService:
 
         move_intent = extract_move_intent(user_message)
         if move_intent is not None:
-            source, resolve_bypass_reason = self._resolve_unique_candidate(
+            source_lookup = self._resolve_unique_candidate(
                 session=session,
                 trace_id=trace_id,
                 auth_header=auth_header,
@@ -421,8 +541,9 @@ class AgentService:
                 label=move_intent.label,
                 node_type=move_intent.node_type,
             )
-            if resolve_bypass_reason is not None:
-                return None, resolve_bypass_reason
+            if source_lookup.bypass_reason is not None:
+                return None, source_lookup.bypass_reason
+            source = source_lookup.selected
             if source is None:
                 return None, 'move_source_ambiguous_or_not_found'
             expected_parent_type = self._expected_parent_type_for_move(source.type)
@@ -433,7 +554,7 @@ class AgentService:
                 and move_intent.target_node_type != expected_parent_type
             ):
                 return None, 'move_target_type_mismatch'
-            target, target_bypass_reason = self._resolve_unique_candidate(
+            target_lookup = self._resolve_unique_candidate(
                 session=session,
                 trace_id=trace_id,
                 auth_header=auth_header,
@@ -441,8 +562,9 @@ class AgentService:
                 label=move_intent.target_label,
                 node_type=expected_parent_type,
             )
-            if target_bypass_reason is not None:
-                return None, target_bypass_reason
+            if target_lookup.bypass_reason is not None:
+                return None, target_lookup.bypass_reason
+            target = target_lookup.selected
             if target is None:
                 return None, 'move_target_ambiguous_or_not_found'
             return (
@@ -481,14 +603,14 @@ class AgentService:
         session_context: dict[str, Any],
         label: str,
         node_type: str | None,
-    ) -> tuple[Any | None, str | None]:
+    ) -> CandidateLookupResult:
         roadmap_id = session.roadmap_id.strip()
         if not roadmap_id or not label.strip():
-            return None, None
+            return CandidateLookupResult(status='not_found')
         started = perf_counter()
         search_sla_ms = float(self._settings.deterministic_fastpath_search_sla_ms)
         try:
-            search_result = self._run_async_call_with_timeout(
+            search_result = self._run_async_call(
                 self._nest_client.context_search(
                     roadmap_id=roadmap_id,
                     query=label,
@@ -496,27 +618,14 @@ class AgentService:
                     limit=10,
                     auth_header=auth_header,
                     trace_id=trace_id,
-                ),
-                timeout_ms=search_sla_ms,
+                )
             )
-        except (TimeoutError, asyncio.TimeoutError):
-            elapsed_ms = (perf_counter() - started) * 1000
-            log_event(
-                self._logger,
-                'deterministic_fastpath_sla_exceeded',
-                settings=self._settings,
-                level=logging.WARNING,
-                trace_id=trace_id,
-                roadmap_id=roadmap_id,
-                elapsed_ms=int(elapsed_ms),
-                sla_ms=self._settings.deterministic_fastpath_search_sla_ms,
-                label=label,
-                node_type=node_type,
-            )
-            return None, 'deterministic_search_sla_exceeded'
         except Exception as exc:
             self._logger.warning('Deterministic fastpath resolver search failed: %s', exc)
-            return None, None
+            return CandidateLookupResult(
+                status='error',
+                bypass_reason='resolver_search_failed',
+            )
         finally:
             elapsed_ms = (perf_counter() - started) * 1000
             self._record_context_tool_timing(
@@ -528,7 +637,7 @@ class AgentService:
         if elapsed_ms > search_sla_ms:
             log_event(
                 self._logger,
-                'deterministic_fastpath_sla_exceeded',
+                'deterministic_fastpath_search_slow',
                 settings=self._settings,
                 level=logging.WARNING,
                 trace_id=trace_id,
@@ -538,7 +647,6 @@ class AgentService:
                 label=label,
                 node_type=node_type,
             )
-            return None, 'deterministic_search_sla_exceeded'
 
         raw_matches = search_result.get('matches', [])
         if not isinstance(raw_matches, list):
@@ -574,8 +682,60 @@ class AgentService:
         )
         if resolution.status == 'unique' and resolution.selected is not None:
             session.metadata.pending_disambiguation = None
-            return resolution.selected, None
-        return None, None
+            return CandidateLookupResult(
+                status='unique',
+                selected=resolution.selected,
+                candidates=resolution.candidates,
+            )
+        return CandidateLookupResult(
+            status=resolution.status,
+            candidates=resolution.candidates,
+        )
+
+    def _is_simple_edit_turn(self, *, session: AgentSession, user_message: str) -> bool:
+        if (
+            session.metadata.pending_disambiguation is not None
+            and parse_selection_index(user_message) is not None
+        ):
+            return True
+        if extract_rename_intent(user_message) is not None:
+            return True
+        if extract_mark_status_intent(user_message) is not None:
+            return True
+        if extract_move_intent(user_message) is not None:
+            return True
+        return False
+
+    def _should_fetch_actor_context(
+        self,
+        *,
+        preview_intent: IntentType,
+        user_message: str,
+        auth_header: str | None,
+        simple_edit_detected: bool,
+        actor_context_present: bool,
+    ) -> tuple[bool, str | None]:
+        if not auth_header:
+            return False, 'missing_auth_header'
+        if preview_intent == 'roadmap_edit' and simple_edit_detected:
+            return False, 'simple_edit_turn'
+        if self._is_actor_context_required_message(user_message):
+            return True, None
+        if actor_context_present:
+            return False, 'not_required_cached'
+        return False, 'not_required_for_turn'
+
+    def _is_actor_context_required_message(self, user_message: str) -> bool:
+        lowered = user_message.lower()
+        actor_required_patterns = (
+            r'\bmy\s+tasks\b',
+            r'\bassigned\s+to\s+me\b',
+            r'\btasks?\s+for\s+me\b',
+            r'\bfor\s+me\b',
+            r'\bmy\s+role\b',
+            r'\bwhat\s+can\s+i\b',
+        )
+        return any(re.search(pattern, lowered) for pattern in actor_required_patterns)
 
     def _record_context_tool_timing(
         self,
@@ -643,25 +803,18 @@ class AgentService:
         auth_header: str | None,
         trace_id: str | None,
     ) -> None:
+        if not auth_header:
+            self._clear_actor_context_for_missing_auth(
+                session=session,
+                trace_id=trace_id,
+            )
+            return
+
         actor_refresh_failures_key = getattr(
             self,
             '_actor_refresh_failures_key',
             'actor_context_refresh_failures',
         )
-        if not auth_header:
-            if session.metadata.actor_context is not None:
-                session.metadata.actor_context = None
-                log_event(
-                    self._logger,
-                    'actor_context_cleared',
-                    settings=self._settings,
-                    trace_id=trace_id,
-                    roadmap_id=session.roadmap_id,
-                    reason='missing_auth_header',
-                )
-            setattr(session.metadata, actor_refresh_failures_key, 0)
-            return
-
         previous_actor_context = session.metadata.actor_context
         try:
             actor_payload = self._run_async_call(
@@ -738,6 +891,29 @@ class AgentService:
             roadmap_role=session.metadata.actor_context.roadmap_role,
             actor_context_source=session.metadata.actor_context.actor_context_source,
         )
+
+    def _clear_actor_context_for_missing_auth(
+        self,
+        *,
+        session: AgentSession,
+        trace_id: str | None,
+    ) -> None:
+        actor_refresh_failures_key = getattr(
+            self,
+            '_actor_refresh_failures_key',
+            'actor_context_refresh_failures',
+        )
+        if session.metadata.actor_context is not None:
+            session.metadata.actor_context = None
+            log_event(
+                self._logger,
+                'actor_context_cleared',
+                settings=self._settings,
+                trace_id=trace_id,
+                roadmap_id=session.roadmap_id,
+                reason='missing_auth_header',
+            )
+        setattr(session.metadata, actor_refresh_failures_key, 0)
 
     def _apply_deterministic_resolution(
         self,
@@ -931,24 +1107,6 @@ class AgentService:
         except RuntimeError:
             return asyncio.run(coro)
         raise RuntimeError('Async call attempted on running event loop thread')
-
-    def _run_async_call_with_timeout(
-        self,
-        coro: Any,
-        *,
-        timeout_ms: float,
-    ) -> dict[str, Any]:
-        if not inspect.isawaitable(coro):
-            return coro
-        timeout_seconds = max(float(timeout_ms) / 1000.0, 0.001)
-
-        async def _with_timeout() -> dict[str, Any]:
-            return await asyncio.wait_for(coro, timeout=timeout_seconds)
-
-        result = self._run_async_call(_with_timeout())
-        if asyncio.iscoroutine(result):
-            return asyncio.run(result)
-        return result
 
     def _build_session_context(
         self,

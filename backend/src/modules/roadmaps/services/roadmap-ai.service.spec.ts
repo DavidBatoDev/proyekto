@@ -457,7 +457,8 @@ describe('RoadmapAiService context search lookup', () => {
     expect(previewStore.setResolveLookup).toHaveBeenCalledTimes(1);
     expect(result.matches).toHaveLength(1);
     expect(result.matches[0].type).toBe('epic');
-    expect(result.resolution_id).toBeDefined();
+    expect(result.resolution_id).toBeUndefined();
+    expect(previewStore.setResolution).not.toHaveBeenCalled();
   });
 
   it('reuses cached candidates when present and skips db lookup', async () => {
@@ -486,6 +487,7 @@ describe('RoadmapAiService context search lookup', () => {
     expect(previewStore.setResolveLookup).not.toHaveBeenCalled();
     expect(result.matches).toHaveLength(1);
     expect(result.matches[0].type).toBe('feature');
+    expect(result.resolution_id).toBeUndefined();
   });
 
   it('falls back to db lookup when cache read fails', async () => {
@@ -503,7 +505,124 @@ describe('RoadmapAiService context search lookup', () => {
       USER_ID,
     );
 
+    expect(roadmapsRepo.searchContextCandidates).toHaveBeenCalledTimes(3);
+  });
+
+  it('stops at epic stage when a strong unique epic match is found', async () => {
+    const { service, roadmapsRepo } = createSearchService();
+    roadmapsRepo.searchContextCandidates.mockResolvedValueOnce([
+      {
+        id: 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+        type: 'epic',
+        title: 'Platform Foundation',
+        parent_id: ROADMAP_ID,
+      },
+    ]);
+
+    const result = await service.searchContextNodes(
+      ROADMAP_ID,
+      {
+        query: 'Platform Foundation',
+        limit: 10,
+      },
+      USER_ID,
+    );
+
     expect(roadmapsRepo.searchContextCandidates).toHaveBeenCalledTimes(1);
+    expect(roadmapsRepo.searchContextCandidates).toHaveBeenCalledWith(
+      ROADMAP_ID,
+      'platform foundation',
+      expect.objectContaining({ nodeType: 'epic' }),
+    );
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0].type).toBe('epic');
+    expect(result.resolution_id).toBeUndefined();
+  });
+
+  it('does not early-stop on weak single epic hit and continues stages', async () => {
+    const { service, roadmapsRepo } = createSearchService();
+    roadmapsRepo.searchContextCandidates
+      .mockResolvedValueOnce([
+        {
+          id: 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+          type: 'epic',
+          title: 'Unrelated Epic',
+          parent_id: ROADMAP_ID,
+          parent_title: 'Platform Foundation',
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: '1beecdd2-f057-4c41-bf6d-8bb9e5e4b2b1',
+          type: 'task',
+          title: 'Platform Foundation',
+          parent_id: '60bcab3f-3989-448d-9c84-3261cf38685b',
+          parent_title: 'Authentication System',
+        },
+      ]);
+
+    const result = await service.searchContextNodes(
+      ROADMAP_ID,
+      {
+        query: 'Platform Foundation',
+        limit: 10,
+      },
+      USER_ID,
+    );
+
+    expect(roadmapsRepo.searchContextCandidates).toHaveBeenCalledTimes(3);
+    expect(
+      roadmapsRepo.searchContextCandidates.mock.calls.map(
+        (call) => call[2]?.nodeType,
+      ),
+    ).toEqual(['epic', 'feature', 'task']);
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0].type).toBe('task');
+    expect(result.resolution_id).toBeUndefined();
+  });
+
+  it('continues to feature/task stages when earlier stages miss', async () => {
+    const { service, roadmapsRepo, previewStore } = createSearchService();
+    roadmapsRepo.searchContextCandidates
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: '60bcab3f-3989-448d-9c84-3261cf38685b',
+          type: 'feature',
+          title: 'Authentication System',
+          parent_id: 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+          parent_title: 'Platform Foundation',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: '1beecdd2-f057-4c41-bf6d-8bb9e5e4b2b1',
+          type: 'task',
+          title: 'Implement login API',
+          parent_id: '60bcab3f-3989-448d-9c84-3261cf38685b',
+          parent_title: 'Authentication System',
+        },
+      ]);
+
+    const result = await service.searchContextNodes(
+      ROADMAP_ID,
+      {
+        query: 'Authentication',
+        limit: 10,
+      },
+      USER_ID,
+    );
+
+    expect(roadmapsRepo.searchContextCandidates).toHaveBeenCalledTimes(2);
+    expect(
+      roadmapsRepo.searchContextCandidates.mock.calls.map(
+        (call) => call[2]?.nodeType,
+      ),
+    ).toEqual(['epic', 'feature']);
+    expect(result.matches).toHaveLength(1);
+    expect(result.resolution_id).toBeUndefined();
+    expect(previewStore.setResolution).not.toHaveBeenCalled();
   });
 
   it('handles punctuation-heavy free-text query without parser errors', async () => {
@@ -534,7 +653,7 @@ describe('RoadmapAiService context search lookup', () => {
       USER_ID,
     );
 
-    expect(roadmapsRepo.searchContextCandidates).toHaveBeenCalledTimes(1);
+    expect(roadmapsRepo.searchContextCandidates).toHaveBeenCalledTimes(3);
     expect(result.matches.length).toBeGreaterThanOrEqual(1);
   });
 });

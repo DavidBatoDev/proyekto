@@ -395,7 +395,6 @@ export class RoadmapAiService {
     traceId?: string,
   ): Promise<RoadmapAiContextSearchResponseDto> {
     const handlerStartedAt = Date.now();
-    const lookupStartedAt = Date.now();
     const authzStartedAt = Date.now();
     await this.assertCanEditRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
@@ -416,103 +415,133 @@ export class RoadmapAiService {
     const limit = Math.min(Math.max(queryDto.limit ?? 10, 1), 50);
     const queryTokens = this.tokenizeSearchQuery(query);
     const typeHint = nodeType ?? this.extractTypeHint(queryTokens);
-
-    const cacheKey = this.buildResolveLookupCacheKey(
-      roadmapId,
-      nodeType,
-      query,
-      limit,
-    );
-
-    const cacheStartedAt = Date.now();
-    const cachedMatches = await this.readResolveLookupCache(cacheKey);
-    const cacheLookupMs = Date.now() - cacheStartedAt;
-    const cacheHit = Array.isArray(cachedMatches);
-
-    let candidates: ContextSearchCandidate[] = [];
+    const stageOrder: Array<'epic' | 'feature' | 'task'> = nodeType
+      ? [nodeType]
+      : ['epic', 'feature', 'task'];
+    const aggregatedMatches = new Map<string, RoadmapAiContextSearchMatchDto>();
+    let scoredMatches: RoadmapAiContextSearchMatchDto[] | null = null;
+    let resolveStage: 'epic' | 'feature' | 'task' | null = null;
+    let cacheLookupMs = 0;
     let dbLookupMs = 0;
     let cacheWriteMs = 0;
-    if (cacheHit && cachedMatches) {
-      candidates = cachedMatches as ContextSearchCandidate[];
-      this.logResolveLookupTelemetry({
+    let rankingMs = 0;
+
+    for (const stageNodeType of stageOrder) {
+      const stageLookupStartedAt = Date.now();
+      const cacheKey = this.buildResolveLookupCacheKey(
         roadmapId,
+        stageNodeType,
         query,
-        nodeType,
         limit,
-        cacheHit: true,
-        cacheBypassReason: undefined,
-        cacheLookupMs,
-        dbLookupMs,
-        totalLookupMs: Date.now() - lookupStartedAt,
-        candidateCount: candidates.length,
-      });
-    } else {
-      const dbStartedAt = Date.now();
-      const dbCandidates = await this.roadmapsRepo.searchContextCandidates(
-        roadmapId,
-        query,
-        {
-          nodeType: nodeType ?? undefined,
-          scanLimit: Math.max(limit * 8, 120),
-        },
       );
-      dbLookupMs = Date.now() - dbStartedAt;
-      candidates = dbCandidates.map((candidate) =>
-        this.toContextSearchCandidate(candidate),
-      );
-      const cacheWriteStartedAt = Date.now();
-      await this.writeResolveLookupCache(cacheKey, candidates);
-      cacheWriteMs = Date.now() - cacheWriteStartedAt;
-      this.logResolveLookupTelemetry({
-        roadmapId,
+
+      const stageCacheStartedAt = Date.now();
+      const cachedMatches = await this.readResolveLookupCache(cacheKey);
+      const resolveStageCacheMs = Date.now() - stageCacheStartedAt;
+      cacheLookupMs += resolveStageCacheMs;
+
+      let candidates: ContextSearchCandidate[] = [];
+      let resolveStageDbMs = 0;
+      let resolveStageWriteMs = 0;
+      const cacheHit = Array.isArray(cachedMatches);
+      if (cacheHit && cachedMatches) {
+        candidates = cachedMatches as ContextSearchCandidate[];
+      } else {
+        const dbStartedAt = Date.now();
+        const dbCandidates = await this.roadmapsRepo.searchContextCandidates(
+          roadmapId,
+          query,
+          {
+            nodeType: stageNodeType,
+            scanLimit: Math.max(limit * 8, 120),
+          },
+        );
+        resolveStageDbMs = Date.now() - dbStartedAt;
+        dbLookupMs += resolveStageDbMs;
+        candidates = dbCandidates.map((candidate) =>
+          this.toContextSearchCandidate(candidate),
+        );
+
+        const cacheWriteStartedAt = Date.now();
+        await this.writeResolveLookupCache(cacheKey, candidates);
+        resolveStageWriteMs = Date.now() - cacheWriteStartedAt;
+        cacheWriteMs += resolveStageWriteMs;
+      }
+
+      const rankingStartedAt = Date.now();
+      const stageScored = this.rankContextSearchMatches(
+        candidates,
         query,
-        nodeType,
+        queryTokens,
+        typeHint,
         limit,
-        cacheHit: false,
-        cacheBypassReason: 'miss',
-        cacheLookupMs,
-        dbLookupMs,
-        totalLookupMs: Date.now() - lookupStartedAt,
+      );
+      const resolveStageRankingMs = Date.now() - rankingStartedAt;
+      rankingMs += resolveStageRankingMs;
+
+      this.logResolveLookupTelemetry({
+        traceId,
+        roadmapId,
+        query,
+        nodeType: stageNodeType,
+        limit,
+        cacheHit,
+        cacheBypassReason: cacheHit ? undefined : 'miss',
+        cacheLookupMs: resolveStageCacheMs,
+        dbLookupMs: resolveStageDbMs,
+        totalLookupMs: Date.now() - stageLookupStartedAt,
         candidateCount: candidates.length,
+        resolveStage: stageNodeType,
+        resolveStageCacheMs,
+        resolveStageDbMs,
       });
+
+      if (stageScored.length === 0) {
+        continue;
+      }
+
+      resolveStage = stageNodeType;
+      if (this.isStrongUniqueContextSearchMatch(stageScored)) {
+        scoredMatches = [stageScored[0]];
+        break;
+      }
+
+      for (const item of stageScored) {
+        const existing = aggregatedMatches.get(item.id);
+        if (!existing || item.score > existing.score) {
+          aggregatedMatches.set(item.id, item);
+        }
+      }
     }
 
-    const rankingStartedAt = Date.now();
-    const scored = candidates
-      .map((candidate) =>
-        this.scoreContextSearchCandidate(candidate, query, queryTokens, typeHint),
-      )
-      .filter((item) => item.score > 0)
-      .sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        return a.title.localeCompare(b.title) || a.id.localeCompare(b.id);
-      })
-      .slice(0, limit)
-      .map((item) => ({
-        id: item.id,
-        type: item.type,
-        title: item.title,
-        parent_id: item.parent_id,
-        parent_title: item.parent_title,
-        score: Number(item.score.toFixed(4)),
-        matched_fields: item.matched_fields.length ? item.matched_fields : undefined,
-      }));
-    const rankingMs = Date.now() - rankingStartedAt;
+    if (scoredMatches === null) {
+      scoredMatches = [...aggregatedMatches.values()]
+        .sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          return a.title.localeCompare(b.title) || a.id.localeCompare(b.id);
+        })
+        .slice(0, limit);
+    }
 
-    const resolutionId = randomUUID();
-    const record: ResolutionRecord = {
-      roadmapId,
-      userId,
-      createdAt: new Date().toISOString(),
-      matches: scored,
-    };
-    const previewStoreSetStartedAt = Date.now();
-    await this.previewStore.setResolution(
-      resolutionId,
-      record as unknown as Record<string, unknown>,
-      RESOLUTION_TTL_SECONDS,
-    );
-    const previewStoreSetMs = Date.now() - previewStoreSetStartedAt;
+    let resolutionId: string | undefined;
+    let previewStoreSetMs = 0;
+    if (scoredMatches.length > 1) {
+      resolutionId = randomUUID();
+      const record: ResolutionRecord = {
+        roadmapId,
+        userId,
+        createdAt: new Date().toISOString(),
+        matches: scoredMatches,
+      };
+      const previewStoreSetStartedAt = Date.now();
+      await this.previewStore.setResolution(
+        resolutionId,
+        record as unknown as Record<string, unknown>,
+        RESOLUTION_TTL_SECONDS,
+      );
+      previewStoreSetMs = Date.now() - previewStoreSetStartedAt;
+    }
+
     const totalHandlerMs = Date.now() - handlerStartedAt;
     this.logRoadmapAiHandlerTiming({
       event: 'roadmap_ai_context_search_timing',
@@ -528,8 +557,12 @@ export class RoadmapAiService {
       previewStoreSetMs: Math.max(previewStoreSetMs, 0),
       totalHandlerMs,
       resolutionId,
+      resolveStage: resolveStage ?? undefined,
     });
-    return { resolution_id: resolutionId, matches: scored };
+    return {
+      resolution_id: resolutionId,
+      matches: scoredMatches,
+    };
   }
 
   async getContextChildrenFromResolution(
@@ -2482,6 +2515,7 @@ export class RoadmapAiService {
   }
 
   private logResolveLookupTelemetry(params: {
+    traceId?: string;
     roadmapId: string;
     query: string;
     nodeType: 'epic' | 'feature' | 'task' | null;
@@ -2492,10 +2526,14 @@ export class RoadmapAiService {
     dbLookupMs: number;
     totalLookupMs: number;
     candidateCount: number;
+    resolveStage?: 'epic' | 'feature' | 'task';
+    resolveStageDbMs?: number;
+    resolveStageCacheMs?: number;
   }): void {
     this.logger.log(
       [
         'event=resolve_lookup',
+        `trace_id=${params.traceId ?? 'none'}`,
         `roadmap_id=${params.roadmapId}`,
         `node_type=${params.nodeType ?? 'any'}`,
         `limit=${params.limit}`,
@@ -2505,6 +2543,9 @@ export class RoadmapAiService {
         `resolve_lookup_db_ms=${params.dbLookupMs}`,
         `resolve_lookup_total_ms=${params.totalLookupMs}`,
         `candidates=${params.candidateCount}`,
+        `resolve_stage=${params.resolveStage ?? 'none'}`,
+        `resolve_stage_cache_ms=${params.resolveStageCacheMs ?? 0}`,
+        `resolve_stage_db_ms=${params.resolveStageDbMs ?? 0}`,
       ].join(' '),
     );
   }
@@ -2527,6 +2568,7 @@ export class RoadmapAiService {
     totalHandlerMs: number;
     previewId?: string;
     resolutionId?: string;
+    resolveStage?: 'epic' | 'feature' | 'task';
   }): void {
     const segments = [
       `event=${params.event}`,
@@ -2546,8 +2588,50 @@ export class RoadmapAiService {
       `total_handler_ms=${params.totalHandlerMs}`,
       `preview_id=${params.previewId ?? 'none'}`,
       `resolution_id=${params.resolutionId ?? 'none'}`,
+      `resolve_stage=${params.resolveStage ?? 'none'}`,
     ];
     this.logger.log(segments.join(' '));
+  }
+
+  private rankContextSearchMatches(
+    candidates: ContextSearchCandidate[],
+    query: string,
+    queryTokens: string[],
+    typeHint: Exclude<RoadmapNodeType, 'roadmap'> | undefined,
+    limit: number,
+  ): RoadmapAiContextSearchMatchDto[] {
+    return candidates
+      .map((candidate) =>
+        this.scoreContextSearchCandidate(candidate, query, queryTokens, typeHint),
+      )
+      .filter((item) => item.score > 0)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.title.localeCompare(b.title) || a.id.localeCompare(b.id);
+      })
+      .slice(0, limit)
+      .map((item) => ({
+        id: item.id,
+        type: item.type,
+        title: item.title,
+        parent_id: item.parent_id,
+        parent_title: item.parent_title,
+        score: Number(item.score.toFixed(4)),
+        matched_fields: item.matched_fields.length ? item.matched_fields : undefined,
+      }));
+  }
+
+  private isStrongUniqueContextSearchMatch(
+    matches: RoadmapAiContextSearchMatchDto[],
+  ): boolean {
+    if (matches.length === 1) {
+      const top = Number(matches[0]?.score ?? 0);
+      return top >= 0.9;
+    }
+    if (matches.length < 2) return false;
+    const top = Number(matches[0]?.score ?? 0);
+    const second = Number(matches[1]?.score ?? 0);
+    return top >= 0.95 && top - second >= 0.15;
   }
 
   private extractTypeHint(

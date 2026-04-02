@@ -335,7 +335,7 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(result.operations[0].node_id, 'new-node-id')
         self.assertEqual(result.route_lane, 'deterministic_edit_fastpath')
 
-    def test_fastpath_bypasses_on_ambiguous_target(self) -> None:
+    def test_fastpath_returns_disambiguation_on_ambiguous_target(self) -> None:
         service = self._service(
             {
                 'matches': [
@@ -352,8 +352,13 @@ class AgentSafetyTests(unittest.TestCase):
             trace_id='trace-fastpath-ambiguous',
             session_context={'roadmap_id': 'roadmap-1'},
         )
-        self.assertIsNone(result)
-        self.assertEqual(bypass_reason, 'rename_target_ambiguous_or_not_found')
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertIsNone(bypass_reason)
+        self.assertEqual(result.parse_mode, 'deterministic_fastpath_disambiguation')
+        self.assertEqual(result.response_mode, 'edit_plan')
+        self.assertEqual(len(result.operations), 0)
+        self.assertIn('Please choose one', result.assistant_message)
 
     def test_fastpath_rename_strips_leading_pronouns(self) -> None:
         service = self._service(
@@ -433,8 +438,11 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(operation.new_parent_id, 'dad5697a-8962-4f80-8bc3-8a964edd8e56')
         self.assertIsNone(operation.patch)
 
-    def test_plan_message_bypasses_fastpath_when_search_sla_exceeded(self) -> None:
+    def test_plan_message_keeps_fastpath_when_search_is_slow(self) -> None:
         class _SlowNestClient:
+            def __init__(self) -> None:
+                self.actor_calls = 0
+
             async def context_search(self, **_kwargs):
                 await asyncio.sleep(0.2)
                 return {
@@ -448,6 +456,7 @@ class AgentSafetyTests(unittest.TestCase):
                 }
 
             async def context_actor(self, **_kwargs):
+                self.actor_calls += 1
                 return {
                     'actor_id': 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
                     'display_name': 'Alice',
@@ -461,23 +470,7 @@ class AgentSafetyTests(unittest.TestCase):
                 return ('roadmap_edit', False)
 
             def plan(self, user_message, existing_operations, session_context=None):
-                return PlanningResult(
-                    assistant_message='Rename epic "Platform Foundation" to "Platform Foundation 1".',
-                    operations=[
-                        RoadmapOperation(
-                            op='update_node',
-                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                            patch={'title': 'Platform Foundation 1'},
-                        )
-                    ],
-                    parse_mode='openai_tool_calling',
-                    intent_type='roadmap_edit',
-                    response_mode='edit_plan',
-                    preview_recommended=True,
-                    provider_used='openai',
-                    fallback_used=False,
-                    provider_error_code=None,
-                )
+                raise AssertionError('planner.plan should not run for deterministic simple rename')
 
         class _FakeStore:
             def append_message(self, session, role, content):
@@ -496,7 +489,8 @@ class AgentSafetyTests(unittest.TestCase):
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
         service._planner = _FakePlanner()
-        service._nest_client = _SlowNestClient()
+        slow_client = _SlowNestClient()
+        service._nest_client = slow_client
         service._actor_refresh_failures_key = 'actor_context_refresh_failures'
         service._uuid_pattern = re.compile(
             r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
@@ -513,11 +507,151 @@ class AgentSafetyTests(unittest.TestCase):
         )
         elapsed_ms = (time.perf_counter() - started) * 1000
 
-        self.assertEqual(outcome.route_lane, 'llm_edit_plan')
-        self.assertEqual(outcome.fastpath_bypass_reason, 'deterministic_search_sla_exceeded')
-        self.assertEqual(outcome.parse_mode, 'openai_tool_calling')
+        self.assertEqual(outcome.route_lane, 'deterministic_edit_fastpath')
+        self.assertEqual(outcome.fastpath_bypass_reason, None)
+        self.assertEqual(outcome.parse_mode, 'deterministic_fastpath_rename')
+        self.assertEqual(outcome.fastpath_reason, 'deterministic_fastpath_rename')
+        self.assertTrue(outcome.llm_skipped_for_simple_edit)
+        self.assertFalse(outcome.actor_fetch_attempted)
+        self.assertEqual(outcome.actor_fetch_skipped_reason, 'simple_edit_turn')
+        self.assertEqual(slow_client.actor_calls, 0)
         self.assertEqual(len(outcome.operations), 1)
-        self.assertLess(elapsed_ms, 150)
+        self.assertGreaterEqual(elapsed_ms, 180)
+
+    def test_plan_message_fetches_actor_for_actor_dependent_turn(self) -> None:
+        class _ActorAwareNestClient:
+            def __init__(self) -> None:
+                self.actor_calls = 0
+
+            async def context_actor(self, **_kwargs):
+                self.actor_calls += 1
+                return {
+                    'actor_id': 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+                    'display_name': 'Alice',
+                    'roadmap_role': 'editor',
+                    'locale': None,
+                    'timezone': None,
+                }
+
+        class _FakePlanner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_question', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Here are your open tasks.',
+                    operations=[],
+                    parse_mode='rule_based_chat',
+                    intent_type='roadmap_question',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='rule_based',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings()
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _FakePlanner()
+        actor_client = _ActorAwareNestClient()
+        service._nest_client = actor_client
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+
+        session = AgentSession(roadmap_id='roadmap-1')
+        outcome = service.plan_message(
+            session=session,
+            user_message='What tasks are assigned to me?',
+            replace=False,
+            auth_header='Bearer test-token',
+            trace_id='trace-actor-dependent',
+        )
+
+        self.assertEqual(outcome.response_mode, 'chat')
+        self.assertTrue(outcome.actor_fetch_attempted)
+        self.assertIsNone(outcome.actor_fetch_skipped_reason)
+        self.assertIsInstance(outcome.actor_fetch_ms, int)
+        self.assertEqual(actor_client.actor_calls, 1)
+
+    def test_plan_message_missing_auth_clears_stale_actor_context_when_skipped(self) -> None:
+        class _FakePlanner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                raise AssertionError('planner.plan should not run for deterministic simple rename')
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings()
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _FakePlanner()
+        fake_nest = _FakeNestClient(
+            {
+                'matches': [
+                    {
+                        'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                        'type': 'epic',
+                        'title': 'Platform Foundation',
+                    }
+                ]
+            }
+        )
+        service._nest_client = fake_nest
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        service._run_async_call = lambda value: value
+
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                actor_context=ActorContext(
+                    actor_id='stale-actor',
+                    display_name='Stale',
+                    roadmap_role='owner',
+                    actor_context_source='backend_context_actor',
+                ),
+            ),
+        )
+        outcome = service.plan_message(
+            session=session,
+            user_message='Rename my Platform Foundation to Platform Foundation 1',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-missing-auth',
+        )
+
+        self.assertEqual(outcome.parse_mode, 'deterministic_fastpath_rename')
+        self.assertFalse(outcome.actor_fetch_attempted)
+        self.assertEqual(outcome.actor_fetch_skipped_reason, 'missing_auth_header')
+        self.assertIsNone(session.metadata.actor_context)
+        self.assertEqual(fake_nest.actor_calls, 0)
 
     def test_plan_message_blocks_invalid_uuid_operation_before_staging(self) -> None:
         class _FakePlanner:
