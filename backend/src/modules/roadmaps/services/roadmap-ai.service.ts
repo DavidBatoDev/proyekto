@@ -133,10 +133,29 @@ type ResolutionRecord = {
   matches: RoadmapAiContextSearchMatchDto[];
 };
 
+type AuthzDecisionCacheValue = {
+  expiresAtMs: number;
+  roadmap: Record<string, unknown>;
+};
+
 const PREVIEW_TTL_MS = 1000 * 60 * 30;
 const RESOLUTION_TTL_SECONDS = 60 * 10;
 const RESOLVE_LOOKUP_CACHE_TTL_SECONDS = 60 * 3;
 const RESOLVE_LOOKUP_CACHE_VERSION = 'v1';
+const AUTHZ_DECISION_CACHE_VERSION =
+  process.env.ROADMAP_AI_AUTHZ_CACHE_VERSION?.trim() || 'v1';
+const AUTHZ_DECISION_CACHE_TTL_MS = Math.max(
+  1_000,
+  Number.parseInt(process.env.ROADMAP_AI_AUTHZ_CACHE_TTL_MS ?? '10000', 10) ||
+    10_000,
+);
+const AUTHZ_DECISION_CACHE_MAX_ENTRIES = Math.max(
+  100,
+  Number.parseInt(
+    process.env.ROADMAP_AI_AUTHZ_CACHE_MAX_ENTRIES ?? '5000',
+    10,
+  ) || 5_000,
+);
 const EPIC_STATUS = [
   'backlog',
   'planned',
@@ -158,6 +177,7 @@ const ROADMAP_STATUS = ['draft', 'active', 'paused', 'completed', 'archived'];
 @Injectable()
 export class RoadmapAiService {
   private readonly logger = new Logger(RoadmapAiService.name);
+  private readonly authzDecisionCache = new Map<string, AuthzDecisionCacheValue>();
 
   constructor(
     @Inject(SUPABASE_ADMIN)
@@ -463,7 +483,7 @@ export class RoadmapAiService {
         );
 
         const cacheWriteStartedAt = Date.now();
-        await this.writeResolveLookupCache(cacheKey, candidates);
+        this.scheduleResolveLookupCacheWrite(cacheKey, candidates);
         resolveStageWriteMs = Date.now() - cacheWriteStartedAt;
         cacheWriteMs += resolveStageWriteMs;
       }
@@ -1074,6 +1094,12 @@ export class RoadmapAiService {
   }
 
   private async assertCanEditRoadmap(roadmapId: string, userId: string) {
+    const cacheKey = this.buildAuthzDecisionCacheKey(roadmapId, userId);
+    const cached = this.readAuthzDecisionCache(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const existing = await this.roadmapsRepo.findById(roadmapId);
     if (!existing) throw new NotFoundException('Roadmap not found');
 
@@ -1090,6 +1116,7 @@ export class RoadmapAiService {
           message: 'Insufficient permissions for roadmap context access.',
         });
       }
+      this.writeAuthzDecisionCache(cacheKey, existing as Record<string, unknown>);
       return existing;
     }
 
@@ -1099,7 +1126,55 @@ export class RoadmapAiService {
         message: 'Not the owner',
       });
     }
+    this.writeAuthzDecisionCache(cacheKey, existing as Record<string, unknown>);
     return existing;
+  }
+
+  private buildAuthzDecisionCacheKey(roadmapId: string, userId: string): string {
+    return `${AUTHZ_DECISION_CACHE_VERSION}:${roadmapId}:${userId}:roadmap.edit`;
+  }
+
+  private readAuthzDecisionCache(cacheKey: string): Record<string, unknown> | null {
+    const cached = this.authzDecisionCache.get(cacheKey);
+    if (!cached) return null;
+    if (cached.expiresAtMs <= Date.now()) {
+      this.authzDecisionCache.delete(cacheKey);
+      return null;
+    }
+    return cached.roadmap;
+  }
+
+  private writeAuthzDecisionCache(
+    cacheKey: string,
+    roadmap: Record<string, unknown>,
+  ): void {
+    this.pruneExpiredAuthzDecisionCache();
+    this.enforceAuthzDecisionCacheMaxEntries();
+    this.authzDecisionCache.set(cacheKey, {
+      roadmap,
+      expiresAtMs: Date.now() + AUTHZ_DECISION_CACHE_TTL_MS,
+    });
+  }
+
+  private pruneExpiredAuthzDecisionCache(): void {
+    const now = Date.now();
+    for (const [key, value] of this.authzDecisionCache.entries()) {
+      if (value.expiresAtMs <= now) {
+        this.authzDecisionCache.delete(key);
+      }
+    }
+  }
+
+  private enforceAuthzDecisionCacheMaxEntries(): void {
+    const overflow =
+      this.authzDecisionCache.size - AUTHZ_DECISION_CACHE_MAX_ENTRIES + 1;
+    if (overflow <= 0) return;
+    const keys = this.authzDecisionCache.keys();
+    for (let index = 0; index < overflow; index += 1) {
+      const key = keys.next().value;
+      if (!key) break;
+      this.authzDecisionCache.delete(key);
+    }
   }
 
   private contextBadRequest(code: string, message: string): BadRequestException {
@@ -2500,6 +2575,13 @@ export class RoadmapAiService {
         }`,
       );
     }
+  }
+
+  private scheduleResolveLookupCacheWrite(
+    cacheKey: string,
+    candidates: ContextSearchCandidate[],
+  ): void {
+    void this.writeResolveLookupCache(cacheKey, candidates);
   }
 
   private async invalidateResolveLookupCache(roadmapId: string): Promise<void> {

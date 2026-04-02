@@ -747,3 +747,120 @@ describe('RoadmapAiService resolve cache invalidation on commit', () => {
     });
   });
 });
+
+describe('RoadmapAiService preview durability', () => {
+  const ROADMAP_ID = '55e431e2-e416-468c-a973-94d97280e97d';
+  const USER_ID = 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb';
+
+  it('allows immediate getPreview after preview returns', async () => {
+    const previews = new Map<string, Record<string, unknown>>();
+    const roadmapsRepo = {
+      findById: jest.fn().mockResolvedValue({
+        id: ROADMAP_ID,
+        owner_id: USER_ID,
+        updated_at: '2026-04-02T16:00:00.000Z',
+      }),
+      findFull: jest.fn().mockResolvedValue({
+        id: ROADMAP_ID,
+        name: 'Q2 SaaS Platform Development',
+        roadmap_epics: [],
+      }),
+    };
+    const previewStore = {
+      setPreview: jest
+        .fn()
+        .mockImplementation(async (previewId: string, payload: Record<string, unknown>) => {
+          previews.set(previewId, payload);
+        }),
+      getPreview: jest
+        .fn()
+        .mockImplementation(async (previewId: string) => previews.get(previewId) ?? null),
+      setResolveLookup: jest.fn().mockResolvedValue(undefined),
+      getResolveLookup: jest.fn().mockResolvedValue(null),
+      setResolution: jest.fn().mockResolvedValue(undefined),
+      deleteResolveLookupByRoadmap: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new RoadmapAiService(
+      {} as never,
+      roadmapsRepo as never,
+      {} as never,
+      { assertRoadmapPermission: jest.fn() } as never,
+      previewStore as never,
+    );
+
+    const preview = await service.preview(
+      ROADMAP_ID,
+      { operations: [] } as any,
+      USER_ID,
+    );
+    const fetched = await service.getPreview(ROADMAP_ID, preview.preview_id, USER_ID);
+
+    expect(previewStore.setPreview).toHaveBeenCalledTimes(1);
+    expect(fetched.preview_id).toBe(preview.preview_id);
+  });
+});
+
+describe('RoadmapAiService authz cache hardening', () => {
+  const createService = () =>
+    new RoadmapAiService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    ) as unknown as {
+      authzDecisionCache: Map<string, { expiresAtMs: number; roadmap: Record<string, unknown> }>;
+      buildAuthzDecisionCacheKey: (roadmapId: string, userId: string) => string;
+      writeAuthzDecisionCache: (cacheKey: string, roadmap: Record<string, unknown>) => void;
+      readAuthzDecisionCache: (cacheKey: string) => Record<string, unknown> | null;
+    };
+
+  it('evicts old entries when max size is exceeded', () => {
+    const service = createService();
+    // Fill past the default max size and verify bounded cache behavior.
+    for (let index = 0; index < 5005; index += 1) {
+      const key = service.buildAuthzDecisionCacheKey(`roadmap-${index}`, `user-${index}`);
+      service.writeAuthzDecisionCache(key, { id: `roadmap-${index}` });
+    }
+
+    expect(service.authzDecisionCache.size).toBeLessThanOrEqual(5000);
+  });
+
+  it('removes expired entries on read', () => {
+    const service = createService();
+    const key = service.buildAuthzDecisionCacheKey('roadmap-1', 'user-1');
+    service.authzDecisionCache.set(key, {
+      roadmap: { id: 'roadmap-1' },
+      expiresAtMs: Date.now() - 1,
+    });
+
+    const hit = service.readAuthzDecisionCache(key);
+
+    expect(hit).toBeNull();
+    expect(service.authzDecisionCache.has(key)).toBe(false);
+  });
+
+  it('includes configured authz cache version in cache key', () => {
+    const originalVersion = process.env.ROADMAP_AI_AUTHZ_CACHE_VERSION;
+    process.env.ROADMAP_AI_AUTHZ_CACHE_VERSION = 'v-test';
+    jest.resetModules();
+
+    let key = '';
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { RoadmapAiService: ReloadedRoadmapAiService } = require('./roadmap-ai.service');
+      const service = new ReloadedRoadmapAiService(
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+      );
+      key = (service as any).buildAuthzDecisionCacheKey('roadmap-x', 'user-x');
+    });
+
+    process.env.ROADMAP_AI_AUTHZ_CACHE_VERSION = originalVersion;
+    jest.resetModules();
+    expect(key.startsWith('v-test:')).toBe(true);
+  });
+});
