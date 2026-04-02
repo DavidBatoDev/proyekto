@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from time import perf_counter
 from typing import Any, Callable
 
 from fastapi import HTTPException
@@ -32,76 +33,80 @@ class ContextToolsExecutor:
         args: dict[str, Any],
         session_context: dict[str, Any],
     ) -> dict[str, Any]:
+        started = perf_counter()
         trace_id = session_context.get('trace_id')
-        if tool_name not in CONTEXT_TOOL_NAMES:
-            result = {
-                'error': {
-                    'code': 'UNKNOWN_TOOL',
-                    'message': f'Tool {tool_name} is not available in edit mode.',
-                }
-            }
-            log_event(
-                self._logger,
-                'tool_call_result',
-                settings=self._settings,
-                level=logging.WARNING,
-                trace_id=trace_id,
-                tool_name=tool_name,
-                result_summary=summarize_tool_result(result),
-            )
-            return result
-
-        roadmap_id = str(args.get('roadmap_id') or session_context.get('roadmap_id') or '').strip()
-        session_roadmap_id = str(session_context.get('roadmap_id') or '').strip()
-        if not roadmap_id:
-            result = {
-                'error': {
-                    'code': 'MISSING_ROADMAP_ID',
-                    'message': 'roadmap_id is required for context tools.',
-                }
-            }
-            log_event(
-                self._logger,
-                'tool_call_result',
-                settings=self._settings,
-                level=logging.WARNING,
-                trace_id=trace_id,
-                tool_name=tool_name,
-                result_summary=summarize_tool_result(result),
-            )
-            return result
-        if session_roadmap_id and roadmap_id != session_roadmap_id:
-            result = {
-                'error': {
-                    'code': 'ROADMAP_SCOPE_MISMATCH',
-                    'message': 'Context tools must use the active session roadmap_id.',
-                }
-            }
-            log_event(
-                self._logger,
-                'tool_call_result',
-                settings=self._settings,
-                level=logging.WARNING,
-                trace_id=trace_id,
-                tool_name=tool_name,
-                result_summary=summarize_tool_result(result),
-            )
-            return result
-
-        auth_header = session_context.get('auth_header')
-        auth_value = auth_header if isinstance(auth_header, str) and auth_header else None
-        log_event(
-            self._logger,
-            'tool_call_requested',
-            settings=self._settings,
-            trace_id=trace_id,
-            tool_name=tool_name,
-            tool_args=args,
-            arg_keys=sorted(args.keys()),
-            roadmap_id=roadmap_id,
-        )
-
+        roadmap_id = ''
         try:
+            if tool_name not in CONTEXT_TOOL_NAMES:
+                result = {
+                    'error': {
+                        'code': 'UNKNOWN_TOOL',
+                        'message': f'Tool {tool_name} is not available in edit mode.',
+                    }
+                }
+                log_event(
+                    self._logger,
+                    'tool_call_result',
+                    settings=self._settings,
+                    level=logging.WARNING,
+                    trace_id=trace_id,
+                    tool_name=tool_name,
+                    result_summary=summarize_tool_result(result),
+                )
+                return result
+
+            roadmap_id = str(
+                args.get('roadmap_id') or session_context.get('roadmap_id') or ''
+            ).strip()
+            session_roadmap_id = str(session_context.get('roadmap_id') or '').strip()
+            if not roadmap_id:
+                result = {
+                    'error': {
+                        'code': 'MISSING_ROADMAP_ID',
+                        'message': 'roadmap_id is required for context tools.',
+                    }
+                }
+                log_event(
+                    self._logger,
+                    'tool_call_result',
+                    settings=self._settings,
+                    level=logging.WARNING,
+                    trace_id=trace_id,
+                    tool_name=tool_name,
+                    result_summary=summarize_tool_result(result),
+                )
+                return result
+            if session_roadmap_id and roadmap_id != session_roadmap_id:
+                result = {
+                    'error': {
+                        'code': 'ROADMAP_SCOPE_MISMATCH',
+                        'message': 'Context tools must use the active session roadmap_id.',
+                    }
+                }
+                log_event(
+                    self._logger,
+                    'tool_call_result',
+                    settings=self._settings,
+                    level=logging.WARNING,
+                    trace_id=trace_id,
+                    tool_name=tool_name,
+                    result_summary=summarize_tool_result(result),
+                )
+                return result
+
+            auth_header = session_context.get('auth_header')
+            auth_value = auth_header if isinstance(auth_header, str) and auth_header else None
+            log_event(
+                self._logger,
+                'tool_call_requested',
+                settings=self._settings,
+                trace_id=trace_id,
+                tool_name=tool_name,
+                tool_args=args,
+                arg_keys=sorted(args.keys()),
+                roadmap_id=roadmap_id,
+            )
+
             result: dict[str, Any]
             if tool_name == 'get_roadmap_summary':
                 result = self._run_async_context_call(
@@ -554,6 +559,30 @@ class ContextToolsExecutor:
                     'message': 'Failed to fetch roadmap context from backend.',
                 }
             }
+        finally:
+            self._record_context_tool_timing(
+                session_context=session_context,
+                tool_name=tool_name,
+                elapsed_ms=(perf_counter() - started) * 1000,
+            )
+
+    def _record_context_tool_timing(
+        self,
+        *,
+        session_context: dict[str, Any],
+        tool_name: str,
+        elapsed_ms: float,
+    ) -> None:
+        metrics = session_context.setdefault('_phase_metrics', {})
+        if not isinstance(metrics, dict):
+            return
+        current_total = float(metrics.get('context_tools_ms') or 0.0)
+        metrics['context_tools_ms'] = current_total + float(elapsed_ms)
+        by_name = metrics.get('context_tools_by_name')
+        if not isinstance(by_name, dict):
+            by_name = {}
+            metrics['context_tools_by_name'] = by_name
+        by_name[tool_name] = float(by_name.get(tool_name) or 0.0) + float(elapsed_ms)
 
     def _is_uuid(self, value: str) -> bool:
         return bool(

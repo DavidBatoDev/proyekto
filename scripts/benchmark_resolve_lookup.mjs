@@ -17,6 +17,8 @@
  * - BENCH_HIT_REPEATS (default: 5)
  * - BENCH_PARALLEL (default: 1)
  * - BENCH_TIMEOUT_MS (default: 15000)
+ * - BENCH_ASSERT_WARM_P95_MS (optional numeric threshold)
+ * - BENCH_REDIS_CHAOS (true/false, default: false)
  */
 
 import process from 'node:process';
@@ -59,6 +61,11 @@ const QUERY_PROFILE = (process.env.BENCH_QUERY_PROFILE || 'mixed').trim().toLowe
 const HIT_REPEATS = Number(process.env.BENCH_HIT_REPEATS || '5');
 const PARALLEL = Number(process.env.BENCH_PARALLEL || '1');
 const TIMEOUT_MS = Number(process.env.BENCH_TIMEOUT_MS || '15000');
+const cliOptions = parseCliOptions(process.argv.slice(2));
+const ASSERT_WARM_P95_MS =
+  cliOptions.assertWarmP95Ms ??
+  (process.env.BENCH_ASSERT_WARM_P95_MS ? Number(process.env.BENCH_ASSERT_WARM_P95_MS) : null);
+const REDIS_CHAOS = cliOptions.redisChaos || parseBooleanEnv(process.env.BENCH_REDIS_CHAOS);
 const QUERIES = (
   process.env.BENCH_QUERIES
     ? process.env.BENCH_QUERIES.split('|').map((item) => item.trim())
@@ -94,6 +101,13 @@ if (!Number.isFinite(HIT_REPEATS) || HIT_REPEATS < 1) {
 
 if (!Number.isFinite(PARALLEL) || PARALLEL < 1) {
   console.error('BENCH_PARALLEL must be a positive number.');
+  process.exit(1);
+}
+if (
+  ASSERT_WARM_P95_MS !== null &&
+  (!Number.isFinite(ASSERT_WARM_P95_MS) || ASSERT_WARM_P95_MS <= 0)
+) {
+  console.error('BENCH_ASSERT_WARM_P95_MS must be a positive number when provided.');
   process.exit(1);
 }
 
@@ -167,6 +181,7 @@ async function runSeries({ phaseLabel, workItems }) {
         headers: {
           Authorization: `Bearer ${AUTH_TOKEN}`,
           'Content-Type': 'application/json',
+          ...(REDIS_CHAOS ? { 'x-bench-redis-chaos': '1' } : {}),
         },
       },
       TIMEOUT_MS,
@@ -195,6 +210,10 @@ async function main() {
   console.log(`Hit repeats: ${HIT_REPEATS}`);
   console.log(`Parallel: ${PARALLEL}`);
   console.log(`Timeout: ${TIMEOUT_MS}ms`);
+  console.log(`Redis chaos: ${REDIS_CHAOS ? 'enabled' : 'disabled'}`);
+  if (ASSERT_WARM_P95_MS !== null) {
+    console.log(`Warm p95 assertion: <= ${ASSERT_WARM_P95_MS}ms`);
+  }
 
   const baseWorkItems = buildWorkItems(QUERIES, NODE_TYPES);
   // Phase 1: first pass (best approximation of miss-heavy run)
@@ -231,6 +250,12 @@ async function main() {
 
   if (cold.failCount > 0 || warm.failCount > 0) {
     process.exitCode = 2;
+  }
+  if (ASSERT_WARM_P95_MS !== null && warm.p95Ms !== null && warm.p95Ms > ASSERT_WARM_P95_MS) {
+    console.error(
+      `Warm p95 assertion failed: observed ${warm.p95Ms.toFixed(1)}ms > ${ASSERT_WARM_P95_MS}ms`,
+    );
+    process.exitCode = process.exitCode || 3;
   }
 }
 
@@ -281,6 +306,7 @@ function loadEnvFiles() {
 
   const candidates = [
     path.join(cwd, '.env'),
+    path.join(scriptDir, '.env'),
     path.join(repoRoot, '.env'),
     path.join(repoRoot, 'backend', '.env'),
   ];
@@ -305,4 +331,34 @@ function loadEnvFiles() {
       process.env[key] = value;
     }
   }
+}
+
+function parseCliOptions(argv) {
+  const options = {
+    assertWarmP95Ms: null,
+    redisChaos: false,
+  };
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+    if (token === '--redis-chaos') {
+      options.redisChaos = true;
+      continue;
+    }
+    if (token === '--assert-warm-p95-ms' && argv[i + 1]) {
+      options.assertWarmP95Ms = Number(argv[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (token.startsWith('--assert-warm-p95-ms=')) {
+      const [, value] = token.split('=');
+      options.assertWarmP95Ms = Number(value);
+    }
+  }
+  return options;
+}
+
+function parseBooleanEnv(value) {
+  if (!value) return false;
+  const normalized = String(value).trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
 }

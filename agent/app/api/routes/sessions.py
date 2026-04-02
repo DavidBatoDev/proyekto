@@ -245,6 +245,7 @@ async def send_message(
     outcome = None
     artifacts: list[RoadmapPreviewArtifact] = []
     error_code: int | None = None
+    preview_generation_ms: int | None = None
     try:
         outcome = await _run_store_call(
             agent_service.plan_message,
@@ -260,6 +261,7 @@ async def send_message(
             and outcome.response_mode == 'edit_plan'
             and outcome.preview_available
         ):
+            preview_started = perf_counter()
             try:
                 preview_result = await _nest_client.preview(
                     roadmap_id=outcome.session.roadmap_id,
@@ -273,6 +275,7 @@ async def send_message(
                     },
                     auth_header=request.headers.get('Authorization'),
                 )
+                preview_generation_ms = int((perf_counter() - preview_started) * 1000)
                 preview_id = preview_result.get('preview_id')
                 if isinstance(preview_id, str):
                     outcome.session.latest_preview_id = preview_id
@@ -285,6 +288,7 @@ async def send_message(
                         artifacts.append(artifact)
                     await _run_store_call(store.update, outcome.session)
             except HTTPException as exc:
+                preview_generation_ms = int((perf_counter() - preview_started) * 1000)
                 logger.warning(
                     'Auto-preview artifact generation failed for session_id=%s roadmap_id=%s status=%s detail=%s',
                     outcome.session.session_id,
@@ -315,6 +319,11 @@ async def send_message(
         raise
     finally:
         elapsed_ms = int((perf_counter() - started_at) * 1000)
+        total_edit_turn_ms = (
+            elapsed_ms
+            if outcome is not None and outcome.response_mode == 'edit_plan'
+            else None
+        )
         log_event(
             logger,
             'message_completed',
@@ -360,6 +369,11 @@ async def send_message(
                 )
             ),
             error_code=error_code,
+            route_lane=outcome.route_lane if outcome else None,
+            fastpath_bypass_reason=outcome.fastpath_bypass_reason if outcome else None,
+            phase_timings=outcome.phase_timings if outcome else None,
+            preview_generation_ms=preview_generation_ms,
+            total_edit_turn_ms=total_edit_turn_ms,
         )
 
 
@@ -544,6 +558,8 @@ async def get_artifact_preview(
         raise HTTPException(status_code=404, detail=f'Artifact {artifact_id} not found for session {session_id}.')
 
     trace_id = str(uuid4())
+    fetch_started = perf_counter()
+    self_heal_started: float | None = None
     try:
         preview_result = await _nest_client.get_preview(
             roadmap_id=session.roadmap_id,
@@ -566,6 +582,7 @@ async def get_artifact_preview(
                 preview_id=artifact.preview_id,
             )
             try:
+                self_heal_started = perf_counter()
                 regenerated_preview = await _nest_client.preview(
                     roadmap_id=session.roadmap_id,
                     payload={
@@ -602,6 +619,12 @@ async def get_artifact_preview(
                     artifact_id=artifact_id,
                     preview_id=artifact.preview_id,
                     self_healed=True,
+                    artifact_fetch_ms=int((perf_counter() - fetch_started) * 1000),
+                    artifact_self_heal_ms=(
+                        int((perf_counter() - self_heal_started) * 1000)
+                        if self_heal_started is not None
+                        else None
+                    ),
                 )
                 return ArtifactPreviewResponse(
                     session_id=session.session_id,
@@ -627,10 +650,30 @@ async def get_artifact_preview(
             retryable=normalized.get('retryable'),
             self_healed=False,
             self_heal_attempted=self_heal_attempted,
+            artifact_fetch_ms=int((perf_counter() - fetch_started) * 1000),
+            artifact_self_heal_ms=(
+                int((perf_counter() - self_heal_started) * 1000)
+                if self_heal_started is not None
+                else None
+            ),
         )
         status_code = int(normalized.get('upstream_status') or exc.status_code)
         raise HTTPException(status_code=status_code, detail=normalized) from exc
 
+    artifact_fetch_ms = int((perf_counter() - fetch_started) * 1000)
+    log_event(
+        logger,
+        'artifact_fetch_succeeded',
+        settings=settings,
+        trace_id=trace_id,
+        session_id=session_id,
+        roadmap_id=session.roadmap_id,
+        artifact_id=artifact_id,
+        preview_id=artifact.preview_id,
+        artifact_fetch_ms=artifact_fetch_ms,
+        artifact_self_heal_ms=None,
+        self_healed=False,
+    )
     return ArtifactPreviewResponse(
         session_id=session.session_id,
         roadmap_id=session.roadmap_id,

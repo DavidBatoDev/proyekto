@@ -303,6 +303,54 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertIsInstance(actor_context['fetched_at'], str)
         self.assertIsInstance(pending_context['created_at'], str)
 
+    def test_fastpath_rename_returns_single_operation(self) -> None:
+        service = self._service(
+            {
+                'matches': [
+                    {
+                        'id': 'new-node-id',
+                        'type': 'epic',
+                        'title': 'Platform Foundation',
+                    }
+                ]
+            }
+        )
+        session = AgentSession(roadmap_id='roadmap-1')
+        result, bypass_reason = service._try_deterministic_edit_fastpath(
+            session=session,
+            user_message='Rename Platform Foundation epic to Platform Foundation 1',
+            auth_header=None,
+            trace_id='trace-fastpath-rename',
+            session_context={'roadmap_id': 'roadmap-1'},
+        )
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertIsNone(bypass_reason)
+        self.assertEqual(result.parse_mode, 'deterministic_fastpath_rename')
+        self.assertEqual(len(result.operations), 1)
+        self.assertEqual(result.operations[0].node_id, 'new-node-id')
+        self.assertEqual(result.route_lane, 'deterministic_edit_fastpath')
+
+    def test_fastpath_bypasses_on_ambiguous_target(self) -> None:
+        service = self._service(
+            {
+                'matches': [
+                    {'id': 'n1', 'type': 'epic', 'title': 'Platform Foundation', 'score': 1.0},
+                    {'id': 'n2', 'type': 'epic', 'title': 'Platform Foundation Core', 'score': 0.92},
+                ]
+            }
+        )
+        session = AgentSession(roadmap_id='roadmap-1')
+        result, bypass_reason = service._try_deterministic_edit_fastpath(
+            session=session,
+            user_message='Rename Platform Foundation epic to Platform Foundation 1',
+            auth_header=None,
+            trace_id='trace-fastpath-ambiguous',
+            session_context={'roadmap_id': 'roadmap-1'},
+        )
+        self.assertIsNone(result)
+        self.assertEqual(bypass_reason, 'rename_target_ambiguous_or_not_found')
+
 
 class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
     async def test_store_unavailable_response_is_sanitized(self) -> None:

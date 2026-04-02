@@ -73,6 +73,8 @@ class PlanningResult:
     tokens_total: int | None = None
     pending_context_resolution: dict[str, Any] | None = None
     clear_pending_context_resolution: bool = False
+    route_lane: str | None = None
+    fastpath_bypass_reason: str | None = None
 
 
 class LLMPlanner:
@@ -132,6 +134,19 @@ class LLMPlanner:
             user_message=user_message,
             existing_operations=existing_operations,
         )
+
+    def preview_intent_classification(
+        self,
+        user_message: str,
+        session_context: dict[str, Any] | None = None,
+    ) -> tuple[IntentType, bool]:
+        intent = self._heuristic_intent(user_message)
+        is_roadmap_question = self._is_roadmap_question(
+            intent_type=intent,
+            user_message=user_message,
+            session_context=session_context or {},
+        )
+        return intent, is_roadmap_question
 
     def _get_langgraph_disabled_reason(self) -> str | None:
         if StateGraph is None or END is None:

@@ -2,6 +2,8 @@ import unittest
 
 from app.core.orchestration.edit_resolver import (
     build_ambiguity_message,
+    extract_mark_status_intent,
+    extract_move_intent,
     extract_rename_intent,
     parse_selection_index,
     resolve_candidates,
@@ -74,6 +76,27 @@ class EditResolverTests(unittest.TestCase):
         self.assertIsNone(parse_selection_index('rename to v2'))
         self.assertIsNone(parse_selection_index('option 1 rename this'))
         self.assertIsNone(parse_selection_index('pick whichever is best'))
+
+    def test_extract_mark_status_intent_with_node_type(self) -> None:
+        intent = extract_mark_status_intent(
+            'Set Authentication System feature status to in progress'
+        )
+        self.assertIsNotNone(intent)
+        assert intent is not None
+        self.assertEqual(intent.label, 'Authentication System')
+        self.assertEqual(intent.node_type, 'feature')
+        self.assertEqual(intent.status, 'in_progress')
+
+    def test_extract_move_intent_with_types(self) -> None:
+        intent = extract_move_intent(
+            'Move Roadmap JSON Editor feature under Platform Foundation epic'
+        )
+        self.assertIsNotNone(intent)
+        assert intent is not None
+        self.assertEqual(intent.label, 'Roadmap JSON Editor')
+        self.assertEqual(intent.target_label, 'Platform Foundation')
+        self.assertEqual(intent.node_type, 'feature')
+        self.assertEqual(intent.target_node_type, 'epic')
 
 
 if __name__ == '__main__':
