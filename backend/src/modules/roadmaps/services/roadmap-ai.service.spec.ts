@@ -278,6 +278,118 @@ describe('RoadmapAiService actor + assignee context', () => {
   });
 });
 
+describe('RoadmapAiService context timing logs', () => {
+  const ROADMAP_ID = '55e431e2-e416-468c-a973-94d97280e97d';
+  const USER_ID = 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb';
+  const EPIC_ID = 'dad5697a-8962-4f80-8bc3-8a964edd8e56';
+  const FEATURE_ID = '60bcab3f-3989-448d-9c84-3261cf38685b';
+  const TASK_ID = '1beecdd2-f057-4c41-bf6d-8bb9e5e4b2b1';
+
+  const createService = () => {
+    const maybeSingle = jest
+      .fn()
+      .mockResolvedValue({ data: { display_name: 'Alice' }, error: null });
+    const eq = jest.fn().mockReturnValue({ maybeSingle });
+    const select = jest.fn().mockReturnValue({ eq });
+    const from = jest.fn().mockReturnValue({ select });
+
+    const fullRoadmap = {
+      id: ROADMAP_ID,
+      name: 'Q2 SaaS Platform Development',
+      roadmap_epics: [
+        {
+          id: EPIC_ID,
+          title: 'Platform Foundation',
+          roadmap_features: [
+            {
+              id: FEATURE_ID,
+              title: 'Authentication System',
+              roadmap_tasks: [
+                {
+                  id: TASK_ID,
+                  title: 'Implement login API',
+                  status: 'in_progress',
+                  assignee_id: USER_ID,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const service = new RoadmapAiService(
+      { from } as never,
+      {
+        findById: jest.fn().mockResolvedValue({
+          id: ROADMAP_ID,
+          owner_id: USER_ID,
+        }),
+        findFull: jest.fn().mockResolvedValue(fullRoadmap),
+        searchContextCandidates: jest.fn(),
+      } as never,
+      {} as never,
+      { assertRoadmapPermission: jest.fn().mockResolvedValue(undefined) } as never,
+      {
+        getResolution: jest.fn().mockResolvedValue({
+          roadmapId: ROADMAP_ID,
+          userId: USER_ID,
+          matches: [
+            { id: EPIC_ID, type: 'epic', title: 'Platform Foundation', parent_id: ROADMAP_ID },
+          ],
+        }),
+      } as never,
+    );
+
+    return service;
+  };
+
+  it('emits timing logs for all non-search context handlers', async () => {
+    const service = createService();
+    const timingSpy = jest.spyOn(service as any, 'logRoadmapAiHandlerTiming');
+    const traceId = 'trace-context-timing';
+
+    await service.getContextSummary(ROADMAP_ID, USER_ID, traceId);
+    await service.getContextActor(ROADMAP_ID, USER_ID, traceId);
+    await service.getContextNodeDetails(ROADMAP_ID, EPIC_ID, USER_ID, traceId);
+    await service.getContextNodeChildren(
+      ROADMAP_ID,
+      EPIC_ID,
+      { limit: 10 } as any,
+      USER_ID,
+      traceId,
+    );
+    await service.getContextChildrenFromResolution(
+      ROADMAP_ID,
+      'dc86d208-1ea6-42d4-874d-d6f3c68c0228',
+      { choice: 1, limit: 10 } as any,
+      USER_ID,
+      traceId,
+    );
+    await service.getContextFeatures(
+      ROADMAP_ID,
+      { epic_id: EPIC_ID, limit: 10 } as any,
+      USER_ID,
+      traceId,
+    );
+    await service.getContextTasksAssignedToMe(
+      ROADMAP_ID,
+      { status: 'open', limit: 10 } as any,
+      USER_ID,
+      traceId,
+    );
+
+    const events = timingSpy.mock.calls.map((call) => (call[0] as any)?.event);
+    expect(events).toContain('roadmap_ai_context_summary_timing');
+    expect(events).toContain('roadmap_ai_context_actor_timing');
+    expect(events).toContain('roadmap_ai_context_node_details_timing');
+    expect(events).toContain('roadmap_ai_context_node_children_timing');
+    expect(events).toContain('roadmap_ai_context_resolution_children_timing');
+    expect(events).toContain('roadmap_ai_context_features_timing');
+    expect(events).toContain('roadmap_ai_context_tasks_assigned_timing');
+  });
+});
+
 describe('RoadmapAiService context search lookup', () => {
   const ROADMAP_ID = '55e431e2-e416-468c-a973-94d97280e97d';
   const USER_ID = 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb';

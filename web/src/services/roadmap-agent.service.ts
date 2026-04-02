@@ -72,6 +72,7 @@ export interface AgentRoadmapPreviewArtifact {
   summary: string;
   semantic_diff_summary: Record<string, number>;
   validation_issue_count: number;
+  inline_preview?: AgentPreviewPayload;
   created_at: string;
 }
 

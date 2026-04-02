@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -35,8 +36,9 @@ export class RoadmapAiController {
     @Param('id') roadmapId: string,
     @Body() dto: RoadmapAiPreviewDto,
     @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
   ) {
-    return this.roadmapAiService.preview(roadmapId, dto, user.id);
+    return this.roadmapAiService.preview(roadmapId, dto, user.id, traceId);
   }
 
   @Get('previews/:previewId')
@@ -44,24 +46,27 @@ export class RoadmapAiController {
     @Param('id') roadmapId: string,
     @Param('previewId') previewId: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
   ) {
-    return this.roadmapAiService.getPreview(roadmapId, previewId, user.id);
+    return this.roadmapAiService.getPreview(roadmapId, previewId, user.id, traceId);
   }
 
   @Get('context/summary')
   getContextSummary(
     @Param('id') roadmapId: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
   ) {
-    return this.roadmapAiService.getContextSummary(roadmapId, user.id);
+    return this.roadmapAiService.getContextSummary(roadmapId, user.id, traceId);
   }
 
   @Get('context/actor')
   getContextActor(
     @Param('id') roadmapId: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
   ) {
-    return this.roadmapAiService.getContextActor(roadmapId, user.id);
+    return this.roadmapAiService.getContextActor(roadmapId, user.id, traceId);
   }
 
   @Get('context/search')
@@ -69,8 +74,9 @@ export class RoadmapAiController {
     @Param('id') roadmapId: string,
     @Query() query: RoadmapAiContextSearchQueryDto,
     @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
   ) {
-    return this.roadmapAiService.searchContextNodes(roadmapId, query, user.id);
+    return this.roadmapAiService.searchContextNodes(roadmapId, query, user.id, traceId);
   }
 
   @Get('context/nodes/:nodeId')
@@ -78,8 +84,14 @@ export class RoadmapAiController {
     @Param('id') roadmapId: string,
     @Param('nodeId') nodeId: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
   ) {
-    return this.roadmapAiService.getContextNodeDetails(roadmapId, nodeId, user.id);
+    return this.roadmapAiService.getContextNodeDetails(
+      roadmapId,
+      nodeId,
+      user.id,
+      traceId,
+    );
   }
 
   @Get('context/nodes/:nodeId/children')
@@ -88,8 +100,15 @@ export class RoadmapAiController {
     @Param('nodeId') nodeId: string,
     @Query() query: RoadmapAiContextChildrenQueryDto,
     @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
   ) {
-    return this.roadmapAiService.getContextNodeChildren(roadmapId, nodeId, query, user.id);
+    return this.roadmapAiService.getContextNodeChildren(
+      roadmapId,
+      nodeId,
+      query,
+      user.id,
+      traceId,
+    );
   }
 
   @Get('context/resolutions/:resolutionId/children')
@@ -98,12 +117,14 @@ export class RoadmapAiController {
     @Param('resolutionId') resolutionId: string,
     @Query() query: RoadmapAiContextResolutionChildrenQueryDto,
     @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
   ) {
     return this.roadmapAiService.getContextChildrenFromResolution(
       roadmapId,
       resolutionId,
       query,
       user.id,
+      traceId,
     );
   }
 
@@ -112,8 +133,14 @@ export class RoadmapAiController {
     @Param('id') roadmapId: string,
     @Query() query: RoadmapAiContextFeaturesQueryDto,
     @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
   ) {
-    return this.roadmapAiService.getContextFeatures(roadmapId, query, user.id);
+    return this.roadmapAiService.getContextFeatures(
+      roadmapId,
+      query,
+      user.id,
+      traceId,
+    );
   }
 
   @Get('context/tasks-assigned-to-me')
@@ -121,11 +148,13 @@ export class RoadmapAiController {
     @Param('id') roadmapId: string,
     @Query() query: RoadmapAiContextTasksAssignedQueryDto,
     @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
   ) {
     return this.roadmapAiService.getContextTasksAssignedToMe(
       roadmapId,
       query,
       user.id,
+      traceId,
     );
   }
 

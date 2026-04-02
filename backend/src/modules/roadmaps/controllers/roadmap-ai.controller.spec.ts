@@ -1,0 +1,131 @@
+import { RoadmapAiController } from './roadmap-ai.controller';
+
+describe('RoadmapAiController trace forwarding', () => {
+  const roadmapId = 'roadmap-1';
+  const user = { id: 'user-1' } as any;
+  const traceId = 'trace-123';
+  const previewDto = { operations: [] } as any;
+  const searchQuery = { query: 'platform foundation' } as any;
+  const childrenQuery = { limit: 10 } as any;
+  const resolutionChildrenQuery = { choice: 1, limit: 10 } as any;
+  const featuresQuery = { epic_id: 'epic-1', limit: 10 } as any;
+  const tasksQuery = { status: 'open', limit: 10 } as any;
+
+  const roadmapAiService = {
+    preview: jest.fn(),
+    getPreview: jest.fn(),
+    getContextSummary: jest.fn(),
+    getContextActor: jest.fn(),
+    searchContextNodes: jest.fn(),
+    getContextNodeDetails: jest.fn(),
+    getContextNodeChildren: jest.fn(),
+    getContextChildrenFromResolution: jest.fn(),
+    getContextFeatures: jest.fn(),
+    getContextTasksAssignedToMe: jest.fn(),
+    commit: jest.fn(),
+    discard: jest.fn(),
+    rollback: jest.fn(),
+  };
+
+  let controller: RoadmapAiController;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    controller = new RoadmapAiController(roadmapAiService as any);
+  });
+
+  it('forwards trace id for preview/search and all context handlers', () => {
+    controller.preview(roadmapId, previewDto, user, traceId);
+    expect(roadmapAiService.preview).toHaveBeenCalledWith(
+      roadmapId,
+      previewDto,
+      user.id,
+      traceId,
+    );
+
+    controller.getPreview(roadmapId, 'preview-1', user, traceId);
+    expect(roadmapAiService.getPreview).toHaveBeenCalledWith(
+      roadmapId,
+      'preview-1',
+      user.id,
+      traceId,
+    );
+
+    controller.getContextSummary(roadmapId, user, traceId);
+    expect(roadmapAiService.getContextSummary).toHaveBeenCalledWith(
+      roadmapId,
+      user.id,
+      traceId,
+    );
+
+    controller.getContextActor(roadmapId, user, traceId);
+    expect(roadmapAiService.getContextActor).toHaveBeenCalledWith(
+      roadmapId,
+      user.id,
+      traceId,
+    );
+
+    controller.searchContextNodes(roadmapId, searchQuery, user, traceId);
+    expect(roadmapAiService.searchContextNodes).toHaveBeenCalledWith(
+      roadmapId,
+      searchQuery,
+      user.id,
+      traceId,
+    );
+
+    controller.getContextNodeDetails(roadmapId, 'node-1', user, traceId);
+    expect(roadmapAiService.getContextNodeDetails).toHaveBeenCalledWith(
+      roadmapId,
+      'node-1',
+      user.id,
+      traceId,
+    );
+
+    controller.getContextNodeChildren(
+      roadmapId,
+      'node-1',
+      childrenQuery,
+      user,
+      traceId,
+    );
+    expect(roadmapAiService.getContextNodeChildren).toHaveBeenCalledWith(
+      roadmapId,
+      'node-1',
+      childrenQuery,
+      user.id,
+      traceId,
+    );
+
+    controller.getContextResolutionChildren(
+      roadmapId,
+      'resolution-1',
+      resolutionChildrenQuery,
+      user,
+      traceId,
+    );
+    expect(roadmapAiService.getContextChildrenFromResolution).toHaveBeenCalledWith(
+      roadmapId,
+      'resolution-1',
+      resolutionChildrenQuery,
+      user.id,
+      traceId,
+    );
+
+    controller.getContextFeatures(roadmapId, featuresQuery, user, traceId);
+    expect(roadmapAiService.getContextFeatures).toHaveBeenCalledWith(
+      roadmapId,
+      featuresQuery,
+      user.id,
+      traceId,
+    );
+
+    controller.getContextTasksAssignedToMe(roadmapId, tasksQuery, user, traceId);
+    expect(roadmapAiService.getContextTasksAssignedToMe).toHaveBeenCalledWith(
+      roadmapId,
+      tasksQuery,
+      user.id,
+      traceId,
+    );
+  });
+});
+

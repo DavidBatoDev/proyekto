@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import json
 from time import perf_counter
 from uuid import uuid4
 from typing import cast
@@ -46,6 +47,10 @@ _ACTOR_METADATA_KEYS = {
     'timezone',
     'fetched_at',
 }
+
+
+def _serialized_payload_bytes(payload: dict) -> int:
+    return len(json.dumps(payload, separators=(',', ':'), ensure_ascii=False).encode('utf-8'))
 
 
 def _normalize_artifact_preview_error(exc: HTTPException) -> dict:
@@ -244,11 +249,14 @@ async def send_message(
     )
     outcome = None
     artifacts: list[RoadmapPreviewArtifact] = []
+    response_artifacts: list[RoadmapPreviewArtifact] = []
     error_code: int | None = None
     preview_generation_ms: int | None = None
     preview_error_code: str | None = None
     preview_error_retryable: bool | None = None
     preview_error_upstream_status: int | None = None
+    inline_preview_skipped_due_to_size = False
+    inline_preview_size_bytes: int | None = None
     effective_preview_available: bool = False
     effective_preview_recommended: bool = False
     try:
@@ -279,6 +287,7 @@ async def send_message(
                         ],
                     },
                     auth_header=request.headers.get('Authorization'),
+                    trace_id=trace_id,
                 )
                 preview_generation_ms = int((perf_counter() - preview_started) * 1000)
                 preview_id = preview_result.get('preview_id')
@@ -290,6 +299,14 @@ async def send_message(
                     artifact = _build_preview_artifact(outcome.session, preview_result)
                     if artifact is not None:
                         outcome.session.artifacts.append(artifact)
+                        inline_preview_size_bytes = _serialized_payload_bytes(preview_result)
+                        if inline_preview_size_bytes <= settings.inline_preview_max_bytes:
+                            response_artifacts.append(
+                                artifact.model_copy(update={'inline_preview': preview_result})
+                            )
+                        else:
+                            inline_preview_skipped_due_to_size = True
+                            response_artifacts.append(artifact)
                         artifacts.append(artifact)
                     await _run_store_call(store.update, outcome.session)
                 effective_preview_available = outcome.preview_available
@@ -329,7 +346,7 @@ async def send_message(
             preview_recommended=effective_preview_recommended,
             staged_operations_version=outcome.staged_operations_version,
             staged_operations_count=outcome.staged_operations_count,
-            artifacts=artifacts,
+            artifacts=response_artifacts or artifacts,
             provider_used=outcome.provider_used,
             fallback_used=outcome.fallback_used,
             provider_error_code=outcome.provider_error_code,
@@ -365,6 +382,16 @@ async def send_message(
             tokens_total=outcome.tokens_total if outcome else None,
             operations_count=len(outcome.operations) if outcome else 0,
             artifacts_count=len(artifacts),
+            inline_preview_included=any(
+                artifact.inline_preview is not None for artifact in response_artifacts
+            ),
+            inline_preview_skipped_due_to_size=inline_preview_skipped_due_to_size,
+            inline_preview_size_bytes=inline_preview_size_bytes,
+            artifact_first_read_source=(
+                'inline'
+                if any(artifact.inline_preview is not None for artifact in response_artifacts)
+                else None
+            ),
             preview_available=effective_preview_available if outcome else False,
             preview_recommended=effective_preview_recommended if outcome else False,
             actor_present=(
@@ -418,6 +445,8 @@ async def preview_session(
     request: Request,
 ) -> dict:
     store, agent_service = await _get_agent_runtime_async()
+    trace_id = request.headers.get('X-Trace-Id') or str(uuid4())
+    started_at = perf_counter()
     session = await _get_session_or_404_async(agent_service, session_id)
 
     operations = payload.operations if payload.operations is not None else session.operations
@@ -437,6 +466,7 @@ async def preview_session(
                 'operations': [op.model_dump(exclude_none=True) for op in operations],
             },
             auth_header=request.headers.get('Authorization'),
+            trace_id=trace_id,
         )
     except HTTPException as exc:
         logger.warning(
@@ -445,6 +475,19 @@ async def preview_session(
             session.roadmap_id,
             exc.status_code,
             exc.detail,
+        )
+        log_event(
+            logger,
+            'session_preview_completed',
+            settings=settings,
+            level=logging.WARNING,
+            trace_id=trace_id,
+            session_id=session_id,
+            roadmap_id=session.roadmap_id,
+            elapsed_ms=int((perf_counter() - started_at) * 1000),
+            preview_available=False,
+            preview_error_code='PREVIEW_FAILED',
+            preview_error_upstream_status=exc.status_code,
         )
         raise
 
@@ -461,6 +504,19 @@ async def preview_session(
         else:
             effective_revision_token = cast(str | None, session.revision_token) or revision_token
         await _run_store_call(store.update, session)
+
+    log_event(
+        logger,
+        'session_preview_completed',
+        settings=settings,
+        trace_id=trace_id,
+        session_id=session_id,
+        roadmap_id=session.roadmap_id,
+        elapsed_ms=int((perf_counter() - started_at) * 1000),
+        preview_available=True,
+        preview_error_code=None,
+        preview_error_upstream_status=None,
+    )
 
     return {
         'session_id': session.session_id,
@@ -599,6 +655,7 @@ async def get_artifact_preview(
             roadmap_id=session.roadmap_id,
             preview_id=artifact.preview_id,
             auth_header=request.headers.get('Authorization'),
+            trace_id=trace_id,
         )
     except HTTPException as exc:
         normalized = _normalize_artifact_preview_error(exc)
@@ -628,6 +685,7 @@ async def get_artifact_preview(
                         ],
                     },
                     auth_header=request.headers.get('Authorization'),
+                    trace_id=trace_id,
                 )
 
                 regenerated_preview_id = regenerated_preview.get('preview_id')
@@ -659,6 +717,7 @@ async def get_artifact_preview(
                         if self_heal_started is not None
                         else None
                     ),
+                    artifact_first_read_source='self_heal',
                 )
                 return ArtifactPreviewResponse(
                     session_id=session.session_id,
@@ -690,6 +749,7 @@ async def get_artifact_preview(
                 if self_heal_started is not None
                 else None
             ),
+            artifact_first_read_source='self_heal' if self_heal_attempted else 'fetch',
         )
         status_code = int(normalized.get('upstream_status') or exc.status_code)
         raise HTTPException(status_code=status_code, detail=normalized) from exc
@@ -707,6 +767,7 @@ async def get_artifact_preview(
         artifact_fetch_ms=artifact_fetch_ms,
         artifact_self_heal_ms=None,
         self_healed=False,
+        artifact_first_read_source='fetch',
     )
     return ArtifactPreviewResponse(
         session_id=session.session_id,

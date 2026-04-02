@@ -1,26 +1,32 @@
 from typing import Any
 from urllib.parse import quote_plus
+from time import perf_counter
+import logging
 
 import httpx
 from fastapi import HTTPException
 
 from app.core.config import get_settings
+from app.core.logging_utils import log_event
 
 
 class NestRoadmapClient:
     def __init__(self) -> None:
         self._settings = get_settings()
+        self._logger = logging.getLogger(__name__)
 
     async def preview(
         self,
         roadmap_id: str,
         payload: dict[str, Any],
         auth_header: str | None,
+        trace_id: str | None = None,
     ) -> dict[str, Any]:
         return await self._post(
             f"/roadmaps/{roadmap_id}/ai/preview",
             payload,
             auth_header,
+            trace_id=trace_id,
         )
 
     async def get_preview(
@@ -28,10 +34,12 @@ class NestRoadmapClient:
         roadmap_id: str,
         preview_id: str,
         auth_header: str | None,
+        trace_id: str | None = None,
     ) -> dict[str, Any]:
         return await self._get(
             f"/roadmaps/{roadmap_id}/ai/previews/{preview_id}",
             auth_header,
+            trace_id=trace_id,
         )
 
     async def commit(
@@ -39,11 +47,13 @@ class NestRoadmapClient:
         roadmap_id: str,
         payload: dict[str, Any],
         auth_header: str | None,
+        trace_id: str | None = None,
     ) -> dict[str, Any]:
         return await self._post(
             f"/roadmaps/{roadmap_id}/ai/commit",
             payload,
             auth_header,
+            trace_id=trace_id,
         )
 
     async def discard_preview(
@@ -51,11 +61,13 @@ class NestRoadmapClient:
         roadmap_id: str,
         payload: dict[str, Any],
         auth_header: str | None,
+        trace_id: str | None = None,
     ) -> dict[str, Any]:
         return await self._post(
             f"/roadmaps/{roadmap_id}/ai/discard",
             payload,
             auth_header,
+            trace_id=trace_id,
         )
 
     async def rollback(
@@ -63,31 +75,37 @@ class NestRoadmapClient:
         roadmap_id: str,
         payload: dict[str, Any],
         auth_header: str | None,
+        trace_id: str | None = None,
     ) -> dict[str, Any]:
         return await self._post(
             f"/roadmaps/{roadmap_id}/ai/rollback",
             payload,
             auth_header,
+            trace_id=trace_id,
         )
 
     async def context_summary(
         self,
         roadmap_id: str,
         auth_header: str | None,
+        trace_id: str | None = None,
     ) -> dict[str, Any]:
         return await self._get(
             f"/roadmaps/{roadmap_id}/ai/context/summary",
             auth_header,
+            trace_id=trace_id,
         )
 
     async def context_actor(
         self,
         roadmap_id: str,
         auth_header: str | None,
+        trace_id: str | None = None,
     ) -> dict[str, Any]:
         return await self._get(
             f"/roadmaps/{roadmap_id}/ai/context/actor",
             auth_header,
+            trace_id=trace_id,
         )
 
     async def context_search(
@@ -97,6 +115,7 @@ class NestRoadmapClient:
         node_type: str | None,
         limit: int | None,
         auth_header: str | None,
+        trace_id: str | None = None,
     ) -> dict[str, Any]:
         query_string = f"?query={quote_plus(query)}"
         if node_type:
@@ -106,6 +125,7 @@ class NestRoadmapClient:
         return await self._get(
             f"/roadmaps/{roadmap_id}/ai/context/search{query_string}",
             auth_header,
+            trace_id=trace_id,
         )
 
     async def context_children_from_resolution(
@@ -115,6 +135,7 @@ class NestRoadmapClient:
         choice: int,
         limit: int | None,
         auth_header: str | None,
+        trace_id: str | None = None,
     ) -> dict[str, Any]:
         query_string = f"?choice={choice}"
         if limit is not None:
@@ -122,6 +143,7 @@ class NestRoadmapClient:
         return await self._get(
             f"/roadmaps/{roadmap_id}/ai/context/resolutions/{resolution_id}/children{query_string}",
             auth_header,
+            trace_id=trace_id,
         )
 
     async def context_features(
@@ -130,6 +152,7 @@ class NestRoadmapClient:
         epic_id: str,
         limit: int | None,
         auth_header: str | None,
+        trace_id: str | None = None,
     ) -> dict[str, Any]:
         query_string = f"?epic_id={quote_plus(epic_id)}"
         if limit is not None:
@@ -137,6 +160,7 @@ class NestRoadmapClient:
         return await self._get(
             f"/roadmaps/{roadmap_id}/ai/context/features{query_string}",
             auth_header,
+            trace_id=trace_id,
         )
 
     async def context_tasks_assigned_to_me(
@@ -145,6 +169,7 @@ class NestRoadmapClient:
         status: str | None,
         limit: int | None,
         auth_header: str | None,
+        trace_id: str | None = None,
     ) -> dict[str, Any]:
         query_parts: list[str] = []
         if status:
@@ -155,6 +180,7 @@ class NestRoadmapClient:
         return await self._get(
             f"/roadmaps/{roadmap_id}/ai/context/tasks-assigned-to-me{query_string}",
             auth_header,
+            trace_id=trace_id,
         )
 
     async def context_node_details(
@@ -162,10 +188,12 @@ class NestRoadmapClient:
         roadmap_id: str,
         node_id: str,
         auth_header: str | None,
+        trace_id: str | None = None,
     ) -> dict[str, Any]:
         return await self._get(
             f"/roadmaps/{roadmap_id}/ai/context/nodes/{node_id}",
             auth_header,
+            trace_id=trace_id,
         )
 
     async def context_children(
@@ -174,6 +202,7 @@ class NestRoadmapClient:
         node_id: str,
         limit: int | None,
         auth_header: str | None,
+        trace_id: str | None = None,
     ) -> dict[str, Any]:
         query_string = ''
         if limit is not None:
@@ -181,6 +210,7 @@ class NestRoadmapClient:
         return await self._get(
             f"/roadmaps/{roadmap_id}/ai/context/nodes/{node_id}/children{query_string}",
             auth_header,
+            trace_id=trace_id,
         )
 
     async def _post(
@@ -188,16 +218,31 @@ class NestRoadmapClient:
         path: str,
         payload: dict[str, Any],
         auth_header: str | None,
+        trace_id: str | None = None,
     ) -> dict[str, Any]:
         headers = {'Content-Type': 'application/json'}
         if auth_header:
             headers['Authorization'] = auth_header
+        if trace_id:
+            headers['X-Trace-Id'] = trace_id
 
         url = f"{self._settings.nest_api_base_url}{path}"
         timeout = self._settings.nest_timeout_seconds
 
+        started = perf_counter()
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(url, json=payload, headers=headers)
+        elapsed_ms = int((perf_counter() - started) * 1000)
+        log_event(
+            self._logger,
+            'nest_http_call',
+            settings=self._settings,
+            trace_id=trace_id,
+            method='POST',
+            path=path,
+            status_code=response.status_code,
+            nest_http_call_ms=elapsed_ms,
+        )
 
         if response.is_success:
             return self._extract_success_payload(response)
@@ -221,16 +266,31 @@ class NestRoadmapClient:
         self,
         path: str,
         auth_header: str | None,
+        trace_id: str | None = None,
     ) -> dict[str, Any]:
         headers = {'Content-Type': 'application/json'}
         if auth_header:
             headers['Authorization'] = auth_header
+        if trace_id:
+            headers['X-Trace-Id'] = trace_id
 
         url = f"{self._settings.nest_api_base_url}{path}"
         timeout = self._settings.nest_timeout_seconds
 
+        started = perf_counter()
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.get(url, headers=headers)
+        elapsed_ms = int((perf_counter() - started) * 1000)
+        log_event(
+            self._logger,
+            'nest_http_call',
+            settings=self._settings,
+            trace_id=trace_id,
+            method='GET',
+            path=path,
+            status_code=response.status_code,
+            nest_http_call_ms=elapsed_ms,
+        )
 
         if response.is_success:
             return self._extract_success_payload(response)

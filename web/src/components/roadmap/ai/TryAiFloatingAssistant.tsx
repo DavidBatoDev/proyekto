@@ -240,6 +240,17 @@ export function TryAiFloatingAssistant({
     };
 
     for (const artifactMeta of response.artifacts || []) {
+      if (artifactMeta.inline_preview) {
+        hydrated.push(
+          mapPreviewToArtifact(
+            roadmapId,
+            artifactMeta.inline_preview,
+            artifactMeta,
+            currentRoadmap,
+          ),
+        );
+        continue;
+      }
       const artifactDetail = await fetchArtifactDetailWithRecovery(artifactMeta);
       hydrated.push(
         mapPreviewToArtifact(

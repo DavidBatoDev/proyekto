@@ -40,6 +40,14 @@ class Settings(BaseSettings):
         default=2,
         alias='MAX_REPEATED_TOOL_CALLS_PER_SIGNATURE',
     )
+    deterministic_fastpath_search_sla_ms: int = Field(
+        default=2000,
+        alias='DETERMINISTIC_FASTPATH_SEARCH_SLA_MS',
+    )
+    inline_preview_max_bytes: int = Field(
+        default=262144,
+        alias='INLINE_PREVIEW_MAX_BYTES',
+    )
 
     agent_log_level: str = Field(default='DEBUG', alias='AGENT_LOG_LEVEL')
     agent_log_json: bool = Field(default=True, alias='AGENT_LOG_JSON')

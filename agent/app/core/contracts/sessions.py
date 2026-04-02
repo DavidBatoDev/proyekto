@@ -30,6 +30,7 @@ class RoadmapPreviewArtifact(BaseModel):
     summary: str
     semantic_diff_summary: dict[str, int] = Field(default_factory=dict)
     validation_issue_count: int = 0
+    inline_preview: dict[str, Any] | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

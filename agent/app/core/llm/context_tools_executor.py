@@ -109,10 +109,12 @@ class ContextToolsExecutor:
 
             result: dict[str, Any]
             if tool_name == 'get_roadmap_summary':
-                result = self._run_async_context_call(
+                result = self._run_context_call(
+                    session_context,
                     self._nest_client.context_summary(
                         roadmap_id=roadmap_id,
                         auth_header=auth_value,
+                        trace_id=trace_id,
                     )
                 )
                 log_event(
@@ -146,13 +148,15 @@ class ContextToolsExecutor:
                     return result
                 limit_raw = args.get('limit')
                 limit = int(limit_raw) if isinstance(limit_raw, int) else None
-                result = self._run_async_context_call(
+                result = self._run_context_call(
+                    session_context,
                     self._nest_client.context_search(
                         roadmap_id=roadmap_id,
                         query=query,
                         node_type=None,
                         limit=limit,
                         auth_header=auth_value,
+                        trace_id=trace_id,
                     )
                 )
                 log_event(
@@ -188,13 +192,15 @@ class ContextToolsExecutor:
                 node_type = node_type_raw if node_type_raw in {'epic', 'feature', 'task'} else None
                 limit_raw = args.get('limit')
                 limit = int(limit_raw) if isinstance(limit_raw, int) else 20
-                search_result = self._run_async_context_call(
+                search_result = self._run_context_call(
+                    session_context,
                     self._nest_client.context_search(
                         roadmap_id=roadmap_id,
                         query=label,
                         node_type=node_type,
                         limit=limit,
                         auth_header=auth_value,
+                        trace_id=trace_id,
                     )
                 )
                 raw_matches = search_result.get('matches', [])
@@ -286,13 +292,15 @@ class ContextToolsExecutor:
                     return result
                 limit_raw = args.get('limit')
                 limit = int(limit_raw) if isinstance(limit_raw, int) else None
-                result = self._run_async_context_call(
+                result = self._run_context_call(
+                    session_context,
                     self._nest_client.context_children_from_resolution(
                         roadmap_id=roadmap_id,
                         resolution_id=resolution_id,
                         choice=choice,
                         limit=limit,
                         auth_header=auth_value,
+                        trace_id=trace_id,
                     )
                 )
                 log_event(
@@ -348,12 +356,14 @@ class ContextToolsExecutor:
                     return result
                 limit_raw = args.get('limit')
                 limit = int(limit_raw) if isinstance(limit_raw, int) else None
-                result = self._run_async_context_call(
+                result = self._run_context_call(
+                    session_context,
                     self._nest_client.context_features(
                         roadmap_id=roadmap_id,
                         epic_id=epic_id,
                         limit=limit,
                         auth_header=auth_value,
+                        trace_id=trace_id,
                     )
                 )
                 log_event(
@@ -393,12 +403,14 @@ class ContextToolsExecutor:
                     status_filter = normalized_status
                 limit_raw = args.get('limit')
                 limit = int(limit_raw) if isinstance(limit_raw, int) else None
-                result = self._run_async_context_call(
+                result = self._run_context_call(
+                    session_context,
                     self._nest_client.context_tasks_assigned_to_me(
                         roadmap_id=roadmap_id,
                         status=status_filter,
                         limit=limit,
                         auth_header=auth_value,
+                        trace_id=trace_id,
                     )
                 )
                 log_event(
@@ -450,11 +462,13 @@ class ContextToolsExecutor:
                         arg_value_preview=node_id[:40],
                     )
                     return result
-                result = self._run_async_context_call(
+                result = self._run_context_call(
+                    session_context,
                     self._nest_client.context_node_details(
                         roadmap_id=roadmap_id,
                         node_id=node_id,
                         auth_header=auth_value,
+                        trace_id=trace_id,
                     )
                 )
                 log_event(
@@ -507,12 +521,14 @@ class ContextToolsExecutor:
                 return result
             limit_raw = args.get('limit')
             limit = int(limit_raw) if isinstance(limit_raw, int) else None
-            result = self._run_async_context_call(
+            result = self._run_context_call(
+                session_context,
                 self._nest_client.context_children(
                     roadmap_id=roadmap_id,
                     node_id=parent_id,
                     limit=limit,
                     auth_header=auth_value,
+                    trace_id=trace_id,
                 )
             )
             log_event(
@@ -566,6 +582,17 @@ class ContextToolsExecutor:
                 elapsed_ms=(perf_counter() - started) * 1000,
             )
 
+    def _run_context_call(
+        self,
+        session_context: dict[str, Any],
+        coro: Any,
+    ) -> dict[str, Any]:
+        started = perf_counter()
+        result = self._run_async_context_call(coro)
+        elapsed_ms = (perf_counter() - started) * 1000
+        self._record_context_http_timing(session_context=session_context, elapsed_ms=elapsed_ms)
+        return result
+
     def _record_context_tool_timing(
         self,
         *,
@@ -583,6 +610,18 @@ class ContextToolsExecutor:
             by_name = {}
             metrics['context_tools_by_name'] = by_name
         by_name[tool_name] = float(by_name.get(tool_name) or 0.0) + float(elapsed_ms)
+
+    def _record_context_http_timing(
+        self,
+        *,
+        session_context: dict[str, Any],
+        elapsed_ms: float,
+    ) -> None:
+        metrics = session_context.setdefault('_phase_metrics', {})
+        if not isinstance(metrics, dict):
+            return
+        current_http_total = float(metrics.get('context_tools_http_call_ms') or 0.0)
+        metrics['context_tools_http_call_ms'] = current_http_total + float(elapsed_ms)
 
     def _is_uuid(self, value: str) -> bool:
         return bool(

@@ -3,6 +3,8 @@ import unittest
 from datetime import datetime
 from types import SimpleNamespace
 import re
+import time
+import asyncio
 
 from fastapi import HTTPException
 
@@ -431,6 +433,92 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(operation.new_parent_id, 'dad5697a-8962-4f80-8bc3-8a964edd8e56')
         self.assertIsNone(operation.patch)
 
+    def test_plan_message_bypasses_fastpath_when_search_sla_exceeded(self) -> None:
+        class _SlowNestClient:
+            async def context_search(self, **_kwargs):
+                await asyncio.sleep(0.2)
+                return {
+                    'matches': [
+                        {
+                            'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            'type': 'epic',
+                            'title': 'Platform Foundation',
+                        }
+                    ]
+                }
+
+            async def context_actor(self, **_kwargs):
+                return {
+                    'actor_id': 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+                    'display_name': 'Alice',
+                    'roadmap_role': 'editor',
+                    'locale': None,
+                    'timezone': None,
+                }
+
+        class _FakePlanner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Rename epic "Platform Foundation" to "Platform Foundation 1".',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Platform Foundation 1'},
+                        )
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'deterministic_fastpath_search_sla_ms': 10}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _FakePlanner()
+        service._nest_client = _SlowNestClient()
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+
+        session = AgentSession(roadmap_id='roadmap-1')
+        started = time.perf_counter()
+        outcome = service.plan_message(
+            session=session,
+            user_message='Rename my Platform Foundation to Platform Foundation 1',
+            replace=False,
+            auth_header='Bearer test-token',
+            trace_id='trace-fastpath-sla',
+        )
+        elapsed_ms = (time.perf_counter() - started) * 1000
+
+        self.assertEqual(outcome.route_lane, 'llm_edit_plan')
+        self.assertEqual(outcome.fastpath_bypass_reason, 'deterministic_search_sla_exceeded')
+        self.assertEqual(outcome.parse_mode, 'openai_tool_calling')
+        self.assertEqual(len(outcome.operations), 1)
+        self.assertLess(elapsed_ms, 150)
+
     def test_plan_message_blocks_invalid_uuid_operation_before_staging(self) -> None:
         class _FakePlanner:
             def preview_intent_classification(self, user_message, session_context=None):
@@ -806,6 +894,279 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(response.preview_available)
         self.assertFalse(response.preview_recommended)
         self.assertEqual(len(response.operations), 1)
+
+    async def test_send_message_auto_preview_success_includes_inline_preview(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.base_revision = 1
+        session.revision_token = 'rev-1'
+        session.operations = [
+            RoadmapOperation(
+                op='update_node',
+                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                patch={'title': 'Platform Foundation 1'},
+            )
+        ]
+
+        class _FakeStore:
+            def update(self, _session):
+                return None
+
+        class _FakeAgentService:
+            def plan_message(self, _session, _message, _replace, _auth_header, _trace_id):
+                return MessagePlanningOutcome(
+                    session=session,
+                    assistant_message='Rename epic Platform Foundation.',
+                    parse_mode='deterministic_fastpath_rename',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    operations=session.operations,
+                    preview_available=True,
+                    preview_recommended=True,
+                    staged_operations_version=1,
+                    staged_operations_count=1,
+                    provider_used='rule_based',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=None,
+                    tokens_output=None,
+                    tokens_total=None,
+                    route_lane='deterministic_edit_fastpath',
+                    fastpath_bypass_reason=None,
+                    phase_timings={},
+                    invalid_operation_detected=False,
+                    invalid_operation_reason=None,
+                    invalid_operation_index=None,
+                )
+
+        async def _fake_preview(**_kwargs):
+            return {
+                'preview_id': 'preview-inline-1',
+                'revision_token': 'rev-2',
+                'base_updated_at': '2026-04-02T15:00:00.000Z',
+                'semantic_diff': {'summary': {'NODE_UPDATED': 1}, 'changes': []},
+                'validation_issues': [],
+                'candidate_snapshot': {'id': '55e431e2-e416-468c-a973-94d97280e97d'},
+            }
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_preview = sessions_routes._nest_client.preview
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), _FakeAgentService()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.preview = _fake_preview  # type: ignore[assignment]
+        try:
+            response = await sessions_routes.send_message(
+                session_id='session-1',
+                payload=sessions_routes.MessageRequest(
+                    message='Rename my Platform Foundation to Platform Foundation 1',
+                    auto_preview=True,
+                ),
+                request=SimpleNamespace(headers={}),
+            )
+        finally:
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.preview = original_preview  # type: ignore[assignment]
+
+        self.assertTrue(response.preview_available)
+        self.assertEqual(len(response.artifacts), 1)
+        inline_preview = response.artifacts[0].inline_preview
+        self.assertIsInstance(inline_preview, dict)
+        assert isinstance(inline_preview, dict)
+        self.assertEqual(inline_preview.get('preview_id'), 'preview-inline-1')
+
+    async def test_send_message_inline_preview_skipped_when_payload_too_large(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.base_revision = 1
+        session.revision_token = 'rev-1'
+        session.operations = [
+            RoadmapOperation(
+                op='update_node',
+                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                patch={'title': 'Platform Foundation 1'},
+            )
+        ]
+        observed_events: list[tuple[str, dict]] = []
+
+        class _FakeStore:
+            def update(self, _session):
+                return None
+
+        class _FakeAgentService:
+            def plan_message(self, _session, _message, _replace, _auth_header, _trace_id):
+                return MessagePlanningOutcome(
+                    session=session,
+                    assistant_message='Rename epic Platform Foundation.',
+                    parse_mode='deterministic_fastpath_rename',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    operations=session.operations,
+                    preview_available=True,
+                    preview_recommended=True,
+                    staged_operations_version=1,
+                    staged_operations_count=1,
+                    provider_used='rule_based',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=None,
+                    tokens_output=None,
+                    tokens_total=None,
+                    route_lane='deterministic_edit_fastpath',
+                    fastpath_bypass_reason=None,
+                    phase_timings={},
+                    invalid_operation_detected=False,
+                    invalid_operation_reason=None,
+                    invalid_operation_index=None,
+                )
+
+        async def _fake_preview(**_kwargs):
+            return {
+                'preview_id': 'preview-inline-oversized',
+                'revision_token': 'rev-2',
+                'base_updated_at': '2026-04-02T15:00:00.000Z',
+                'semantic_diff': {'summary': {'NODE_UPDATED': 1}, 'changes': []},
+                'validation_issues': [],
+                'candidate_snapshot': {'id': '55e431e2-e416-468c-a973-94d97280e97d'},
+            }
+
+        def _capture_log_event(_logger, event, **kwargs):
+            observed_events.append((event, kwargs))
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_preview = sessions_routes._nest_client.preview
+        original_log_event = sessions_routes.log_event
+        original_inline_max = sessions_routes.settings.inline_preview_max_bytes
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), _FakeAgentService()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.preview = _fake_preview  # type: ignore[assignment]
+        sessions_routes.log_event = _capture_log_event  # type: ignore[assignment]
+        sessions_routes.settings.inline_preview_max_bytes = 64
+        try:
+            response = await sessions_routes.send_message(
+                session_id='session-1',
+                payload=sessions_routes.MessageRequest(
+                    message='Rename my Platform Foundation to Platform Foundation 1',
+                    auto_preview=True,
+                ),
+                request=SimpleNamespace(headers={}),
+            )
+        finally:
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.preview = original_preview  # type: ignore[assignment]
+            sessions_routes.log_event = original_log_event  # type: ignore[assignment]
+            sessions_routes.settings.inline_preview_max_bytes = original_inline_max
+
+        self.assertTrue(response.preview_available)
+        self.assertEqual(len(response.artifacts), 1)
+        self.assertIsNone(response.artifacts[0].inline_preview)
+
+        message_completed_events = [
+            payload
+            for event_name, payload in observed_events
+            if event_name == 'message_completed'
+        ]
+        self.assertTrue(message_completed_events)
+        latest = message_completed_events[-1]
+        self.assertTrue(latest.get('inline_preview_skipped_due_to_size'))
+        self.assertIsInstance(latest.get('inline_preview_size_bytes'), int)
+
+    async def test_preview_session_propagates_trace_id_to_nest_preview(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.base_revision = 1
+        session.revision_token = 'rev-1'
+        session.operations = [
+            RoadmapOperation(
+                op='update_node',
+                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                patch={'title': 'Platform Foundation 1'},
+            )
+        ]
+        observed = {'trace_id': None}
+
+        class _FakeStore:
+            def update(self, _session):
+                return None
+
+        async def _fake_preview(**kwargs):
+            observed['trace_id'] = kwargs.get('trace_id')
+            return {
+                'preview_id': 'preview-manual-1',
+                'revision_token': 'rev-2',
+            }
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_preview = sessions_routes._nest_client.preview
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), object()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.preview = _fake_preview  # type: ignore[assignment]
+        try:
+            response = await sessions_routes.preview_session(
+                session_id='session-1',
+                payload=sessions_routes.PreviewRequest(),
+                request=SimpleNamespace(headers={'X-Trace-Id': 'trace-manual-preview'}),
+            )
+        finally:
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.preview = original_preview  # type: ignore[assignment]
+
+        self.assertEqual(response['session_id'], 'session-1')
+        self.assertEqual(response['preview'].get('preview_id'), 'preview-manual-1')
+        self.assertEqual(observed['trace_id'], 'trace-manual-preview')
+
+    async def test_preview_session_generates_trace_id_when_missing_header(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        observed = {'trace_id': None}
+
+        class _FakeStore:
+            def update(self, _session):
+                return None
+
+        async def _fake_preview(**kwargs):
+            observed['trace_id'] = kwargs.get('trace_id')
+            return {'preview_id': 'preview-manual-2', 'revision_token': 'rev-2'}
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_preview = sessions_routes._nest_client.preview
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), object()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.preview = _fake_preview  # type: ignore[assignment]
+        try:
+            await sessions_routes.preview_session(
+                session_id='session-1',
+                payload=sessions_routes.PreviewRequest(),
+                request=SimpleNamespace(headers={}),
+            )
+        finally:
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.preview = original_preview  # type: ignore[assignment]
+
+        self.assertIsNotNone(observed['trace_id'])
 
 
 async def _async_runtime_result(value):

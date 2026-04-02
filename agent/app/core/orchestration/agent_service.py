@@ -6,6 +6,7 @@ import logging
 from time import perf_counter
 from typing import Any
 import re
+import inspect
 
 from fastapi import HTTPException, status
 
@@ -157,8 +158,14 @@ class AgentService:
 
         internal_metrics = session_context.get('_phase_metrics', {})
         if isinstance(internal_metrics, dict):
-            phase_timings['context_tools_ms'] = int(
-                float(internal_metrics.get('context_tools_ms') or 0.0)
+            context_tools_total_ms = float(internal_metrics.get('context_tools_ms') or 0.0)
+            context_tools_http_ms = float(
+                internal_metrics.get('context_tools_http_call_ms') or 0.0
+            )
+            phase_timings['context_tools_ms'] = int(context_tools_total_ms)
+            phase_timings['context_tools_http_call_ms'] = int(context_tools_http_ms)
+            phase_timings['context_tools_executor_overhead_ms'] = int(
+                max(context_tools_total_ms - context_tools_http_ms, 0.0)
             )
             phase_timings['context_tools_by_name_ms'] = (
                 internal_metrics.get('context_tools_by_name')
@@ -329,7 +336,7 @@ class AgentService:
 
         rename_intent = extract_rename_intent(user_message)
         if rename_intent is not None:
-            candidate = self._resolve_unique_candidate(
+            candidate, resolve_bypass_reason = self._resolve_unique_candidate(
                 session=session,
                 trace_id=trace_id,
                 auth_header=auth_header,
@@ -337,6 +344,8 @@ class AgentService:
                 label=rename_intent.label,
                 node_type=rename_intent.node_type,
             )
+            if resolve_bypass_reason is not None:
+                return None, resolve_bypass_reason
             if candidate is None:
                 return None, 'rename_target_ambiguous_or_not_found'
             return (
@@ -366,7 +375,7 @@ class AgentService:
 
         mark_status_intent = extract_mark_status_intent(user_message)
         if mark_status_intent is not None:
-            candidate = self._resolve_unique_candidate(
+            candidate, resolve_bypass_reason = self._resolve_unique_candidate(
                 session=session,
                 trace_id=trace_id,
                 auth_header=auth_header,
@@ -374,6 +383,8 @@ class AgentService:
                 label=mark_status_intent.label,
                 node_type=mark_status_intent.node_type,
             )
+            if resolve_bypass_reason is not None:
+                return None, resolve_bypass_reason
             if candidate is None:
                 return None, 'status_target_ambiguous_or_not_found'
             return (
@@ -402,7 +413,7 @@ class AgentService:
 
         move_intent = extract_move_intent(user_message)
         if move_intent is not None:
-            source = self._resolve_unique_candidate(
+            source, resolve_bypass_reason = self._resolve_unique_candidate(
                 session=session,
                 trace_id=trace_id,
                 auth_header=auth_header,
@@ -410,6 +421,8 @@ class AgentService:
                 label=move_intent.label,
                 node_type=move_intent.node_type,
             )
+            if resolve_bypass_reason is not None:
+                return None, resolve_bypass_reason
             if source is None:
                 return None, 'move_source_ambiguous_or_not_found'
             expected_parent_type = self._expected_parent_type_for_move(source.type)
@@ -420,7 +433,7 @@ class AgentService:
                 and move_intent.target_node_type != expected_parent_type
             ):
                 return None, 'move_target_type_mismatch'
-            target = self._resolve_unique_candidate(
+            target, target_bypass_reason = self._resolve_unique_candidate(
                 session=session,
                 trace_id=trace_id,
                 auth_header=auth_header,
@@ -428,6 +441,8 @@ class AgentService:
                 label=move_intent.target_label,
                 node_type=expected_parent_type,
             )
+            if target_bypass_reason is not None:
+                return None, target_bypass_reason
             if target is None:
                 return None, 'move_target_ambiguous_or_not_found'
             return (
@@ -466,30 +481,64 @@ class AgentService:
         session_context: dict[str, Any],
         label: str,
         node_type: str | None,
-    ) -> Any | None:
+    ) -> tuple[Any | None, str | None]:
         roadmap_id = session.roadmap_id.strip()
         if not roadmap_id or not label.strip():
-            return None
+            return None, None
         started = perf_counter()
+        search_sla_ms = float(self._settings.deterministic_fastpath_search_sla_ms)
         try:
-            search_result = self._run_async_call(
+            search_result = self._run_async_call_with_timeout(
                 self._nest_client.context_search(
                     roadmap_id=roadmap_id,
                     query=label,
                     node_type=node_type,
                     limit=10,
                     auth_header=auth_header,
-                )
+                    trace_id=trace_id,
+                ),
+                timeout_ms=search_sla_ms,
             )
+        except (TimeoutError, asyncio.TimeoutError):
+            elapsed_ms = (perf_counter() - started) * 1000
+            log_event(
+                self._logger,
+                'deterministic_fastpath_sla_exceeded',
+                settings=self._settings,
+                level=logging.WARNING,
+                trace_id=trace_id,
+                roadmap_id=roadmap_id,
+                elapsed_ms=int(elapsed_ms),
+                sla_ms=self._settings.deterministic_fastpath_search_sla_ms,
+                label=label,
+                node_type=node_type,
+            )
+            return None, 'deterministic_search_sla_exceeded'
         except Exception as exc:
             self._logger.warning('Deterministic fastpath resolver search failed: %s', exc)
-            return None
+            return None, None
         finally:
+            elapsed_ms = (perf_counter() - started) * 1000
             self._record_context_tool_timing(
                 session_context=session_context,
                 tool_name='resolve_node_reference',
-                elapsed_ms=(perf_counter() - started) * 1000,
+                elapsed_ms=elapsed_ms,
+                http_call_ms=elapsed_ms,
             )
+        if elapsed_ms > search_sla_ms:
+            log_event(
+                self._logger,
+                'deterministic_fastpath_sla_exceeded',
+                settings=self._settings,
+                level=logging.WARNING,
+                trace_id=trace_id,
+                roadmap_id=roadmap_id,
+                elapsed_ms=int(elapsed_ms),
+                sla_ms=self._settings.deterministic_fastpath_search_sla_ms,
+                label=label,
+                node_type=node_type,
+            )
+            return None, 'deterministic_search_sla_exceeded'
 
         raw_matches = search_result.get('matches', [])
         if not isinstance(raw_matches, list):
@@ -525,8 +574,8 @@ class AgentService:
         )
         if resolution.status == 'unique' and resolution.selected is not None:
             session.metadata.pending_disambiguation = None
-            return resolution.selected
-        return None
+            return resolution.selected, None
+        return None, None
 
     def _record_context_tool_timing(
         self,
@@ -534,12 +583,19 @@ class AgentService:
         session_context: dict[str, Any],
         tool_name: str,
         elapsed_ms: float,
+        http_call_ms: float = 0.0,
     ) -> None:
         metrics = session_context.setdefault('_phase_metrics', {})
         if not isinstance(metrics, dict):
             return
         current_total = float(metrics.get('context_tools_ms') or 0.0)
         metrics['context_tools_ms'] = current_total + float(elapsed_ms)
+        current_http_total = float(metrics.get('context_tools_http_call_ms') or 0.0)
+        metrics['context_tools_http_call_ms'] = current_http_total + float(http_call_ms)
+        current_exec_overhead = float(metrics.get('context_tools_executor_overhead_ms') or 0.0)
+        metrics['context_tools_executor_overhead_ms'] = (
+            current_exec_overhead + max(float(elapsed_ms) - float(http_call_ms), 0.0)
+        )
         by_name = metrics.get('context_tools_by_name')
         if not isinstance(by_name, dict):
             by_name = {}
@@ -612,6 +668,7 @@ class AgentService:
                 self._nest_client.context_actor(
                     roadmap_id=session.roadmap_id,
                     auth_header=auth_header,
+                    trace_id=trace_id,
                 )
             )
             session.metadata.actor_context = ActorContext.model_validate(
@@ -874,6 +931,24 @@ class AgentService:
         except RuntimeError:
             return asyncio.run(coro)
         raise RuntimeError('Async call attempted on running event loop thread')
+
+    def _run_async_call_with_timeout(
+        self,
+        coro: Any,
+        *,
+        timeout_ms: float,
+    ) -> dict[str, Any]:
+        if not inspect.isawaitable(coro):
+            return coro
+        timeout_seconds = max(float(timeout_ms) / 1000.0, 0.001)
+
+        async def _with_timeout() -> dict[str, Any]:
+            return await asyncio.wait_for(coro, timeout=timeout_seconds)
+
+        result = self._run_async_call(_with_timeout())
+        if asyncio.iscoroutine(result):
+            return asyncio.run(result)
+        return result
 
     def _build_session_context(
         self,
