@@ -8,6 +8,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
 
+from pydantic import BaseModel
+
 from app.core.config import get_settings
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import IntentType, ProviderUsed, ResponseMode
@@ -55,6 +57,17 @@ class PlannerState(TypedDict, total=False):
     is_roadmap_question: bool
     tool_mode: Literal['none', 'context_answer', 'edit_plan']
     trace_id: str | None
+    clarifier_action: str | None
+    clarifier_reason: str | None
+    clarifier_options: list[str] | None
+    clarifier_schema_retries: int | None
+
+
+class _EditClarifierPayload(BaseModel):
+    action: Literal['ask_clarifier', 'propose_safe_default', 'cannot_proceed']
+    reason: str
+    question: str
+    options: list[str]
 
 
 @dataclass
@@ -376,7 +389,6 @@ class LLMPlanner:
         session_context = state.get('session_context', {})
         history_messages = self._build_history_messages(session_context)
         trace_id = session_context.get('trace_id')
-        fallback = self._rule_based_operation_plan(user_message)
         tool_definitions = get_edit_mode_tools()
         edit_turns = self._settings.max_edit_tool_turns
 
@@ -451,25 +463,166 @@ class LLMPlanner:
                     tokens_total=exc.tokens_total,
                 )
             self._logger.warning(
-                'Provider operation planning failed, using rule-based edit fallback. code=%s message=%s',
+                'Provider operation planning failed, using edit clarifier lane. code=%s message=%s',
                 exc.code,
                 exc.message,
             )
-            return {
-                'assistant_message': fallback.assistant_message,
-                'planned_operations': fallback.operations,
-                'response_mode': 'edit_plan',
-                'preview_recommended': bool(fallback.operations),
-                'parse_mode': fallback.parse_mode,
-                'provider_used': 'rule_based',
-                'fallback_used': False,
-                'provider_error_code': exc.code,
-                'tokens_input': exc.tokens_input,
-                'tokens_output': exc.tokens_output,
-                'tokens_total': exc.tokens_total,
-                'pending_context_resolution': None,
-                'clear_pending_context_resolution': False,
-            }
+            return self._build_edit_clarifier_state(
+                user_message=user_message,
+                system_prompt=system_prompt,
+                history_messages=history_messages,
+                trace_id=trace_id,
+                provider_error_code=exc.code,
+            )
+
+    def _build_edit_clarifier_state(
+        self,
+        *,
+        user_message: str,
+        system_prompt: str,
+        history_messages: list[Any],
+        trace_id: str | None,
+        provider_error_code: str,
+    ) -> PlannerState:
+        clarification_prompt = self._build_edit_clarifier_prompt(user_message=user_message)
+        schema_retries = 0
+        parse_error_code: str | None = None
+
+        for attempt in range(2):
+            try:
+                result = self._provider_orchestrator.call(
+                    lambda adapter: adapter.generate_chat_reply(
+                        system_prompt=system_prompt,
+                        user_message=clarification_prompt,
+                        history_messages=history_messages,
+                    ),
+                    trace_context={'trace_id': trace_id, 'phase': 'edit_clarifier'},
+                )
+            except ProviderAdapterError as clarifier_exc:
+                self._logger.warning(
+                    'Provider clarifier generation failed. code=%s message=%s',
+                    clarifier_exc.code,
+                    clarifier_exc.message,
+                )
+                return self._neutral_edit_clarifier_state(
+                    provider_error_code=provider_error_code,
+                    schema_retries=schema_retries,
+                )
+
+            try:
+                parsed = self._parse_edit_clarifier_payload(result.value)
+                assistant_message = self._format_edit_clarifier_message(parsed)
+                log_event(
+                    self._logger,
+                    'edit_clarifier_generated',
+                    settings=self._settings,
+                    trace_id=trace_id,
+                    clarifier_action=parsed.action,
+                    clarifier_schema_retries=schema_retries,
+                    provider_used=result.provider_used,
+                )
+                return {
+                    'assistant_message': assistant_message,
+                    'planned_operations': [],
+                    'response_mode': 'chat',
+                    'preview_recommended': False,
+                    'parse_mode': f'{result.provider_used}_edit_clarifier',
+                    'provider_used': result.provider_used,
+                    'fallback_used': result.fallback_used,
+                    'provider_error_code': provider_error_code,
+                    'tokens_input': result.tokens_input,
+                    'tokens_output': result.tokens_output,
+                    'tokens_total': result.tokens_total,
+                    'pending_context_resolution': None,
+                    'clear_pending_context_resolution': False,
+                    'clarifier_action': parsed.action,
+                    'clarifier_reason': parsed.reason,
+                    'clarifier_options': parsed.options,
+                    'clarifier_schema_retries': schema_retries,
+                }
+            except ValueError:
+                parse_error_code = 'invalid_clarifier_schema'
+                if attempt == 0:
+                    schema_retries = 1
+                    continue
+                break
+
+        return self._neutral_edit_clarifier_state(
+            provider_error_code=parse_error_code or provider_error_code,
+            schema_retries=schema_retries,
+        )
+
+    def _build_edit_clarifier_prompt(self, *, user_message: str) -> str:
+        return (
+            'You are generating an edit clarification response for a roadmap assistant. '
+            'Return STRICT JSON only with keys: action, reason, question, options.\n'
+            'action must be one of: ask_clarifier, propose_safe_default, cannot_proceed.\n'
+            'question must be concise and actionable.\n'
+            'options must contain 2-4 short options.\n'
+            'Do not include markdown, prose, or code fences.\n'
+            'For propose_safe_default, suggest the safest default and ask for explicit confirmation.\n'
+            f'User request: {user_message}'
+        )
+
+    def _parse_edit_clarifier_payload(self, raw: str) -> _EditClarifierPayload:
+        text = raw.strip()
+        candidate = text
+        if not (text.startswith('{') and text.endswith('}')):
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            if match:
+                candidate = match.group(0)
+        try:
+            payload = _EditClarifierPayload.model_validate_json(candidate)
+        except Exception as exc:
+            raise ValueError('invalid_clarifier_schema') from exc
+        if not payload.question.strip():
+            raise ValueError('invalid_clarifier_schema')
+        cleaned_options = [opt.strip() for opt in payload.options if isinstance(opt, str) and opt.strip()]
+        if not cleaned_options:
+            raise ValueError('invalid_clarifier_schema')
+        if len(cleaned_options) > 5:
+            cleaned_options = cleaned_options[:5]
+        return payload.model_copy(update={'options': cleaned_options})
+
+    def _format_edit_clarifier_message(self, payload: _EditClarifierPayload) -> str:
+        question = payload.question.strip()
+        if payload.action == 'propose_safe_default':
+            question = f'{question} Reply "yes" to proceed, or tell me what to change.'
+        options_lines = '\n'.join(f'- {option}' for option in payload.options)
+        return f'{question}\n\nOptions:\n{options_lines}'
+
+    def _neutral_edit_clarifier_state(
+        self,
+        *,
+        provider_error_code: str | None,
+        schema_retries: int,
+    ) -> PlannerState:
+        return {
+            'assistant_message': (
+                'I can help with that edit. Could you confirm the exact action and target '
+                '(for example: create epic, rename feature, or move task)?'
+            ),
+            'planned_operations': [],
+            'response_mode': 'chat',
+            'preview_recommended': False,
+            'parse_mode': 'neutral_edit_clarifier',
+            'provider_used': 'rule_based',
+            'fallback_used': False,
+            'provider_error_code': provider_error_code,
+            'tokens_input': None,
+            'tokens_output': None,
+            'tokens_total': None,
+            'pending_context_resolution': None,
+            'clear_pending_context_resolution': False,
+            'clarifier_action': 'ask_clarifier',
+            'clarifier_reason': 'edit_clarifier_fallback',
+            'clarifier_options': [
+                'Create epic "AI Module" at roadmap root',
+                'Use a different title',
+                'Create under a specific parent',
+            ],
+            'clarifier_schema_retries': schema_retries,
+        }
 
     def _execute_context_tool(
         self,
@@ -775,14 +928,13 @@ class LLMPlanner:
 
         return PlanningResult(
             assistant_message=(
-                'I understand you want to edit the roadmap, but I need clearer targets. '
-                'Please include specific node IDs and action, for example: '
-                '"move <feature_uuid> under <epic_uuid> at 0".'
+                'I can help with that roadmap edit. Could you confirm the exact action and target '
+                '(for example: create epic, rename feature, or move task)?'
             ),
             operations=[],
-            parse_mode='rule_based_edit',
+            parse_mode='neutral_edit_clarifier',
             intent_type='roadmap_edit',
-            response_mode='edit_plan',
+            response_mode='chat',
             preview_recommended=False,
             provider_used='rule_based',
             fallback_used=False,

@@ -22,6 +22,8 @@ from app.core.contracts.sessions import (
 )
 from app.core.llm.client import PlanningResult
 from app.core.llm.client import LLMPlanner
+from app.core.llm.providers import ProviderAdapterError
+from app.core.llm.providers.orchestrator import ProviderCallOutcome
 from app.core.orchestration.agent_service import AgentService, MessagePlanningOutcome
 from app.core.session_store import SessionStoreUnavailableError
 from app.core.tools.registry import parse_plan_tool_args
@@ -473,6 +475,26 @@ class AgentSafetyTests(unittest.TestCase):
             user_message='Can you create new epic for me called "AI Module"',
             auth_header=None,
             trace_id='trace-fastpath-create-epic-conversational',
+            session_context={'roadmap_id': 'roadmap-1'},
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertIsNone(bypass_reason)
+        self.assertEqual(result.parse_mode, 'deterministic_fastpath_create_epic')
+        self.assertEqual(len(result.operations), 1)
+        self.assertEqual(result.operations[0].op.value, 'add_epic')
+        self.assertEqual(result.operations[0].data, {'title': 'AI Module'})
+
+    def test_fastpath_create_epic_here_phrase_stages_add_epic(self) -> None:
+        service = self._service({'matches': []})
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        result, bypass_reason = service._try_deterministic_edit_fastpath(
+            session=session,
+            user_message='Create AI Module here',
+            auth_header=None,
+            trace_id='trace-fastpath-create-epic-here',
             session_context={'roadmap_id': 'roadmap-1'},
         )
 
@@ -2080,6 +2102,86 @@ class PlannerContextSafetyTests(unittest.TestCase):
             trace_id='trace-overview-fallback',
         )
         self.assertIsNone(outcome)
+
+    def test_plan_operations_missing_tool_call_uses_edit_clarifier_lane(self) -> None:
+        planner = self._planner()
+        call_count = {'value': 0}
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                call_count['value'] += 1
+                if call_count['value'] == 1:
+                    raise ProviderAdapterError(
+                        provider='openai',
+                        code='missing_tool_call',
+                        message='OpenAI did not return any tool call while planning operations.',
+                    )
+                return ProviderCallOutcome(
+                    value=(
+                        '{"action":"ask_clarifier","reason":"ambiguous_target",'
+                        '"question":"Do you want me to create a new epic named '
+                        '\\"AI Module\\" at the roadmap root?",'
+                        '"options":["Create at roadmap root","Use different title","Cancel"]}'
+                    ),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+
+        result = planner._plan_operations(
+            {
+                'user_message': 'Create AI Module here',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d', 'trace_id': 'trace-clarifier'},
+            }
+        )
+
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'openai_edit_clarifier')
+        self.assertEqual(result.get('provider_error_code'), 'missing_tool_call')
+        self.assertEqual(result.get('planned_operations'), [])
+        self.assertEqual(result.get('clarifier_action'), 'ask_clarifier')
+        self.assertIn('Options:', str(result.get('assistant_message')))
+
+    def test_plan_operations_invalid_clarifier_schema_retries_then_neutral(self) -> None:
+        planner = self._planner()
+        call_count = {'value': 0}
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                call_count['value'] += 1
+                if call_count['value'] == 1:
+                    raise ProviderAdapterError(
+                        provider='openai',
+                        code='missing_tool_call',
+                        message='OpenAI did not return any tool call while planning operations.',
+                    )
+                return ProviderCallOutcome(
+                    value='not valid json',
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+
+        result = planner._plan_operations(
+            {
+                'user_message': 'Create AI Module here',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d', 'trace_id': 'trace-clarifier-neutral'},
+            }
+        )
+
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'neutral_edit_clarifier')
+        self.assertEqual(result.get('planned_operations'), [])
+        self.assertEqual(result.get('clarifier_schema_retries'), 1)
+        self.assertNotIn('specific node IDs', str(result.get('assistant_message')))
 
 
 if __name__ == '__main__':

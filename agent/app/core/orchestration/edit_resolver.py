@@ -175,6 +175,22 @@ def extract_create_intent(message: str) -> CreateIntent | None:
                 allow_duplicate=False,
             )
 
+    compact_epic_pattern = re.compile(
+        r'(?:create|add)\s+(.+?)(?:\s+here)?$',
+        re.IGNORECASE,
+    )
+    compact_match = compact_epic_pattern.search(text)
+    if compact_match:
+        raw_title = compact_match.group(1)
+        if not re.search(r'\b(?:under|in)\b', raw_title, re.IGNORECASE):
+            title = _normalize_create_title(raw_title)
+            if title:
+                return CreateIntent(
+                    node_type='epic',
+                    title=title,
+                    allow_duplicate=allow_duplicate,
+                )
+
     return None
 
 
@@ -211,6 +227,10 @@ def _normalize_create_title(value: str) -> str | None:
         cleaned,
         re.IGNORECASE,
     ):
+        return None
+    title_tokens = [token for token in re.split(r'\s+', cleaned.lower()) if token]
+    stop_tokens = {'a', 'an', 'new', 'duplicate', 'epic', 'feature', 'task', 'called', 'named', 'titled'}
+    if title_tokens and all(token in stop_tokens for token in title_tokens):
         return None
     return cleaned
 

@@ -130,6 +130,20 @@ class EditResolverTests(unittest.TestCase):
         self.assertEqual(intent.node_type, 'epic')
         self.assertEqual(intent.title, 'AI Module')
 
+    def test_extract_create_epic_intent_with_here_suffix(self) -> None:
+        intent = extract_create_intent('Create AI Module here')
+        self.assertIsNotNone(intent)
+        assert intent is not None
+        self.assertEqual(intent.node_type, 'epic')
+        self.assertEqual(intent.title, 'AI Module')
+
+    def test_extract_add_epic_intent_without_type_hint(self) -> None:
+        intent = extract_create_intent('Add AI Module')
+        self.assertIsNotNone(intent)
+        assert intent is not None
+        self.assertEqual(intent.node_type, 'epic')
+        self.assertEqual(intent.title, 'AI Module')
+
     def test_extract_create_epic_intent_rejects_empty_title(self) -> None:
         intent = extract_create_intent('Can you create new epic for me called ""')
         self.assertIsNone(intent)
