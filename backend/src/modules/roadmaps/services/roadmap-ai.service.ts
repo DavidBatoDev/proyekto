@@ -5,10 +5,11 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
   NotImplementedException,
 } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import type {
@@ -17,7 +18,10 @@ import type {
   FullRoadmapState,
   FullRoadmapTaskDto,
 } from '../dto/patch-roadmap.dto';
-import type { IRoadmapsRepository } from '../repositories/roadmaps.repository.interface';
+import type {
+  IRoadmapsRepository,
+  RoadmapContextSearchCandidateRecord,
+} from '../repositories/roadmaps.repository.interface';
 import type { IRoadmapPatchRepository } from '../repositories/roadmap-patch.repository.interface';
 import { ROADMAP_PATCH_REPOSITORY } from './roadmap-patch.service';
 import { ROADMAPS_REPOSITORY } from './roadmaps.service';
@@ -131,6 +135,8 @@ type ResolutionRecord = {
 
 const PREVIEW_TTL_MS = 1000 * 60 * 30;
 const RESOLUTION_TTL_SECONDS = 60 * 10;
+const RESOLVE_LOOKUP_CACHE_TTL_SECONDS = 60 * 3;
+const RESOLVE_LOOKUP_CACHE_VERSION = 'v1';
 const EPIC_STATUS = [
   'backlog',
   'planned',
@@ -151,6 +157,8 @@ const ROADMAP_STATUS = ['draft', 'active', 'paused', 'completed', 'archived'];
 
 @Injectable()
 export class RoadmapAiService {
+  private readonly logger = new Logger(RoadmapAiService.name);
+
   constructor(
     @Inject(SUPABASE_ADMIN)
     private readonly db: SupabaseClient,
@@ -315,63 +323,76 @@ export class RoadmapAiService {
     queryDto: RoadmapAiContextSearchQueryDto,
     userId: string,
   ): Promise<RoadmapAiContextSearchResponseDto> {
+    const lookupStartedAt = Date.now();
     await this.assertCanEditRoadmap(roadmapId, userId);
-    const full = await this.roadmapsRepo.findFull(roadmapId, userId);
-    if (!full) throw new NotFoundException('Roadmap not found');
-    const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
-    const roadmapNodeId = this.requireNodeId(state.id, 'roadmap');
-
     const query = this.normalizeSearchText(queryDto.query ?? '');
     if (!query) return { matches: [] };
+    const nodeType = this.parseSearchNodeType(queryDto.node_type);
     const limit = Math.min(Math.max(queryDto.limit ?? 10, 1), 50);
     const queryTokens = this.tokenizeSearchQuery(query);
-    const typeHint = this.extractTypeHint(queryTokens);
-    const candidates: ContextSearchCandidate[] = [];
+    const typeHint = nodeType ?? this.extractTypeHint(queryTokens);
 
-    for (const epic of state.roadmap_epics ?? []) {
-      if (!epic.id) {
-        continue;
-      }
-      candidates.push({
-        id: epic.id,
-        type: 'epic',
-        title: epic.title ?? 'Untitled epic',
-        description: epic.description,
-        parent_id: roadmapNodeId,
-        parent_title: state.name,
+    const cacheKey = this.buildResolveLookupCacheKey(
+      roadmapId,
+      nodeType,
+      query,
+      limit,
+    );
+
+    const cacheStartedAt = Date.now();
+    const cachedMatches = await this.readResolveLookupCache(cacheKey);
+    const cacheLookupMs = Date.now() - cacheStartedAt;
+    const cacheHit = Array.isArray(cachedMatches);
+
+    let candidates: ContextSearchCandidate[] = [];
+    let dbLookupMs = 0;
+    if (cacheHit && cachedMatches) {
+      candidates = cachedMatches as ContextSearchCandidate[];
+      this.logResolveLookupTelemetry({
+        roadmapId,
+        query,
+        nodeType,
+        limit,
+        cacheHit: true,
+        cacheBypassReason: undefined,
+        cacheLookupMs,
+        dbLookupMs,
+        totalLookupMs: Date.now() - lookupStartedAt,
+        candidateCount: candidates.length,
       });
-
-      for (const feature of epic.roadmap_features ?? []) {
-        if (!feature.id) {
-          continue;
-        }
-        candidates.push({
-          id: feature.id,
-          type: 'feature',
-          title: feature.title ?? 'Untitled feature',
-          description: feature.description,
-          parent_id: epic.id,
-          parent_title: epic.title,
-        });
-
-        for (const task of feature.roadmap_tasks ?? []) {
-          if (!task.id) {
-            continue;
-          }
-          candidates.push({
-            id: task.id,
-            type: 'task',
-            title: task.title ?? 'Untitled task',
-            description: task.description,
-            parent_id: feature.id,
-            parent_title: feature.title,
-          });
-        }
-      }
+    } else {
+      const dbStartedAt = Date.now();
+      const dbCandidates = await this.roadmapsRepo.searchContextCandidates(
+        roadmapId,
+        query,
+        {
+          nodeType: nodeType ?? undefined,
+          scanLimit: Math.max(limit * 8, 120),
+        },
+      );
+      dbLookupMs = Date.now() - dbStartedAt;
+      candidates = dbCandidates.map((candidate) =>
+        this.toContextSearchCandidate(candidate),
+      );
+      await this.writeResolveLookupCache(cacheKey, candidates);
+      this.logResolveLookupTelemetry({
+        roadmapId,
+        query,
+        nodeType,
+        limit,
+        cacheHit: false,
+        cacheBypassReason: 'miss',
+        cacheLookupMs,
+        dbLookupMs,
+        totalLookupMs: Date.now() - lookupStartedAt,
+        candidateCount: candidates.length,
+      });
     }
 
     const scored = candidates
-      .map((candidate) => this.scoreContextSearchCandidate(candidate, query, queryTokens, typeHint))
+      .map((candidate) =>
+        this.scoreContextSearchCandidate(candidate, query, queryTokens, typeHint),
+      )
       .filter((item) => item.score > 0)
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
@@ -742,6 +763,7 @@ export class RoadmapAiService {
 
     const persistedMeta = await this.roadmapsRepo.findById(roadmapId, userId);
     await this.previewStore.deletePreview(dto.preview_id);
+    await this.invalidateResolveLookupCache(roadmapId);
 
     return {
       committed_at: new Date().toISOString(),
@@ -2134,6 +2156,120 @@ export class RoadmapAiService {
       .replace(/[^a-z0-9]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  private parseSearchNodeType(value: unknown): 'epic' | 'feature' | 'task' | null {
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'epic' || normalized === 'feature' || normalized === 'task') {
+      return normalized;
+    }
+    return null;
+  }
+
+  private toContextSearchCandidate(
+    candidate: RoadmapContextSearchCandidateRecord,
+  ): ContextSearchCandidate {
+    return {
+      id: candidate.id,
+      type: candidate.type,
+      title: candidate.title,
+      description: candidate.description,
+      parent_id: candidate.parent_id,
+      parent_title: candidate.parent_title,
+    };
+  }
+
+  private buildResolveLookupCacheKey(
+    roadmapId: string,
+    nodeType: 'epic' | 'feature' | 'task' | null,
+    query: string,
+    limit: number,
+  ): string {
+    const queryHash = createHash('sha1').update(query).digest('hex').slice(0, 16);
+    return [
+      'roadmap',
+      'resolve',
+      RESOLVE_LOOKUP_CACHE_VERSION,
+      roadmapId,
+      nodeType ?? 'any',
+      queryHash,
+      String(limit),
+    ].join(':');
+  }
+
+  private async readResolveLookupCache(
+    cacheKey: string,
+  ): Promise<ContextSearchCandidate[] | null> {
+    try {
+      return await this.previewStore.getResolveLookup<ContextSearchCandidate[]>(
+        cacheKey,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `resolve_lookup cache read failed key=${cacheKey}: ${
+          error instanceof Error ? error.message : 'unknown_error'
+        }`,
+      );
+      return null;
+    }
+  }
+
+  private async writeResolveLookupCache(
+    cacheKey: string,
+    candidates: ContextSearchCandidate[],
+  ): Promise<void> {
+    try {
+      await this.previewStore.setResolveLookup(cacheKey, candidates, {
+        ttlSeconds: RESOLVE_LOOKUP_CACHE_TTL_SECONDS,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `resolve_lookup cache write failed key=${cacheKey}: ${
+          error instanceof Error ? error.message : 'unknown_error'
+        }`,
+      );
+    }
+  }
+
+  private async invalidateResolveLookupCache(roadmapId: string): Promise<void> {
+    try {
+      await this.previewStore.deleteResolveLookupByRoadmap(roadmapId);
+    } catch (error) {
+      this.logger.warn(
+        `resolve_lookup cache invalidation failed roadmap_id=${roadmapId}: ${
+          error instanceof Error ? error.message : 'unknown_error'
+        }`,
+      );
+    }
+  }
+
+  private logResolveLookupTelemetry(params: {
+    roadmapId: string;
+    query: string;
+    nodeType: 'epic' | 'feature' | 'task' | null;
+    limit: number;
+    cacheHit: boolean;
+    cacheBypassReason?: 'miss' | 'disabled';
+    cacheLookupMs: number;
+    dbLookupMs: number;
+    totalLookupMs: number;
+    candidateCount: number;
+  }): void {
+    this.logger.log(
+      [
+        'event=resolve_lookup',
+        `roadmap_id=${params.roadmapId}`,
+        `node_type=${params.nodeType ?? 'any'}`,
+        `limit=${params.limit}`,
+        `cache_hit=${params.cacheHit}`,
+        `cache_bypass_reason=${params.cacheBypassReason ?? 'none'}`,
+        `resolve_lookup_cache_ms=${params.cacheLookupMs}`,
+        `resolve_lookup_db_ms=${params.dbLookupMs}`,
+        `resolve_lookup_total_ms=${params.totalLookupMs}`,
+        `candidates=${params.candidateCount}`,
+      ].join(' '),
+    );
   }
 
   private extractTypeHint(

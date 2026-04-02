@@ -311,6 +311,7 @@ class AgentService:
                     self._nest_client.context_search(
                         roadmap_id=roadmap_id,
                         query=rename_intent.label,
+                        node_type=rename_intent.node_type,
                         limit=20,
                         auth_header=auth_header,
                     )

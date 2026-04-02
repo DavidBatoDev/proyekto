@@ -2,7 +2,11 @@ import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
-import { IRoadmapsRepository } from './roadmaps.repository.interface';
+import {
+  IRoadmapsRepository,
+  RoadmapContextSearchCandidateRecord,
+  RoadmapContextSearchNodeType,
+} from './roadmaps.repository.interface';
 import { CreateRoadmapDto, UpdateRoadmapDto } from '../dto/roadmaps.dto';
 
 @Injectable()
@@ -196,6 +200,422 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
       .select('*, project:projects(id, title)')
       .eq('owner_id', userId)
       .order('updated_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  }
+
+  async searchContextCandidates(
+    roadmapId: string,
+    query: string,
+    options?: {
+      nodeType?: RoadmapContextSearchNodeType;
+      scanLimit?: number;
+    },
+  ): Promise<RoadmapContextSearchCandidateRecord[]> {
+    const normalizedQuery = this.sanitizeLookupQuery(query);
+    if (!normalizedQuery) {
+      return [];
+    }
+    const queryTokens = normalizedQuery
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0);
+    if (queryTokens.length === 0) {
+      return [];
+    }
+
+    const scanLimit = Math.min(Math.max(options?.scanLimit ?? 200, 1), 1000);
+    const nodeType = options?.nodeType;
+    const candidates: RoadmapContextSearchCandidateRecord[] = [];
+
+    if (!nodeType || nodeType === 'epic') {
+      const epics = await this.searchEpics(roadmapId, normalizedQuery, scanLimit);
+      candidates.push(...epics);
+    }
+
+    const includeFeatureMatches = !nodeType || nodeType === 'feature';
+    let featureMatchRows: Array<{
+      id: string;
+      title: string;
+      description?: string;
+      epic_id: string;
+      roadmap_id: string;
+    }> = [];
+
+    if (includeFeatureMatches) {
+      featureMatchRows = await this.searchFeatures(
+        roadmapId,
+        normalizedQuery,
+        scanLimit,
+      );
+      if (featureMatchRows.length > 0) {
+        const features = await this.toFeatureCandidates(roadmapId, featureMatchRows);
+        candidates.push(...features);
+      }
+    }
+
+    if (!nodeType || nodeType === 'task') {
+      const taskFeatureRows = await this.loadRoadmapFeaturesForTaskSearch(
+        roadmapId,
+        Math.min(Math.max(scanLimit * 20, 1000), 5000),
+      );
+      const tasks = await this.searchTasks(
+        normalizedQuery,
+        scanLimit,
+        taskFeatureRows,
+      );
+      candidates.push(...tasks);
+    }
+
+    return candidates;
+  }
+
+  private async searchEpics(
+    roadmapId: string,
+    normalizedQuery: string,
+    scanLimit: number,
+  ): Promise<RoadmapContextSearchCandidateRecord[]> {
+    const rows = await this.runBoundedSearchPasses<{
+      id: string;
+      roadmap_id: string;
+      title: string;
+      description?: string;
+    }>({
+      table: 'roadmap_epics',
+      select: 'id, roadmap_id, title, description',
+      roadmapId,
+      query: normalizedQuery,
+      scanLimit,
+      includeDescriptionPass: true,
+    });
+
+    return rows.flatMap((epic) =>
+      epic?.id && epic?.roadmap_id
+        ? [
+            {
+              id: String(epic.id),
+              type: 'epic' as const,
+              title: String(epic.title ?? 'Untitled epic'),
+              description:
+                typeof epic.description === 'string' ? epic.description : undefined,
+              parent_id: String(epic.roadmap_id),
+            },
+          ]
+        : [],
+    );
+  }
+
+  private async searchFeatures(
+    roadmapId: string,
+    normalizedQuery: string,
+    scanLimit: number,
+  ): Promise<
+    Array<{
+      id: string;
+      title: string;
+      description?: string;
+      epic_id: string;
+      roadmap_id: string;
+    }>
+  > {
+    const rows = await this.runBoundedSearchPasses<{
+      id: string;
+      title: string;
+      description?: string;
+      epic_id: string;
+      roadmap_id: string;
+    }>({
+      table: 'roadmap_features',
+      select: 'id, title, description, epic_id, roadmap_id',
+      roadmapId,
+      query: normalizedQuery,
+      scanLimit,
+      includeDescriptionPass: true,
+    });
+
+    return rows.flatMap((feature) =>
+      feature?.id && feature?.epic_id && feature?.roadmap_id
+        ? [
+            {
+              id: String(feature.id),
+              title: String(feature.title ?? 'Untitled feature'),
+              description:
+                typeof feature.description === 'string'
+                  ? feature.description
+                  : undefined,
+              epic_id: String(feature.epic_id),
+              roadmap_id: String(feature.roadmap_id),
+            },
+          ]
+        : [],
+    );
+  }
+
+  private async toFeatureCandidates(
+    roadmapId: string,
+    features: Array<{
+      id: string;
+      title: string;
+      description?: string;
+      epic_id: string;
+      roadmap_id: string;
+    }>,
+  ): Promise<RoadmapContextSearchCandidateRecord[]> {
+    const epicIds = [...new Set(features.map((feature) => feature.epic_id))];
+    const epicTitleById = await this.loadEpicTitles(roadmapId, epicIds);
+
+    return features.map((feature) => ({
+      id: feature.id,
+      type: 'feature' as const,
+      title: feature.title,
+      description: feature.description,
+      parent_id: feature.epic_id,
+      parent_title: epicTitleById.get(feature.epic_id),
+    }));
+  }
+
+  private async searchTasks(
+    normalizedQuery: string,
+    scanLimit: number,
+    features: Array<{
+      id: string;
+      title: string;
+      description?: string;
+      epic_id: string;
+      roadmap_id: string;
+    }>,
+  ): Promise<RoadmapContextSearchCandidateRecord[]> {
+    const featureIdSet = new Set(features.map((feature) => feature.id));
+    if (featureIdSet.size === 0) {
+      return [];
+    }
+
+    const featureIds = [...featureIdSet];
+    const featureTitleById = new Map(
+      features.map((feature) => [feature.id, feature.title]),
+    );
+    const chunkSize = 200;
+    const taskRows: Array<{ id: string; title: string; feature_id: string }> = [];
+    const seenTaskIds = new Set<string>();
+
+    for (let offset = 0; offset < featureIds.length; offset += chunkSize) {
+      const chunk = featureIds.slice(offset, offset + chunkSize);
+      const passRows = await this.runTaskSearchPasses({
+        featureIds: chunk,
+        query: normalizedQuery,
+        scanLimit,
+      });
+      for (const task of passRows) {
+        const id = String(task.id);
+        if (seenTaskIds.has(id)) continue;
+        taskRows.push(task);
+        seenTaskIds.add(id);
+      }
+      if (taskRows.length >= scanLimit) {
+        break;
+      }
+    }
+
+    if (taskRows.length < scanLimit) {
+      for (let offset = 0; offset < featureIds.length; offset += chunkSize) {
+        const chunk = featureIds.slice(offset, offset + chunkSize);
+        const { data, error } = await this.db
+          .from('roadmap_tasks')
+          .select('id, title, feature_id')
+          .in('feature_id', chunk)
+          .limit(scanLimit);
+        if (error) throw new Error(error.message);
+        for (const task of data ?? []) {
+          if (!task?.id || !task?.feature_id) continue;
+          const id = String(task.id);
+          if (seenTaskIds.has(id)) continue;
+          taskRows.push({
+            id,
+            title: String(task.title ?? 'Untitled task'),
+            feature_id: String(task.feature_id),
+          });
+          seenTaskIds.add(id);
+          if (taskRows.length >= scanLimit) break;
+        }
+        if (taskRows.length >= scanLimit) break;
+      }
+    }
+
+    return taskRows.slice(0, scanLimit).map((task) => ({
+      id: task.id,
+      type: 'task' as const,
+      title: task.title,
+      parent_id: task.feature_id,
+      parent_title: featureTitleById.get(task.feature_id),
+    }));
+  }
+
+  private async loadRoadmapFeaturesForTaskSearch(
+    roadmapId: string,
+    scanLimit: number,
+  ): Promise<
+    Array<{
+      id: string;
+      title: string;
+      description?: string;
+      epic_id: string;
+      roadmap_id: string;
+    }>
+  > {
+    const { data, error } = await this.db
+      .from('roadmap_features')
+      .select('id, title, epic_id, roadmap_id')
+      .eq('roadmap_id', roadmapId)
+      .limit(scanLimit);
+    if (error) throw new Error(error.message);
+    return (data ?? []).flatMap((feature) =>
+      feature?.id && feature?.epic_id && feature?.roadmap_id
+        ? [
+            {
+              id: String(feature.id),
+              title: String(feature.title ?? 'Untitled feature'),
+              epic_id: String(feature.epic_id),
+              roadmap_id: String(feature.roadmap_id),
+            },
+          ]
+        : [],
+    );
+  }
+
+  private async loadEpicTitles(
+    roadmapId: string,
+    epicIds: string[],
+  ): Promise<Map<string, string>> {
+    if (epicIds.length === 0) {
+      return new Map<string, string>();
+    }
+    const { data, error } = await this.db
+      .from('roadmap_epics')
+      .select('id, title')
+      .eq('roadmap_id', roadmapId)
+      .in('id', epicIds);
+
+    if (error) throw new Error(error.message);
+    return new Map(
+      (data ?? [])
+        .filter((epic) => epic?.id)
+        .map((epic) => [
+          String(epic.id),
+          String(epic.title ?? 'Untitled epic'),
+        ]),
+    );
+  }
+
+  private sanitizeLookupQuery(value: string): string {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/[%_]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .slice(0, 160)
+      .trim();
+  }
+
+  private async runBoundedSearchPasses<T extends { id?: string }>(params: {
+    table: 'roadmap_epics' | 'roadmap_features';
+    select: string;
+    roadmapId: string;
+    query: string;
+    scanLimit: number;
+    includeDescriptionPass: boolean;
+  }): Promise<T[]> {
+    const seen = new Set<string>();
+    const rows: T[] = [];
+    const titlePatterns = [params.query, `${params.query}%`, `%${params.query}%`];
+
+    for (const pattern of titlePatterns) {
+      const data = await this.fetchRows<T>(
+        this.db
+          .from(params.table)
+          .select(params.select)
+          .eq('roadmap_id', params.roadmapId)
+          .ilike('title', pattern)
+          .limit(params.scanLimit),
+      );
+      this.appendUniqueRows(rows, seen, data, params.scanLimit);
+      if (rows.length >= params.scanLimit) {
+        return this.sortByTitleAndId(rows).slice(0, params.scanLimit);
+      }
+    }
+
+    if (params.includeDescriptionPass && rows.length < params.scanLimit) {
+      const descRows = await this.fetchRows<T>(
+        this.db
+          .from(params.table)
+          .select(params.select)
+          .eq('roadmap_id', params.roadmapId)
+          .ilike('description', `%${params.query}%`)
+          .limit(params.scanLimit),
+      );
+      this.appendUniqueRows(rows, seen, descRows, params.scanLimit);
+    }
+
+    return this.sortByTitleAndId(rows).slice(0, params.scanLimit);
+  }
+
+  private async runTaskSearchPasses(params: {
+    featureIds: string[];
+    query: string;
+    scanLimit: number;
+  }): Promise<Array<{ id: string; title: string; feature_id: string }>> {
+    const rows: Array<{ id: string; title: string; feature_id: string }> = [];
+    const seen = new Set<string>();
+    const patterns = [params.query, `${params.query}%`, `%${params.query}%`];
+
+    for (const pattern of patterns) {
+      const data = await this.fetchRows<{
+        id: string;
+        title: string;
+        feature_id: string;
+      }>(
+        this.db
+          .from('roadmap_tasks')
+          .select('id, title, feature_id')
+          .in('feature_id', params.featureIds)
+          .ilike('title', pattern)
+          .limit(params.scanLimit),
+      );
+      this.appendUniqueRows(rows, seen, data, params.scanLimit);
+      if (rows.length >= params.scanLimit) {
+        return this.sortByTitleAndId(rows).slice(0, params.scanLimit);
+      }
+    }
+
+    return this.sortByTitleAndId(rows).slice(0, params.scanLimit);
+  }
+
+  private appendUniqueRows<T extends { id?: string }>(
+    target: T[],
+    seen: Set<string>,
+    source: T[],
+    maxRows: number,
+  ): void {
+    for (const item of source) {
+      if (!item?.id) continue;
+      const key = String(item.id);
+      if (seen.has(key)) continue;
+      target.push(item);
+      seen.add(key);
+      if (target.length >= maxRows) break;
+    }
+  }
+
+  private sortByTitleAndId<T extends { id?: string; title?: string }>(rows: T[]): T[] {
+    return [...rows].sort((a, b) => {
+      const aTitle = String(a.title ?? '');
+      const bTitle = String(b.title ?? '');
+      if (aTitle !== bTitle) return aTitle.localeCompare(bTitle);
+      return String(a.id ?? '').localeCompare(String(b.id ?? ''));
+    });
+  }
+
+  private async fetchRows<T>(query: any): Promise<T[]> {
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
     return data ?? [];
   }

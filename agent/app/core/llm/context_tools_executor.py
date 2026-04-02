@@ -145,6 +145,7 @@ class ContextToolsExecutor:
                     self._nest_client.context_search(
                         roadmap_id=roadmap_id,
                         query=query,
+                        node_type=None,
                         limit=limit,
                         auth_header=auth_value,
                     )
@@ -186,6 +187,7 @@ class ContextToolsExecutor:
                     self._nest_client.context_search(
                         roadmap_id=roadmap_id,
                         query=label,
+                        node_type=node_type,
                         limit=limit,
                         auth_header=auth_value,
                     )

@@ -94,10 +94,13 @@ class NestRoadmapClient:
         self,
         roadmap_id: str,
         query: str,
+        node_type: str | None,
         limit: int | None,
         auth_header: str | None,
     ) -> dict[str, Any]:
         query_string = f"?query={quote_plus(query)}"
+        if node_type:
+            query_string += f"&node_type={quote_plus(node_type)}"
         if limit is not None:
             query_string += f"&limit={limit}"
         return await self._get(

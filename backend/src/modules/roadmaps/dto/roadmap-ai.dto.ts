@@ -319,6 +319,10 @@ export class RoadmapAiContextSearchQueryDto {
   query: string;
 
   @IsOptional()
+  @IsEnum(['epic', 'feature', 'task'])
+  node_type?: Exclude<RoadmapNodeType, 'roadmap'>;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
