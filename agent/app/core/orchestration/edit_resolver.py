@@ -297,7 +297,9 @@ def _clean_fragment(text: str) -> str:
 
 
 def _strip_node_type_words(label: str) -> str:
-    return re.sub(r'\b(epic|feature|task)\b', '', label, flags=re.IGNORECASE).strip()
+    stripped = re.sub(r'\b(epic|feature|task)\b', '', label, flags=re.IGNORECASE).strip()
+    stripped = re.sub(r'^(my|the|this|that|our)\s+', '', stripped, flags=re.IGNORECASE).strip()
+    return stripped
 
 
 def _safe_str(value: Any) -> str | None:

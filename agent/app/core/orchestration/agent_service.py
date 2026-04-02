@@ -5,6 +5,7 @@ import asyncio
 import logging
 from time import perf_counter
 from typing import Any
+import re
 
 from fastapi import HTTPException, status
 
@@ -51,6 +52,9 @@ class MessagePlanningOutcome:
     route_lane: str | None
     fastpath_bypass_reason: str | None
     phase_timings: dict[str, Any]
+    invalid_operation_detected: bool
+    invalid_operation_reason: str | None
+    invalid_operation_index: int | None
 
 
 class AgentService:
@@ -61,6 +65,9 @@ class AgentService:
         self._nest_client = NestRoadmapClient()
         self._logger = logging.getLogger(__name__)
         self._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        self._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
 
     def get_session_or_404(self, session_id: str) -> AgentSession:
         session = self._store.get(session_id)
@@ -99,6 +106,9 @@ class AgentService:
         planning: PlanningResult
         route_lane: str | None = None
         fastpath_bypass_reason: str | None = None
+        invalid_operation_detected = False
+        invalid_operation_reason: str | None = None
+        invalid_operation_index: int | None = None
 
         if preview_intent == 'roadmap_edit':
             fastpath_started = perf_counter()
@@ -156,8 +166,33 @@ class AgentService:
                 else {}
             )
 
+        validation_error = self._validate_operation_contract(planning.operations)
+        if validation_error is not None:
+            invalid_operation_detected = True
+            invalid_operation_reason = validation_error['reason']
+            invalid_operation_index = validation_error['index']
+            planning = PlanningResult(
+                assistant_message=(
+                    'I could not safely stage this edit because the target node reference '
+                    'was invalid. Please specify the exact node (name + type) and I will retry.'
+                ),
+                operations=[],
+                parse_mode='deterministic_invalid_operation_blocked',
+                intent_type=planning.intent_type,
+                response_mode='chat',
+                preview_recommended=False,
+                provider_used='rule_based',
+                fallback_used=True,
+                provider_error_code='invalid_operation_contract',
+                tokens_input=planning.tokens_input,
+                tokens_output=planning.tokens_output,
+                tokens_total=planning.tokens_total,
+                route_lane=route_lane,
+                fastpath_bypass_reason=fastpath_bypass_reason,
+            )
+
         operations = planning.operations
-        if len(operations) > self._settings.max_operations_per_request:
+        if planning.response_mode == 'edit_plan' and len(operations) > self._settings.max_operations_per_request:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
@@ -216,6 +251,9 @@ class AgentService:
             ),
             route_lane=route_lane,
             fastpath_bypass_reason=fastpath_bypass_reason,
+            invalid_operation_detected=invalid_operation_detected,
+            invalid_operation_reason=invalid_operation_reason,
+            invalid_operation_index=invalid_operation_index,
             phase_timings=phase_timings,
         )
 
@@ -239,6 +277,9 @@ class AgentService:
             route_lane=route_lane,
             fastpath_bypass_reason=fastpath_bypass_reason,
             phase_timings=phase_timings,
+            invalid_operation_detected=invalid_operation_detected,
+            invalid_operation_reason=invalid_operation_reason,
+            invalid_operation_index=invalid_operation_index,
         )
 
     def _try_deterministic_edit_fastpath(
@@ -397,9 +438,9 @@ class AgentService:
                     ),
                     operations=[
                         RoadmapOperation(
-                            op='update_node',
+                            op='move_node',
                             node_id=source.id,
-                            patch={'parent_id': target.id},
+                            new_parent_id=target.id,
                         )
                     ],
                     parse_mode='deterministic_fastpath_move',
@@ -511,6 +552,33 @@ class AgentService:
         if source_type == 'task':
             return 'feature'
         return None
+
+    def _validate_operation_contract(
+        self,
+        operations: list[RoadmapOperation],
+    ) -> dict[str, Any] | None:
+        for index, operation in enumerate(operations):
+            op_name = operation.op.value if hasattr(operation.op, 'value') else str(operation.op)
+            if op_name in {'update_node', 'delete_node', 'move_node', 'mark_status'}:
+                if not self._is_uuid(operation.node_id):
+                    return {
+                        'index': index,
+                        'reason': f'{op_name}.node_id_invalid_uuid',
+                    }
+            if op_name == 'move_node' and not self._is_uuid(operation.new_parent_id):
+                return {
+                    'index': index,
+                    'reason': 'move_node.new_parent_id_invalid_uuid',
+                }
+            if operation.parent_id is not None and not self._is_uuid(operation.parent_id):
+                return {
+                    'index': index,
+                    'reason': f'{op_name}.parent_id_invalid_uuid',
+                }
+        return None
+
+    def _is_uuid(self, value: str | None) -> bool:
+        return bool(isinstance(value, str) and self._uuid_pattern.fullmatch(value.strip()))
 
     def _ensure_actor_context(
         self,

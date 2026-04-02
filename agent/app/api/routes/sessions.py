@@ -246,6 +246,11 @@ async def send_message(
     artifacts: list[RoadmapPreviewArtifact] = []
     error_code: int | None = None
     preview_generation_ms: int | None = None
+    preview_error_code: str | None = None
+    preview_error_retryable: bool | None = None
+    preview_error_upstream_status: int | None = None
+    effective_preview_available: bool = False
+    effective_preview_recommended: bool = False
     try:
         outcome = await _run_store_call(
             agent_service.plan_message,
@@ -287,8 +292,21 @@ async def send_message(
                         outcome.session.artifacts.append(artifact)
                         artifacts.append(artifact)
                     await _run_store_call(store.update, outcome.session)
+                effective_preview_available = outcome.preview_available
+                effective_preview_recommended = outcome.preview_recommended
             except HTTPException as exc:
                 preview_generation_ms = int((perf_counter() - preview_started) * 1000)
+                normalized_preview_error = _normalize_artifact_preview_error(exc)
+                preview_error_code = str(normalized_preview_error.get('code') or '')
+                preview_error_retryable = bool(normalized_preview_error.get('retryable'))
+                upstream_status_value = normalized_preview_error.get('upstream_status')
+                preview_error_upstream_status = (
+                    int(upstream_status_value)
+                    if isinstance(upstream_status_value, int)
+                    else None
+                )
+                effective_preview_available = False
+                effective_preview_recommended = False
                 logger.warning(
                     'Auto-preview artifact generation failed for session_id=%s roadmap_id=%s status=%s detail=%s',
                     outcome.session.session_id,
@@ -296,6 +314,9 @@ async def send_message(
                     exc.status_code,
                     exc.detail,
                 )
+        else:
+            effective_preview_available = outcome.preview_available
+            effective_preview_recommended = outcome.preview_recommended
 
         return MessageResponse(
             session_id=outcome.session.session_id,
@@ -304,8 +325,8 @@ async def send_message(
             intent_type=outcome.intent_type,
             response_mode=outcome.response_mode,
             operations=outcome.operations,
-            preview_available=outcome.preview_available,
-            preview_recommended=outcome.preview_recommended,
+            preview_available=effective_preview_available,
+            preview_recommended=effective_preview_recommended,
             staged_operations_version=outcome.staged_operations_version,
             staged_operations_count=outcome.staged_operations_count,
             artifacts=artifacts,
@@ -344,7 +365,8 @@ async def send_message(
             tokens_total=outcome.tokens_total if outcome else None,
             operations_count=len(outcome.operations) if outcome else 0,
             artifacts_count=len(artifacts),
-            preview_available=outcome.preview_available if outcome else False,
+            preview_available=effective_preview_available if outcome else False,
+            preview_recommended=effective_preview_recommended if outcome else False,
             actor_present=(
                 outcome.session.metadata.actor_context is not None
                 if outcome is not None
@@ -374,6 +396,18 @@ async def send_message(
             phase_timings=outcome.phase_timings if outcome else None,
             preview_generation_ms=preview_generation_ms,
             total_edit_turn_ms=total_edit_turn_ms,
+            invalid_operation_detected=(
+                outcome.invalid_operation_detected if outcome else False
+            ),
+            invalid_operation_reason=(
+                outcome.invalid_operation_reason if outcome else None
+            ),
+            invalid_operation_index=(
+                outcome.invalid_operation_index if outcome else None
+            ),
+            preview_error_code=preview_error_code,
+            preview_error_retryable=preview_error_retryable,
+            preview_error_upstream_status=preview_error_upstream_status,
         )
 
 

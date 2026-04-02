@@ -2,11 +2,13 @@ import logging
 import unittest
 from datetime import datetime
 from types import SimpleNamespace
+import re
 
 from fastapi import HTTPException
 
 from app.api.routes import sessions as sessions_routes
 from app.core.config import get_settings
+from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import (
     ActorContext,
     AgentSession,
@@ -18,7 +20,7 @@ from app.core.contracts.sessions import (
 )
 from app.core.llm.client import PlanningResult
 from app.core.llm.client import LLMPlanner
-from app.core.orchestration.agent_service import AgentService
+from app.core.orchestration.agent_service import AgentService, MessagePlanningOutcome
 from app.core.session_store import SessionStoreUnavailableError
 
 
@@ -351,6 +353,148 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual(bypass_reason, 'rename_target_ambiguous_or_not_found')
 
+    def test_fastpath_rename_strips_leading_pronouns(self) -> None:
+        service = self._service(
+            {
+                'matches': [
+                    {
+                        'id': 'new-node-id',
+                        'type': 'epic',
+                        'title': 'Platform Foundation',
+                    }
+                ]
+            }
+        )
+        session = AgentSession(roadmap_id='roadmap-1')
+        result, bypass_reason = service._try_deterministic_edit_fastpath(
+            session=session,
+            user_message='Rename my Platform Foundation to Platform Foundation 1',
+            auth_header=None,
+            trace_id='trace-fastpath-pronoun',
+            session_context={'roadmap_id': 'roadmap-1'},
+        )
+        self.assertIsNotNone(result)
+        self.assertIsNone(bypass_reason)
+
+    def test_fastpath_move_uses_move_node_contract(self) -> None:
+        calls = {'count': 0}
+
+        class _SequenceNestClient:
+            def context_search(self, **_kwargs):
+                calls['count'] += 1
+                if calls['count'] == 1:
+                    return {
+                        'matches': [
+                            {
+                                'id': '4848e4ec-fabf-4002-a703-714e938d6c04',
+                                'type': 'feature',
+                                'title': 'Roadmap JSON Editor',
+                            }
+                        ]
+                    }
+                return {
+                    'matches': [
+                        {
+                            'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            'type': 'epic',
+                            'title': 'Platform Foundation',
+                        }
+                    ]
+                }
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings()
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._nest_client = _SequenceNestClient()
+        service._run_async_call = lambda value: value
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        result, bypass_reason = service._try_deterministic_edit_fastpath(
+            session=session,
+            user_message='Move Roadmap JSON Editor feature under Platform Foundation epic',
+            auth_header=None,
+            trace_id='trace-fastpath-move',
+            session_context={'roadmap_id': 'roadmap-1'},
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertIsNone(bypass_reason)
+        self.assertEqual(result.parse_mode, 'deterministic_fastpath_move')
+        self.assertEqual(len(result.operations), 1)
+        operation = result.operations[0]
+        self.assertEqual(operation.op.value, 'move_node')
+        self.assertEqual(operation.node_id, '4848e4ec-fabf-4002-a703-714e938d6c04')
+        self.assertEqual(operation.new_parent_id, 'dad5697a-8962-4f80-8bc3-8a964edd8e56')
+        self.assertIsNone(operation.patch)
+
+    def test_plan_message_blocks_invalid_uuid_operation_before_staging(self) -> None:
+        class _FakePlanner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Rename epic Platform Foundation.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='not-a-uuid',
+                            patch={'title': 'Platform Foundation 1'},
+                        )
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(
+                    SimpleNamespace(role=role, content=content)
+                )
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings()
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _FakePlanner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        service._run_async_call = lambda value: value
+
+        session = AgentSession(roadmap_id='roadmap-1')
+        outcome = service.plan_message(
+            session=session,
+            user_message='Rename my Platform Foundation to Platform Foundation 1',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-invalid-op',
+        )
+
+        self.assertEqual(outcome.response_mode, 'chat')
+        self.assertEqual(outcome.parse_mode, 'deterministic_invalid_operation_blocked')
+        self.assertEqual(len(session.operations), 0)
+        self.assertTrue(outcome.invalid_operation_detected)
+        self.assertEqual(outcome.invalid_operation_reason, 'update_node.node_id_invalid_uuid')
+        self.assertEqual(outcome.invalid_operation_index, 0)
+
 
 class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
     async def test_store_unavailable_response_is_sanitized(self) -> None:
@@ -579,6 +723,89 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(detail, dict)
         self.assertEqual(detail.get('message'), 'Preview regeneration failed')
         self.assertEqual(detail.get('upstream_status'), 503)
+
+    async def test_send_message_auto_preview_failure_marks_preview_unavailable(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.operations = [
+            RoadmapOperation(
+                op='update_node',
+                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                patch={'title': 'Platform Foundation 1'},
+            )
+        ]
+
+        class _FakeStore:
+            def update(self, _session):
+                return None
+
+        class _FakeAgentService:
+            def plan_message(self, _session, _message, _replace, _auth_header, _trace_id):
+                return MessagePlanningOutcome(
+                    session=session,
+                    assistant_message='Rename epic Platform Foundation.',
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    operations=session.operations,
+                    preview_available=True,
+                    preview_recommended=True,
+                    staged_operations_version=1,
+                    staged_operations_count=1,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=10,
+                    tokens_output=5,
+                    tokens_total=15,
+                    route_lane='llm_edit_plan',
+                    fastpath_bypass_reason=None,
+                    phase_timings={},
+                    invalid_operation_detected=False,
+                    invalid_operation_reason=None,
+                    invalid_operation_index=None,
+                )
+
+        async def _fake_preview(**_kwargs):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    'detail': {
+                        'error': {
+                            'code': 'INVALID_OPERATION',
+                            'message': 'operations.0.node_id must be a UUID',
+                        }
+                    }
+                },
+            )
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_preview = sessions_routes._nest_client.preview
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), _FakeAgentService()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.preview = _fake_preview  # type: ignore[assignment]
+        try:
+            response = await sessions_routes.send_message(
+                session_id='session-1',
+                payload=sessions_routes.MessageRequest(
+                    message='Rename my Platform Foundation to Platform Foundation 1',
+                    auto_preview=True,
+                ),
+                request=SimpleNamespace(headers={}),
+            )
+        finally:
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.preview = original_preview  # type: ignore[assignment]
+
+        self.assertFalse(response.preview_available)
+        self.assertFalse(response.preview_recommended)
+        self.assertEqual(len(response.operations), 1)
 
 
 async def _async_runtime_result(value):
