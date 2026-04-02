@@ -51,6 +51,7 @@ class Settings(BaseSettings):
 
     agent_log_level: str = Field(default='DEBUG', alias='AGENT_LOG_LEVEL')
     agent_log_json: bool = Field(default=True, alias='AGENT_LOG_JSON')
+    agent_log_color: str = Field(default='auto', alias='AGENT_LOG_COLOR')
     agent_log_include_content: bool = Field(default=False, alias='AGENT_LOG_INCLUDE_CONTENT')
     agent_cache_ttl_seconds: int = Field(default=600, alias='AGENT_CACHE_TTL_SECONDS')
 
@@ -61,6 +62,14 @@ class Settings(BaseSettings):
         if normalized.endswith('/api'):
             return normalized
         return f'{normalized}/api'
+
+    @field_validator('agent_log_color')
+    @classmethod
+    def normalize_agent_log_color(cls, value: str) -> str:
+        normalized = (value or 'auto').strip().lower()
+        if normalized not in {'auto', 'on', 'off'}:
+            return 'auto'
+        return normalized
 
 
 @lru_cache

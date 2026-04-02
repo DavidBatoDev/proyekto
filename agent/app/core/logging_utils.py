@@ -68,6 +68,25 @@ class _LifecycleTrace:
 _LIFECYCLE_TRACES: dict[str, _LifecycleTrace] = {}
 
 
+@dataclass(frozen=True)
+class _AnsiPalette:
+    enabled: bool
+
+    def separator(self, text: str) -> str:
+        return self._style(text, '36')
+
+    def event_header(self, text: str) -> str:
+        return self._style(text, '1;96')
+
+    def lifecycle_header(self, text: str) -> str:
+        return self._style(text, '1;95')
+
+    def _style(self, text: str, code: str) -> str:
+        if not self.enabled:
+            return text
+        return f'\x1b[{code}m{text}\x1b[0m'
+
+
 def configure_logging(settings: Settings | None = None) -> None:
     cfg = settings or get_settings()
     level_name = (cfg.agent_log_level or 'INFO').upper()
@@ -103,10 +122,11 @@ def log_event(
     if cfg.agent_log_json:
         logger.log(level, json.dumps(payload, ensure_ascii=True, default=str))
         return
+    palette = _resolve_palette(cfg, logger)
     lifecycle_block = _capture_lifecycle_block(payload)
-    logger.log(level, _render_event_block(payload))
+    logger.log(level, _render_event_block(payload, palette=palette))
     if lifecycle_block:
-        logger.log(level, lifecycle_block)
+        logger.log(level, _render_lifecycle_block(lifecycle_block, palette=palette))
 
 
 def summarize_tool_result(result: dict[str, Any]) -> dict[str, Any]:
@@ -159,19 +179,20 @@ def _truncate(text: str) -> dict[str, Any]:
     }
 
 
-def _render_event_block(payload: dict[str, Any]) -> str:
+def _render_event_block(payload: dict[str, Any], *, palette: _AnsiPalette) -> str:
     event = str(payload.get('event', 'event')).upper()
     divider = '-' * 62
     lines = [
-        divider,
-        f'EVENT: {event}',
-        divider,
+        palette.separator(divider),
+        palette.event_header(f'EVENT: {event}'),
+        palette.separator(divider),
+        '',
     ]
     for key in _ordered_keys(payload):
         if key == 'event':
             continue
         _append_event_field(lines, key, payload[key], indent=2)
-    lines.append(divider)
+    lines.extend(['', palette.separator(divider)])
     return '\n'.join(lines)
 
 
@@ -195,7 +216,7 @@ def _capture_lifecycle_block(payload: dict[str, Any]) -> str | None:
         _apply_lifecycle_payload(trace, payload)
         if event != 'message_completed':
             return None
-        block = _render_lifecycle_block(trace)
+        block = _build_lifecycle_block(trace)
         _LIFECYCLE_TRACES.pop(trace_id, None)
         return block
 
@@ -321,7 +342,7 @@ def _find_latest_tool_entry(
     return None
 
 
-def _render_lifecycle_block(trace: _LifecycleTrace) -> str:
+def _build_lifecycle_block(trace: _LifecycleTrace) -> str:
     sep = '-' * 78
     title = _lifecycle_title(trace)
     lines = [
@@ -369,6 +390,25 @@ def _render_lifecycle_block(trace: _LifecycleTrace) -> str:
         ]
     )
     return '\n'.join(lines)
+
+
+def _render_lifecycle_block(block: str, *, palette: _AnsiPalette) -> str:
+    if not block:
+        return block
+    lines = block.split('\n')
+    rendered: list[str] = []
+    for line in lines:
+        if line.startswith('EVENT: '):
+            rendered.append(palette.event_header(line))
+            continue
+        if line.startswith('AI REQUEST: '):
+            rendered.append(palette.lifecycle_header(line))
+            continue
+        if line and all(char == '-' for char in line):
+            rendered.append(palette.separator(line))
+            continue
+        rendered.append(line)
+    return '\n'.join(rendered)
 
 
 def _render_tool_calls(tools: list[dict[str, Any]]) -> list[str]:
@@ -494,3 +534,34 @@ def _append_event_list_item(lines: list[str], value: Any, *, indent: int) -> Non
 
 def _ordered_mapping_keys(value: dict[str, Any]) -> list[str]:
     return sorted(value.keys())
+
+
+def _resolve_palette(cfg: Settings, logger: logging.Logger) -> _AnsiPalette:
+    mode = _normalize_log_color_mode(getattr(cfg, 'agent_log_color', 'auto'))
+    if mode == 'off':
+        return _AnsiPalette(enabled=False)
+    if mode == 'on':
+        return _AnsiPalette(enabled=True)
+    return _AnsiPalette(enabled=_is_logger_tty(logger))
+
+
+def _normalize_log_color_mode(value: Any) -> str:
+    normalized = str(value or 'auto').strip().lower()
+    if normalized not in {'auto', 'on', 'off'}:
+        return 'auto'
+    return normalized
+
+
+def _is_logger_tty(logger: logging.Logger) -> bool:
+    for handler in logger.handlers:
+        stream = getattr(handler, 'stream', None)
+        if stream is None:
+            continue
+        isatty = getattr(stream, 'isatty', None)
+        if callable(isatty):
+            try:
+                if isatty():
+                    return True
+            except Exception:
+                continue
+    return False

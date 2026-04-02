@@ -7,9 +7,18 @@ from types import SimpleNamespace
 from app.core import logging_utils
 
 
+class _TTYStringIO(io.StringIO):
+    def __init__(self, *, tty: bool) -> None:
+        super().__init__()
+        self._tty = tty
+
+    def isatty(self) -> bool:
+        return self._tty
+
+
 class LoggingUtilsLifecycleTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.stream = io.StringIO()
+        self.stream = _TTYStringIO(tty=False)
         self.logger = logging.getLogger(f'logging-utils-tests-{id(self)}')
         self.logger.handlers.clear()
         self.logger.propagate = False
@@ -20,10 +29,12 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
         logging_utils._LIFECYCLE_TRACES.clear()
         self.settings_pretty = SimpleNamespace(
             agent_log_json=False,
+            agent_log_color='auto',
             agent_log_include_content=False,
         )
         self.settings_json = SimpleNamespace(
             agent_log_json=True,
+            agent_log_color='auto',
             agent_log_include_content=False,
         )
 
@@ -215,6 +226,99 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
         parsed = json.loads(raw)
         self.assertEqual(parsed['event'], 'message_received')
         self.assertNotIn('AI REQUEST:', raw)
+        self.assertNotIn('\x1b[', raw)
+
+    def test_pretty_mode_tty_auto_colors_headers_only(self) -> None:
+        stream = _TTYStringIO(tty=True)
+        logger = logging.getLogger(f'logging-utils-tests-tty-auto-{id(self)}')
+        logger.handlers.clear()
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(logging.Formatter('%(message)s'))
+        logger.addHandler(handler)
+        settings = SimpleNamespace(
+            agent_log_json=False,
+            agent_log_color='auto',
+            agent_log_include_content=False,
+        )
+
+        logging_utils.log_event(
+            logger,
+            'message_received',
+            settings=settings,
+            trace_id='trace-color-auto',
+            session_id='session-color-auto',
+            roadmap_id='roadmap-color-auto',
+            message='Hello',
+        )
+        output = stream.getvalue()
+        self.assertIn('\x1b[', output)
+        self.assertIn('EVENT: MESSAGE_RECEIVED', output)
+        self.assertIn('  session_id:', output)
+
+    def test_pretty_mode_non_tty_auto_has_no_ansi(self) -> None:
+        output = self._emit_minimal_lifecycle()
+        self.assertNotIn('\x1b[', output)
+
+    def test_pretty_mode_color_off_disables_ansi(self) -> None:
+        stream = _TTYStringIO(tty=True)
+        logger = logging.getLogger(f'logging-utils-tests-color-off-{id(self)}')
+        logger.handlers.clear()
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(logging.Formatter('%(message)s'))
+        logger.addHandler(handler)
+        settings = SimpleNamespace(
+            agent_log_json=False,
+            agent_log_color='off',
+            agent_log_include_content=False,
+        )
+        logging_utils.log_event(
+            logger,
+            'message_received',
+            settings=settings,
+            trace_id='trace-color-off',
+            session_id='session-color-off',
+            roadmap_id='roadmap-color-off',
+            message='Hello',
+        )
+        self.assertNotIn('\x1b[', stream.getvalue())
+
+    def test_pretty_mode_color_on_forces_ansi(self) -> None:
+        stream = _TTYStringIO(tty=False)
+        logger = logging.getLogger(f'logging-utils-tests-color-on-{id(self)}')
+        logger.handlers.clear()
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(logging.Formatter('%(message)s'))
+        logger.addHandler(handler)
+        settings = SimpleNamespace(
+            agent_log_json=False,
+            agent_log_color='on',
+            agent_log_include_content=False,
+        )
+        logging_utils.log_event(
+            logger,
+            'message_received',
+            settings=settings,
+            trace_id='trace-color-on',
+            session_id='session-color-on',
+            roadmap_id='roadmap-color-on',
+            message='Hello',
+        )
+        self.assertIn('\x1b[', stream.getvalue())
+
+    def test_lifecycle_sections_have_single_blank_line_spacing(self) -> None:
+        output = self._emit_minimal_lifecycle()
+        self.assertIn('\nUSER\n', output)
+        self.assertIn('\n\nACTOR\n', output)
+        self.assertIn('\n\nROUTING\n', output)
+        self.assertIn('\n\nTOOL CALL\n', output)
+        self.assertIn('\n\nRESPONSE\n', output)
+        self.assertIn('\n\nASSISTANT\n', output)
 
 
 if __name__ == '__main__':
