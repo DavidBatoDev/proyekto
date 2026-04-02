@@ -23,6 +23,7 @@ from app.core.logging_utils import log_event
 from app.core.nest_client import NestRoadmapClient
 from app.core.orchestration.edit_resolver import (
     build_ambiguity_message,
+    extract_create_intent,
     extract_mark_status_intent,
     extract_move_intent,
     extract_rename_intent,
@@ -225,10 +226,11 @@ class AgentService:
             invalid_operation_detected = True
             invalid_operation_reason = validation_error['reason']
             invalid_operation_index = validation_error['index']
+            guidance = self._operation_validation_guidance(invalid_operation_reason)
             planning = PlanningResult(
                 assistant_message=(
-                    'I could not safely stage this edit because the target node reference '
-                    'was invalid. Please specify the exact node (name + type) and I will retry.'
+                    'I could not safely stage this edit operation. '
+                    f'{guidance}'
                 ),
                 operations=[],
                 parse_mode='deterministic_invalid_operation_blocked',
@@ -355,10 +357,24 @@ class AgentService:
         trace_id: str | None,
         session_context: dict[str, Any],
     ) -> tuple[PlanningResult | None, str | None]:
+        rename_intent = extract_rename_intent(user_message)
+        create_intent = extract_create_intent(user_message)
+        mark_status_intent = extract_mark_status_intent(user_message)
+        move_intent = extract_move_intent(user_message)
+
         pending = session.metadata.pending_disambiguation
         if pending is not None:
             selected_index = parse_selection_index(user_message)
-            if selected_index is None:
+            has_fresh_intent = any(
+                intent is not None
+                for intent in (
+                    rename_intent,
+                    create_intent,
+                    mark_status_intent,
+                    move_intent,
+                )
+            )
+            if selected_index is None and not has_fresh_intent:
                 return (
                     PlanningResult(
                         assistant_message=(
@@ -377,7 +393,9 @@ class AgentService:
                     ),
                     None,
                 )
-            if not (1 <= selected_index <= len(pending.candidates)):
+            if selected_index is not None and not has_fresh_intent and not (
+                1 <= selected_index <= len(pending.candidates)
+            ):
                 return (
                     PlanningResult(
                         assistant_message=(
@@ -396,36 +414,36 @@ class AgentService:
                     ),
                     None,
                 )
-            selected = pending.candidates[selected_index - 1]
-            if pending.kind != 'rename_node' or not pending.new_title:
-                return None, 'pending_disambiguation_unsupported_kind'
-            session.metadata.pending_disambiguation = None
-            return (
-                PlanningResult(
-                    assistant_message=(
-                        f'Great, I will rename {selected.type} "{selected.title}" '
-                        f'to "{pending.new_title}".'
+            if selected_index is not None and not has_fresh_intent:
+                selected = pending.candidates[selected_index - 1]
+                if pending.kind != 'rename_node' or not pending.new_title:
+                    return None, 'pending_disambiguation_unsupported_kind'
+                session.metadata.pending_disambiguation = None
+                return (
+                    PlanningResult(
+                        assistant_message=(
+                            f'Great, I will rename {selected.type} "{selected.title}" '
+                            f'to "{pending.new_title}".'
+                        ),
+                        operations=[
+                            RoadmapOperation(
+                                op='update_node',
+                                node_id=selected.id,
+                                patch={'title': pending.new_title},
+                            )
+                        ],
+                        parse_mode='deterministic_disambiguation_selected',
+                        intent_type='roadmap_edit',
+                        response_mode='edit_plan',
+                        preview_recommended=True,
+                        provider_used='rule_based',
+                        fallback_used=False,
+                        provider_error_code=None,
+                        route_lane='deterministic_edit_fastpath',
                     ),
-                    operations=[
-                        RoadmapOperation(
-                            op='update_node',
-                            node_id=selected.id,
-                            patch={'title': pending.new_title},
-                        )
-                    ],
-                    parse_mode='deterministic_disambiguation_selected',
-                    intent_type='roadmap_edit',
-                    response_mode='edit_plan',
-                    preview_recommended=True,
-                    provider_used='rule_based',
-                    fallback_used=False,
-                    provider_error_code=None,
-                    route_lane='deterministic_edit_fastpath',
-                ),
-                None,
-            )
+                    None,
+                )
 
-        rename_intent = extract_rename_intent(user_message)
         if rename_intent is not None:
             candidate_lookup = self._resolve_unique_candidate(
                 session=session,
@@ -492,7 +510,122 @@ class AgentService:
                 None,
             )
 
-        mark_status_intent = extract_mark_status_intent(user_message)
+        if create_intent is not None:
+            if create_intent.node_type == 'epic':
+                duplicate_lookup = self._resolve_unique_candidate(
+                    session=session,
+                    trace_id=trace_id,
+                    auth_header=auth_header,
+                    session_context=session_context,
+                    label=create_intent.title,
+                    node_type='epic',
+                )
+                if duplicate_lookup.bypass_reason is not None:
+                    return None, duplicate_lookup.bypass_reason
+                duplicate_candidate = duplicate_lookup.selected
+                if (
+                    not create_intent.allow_duplicate
+                    and (
+                        duplicate_candidate is not None
+                        or (
+                            duplicate_lookup.status == 'ambiguous'
+                            and len(duplicate_lookup.candidates) > 0
+                        )
+                    )
+                ):
+                    if duplicate_candidate is not None:
+                        conflict_context = f'existing epic "{duplicate_candidate.title}"'
+                    else:
+                        conflict_context = 'multiple similar epics'
+                    return (
+                        PlanningResult(
+                            assistant_message=(
+                                f'I found {conflict_context}. '
+                                f'If you want another one with the same title, reply with: '
+                                f'Create duplicate epic "{create_intent.title}". '
+                                'Otherwise tell me a different epic title.'
+                            ),
+                            operations=[],
+                            parse_mode='deterministic_fastpath_create_epic_duplicate_confirm',
+                            intent_type='roadmap_edit',
+                            response_mode='chat',
+                            preview_recommended=False,
+                            provider_used='rule_based',
+                            fallback_used=False,
+                            provider_error_code=None,
+                            route_lane='deterministic_edit_fastpath',
+                    ),
+                    None,
+                )
+                session.metadata.pending_disambiguation = None
+                return (
+                    PlanningResult(
+                        assistant_message=(
+                            f'Create a new epic titled "{create_intent.title}" '
+                            'at the roadmap root.'
+                        ),
+                        operations=[
+                            RoadmapOperation(
+                                op='add_epic',
+                                data={'title': create_intent.title},
+                            )
+                        ],
+                        parse_mode='deterministic_fastpath_create_epic',
+                        intent_type='roadmap_edit',
+                        response_mode='edit_plan',
+                        preview_recommended=True,
+                        provider_used='rule_based',
+                        fallback_used=False,
+                        provider_error_code=None,
+                        route_lane='deterministic_edit_fastpath',
+                    ),
+                    None,
+                )
+
+            expected_parent_type = (
+                'epic' if create_intent.node_type == 'feature' else 'feature'
+            )
+            if create_intent.parent_label is None:
+                return None, f'create_{create_intent.node_type}_parent_missing'
+            parent_lookup = self._resolve_unique_candidate(
+                session=session,
+                trace_id=trace_id,
+                auth_header=auth_header,
+                session_context=session_context,
+                label=create_intent.parent_label,
+                node_type=expected_parent_type,
+            )
+            if parent_lookup.bypass_reason is not None:
+                return None, parent_lookup.bypass_reason
+            parent = parent_lookup.selected
+            if parent is None:
+                return None, f'create_{create_intent.node_type}_parent_ambiguous_or_not_found'
+
+            return (
+                PlanningResult(
+                    assistant_message=(
+                        f'Create a new {create_intent.node_type} "{create_intent.title}" '
+                        f'under {parent.type} "{parent.title}".'
+                    ),
+                    operations=[
+                        RoadmapOperation(
+                            op=f'add_{create_intent.node_type}',
+                            parent_id=parent.id,
+                            data={'title': create_intent.title},
+                        )
+                    ],
+                    parse_mode=f'deterministic_fastpath_create_{create_intent.node_type}',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='rule_based',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    route_lane='deterministic_edit_fastpath',
+                    ),
+                    None,
+                )
+
         if mark_status_intent is not None:
             candidate_lookup = self._resolve_unique_candidate(
                 session=session,
@@ -527,11 +660,10 @@ class AgentService:
                     fallback_used=False,
                     provider_error_code=None,
                     route_lane='deterministic_edit_fastpath',
-                ),
-                None,
-            )
+                    ),
+                    None,
+                )
 
-        move_intent = extract_move_intent(user_message)
         if move_intent is not None:
             source_lookup = self._resolve_unique_candidate(
                 session=session,
@@ -592,6 +724,8 @@ class AgentService:
                 None,
             )
 
+        if self._looks_like_create_request(user_message):
+            return None, 'create_epic_title_parse_failed'
         return None, 'not_simple_edit_intent'
 
     def _resolve_unique_candidate(
@@ -704,7 +838,15 @@ class AgentService:
             return True
         if extract_move_intent(user_message) is not None:
             return True
+        if extract_create_intent(user_message) is not None:
+            return True
         return False
+
+    def _looks_like_create_request(self, user_message: str) -> bool:
+        lowered = user_message.lower()
+        has_create_verb = bool(re.search(r'\b(?:create|add)\b', lowered))
+        has_create_type = bool(re.search(r'\b(?:epic|feature|task)\b', lowered))
+        return has_create_verb and has_create_type
 
     def _should_fetch_actor_context(
         self,
@@ -775,6 +917,23 @@ class AgentService:
     ) -> dict[str, Any] | None:
         for index, operation in enumerate(operations):
             op_name = operation.op.value if hasattr(operation.op, 'value') else str(operation.op)
+            if op_name == 'add_epic':
+                if self._read_operation_title(operation) is None:
+                    return {
+                        'index': index,
+                        'reason': 'add_epic.data.title_missing',
+                    }
+            if op_name in {'add_feature', 'add_task'}:
+                if not self._is_uuid(operation.parent_id):
+                    return {
+                        'index': index,
+                        'reason': f'{op_name}.parent_id_invalid_uuid',
+                    }
+                if self._read_operation_title(operation) is None:
+                    return {
+                        'index': index,
+                        'reason': f'{op_name}.data.title_missing',
+                    }
             if op_name in {'update_node', 'delete_node', 'move_node', 'mark_status'}:
                 if not self._is_uuid(operation.node_id):
                     return {
@@ -792,6 +951,53 @@ class AgentService:
                     'reason': f'{op_name}.parent_id_invalid_uuid',
                 }
         return None
+
+    def _read_operation_title(self, operation: RoadmapOperation) -> str | None:
+        if not isinstance(operation.data, dict):
+            return None
+        title = operation.data.get('title')
+        if isinstance(title, str):
+            normalized = title.strip()
+            if normalized:
+                return normalized
+        return None
+
+    def _operation_validation_guidance(self, reason: str | None) -> str:
+        if not reason:
+            return 'Please provide the exact target details and try again.'
+        guidance_map = {
+            'add_epic.data.title_missing': (
+                'The new epic title is missing. Include a title, for example: '
+                '"Create a new epic called AI Module".'
+            ),
+            'add_feature.data.title_missing': (
+                'The new feature title is missing. Include the feature title and parent epic.'
+            ),
+            'add_task.data.title_missing': (
+                'The new task title is missing. Include the task title and parent feature.'
+            ),
+            'add_feature.parent_id_invalid_uuid': (
+                'The feature parent reference is invalid. Specify the exact parent epic.'
+            ),
+            'add_task.parent_id_invalid_uuid': (
+                'The task parent reference is invalid. Specify the exact parent feature.'
+            ),
+        }
+        if reason in guidance_map:
+            return guidance_map[reason]
+        if reason.endswith('node_id_invalid_uuid'):
+            return (
+                'The target node reference is invalid. Specify the exact node name and type.'
+            )
+        if reason.endswith('parent_id_invalid_uuid'):
+            return (
+                'The parent node reference is invalid. Specify the exact parent node.'
+            )
+        if reason == 'move_node.new_parent_id_invalid_uuid':
+            return (
+                'The move target parent is invalid. Specify the exact destination parent node.'
+            )
+        return 'Please provide the exact target details and try again.'
 
     def _is_uuid(self, value: str | None) -> bool:
         return bool(isinstance(value, str) and self._uuid_pattern.fullmatch(value.strip()))

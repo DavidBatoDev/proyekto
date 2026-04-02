@@ -172,7 +172,9 @@ def get_planning_tool() -> dict[str, Any]:
         'function': {
             'name': PLANNING_TOOL_NAME,
             'description': (
-                'Generate safe roadmap edit operations. Never rewrite full JSON and never mutate unrelated fields.'
+                'Generate safe roadmap edit operations. Never rewrite full JSON and never mutate unrelated fields. '
+                'For add_epic/add_feature/add_task, include data.title. '
+                'For add_feature/add_task, include a valid parent_id.'
             ),
             'parameters': {
                 'type': 'object',
@@ -250,6 +252,24 @@ def _normalize_operation_payload(item: Any) -> dict[str, Any]:
 
     payload = dict(item)
     op = payload.get('op')
+    if op in {'add_epic', 'add_feature', 'add_task'}:
+        data = payload.get('data')
+        if data is None:
+            data = {}
+        if isinstance(data, dict):
+            normalized_data = dict(data)
+            if 'title' not in normalized_data and isinstance(
+                normalized_data.get('name'), str
+            ):
+                normalized_data['title'] = normalized_data.pop('name')
+            if 'title' not in normalized_data and isinstance(payload.get('title'), str):
+                normalized_data['title'] = payload.pop('title')
+            if 'title' not in normalized_data and isinstance(payload.get('name'), str):
+                normalized_data['title'] = payload.pop('name')
+            if normalized_data:
+                payload['data'] = normalized_data
+        return payload
+
     if op != 'update_node':
         return payload
 

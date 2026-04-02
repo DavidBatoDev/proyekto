@@ -40,6 +40,15 @@ class MoveIntent:
 
 
 @dataclass
+class CreateIntent:
+    node_type: NodeKind
+    title: str
+    parent_label: str | None = None
+    parent_node_type: NodeKind | None = None
+    allow_duplicate: bool = False
+
+
+@dataclass
 class ResolutionResult:
     status: Literal['unique', 'ambiguous', 'not_found']
     candidates: list[ResolverCandidate]
@@ -92,6 +101,118 @@ def infer_node_type(text: str) -> NodeKind | None:
     if 'task' in lowered:
         return 'task'
     return None
+
+
+def extract_create_intent(message: str) -> CreateIntent | None:
+    text = _normalize_create_prompt_text(message)
+    if not text:
+        return None
+
+    allow_duplicate = bool(re.search(r'\bduplicate\s+epic\b', text, re.IGNORECASE))
+    epic_anchor_pattern = re.compile(
+        r'(?:create|add)\s+(?:(?:a|an)\s+)?(?:new\s+)?(?:duplicate\s+)?epic\b.*?\b(?:called|named|titled)\b\s+(?:"([^"]+)"|\'([^\']+)\'|(.+))$',
+        re.IGNORECASE,
+    )
+    epic_anchor_match = epic_anchor_pattern.search(text)
+    if epic_anchor_match:
+        captured_title = (
+            epic_anchor_match.group(1)
+            or epic_anchor_match.group(2)
+            or epic_anchor_match.group(3)
+            or ''
+        )
+        title = _normalize_create_title(captured_title)
+        if title:
+            return CreateIntent(
+                node_type='epic',
+                title=title,
+                allow_duplicate=allow_duplicate,
+            )
+
+    epic_pattern = re.compile(
+        r'(?:create|add)\s+(?:(?:a|an)\s+)?(?:new\s+)?(?:duplicate\s+)?epic\b(?:\s+(.+))?$',
+        re.IGNORECASE,
+    )
+    epic_match = epic_pattern.search(text)
+    if epic_match:
+        title = _normalize_create_title(epic_match.group(1) or '')
+        if title:
+            return CreateIntent(
+                node_type='epic',
+                title=title,
+                allow_duplicate=allow_duplicate,
+            )
+
+    child_pattern = re.compile(
+        r'(?:create|add)\s+(?:a|an|new)?\s*(feature|task)\s+(?:called|named|titled)?\s*(.+?)\s+(?:under|in)\s+(.+?)(?:\s+(epic|feature))?$',
+        re.IGNORECASE,
+    )
+    child_match = child_pattern.search(text)
+    if child_match:
+        node_type = child_match.group(1).lower()
+        title = _clean_fragment(child_match.group(2))
+        parent_label = _clean_fragment(child_match.group(3))
+        explicit_parent_type = (
+            child_match.group(4).lower().strip() if child_match.group(4) else None
+        )
+        inferred_parent_type: NodeKind | None
+        if explicit_parent_type in {'epic', 'feature'}:
+            inferred_parent_type = explicit_parent_type  # type: ignore[assignment]
+        else:
+            inferred_parent_type = infer_node_type(parent_label)
+        if title and parent_label and node_type in {'feature', 'task'}:
+            expected_parent_type = 'epic' if node_type == 'feature' else 'feature'
+            parent_type = (
+                inferred_parent_type
+                if inferred_parent_type in {'epic', 'feature'}
+                else expected_parent_type
+            )
+            return CreateIntent(
+                node_type=node_type,  # type: ignore[arg-type]
+                title=title,
+                parent_label=_strip_node_type_words(parent_label),
+                parent_node_type=parent_type,
+                allow_duplicate=False,
+            )
+
+    return None
+
+
+def _normalize_create_prompt_text(message: str) -> str:
+    text = message.strip()
+    if not text:
+        return ''
+    normalized = re.sub(
+        r'^\s*(?:can you|could you|would you|please)\b[\s,:-]*',
+        '',
+        text,
+        flags=re.IGNORECASE,
+    )
+    normalized = re.sub(r'\bfor\s+me\b', ' ', normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+    return normalized
+
+
+def _normalize_create_title(value: str) -> str | None:
+    cleaned = _clean_fragment(value)
+    if not cleaned:
+        return None
+    cleaned = re.sub(
+        r'^(?:for\s+me\s+)?(?:called|named|titled)\b(?:\s+|$)',
+        '',
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+    cleaned = _clean_fragment(cleaned)
+    if not cleaned:
+        return None
+    if re.fullmatch(
+        r'(?:epic|feature|task|new|duplicate|called|named|titled)',
+        cleaned,
+        re.IGNORECASE,
+    ):
+        return None
+    return cleaned
 
 
 def extract_mark_status_intent(message: str) -> MarkStatusIntent | None:

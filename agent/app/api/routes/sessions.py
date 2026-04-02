@@ -290,27 +290,43 @@ async def send_message(
                     trace_id=trace_id,
                 )
                 preview_generation_ms = int((perf_counter() - preview_started) * 1000)
-                preview_id = preview_result.get('preview_id')
-                if isinstance(preview_id, str):
-                    outcome.session.latest_preview_id = preview_id
-                    revision_token = preview_result.get('revision_token')
-                    if isinstance(revision_token, str):
-                        outcome.session.revision_token = revision_token
-                    artifact = _build_preview_artifact(outcome.session, preview_result)
-                    if artifact is not None:
-                        outcome.session.artifacts.append(artifact)
-                        inline_preview_size_bytes = _serialized_payload_bytes(preview_result)
-                        if inline_preview_size_bytes <= settings.inline_preview_max_bytes:
-                            response_artifacts.append(
-                                artifact.model_copy(update={'inline_preview': preview_result})
-                            )
-                        else:
-                            inline_preview_skipped_due_to_size = True
-                            response_artifacts.append(artifact)
-                        artifacts.append(artifact)
-                    await _run_store_call(store.update, outcome.session)
-                effective_preview_available = outcome.preview_available
-                effective_preview_recommended = outcome.preview_recommended
+                validation_issues = preview_result.get('validation_issues')
+                has_validation_errors = (
+                    isinstance(validation_issues, list)
+                    and any(
+                        isinstance(issue, dict)
+                        and str(issue.get('severity') or '').lower() == 'error'
+                        for issue in validation_issues
+                    )
+                )
+                if has_validation_errors:
+                    effective_preview_available = False
+                    effective_preview_recommended = False
+                    preview_error_code = 'PREVIEW_VALIDATION_ERROR'
+                    preview_error_retryable = False
+                    preview_error_upstream_status = None
+                else:
+                    preview_id = preview_result.get('preview_id')
+                    if isinstance(preview_id, str):
+                        outcome.session.latest_preview_id = preview_id
+                        revision_token = preview_result.get('revision_token')
+                        if isinstance(revision_token, str):
+                            outcome.session.revision_token = revision_token
+                        artifact = _build_preview_artifact(outcome.session, preview_result)
+                        if artifact is not None:
+                            outcome.session.artifacts.append(artifact)
+                            inline_preview_size_bytes = _serialized_payload_bytes(preview_result)
+                            if inline_preview_size_bytes <= settings.inline_preview_max_bytes:
+                                response_artifacts.append(
+                                    artifact.model_copy(update={'inline_preview': preview_result})
+                                )
+                            else:
+                                inline_preview_skipped_due_to_size = True
+                                response_artifacts.append(artifact)
+                            artifacts.append(artifact)
+                        await _run_store_call(store.update, outcome.session)
+                    effective_preview_available = outcome.preview_available
+                    effective_preview_recommended = outcome.preview_recommended
             except HTTPException as exc:
                 preview_generation_ms = int((perf_counter() - preview_started) * 1000)
                 normalized_preview_error = _normalize_artifact_preview_error(exc)

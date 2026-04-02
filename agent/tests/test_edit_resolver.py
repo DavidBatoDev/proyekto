@@ -2,6 +2,7 @@ import unittest
 
 from app.core.orchestration.edit_resolver import (
     build_ambiguity_message,
+    extract_create_intent,
     extract_mark_status_intent,
     extract_move_intent,
     extract_rename_intent,
@@ -97,6 +98,52 @@ class EditResolverTests(unittest.TestCase):
         self.assertEqual(intent.target_label, 'Platform Foundation')
         self.assertEqual(intent.node_type, 'feature')
         self.assertEqual(intent.target_node_type, 'epic')
+
+    def test_extract_create_epic_intent(self) -> None:
+        intent = extract_create_intent('Create a new Epic called "AI Module"')
+        self.assertIsNotNone(intent)
+        assert intent is not None
+        self.assertEqual(intent.node_type, 'epic')
+        self.assertEqual(intent.title, 'AI Module')
+        self.assertFalse(intent.allow_duplicate)
+
+    def test_extract_create_epic_intent_with_conversational_prefix(self) -> None:
+        intent = extract_create_intent(
+            'Can you create new epic for me called "AI Module"'
+        )
+        self.assertIsNotNone(intent)
+        assert intent is not None
+        self.assertEqual(intent.node_type, 'epic')
+        self.assertEqual(intent.title, 'AI Module')
+
+    def test_extract_create_epic_intent_with_named_anchor(self) -> None:
+        intent = extract_create_intent('Please add a new epic named "AI Module"')
+        self.assertIsNotNone(intent)
+        assert intent is not None
+        self.assertEqual(intent.node_type, 'epic')
+        self.assertEqual(intent.title, 'AI Module')
+
+    def test_extract_create_epic_intent_without_quotes(self) -> None:
+        intent = extract_create_intent('Create epic called AI Module')
+        self.assertIsNotNone(intent)
+        assert intent is not None
+        self.assertEqual(intent.node_type, 'epic')
+        self.assertEqual(intent.title, 'AI Module')
+
+    def test_extract_create_epic_intent_rejects_empty_title(self) -> None:
+        intent = extract_create_intent('Can you create new epic for me called ""')
+        self.assertIsNone(intent)
+
+    def test_extract_create_feature_intent_with_parent(self) -> None:
+        intent = extract_create_intent(
+            'Add feature User Auth under Platform Foundation epic'
+        )
+        self.assertIsNotNone(intent)
+        assert intent is not None
+        self.assertEqual(intent.node_type, 'feature')
+        self.assertEqual(intent.title, 'User Auth')
+        self.assertEqual(intent.parent_label, 'Platform Foundation')
+        self.assertEqual(intent.parent_node_type, 'epic')
 
 
 if __name__ == '__main__':

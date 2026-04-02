@@ -24,6 +24,7 @@ from app.core.llm.client import PlanningResult
 from app.core.llm.client import LLMPlanner
 from app.core.orchestration.agent_service import AgentService, MessagePlanningOutcome
 from app.core.session_store import SessionStoreUnavailableError
+from app.core.tools.registry import parse_plan_tool_args
 
 
 class _FakeNestClient:
@@ -52,6 +53,9 @@ class AgentSafetyTests(unittest.TestCase):
         service._logger = logging.getLogger('agent-safety-tests')
         service._nest_client = _FakeNestClient(search_response)
         service._run_async_call = lambda value: value
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
         return service
 
     def _planning(self) -> PlanningResult:
@@ -438,6 +442,154 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(operation.new_parent_id, 'dad5697a-8962-4f80-8bc3-8a964edd8e56')
         self.assertIsNone(operation.patch)
 
+    def test_fastpath_create_epic_returns_add_epic_operation(self) -> None:
+        service = self._service({'matches': []})
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        result, bypass_reason = service._try_deterministic_edit_fastpath(
+            session=session,
+            user_message='Create a new Epic called "AI Module"',
+            auth_header=None,
+            trace_id='trace-fastpath-create-epic',
+            session_context={'roadmap_id': 'roadmap-1'},
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertIsNone(bypass_reason)
+        self.assertEqual(result.parse_mode, 'deterministic_fastpath_create_epic')
+        self.assertEqual(result.response_mode, 'edit_plan')
+        self.assertEqual(len(result.operations), 1)
+        op = result.operations[0]
+        self.assertEqual(op.op.value, 'add_epic')
+        self.assertEqual(op.data, {'title': 'AI Module'})
+
+    def test_fastpath_create_epic_conversational_phrase_uses_clean_title(self) -> None:
+        service = self._service({'matches': []})
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        result, bypass_reason = service._try_deterministic_edit_fastpath(
+            session=session,
+            user_message='Can you create new epic for me called "AI Module"',
+            auth_header=None,
+            trace_id='trace-fastpath-create-epic-conversational',
+            session_context={'roadmap_id': 'roadmap-1'},
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertIsNone(bypass_reason)
+        self.assertEqual(result.parse_mode, 'deterministic_fastpath_create_epic')
+        self.assertEqual(len(result.operations), 1)
+        self.assertEqual(result.operations[0].op.value, 'add_epic')
+        self.assertEqual(result.operations[0].data, {'title': 'AI Module'})
+
+    def test_fastpath_create_epic_parse_failure_sets_bypass_reason(self) -> None:
+        service = self._service({'matches': []})
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        result, bypass_reason = service._try_deterministic_edit_fastpath(
+            session=session,
+            user_message='Can you create new epic for me called ""',
+            auth_header=None,
+            trace_id='trace-fastpath-create-epic-parse-fail',
+            session_context={'roadmap_id': 'roadmap-1'},
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual(bypass_reason, 'create_epic_title_parse_failed')
+
+    def test_fastpath_create_epic_duplicate_requires_confirmation(self) -> None:
+        service = self._service(
+            {
+                'matches': [
+                    {
+                        'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                        'type': 'epic',
+                        'title': 'AI Module',
+                    }
+                ]
+            }
+        )
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        result, bypass_reason = service._try_deterministic_edit_fastpath(
+            session=session,
+            user_message='Create a new Epic called "AI Module"',
+            auth_header=None,
+            trace_id='trace-fastpath-create-dup',
+            session_context={'roadmap_id': 'roadmap-1'},
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertIsNone(bypass_reason)
+        self.assertEqual(
+            result.parse_mode,
+            'deterministic_fastpath_create_epic_duplicate_confirm',
+        )
+        self.assertEqual(result.response_mode, 'chat')
+        self.assertEqual(len(result.operations), 0)
+        self.assertIn('Create duplicate epic "AI Module"', result.assistant_message)
+
+    def test_fastpath_create_epic_ambiguous_duplicate_requires_confirmation(self) -> None:
+        service = self._service(
+            {
+                'matches': [
+                    {
+                        'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                        'type': 'epic',
+                        'title': 'AI Module',
+                    },
+                    {
+                        'id': 'f6dc4dab-65b2-40f4-b64e-c8e248aaf86d',
+                        'type': 'epic',
+                        'title': 'AI Module v2',
+                    },
+                ]
+            }
+        )
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        result, bypass_reason = service._try_deterministic_edit_fastpath(
+            session=session,
+            user_message='Create a new Epic called "AI Module"',
+            auth_header=None,
+            trace_id='trace-fastpath-create-dup-ambiguous',
+            session_context={'roadmap_id': 'roadmap-1'},
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertIsNone(bypass_reason)
+        self.assertEqual(
+            result.parse_mode,
+            'deterministic_fastpath_create_epic_duplicate_confirm',
+        )
+        self.assertEqual(result.response_mode, 'chat')
+        self.assertEqual(len(result.operations), 0)
+        self.assertIn('multiple similar epics', result.assistant_message)
+
+    def test_fastpath_fresh_create_intent_overrides_pending_disambiguation(self) -> None:
+        service = self._service({'matches': []})
+        session = self._session_with_pending()
+
+        result, bypass_reason = service._try_deterministic_edit_fastpath(
+            session=session,
+            user_message='Create a new Epic called "AI Module"',
+            auth_header=None,
+            trace_id='trace-fastpath-create-overrides-pending',
+            session_context={'roadmap_id': 'roadmap-1'},
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertIsNone(bypass_reason)
+        self.assertEqual(result.parse_mode, 'deterministic_fastpath_create_epic')
+        self.assertEqual(result.response_mode, 'edit_plan')
+        self.assertEqual(len(result.operations), 1)
+        self.assertEqual(result.operations[0].op.value, 'add_epic')
+
     def test_plan_message_keeps_fastpath_when_search_is_slow(self) -> None:
         class _SlowNestClient:
             def __init__(self) -> None:
@@ -517,6 +669,30 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(slow_client.actor_calls, 0)
         self.assertEqual(len(outcome.operations), 1)
         self.assertGreaterEqual(elapsed_ms, 180)
+
+    def test_validate_operation_contract_blocks_add_epic_without_title(self) -> None:
+        service = self._service({'matches': []})
+        validation_error = service._validate_operation_contract(
+            [RoadmapOperation(op='add_epic', data={})]
+        )
+        self.assertIsNotNone(validation_error)
+        assert validation_error is not None
+        self.assertEqual(validation_error['reason'], 'add_epic.data.title_missing')
+
+    def test_parse_plan_tool_args_normalizes_add_operation_name_alias(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'Create epic',
+                'operations': [
+                    {
+                        'op': 'add_epic',
+                        'data': {'name': 'AI Module'},
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].data, {'title': 'AI Module'})
 
     def test_plan_message_fetches_actor_for_actor_dependent_turn(self) -> None:
         class _ActorAwareNestClient:
@@ -1113,6 +1289,111 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(inline_preview, dict)
         assert isinstance(inline_preview, dict)
         self.assertEqual(inline_preview.get('preview_id'), 'preview-inline-1')
+
+    async def test_send_message_auto_preview_validation_errors_mark_preview_unavailable(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.base_revision = 1
+        session.revision_token = 'rev-1'
+        session.operations = [
+            RoadmapOperation(
+                op='add_epic',
+                data={'title': 'AI Module'},
+            )
+        ]
+        observed_events: list[tuple[str, dict]] = []
+
+        class _FakeStore:
+            def update(self, _session):
+                return None
+
+        class _FakeAgentService:
+            def plan_message(self, _session, _message, _replace, _auth_header, _trace_id):
+                return MessagePlanningOutcome(
+                    session=session,
+                    assistant_message='Create epic AI Module.',
+                    parse_mode='deterministic_fastpath_create_epic',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    operations=session.operations,
+                    preview_available=True,
+                    preview_recommended=True,
+                    staged_operations_version=1,
+                    staged_operations_count=1,
+                    provider_used='rule_based',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=None,
+                    tokens_output=None,
+                    tokens_total=None,
+                    route_lane='deterministic_edit_fastpath',
+                    fastpath_bypass_reason=None,
+                    phase_timings={},
+                    invalid_operation_detected=False,
+                    invalid_operation_reason=None,
+                    invalid_operation_index=None,
+                )
+
+        async def _fake_preview(**_kwargs):
+            return {
+                'preview_id': 'preview-validation-error-1',
+                'revision_token': 'rev-2',
+                'base_updated_at': '2026-04-02T15:00:00.000Z',
+                'semantic_diff': {'summary': {'NODE_ADDED': 1}, 'changes': []},
+                'validation_issues': [
+                    {
+                        'code': 'MISSING_REQUIRED_FIELD',
+                        'severity': 'error',
+                        'path': '/operations/0/data/title',
+                        'message': 'title is required for add_epic',
+                    }
+                ],
+                'candidate_snapshot': {'id': '55e431e2-e416-468c-a973-94d97280e97d'},
+            }
+
+        def _capture_log_event(_logger, event, **kwargs):
+            observed_events.append((event, kwargs))
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_preview = sessions_routes._nest_client.preview
+        original_log_event = sessions_routes.log_event
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), _FakeAgentService()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.preview = _fake_preview  # type: ignore[assignment]
+        sessions_routes.log_event = _capture_log_event  # type: ignore[assignment]
+        try:
+            response = await sessions_routes.send_message(
+                session_id='session-1',
+                payload=sessions_routes.MessageRequest(
+                    message='Create a new Epic called "AI Module"',
+                    auto_preview=True,
+                ),
+                request=SimpleNamespace(headers={}),
+            )
+        finally:
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.preview = original_preview  # type: ignore[assignment]
+            sessions_routes.log_event = original_log_event  # type: ignore[assignment]
+
+        self.assertFalse(response.preview_available)
+        self.assertFalse(response.preview_recommended)
+        self.assertEqual(len(response.operations), 1)
+        self.assertEqual(len(response.artifacts), 0)
+        self.assertEqual(len(session.artifacts), 0)
+        message_completed_events = [
+            payload
+            for event_name, payload in observed_events
+            if event_name == 'message_completed'
+        ]
+        self.assertTrue(message_completed_events)
+        latest = message_completed_events[-1]
+        self.assertEqual(latest.get('preview_error_code'), 'PREVIEW_VALIDATION_ERROR')
 
     async def test_send_message_inline_preview_skipped_when_payload_too_large(self) -> None:
         session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
