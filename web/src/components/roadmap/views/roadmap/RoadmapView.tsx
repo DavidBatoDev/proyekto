@@ -265,7 +265,21 @@ export const RoadmapView = ({
 
   // Convert epics and features to nodes and edges
   const { nodes, edges } = useMemo(() => {
-    const epicNodes: Node<EpicWidgetData>[] = epics.map((epic) => ({
+    const orderedEpics = [...epics]
+      .sort((a, b) => a.position - b.position)
+      .map((epic) => ({
+        ...epic,
+        features: [...(epic.features || [])]
+          .sort((a, b) => a.position - b.position)
+          .map((feature) => ({
+            ...feature,
+            tasks: [...(feature.tasks || [])].sort(
+              (a, b) => a.position - b.position,
+            ),
+          })),
+      }));
+
+    const epicNodes: Node<EpicWidgetData>[] = orderedEpics.map((epic) => ({
       id: epic.id,
       type: "epicWidget",
       data: {
@@ -283,7 +297,7 @@ export const RoadmapView = ({
       position: { x: 0, y: 0 }, // Will be set by dagre
     }));
 
-    const allFeatures = epics.flatMap((epic) =>
+    const allFeatures = orderedEpics.flatMap((epic) =>
       (epic.features || []).map((feature) => ({
         ...feature,
         epic_id: epic.id,
@@ -337,14 +351,13 @@ export const RoadmapView = ({
     }));
 
     // Create edges between consecutive epics (based on position)
-    const sortedEpics = [...epics].sort((a, b) => a.position - b.position);
     const epicEdges: Edge[] = [];
-    for (let i = 0; i < sortedEpics.length - 1; i++) {
+    for (let i = 0; i < orderedEpics.length - 1; i++) {
       epicEdges.push({
-        id: `epic-chain-${sortedEpics[i].id}-${sortedEpics[i + 1].id}`,
-        source: sortedEpics[i].id,
+        id: `epic-chain-${orderedEpics[i].id}-${orderedEpics[i + 1].id}`,
+        source: orderedEpics[i].id,
         sourceHandle: "epic-bottom",
-        target: sortedEpics[i + 1].id,
+        target: orderedEpics[i + 1].id,
         targetHandle: "epic-top",
         type: "simplebezier",
         animated: false,
@@ -361,7 +374,7 @@ export const RoadmapView = ({
     const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
       allNodes,
       allEdges,
-      epics,
+      orderedEpics,
     );
 
     return {

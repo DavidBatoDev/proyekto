@@ -177,7 +177,10 @@ const ROADMAP_STATUS = ['draft', 'active', 'paused', 'completed', 'archived'];
 @Injectable()
 export class RoadmapAiService {
   private readonly logger = new Logger(RoadmapAiService.name);
-  private readonly authzDecisionCache = new Map<string, AuthzDecisionCacheValue>();
+  private readonly authzDecisionCache = new Map<
+    string,
+    AuthzDecisionCacheValue
+  >();
 
   constructor(
     @Inject(SUPABASE_ADMIN)
@@ -200,7 +203,9 @@ export class RoadmapAiService {
     const authzStartedAt = Date.now();
     const baseRoadmap = await this.assertCanEditRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
-    const currentRevisionToken = this.requireRevisionToken(baseRoadmap.updated_at);
+    const currentRevisionToken = this.requireRevisionToken(
+      baseRoadmap.updated_at,
+    );
     const repoLookupStartedAt = Date.now();
     const full = await this.roadmapsRepo.findFull(roadmapId, userId);
     const repoLookupMs = Date.now() - repoLookupStartedAt;
@@ -283,9 +288,14 @@ export class RoadmapAiService {
     const authzMs = Date.now() - authzStartedAt;
 
     const previewStoreGetStartedAt = Date.now();
-    const preview = await this.previewStore.getPreview<PreviewRecord>(previewId);
+    const preview =
+      await this.previewStore.getPreview<PreviewRecord>(previewId);
     const previewStoreGetMs = Date.now() - previewStoreGetStartedAt;
-    if (!preview || preview.roadmapId !== roadmapId || preview.userId !== userId) {
+    if (
+      !preview ||
+      preview.roadmapId !== roadmapId ||
+      preview.userId !== userId
+    ) {
       throw new NotFoundException('Preview not found');
     }
     const totalHandlerMs = Date.now() - handlerStartedAt;
@@ -308,7 +318,10 @@ export class RoadmapAiService {
       revision_token: preview.revisionToken,
       semantic_diff: preview.semanticDiff,
       validation_issues: preview.validationIssues,
-      candidate_snapshot: preview.candidate as unknown as Record<string, unknown>,
+      candidate_snapshot: preview.candidate as unknown as Record<
+        string,
+        unknown
+      >,
     };
   }
 
@@ -323,7 +336,9 @@ export class RoadmapAiService {
     const authzMs = Date.now() - authzStartedAt;
     const full = await this.roadmapsRepo.findFull(roadmapId, userId);
     if (!full) throw new NotFoundException('Roadmap not found');
-    const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
+    const state = this.normalizeFullRoadmapState(
+      full as Record<string, unknown>,
+    );
     const roadmapNodeId = this.requireNodeId(state.id, 'roadmap');
 
     const epicCount = state.roadmap_epics?.length ?? 0;
@@ -608,9 +623,8 @@ export class RoadmapAiService {
       throw this.contextBadRequest('INVALID_ARGUMENT', 'choice must be >= 1');
     }
 
-    const resolution = await this.previewStore.getResolution<ResolutionRecord>(
-      resolutionId,
-    );
+    const resolution =
+      await this.previewStore.getResolution<ResolutionRecord>(resolutionId);
     if (
       !resolution ||
       resolution.roadmapId !== roadmapId ||
@@ -661,12 +675,18 @@ export class RoadmapAiService {
     await this.assertCanEditRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
     const full = await this.roadmapsRepo.findFull(roadmapId, userId);
-    if (!full) throw this.contextNotFound('NODE_NOT_FOUND', 'Roadmap not found');
-    const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
+    if (!full)
+      throw this.contextNotFound('NODE_NOT_FOUND', 'Roadmap not found');
+    const state = this.normalizeFullRoadmapState(
+      full as Record<string, unknown>,
+    );
 
     const epicId = query.epic_id;
     if (!this.isUuid(epicId)) {
-      throw this.contextBadRequest('INVALID_UUID', 'epic_id must be a valid UUID.');
+      throw this.contextBadRequest(
+        'INVALID_UUID',
+        'epic_id must be a valid UUID.',
+      );
     }
 
     const epic = (state.roadmap_epics ?? []).find((item) => item.id === epicId);
@@ -712,8 +732,11 @@ export class RoadmapAiService {
     await this.assertCanEditRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
     const full = await this.roadmapsRepo.findFull(roadmapId, userId);
-    if (!full) throw this.contextNotFound('NODE_NOT_FOUND', 'Roadmap not found');
-    const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
+    if (!full)
+      throw this.contextNotFound('NODE_NOT_FOUND', 'Roadmap not found');
+    const state = this.normalizeFullRoadmapState(
+      full as Record<string, unknown>,
+    );
 
     const statusMode = query.status ?? 'open';
     const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
@@ -728,7 +751,8 @@ export class RoadmapAiService {
         for (const task of feature.roadmap_tasks ?? []) {
           if (tasks.length >= limit) break;
           if (!task.id || task.assignee_id !== userId) continue;
-          if (statusMode === 'open' && !this.isOpenTaskStatus(task.status)) continue;
+          if (statusMode === 'open' && !this.isOpenTaskStatus(task.status))
+            continue;
           tasks.push({
             id: task.id,
             type: 'task',
@@ -766,11 +790,17 @@ export class RoadmapAiService {
     await this.assertCanEditRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
     if (!this.isUuid(nodeId)) {
-      throw this.contextBadRequest('INVALID_UUID', 'nodeId must be a valid UUID.');
+      throw this.contextBadRequest(
+        'INVALID_UUID',
+        'nodeId must be a valid UUID.',
+      );
     }
     const full = await this.roadmapsRepo.findFull(roadmapId, userId);
-    if (!full) throw this.contextNotFound('NODE_NOT_FOUND', 'Roadmap not found');
-    const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
+    if (!full)
+      throw this.contextNotFound('NODE_NOT_FOUND', 'Roadmap not found');
+    const state = this.normalizeFullRoadmapState(
+      full as Record<string, unknown>,
+    );
     const roadmapNodeId = this.requireNodeId(state.id, 'roadmap');
 
     if (roadmapNodeId === nodeId) {
@@ -881,30 +911,34 @@ export class RoadmapAiService {
     await this.assertCanEditRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
     if (!this.isUuid(nodeId)) {
-      throw this.contextBadRequest('INVALID_UUID', 'nodeId must be a valid UUID.');
+      throw this.contextBadRequest(
+        'INVALID_UUID',
+        'nodeId must be a valid UUID.',
+      );
     }
     const full = await this.roadmapsRepo.findFull(roadmapId, userId);
-    if (!full) throw this.contextNotFound('NODE_NOT_FOUND', 'Roadmap not found');
-    const state = this.normalizeFullRoadmapState(full as Record<string, unknown>);
+    if (!full)
+      throw this.contextNotFound('NODE_NOT_FOUND', 'Roadmap not found');
+    const state = this.normalizeFullRoadmapState(
+      full as Record<string, unknown>,
+    );
     const roadmapNodeId = this.requireNodeId(state.id, 'roadmap');
     const limit = Math.min(Math.max(query.limit ?? 25, 1), 100);
 
     if (roadmapNodeId === nodeId) {
       const response = {
-        children: (state.roadmap_epics ?? [])
-          .slice(0, limit)
-          .flatMap((epic) =>
-            epic.id
-              ? [
-                  {
-                    id: epic.id,
-                    type: 'epic' as const,
-                    title: epic.title ?? 'Untitled epic',
-                    parent_id: roadmapNodeId,
-                  },
-                ]
-              : [],
-          ),
+        children: (state.roadmap_epics ?? []).slice(0, limit).flatMap((epic) =>
+          epic.id
+            ? [
+                {
+                  id: epic.id,
+                  type: 'epic' as const,
+                  title: epic.title ?? 'Untitled epic',
+                  parent_id: roadmapNodeId,
+                },
+              ]
+            : [],
+        ),
       };
       this.logRoadmapAiHandlerTiming({
         event: 'roadmap_ai_context_node_children_timing',
@@ -1000,8 +1034,14 @@ export class RoadmapAiService {
     dto: RoadmapAiCommitDto,
     userId: string,
   ): Promise<RoadmapAiCommitResponseDto> {
-    const preview = await this.previewStore.getPreview<PreviewRecord>(dto.preview_id);
-    if (!preview || preview.roadmapId !== roadmapId || preview.userId !== userId) {
+    const preview = await this.previewStore.getPreview<PreviewRecord>(
+      dto.preview_id,
+    );
+    if (
+      !preview ||
+      preview.roadmapId !== roadmapId ||
+      preview.userId !== userId
+    ) {
       throw new NotFoundException('Preview not found');
     }
 
@@ -1070,8 +1110,14 @@ export class RoadmapAiService {
   ): Promise<RoadmapAiDiscardResponseDto> {
     await this.assertCanEditRoadmap(roadmapId, userId);
 
-    const preview = await this.previewStore.getPreview<PreviewRecord>(dto.preview_id);
-    if (!preview || preview.roadmapId !== roadmapId || preview.userId !== userId) {
+    const preview = await this.previewStore.getPreview<PreviewRecord>(
+      dto.preview_id,
+    );
+    if (
+      !preview ||
+      preview.roadmapId !== roadmapId ||
+      preview.userId !== userId
+    ) {
       throw new NotFoundException('Preview not found');
     }
 
@@ -1116,7 +1162,10 @@ export class RoadmapAiService {
           message: 'Insufficient permissions for roadmap context access.',
         });
       }
-      this.writeAuthzDecisionCache(cacheKey, existing as Record<string, unknown>);
+      this.writeAuthzDecisionCache(
+        cacheKey,
+        existing as Record<string, unknown>,
+      );
       return existing;
     }
 
@@ -1130,11 +1179,16 @@ export class RoadmapAiService {
     return existing;
   }
 
-  private buildAuthzDecisionCacheKey(roadmapId: string, userId: string): string {
+  private buildAuthzDecisionCacheKey(
+    roadmapId: string,
+    userId: string,
+  ): string {
     return `${AUTHZ_DECISION_CACHE_VERSION}:${roadmapId}:${userId}:roadmap.edit`;
   }
 
-  private readAuthzDecisionCache(cacheKey: string): Record<string, unknown> | null {
+  private readAuthzDecisionCache(
+    cacheKey: string,
+  ): Record<string, unknown> | null {
     const cached = this.authzDecisionCache.get(cacheKey);
     if (!cached) return null;
     if (cached.expiresAtMs <= Date.now()) {
@@ -1177,7 +1231,10 @@ export class RoadmapAiService {
     }
   }
 
-  private contextBadRequest(code: string, message: string): BadRequestException {
+  private contextBadRequest(
+    code: string,
+    message: string,
+  ): BadRequestException {
     return new BadRequestException({ code, message });
   }
 
@@ -1371,7 +1428,8 @@ export class RoadmapAiService {
       title,
       description: this.readString(operation.data, 'description'),
       status: this.readString(operation.data, 'status') ?? 'not_started',
-      is_deliverable: this.readBoolean(operation.data, 'is_deliverable') ?? true,
+      is_deliverable:
+        this.readBoolean(operation.data, 'is_deliverable') ?? true,
       start_date: this.readString(operation.data, 'start_date'),
       end_date: this.readString(operation.data, 'end_date'),
       roadmap_tasks: [],
@@ -1802,7 +1860,10 @@ export class RoadmapAiService {
 
   private shiftNodeDates(node: NodeLocator, deltaDays: number) {
     if (node.type === 'roadmap') {
-      node.roadmap.start_date = this.shiftDate(node.roadmap.start_date, deltaDays);
+      node.roadmap.start_date = this.shiftDate(
+        node.roadmap.start_date,
+        deltaDays,
+      );
       node.roadmap.end_date = this.shiftDate(node.roadmap.end_date, deltaDays);
       for (const epic of node.roadmap.roadmap_epics ?? []) {
         this.shiftNodeDates(
@@ -1836,7 +1897,10 @@ export class RoadmapAiService {
       return;
     }
     if (node.type === 'feature') {
-      node.feature.start_date = this.shiftDate(node.feature.start_date, deltaDays);
+      node.feature.start_date = this.shiftDate(
+        node.feature.start_date,
+        deltaDays,
+      );
       node.feature.end_date = this.shiftDate(node.feature.end_date, deltaDays);
       for (const task of node.feature.roadmap_tasks ?? []) {
         this.shiftNodeDates(
@@ -1891,10 +1955,20 @@ export class RoadmapAiService {
     };
 
     if (state.id) pushDuplicate(state.id, 'roadmap', '/id');
-    this.validateDateRange(state.start_date, state.end_date, '/roadmap', issues);
+    this.validateDateRange(
+      state.start_date,
+      state.end_date,
+      '/roadmap',
+      issues,
+    );
     if (state.status && !ROADMAP_STATUS.includes(state.status)) {
       issues.push(
-        this.issue('INVALID_ENUM', 'error', '/status', 'Invalid roadmap status enum'),
+        this.issue(
+          'INVALID_ENUM',
+          'error',
+          '/status',
+          'Invalid roadmap status enum',
+        ),
       );
     }
 
@@ -2162,7 +2236,9 @@ export class RoadmapAiService {
       status: state.status,
       startDate: state.start_date,
       endDate: state.end_date,
-      dependencies: this.readDependencies(state as unknown as Record<string, unknown>),
+      dependencies: this.readDependencies(
+        state as unknown as Record<string, unknown>,
+      ),
     });
 
     for (const epic of state.roadmap_epics ?? []) {
@@ -2176,7 +2252,9 @@ export class RoadmapAiService {
         status: epic.status,
         startDate: epic.start_date,
         endDate: epic.end_date,
-        dependencies: this.readDependencies(epic as unknown as Record<string, unknown>),
+        dependencies: this.readDependencies(
+          epic as unknown as Record<string, unknown>,
+        ),
       });
 
       for (const feature of epic.roadmap_features ?? []) {
@@ -2205,7 +2283,9 @@ export class RoadmapAiService {
             position: task.position,
             status: task.status,
             dueDate: task.due_date,
-            dependencies: this.readDependencies(task as unknown as Record<string, unknown>),
+            dependencies: this.readDependencies(
+              task as unknown as Record<string, unknown>,
+            ),
           });
         }
       }
@@ -2214,7 +2294,9 @@ export class RoadmapAiService {
     return map;
   }
 
-  private readDependencies(node: Record<string, unknown>): string[] | undefined {
+  private readDependencies(
+    node: Record<string, unknown>,
+  ): string[] | undefined {
     const raw = node.dependencies;
     if (!Array.isArray(raw)) return undefined;
     return raw.filter((value): value is string => typeof value === 'string');
@@ -2232,7 +2314,10 @@ export class RoadmapAiService {
     });
   }
 
-  private resolveInsertPosition(position: number | undefined, size: number): number {
+  private resolveInsertPosition(
+    position: number | undefined,
+    size: number,
+  ): number {
     if (position === undefined) return size;
     if (position < 0) return 0;
     if (position > size) return size;
@@ -2242,7 +2327,14 @@ export class RoadmapAiService {
   private allowedPatchFields(nodeType: RoadmapNodeType): string[] {
     switch (nodeType) {
       case 'roadmap':
-        return ['name', 'description', 'status', 'start_date', 'end_date', 'settings'];
+        return [
+          'name',
+          'description',
+          'status',
+          'start_date',
+          'end_date',
+          'settings',
+        ];
       case 'epic':
         return [
           'title',
@@ -2275,7 +2367,10 @@ export class RoadmapAiService {
     }
   }
 
-  private validateNodeStatus(nodeType: RoadmapNodeType, status: string): boolean {
+  private validateNodeStatus(
+    nodeType: RoadmapNodeType,
+    status: string,
+  ): boolean {
     switch (nodeType) {
       case 'roadmap':
         return ROADMAP_STATUS.includes(status);
@@ -2288,12 +2383,19 @@ export class RoadmapAiService {
     }
   }
 
-  private findNodeById(state: FullRoadmapState, nodeId: string): NodeLocator | null {
+  private findNodeById(
+    state: FullRoadmapState,
+    nodeId: string,
+  ): NodeLocator | null {
     if (state.id === nodeId) {
       return { type: 'roadmap', roadmap: state };
     }
 
-    for (let epicIndex = 0; epicIndex < (state.roadmap_epics ?? []).length; epicIndex++) {
+    for (
+      let epicIndex = 0;
+      epicIndex < (state.roadmap_epics ?? []).length;
+      epicIndex++
+    ) {
       const epic = state.roadmap_epics?.[epicIndex];
       if (!epic) continue;
       if (epic.id === nodeId) {
@@ -2409,9 +2511,38 @@ export class RoadmapAiService {
     return value.filter((item): item is string => typeof item === 'string');
   }
 
-  private normalizeFullRoadmapState(state: Record<string, unknown>): FullRoadmapState {
-    const sourceEpics =
-      this.readArray(state, 'roadmap_epics') ?? this.readArray(state, 'epics') ?? [];
+  private sortRecordsByPosition<T extends Record<string, unknown>>(
+    records: T[],
+  ): T[] {
+    return records
+      .map((record, index) => ({ record, index }))
+      .sort((a, b) => {
+        const aPosition = this.readNumber(a.record, 'position');
+        const bPosition = this.readNumber(b.record, 'position');
+
+        if (
+          aPosition !== undefined &&
+          bPosition !== undefined &&
+          aPosition !== bPosition
+        ) {
+          return aPosition - bPosition;
+        }
+        if (aPosition !== undefined && bPosition === undefined) return -1;
+        if (aPosition === undefined && bPosition !== undefined) return 1;
+
+        return a.index - b.index;
+      })
+      .map((entry) => entry.record);
+  }
+
+  private normalizeFullRoadmapState(
+    state: Record<string, unknown>,
+  ): FullRoadmapState {
+    const sourceEpics = this.sortRecordsByPosition(
+      this.readArray(state, 'roadmap_epics') ??
+        this.readArray(state, 'epics') ??
+        [],
+    );
     const roadmapEpics = sourceEpics.map((epicRaw, epicIndex) =>
       this.normalizeEpic(epicRaw, epicIndex),
     );
@@ -2432,9 +2563,15 @@ export class RoadmapAiService {
     };
   }
 
-  private normalizeEpic(raw: Record<string, unknown>, epicIndex: number): FullRoadmapEpicDto {
-    const sourceFeatures =
-      this.readArray(raw, 'roadmap_features') ?? this.readArray(raw, 'features') ?? [];
+  private normalizeEpic(
+    raw: Record<string, unknown>,
+    epicIndex: number,
+  ): FullRoadmapEpicDto {
+    const sourceFeatures = this.sortRecordsByPosition(
+      this.readArray(raw, 'roadmap_features') ??
+        this.readArray(raw, 'features') ??
+        [],
+    );
 
     return {
       id: this.readUuid(raw, 'id'),
@@ -2457,8 +2594,11 @@ export class RoadmapAiService {
     raw: Record<string, unknown>,
     featureIndex: number,
   ): FullRoadmapFeatureDto {
-    const sourceTasks =
-      this.readArray(raw, 'roadmap_tasks') ?? this.readArray(raw, 'tasks') ?? [];
+    const sourceTasks = this.sortRecordsByPosition(
+      this.readArray(raw, 'roadmap_tasks') ??
+        this.readArray(raw, 'tasks') ??
+        [],
+    );
 
     return {
       id: this.readUuid(raw, 'id'),
@@ -2475,7 +2615,10 @@ export class RoadmapAiService {
     };
   }
 
-  private normalizeTask(raw: Record<string, unknown>, taskIndex: number): FullRoadmapTaskDto {
+  private normalizeTask(
+    raw: Record<string, unknown>,
+    taskIndex: number,
+  ): FullRoadmapTaskDto {
     return {
       id: this.readUuid(raw, 'id'),
       title: this.readString(raw, 'title') ?? 'Untitled task',
@@ -2503,10 +2646,16 @@ export class RoadmapAiService {
       .trim();
   }
 
-  private parseSearchNodeType(value: unknown): 'epic' | 'feature' | 'task' | null {
+  private parseSearchNodeType(
+    value: unknown,
+  ): 'epic' | 'feature' | 'task' | null {
     if (typeof value !== 'string') return null;
     const normalized = value.trim().toLowerCase();
-    if (normalized === 'epic' || normalized === 'feature' || normalized === 'task') {
+    if (
+      normalized === 'epic' ||
+      normalized === 'feature' ||
+      normalized === 'task'
+    ) {
       return normalized;
     }
     return null;
@@ -2531,7 +2680,10 @@ export class RoadmapAiService {
     query: string,
     limit: number,
   ): string {
-    const queryHash = createHash('sha1').update(query).digest('hex').slice(0, 16);
+    const queryHash = createHash('sha1')
+      .update(query)
+      .digest('hex')
+      .slice(0, 16);
     return [
       'roadmap',
       'resolve',
@@ -2684,7 +2836,12 @@ export class RoadmapAiService {
   ): RoadmapAiContextSearchMatchDto[] {
     return candidates
       .map((candidate) =>
-        this.scoreContextSearchCandidate(candidate, query, queryTokens, typeHint),
+        this.scoreContextSearchCandidate(
+          candidate,
+          query,
+          queryTokens,
+          typeHint,
+        ),
       )
       .filter((item) => item.score > 0)
       .sort((a, b) => {
@@ -2699,7 +2856,9 @@ export class RoadmapAiService {
         parent_id: item.parent_id,
         parent_title: item.parent_title,
         score: Number(item.score.toFixed(4)),
-        matched_fields: item.matched_fields.length ? item.matched_fields : undefined,
+        matched_fields: item.matched_fields.length
+          ? item.matched_fields
+          : undefined,
       }));
   }
 
@@ -2734,19 +2893,31 @@ export class RoadmapAiService {
     const matchedFields: string[] = [];
     let score = 0;
 
-    const titleScore = this.scoreFieldMatch(candidate.title, query, queryTokens);
+    const titleScore = this.scoreFieldMatch(
+      candidate.title,
+      query,
+      queryTokens,
+    );
     if (titleScore > 0) {
       score += titleScore * 1.0;
       matchedFields.push('title');
     }
 
-    const descriptionScore = this.scoreFieldMatch(candidate.description, query, queryTokens);
+    const descriptionScore = this.scoreFieldMatch(
+      candidate.description,
+      query,
+      queryTokens,
+    );
     if (descriptionScore > 0) {
       score += descriptionScore * 0.45;
       matchedFields.push('description');
     }
 
-    const parentTitleScore = this.scoreFieldMatch(candidate.parent_title, query, queryTokens);
+    const parentTitleScore = this.scoreFieldMatch(
+      candidate.parent_title,
+      query,
+      queryTokens,
+    );
     if (parentTitleScore > 0) {
       score += parentTitleScore * 0.35;
       matchedFields.push('parent_title');
@@ -2779,7 +2950,9 @@ export class RoadmapAiService {
     if (normalized.includes(query)) return 0.72;
 
     if (queryTokens.length > 1) {
-      const matchedTokenCount = queryTokens.filter((token) => normalized.includes(token)).length;
+      const matchedTokenCount = queryTokens.filter((token) =>
+        normalized.includes(token),
+      ).length;
       if (matchedTokenCount === queryTokens.length) return 0.55;
       if (matchedTokenCount > 0) return 0.35;
     }
@@ -2821,7 +2994,10 @@ export class RoadmapAiService {
     return structuredClone(value);
   }
 
-  private requireNodeId(id: string | undefined, nodeType: RoadmapNodeType): string {
+  private requireNodeId(
+    id: string | undefined,
+    nodeType: RoadmapNodeType,
+  ): string {
     if (id) return id;
     throw new InternalServerErrorException(
       `Context node is missing a persisted ${nodeType} id`,

@@ -124,17 +124,190 @@ const toDiffChanges = (changes: unknown): ArtifactSemanticDiffChange[] => {
   });
 };
 
+const sortByReferenceOrder = <T extends { id: string; position?: number }>(
+  items: T[],
+  referenceOrder: Map<string, number>,
+): T[] => {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const aRef = referenceOrder.get(a.item.id);
+      const bRef = referenceOrder.get(b.item.id);
+      const aHasRef = typeof aRef === "number";
+      const bHasRef = typeof bRef === "number";
+
+      if (aHasRef && bHasRef && aRef !== bRef) return aRef - bRef;
+      if (aHasRef !== bHasRef) return aHasRef ? -1 : 1;
+
+      const aPos =
+        typeof a.item.position === "number"
+          ? a.item.position
+          : Number.MAX_SAFE_INTEGER;
+      const bPos =
+        typeof b.item.position === "number"
+          ? b.item.position
+          : Number.MAX_SAFE_INTEGER;
+      if (aPos !== bPos) return aPos - bPos;
+
+      return a.index - b.index;
+    })
+    .map((entry) => entry.item);
+};
+
+const sortByPosition = <T extends { position?: number }>(items: T[]): T[] => {
+  return [...items].sort((a, b) => {
+    const aPos =
+      typeof a.position === "number" ? a.position : Number.MAX_SAFE_INTEGER;
+    const bPos =
+      typeof b.position === "number" ? b.position : Number.MAX_SAFE_INTEGER;
+    return aPos - bPos;
+  });
+};
+
+const alignSnapshotOrderingWithFallback = (
+  snapshot: Roadmap,
+  fallbackRoadmap?: Roadmap | null,
+): Roadmap => {
+  if (!fallbackRoadmap?.epics?.length || !snapshot.epics?.length) {
+    return snapshot;
+  }
+
+  const fallbackEpics = sortByPosition(fallbackRoadmap.epics);
+  const fallbackEpicOrder = new Map(
+    fallbackEpics.map((epic, index) => [epic.id, index]),
+  );
+  const fallbackEpicById = new Map(
+    fallbackEpics.map((epic) => [epic.id, epic]),
+  );
+
+  const orderedEpics = sortByReferenceOrder(
+    snapshot.epics,
+    fallbackEpicOrder,
+  ).map((epic, epicIndex) => {
+    const fallbackEpic = fallbackEpicById.get(epic.id);
+    const fallbackFeatures = sortByPosition(fallbackEpic?.features ?? []);
+    const fallbackFeatureOrder = new Map(
+      fallbackFeatures.map((feature, index) => [feature.id, index]),
+    );
+    const fallbackFeatureById = new Map(
+      fallbackFeatures.map((feature) => [feature.id, feature]),
+    );
+
+    const orderedFeatures = sortByReferenceOrder(
+      epic.features ?? [],
+      fallbackFeatureOrder,
+    ).map((feature, featureIndex) => {
+      const fallbackFeature = fallbackFeatureById.get(feature.id);
+      const fallbackTasks = sortByPosition(fallbackFeature?.tasks ?? []);
+      const fallbackTaskOrder = new Map(
+        fallbackTasks.map((task, index) => [task.id, index]),
+      );
+      const orderedTasks = sortByReferenceOrder(
+        feature.tasks ?? [],
+        fallbackTaskOrder,
+      ).map((task, taskIndex) => ({ ...task, position: taskIndex }));
+
+      return {
+        ...feature,
+        position: featureIndex,
+        tasks: orderedTasks,
+      };
+    });
+
+    return {
+      ...epic,
+      position: epicIndex,
+      features: orderedFeatures,
+    };
+  });
+
+  return {
+    ...snapshot,
+    epics: orderedEpics,
+  };
+};
+
+const hasSameStructureIds = (
+  snapshot: Roadmap,
+  fallbackRoadmap?: Roadmap | null,
+): boolean => {
+  if (!fallbackRoadmap?.epics?.length || !snapshot.epics?.length) {
+    return false;
+  }
+
+  const snapshotEpicIds = new Set(
+    (snapshot.epics ?? []).map((epic) => epic.id),
+  );
+  const fallbackEpicIds = new Set(
+    (fallbackRoadmap.epics ?? []).map((epic) => epic.id),
+  );
+  if (snapshotEpicIds.size !== fallbackEpicIds.size) return false;
+  for (const epicId of snapshotEpicIds) {
+    if (!fallbackEpicIds.has(epicId)) return false;
+  }
+
+  const fallbackEpicById = new Map(
+    (fallbackRoadmap.epics ?? []).map((epic) => [epic.id, epic]),
+  );
+
+  for (const snapshotEpic of snapshot.epics ?? []) {
+    const fallbackEpic = fallbackEpicById.get(snapshotEpic.id);
+    if (!fallbackEpic) return false;
+
+    const snapshotFeatureIds = new Set(
+      (snapshotEpic.features ?? []).map((feature) => feature.id),
+    );
+    const fallbackFeatureIds = new Set(
+      (fallbackEpic.features ?? []).map((feature) => feature.id),
+    );
+    if (snapshotFeatureIds.size !== fallbackFeatureIds.size) return false;
+    for (const featureId of snapshotFeatureIds) {
+      if (!fallbackFeatureIds.has(featureId)) return false;
+    }
+
+    const fallbackFeatureById = new Map(
+      (fallbackEpic.features ?? []).map((feature) => [feature.id, feature]),
+    );
+
+    for (const snapshotFeature of snapshotEpic.features ?? []) {
+      const fallbackFeature = fallbackFeatureById.get(snapshotFeature.id);
+      if (!fallbackFeature) return false;
+
+      const snapshotTaskIds = new Set(
+        (snapshotFeature.tasks ?? []).map((task) => task.id),
+      );
+      const fallbackTaskIds = new Set(
+        (fallbackFeature.tasks ?? []).map((task) => task.id),
+      );
+      if (snapshotTaskIds.size !== fallbackTaskIds.size) return false;
+      for (const taskId of snapshotTaskIds) {
+        if (!fallbackTaskIds.has(taskId)) return false;
+      }
+    }
+  }
+
+  return true;
+};
+
 const mapPreviewToArtifact = (
   roadmapId: string,
   payload: AgentPreviewPayload,
   metadata?: AgentRoadmapPreviewArtifact,
   fallbackRoadmap?: Roadmap | null,
 ): RoadmapArtifactPreview => {
+  const semanticDiffSummary = toDiffSummary(payload.semantic_diff?.summary);
   const normalizedSnapshot = normalizeArtifactCandidateSnapshot({
     candidateSnapshot: payload.candidate_snapshot,
     baseUpdatedAt: payload.base_updated_at,
     fallbackRoadmap: fallbackRoadmap || null,
   });
+  const candidateSnapshot = hasSameStructureIds(
+    normalizedSnapshot,
+    fallbackRoadmap,
+  )
+    ? alignSnapshotOrderingWithFallback(normalizedSnapshot, fallbackRoadmap)
+    : normalizedSnapshot;
+
   return {
     artifactId: metadata?.artifact_id || payload.preview_id,
     title: metadata?.title || "AI Artifact Preview",
@@ -142,8 +315,8 @@ const mapPreviewToArtifact = (
     createdAt: metadata?.created_at || new Date().toISOString(),
     baseRoadmapId: roadmapId,
     baseRevision: metadata?.base_revision,
-    candidateSnapshot: normalizedSnapshot,
-    semanticDiffSummary: toDiffSummary(payload.semantic_diff?.summary),
+    candidateSnapshot,
+    semanticDiffSummary,
     semanticDiffChanges: toDiffChanges(payload.semantic_diff?.changes),
     validationIssues: (payload.validation_issues || []).map((issue) => ({
       code: issue.code,
@@ -634,77 +807,90 @@ export function RoadmapAiAssistantPanel({
 
                 {artifacts.length > 0 && (
                   <div className="mt-2.5 space-y-2">
-                    {artifacts.map((artifact) => (
-                      <div
-                        key={artifact.artifactId}
-                        className="rounded-lg border border-orange-200 bg-orange-50/60 p-2.5"
-                      >
-                        <p className="text-[11px] font-semibold text-orange-700">
-                          {artifact.title}
-                        </p>
-                        <p className="text-[10px] text-orange-700/90 mt-0.5">
-                          {artifact.summary}
-                        </p>
-                        <div className="mt-1.5 text-[10px] text-orange-800/90">
-                          Validation issues: {artifact.validationIssues.length}
-                        </div>
+                    {artifacts.map((artifact) => {
+                      const inlinePreviewSnapshot = hasSameStructureIds(
+                        artifact.candidateSnapshot,
+                        currentRoadmap,
+                      )
+                        ? alignSnapshotOrderingWithFallback(
+                            artifact.candidateSnapshot,
+                            currentRoadmap,
+                          )
+                        : artifact.candidateSnapshot;
 
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleApplyArtifact(artifact)}
-                            className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            Apply
-                          </button>
+                      return (
+                        <div
+                          key={artifact.artifactId}
+                          className="rounded-lg border border-orange-200 bg-orange-50/60 p-2.5"
+                        >
+                          <p className="text-[11px] font-semibold text-orange-700">
+                            {artifact.title}
+                          </p>
+                          <p className="text-[10px] text-orange-700/90 mt-0.5">
+                            {artifact.summary}
+                          </p>
+                          <div className="mt-1.5 text-[10px] text-orange-800/90">
+                            Validation issues:{" "}
+                            {artifact.validationIssues.length}
+                          </div>
 
-                          <button
-                            type="button"
-                            onClick={() => handleOpenArtifact(artifact)}
-                            className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5"
-                          >
-                            <FolderOpen className="w-3.5 h-3.5" />
-                            Open in Tabs
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              toggleArtifactPreview(artifact.artifactId)
-                            }
-                            className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            Preview
-                          </button>
-                        </div>
-
-                        <AnimatePresence>
-                          {previewArtifactId === artifact.artifactId && (
-                            <motion.div
-                              initial={{ opacity: 0, y: 8 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: 8 }}
-                              transition={{ duration: 0.24, ease: "easeOut" }}
-                              className="mt-2 h-72 overflow-hidden rounded-md border border-gray-200"
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleApplyArtifact(artifact)}
+                              className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5"
                             >
-                              <RoadmapView
-                                roadmap={artifact.candidateSnapshot}
-                                epics={artifact.candidateSnapshot.epics || []}
-                                showMiniMap={false}
-                                minZoom={0.1}
-                                onUpdateEpic={noopUpdateEpic}
-                                onDeleteEpic={noopDeleteEpic}
-                                onUpdateFeature={noopUpdateFeature}
-                                onDeleteFeature={noopDeleteFeature}
-                                onUpdateTask={noopUpdateTask}
-                              />
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    ))}
+                              <Check className="w-3.5 h-3.5" />
+                              Apply
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenArtifact(artifact)}
+                              className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5"
+                            >
+                              <FolderOpen className="w-3.5 h-3.5" />
+                              Open in Tabs
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                toggleArtifactPreview(artifact.artifactId)
+                              }
+                              className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              Preview
+                            </button>
+                          </div>
+
+                          <AnimatePresence>
+                            {previewArtifactId === artifact.artifactId && (
+                              <motion.div
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 8 }}
+                                transition={{ duration: 0.24, ease: "easeOut" }}
+                                className="mt-2 h-72 overflow-hidden rounded-md border border-gray-200"
+                              >
+                                <RoadmapView
+                                  roadmap={inlinePreviewSnapshot}
+                                  epics={inlinePreviewSnapshot.epics || []}
+                                  showMiniMap={false}
+                                  minZoom={0.1}
+                                  onUpdateEpic={noopUpdateEpic}
+                                  onDeleteEpic={noopDeleteEpic}
+                                  onUpdateFeature={noopUpdateFeature}
+                                  onDeleteFeature={noopDeleteFeature}
+                                  onUpdateTask={noopUpdateTask}
+                                />
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </article>

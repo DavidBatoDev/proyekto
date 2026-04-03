@@ -13,6 +13,41 @@ import { CreateRoadmapDto, UpdateRoadmapDto } from '../dto/roadmaps.dto';
 export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
   constructor(@Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient) {}
 
+  private sortByPosition<T extends { position?: number }>(items: T[]): T[] {
+    return [...items].sort((a, b) => {
+      const aPos =
+        typeof a?.position === 'number' ? a.position : Number.MAX_SAFE_INTEGER;
+      const bPos =
+        typeof b?.position === 'number' ? b.position : Number.MAX_SAFE_INTEGER;
+      return aPos - bPos;
+    });
+  }
+
+  private normalizeFullRoadmapOrdering(roadmap: any): any {
+    const epics = this.sortByPosition(
+      Array.isArray(roadmap?.epics) ? roadmap.epics : [],
+    ).map((epic: any) => {
+      const features = this.sortByPosition(
+        Array.isArray(epic?.features) ? epic.features : [],
+      ).map((feature: any) => ({
+        ...feature,
+        tasks: this.sortByPosition(
+          Array.isArray(feature?.tasks) ? feature.tasks : [],
+        ),
+      }));
+
+      return {
+        ...epic,
+        features,
+      };
+    });
+
+    return {
+      ...roadmap,
+      epics,
+    };
+  }
+
   private async getAccessibleProjectIds(userId: string): Promise<string[]> {
     const [
       { data: principalProjects, error: principalError },
@@ -191,7 +226,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
       if (!hasAccess) return null;
     }
 
-    return data;
+    return this.normalizeFullRoadmapOrdering(data);
   }
 
   async findByUser(userId: string): Promise<any[]> {
@@ -229,7 +264,11 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     const candidates: RoadmapContextSearchCandidateRecord[] = [];
 
     if (!nodeType || nodeType === 'epic') {
-      const epics = await this.searchEpics(roadmapId, normalizedQuery, scanLimit);
+      const epics = await this.searchEpics(
+        roadmapId,
+        normalizedQuery,
+        scanLimit,
+      );
       candidates.push(...epics);
     }
 
@@ -249,7 +288,10 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
         scanLimit,
       );
       if (featureMatchRows.length > 0) {
-        const features = await this.toFeatureCandidates(roadmapId, featureMatchRows);
+        const features = await this.toFeatureCandidates(
+          roadmapId,
+          featureMatchRows,
+        );
         candidates.push(...features);
       }
     }
@@ -297,7 +339,9 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
               type: 'epic' as const,
               title: String(epic.title ?? 'Untitled epic'),
               description:
-                typeof epic.description === 'string' ? epic.description : undefined,
+                typeof epic.description === 'string'
+                  ? epic.description
+                  : undefined,
               parent_id: String(epic.roadmap_id),
             },
           ]
@@ -395,7 +439,8 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
       features.map((feature) => [feature.id, feature.title]),
     );
     const chunkSize = 200;
-    const taskRows: Array<{ id: string; title: string; feature_id: string }> = [];
+    const taskRows: Array<{ id: string; title: string; feature_id: string }> =
+      [];
     const seenTaskIds = new Set<string>();
 
     for (let offset = 0; offset < featureIds.length; offset += chunkSize) {
@@ -526,7 +571,11 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
   }): Promise<T[]> {
     const seen = new Set<string>();
     const rows: T[] = [];
-    const titlePatterns = [params.query, `${params.query}%`, `%${params.query}%`];
+    const titlePatterns = [
+      params.query,
+      `${params.query}%`,
+      `%${params.query}%`,
+    ];
 
     for (const pattern of titlePatterns) {
       const data = await this.fetchRows<T>(
@@ -605,7 +654,9 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     }
   }
 
-  private sortByTitleAndId<T extends { id?: string; title?: string }>(rows: T[]): T[] {
+  private sortByTitleAndId<T extends { id?: string; title?: string }>(
+    rows: T[],
+  ): T[] {
     return [...rows].sort((a, b) => {
       const aTitle = String(a.title ?? '');
       const bTitle = String(b.title ?? '');
