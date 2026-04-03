@@ -63,6 +63,7 @@ class MessagePlanningOutcome:
     planner_schema_invalid_attempts: int | None = None
     planner_repair_attempted: bool | None = None
     deterministic_create_fastpath_skipped: bool = False
+    edit_guard_intervened: bool = False
 
 
 class AgentService:
@@ -97,21 +98,30 @@ class AgentService:
         phase_timings: dict[str, Any] = {}
         session_context = self._build_session_context(session, auth_header, trace_id)
 
-        classify_started = perf_counter()
-        preview_intent, _ = self._planner.preview_intent_classification(
-            user_message=user_message,
-            session_context=session_context,
-        )
-        phase_timings['intent_classification_ms'] = int(
-            (perf_counter() - classify_started) * 1000
-        )
         pending_edit_context_present = session.metadata.pending_edit_context is not None
         edit_continuation_trigger = self._detect_edit_continuation_trigger(user_message)
         has_staged_operations = bool(session.operations)
-        if pending_edit_context_present or (
+        pending_continuation_requested = pending_edit_context_present and (
+            edit_continuation_trigger in {'confirm', 'cancel', 'correction'}
+        )
+        staged_operation_continuation = (
             edit_continuation_trigger is not None and has_staged_operations
-        ):
-            preview_intent = 'roadmap_edit'
+        )
+        should_force_edit_preview = (
+            pending_continuation_requested or staged_operation_continuation
+        )
+        if should_force_edit_preview:
+            preview_intent: IntentType = 'roadmap_edit'
+            phase_timings['intent_classification_ms'] = 0
+        else:
+            classify_started = perf_counter()
+            preview_intent, _ = self._planner.preview_intent_classification(
+                user_message=user_message,
+                session_context=session_context,
+            )
+            phase_timings['intent_classification_ms'] = int(
+                (perf_counter() - classify_started) * 1000
+            )
         simple_edit_detected = preview_intent == 'roadmap_edit'
 
         actor_fetch_attempted = False
@@ -158,8 +168,33 @@ class AgentService:
             if self._settings.agent_llm_first_edit_enabled
             else 'legacy_tool_calling'
         )
+        edit_guard_intervened = False
 
-        if preview_intent == 'roadmap_edit':
+        pending_context = session.metadata.pending_edit_context
+        if (
+            pending_context is not None
+            and edit_continuation_trigger == 'confirm'
+            and pending_context.draft_operations
+        ):
+            planning = PlanningResult(
+                assistant_message='Confirmed. I prepared the pending edit operations.',
+                operations=[
+                    operation.model_copy(deep=True)
+                    for operation in pending_context.draft_operations
+                ],
+                parse_mode='deterministic_pending_edit_confirm',
+                intent_type='roadmap_edit',
+                response_mode='edit_plan',
+                preview_recommended=True,
+                provider_used='rule_based',
+                fallback_used=False,
+                provider_error_code=None,
+                route_lane='llm_edit_plan',
+            )
+            phase_timings['provider_planning_ms'] = 0
+            route_lane = 'llm_edit_plan'
+            llm_skipped_for_simple_edit = True
+        elif preview_intent == 'roadmap_edit':
             planner_started = perf_counter()
             planning = self._planner.plan(
                 user_message=user_message,
@@ -186,6 +221,37 @@ class AgentService:
             planning=planning,
             pending_edit_context_present=session.metadata.pending_edit_context is not None,
         )
+        if planning.provider_error_code == 'context_answer_operation_payload_blocked':
+            edit_guard_intervened = True
+        if (
+            pending_edit_context_present
+            and edit_continuation_trigger == 'confirm'
+            and planning.response_mode != 'edit_plan'
+        ):
+            planning = PlanningResult(
+                assistant_message=(
+                    'I still have your pending edit draft, but I could not stage it from that '
+                    'confirmation alone. Please provide the exact change in one line '
+                    '(or say "cancel").'
+                ),
+                operations=[],
+                parse_mode='deterministic_pending_edit_confirm_handoff',
+                intent_type='roadmap_edit',
+                response_mode='chat',
+                preview_recommended=False,
+                provider_used='rule_based',
+                fallback_used=False,
+                provider_error_code='pending_edit_confirm_requires_edit_plan',
+                tokens_input=planning.tokens_input,
+                tokens_output=planning.tokens_output,
+                tokens_total=planning.tokens_total,
+                route_lane=route_lane,
+                fastpath_bypass_reason=planning.fastpath_bypass_reason,
+                clarifier_action='ask_clarifier',
+                clarifier_reason='pending_edit_confirm_requires_edit_plan',
+                clarifier_options=['Proceed with edit planning', 'Change target details', 'Cancel'],
+            )
+            edit_guard_intervened = True
         if (
             (pending_edit_context_present or has_staged_operations)
             and edit_continuation_trigger == 'correction'
@@ -261,7 +327,6 @@ class AgentService:
         if self._settings.agent_llm_first_edit_enabled:
             fastpath_reason = None
             fastpath_bypass_reason = None
-            llm_skipped_for_simple_edit = False
 
         self._store.append_message(session, 'user', user_message)
 
@@ -327,6 +392,7 @@ class AgentService:
             planner_schema_invalid_attempts=planner_schema_invalid_attempts,
             planner_repair_attempted=planner_repair_attempted,
             deterministic_create_fastpath_skipped=deterministic_create_fastpath_skipped,
+            edit_guard_intervened=edit_guard_intervened,
             phase_timings=phase_timings,
         )
 
@@ -364,19 +430,36 @@ class AgentService:
             planner_schema_invalid_attempts=planner_schema_invalid_attempts,
             planner_repair_attempted=planner_repair_attempted,
             deterministic_create_fastpath_skipped=deterministic_create_fastpath_skipped,
+            edit_guard_intervened=edit_guard_intervened,
         )
 
     def _detect_edit_continuation_trigger(self, user_message: str) -> str | None:
         normalized = user_message.strip().lower()
-        normalized = re.sub(r'[.!?,;:]+$', '', normalized).strip()
+        normalized = re.sub(r'[.!?,;:]+', ' ', normalized).strip()
         normalized = re.sub(r'\s+', ' ', normalized)
         if re.fullmatch(
-            r"(?:ok|okay|yes|yep|proceed|go ahead|confirm|do it|let'?s do it)",
+            r'(?:a|option a|no need|no extra details|no additional details|nothing else)',
             normalized,
         ):
             return 'confirm'
-        if re.fullmatch(r'(?:cancel|stop|never mind|nevermind|abort)', normalized):
+        if re.fullmatch(
+            r'(?:(?:ok|okay|yes|yep)\s+)?'
+            r'(?:cancel|stop|never mind|nevermind|abort)'
+            r'(?:\s+(?:please|kindly|now|this|it|that|for now))?',
+            normalized,
+        ):
             return 'cancel'
+        if re.fullmatch(
+            r"(?:"
+            r"(?:ok|okay|yes|yep)(?:\s+(?:please|kindly))?(?:\s+(?:confirm|proceed|go ahead|do it))?"
+            r"|(?:confirm|proceed|go ahead|do it|let'?s do it)"
+            r")"
+            r"(?:\s+(?:please|kindly|now))?"
+            r"(?:\s+(?:with\s+)?(?:this|it|that))?"
+            r"(?:\s+(?:please|kindly|now))?",
+            normalized,
+        ):
+            return 'confirm'
         if re.search(r'\b(i meant|instead|inside|under|in that|it should)\b', normalized):
             return 'correction'
         return None

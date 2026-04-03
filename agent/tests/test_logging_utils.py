@@ -116,6 +116,7 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
             route_lane='deterministic_fastpath',
             discovery_stop_reason='resolved',
             clarifier_returned=False,
+            edit_guard_intervened=True,
         )
         return self.stream.getvalue()
 
@@ -134,6 +135,7 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
         self.assertIn('RESPONSE', output)
         self.assertIn('ASSISTANT', output)
         self.assertIn('lane        deterministic_fastpath', output)
+        self.assertIn('guard       yes', output)
         self.assertIn('EVENT: MESSAGE_COMPLETED', output)
 
     def test_lifecycle_title_prefers_deterministic_parse_mode(self) -> None:

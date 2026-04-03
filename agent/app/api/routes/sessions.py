@@ -468,6 +468,9 @@ async def send_message(
             pending_edit_context_present=(
                 outcome.pending_edit_context_present if outcome else False
             ),
+            edit_guard_intervened=(
+                outcome.edit_guard_intervened if outcome else False
+            ),
             edit_continuation_trigger=(
                 outcome.edit_continuation_trigger if outcome else None
             ),

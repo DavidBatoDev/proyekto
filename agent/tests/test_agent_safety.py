@@ -114,6 +114,129 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(len(session.operations), 1)
         self.assertEqual(session.operations[0].op.value, 'add_epic')
 
+    def test_detect_edit_continuation_trigger_accepts_common_phrase_variants(self) -> None:
+        service = self._service({'matches': []})
+
+        confirm_cases = [
+            'Okay Confirm',
+            'yes, proceed',
+            'go ahead please',
+            'confirm this',
+            'proceed with this',
+            'yes please proceed',
+            'ok go ahead with it',
+            'A',
+            'No need',
+        ]
+        cancel_cases = [
+            'cancel this',
+            'stop it',
+            'never mind this',
+            'abort now',
+        ]
+
+        for message in confirm_cases:
+            self.assertEqual(
+                service._detect_edit_continuation_trigger(message),
+                'confirm',
+                msg=f'Expected confirm trigger for: {message}',
+            )
+
+        for message in cancel_cases:
+            self.assertEqual(
+                service._detect_edit_continuation_trigger(message),
+                'cancel',
+                msg=f'Expected cancel trigger for: {message}',
+            )
+
+    def test_plan_message_short_option_a_with_pending_context_forces_edit_continuation(self) -> None:
+        class _Planner:
+            def __init__(self) -> None:
+                self.preview_calls = 0
+                self.plan_calls = 0
+
+            def preview_intent_classification(self, user_message, session_context=None):
+                self.preview_calls += 1
+                return ('unclear', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                self.plan_calls += 1
+                return PlanningResult(
+                    assistant_message='Prepared add-task operations.',
+                    operations=[
+                        RoadmapOperation(
+                            op='add_task',
+                            parent_id='8b691fa2-c868-4562-be55-ae77f3208cac',
+                            data={'title': 'Design ER diagram'},
+                        ),
+                        RoadmapOperation(
+                            op='add_task',
+                            parent_id='8b691fa2-c868-4562-be55-ae77f3208cac',
+                            data={'title': 'Create migrations and seed data'},
+                        ),
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        planner = _Planner()
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = planner
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                pending_edit_context=PendingEditContext(
+                    intent_family='roadmap_edit_clarifier',
+                    draft_operations=[],
+                    required_fields=[],
+                    resolved_references=PendingEditResolvedReferences(),
+                    confirmation_mode='awaiting_clarification',
+                    source_user_message='Add two more task to the Database Schema Setup',
+                    default_title=None,
+                )
+            ),
+        )
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='A',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-option-a-confirm',
+        )
+
+        self.assertEqual(outcome.edit_continuation_trigger, 'confirm')
+        self.assertEqual(outcome.route_lane, 'llm_edit_plan')
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(planner.preview_calls, 0)
+        self.assertEqual(planner.plan_calls, 1)
+        self.assertEqual(len(session.operations), 2)
+
     def test_plan_message_create_prompt_uses_planner_not_deterministic_fastpath(self) -> None:
         class _FakePlanner:
             def preview_intent_classification(self, user_message, session_context=None):
@@ -324,19 +447,7 @@ class AgentSafetyTests(unittest.TestCase):
                 return ('unclear', True)
 
             def plan(self, user_message, existing_operations, session_context=None):
-                return PlanningResult(
-                    assistant_message='Confirmed. I prepared the pending edit operations.',
-                    operations=[
-                        RoadmapOperation(op='add_epic', data={'title': 'AI Module'})
-                    ],
-                    parse_mode='openai_tool_calling',
-                    intent_type='roadmap_edit',
-                    response_mode='edit_plan',
-                    preview_recommended=True,
-                    provider_used='openai',
-                    fallback_used=False,
-                    provider_error_code=None,
-                )
+                raise AssertionError('Planner should not run for draft-ready pending confirm')
 
         class _FakeStore:
             def append_message(self, session, role, content):
@@ -384,7 +495,7 @@ class AgentSafetyTests(unittest.TestCase):
             trace_id='trace-pending-confirm',
         )
 
-        self.assertEqual(outcome.parse_mode, 'openai_tool_calling')
+        self.assertEqual(outcome.parse_mode, 'deterministic_pending_edit_confirm')
         self.assertEqual(outcome.response_mode, 'edit_plan')
         self.assertEqual(outcome.edit_continuation_trigger, 'confirm')
         self.assertEqual(outcome.route_lane, 'llm_edit_plan')
@@ -392,6 +503,160 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(session.operations[0].op.value, 'add_epic')
         self.assertIsNone(session.metadata.pending_edit_context)
         self.assertEqual(session.staged_operations_version, 1)
+        self.assertFalse(outcome.edit_guard_intervened)
+        self.assertTrue(outcome.llm_skipped_for_simple_edit)
+
+    def test_plan_message_pending_context_without_continuation_does_not_force_edit(self) -> None:
+        class _Planner:
+            def __init__(self) -> None:
+                self.preview_calls = 0
+
+            def preview_intent_classification(self, user_message, session_context=None):
+                self.preview_calls += 1
+                return ('question', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Here is your roadmap summary.',
+                    operations=[],
+                    parse_mode='openai_chat',
+                    intent_type='question',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        planner = _Planner()
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = planner
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                pending_edit_context=PendingEditContext(
+                    intent_family='create_task',
+                    draft_operations=[],
+                    required_fields=['parent'],
+                    resolved_references=PendingEditResolvedReferences(),
+                    confirmation_mode='awaiting_clarification',
+                    source_user_message='Create task under schema setup',
+                    default_title='Design relational schema',
+                )
+            ),
+        )
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Can you summarize the roadmap status?',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-pending-context-non-continuation',
+        )
+
+        self.assertEqual(planner.preview_calls, 1)
+        self.assertEqual(outcome.edit_continuation_trigger, None)
+        self.assertEqual(outcome.response_mode, 'chat')
+        self.assertEqual(outcome.route_lane, 'chat')
+        self.assertEqual(outcome.parse_mode, 'openai_chat')
+        self.assertIsNotNone(session.metadata.pending_edit_context)
+
+    def test_plan_message_pending_confirm_without_draft_avoids_context_answer_lane(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('unclear', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='There is already one task under this feature. Do you want me to add both?',
+                    operations=[],
+                    parse_mode='openai_context_tools',
+                    intent_type='unclear',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                pending_edit_context=PendingEditContext(
+                    intent_family='create_feature',
+                    draft_operations=[],
+                    required_fields=['parent'],
+                    resolved_references=PendingEditResolvedReferences(),
+                    confirmation_mode='awaiting_clarification',
+                    source_user_message='Create a schema setup task',
+                    default_title='Design relational schema',
+                )
+            ),
+        )
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Proceed',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-pending-confirm-no-draft',
+        )
+
+        self.assertEqual(outcome.edit_continuation_trigger, 'confirm')
+        self.assertEqual(outcome.response_mode, 'chat')
+        self.assertEqual(
+            outcome.parse_mode,
+            'deterministic_pending_edit_confirm_handoff',
+        )
+        self.assertEqual(
+            outcome.provider_error_code,
+            'pending_edit_confirm_requires_edit_plan',
+        )
+        self.assertEqual(len(session.operations), 0)
+        self.assertIsNotNone(session.metadata.pending_edit_context)
+        self.assertTrue(outcome.edit_guard_intervened)
 
     def test_plan_message_pending_cancel_clears_context(self) -> None:
         class _Planner:
@@ -776,6 +1041,78 @@ class AgentSafetyTests(unittest.TestCase):
             guarded.provider_error_code,
             'context_answer_operation_payload_blocked',
         )
+
+    def test_plan_message_context_answer_guard_sets_edit_guard_metric(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('unclear', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message=(
+                        'Planned operations (won\'t be applied here): '
+                        '[{"action":"create","type":"task","parent_id":"x"}]'
+                    ),
+                    operations=[],
+                    parse_mode='openai_context_tools',
+                    intent_type='unclear',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                pending_edit_context=PendingEditContext(
+                    intent_family='create_task',
+                    draft_operations=[],
+                    required_fields=['parent'],
+                    resolved_references=PendingEditResolvedReferences(),
+                    confirmation_mode='awaiting_clarification',
+                    source_user_message='Create task under schema setup',
+                    default_title='Design relational schema',
+                )
+            ),
+        )
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Proceed with this',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-context-guard-metric',
+        )
+
+        self.assertEqual(
+            outcome.provider_error_code,
+            'context_answer_operation_payload_blocked',
+        )
+        self.assertTrue(outcome.edit_guard_intervened)
 
     def test_plan_message_routes_rename_to_llm_planner(self) -> None:
         class _FakeNestClient:
