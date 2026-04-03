@@ -146,6 +146,18 @@ export interface AgentDiscardResponse {
   staged_operations_version: number;
 }
 
+export interface AgentCommitRequest {
+  preview_id?: string;
+  base_revision?: number;
+  revision_token?: string;
+}
+
+export interface AgentCommitResponse {
+  session_id: string;
+  roadmap_id: string;
+  commit: Record<string, unknown>;
+}
+
 export class RoadmapAgentServiceError extends Error {
   constructor(
     message: string,
@@ -310,6 +322,21 @@ export const roadmapAgentService = {
       return response.data;
     } catch (error) {
       throwAgentError(error, "Discard AI staged edits");
+    }
+  },
+
+  async commitSession(
+    sessionId: string,
+    payload: AgentCommitRequest = {},
+  ): Promise<AgentCommitResponse> {
+    try {
+      const response = await agentApiClient.post<AgentCommitResponse>(
+        `/agent/sessions/${sessionId}/commit`,
+        payload,
+      );
+      return response.data;
+    } catch (error) {
+      throwAgentError(error, "Commit AI staged edits");
     }
   },
 };

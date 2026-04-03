@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Bot,
-  Boxes,
   Check,
   Eye,
   FolderOpen,
@@ -310,6 +309,7 @@ const mapPreviewToArtifact = (
 
   return {
     artifactId: metadata?.artifact_id || payload.preview_id,
+    previewId: metadata?.preview_id || payload.preview_id,
     title: metadata?.title || "AI Artifact Preview",
     summary: metadata?.summary || "Generated preview from AI operations.",
     createdAt: metadata?.created_at || new Date().toISOString(),
@@ -650,20 +650,28 @@ export function RoadmapAiAssistantPanel({
     openArtifactTab(artifact);
   };
 
-  const handleApplyArtifact = (artifact: RoadmapArtifactPreview) => {
-    applyArtifactSnapshot(artifact.artifactId);
-    toast.success(`${artifact.title} applied to roadmap`);
+  const handleApplyArtifact = async (artifact: RoadmapArtifactPreview) => {
+    const activeSessionId = sessionId;
+    if (!activeSessionId) {
+      toast.error("Missing AI session. Send a message first, then apply again.");
+      return;
+    }
+
+    try {
+      await roadmapAgentService.commitSession(activeSessionId, {
+        preview_id: artifact.previewId,
+      });
+      applyArtifactSnapshot(artifact.artifactId);
+      toast.success(`${artifact.title} applied to roadmap`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to apply artifact.";
+      toast.error(message);
+    }
   };
 
   const toggleArtifactPreview = (artifactId: string) => {
     setPreviewArtifactId((prev) => (prev === artifactId ? null : artifactId));
-  };
-
-  const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      void handleSend();
-    }
   };
 
   const handleComposerKeyDown = (
@@ -837,7 +845,9 @@ export function RoadmapAiAssistantPanel({
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             <button
                               type="button"
-                              onClick={() => handleApplyArtifact(artifact)}
+                              onClick={() => {
+                                void handleApplyArtifact(artifact);
+                              }}
                               className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5"
                             >
                               <Check className="w-3.5 h-3.5" />

@@ -30,6 +30,7 @@ export type NormalizedArtifactSnapshot = Roadmap;
 
 export interface RoadmapArtifactPreview {
   artifactId: string;
+  previewId?: string;
   title: string;
   summary: string;
   createdAt: string;
