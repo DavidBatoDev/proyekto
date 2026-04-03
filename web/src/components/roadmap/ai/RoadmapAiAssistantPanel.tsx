@@ -10,10 +10,17 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { RoadmapView } from "../views/roadmap/RoadmapView";
 import { useRoadmapStore } from "@/stores/roadmapStore";
-import type { Roadmap, RoadmapEpic } from "@/types/roadmap";
+import type {
+  Roadmap,
+  RoadmapEpic,
+  RoadmapFeature,
+  RoadmapTask,
+} from "@/types/roadmap";
 import type {
   ArtifactSemanticDiffChange,
   ArtifactSemanticDiffSummary,
@@ -163,6 +170,12 @@ const formatAttachmentSize = (bytes: number): string => {
   const mb = kb / 1024;
   return `${mb.toFixed(1)} MB`;
 };
+
+const noopUpdateEpic = (_epic: RoadmapEpic) => {};
+const noopDeleteEpic = (_epicId: string) => {};
+const noopUpdateFeature = (_feature: RoadmapFeature) => {};
+const noopDeleteFeature = (_featureId: string) => {};
+const noopUpdateTask = (_task: RoadmapTask) => {};
 
 export function RoadmapAiAssistantPanel({
   roadmapId,
@@ -521,7 +534,7 @@ export function RoadmapAiAssistantPanel({
       className="h-full w-full bg-white border-l border-gray-200 overflow-hidden flex flex-col"
       aria-label="AI Assistant Panel"
     >
-      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-3 bg-gray-50/40">
+      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-3 bg-gray-50/40 relative [scrollbar-width:thin] [scrollbar-color:rgba(156,163,175,0.5)_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-400 [&::-webkit-scrollbar-thumb]:rounded-full hover:[scrollbar-color:rgba(107,114,128,0.7)_transparent] hover:[&::-webkit-scrollbar-thumb]:bg-gray-500">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center px-4">
             <Bot className="w-8 h-8 text-gray-400 mb-2" />
@@ -538,29 +551,36 @@ export function RoadmapAiAssistantPanel({
             return (
               <article
                 key={message.id}
-                className={`rounded-xl px-3 py-2.5 border ${
+                className={
                   message.role === "user"
-                    ? "bg-white border-orange-200 ml-8"
-                    : "bg-white border-gray-200 mr-4"
-                }`}
+                    ? "rounded-lg px-3.5 py-2.5 border border-orange-300 bg-orange-50 ml-8 mr-0 shadow-sm"
+                    : "px-0 py-1.5 border-0 bg-transparent ml-0 mr-4"
+                }
               >
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <span
-                    className={`text-[11px] font-semibold ${
-                      message.role === "user"
-                        ? "text-orange-600"
-                        : "text-gray-700"
-                    }`}
-                  >
-                    {message.role === "user" ? "You" : "Assistant"}
-                  </span>
-                  <span className="text-[10px] text-gray-400">
-                    {new Date(message.timestamp).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                </div>
+                {message.role === "user" && (
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="text-[11px] font-semibold text-orange-700">
+                      You
+                    </span>
+                    <span className="text-[10px] text-gray-400">
+                      {new Date(message.timestamp).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                )}
+                {message.role === "assistant" && (
+                  <div className="flex items-center justify-between gap-2 mb-1 text-[10px] text-gray-500">
+                    <span>Assistant</span>
+                    <span>
+                      {new Date(message.timestamp).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                )}
                 {message.content ? (
                   <div className="text-xs text-gray-800 leading-relaxed">
                     <ReactMarkdown
@@ -645,7 +665,7 @@ export function RoadmapAiAssistantPanel({
                             className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5"
                           >
                             <FolderOpen className="w-3.5 h-3.5" />
-                            Open
+                            Open in Tabs
                           </button>
 
                           <button
@@ -660,40 +680,29 @@ export function RoadmapAiAssistantPanel({
                           </button>
                         </div>
 
-                        {previewArtifactId === artifact.artifactId && (
-                          <div className="mt-2 rounded-md border border-orange-200 bg-white p-2 text-[10px] text-gray-700 space-y-1">
-                            <p className="font-semibold text-orange-700">
-                              Semantic Changes
-                            </p>
-                            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-                              <span>
-                                Added: {artifact.semanticDiffSummary.node_added}
-                              </span>
-                              <span>
-                                Removed:{" "}
-                                {artifact.semanticDiffSummary.node_removed}
-                              </span>
-                              <span>
-                                Moved: {artifact.semanticDiffSummary.node_moved}
-                              </span>
-                              <span>
-                                Status:{" "}
-                                {artifact.semanticDiffSummary.status_changed}
-                              </span>
-                              <span>
-                                Date:{" "}
-                                {artifact.semanticDiffSummary.date_changed}
-                              </span>
-                              <span>
-                                Dependency:{" "}
-                                {
-                                  artifact.semanticDiffSummary
-                                    .dependency_changed
-                                }
-                              </span>
-                            </div>
-                          </div>
-                        )}
+                        <AnimatePresence>
+                          {previewArtifactId === artifact.artifactId && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: 8 }}
+                              transition={{ duration: 0.24, ease: "easeOut" }}
+                              className="mt-2 h-72 overflow-hidden rounded-md border border-gray-200"
+                            >
+                              <RoadmapView
+                                roadmap={artifact.candidateSnapshot}
+                                epics={artifact.candidateSnapshot.epics || []}
+                                showMiniMap={false}
+                                minZoom={0.1}
+                                onUpdateEpic={noopUpdateEpic}
+                                onDeleteEpic={noopDeleteEpic}
+                                onUpdateFeature={noopUpdateFeature}
+                                onDeleteFeature={noopDeleteFeature}
+                                onUpdateTask={noopUpdateTask}
+                              />
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
                     ))}
                   </div>

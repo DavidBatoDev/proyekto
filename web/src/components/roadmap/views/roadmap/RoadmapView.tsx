@@ -25,6 +25,7 @@ interface RoadmapViewProps {
   roadmap: Roadmap;
   epics: RoadmapEpic[];
   showMiniMap?: boolean;
+  minZoom?: number;
   onUpdateEpic: (epic: RoadmapEpic) => void;
   onDeleteEpic: (epicId: string) => void;
   onUpdateFeature: (feature: RoadmapFeature) => void;
@@ -70,7 +71,7 @@ const getLayoutedElements = (
   const FEATURE_SPACING_SCALE = 0.35; // Multiplier applied to average feature height when computing spacing
   const FEATURE_SPACING_BASE = 40; // Flat offset added to scaled height to compute spacing
   const GROUP_GAP_MIN = 120; // Minimum vertical gap between epic groups
-  const GROUP_GAP_SCALE = 0.30; // Fraction of groupHeight added as gap between epic groups
+  const GROUP_GAP_SCALE = 0.3; // Fraction of groupHeight added as gap between epic groups
   const sortedEpics = [...epics].sort((a, b) => a.position - b.position);
   const featureNodeMap = new Map(featureNodes.map((node) => [node.id, node]));
 
@@ -127,7 +128,10 @@ const getLayoutedElements = (
             MAX_FEATURE_SPACING,
             Math.max(
               MIN_FEATURE_SPACING,
-              Math.round(averageFeatureHeight * FEATURE_SPACING_SCALE + FEATURE_SPACING_BASE),
+              Math.round(
+                averageFeatureHeight * FEATURE_SPACING_SCALE +
+                  FEATURE_SPACING_BASE,
+              ),
             ),
           )
         : 0;
@@ -137,7 +141,10 @@ const getLayoutedElements = (
           featureSpacing * (featureCount - 1)
         : 0;
     const groupHeight = Math.max(epicHeight, totalFeatureHeight);
-    const groupGap = Math.max(GROUP_GAP_MIN, Math.round(groupHeight * GROUP_GAP_SCALE));
+    const groupGap = Math.max(
+      GROUP_GAP_MIN,
+      Math.round(groupHeight * GROUP_GAP_SCALE),
+    );
     const epicCenterY = currentY + groupHeight / 2;
     const epicY = epicCenterY - epicHeight / 2;
 
@@ -192,6 +199,7 @@ const getLayoutedElements = (
 export const RoadmapView = ({
   epics,
   showMiniMap = true,
+  minZoom = 0.4,
   onUpdateEpic,
   onDeleteEpic,
   onUpdateFeature,
@@ -228,7 +236,7 @@ export const RoadmapView = ({
   const DEFAULT_VIEWPORT_X = -50;
   const DEFAULT_VIEWPORT_Y = 0;
   const MAX_ZOOM = 1.0;
-  const MIN_ZOOM = 0.4;
+  const MIN_ZOOM = minZoom;
 
   // Helper function to get edge color based on status
   const getEdgeColor = (status: RoadmapFeature["status"]) => {
@@ -270,9 +278,7 @@ export const RoadmapView = ({
         onAddFeature,
         onNavigateToTab: onNavigateToEpic,
         pulseToken:
-          pulseNodeFocus?.nodeId === epic.id
-            ? pulseNodeFocus.token
-            : undefined,
+          pulseNodeFocus?.nodeId === epic.id ? pulseNodeFocus.token : undefined,
       },
       position: { x: 0, y: 0 }, // Will be set by dagre
     }));
