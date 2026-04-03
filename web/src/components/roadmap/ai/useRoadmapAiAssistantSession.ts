@@ -3,6 +3,13 @@ import type { RoadmapArtifactPreview } from "@/types/roadmapArtifact";
 
 export type RoadmapAiChatRole = "user" | "assistant";
 
+export interface RoadmapAiChatAttachment {
+  id: string;
+  name: string;
+  size: number;
+  type?: string;
+}
+
 export interface RoadmapAiChatMessage {
   id: string;
   role: RoadmapAiChatRole;
@@ -12,6 +19,7 @@ export interface RoadmapAiChatMessage {
   intentType?: "smalltalk" | "question" | "roadmap_edit" | "unclear";
   responseMode?: "chat" | "edit_plan";
   artifacts?: RoadmapArtifactPreview[];
+  attachments?: RoadmapAiChatAttachment[];
 }
 
 interface RoadmapAiAssistantPersistedState {
@@ -43,7 +51,9 @@ const parseStoredState = (
 ): RoadmapAiAssistantPersistedState => {
   if (!rawValue) return DEFAULT_STATE;
   try {
-    const parsed = JSON.parse(rawValue) as Partial<RoadmapAiAssistantPersistedState>;
+    const parsed = JSON.parse(
+      rawValue,
+    ) as Partial<RoadmapAiAssistantPersistedState>;
     return {
       isOpen: Boolean(parsed.isOpen),
       messages: Array.isArray(parsed.messages) ? parsed.messages : [],

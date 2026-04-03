@@ -96,7 +96,7 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
   const [roadmapError, setRoadmapError] = useState<string | null>(null);
   const [isJsonPanelOpen, setIsJsonPanelOpen] = useState(false);
   const [isSavingRoadmapJson, setIsSavingRoadmapJson] = useState(false);
-  const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
+  const [isAiChatPanelOpen, setIsAiChatPanelOpen] = useState(false);
   const roadmapLiveQuery = useRoadmapFullLiveQuery(roadmapId);
 
   const setSidebarExpanded = useProjectSettingsStore(
@@ -265,10 +265,7 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
       <RoadmapTopBar
         onEditBrief={() => setIsBriefOpen(true)}
         onShare={() => setIsShareModalOpen(true)}
-        onOpenJsonPanel={() => setIsJsonPanelOpen(true)}
-        onExport={() => {
-          /* TODO: Export functionality */
-        }}
+        onOpenChatPanel={() => setIsAiChatPanelOpen((prev) => !prev)}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -308,8 +305,25 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
 
         {/* Right: Roadmap Canvas */}
         <div className="flex-1 relative">
-          <RoadmapCanvas roadmap={roadmap} hideMiniMap={isAiAssistantOpen} />
+          <RoadmapCanvas roadmap={roadmap} hideMiniMap={isAiChatPanelOpen} />
         </div>
+
+        {isAiChatPanelOpen && (
+          <motion.div
+            id="roadmap-right-ai-chat-panel"
+            className="relative h-full border-l border-gray-200 bg-white"
+            initial={false}
+            animate={{ width: 380 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            style={{ minWidth: 380 }}
+          >
+            <TryAiFloatingAssistant
+              roadmapId={roadmap.id}
+              roadmapSnapshot={roadmap}
+              isVisible={isAiChatPanelOpen}
+            />
+          </motion.div>
+        )}
       </div>
 
       {/* Edit Roadmap Modal */}
@@ -351,12 +365,6 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
           </div>
         </div>
       )}
-
-      <TryAiFloatingAssistant
-        roadmapId={roadmap.id}
-        roadmapSnapshot={roadmap}
-        onOpenChange={setIsAiAssistantOpen}
-      />
     </div>
   );
 }

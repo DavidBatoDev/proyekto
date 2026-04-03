@@ -1,8 +1,7 @@
 import {
   X,
-  Download,
   Share2,
-  Code2,
+  MessageCircle,
   LayoutGrid,
   CalendarDays,
   FileText,
@@ -93,15 +92,13 @@ const SortableEpicTab = ({
 interface RoadmapTopBarProps {
   onEditBrief?: () => void;
   onShare?: () => void;
-  onExport?: () => void;
-  onOpenJsonPanel?: () => void;
+  onOpenChatPanel?: () => void;
 }
 
 export function RoadmapTopBar({
   onEditBrief,
   onShare,
-  onExport,
-  onOpenJsonPanel,
+  onOpenChatPanel,
 }: RoadmapTopBarProps) {
   const epics = useRoadmapStore((state) => state.epics);
   const viewMode = useRoadmapStore((state) => state.canvasViewMode);
@@ -235,7 +232,8 @@ export function RoadmapTopBar({
                     const artifact = artifactsById[artifactId];
                     if (!artifact) return null;
                     const isActive =
-                      viewMode === "artifact" && selectedArtifactId === artifactId;
+                      viewMode === "artifact" &&
+                      selectedArtifactId === artifactId;
 
                     return (
                       <div
@@ -294,25 +292,14 @@ export function RoadmapTopBar({
           </button>
         )}
 
-        {onOpenJsonPanel && (
+        {onOpenChatPanel && (
           <button
-            onClick={onOpenJsonPanel}
+            onClick={onOpenChatPanel}
             className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-md transition-colors"
-            title="Open roadmap JSON editor"
+            title="Toggle AI chat panel"
           >
-            <Code2 className="w-4 h-4" />
-            DEV Mode
-          </button>
-        )}
-
-        {onExport && (
-          <button
-            onClick={onExport}
-            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-md transition-colors shadow-sm"
-            title="Export Roadmap"
-          >
-            <Download className="w-4 h-4" />
-            Export
+            <MessageCircle className="w-4 h-4" />
+            AI Chat
           </button>
         )}
       </div>

@@ -27,7 +27,6 @@ import { useUser } from "@/stores/authStore";
 import { EpicModal } from "@/components/roadmap/modals/EpicModal";
 import { FeatureModal } from "@/components/roadmap/modals/FeatureModal";
 import { SidePanel } from "@/components/roadmap/panels/SidePanel";
-import { TryAiFloatingAssistant } from "@/components/roadmap";
 import type {
   RoadmapEpic,
   RoadmapFeature,
@@ -1025,7 +1024,6 @@ function WorkItemsViewPage() {
   const [error, setError] = useState<string | null>(null);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
-  const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
 
   // Expansion
   const [expandedEpics, setExpandedEpics] = useState<Set<string>>(new Set());
@@ -1051,9 +1049,15 @@ function WorkItemsViewPage() {
   );
   const [selectedTask, setSelectedTask] = useState<RoadmapTask | null>(null);
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
-  const [pendingEpicById, setPendingEpicById] = useState<Record<string, boolean>>({});
-  const [pendingFeatureById, setPendingFeatureById] = useState<Record<string, boolean>>({});
-  const [pendingTaskById, setPendingTaskById] = useState<Record<string, boolean>>({});
+  const [pendingEpicById, setPendingEpicById] = useState<
+    Record<string, boolean>
+  >({});
+  const [pendingFeatureById, setPendingFeatureById] = useState<
+    Record<string, boolean>
+  >({});
+  const [pendingTaskById, setPendingTaskById] = useState<
+    Record<string, boolean>
+  >({});
   const [queuedTaskStatusIntentById, setQueuedTaskStatusIntentById] = useState<
     Record<string, TaskStatus>
   >({});
@@ -1271,7 +1275,8 @@ function WorkItemsViewPage() {
     (taskId: string, nextStatus: TaskStatus) => {
       const runtime = {
         getTask: (id: string) => findTaskById(epicsRef.current, id),
-        isActive: (id: string) => Boolean(activeTaskStatusSyncByIdRef.current[id]),
+        isActive: (id: string) =>
+          Boolean(activeTaskStatusSyncByIdRef.current[id]),
         setActive: (id: string, value: boolean) => {
           setActiveTaskStatusSyncById((prev) => {
             const next = value
@@ -1281,7 +1286,8 @@ function WorkItemsViewPage() {
             return next;
           });
         },
-        getQueuedIntent: (id: string) => queuedTaskStatusIntentByIdRef.current[id],
+        getQueuedIntent: (id: string) =>
+          queuedTaskStatusIntentByIdRef.current[id],
         setQueuedIntent: (id: string, value: TaskStatus) => {
           setQueuedTaskStatusIntentById((prev) => {
             const next = { ...prev, [id]: value };
@@ -1495,7 +1501,9 @@ function WorkItemsViewPage() {
         })
         .catch(() => {
           patchTask(taskId, () => rollbackTask);
-          setSelectedTask((prev) => (prev?.id === taskId ? rollbackTask : prev));
+          setSelectedTask((prev) =>
+            prev?.id === taskId ? rollbackTask : prev,
+          );
           toast.error("Failed to update task");
         })
         .finally(() => {
@@ -2095,7 +2103,7 @@ function WorkItemsViewPage() {
       {(canScrollUp || canScrollDown) && (
         <div
           className="fixed right-5 z-50 flex flex-col gap-1.5"
-          style={{ bottom: isAiAssistantOpen ? 400 : 20 }}
+          style={{ bottom: 20 }}
         >
           <div className="h-7 w-7">
             {canScrollUp && (
@@ -2145,7 +2153,9 @@ function WorkItemsViewPage() {
         }
         onClose={() => setEditingEpic(null)}
         onSubmit={handleEpicSave}
-        isLoading={editingEpic ? Boolean(pendingEpicById[editingEpic.id]) : false}
+        isLoading={
+          editingEpic ? Boolean(pendingEpicById[editingEpic.id]) : false
+        }
       />
 
       {/* ── Feature edit modal ── */}
@@ -2158,7 +2168,9 @@ function WorkItemsViewPage() {
         onClose={() => setEditingFeature(null)}
         onSubmit={handleFeatureSave}
         isLoading={
-          editingFeature ? Boolean(pendingFeatureById[editingFeature.id]) : false
+          editingFeature
+            ? Boolean(pendingFeatureById[editingFeature.id])
+            : false
         }
       />
 
@@ -2171,16 +2183,10 @@ function WorkItemsViewPage() {
         onUpdateTask={handleTaskUpdate}
         onDeleteTask={handleTaskDelete}
         projectMembers={projectMembers}
-        isLoading={selectedTask ? Boolean(pendingTaskById[selectedTask.id]) : false}
-      />
-
-      <TryAiFloatingAssistant
-        roadmapId={roadmapId}
-        roadmapSnapshot={roadmapFullQuery.data ?? null}
-        epicsSnapshot={epics}
-        onOpenChange={setIsAiAssistantOpen}
+        isLoading={
+          selectedTask ? Boolean(pendingTaskById[selectedTask.id]) : false
+        }
       />
     </div>
   );
 }
-
