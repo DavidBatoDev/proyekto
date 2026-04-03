@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import asyncio
 import logging
+import json
 from datetime import datetime
 from time import perf_counter
 from typing import Any
@@ -194,6 +195,29 @@ class AgentService:
             phase_timings['provider_planning_ms'] = 0
             route_lane = 'llm_edit_plan'
             llm_skipped_for_simple_edit = True
+        elif (
+            pending_context is None
+            and has_staged_operations
+            and edit_continuation_trigger == 'confirm'
+        ):
+            planning = PlanningResult(
+                assistant_message=(
+                    'Confirmed. Your staged edit operations are ready to apply. '
+                    'Use Apply to commit these changes.'
+                ),
+                operations=[],
+                parse_mode='deterministic_staged_edit_confirm',
+                intent_type='roadmap_edit',
+                response_mode='edit_plan',
+                preview_recommended=True,
+                provider_used='rule_based',
+                fallback_used=False,
+                provider_error_code=None,
+                route_lane='llm_edit_plan',
+            )
+            phase_timings['provider_planning_ms'] = 0
+            route_lane = 'llm_edit_plan'
+            llm_skipped_for_simple_edit = True
         elif preview_intent == 'roadmap_edit':
             planner_started = perf_counter()
             planning = self._planner.plan(
@@ -330,12 +354,27 @@ class AgentService:
 
         self._store.append_message(session, 'user', user_message)
 
+        applied_operations: list[RoadmapOperation] = []
+        staged_changed = False
         if planning.response_mode == 'edit_plan':
             if replace or force_replace_operations:
                 session.operations = operations
+                applied_operations = operations
+                staged_changed = bool(operations)
             else:
-                session.operations.extend(operations)
-            if operations:
+                existing_signatures = {
+                    self._operation_signature(operation)
+                    for operation in session.operations
+                }
+                for operation in operations:
+                    signature = self._operation_signature(operation)
+                    if signature in existing_signatures:
+                        continue
+                    session.operations.append(operation)
+                    applied_operations.append(operation)
+                    existing_signatures.add(signature)
+                staged_changed = bool(applied_operations)
+            if staged_changed:
                 session.staged_operations_version += 1
 
         if planning.clear_pending_context_resolution:
@@ -402,7 +441,7 @@ class AgentService:
             parse_mode=planning.parse_mode,
             intent_type=planning.intent_type,
             response_mode=planning.response_mode,
-            operations=operations if planning.response_mode == 'edit_plan' else [],
+            operations=applied_operations if planning.response_mode == 'edit_plan' else [],
             preview_available=preview_available,
             preview_recommended=preview_recommended,
             staged_operations_version=session.staged_operations_version,
@@ -431,6 +470,13 @@ class AgentService:
             planner_repair_attempted=planner_repair_attempted,
             deterministic_create_fastpath_skipped=deterministic_create_fastpath_skipped,
             edit_guard_intervened=edit_guard_intervened,
+        )
+
+    def _operation_signature(self, operation: RoadmapOperation) -> str:
+        return json.dumps(
+            operation.model_dump(exclude_none=True),
+            sort_keys=True,
+            separators=(',', ':'),
         )
 
     def _detect_edit_continuation_trigger(self, user_message: str) -> str | None:

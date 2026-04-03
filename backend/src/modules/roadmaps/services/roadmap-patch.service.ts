@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -25,6 +26,8 @@ export const ROADMAP_PATCH_REPOSITORY = Symbol('ROADMAP_PATCH_REPOSITORY');
 
 @Injectable()
 export class RoadmapPatchService {
+  private readonly logger = new Logger(RoadmapPatchService.name);
+
   constructor(
     @Inject(ROADMAPS_REPOSITORY)
     private readonly roadmapsRepo: IRoadmapsRepository,
@@ -99,11 +102,20 @@ export class RoadmapPatchService {
     operations: JsonPatchOperationDto[],
     userId: string,
   ) {
+    const startedAt = Date.now();
     if (!Array.isArray(operations) || operations.length === 0) {
       throw new BadRequestException(
         'Patch operations must be a non-empty array',
       );
     }
+
+    this.logger.log(
+      [
+        'event=roadmap_patch_apply_start',
+        `roadmap_id=${roadmapId}`,
+        `operations_count=${operations.length}`,
+      ].join(' '),
+    );
 
     const existing = await this.roadmapsRepo.findById(roadmapId);
     if (!existing) throw new NotFoundException('Roadmap not found');
@@ -131,6 +143,9 @@ export class RoadmapPatchService {
       operations,
     );
 
+    const beforeCounts = this.summarizeRoadmapState(currentState);
+    const afterCounts = this.summarizeRoadmapState(patchedState);
+
     const normalizedPatchedState = this.normalizeFullRoadmapState({
       ...patchedState,
       id: roadmapId,
@@ -143,7 +158,45 @@ export class RoadmapPatchService {
       createIfMissing: false,
     });
 
+    this.logger.log(
+      [
+        'event=roadmap_patch_apply_upsert_success',
+        `roadmap_id=${roadmapId}`,
+        `operations_count=${operations.length}`,
+        `before_epics=${beforeCounts.epics}`,
+        `before_features=${beforeCounts.features}`,
+        `before_tasks=${beforeCounts.tasks}`,
+        `after_epics=${afterCounts.epics}`,
+        `after_features=${afterCounts.features}`,
+        `after_tasks=${afterCounts.tasks}`,
+        `elapsed_ms=${Date.now() - startedAt}`,
+      ].join(' '),
+    );
+
     return this.roadmapsRepo.findFull(roadmapId, userId);
+  }
+
+  private summarizeRoadmapState(state: FullRoadmapState): {
+    epics: number;
+    features: number;
+    tasks: number;
+  } {
+    const epics = state.roadmap_epics?.length ?? 0;
+    const features = (state.roadmap_epics ?? []).reduce(
+      (count, epic) => count + (epic.roadmap_features?.length ?? 0),
+      0,
+    );
+    const tasks = (state.roadmap_epics ?? []).reduce(
+      (count, epic) =>
+        count +
+        (epic.roadmap_features ?? []).reduce(
+          (featureCount, feature) =>
+            featureCount + (feature.roadmap_tasks?.length ?? 0),
+          0,
+        ),
+      0,
+    );
+    return { epics, features, tasks };
   }
 
   private normalizeFullRoadmapState(state: FullRoadmapState): FullRoadmapState {

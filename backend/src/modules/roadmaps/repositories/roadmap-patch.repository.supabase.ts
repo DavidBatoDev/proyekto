@@ -3,6 +3,7 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
@@ -11,6 +12,8 @@ import type { FullRoadmapState } from '../dto/patch-roadmap.dto';
 
 @Injectable()
 export class RoadmapPatchRepositorySupabase implements IRoadmapPatchRepository {
+  private readonly logger = new Logger(RoadmapPatchRepositorySupabase.name);
+
   constructor(@Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient) {}
 
   async upsertFullRoadmap(params: {
@@ -29,6 +32,17 @@ export class RoadmapPatchRepositorySupabase implements IRoadmapPatchRepository {
     });
 
     if (!error) return;
+
+    this.logger.error(
+      [
+        'event=roadmap_patch_upsert_failed',
+        `roadmap_id=${roadmapId}`,
+        `owner_id=${ownerId}`,
+        `create_if_missing=${createIfMissing}`,
+        `error_code=${error.code ?? 'unknown'}`,
+        `error_message=${error.message ?? 'unknown'}`,
+      ].join(' '),
+    );
 
     if (error.code === 'P0001') {
       throw new BadRequestException(error.message);

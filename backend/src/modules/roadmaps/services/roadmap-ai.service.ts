@@ -249,6 +249,18 @@ export class RoadmapAiService {
       record as unknown as Record<string, unknown>,
       Math.ceil(PREVIEW_TTL_MS / 1000),
     );
+    this.logger.log(
+      [
+        'event=roadmap_ai_preview_stored',
+        `roadmap_id=${roadmapId}`,
+        `preview_id=${previewId}`,
+        `ttl_seconds=${Math.ceil(PREVIEW_TTL_MS / 1000)}`,
+        `created_at=${record.createdAt}`,
+        `expires_at=${new Date(
+          Date.parse(record.createdAt) + PREVIEW_TTL_MS,
+        ).toISOString()}`,
+      ].join(' '),
+    );
     const previewStoreSetMs = Date.now() - previewStoreSetStartedAt;
     const totalHandlerMs = Date.now() - handlerStartedAt;
     this.logRoadmapAiHandlerTiming({
@@ -1034,6 +1046,16 @@ export class RoadmapAiService {
     dto: RoadmapAiCommitDto,
     userId: string,
   ): Promise<RoadmapAiCommitResponseDto> {
+    const startedAt = Date.now();
+    this.logger.log(
+      [
+        'event=roadmap_ai_commit_start',
+        `roadmap_id=${roadmapId}`,
+        `preview_id=${dto.preview_id}`,
+        `revision_token_provided=${Boolean(dto.revision_token)}`,
+      ].join(' '),
+    );
+
     const preview = await this.previewStore.getPreview<PreviewRecord>(
       dto.preview_id,
     );
@@ -1042,10 +1064,38 @@ export class RoadmapAiService {
       preview.roadmapId !== roadmapId ||
       preview.userId !== userId
     ) {
+      let previewTtlSeconds: number | null = null;
+      try {
+        previewTtlSeconds = await this.previewStore.getPreviewTtlSeconds(
+          dto.preview_id,
+        );
+      } catch {
+        previewTtlSeconds = null;
+      }
+      this.logger.warn(
+        [
+          'event=roadmap_ai_commit_preview_not_found',
+          `roadmap_id=${roadmapId}`,
+          `preview_id=${dto.preview_id}`,
+          `preview_present=${Boolean(preview)}`,
+          `preview_roadmap_match=${preview?.roadmapId === roadmapId}`,
+          `preview_user_match=${preview?.userId === userId}`,
+          `preview_ttl_seconds=${previewTtlSeconds ?? 'unknown'}`,
+        ].join(' '),
+      );
       throw new NotFoundException('Preview not found');
     }
 
     if (dto.revision_token && dto.revision_token !== preview.revisionToken) {
+      this.logger.warn(
+        [
+          'event=roadmap_ai_commit_revision_mismatch',
+          `roadmap_id=${roadmapId}`,
+          `preview_id=${dto.preview_id}`,
+          `expected_revision_token=${preview.revisionToken}`,
+          `received_revision_token=${dto.revision_token}`,
+        ].join(' '),
+      );
       throw new ConflictException({
         message: 'Preview revision token does not match request',
         code: 'STALE_REVISION',
@@ -1056,6 +1106,14 @@ export class RoadmapAiService {
       (issue) => issue.severity === 'error',
     );
     if (errorIssues.length > 0) {
+      this.logger.warn(
+        [
+          'event=roadmap_ai_commit_blocked_validation_errors',
+          `roadmap_id=${roadmapId}`,
+          `preview_id=${dto.preview_id}`,
+          `error_issue_count=${errorIssues.length}`,
+        ].join(' '),
+      );
       throw new BadRequestException({
         message: 'Preview has validation errors and cannot be committed',
         validation_issues: errorIssues,
@@ -1065,6 +1123,15 @@ export class RoadmapAiService {
     const current = await this.assertCanEditRoadmap(roadmapId, userId);
     const currentRevisionToken = this.requireRevisionToken(current.updated_at);
     if (currentRevisionToken !== preview.revisionToken) {
+      this.logger.warn(
+        [
+          'event=roadmap_ai_commit_stale_revision',
+          `roadmap_id=${roadmapId}`,
+          `preview_id=${dto.preview_id}`,
+          `preview_revision_token=${preview.revisionToken}`,
+          `current_revision_token=${currentRevisionToken}`,
+        ].join(' '),
+      );
       throw new ConflictException({
         message: 'Roadmap changed since preview was generated',
         code: 'STALE_REVISION',
@@ -1072,10 +1139,31 @@ export class RoadmapAiService {
     }
 
     if (!current.owner_id) {
+      this.logger.error(
+        [
+          'event=roadmap_ai_commit_owner_missing',
+          `roadmap_id=${roadmapId}`,
+          `preview_id=${dto.preview_id}`,
+        ].join(' '),
+      );
       throw new InternalServerErrorException(
         'Roadmap owner is missing for an existing roadmap',
       );
     }
+
+    const stateCounts = this.summarizeRoadmapState(preview.candidate);
+    const semanticDiffSummary = preview.semanticDiff.summary ?? {};
+    this.logger.log(
+      [
+        'event=roadmap_ai_commit_upsert_start',
+        `roadmap_id=${roadmapId}`,
+        `preview_id=${dto.preview_id}`,
+        `epics=${stateCounts.epics}`,
+        `features=${stateCounts.features}`,
+        `tasks=${stateCounts.tasks}`,
+        `semantic_changes=${semanticDiffSummary.total_changes ?? 0}`,
+      ].join(' '),
+    );
 
     await this.patchRepo.upsertFullRoadmap({
       roadmapId,
@@ -1084,8 +1172,23 @@ export class RoadmapAiService {
       createIfMissing: false,
     });
 
+    this.logger.log(
+      [
+        'event=roadmap_ai_commit_upsert_success',
+        `roadmap_id=${roadmapId}`,
+        `preview_id=${dto.preview_id}`,
+      ].join(' '),
+    );
+
     const persisted = await this.roadmapsRepo.findFull(roadmapId, userId);
     if (!persisted) {
+      this.logger.error(
+        [
+          'event=roadmap_ai_commit_persisted_missing',
+          `roadmap_id=${roadmapId}`,
+          `preview_id=${dto.preview_id}`,
+        ].join(' '),
+      );
       throw new InternalServerErrorException(
         'Roadmap not found after successful commit',
       );
@@ -1093,7 +1196,25 @@ export class RoadmapAiService {
 
     const persistedMeta = await this.roadmapsRepo.findById(roadmapId, userId);
     await this.previewStore.deletePreview(dto.preview_id);
+    this.logger.log(
+      [
+        'event=roadmap_ai_preview_deleted',
+        `roadmap_id=${roadmapId}`,
+        `preview_id=${dto.preview_id}`,
+        'reason=commit_success',
+      ].join(' '),
+    );
     await this.invalidateResolveLookupCache(roadmapId);
+
+    this.logger.log(
+      [
+        'event=roadmap_ai_commit_success',
+        `roadmap_id=${roadmapId}`,
+        `preview_id=${dto.preview_id}`,
+        `revision_token=${persistedMeta?.updated_at ?? 'unknown'}`,
+        `elapsed_ms=${Date.now() - startedAt}`,
+      ].join(' '),
+    );
 
     return {
       committed_at: new Date().toISOString(),
@@ -1101,6 +1222,29 @@ export class RoadmapAiService {
       semantic_diff: preview.semanticDiff,
       roadmap: persisted as Record<string, unknown>,
     };
+  }
+
+  private summarizeRoadmapState(state: FullRoadmapState): {
+    epics: number;
+    features: number;
+    tasks: number;
+  } {
+    const epics = state.roadmap_epics?.length ?? 0;
+    const features = (state.roadmap_epics ?? []).reduce(
+      (count, epic) => count + (epic.roadmap_features?.length ?? 0),
+      0,
+    );
+    const tasks = (state.roadmap_epics ?? []).reduce(
+      (count, epic) =>
+        count +
+        (epic.roadmap_features ?? []).reduce(
+          (featureCount, feature) =>
+            featureCount + (feature.roadmap_tasks?.length ?? 0),
+          0,
+        ),
+      0,
+    );
+    return { epics, features, tasks };
   }
 
   async discard(
@@ -1122,6 +1266,14 @@ export class RoadmapAiService {
     }
 
     await this.previewStore.deletePreview(dto.preview_id);
+    this.logger.log(
+      [
+        'event=roadmap_ai_preview_deleted',
+        `roadmap_id=${roadmapId}`,
+        `preview_id=${dto.preview_id}`,
+        'reason=discard',
+      ].join(' '),
+    );
     return {
       ok: true,
       preview_id: dto.preview_id,

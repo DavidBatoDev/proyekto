@@ -237,6 +237,136 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(planner.plan_calls, 1)
         self.assertEqual(len(session.operations), 2)
 
+    def test_plan_message_confirm_with_staged_operations_bypasses_context_answer(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('unclear', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                raise AssertionError('Planner should not run for staged confirm continuation')
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            operations=[
+                RoadmapOperation(
+                    op='update_node',
+                    node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                    patch={'title': 'App Foundation'},
+                )
+            ],
+        )
+        session.staged_operations_version = 1
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='OKay proceed',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-staged-confirm',
+        )
+
+        self.assertEqual(outcome.edit_continuation_trigger, 'confirm')
+        self.assertEqual(outcome.parse_mode, 'deterministic_staged_edit_confirm')
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(outcome.route_lane, 'llm_edit_plan')
+        self.assertFalse(outcome.edit_guard_intervened)
+        self.assertTrue(outcome.llm_skipped_for_simple_edit)
+        self.assertEqual(len(session.operations), 1)
+        self.assertEqual(session.staged_operations_version, 1)
+
+    def test_plan_message_repeated_equivalent_operation_is_deduped(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Prepared rename operation.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'App Foundation'},
+                        )
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            operations=[
+                RoadmapOperation(
+                    op='update_node',
+                    node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                    patch={'title': 'App Foundation'},
+                )
+            ],
+        )
+        session.staged_operations_version = 2
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Rename Platform Foundation to App Foundation',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-dedupe-rename',
+        )
+
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(len(outcome.operations), 0)
+        self.assertEqual(len(session.operations), 1)
+        self.assertEqual(session.staged_operations_version, 2)
+
     def test_plan_message_create_prompt_uses_planner_not_deterministic_fastpath(self) -> None:
         class _FakePlanner:
             def preview_intent_classification(self, user_message, session_context=None):

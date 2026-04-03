@@ -305,6 +305,14 @@ async def send_message(
                     preview_error_code = 'PREVIEW_VALIDATION_ERROR'
                     preview_error_retryable = False
                     preview_error_upstream_status = None
+                    setattr(outcome.session.metadata, 'awaiting_preview_fix', True)
+                    outcome.session.latest_preview_id = None
+                    outcome.session.artifacts = []
+                    outcome.assistant_message = (
+                        'I staged your edit, but preview validation failed. '
+                        'Please adjust the change details and try again, or say "cancel".'
+                    )
+                    await _run_store_call(store.update, outcome.session)
                 else:
                     preview_id = preview_result.get('preview_id')
                     if isinstance(preview_id, str):
@@ -312,6 +320,8 @@ async def send_message(
                         revision_token = preview_result.get('revision_token')
                         if isinstance(revision_token, str):
                             outcome.session.revision_token = revision_token
+                        if bool(getattr(outcome.session.metadata, 'awaiting_preview_fix', False)):
+                            setattr(outcome.session.metadata, 'awaiting_preview_fix', False)
                         artifact = _build_preview_artifact(outcome.session, preview_result)
                         if artifact is not None:
                             outcome.session.artifacts.append(artifact)
@@ -584,23 +594,127 @@ async def commit_session(
 ) -> dict:
     store, agent_service = await _get_agent_runtime_async()
     session = await _get_session_or_404_async(agent_service, session_id)
+    trace_id = request.headers.get('X-Trace-Id') or str(uuid4())
+    started_at = perf_counter()
 
     preview_id = payload.preview_id or session.latest_preview_id
     if not preview_id:
+        log_event(
+            logger,
+            'session_commit_failed',
+            settings=settings,
+            level=logging.WARNING,
+            trace_id=trace_id,
+            session_id=session.session_id,
+            roadmap_id=session.roadmap_id,
+            reason='missing_preview_id',
+        )
         return {
             'session_id': session.session_id,
             'error': 'Missing preview_id. Run /preview first or pass preview_id explicitly.',
         }
 
-    commit_result = await _nest_client.commit(
-        roadmap_id=session.roadmap_id,
-        payload={
-            'preview_id': preview_id,
-            'base_revision': payload.base_revision or session.base_revision,
-            'revision_token': payload.revision_token or session.revision_token,
-        },
-        auth_header=request.headers.get('Authorization'),
-    )
+    auth_header = request.headers.get('Authorization')
+    base_revision = payload.base_revision or session.base_revision
+    revision_token = payload.revision_token or session.revision_token
+
+    def _build_commit_payload(selected_preview_id: str) -> dict:
+        return {
+            'preview_id': selected_preview_id,
+            'base_revision': base_revision,
+            'revision_token': revision_token,
+        }
+
+    self_heal_attempted = False
+    self_heal_succeeded = False
+    commit_preview_id = preview_id
+
+    try:
+        commit_result = await _nest_client.commit(
+            roadmap_id=session.roadmap_id,
+            payload=_build_commit_payload(commit_preview_id),
+            auth_header=auth_header,
+            trace_id=trace_id,
+        )
+    except HTTPException as exc:
+        normalized = _normalize_artifact_preview_error(exc)
+        if not _is_preview_not_found_error(normalized):
+            raise
+
+        self_heal_attempted = True
+        log_event(
+            logger,
+            'session_commit_self_heal_attempted',
+            settings=settings,
+            level=logging.WARNING,
+            trace_id=trace_id,
+            session_id=session.session_id,
+            roadmap_id=session.roadmap_id,
+            preview_id=commit_preview_id,
+            latest_preview_id=session.latest_preview_id,
+            reason='preview_not_found',
+        )
+
+        if (
+            payload.preview_id
+            and session.latest_preview_id
+            and payload.preview_id != session.latest_preview_id
+        ):
+            log_event(
+                logger,
+                'session_commit_self_heal_blocked',
+                settings=settings,
+                level=logging.WARNING,
+                trace_id=trace_id,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                requested_preview_id=payload.preview_id,
+                latest_preview_id=session.latest_preview_id,
+                reason='preview_mismatch_requires_repreview',
+            )
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    'code': 'STALE_PREVIEW_REFERENCE',
+                    'message': (
+                        'Selected preview is stale. Please regenerate preview for current staged edits '
+                        'and apply again.'
+                    ),
+                },
+            )
+
+        if not session.operations:
+            raise exc
+
+        regenerated_preview = await _nest_client.preview(
+            roadmap_id=session.roadmap_id,
+            payload={
+                'base_revision': session.base_revision,
+                'revision_token': session.revision_token,
+                'operations': [
+                    op.model_dump(exclude_none=True) for op in session.operations
+                ],
+            },
+            auth_header=auth_header,
+            trace_id=trace_id,
+        )
+        regenerated_preview_id = regenerated_preview.get('preview_id')
+        regenerated_revision_token = regenerated_preview.get('revision_token')
+        if not isinstance(regenerated_preview_id, str):
+            raise exc
+        session.latest_preview_id = regenerated_preview_id
+        commit_preview_id = regenerated_preview_id
+        if isinstance(regenerated_revision_token, str):
+            session.revision_token = regenerated_revision_token
+            revision_token = regenerated_revision_token
+        await _run_store_call(store.update, session)
+        commit_result = await _nest_client.commit(
+            roadmap_id=session.roadmap_id,
+            payload=_build_commit_payload(commit_preview_id),
+            auth_header=auth_header,
+            trace_id=trace_id,
+        )
+        self_heal_succeeded = True
 
     committed_revision_token = commit_result.get('revision_token')
     if isinstance(committed_revision_token, str):
@@ -609,6 +723,22 @@ async def commit_session(
     session.metadata.pending_context_resolution = None
     session.metadata.pending_edit_context = None
     await _run_store_call(store.update, session)
+
+    log_event(
+        logger,
+        'session_commit_completed',
+        settings=settings,
+        trace_id=trace_id,
+        session_id=session.session_id,
+        roadmap_id=session.roadmap_id,
+        preview_id=commit_preview_id,
+        self_heal_attempted=self_heal_attempted,
+        self_heal_succeeded=self_heal_succeeded,
+        committed_revision_token=(
+            committed_revision_token if isinstance(committed_revision_token, str) else None
+        ),
+        elapsed_ms=int((perf_counter() - started_at) * 1000),
+    )
 
     return {
         'session_id': session.session_id,

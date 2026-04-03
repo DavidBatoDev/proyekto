@@ -42,6 +42,12 @@ export class RoadmapAiPreviewStoreService {
     await redis.del(this.previewKey(previewId));
   }
 
+  async getPreviewTtlSeconds(previewId: string): Promise<number | null> {
+    const redis = this.requireRedis();
+    const ttl = await redis.ttl(this.previewKey(previewId));
+    return typeof ttl === 'number' ? ttl : null;
+  }
+
   async setResolution<T extends Record<string, unknown>>(
     resolutionId: string,
     payload: T,
@@ -57,7 +63,9 @@ export class RoadmapAiPreviewStoreService {
     resolutionId: string,
   ): Promise<T | null> {
     const redis = this.requireRedis();
-    const value = await redis.get<string | null>(this.resolutionKey(resolutionId));
+    const value = await redis.get<string | null>(
+      this.resolutionKey(resolutionId),
+    );
     if (!value || typeof value !== 'string') return null;
     return JSON.parse(value) as T;
   }
