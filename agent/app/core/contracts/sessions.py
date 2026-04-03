@@ -44,15 +44,6 @@ class ResolverCandidate(BaseModel):
     matched_fields: list[str] | None = None
 
 
-class PendingDisambiguation(BaseModel):
-    kind: Literal['rename_node']
-    label: str
-    node_type: Literal['epic', 'feature', 'task'] | None = None
-    new_title: str | None = None
-    candidates: list[ResolverCandidate] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-
 class PendingContextResolution(BaseModel):
     kind: Literal['features_of_epic', 'tasks_of_feature', 'my_tasks']
     resolution_id: str
@@ -60,6 +51,31 @@ class PendingContextResolution(BaseModel):
     node_type: Literal['epic', 'feature', 'task'] | None = None
     option_choices: list[int] | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PendingEditResolvedReferences(BaseModel):
+    epic_id: str | None = None
+    epic_label: str | None = None
+    feature_id: str | None = None
+    feature_label: str | None = None
+    parent_id: str | None = None
+    parent_label: str | None = None
+
+
+class PendingEditContext(BaseModel):
+    intent_family: str
+    draft_operations: list[RoadmapOperation] = Field(default_factory=list)
+    required_fields: list[str] = Field(default_factory=list)
+    resolved_references: PendingEditResolvedReferences = Field(
+        default_factory=PendingEditResolvedReferences
+    )
+    confirmation_mode: Literal['awaiting_clarification', 'draft_ready'] = (
+        'awaiting_clarification'
+    )
+    source_user_message: str
+    default_title: str | None = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ActorContext(BaseModel):
@@ -74,8 +90,8 @@ class ActorContext(BaseModel):
 
 class SessionMetadata(BaseModel):
     model_config = ConfigDict(extra='allow')
-    pending_disambiguation: PendingDisambiguation | None = None
     pending_context_resolution: PendingContextResolution | None = None
+    pending_edit_context: PendingEditContext | None = None
     actor_context: ActorContext | None = None
 
 

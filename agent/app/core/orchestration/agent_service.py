@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import asyncio
 import logging
+from datetime import datetime
 from time import perf_counter
 from typing import Any
 import re
@@ -13,22 +14,16 @@ from app.core.config import get_settings
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import (
     ActorContext,
+    PendingEditContext,
+    PendingEditResolvedReferences,
     PendingContextResolution,
-    PendingDisambiguation,
-    ResolverCandidate,
 )
 from app.core.contracts.sessions import AgentSession, IntentType, ProviderUsed, ResponseMode
 from app.core.llm.client import LLMPlanner, PlanningResult
 from app.core.logging_utils import log_event
 from app.core.nest_client import NestRoadmapClient
 from app.core.orchestration.edit_resolver import (
-    build_ambiguity_message,
     extract_create_intent,
-    extract_mark_status_intent,
-    extract_move_intent,
-    extract_rename_intent,
-    parse_selection_index,
-    resolve_candidates,
 )
 from app.core.session_store import SessionStore
 
@@ -62,14 +57,12 @@ class MessagePlanningOutcome:
     actor_fetch_attempted: bool = False
     actor_fetch_skipped_reason: str | None = None
     actor_fetch_ms: int | None = None
-
-
-@dataclass
-class CandidateLookupResult:
-    status: str
-    selected: ResolverCandidate | None = None
-    candidates: list[ResolverCandidate] = field(default_factory=list)
-    bypass_reason: str | None = None
+    planner_mode: str | None = None
+    pending_edit_context_present: bool = False
+    edit_continuation_trigger: str | None = None
+    planner_schema_invalid_attempts: int | None = None
+    planner_repair_attempted: bool | None = None
+    deterministic_create_fastpath_skipped: bool = False
 
 
 class AgentService:
@@ -112,10 +105,14 @@ class AgentService:
         phase_timings['intent_classification_ms'] = int(
             (perf_counter() - classify_started) * 1000
         )
-        simple_edit_detected = self._is_simple_edit_turn(
-            session=session,
-            user_message=user_message,
-        )
+        pending_edit_context_present = session.metadata.pending_edit_context is not None
+        edit_continuation_trigger = self._detect_edit_continuation_trigger(user_message)
+        has_staged_operations = bool(session.operations)
+        if pending_edit_context_present or (
+            edit_continuation_trigger is not None and has_staged_operations
+        ):
+            preview_intent = 'roadmap_edit'
+        simple_edit_detected = preview_intent == 'roadmap_edit'
 
         actor_fetch_attempted = False
         actor_fetch_skipped_reason: str | None = None
@@ -151,47 +148,28 @@ class AgentService:
         route_lane: str | None = None
         fastpath_reason: str | None = None
         fastpath_bypass_reason: str | None = None
+        force_replace_operations = False
         llm_skipped_for_simple_edit = False
         invalid_operation_detected = False
         invalid_operation_reason: str | None = None
         invalid_operation_index: int | None = None
+        planner_mode = (
+            self._settings.agent_edit_planner_mode
+            if self._settings.agent_llm_first_edit_enabled
+            else 'legacy_tool_calling'
+        )
 
         if preview_intent == 'roadmap_edit':
-            fastpath_started = perf_counter()
-            fastpath_result, fastpath_bypass_reason = self._try_deterministic_edit_fastpath(
-                session=session,
+            planner_started = perf_counter()
+            planning = self._planner.plan(
                 user_message=user_message,
-                auth_header=auth_header,
-                trace_id=trace_id,
+                existing_operations=session.operations,
                 session_context=session_context,
             )
             phase_timings['provider_planning_ms'] = int(
-                (perf_counter() - fastpath_started) * 1000
+                (perf_counter() - planner_started) * 1000
             )
-            if fastpath_result is not None:
-                planning = fastpath_result
-                route_lane = 'deterministic_edit_fastpath'
-                fastpath_reason = fastpath_result.parse_mode
-                llm_skipped_for_simple_edit = simple_edit_detected
-            else:
-                planner_started = perf_counter()
-                planning = self._planner.plan(
-                    user_message=user_message,
-                    existing_operations=session.operations,
-                    session_context=session_context,
-                )
-                phase_timings['provider_planning_ms'] = int(
-                    (perf_counter() - planner_started) * 1000
-                )
-                if not simple_edit_detected:
-                    planning = self._apply_deterministic_resolution(
-                        session=session,
-                        user_message=user_message,
-                        planning=planning,
-                        auth_header=auth_header,
-                        trace_id=trace_id,
-                    )
-                route_lane = 'llm_edit_plan'
+            route_lane = 'llm_edit_plan'
         else:
             planner_started = perf_counter()
             planning = self._planner.plan(
@@ -203,6 +181,18 @@ class AgentService:
                 (perf_counter() - planner_started) * 1000
             )
             route_lane = 'llm_edit_plan' if planning.response_mode == 'edit_plan' else 'chat'
+
+        planning = self._apply_context_answer_output_guard(
+            planning=planning,
+            pending_edit_context_present=session.metadata.pending_edit_context is not None,
+        )
+        if (
+            (pending_edit_context_present or has_staged_operations)
+            and edit_continuation_trigger == 'correction'
+            and planning.response_mode == 'edit_plan'
+            and planning.operations
+        ):
+            force_replace_operations = True
 
         internal_metrics = session_context.get('_phase_metrics', {})
         if isinstance(internal_metrics, dict):
@@ -257,10 +247,26 @@ class AgentService:
                 ),
             )
 
+        self._sync_pending_edit_context(
+            session=session,
+            planning=planning,
+            user_message=user_message,
+            edit_continuation_trigger=edit_continuation_trigger,
+            trace_id=trace_id,
+        )
+
+        planner_schema_invalid_attempts = planning.planner_schema_invalid_attempts
+        planner_repair_attempted = planning.planner_repair_attempted
+        deterministic_create_fastpath_skipped = False
+        if self._settings.agent_llm_first_edit_enabled:
+            fastpath_reason = None
+            fastpath_bypass_reason = None
+            llm_skipped_for_simple_edit = False
+
         self._store.append_message(session, 'user', user_message)
 
         if planning.response_mode == 'edit_plan':
-            if replace:
+            if replace or force_replace_operations:
                 session.operations = operations
             else:
                 session.operations.extend(operations)
@@ -315,6 +321,12 @@ class AgentService:
             actor_fetch_attempted=actor_fetch_attempted,
             actor_fetch_skipped_reason=actor_fetch_skipped_reason,
             actor_fetch_ms=actor_fetch_ms,
+            planner_mode=planner_mode,
+            pending_edit_context_present=session.metadata.pending_edit_context is not None,
+            edit_continuation_trigger=edit_continuation_trigger,
+            planner_schema_invalid_attempts=planner_schema_invalid_attempts,
+            planner_repair_attempted=planner_repair_attempted,
+            deterministic_create_fastpath_skipped=deterministic_create_fastpath_skipped,
             phase_timings=phase_timings,
         )
 
@@ -346,507 +358,208 @@ class AgentService:
             actor_fetch_attempted=actor_fetch_attempted,
             actor_fetch_skipped_reason=actor_fetch_skipped_reason,
             actor_fetch_ms=actor_fetch_ms,
+            planner_mode=planner_mode,
+            pending_edit_context_present=session.metadata.pending_edit_context is not None,
+            edit_continuation_trigger=edit_continuation_trigger,
+            planner_schema_invalid_attempts=planner_schema_invalid_attempts,
+            planner_repair_attempted=planner_repair_attempted,
+            deterministic_create_fastpath_skipped=deterministic_create_fastpath_skipped,
         )
 
-    def _try_deterministic_edit_fastpath(
+    def _detect_edit_continuation_trigger(self, user_message: str) -> str | None:
+        normalized = user_message.strip().lower()
+        normalized = re.sub(r'[.!?,;:]+$', '', normalized).strip()
+        normalized = re.sub(r'\s+', ' ', normalized)
+        if re.fullmatch(
+            r"(?:ok|okay|yes|yep|proceed|go ahead|confirm|do it|let'?s do it)",
+            normalized,
+        ):
+            return 'confirm'
+        if re.fullmatch(r'(?:cancel|stop|never mind|nevermind|abort)', normalized):
+            return 'cancel'
+        if re.search(r'\b(i meant|instead|inside|under|in that|it should)\b', normalized):
+            return 'correction'
+        return None
+
+    def _infer_last_staged_create_title(self, session: AgentSession) -> str | None:
+        for operation in reversed(session.operations):
+            op_name = operation.op.value if hasattr(operation.op, 'value') else str(operation.op)
+            if op_name not in {'add_epic', 'add_feature', 'add_task'}:
+                continue
+            if isinstance(operation.data, dict):
+                title = operation.data.get('title')
+                if isinstance(title, str) and title.strip():
+                    return title.strip()
+        return None
+
+    def _set_pending_edit_context(
         self,
         *,
         session: AgentSession,
-        user_message: str,
-        auth_header: str | None,
+        context: PendingEditContext | None,
+        event: str,
         trace_id: str | None,
-        session_context: dict[str, Any],
-    ) -> tuple[PlanningResult | None, str | None]:
-        rename_intent = extract_rename_intent(user_message)
-        create_intent = extract_create_intent(user_message)
-        mark_status_intent = extract_mark_status_intent(user_message)
-        move_intent = extract_move_intent(user_message)
-
-        pending = session.metadata.pending_disambiguation
-        if pending is not None:
-            selected_index = parse_selection_index(user_message)
-            has_fresh_intent = any(
-                intent is not None
-                for intent in (
-                    rename_intent,
-                    create_intent,
-                    mark_status_intent,
-                    move_intent,
-                )
-            )
-            if selected_index is None and not has_fresh_intent:
-                return (
-                    PlanningResult(
-                        assistant_message=(
-                            'Please choose one of the listed options by number '
-                            '(for example, "1").'
-                        ),
-                        operations=[],
-                        parse_mode='deterministic_disambiguation_pending_selection',
-                        intent_type='roadmap_edit',
-                        response_mode='chat',
-                        preview_recommended=False,
-                        provider_used='rule_based',
-                        fallback_used=False,
-                        provider_error_code=None,
-                        route_lane='deterministic_edit_fastpath',
-                    ),
-                    None,
-                )
-            if selected_index is not None and not has_fresh_intent and not (
-                1 <= selected_index <= len(pending.candidates)
-            ):
-                return (
-                    PlanningResult(
-                        assistant_message=(
-                            f'That option is out of range. Please reply with a number '
-                            f'between 1 and {len(pending.candidates)}.'
-                        ),
-                        operations=[],
-                        parse_mode='deterministic_disambiguation_selection_out_of_range',
-                        intent_type='roadmap_edit',
-                        response_mode='chat',
-                        preview_recommended=False,
-                        provider_used='rule_based',
-                        fallback_used=False,
-                        provider_error_code=None,
-                        route_lane='deterministic_edit_fastpath',
-                    ),
-                    None,
-                )
-            if selected_index is not None and not has_fresh_intent:
-                selected = pending.candidates[selected_index - 1]
-                if pending.kind != 'rename_node' or not pending.new_title:
-                    return None, 'pending_disambiguation_unsupported_kind'
-                session.metadata.pending_disambiguation = None
-                return (
-                    PlanningResult(
-                        assistant_message=(
-                            f'Great, I will rename {selected.type} "{selected.title}" '
-                            f'to "{pending.new_title}".'
-                        ),
-                        operations=[
-                            RoadmapOperation(
-                                op='update_node',
-                                node_id=selected.id,
-                                patch={'title': pending.new_title},
-                            )
-                        ],
-                        parse_mode='deterministic_disambiguation_selected',
-                        intent_type='roadmap_edit',
-                        response_mode='edit_plan',
-                        preview_recommended=True,
-                        provider_used='rule_based',
-                        fallback_used=False,
-                        provider_error_code=None,
-                        route_lane='deterministic_edit_fastpath',
-                    ),
-                    None,
-                )
-
-        if rename_intent is not None:
-            candidate_lookup = self._resolve_unique_candidate(
-                session=session,
-                trace_id=trace_id,
-                auth_header=auth_header,
-                session_context=session_context,
-                label=rename_intent.label,
-                node_type=rename_intent.node_type,
-            )
-            if candidate_lookup.bypass_reason is not None:
-                return None, candidate_lookup.bypass_reason
-            candidate = candidate_lookup.selected
-            if candidate is None:
-                if candidate_lookup.status == 'ambiguous':
-                    session.metadata.pending_disambiguation = PendingDisambiguation(
-                        kind='rename_node',
-                        label=rename_intent.label,
-                        node_type=rename_intent.node_type,
-                        new_title=rename_intent.new_title,
-                        candidates=candidate_lookup.candidates[:5],
-                    )
-                    return (
-                        PlanningResult(
-                            assistant_message=build_ambiguity_message(
-                                rename_intent.label,
-                                candidate_lookup.candidates[:5],
-                            ),
-                            operations=[],
-                            parse_mode='deterministic_fastpath_disambiguation',
-                            intent_type='roadmap_edit',
-                            response_mode='edit_plan',
-                            preview_recommended=False,
-                            provider_used='rule_based',
-                            fallback_used=False,
-                            provider_error_code=None,
-                            route_lane='deterministic_edit_fastpath',
-                        ),
-                        None,
-                    )
-                session.metadata.pending_disambiguation = None
-                return None, 'rename_target_ambiguous_or_not_found'
-            return (
-                PlanningResult(
-                    assistant_message=(
-                        f'Rename {candidate.type} "{candidate.title}" '
-                        f'to "{rename_intent.new_title}".'
-                    ),
-                    operations=[
-                        RoadmapOperation(
-                            op='update_node',
-                            node_id=candidate.id,
-                            patch={'title': rename_intent.new_title},
-                        )
-                    ],
-                    parse_mode='deterministic_fastpath_rename',
-                    intent_type='roadmap_edit',
-                    response_mode='edit_plan',
-                    preview_recommended=True,
-                    provider_used='rule_based',
-                    fallback_used=False,
-                    provider_error_code=None,
-                    route_lane='deterministic_edit_fastpath',
-                ),
-                None,
-            )
-
-        if create_intent is not None:
-            if create_intent.node_type == 'epic':
-                duplicate_lookup = self._resolve_unique_candidate(
-                    session=session,
-                    trace_id=trace_id,
-                    auth_header=auth_header,
-                    session_context=session_context,
-                    label=create_intent.title,
-                    node_type='epic',
-                )
-                if duplicate_lookup.bypass_reason is not None:
-                    return None, duplicate_lookup.bypass_reason
-                duplicate_candidate = duplicate_lookup.selected
-                if (
-                    not create_intent.allow_duplicate
-                    and (
-                        duplicate_candidate is not None
-                        or (
-                            duplicate_lookup.status == 'ambiguous'
-                            and len(duplicate_lookup.candidates) > 0
-                        )
-                    )
-                ):
-                    if duplicate_candidate is not None:
-                        conflict_context = f'existing epic "{duplicate_candidate.title}"'
-                    else:
-                        conflict_context = 'multiple similar epics'
-                    return (
-                        PlanningResult(
-                            assistant_message=(
-                                f'I found {conflict_context}. '
-                                f'If you want another one with the same title, reply with: '
-                                f'Create duplicate epic "{create_intent.title}". '
-                                'Otherwise tell me a different epic title.'
-                            ),
-                            operations=[],
-                            parse_mode='deterministic_fastpath_create_epic_duplicate_confirm',
-                            intent_type='roadmap_edit',
-                            response_mode='chat',
-                            preview_recommended=False,
-                            provider_used='rule_based',
-                            fallback_used=False,
-                            provider_error_code=None,
-                            route_lane='deterministic_edit_fastpath',
-                    ),
-                    None,
-                )
-                session.metadata.pending_disambiguation = None
-                return (
-                    PlanningResult(
-                        assistant_message=(
-                            f'Create a new epic titled "{create_intent.title}" '
-                            'at the roadmap root.'
-                        ),
-                        operations=[
-                            RoadmapOperation(
-                                op='add_epic',
-                                data={'title': create_intent.title},
-                            )
-                        ],
-                        parse_mode='deterministic_fastpath_create_epic',
-                        intent_type='roadmap_edit',
-                        response_mode='edit_plan',
-                        preview_recommended=True,
-                        provider_used='rule_based',
-                        fallback_used=False,
-                        provider_error_code=None,
-                        route_lane='deterministic_edit_fastpath',
-                    ),
-                    None,
-                )
-
-            expected_parent_type = (
-                'epic' if create_intent.node_type == 'feature' else 'feature'
-            )
-            if create_intent.parent_label is None:
-                return None, f'create_{create_intent.node_type}_parent_missing'
-            parent_lookup = self._resolve_unique_candidate(
-                session=session,
-                trace_id=trace_id,
-                auth_header=auth_header,
-                session_context=session_context,
-                label=create_intent.parent_label,
-                node_type=expected_parent_type,
-            )
-            if parent_lookup.bypass_reason is not None:
-                return None, parent_lookup.bypass_reason
-            parent = parent_lookup.selected
-            if parent is None:
-                return None, f'create_{create_intent.node_type}_parent_ambiguous_or_not_found'
-
-            return (
-                PlanningResult(
-                    assistant_message=(
-                        f'Create a new {create_intent.node_type} "{create_intent.title}" '
-                        f'under {parent.type} "{parent.title}".'
-                    ),
-                    operations=[
-                        RoadmapOperation(
-                            op=f'add_{create_intent.node_type}',
-                            parent_id=parent.id,
-                            data={'title': create_intent.title},
-                        )
-                    ],
-                    parse_mode=f'deterministic_fastpath_create_{create_intent.node_type}',
-                    intent_type='roadmap_edit',
-                    response_mode='edit_plan',
-                    preview_recommended=True,
-                    provider_used='rule_based',
-                    fallback_used=False,
-                    provider_error_code=None,
-                    route_lane='deterministic_edit_fastpath',
-                    ),
-                    None,
-                )
-
-        if mark_status_intent is not None:
-            candidate_lookup = self._resolve_unique_candidate(
-                session=session,
-                trace_id=trace_id,
-                auth_header=auth_header,
-                session_context=session_context,
-                label=mark_status_intent.label,
-                node_type=mark_status_intent.node_type,
-            )
-            if candidate_lookup.bypass_reason is not None:
-                return None, candidate_lookup.bypass_reason
-            candidate = candidate_lookup.selected
-            if candidate is None:
-                return None, 'status_target_ambiguous_or_not_found'
-            return (
-                PlanningResult(
-                    assistant_message=(
-                        f'Set {candidate.type} "{candidate.title}" status to "{mark_status_intent.status}".'
-                    ),
-                    operations=[
-                        RoadmapOperation(
-                            op='update_node',
-                            node_id=candidate.id,
-                            patch={'status': mark_status_intent.status},
-                        )
-                    ],
-                    parse_mode='deterministic_fastpath_mark_status',
-                    intent_type='roadmap_edit',
-                    response_mode='edit_plan',
-                    preview_recommended=True,
-                    provider_used='rule_based',
-                    fallback_used=False,
-                    provider_error_code=None,
-                    route_lane='deterministic_edit_fastpath',
-                    ),
-                    None,
-                )
-
-        if move_intent is not None:
-            source_lookup = self._resolve_unique_candidate(
-                session=session,
-                trace_id=trace_id,
-                auth_header=auth_header,
-                session_context=session_context,
-                label=move_intent.label,
-                node_type=move_intent.node_type,
-            )
-            if source_lookup.bypass_reason is not None:
-                return None, source_lookup.bypass_reason
-            source = source_lookup.selected
-            if source is None:
-                return None, 'move_source_ambiguous_or_not_found'
-            expected_parent_type = self._expected_parent_type_for_move(source.type)
-            if expected_parent_type is None:
-                return None, 'move_source_type_unsupported'
-            if (
-                move_intent.target_node_type is not None
-                and move_intent.target_node_type != expected_parent_type
-            ):
-                return None, 'move_target_type_mismatch'
-            target_lookup = self._resolve_unique_candidate(
-                session=session,
-                trace_id=trace_id,
-                auth_header=auth_header,
-                session_context=session_context,
-                label=move_intent.target_label,
-                node_type=expected_parent_type,
-            )
-            if target_lookup.bypass_reason is not None:
-                return None, target_lookup.bypass_reason
-            target = target_lookup.selected
-            if target is None:
-                return None, 'move_target_ambiguous_or_not_found'
-            return (
-                PlanningResult(
-                    assistant_message=(
-                        f'Move {source.type} "{source.title}" under '
-                        f'{target.type} "{target.title}".'
-                    ),
-                    operations=[
-                        RoadmapOperation(
-                            op='move_node',
-                            node_id=source.id,
-                            new_parent_id=target.id,
-                        )
-                    ],
-                    parse_mode='deterministic_fastpath_move',
-                    intent_type='roadmap_edit',
-                    response_mode='edit_plan',
-                    preview_recommended=True,
-                    provider_used='rule_based',
-                    fallback_used=False,
-                    provider_error_code=None,
-                    route_lane='deterministic_edit_fastpath',
-                ),
-                None,
-            )
-
-        if self._looks_like_create_request(user_message):
-            return None, 'create_epic_title_parse_failed'
-        return None, 'not_simple_edit_intent'
-
-    def _resolve_unique_candidate(
-        self,
-        *,
-        session: AgentSession,
-        trace_id: str | None,
-        auth_header: str | None,
-        session_context: dict[str, Any],
-        label: str,
-        node_type: str | None,
-    ) -> CandidateLookupResult:
-        roadmap_id = session.roadmap_id.strip()
-        if not roadmap_id or not label.strip():
-            return CandidateLookupResult(status='not_found')
-        started = perf_counter()
-        search_sla_ms = float(self._settings.deterministic_fastpath_search_sla_ms)
-        try:
-            search_result = self._run_async_call(
-                self._nest_client.context_search(
-                    roadmap_id=roadmap_id,
-                    query=label,
-                    node_type=node_type,
-                    limit=10,
-                    auth_header=auth_header,
-                    trace_id=trace_id,
-                )
-            )
-        except Exception as exc:
-            self._logger.warning('Deterministic fastpath resolver search failed: %s', exc)
-            return CandidateLookupResult(
-                status='error',
-                bypass_reason='resolver_search_failed',
-            )
-        finally:
-            elapsed_ms = (perf_counter() - started) * 1000
-            self._record_context_tool_timing(
-                session_context=session_context,
-                tool_name='resolve_node_reference',
-                elapsed_ms=elapsed_ms,
-                http_call_ms=elapsed_ms,
-            )
-        if elapsed_ms > search_sla_ms:
-            log_event(
-                self._logger,
-                'deterministic_fastpath_search_slow',
-                settings=self._settings,
-                level=logging.WARNING,
-                trace_id=trace_id,
-                roadmap_id=roadmap_id,
-                elapsed_ms=int(elapsed_ms),
-                sla_ms=self._settings.deterministic_fastpath_search_sla_ms,
-                label=label,
-                node_type=node_type,
-            )
-
-        raw_matches = search_result.get('matches', [])
-        if not isinstance(raw_matches, list):
-            raw_matches = []
-        resolution = resolve_candidates(
-            raw_matches,
-            label=label,
-            node_type=node_type,
-        )
-        top_score = resolution.candidates[0].confidence if resolution.candidates else None
-        second_score = (
-            resolution.candidates[1].confidence if len(resolution.candidates) > 1 else None
-        )
-        score_margin = (
-            round((top_score or 0) - (second_score or 0), 4)
-            if top_score is not None and second_score is not None
-            else None
-        )
+    ) -> None:
+        session.metadata.pending_edit_context = context
         log_event(
             self._logger,
-            'resolver_result',
+            'pending_edit_context_event',
             settings=self._settings,
             trace_id=trace_id,
-            roadmap_id=roadmap_id,
-            status=resolution.status,
-            candidates_count=len(resolution.candidates),
-            top_score=top_score,
-            second_score=second_score,
-            score_margin=score_margin,
-            top_matched_fields=(
-                resolution.candidates[0].matched_fields if resolution.candidates else None
-            ),
-        )
-        if resolution.status == 'unique' and resolution.selected is not None:
-            session.metadata.pending_disambiguation = None
-            return CandidateLookupResult(
-                status='unique',
-                selected=resolution.selected,
-                candidates=resolution.candidates,
-            )
-        return CandidateLookupResult(
-            status=resolution.status,
-            candidates=resolution.candidates,
+            roadmap_id=session.roadmap_id,
+            pending_edit_context_event=event,
+            pending_edit_context_present=context is not None,
+            intent_family=(context.intent_family if context is not None else None),
+            confirmation_mode=(context.confirmation_mode if context is not None else None),
         )
 
-    def _is_simple_edit_turn(self, *, session: AgentSession, user_message: str) -> bool:
-        if (
-            session.metadata.pending_disambiguation is not None
-            and parse_selection_index(user_message) is not None
-        ):
+    def _sync_pending_edit_context(
+        self,
+        *,
+        session: AgentSession,
+        planning: PlanningResult,
+        user_message: str,
+        edit_continuation_trigger: str | None,
+        trace_id: str | None,
+    ) -> None:
+        if edit_continuation_trigger == 'cancel':
+            if session.metadata.pending_edit_context is not None:
+                self._set_pending_edit_context(
+                    session=session,
+                    context=None,
+                    event='cleared',
+                    trace_id=trace_id,
+                )
+            return
+
+        if planning.intent_type != 'roadmap_edit':
+            return
+        if planning.response_mode == 'edit_plan' and planning.operations:
+            if session.metadata.pending_edit_context is not None:
+                self._set_pending_edit_context(
+                    session=session,
+                    context=None,
+                    event='cleared',
+                    trace_id=trace_id,
+                )
+            return
+
+        if planning.response_mode != 'chat':
+            return
+
+        clarifier_action = planning.clarifier_action
+        if clarifier_action not in {'ask_clarifier', 'propose_safe_default', 'cannot_proceed'}:
+            return
+
+        create_intent = extract_create_intent(user_message)
+        existing = session.metadata.pending_edit_context
+        resolved_refs = (
+            existing.resolved_references
+            if existing is not None
+            else PendingEditResolvedReferences()
+        )
+        default_title = (
+            create_intent.title
+            if create_intent is not None
+            else (existing.default_title if existing is not None else None)
+            or self._infer_last_staged_create_title(session)
+        )
+        draft_operations: list[RoadmapOperation] = []
+        required_fields: list[str] = []
+        confirmation_mode: str = 'awaiting_clarification'
+        intent_family = (
+            f'create_{create_intent.node_type}'
+            if create_intent is not None
+            else (existing.intent_family if existing is not None else 'roadmap_edit_clarifier')
+        )
+
+        if clarifier_action == 'propose_safe_default':
+            if create_intent is not None and create_intent.node_type == 'epic' and default_title:
+                draft_operations = [
+                    RoadmapOperation(
+                        op='add_epic',
+                        data={'title': default_title},
+                    )
+                ]
+                confirmation_mode = 'draft_ready'
+            else:
+                confirmation_mode = 'awaiting_clarification'
+        else:
+            if create_intent is not None and create_intent.node_type in {'feature', 'task'}:
+                required_fields.append('parent')
+            if not default_title and create_intent is not None:
+                required_fields.append('title')
+
+        context = PendingEditContext(
+            intent_family=intent_family,
+            draft_operations=draft_operations,
+            required_fields=required_fields,
+            resolved_references=resolved_refs,
+            confirmation_mode=confirmation_mode,  # type: ignore[arg-type]
+            source_user_message=user_message,
+            default_title=default_title,
+            created_at=(existing.created_at if existing is not None else datetime.utcnow()),
+            updated_at=datetime.utcnow(),
+        )
+        self._set_pending_edit_context(
+            session=session,
+            context=context,
+            event='updated' if existing is not None or edit_continuation_trigger else 'set',
+            trace_id=trace_id,
+        )
+
+    def _apply_context_answer_output_guard(
+        self,
+        *,
+        planning: PlanningResult,
+        pending_edit_context_present: bool,
+    ) -> PlanningResult:
+        if planning.response_mode != 'chat':
+            return planning
+        parse_mode = (planning.parse_mode or '').lower()
+        if 'context_answer' not in parse_mode and parse_mode != 'openai_context_tools':
+            return planning
+        if not self._looks_like_pseudo_operation_payload(planning.assistant_message):
+            return planning
+        return PlanningResult(
+            assistant_message=(
+                'I can continue this as an edit plan, but I need one clear command. '
+                'Please state the exact change in one line (or say "cancel").'
+            ),
+            operations=[],
+            parse_mode='deterministic_context_answer_handoff',
+            intent_type='roadmap_edit' if pending_edit_context_present else planning.intent_type,
+            response_mode='chat',
+            preview_recommended=False,
+            provider_used='rule_based',
+            fallback_used=False,
+            provider_error_code='context_answer_operation_payload_blocked',
+            tokens_input=planning.tokens_input,
+            tokens_output=planning.tokens_output,
+            tokens_total=planning.tokens_total,
+            route_lane=planning.route_lane,
+            fastpath_bypass_reason=planning.fastpath_bypass_reason,
+            clarifier_action='ask_clarifier',
+            clarifier_reason='context_answer_operation_payload_blocked',
+            clarifier_options=['Proceed with edit planning', 'Change target details', 'Cancel'],
+        )
+
+    def _looks_like_pseudo_operation_payload(self, assistant_message: str) -> bool:
+        if not assistant_message:
+            return False
+        text = assistant_message.lower()
+        pseudo_markers = (
+            'planned operations',
+            "won't be applied",
+            'parent_id',
+            '"action":',
+            '"type":',
+        )
+        if any(marker in text for marker in pseudo_markers):
             return True
-        if extract_rename_intent(user_message) is not None:
-            return True
-        if extract_mark_status_intent(user_message) is not None:
-            return True
-        if extract_move_intent(user_message) is not None:
-            return True
-        if extract_create_intent(user_message) is not None:
+        if re.search(r'^\s*\[\s*\{', assistant_message.strip()):
             return True
         return False
-
-    def _looks_like_create_request(self, user_message: str) -> bool:
-        lowered = user_message.lower()
-        has_create_verb = bool(re.search(r'\b(?:create|add)\b', lowered))
-        has_create_type = bool(re.search(r'\b(?:epic|feature|task)\b', lowered))
-        return has_create_verb and has_create_type
 
     def _should_fetch_actor_context(
         self,
@@ -878,38 +591,6 @@ class AgentService:
             r'\bwhat\s+can\s+i\b',
         )
         return any(re.search(pattern, lowered) for pattern in actor_required_patterns)
-
-    def _record_context_tool_timing(
-        self,
-        *,
-        session_context: dict[str, Any],
-        tool_name: str,
-        elapsed_ms: float,
-        http_call_ms: float = 0.0,
-    ) -> None:
-        metrics = session_context.setdefault('_phase_metrics', {})
-        if not isinstance(metrics, dict):
-            return
-        current_total = float(metrics.get('context_tools_ms') or 0.0)
-        metrics['context_tools_ms'] = current_total + float(elapsed_ms)
-        current_http_total = float(metrics.get('context_tools_http_call_ms') or 0.0)
-        metrics['context_tools_http_call_ms'] = current_http_total + float(http_call_ms)
-        current_exec_overhead = float(metrics.get('context_tools_executor_overhead_ms') or 0.0)
-        metrics['context_tools_executor_overhead_ms'] = (
-            current_exec_overhead + max(float(elapsed_ms) - float(http_call_ms), 0.0)
-        )
-        by_name = metrics.get('context_tools_by_name')
-        if not isinstance(by_name, dict):
-            by_name = {}
-            metrics['context_tools_by_name'] = by_name
-        by_name[tool_name] = float(by_name.get(tool_name) or 0.0) + float(elapsed_ms)
-
-    def _expected_parent_type_for_move(self, source_type: str | None) -> str | None:
-        if source_type == 'feature':
-            return 'epic'
-        if source_type == 'task':
-            return 'feature'
-        return None
 
     def _validate_operation_contract(
         self,
@@ -1121,192 +802,6 @@ class AgentService:
             )
         setattr(session.metadata, actor_refresh_failures_key, 0)
 
-    def _apply_deterministic_resolution(
-        self,
-        *,
-        session: AgentSession,
-        user_message: str,
-        planning: PlanningResult,
-        auth_header: str | None,
-        trace_id: str | None,
-    ) -> PlanningResult:
-        if planning.intent_type != 'roadmap_edit':
-            return planning
-
-        if planning.operations:
-            session.metadata.pending_disambiguation = None
-            return planning
-
-        fallback_used = bool(
-            planning.provider_error_code is not None
-            or planning.provider_used != 'rule_based'
-            or planning.fallback_used
-        )
-        rename_intent = extract_rename_intent(user_message)
-        roadmap_id = session.roadmap_id.strip()
-
-        if rename_intent is not None and roadmap_id:
-            log_event(
-                self._logger,
-                'resolver_attempt',
-                settings=self._settings,
-                trace_id=trace_id,
-                roadmap_id=roadmap_id,
-                label=rename_intent.label,
-                node_type=rename_intent.node_type,
-            )
-            try:
-                search_result = self._run_async_call(
-                    self._nest_client.context_search(
-                        roadmap_id=roadmap_id,
-                        query=rename_intent.label,
-                        node_type=rename_intent.node_type,
-                        limit=20,
-                        auth_header=auth_header,
-                    )
-                )
-            except Exception as exc:
-                self._logger.warning('Deterministic resolver search failed: %s', exc)
-                return planning
-
-            raw_matches = search_result.get('matches', [])
-            if not isinstance(raw_matches, list):
-                raw_matches = []
-            resolution = resolve_candidates(
-                raw_matches,
-                label=rename_intent.label,
-                node_type=rename_intent.node_type,
-            )
-            top_score = resolution.candidates[0].confidence if resolution.candidates else None
-            second_score = (
-                resolution.candidates[1].confidence
-                if len(resolution.candidates) > 1
-                else None
-            )
-            score_margin = (
-                round((top_score or 0) - (second_score or 0), 4)
-                if top_score is not None and second_score is not None
-                else None
-            )
-            log_event(
-                self._logger,
-                'resolver_result',
-                settings=self._settings,
-                trace_id=trace_id,
-                roadmap_id=roadmap_id,
-                status=resolution.status,
-                candidates_count=len(resolution.candidates),
-                top_score=top_score,
-                second_score=second_score,
-                score_margin=score_margin,
-                top_matched_fields=(
-                    resolution.candidates[0].matched_fields
-                    if resolution.candidates
-                    else None
-                ),
-            )
-            if resolution.status == 'unique' and resolution.selected is not None:
-                session.metadata.pending_disambiguation = None
-                operation = RoadmapOperation(
-                    op='update_node',
-                    node_id=resolution.selected.id,
-                    patch={'title': rename_intent.new_title},
-                )
-                return PlanningResult(
-                    assistant_message=(
-                        f'Rename {resolution.selected.type} "{resolution.selected.title}" '
-                        f'to "{rename_intent.new_title}".'
-                    ),
-                    operations=[operation],
-                    parse_mode='deterministic_resolver_rename',
-                    intent_type='roadmap_edit',
-                    response_mode='edit_plan',
-                    preview_recommended=True,
-                    provider_used='rule_based',
-                    fallback_used=fallback_used,
-                    provider_error_code=planning.provider_error_code,
-                    tokens_input=planning.tokens_input,
-                    tokens_output=planning.tokens_output,
-                    tokens_total=planning.tokens_total,
-                )
-
-            if resolution.status == 'ambiguous':
-                session.metadata.pending_disambiguation = PendingDisambiguation(
-                    kind='rename_node',
-                    label=rename_intent.label,
-                    node_type=rename_intent.node_type,
-                    new_title=rename_intent.new_title,
-                    candidates=resolution.candidates[:5],
-                )
-                return PlanningResult(
-                    assistant_message=build_ambiguity_message(
-                        rename_intent.label,
-                        resolution.candidates,
-                    ),
-                    operations=[],
-                    parse_mode='deterministic_resolver_disambiguation',
-                    intent_type='roadmap_edit',
-                    response_mode='edit_plan',
-                    preview_recommended=False,
-                    provider_used='rule_based',
-                    fallback_used=fallback_used,
-                    provider_error_code=planning.provider_error_code,
-                    tokens_input=planning.tokens_input,
-                    tokens_output=planning.tokens_output,
-                    tokens_total=planning.tokens_total,
-                )
-
-            session.metadata.pending_disambiguation = None
-            return PlanningResult(
-                assistant_message=(
-                    f'I could not find a unique roadmap node for "{rename_intent.label}". '
-                    'Please add more context (for example parent epic/feature) and I will resolve it.'
-                ),
-                operations=[],
-                parse_mode='deterministic_resolver_not_found',
-                intent_type='roadmap_edit',
-                response_mode='edit_plan',
-                preview_recommended=False,
-                provider_used='rule_based',
-                fallback_used=fallback_used,
-                provider_error_code=planning.provider_error_code,
-                tokens_input=planning.tokens_input,
-                tokens_output=planning.tokens_output,
-                tokens_total=planning.tokens_total,
-            )
-
-        pending = session.metadata.pending_disambiguation
-        if pending is not None:
-            selected_index = parse_selection_index(user_message)
-            if selected_index is not None and 1 <= selected_index <= len(pending.candidates):
-                selected = pending.candidates[selected_index - 1]
-                if pending.kind == 'rename_node' and pending.new_title:
-                    session.metadata.pending_disambiguation = None
-                    operation = RoadmapOperation(
-                        op='update_node',
-                        node_id=selected.id,
-                        patch={'title': pending.new_title},
-                    )
-                    return PlanningResult(
-                        assistant_message=(
-                            f'Great, I will rename {selected.type} "{selected.title}" '
-                            f'to "{pending.new_title}".'
-                        ),
-                        operations=[operation],
-                        parse_mode='deterministic_disambiguation_selected',
-                        intent_type='roadmap_edit',
-                        response_mode='edit_plan',
-                        preview_recommended=True,
-                        provider_used='rule_based',
-                        fallback_used=fallback_used,
-                        provider_error_code=planning.provider_error_code,
-                        tokens_input=planning.tokens_input,
-                        tokens_output=planning.tokens_output,
-                        tokens_total=planning.tokens_total,
-                    )
-
-        return planning
-
     def _run_async_call(self, coro: Any) -> dict[str, Any]:
         try:
             asyncio.get_running_loop()
@@ -1355,6 +850,14 @@ class AgentService:
                     exclude_none=True,
                 )
                 if session.metadata.pending_context_resolution is not None
+                else None
+            ),
+            'pending_edit_context': (
+                session.metadata.pending_edit_context.model_dump(
+                    mode='json',
+                    exclude_none=True,
+                )
+                if session.metadata.pending_edit_context is not None
                 else None
             ),
         }

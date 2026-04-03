@@ -33,16 +33,33 @@ class Settings(BaseSettings):
     redis_session_key_prefix: str = Field(default='roadmap:ai:session', alias='REDIS_SESSION_KEY_PREFIX')
     max_operations_per_request: int = Field(default=25, alias='MAX_OPERATIONS_PER_REQUEST')
     max_chat_history_messages: int = Field(default=8, alias='MAX_CHAT_HISTORY_MESSAGES')
-    max_edit_tool_turns: int = Field(default=6, alias='MAX_EDIT_TOOL_TURNS')
+    max_edit_tool_turns: int = Field(default=4, alias='MAX_EDIT_TOOL_TURNS')
     max_context_tool_turns: int = Field(default=4, alias='MAX_CONTEXT_TOOL_TURNS')
     max_discovery_tool_calls: int = Field(default=4, alias='MAX_DISCOVERY_TOOL_CALLS')
     max_repeated_tool_calls_per_signature: int = Field(
         default=2,
         alias='MAX_REPEATED_TOOL_CALLS_PER_SIGNATURE',
     )
+    agent_llm_first_edit_enabled: bool = Field(
+        default=True,
+        alias='AGENT_LLM_FIRST_EDIT_ENABLED',
+    )
+    agent_edit_planner_repair_retries: int = Field(
+        default=1,
+        alias='AGENT_EDIT_PLANNER_REPAIR_RETRIES',
+    )
+    agent_edit_planner_max_attempts: int = Field(
+        default=2,
+        alias='AGENT_EDIT_PLANNER_MAX_ATTEMPTS',
+    )
+    agent_edit_planner_mode: str = Field(
+        default='llm_first_edit_v2',
+        alias='AGENT_EDIT_PLANNER_MODE',
+    )
     deterministic_fastpath_search_sla_ms: int = Field(
         default=2000,
         alias='DETERMINISTIC_FASTPATH_SEARCH_SLA_MS',
+        description='Deprecated in LLM-first edit mode; retained for backward compatibility.',
     )
     inline_preview_max_bytes: int = Field(
         default=262144,
@@ -70,6 +87,24 @@ class Settings(BaseSettings):
         if normalized not in {'auto', 'on', 'off'}:
             return 'auto'
         return normalized
+
+    @field_validator('agent_edit_planner_repair_retries')
+    @classmethod
+    def normalize_agent_edit_planner_repair_retries(cls, value: int) -> int:
+        if value < 0:
+            return 0
+        if value > 3:
+            return 3
+        return value
+
+    @field_validator('agent_edit_planner_max_attempts')
+    @classmethod
+    def normalize_agent_edit_planner_max_attempts(cls, value: int) -> int:
+        if value < 1:
+            return 1
+        if value > 4:
+            return 4
+        return value
 
 
 @lru_cache

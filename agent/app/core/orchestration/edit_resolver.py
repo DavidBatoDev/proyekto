@@ -18,28 +18,6 @@ _SELECTION_WORDS: dict[str, int] = {
 
 
 @dataclass
-class RenameIntent:
-    label: str
-    new_title: str
-    node_type: NodeKind | None = None
-
-
-@dataclass
-class MarkStatusIntent:
-    label: str
-    status: str
-    node_type: NodeKind | None = None
-
-
-@dataclass
-class MoveIntent:
-    label: str
-    target_label: str
-    node_type: NodeKind | None = None
-    target_node_type: NodeKind | None = None
-
-
-@dataclass
 class CreateIntent:
     node_type: NodeKind
     title: str
@@ -53,43 +31,6 @@ class ResolutionResult:
     status: Literal['unique', 'ambiguous', 'not_found']
     candidates: list[ResolverCandidate]
     selected: ResolverCandidate | None = None
-
-
-def extract_rename_intent(message: str) -> RenameIntent | None:
-    text = message.strip()
-    if not text:
-        return None
-
-    typed_pattern = re.compile(
-        r'rename(?:\s+my|\s+the)?\s+(.+?)\s+(epic|feature|task)\s+to\s+(.+)$',
-        re.IGNORECASE,
-    )
-    typed_match = typed_pattern.search(text)
-    if typed_match:
-        label = _clean_fragment(typed_match.group(1))
-        node_type = typed_match.group(2).lower()
-        new_title = _clean_fragment(typed_match.group(3))
-        if label and new_title:
-            return RenameIntent(label=label, new_title=new_title, node_type=node_type)  # type: ignore[arg-type]
-
-    generic_pattern = re.compile(
-        r'(?:rename|retitle|change(?:\s+the)?\s+name(?:\s+of)?)\s+(.+?)\s+(?:to|as)\s+(.+)$',
-        re.IGNORECASE,
-    )
-    generic_match = generic_pattern.search(text)
-    if not generic_match:
-        return None
-
-    label_fragment = _clean_fragment(generic_match.group(1))
-    new_title = _clean_fragment(generic_match.group(2))
-    if not label_fragment or not new_title:
-        return None
-    inferred_node_type = infer_node_type(label_fragment)
-    return RenameIntent(
-        label=_strip_node_type_words(label_fragment),
-        new_title=new_title,
-        node_type=inferred_node_type,
-    )
 
 
 def infer_node_type(text: str) -> NodeKind | None:
@@ -175,22 +116,6 @@ def extract_create_intent(message: str) -> CreateIntent | None:
                 allow_duplicate=False,
             )
 
-    compact_epic_pattern = re.compile(
-        r'(?:create|add)\s+(.+?)(?:\s+here)?$',
-        re.IGNORECASE,
-    )
-    compact_match = compact_epic_pattern.search(text)
-    if compact_match:
-        raw_title = compact_match.group(1)
-        if not re.search(r'\b(?:under|in)\b', raw_title, re.IGNORECASE):
-            title = _normalize_create_title(raw_title)
-            if title:
-                return CreateIntent(
-                    node_type='epic',
-                    title=title,
-                    allow_duplicate=allow_duplicate,
-                )
-
     return None
 
 
@@ -233,94 +158,6 @@ def _normalize_create_title(value: str) -> str | None:
     if title_tokens and all(token in stop_tokens for token in title_tokens):
         return None
     return cleaned
-
-
-def extract_mark_status_intent(message: str) -> MarkStatusIntent | None:
-    text = message.strip()
-    if not text:
-        return None
-
-    typed_pattern = re.compile(
-        r'(?:mark|set)\s+(.+?)\s+(epic|feature|task)\s+(?:status\s+)?(?:as|to)\s+(.+)$',
-        re.IGNORECASE,
-    )
-    typed_match = typed_pattern.search(text)
-    if typed_match:
-        label = _clean_fragment(typed_match.group(1))
-        node_type = typed_match.group(2).lower()
-        status = _normalize_status_label(typed_match.group(3))
-        if label and status:
-            return MarkStatusIntent(
-                label=_strip_node_type_words(label),
-                status=status,
-                node_type=node_type,  # type: ignore[arg-type]
-            )
-
-    generic_pattern = re.compile(
-        r'(?:mark|set)\s+(.+?)\s+(?:status\s+)?(?:as|to)\s+(.+)$',
-        re.IGNORECASE,
-    )
-    generic_match = generic_pattern.search(text)
-    if not generic_match:
-        return None
-    label_fragment = _clean_fragment(generic_match.group(1))
-    status = _normalize_status_label(generic_match.group(2))
-    if not label_fragment or not status:
-        return None
-    inferred_node_type = infer_node_type(label_fragment)
-    return MarkStatusIntent(
-        label=_strip_node_type_words(label_fragment),
-        status=status,
-        node_type=inferred_node_type,
-    )
-
-
-def extract_move_intent(message: str) -> MoveIntent | None:
-    text = message.strip()
-    if not text:
-        return None
-
-    typed_pattern = re.compile(
-        r'move\s+(.+?)\s+(epic|feature|task)\s+(?:under|to)\s+(.+?)(?:\s+(epic|feature|task))?$',
-        re.IGNORECASE,
-    )
-    typed_match = typed_pattern.search(text)
-    if typed_match:
-        source_label = _clean_fragment(typed_match.group(1))
-        source_type = typed_match.group(2).lower()
-        target_label = _clean_fragment(typed_match.group(3))
-        target_type = (
-            typed_match.group(4).lower().strip()
-            if typed_match.group(4)
-            else infer_node_type(target_label)
-        )
-        if source_label and target_label:
-            return MoveIntent(
-                label=_strip_node_type_words(source_label),
-                target_label=_strip_node_type_words(target_label),
-                node_type=source_type,  # type: ignore[arg-type]
-                target_node_type=target_type if target_type in {'epic', 'feature', 'task'} else None,
-            )
-
-    generic_pattern = re.compile(
-        r'move\s+(.+?)\s+(?:under|to)\s+(.+)$',
-        re.IGNORECASE,
-    )
-    generic_match = generic_pattern.search(text)
-    if not generic_match:
-        return None
-    source_label = _clean_fragment(generic_match.group(1))
-    target_label = _clean_fragment(generic_match.group(2))
-    if not source_label or not target_label:
-        return None
-    source_type = infer_node_type(source_label)
-    target_type = infer_node_type(target_label)
-    return MoveIntent(
-        label=_strip_node_type_words(source_label),
-        target_label=_strip_node_type_words(target_label),
-        node_type=source_type,
-        target_node_type=target_type,
-    )
 
 
 def resolve_candidates(
@@ -391,20 +228,6 @@ def parse_selection_index(message: str) -> int | None:
     return None
 
 
-def build_ambiguity_message(label: str, candidates: list[ResolverCandidate]) -> str:
-    if not candidates:
-        return (
-            f'I found multiple matches for "{label}", but could not rank them safely. '
-            'Please restate the target with more context.'
-        )
-    lines = [f'I found multiple matches for "{label}". Please choose one:']
-    for index, item in enumerate(candidates[:5], start=1):
-        parent_hint = f' under "{item.parent_title}"' if item.parent_title else ''
-        lines.append(f'{index}. {item.type} "{item.title}"{parent_hint}')
-    lines.append('Reply with the option number (for example, "1").')
-    return '\n'.join(lines)
-
-
 def normalize_text(text: str) -> str:
     cleaned = _clean_fragment(text).lower()
     cleaned = re.sub(r'\s+', ' ', cleaned)
@@ -466,27 +289,3 @@ def _normalize_selection_text(text: str) -> str:
     normalized = re.sub(r'[.!?,;:]+$', '', normalized).strip()
     normalized = re.sub(r'\s+', ' ', normalized)
     return normalized
-
-
-def _normalize_status_label(value: str) -> str | None:
-    normalized = _clean_fragment(value).lower()
-    normalized = re.sub(r'\s+', '_', normalized)
-    aliases = {
-        'in_progress': 'in_progress',
-        'progress': 'in_progress',
-        'in_review': 'in_review',
-        'review': 'in_review',
-        'not_started': 'not_started',
-        'todo': 'todo',
-        'done': 'done',
-        'completed': 'completed',
-        'complete': 'completed',
-        'blocked': 'blocked',
-        'backlog': 'backlog',
-        'planned': 'planned',
-        'on_hold': 'on_hold',
-        'active': 'active',
-        'paused': 'paused',
-        'archived': 'archived',
-    }
-    return aliases.get(normalized)

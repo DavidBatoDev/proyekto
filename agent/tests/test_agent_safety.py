@@ -15,9 +15,9 @@ from app.core.contracts.sessions import (
     ActorContext,
     AgentSession,
     CreateSessionRequest,
+    PendingEditContext,
+    PendingEditResolvedReferences,
     PendingContextResolution,
-    PendingDisambiguation,
-    ResolverCandidate,
     SessionMetadata,
 )
 from app.core.llm.client import PlanningResult
@@ -60,108 +60,113 @@ class AgentSafetyTests(unittest.TestCase):
         )
         return service
 
-    def _planning(self) -> PlanningResult:
-        return PlanningResult(
-            assistant_message='fallback',
-            operations=[],
-            parse_mode='rule_based_edit',
-            intent_type='roadmap_edit',
-            response_mode='edit_plan',
-            preview_recommended=False,
-            provider_used='rule_based',
-            fallback_used=False,
-            provider_error_code='missing_tool_call',
-            tokens_input=None,
-            tokens_output=None,
-            tokens_total=None,
-        )
+    def test_plan_message_routes_edit_turn_to_planner_lane(self) -> None:
+        class _FakePlanner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
 
-    def _session_with_pending(self) -> AgentSession:
-        return AgentSession(
-            roadmap_id='roadmap-1',
-            metadata=SessionMetadata(
-                pending_disambiguation=PendingDisambiguation(
-                    kind='rename_node',
-                    label='Legacy Epic',
-                    node_type='epic',
-                    new_title='Legacy Epic Renamed',
-                    candidates=[
-                        ResolverCandidate(
-                            id='old-node-id',
-                            type='epic',
-                            title='Legacy Epic',
-                        )
-                    ],
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Prepared operations.',
+                    operations=[RoadmapOperation(op='add_epic', data={'title': 'AI Module'})],
+                    parse_mode='openai_edit_schema',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
                 )
-            ),
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings()
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _FakePlanner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
         )
-
-    def test_new_rename_intent_has_priority_over_pending_selection(self) -> None:
-        service = self._service(
-            {
-                'matches': [
-                    {
-                        'id': 'new-node-id',
-                        'type': 'epic',
-                        'title': 'Platform Foundation',
-                    }
-                ]
-            }
-        )
-        session = self._session_with_pending()
-
-        result = service._apply_deterministic_resolution(
-            session=session,
-            user_message='Rename Platform Foundation epic to Platform Foundation1',
-            planning=self._planning(),
-            auth_header=None,
-            trace_id='trace-1',
-        )
-
-        self.assertEqual(result.parse_mode, 'deterministic_resolver_rename')
-        self.assertEqual(len(result.operations), 1)
-        self.assertEqual(result.operations[0].node_id, 'new-node-id')
-        self.assertEqual(result.operations[0].patch, {'title': 'Platform Foundation1'})
-        self.assertIsNone(session.metadata.pending_disambiguation)
-
-    def test_strict_selection_consumes_pending_only(self) -> None:
-        service = self._service({'matches': []})
-        session = self._session_with_pending()
-
-        result = service._apply_deterministic_resolution(
-            session=session,
-            user_message='option 1',
-            planning=self._planning(),
-            auth_header=None,
-            trace_id='trace-2',
-        )
-
-        self.assertEqual(result.parse_mode, 'deterministic_disambiguation_selected')
-        self.assertEqual(len(result.operations), 1)
-        self.assertEqual(result.operations[0].node_id, 'old-node-id')
-        self.assertEqual(result.operations[0].patch, {'title': 'Legacy Epic Renamed'})
-        self.assertIsNone(session.metadata.pending_disambiguation)
-
-    def test_backend_close_scores_keep_ambiguity(self) -> None:
-        service = self._service(
-            {
-                'matches': [
-                    {'id': 'n1', 'type': 'epic', 'title': 'Platform Foundation', 'score': 1.0},
-                    {'id': 'n2', 'type': 'epic', 'title': 'Platform Foundation v2', 'score': 0.93},
-                ]
-            }
-        )
+        service._run_async_call = lambda value: value
         session = AgentSession(roadmap_id='roadmap-1')
-        result = service._apply_deterministic_resolution(
+
+        outcome = service.plan_message(
             session=session,
-            user_message='Rename Platform Foundation epic to Platform Foundation1',
-            planning=self._planning(),
+            user_message='Rename Platform Foundation to Platform Foundation 1',
+            replace=False,
             auth_header=None,
-            trace_id='trace-3',
+            trace_id='trace-planner-lane',
         )
-        self.assertEqual(result.parse_mode, 'deterministic_resolver_disambiguation')
-        self.assertEqual(len(result.operations), 0)
-        self.assertIsNotNone(session.metadata.pending_disambiguation)
+
+        self.assertEqual(outcome.route_lane, 'llm_edit_plan')
+        self.assertEqual(outcome.parse_mode, 'openai_edit_schema')
+        self.assertEqual(len(session.operations), 1)
+        self.assertEqual(session.operations[0].op.value, 'add_epic')
+
+    def test_plan_message_create_prompt_uses_planner_not_deterministic_fastpath(self) -> None:
+        class _FakePlanner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Which parent should this be under?',
+                    operations=[],
+                    parse_mode='openai_edit_schema_clarifier',
+                    intent_type='roadmap_edit',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    clarifier_action='ask_clarifier',
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings()
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _FakePlanner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        service._run_async_call = lambda value: value
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Create AI Module here',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-create-planner',
+        )
+
+        self.assertEqual(outcome.route_lane, 'llm_edit_plan')
+        self.assertEqual(outcome.response_mode, 'chat')
+        self.assertEqual(outcome.operations, [])
 
     def test_ensure_actor_context_refreshes_when_authenticated(self) -> None:
         service = self._service({'matches': []})
@@ -313,321 +318,469 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertIsInstance(actor_context['fetched_at'], str)
         self.assertIsInstance(pending_context['created_at'], str)
 
-    def test_fastpath_rename_returns_single_operation(self) -> None:
-        service = self._service(
-            {
-                'matches': [
-                    {
-                        'id': 'new-node-id',
-                        'type': 'epic',
-                        'title': 'Platform Foundation',
-                    }
-                ]
-            }
-        )
-        session = AgentSession(roadmap_id='roadmap-1')
-        result, bypass_reason = service._try_deterministic_edit_fastpath(
-            session=session,
-            user_message='Rename Platform Foundation epic to Platform Foundation 1',
-            auth_header=None,
-            trace_id='trace-fastpath-rename',
-            session_context={'roadmap_id': 'roadmap-1'},
-        )
-        self.assertIsNotNone(result)
-        assert result is not None
-        self.assertIsNone(bypass_reason)
-        self.assertEqual(result.parse_mode, 'deterministic_fastpath_rename')
-        self.assertEqual(len(result.operations), 1)
-        self.assertEqual(result.operations[0].node_id, 'new-node-id')
-        self.assertEqual(result.route_lane, 'deterministic_edit_fastpath')
+    def test_plan_message_pending_confirm_stages_draft_operations(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('unclear', True)
 
-    def test_fastpath_returns_disambiguation_on_ambiguous_target(self) -> None:
-        service = self._service(
-            {
-                'matches': [
-                    {'id': 'n1', 'type': 'epic', 'title': 'Platform Foundation', 'score': 1.0},
-                    {'id': 'n2', 'type': 'epic', 'title': 'Platform Foundation Core', 'score': 0.92},
-                ]
-            }
-        )
-        session = AgentSession(roadmap_id='roadmap-1')
-        result, bypass_reason = service._try_deterministic_edit_fastpath(
-            session=session,
-            user_message='Rename Platform Foundation epic to Platform Foundation 1',
-            auth_header=None,
-            trace_id='trace-fastpath-ambiguous',
-            session_context={'roadmap_id': 'roadmap-1'},
-        )
-        self.assertIsNotNone(result)
-        assert result is not None
-        self.assertIsNone(bypass_reason)
-        self.assertEqual(result.parse_mode, 'deterministic_fastpath_disambiguation')
-        self.assertEqual(result.response_mode, 'edit_plan')
-        self.assertEqual(len(result.operations), 0)
-        self.assertIn('Please choose one', result.assistant_message)
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Confirmed. I prepared the pending edit operations.',
+                    operations=[
+                        RoadmapOperation(op='add_epic', data={'title': 'AI Module'})
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
 
-    def test_fastpath_rename_strips_leading_pronouns(self) -> None:
-        service = self._service(
-            {
-                'matches': [
-                    {
-                        'id': 'new-node-id',
-                        'type': 'epic',
-                        'title': 'Platform Foundation',
-                    }
-                ]
-            }
-        )
-        session = AgentSession(roadmap_id='roadmap-1')
-        result, bypass_reason = service._try_deterministic_edit_fastpath(
-            session=session,
-            user_message='Rename my Platform Foundation to Platform Foundation 1',
-            auth_header=None,
-            trace_id='trace-fastpath-pronoun',
-            session_context={'roadmap_id': 'roadmap-1'},
-        )
-        self.assertIsNotNone(result)
-        self.assertIsNone(bypass_reason)
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
 
-    def test_fastpath_move_uses_move_node_contract(self) -> None:
-        calls = {'count': 0}
+            def update(self, _session):
+                return None
 
-        class _SequenceNestClient:
-            def context_search(self, **_kwargs):
-                calls['count'] += 1
-                if calls['count'] == 1:
-                    return {
-                        'matches': [
-                            {
-                                'id': '4848e4ec-fabf-4002-a703-714e938d6c04',
-                                'type': 'feature',
-                                'title': 'Roadmap JSON Editor',
-                            }
-                        ]
-                    }
-                return {
-                    'matches': [
-                        {
-                            'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                            'type': 'epic',
-                            'title': 'Platform Foundation',
-                        }
-                    ]
-                }
+            def get(self, _session_id):
+                return None
 
         service = object.__new__(AgentService)
-        service._settings = get_settings()
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True}
+        )
         service._logger = logging.getLogger('agent-safety-tests')
-        service._nest_client = _SequenceNestClient()
-        service._run_async_call = lambda value: value
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                pending_edit_context=PendingEditContext(
+                    intent_family='create_epic',
+                    draft_operations=[
+                        RoadmapOperation(op='add_epic', data={'title': 'AI Module'})
+                    ],
+                    required_fields=[],
+                    resolved_references=PendingEditResolvedReferences(),
+                    confirmation_mode='draft_ready',
+                    source_user_message='Create AI Module',
+                    default_title='AI Module',
+                )
+            ),
+        )
+        outcome = service.plan_message(
+            session=session,
+            user_message='Proceed',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-pending-confirm',
+        )
+
+        self.assertEqual(outcome.parse_mode, 'openai_tool_calling')
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(outcome.edit_continuation_trigger, 'confirm')
+        self.assertEqual(outcome.route_lane, 'llm_edit_plan')
+        self.assertEqual(len(session.operations), 1)
+        self.assertEqual(session.operations[0].op.value, 'add_epic')
+        self.assertIsNone(session.metadata.pending_edit_context)
+        self.assertEqual(session.staged_operations_version, 1)
+
+    def test_plan_message_pending_cancel_clears_context(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('unclear', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Okay, cancelled.',
+                    operations=[],
+                    parse_mode='openai_edit_schema_clarifier',
+                    intent_type='roadmap_edit',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    clarifier_action='cannot_proceed',
+                    clarifier_reason='user_cancelled',
+                    clarifier_options=['Start a new edit'],
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                pending_edit_context=PendingEditContext(
+                    intent_family='create_epic',
+                    draft_operations=[
+                        RoadmapOperation(op='add_epic', data={'title': 'AI Module'})
+                    ],
+                    required_fields=[],
+                    resolved_references=PendingEditResolvedReferences(),
+                    confirmation_mode='draft_ready',
+                    source_user_message='Create AI Module',
+                    default_title='AI Module',
+                )
+            ),
+        )
+        outcome = service.plan_message(
+            session=session,
+            user_message='Cancel',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-pending-cancel',
+        )
+
+        self.assertEqual(outcome.parse_mode, 'openai_edit_schema_clarifier')
+        self.assertEqual(outcome.response_mode, 'chat')
+        self.assertEqual(outcome.edit_continuation_trigger, 'cancel')
+        self.assertEqual(len(session.operations), 0)
+        self.assertIsNone(session.metadata.pending_edit_context)
+
+    def test_plan_message_pending_correction_replaces_stale_operations(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('unclear', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Prepared corrected feature create operation.',
+                    operations=[
+                        RoadmapOperation(
+                            op='add_feature',
+                            parent_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            data={'title': 'Schema module feature'},
+                        )
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            operations=[RoadmapOperation(op='add_epic', data={'title': 'Wrong Epic'})],
+            metadata=SessionMetadata(
+                pending_edit_context=PendingEditContext(
+                    intent_family='create_feature',
+                    draft_operations=[],
+                    required_fields=['parent'],
+                    resolved_references=PendingEditResolvedReferences(
+                        epic_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                        epic_label='Roadmap and Project Management Module',
+                    ),
+                    confirmation_mode='awaiting_clarification',
+                    source_user_message='Create Schema module feature here',
+                    default_title='Schema module feature',
+                )
+            ),
+        )
+
+        outcome = service.plan_message(
+            session=session,
+            user_message=(
+                'I meant it should be a new feature inside '
+                'Roadmap and Project Management Module'
+            ),
+            replace=False,
+            auth_header=None,
+            trace_id='trace-pending-correction',
+        )
+
+        self.assertEqual(outcome.parse_mode, 'openai_tool_calling')
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(outcome.edit_continuation_trigger, 'correction')
+        self.assertEqual(len(session.operations), 1)
+        op = session.operations[0]
+        self.assertEqual(op.op.value, 'add_feature')
+        self.assertEqual(op.parent_id, 'dad5697a-8962-4f80-8bc3-8a964edd8e56')
+        self.assertEqual(op.data, {'title': 'Schema module feature'})
+        self.assertIsNone(session.metadata.pending_edit_context)
+        self.assertEqual(session.staged_operations_version, 1)
+
+    def test_plan_message_correction_with_staged_ops_forces_edit_continuation_without_pending(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('unclear', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Prepared corrected operation.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Platform Foundation 2'},
+                        )
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            operations=[
+                RoadmapOperation(
+                    op='update_node',
+                    node_id='11111111-1111-1111-1111-111111111111',
+                    patch={'title': 'Old Title'},
+                )
+            ],
+        )
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='I meant rename it to Platform Foundation 2',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-correction-no-pending',
+        )
+
+        self.assertEqual(outcome.route_lane, 'llm_edit_plan')
+        self.assertEqual(outcome.edit_continuation_trigger, 'correction')
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(len(session.operations), 1)
+        self.assertEqual(session.operations[0].patch, {'title': 'Platform Foundation 2'})
+
+    def test_plan_message_followup_without_pending_or_staged_ops_does_not_force_edit(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('unclear', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Can you clarify what to proceed with?',
+                    operations=[],
+                    parse_mode='openai_chat',
+                    intent_type='unclear',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
         service._uuid_pattern = re.compile(
             r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
         )
         session = AgentSession(roadmap_id='roadmap-1')
 
-        result, bypass_reason = service._try_deterministic_edit_fastpath(
+        outcome = service.plan_message(
             session=session,
-            user_message='Move Roadmap JSON Editor feature under Platform Foundation epic',
+            user_message='Proceed',
+            replace=False,
             auth_header=None,
-            trace_id='trace-fastpath-move',
-            session_context={'roadmap_id': 'roadmap-1'},
+            trace_id='trace-proceed-no-context',
         )
 
-        self.assertIsNotNone(result)
-        assert result is not None
-        self.assertIsNone(bypass_reason)
-        self.assertEqual(result.parse_mode, 'deterministic_fastpath_move')
-        self.assertEqual(len(result.operations), 1)
-        operation = result.operations[0]
-        self.assertEqual(operation.op.value, 'move_node')
-        self.assertEqual(operation.node_id, '4848e4ec-fabf-4002-a703-714e938d6c04')
-        self.assertEqual(operation.new_parent_id, 'dad5697a-8962-4f80-8bc3-8a964edd8e56')
-        self.assertIsNone(operation.patch)
+        self.assertEqual(outcome.edit_continuation_trigger, 'confirm')
+        self.assertEqual(outcome.response_mode, 'chat')
+        self.assertEqual(outcome.route_lane, 'chat')
+        self.assertEqual(len(session.operations), 0)
 
-    def test_fastpath_create_epic_returns_add_epic_operation(self) -> None:
+    def test_plan_message_replace_mode_increments_staged_version(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Prepared replacement rename operation.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Platform Foundation 1'},
+                        )
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            operations=[
+                RoadmapOperation(
+                    op='update_node',
+                    node_id='11111111-1111-1111-1111-111111111111',
+                    patch={'title': 'Old'},
+                )
+            ],
+        )
+        session.staged_operations_version = 3
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Rename Platform Foundation',
+            replace=True,
+            auth_header=None,
+            trace_id='trace-replace-increments-version',
+        )
+
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(len(session.operations), 1)
+        self.assertEqual(session.staged_operations_version, 4)
+
+    def test_context_answer_guard_blocks_pseudo_operation_payload(self) -> None:
         service = self._service({'matches': []})
-        session = AgentSession(roadmap_id='roadmap-1')
-
-        result, bypass_reason = service._try_deterministic_edit_fastpath(
-            session=session,
-            user_message='Create a new Epic called "AI Module"',
-            auth_header=None,
-            trace_id='trace-fastpath-create-epic',
-            session_context={'roadmap_id': 'roadmap-1'},
+        guarded = service._apply_context_answer_output_guard(
+            planning=PlanningResult(
+                assistant_message=(
+                    'Got it. Planned operations (won’t be applied here): '
+                    '[{"action":"create","type":"feature","parent_id":"x"}]'
+                ),
+                operations=[],
+                parse_mode='openai_context_tools',
+                intent_type='unclear',
+                response_mode='chat',
+                preview_recommended=False,
+                provider_used='openai',
+                fallback_used=False,
+                provider_error_code=None,
+            ),
+            pending_edit_context_present=True,
         )
 
-        self.assertIsNotNone(result)
-        assert result is not None
-        self.assertIsNone(bypass_reason)
-        self.assertEqual(result.parse_mode, 'deterministic_fastpath_create_epic')
-        self.assertEqual(result.response_mode, 'edit_plan')
-        self.assertEqual(len(result.operations), 1)
-        op = result.operations[0]
-        self.assertEqual(op.op.value, 'add_epic')
-        self.assertEqual(op.data, {'title': 'AI Module'})
-
-    def test_fastpath_create_epic_conversational_phrase_uses_clean_title(self) -> None:
-        service = self._service({'matches': []})
-        session = AgentSession(roadmap_id='roadmap-1')
-
-        result, bypass_reason = service._try_deterministic_edit_fastpath(
-            session=session,
-            user_message='Can you create new epic for me called "AI Module"',
-            auth_header=None,
-            trace_id='trace-fastpath-create-epic-conversational',
-            session_context={'roadmap_id': 'roadmap-1'},
-        )
-
-        self.assertIsNotNone(result)
-        assert result is not None
-        self.assertIsNone(bypass_reason)
-        self.assertEqual(result.parse_mode, 'deterministic_fastpath_create_epic')
-        self.assertEqual(len(result.operations), 1)
-        self.assertEqual(result.operations[0].op.value, 'add_epic')
-        self.assertEqual(result.operations[0].data, {'title': 'AI Module'})
-
-    def test_fastpath_create_epic_here_phrase_stages_add_epic(self) -> None:
-        service = self._service({'matches': []})
-        session = AgentSession(roadmap_id='roadmap-1')
-
-        result, bypass_reason = service._try_deterministic_edit_fastpath(
-            session=session,
-            user_message='Create AI Module here',
-            auth_header=None,
-            trace_id='trace-fastpath-create-epic-here',
-            session_context={'roadmap_id': 'roadmap-1'},
-        )
-
-        self.assertIsNotNone(result)
-        assert result is not None
-        self.assertIsNone(bypass_reason)
-        self.assertEqual(result.parse_mode, 'deterministic_fastpath_create_epic')
-        self.assertEqual(len(result.operations), 1)
-        self.assertEqual(result.operations[0].op.value, 'add_epic')
-        self.assertEqual(result.operations[0].data, {'title': 'AI Module'})
-
-    def test_fastpath_create_epic_parse_failure_sets_bypass_reason(self) -> None:
-        service = self._service({'matches': []})
-        session = AgentSession(roadmap_id='roadmap-1')
-
-        result, bypass_reason = service._try_deterministic_edit_fastpath(
-            session=session,
-            user_message='Can you create new epic for me called ""',
-            auth_header=None,
-            trace_id='trace-fastpath-create-epic-parse-fail',
-            session_context={'roadmap_id': 'roadmap-1'},
-        )
-
-        self.assertIsNone(result)
-        self.assertEqual(bypass_reason, 'create_epic_title_parse_failed')
-
-    def test_fastpath_create_epic_duplicate_requires_confirmation(self) -> None:
-        service = self._service(
-            {
-                'matches': [
-                    {
-                        'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                        'type': 'epic',
-                        'title': 'AI Module',
-                    }
-                ]
-            }
-        )
-        session = AgentSession(roadmap_id='roadmap-1')
-
-        result, bypass_reason = service._try_deterministic_edit_fastpath(
-            session=session,
-            user_message='Create a new Epic called "AI Module"',
-            auth_header=None,
-            trace_id='trace-fastpath-create-dup',
-            session_context={'roadmap_id': 'roadmap-1'},
-        )
-
-        self.assertIsNotNone(result)
-        assert result is not None
-        self.assertIsNone(bypass_reason)
+        self.assertEqual(guarded.parse_mode, 'deterministic_context_answer_handoff')
+        self.assertEqual(guarded.intent_type, 'roadmap_edit')
         self.assertEqual(
-            result.parse_mode,
-            'deterministic_fastpath_create_epic_duplicate_confirm',
-        )
-        self.assertEqual(result.response_mode, 'chat')
-        self.assertEqual(len(result.operations), 0)
-        self.assertIn('Create duplicate epic "AI Module"', result.assistant_message)
-
-    def test_fastpath_create_epic_ambiguous_duplicate_requires_confirmation(self) -> None:
-        service = self._service(
-            {
-                'matches': [
-                    {
-                        'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                        'type': 'epic',
-                        'title': 'AI Module',
-                    },
-                    {
-                        'id': 'f6dc4dab-65b2-40f4-b64e-c8e248aaf86d',
-                        'type': 'epic',
-                        'title': 'AI Module v2',
-                    },
-                ]
-            }
-        )
-        session = AgentSession(roadmap_id='roadmap-1')
-
-        result, bypass_reason = service._try_deterministic_edit_fastpath(
-            session=session,
-            user_message='Create a new Epic called "AI Module"',
-            auth_header=None,
-            trace_id='trace-fastpath-create-dup-ambiguous',
-            session_context={'roadmap_id': 'roadmap-1'},
+            guarded.provider_error_code,
+            'context_answer_operation_payload_blocked',
         )
 
-        self.assertIsNotNone(result)
-        assert result is not None
-        self.assertIsNone(bypass_reason)
-        self.assertEqual(
-            result.parse_mode,
-            'deterministic_fastpath_create_epic_duplicate_confirm',
-        )
-        self.assertEqual(result.response_mode, 'chat')
-        self.assertEqual(len(result.operations), 0)
-        self.assertIn('multiple similar epics', result.assistant_message)
-
-    def test_fastpath_fresh_create_intent_overrides_pending_disambiguation(self) -> None:
-        service = self._service({'matches': []})
-        session = self._session_with_pending()
-
-        result, bypass_reason = service._try_deterministic_edit_fastpath(
-            session=session,
-            user_message='Create a new Epic called "AI Module"',
-            auth_header=None,
-            trace_id='trace-fastpath-create-overrides-pending',
-            session_context={'roadmap_id': 'roadmap-1'},
-        )
-
-        self.assertIsNotNone(result)
-        assert result is not None
-        self.assertIsNone(bypass_reason)
-        self.assertEqual(result.parse_mode, 'deterministic_fastpath_create_epic')
-        self.assertEqual(result.response_mode, 'edit_plan')
-        self.assertEqual(len(result.operations), 1)
-        self.assertEqual(result.operations[0].op.value, 'add_epic')
-
-    def test_plan_message_keeps_fastpath_when_search_is_slow(self) -> None:
-        class _SlowNestClient:
+    def test_plan_message_routes_rename_to_llm_planner(self) -> None:
+        class _FakeNestClient:
             def __init__(self) -> None:
                 self.actor_calls = 0
-
-            async def context_search(self, **_kwargs):
-                await asyncio.sleep(0.2)
-                return {
-                    'matches': [
-                        {
-                            'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                            'type': 'epic',
-                            'title': 'Platform Foundation',
-                        }
-                    ]
-                }
 
             async def context_actor(self, **_kwargs):
                 self.actor_calls += 1
@@ -644,7 +797,23 @@ class AgentSafetyTests(unittest.TestCase):
                 return ('roadmap_edit', False)
 
             def plan(self, user_message, existing_operations, session_context=None):
-                raise AssertionError('planner.plan should not run for deterministic simple rename')
+                return PlanningResult(
+                    assistant_message='Rename epic Platform Foundation.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Platform Foundation 1'},
+                        )
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
 
         class _FakeStore:
             def append_message(self, session, role, content):
@@ -657,21 +826,18 @@ class AgentSafetyTests(unittest.TestCase):
                 return None
 
         service = object.__new__(AgentService)
-        service._settings = get_settings().model_copy(
-            update={'deterministic_fastpath_search_sla_ms': 10}
-        )
+        service._settings = get_settings()
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
         service._planner = _FakePlanner()
-        slow_client = _SlowNestClient()
-        service._nest_client = slow_client
+        fake_client = _FakeNestClient()
+        service._nest_client = fake_client
         service._actor_refresh_failures_key = 'actor_context_refresh_failures'
         service._uuid_pattern = re.compile(
             r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
         )
 
         session = AgentSession(roadmap_id='roadmap-1')
-        started = time.perf_counter()
         outcome = service.plan_message(
             session=session,
             user_message='Rename my Platform Foundation to Platform Foundation 1',
@@ -679,18 +845,14 @@ class AgentSafetyTests(unittest.TestCase):
             auth_header='Bearer test-token',
             trace_id='trace-fastpath-sla',
         )
-        elapsed_ms = (time.perf_counter() - started) * 1000
 
-        self.assertEqual(outcome.route_lane, 'deterministic_edit_fastpath')
-        self.assertEqual(outcome.fastpath_bypass_reason, None)
-        self.assertEqual(outcome.parse_mode, 'deterministic_fastpath_rename')
-        self.assertEqual(outcome.fastpath_reason, 'deterministic_fastpath_rename')
-        self.assertTrue(outcome.llm_skipped_for_simple_edit)
+        self.assertEqual(outcome.route_lane, 'llm_edit_plan')
+        self.assertEqual(outcome.parse_mode, 'openai_tool_calling')
+        self.assertFalse(outcome.llm_skipped_for_simple_edit)
         self.assertFalse(outcome.actor_fetch_attempted)
         self.assertEqual(outcome.actor_fetch_skipped_reason, 'simple_edit_turn')
-        self.assertEqual(slow_client.actor_calls, 0)
+        self.assertEqual(fake_client.actor_calls, 0)
         self.assertEqual(len(outcome.operations), 1)
-        self.assertGreaterEqual(elapsed_ms, 180)
 
     def test_validate_operation_contract_blocks_add_epic_without_title(self) -> None:
         service = self._service({'matches': []})
@@ -791,7 +953,23 @@ class AgentSafetyTests(unittest.TestCase):
                 return ('roadmap_edit', False)
 
             def plan(self, user_message, existing_operations, session_context=None):
-                raise AssertionError('planner.plan should not run for deterministic simple rename')
+                return PlanningResult(
+                    assistant_message='Rename epic Platform Foundation.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Platform Foundation 1'},
+                        )
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
 
         class _FakeStore:
             def append_message(self, session, role, content):
@@ -808,24 +986,12 @@ class AgentSafetyTests(unittest.TestCase):
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
         service._planner = _FakePlanner()
-        fake_nest = _FakeNestClient(
-            {
-                'matches': [
-                    {
-                        'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                        'type': 'epic',
-                        'title': 'Platform Foundation',
-                    }
-                ]
-            }
-        )
+        fake_nest = _FakeNestClient({'matches': []})
         service._nest_client = fake_nest
         service._actor_refresh_failures_key = 'actor_context_refresh_failures'
         service._uuid_pattern = re.compile(
             r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
         )
-        service._run_async_call = lambda value: value
-
         session = AgentSession(
             roadmap_id='roadmap-1',
             metadata=SessionMetadata(
@@ -845,7 +1011,7 @@ class AgentSafetyTests(unittest.TestCase):
             trace_id='trace-missing-auth',
         )
 
-        self.assertEqual(outcome.parse_mode, 'deterministic_fastpath_rename')
+        self.assertEqual(outcome.parse_mode, 'openai_tool_calling')
         self.assertFalse(outcome.actor_fetch_attempted)
         self.assertEqual(outcome.actor_fetch_skipped_reason, 'missing_auth_header')
         self.assertIsNone(session.metadata.actor_context)
@@ -926,7 +1092,7 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
 
         exc = raised.exception
         self.assertEqual(exc.status_code, 503)
-        self.assertEqual(exc.detail.get('code'), 'SERVICE_UNAVAILABLE')
+        self.assertEqual(exc.detail.get('code'), 'SESSION_STORE_UNAVAILABLE')
         self.assertTrue(exc.detail.get('retryable'))
         self.assertNotIn('reason', exc.detail)
 
@@ -1794,6 +1960,48 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertIn('- Design auth DB schema', outcome.answer)
         self.assertTrue(outcome.clear_pending_context_resolution)
 
+    def test_context_answer_non_my_tasks_uses_llm_lane(self) -> None:
+        planner = self._planner()
+        cache = {}
+
+        class _FakeCache:
+            def get(self, key):
+                return cache.get(key)
+
+            def set(self, key, value):
+                cache[key] = value
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                return ProviderCallOutcome(
+                    value='Here are the features under Platform Foundation.',
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        planner._context_answer_cache = _FakeCache()
+        planner._build_context_cache_key = lambda **_kwargs: 'cache-key'
+        planner._execute_context_tool = lambda _n, _a, _c: {'error': {'code': 'UNUSED'}}
+        planner._chat_fallback_builder = lambda _msg, _intent: 'fallback'
+
+        result = planner._generate_context_answer(
+            {
+                'user_message': 'What are the features of Platform Foundation?',
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-context-llm-lane',
+                },
+                'intent_type': 'question',
+            }
+        )
+
+        self.assertEqual(result.get('provider_used'), 'openai')
+        self.assertEqual(result.get('parse_mode'), 'openai_context_tools')
+        self.assertEqual(result.get('route_lane'), 'discovery_lane')
+
     def test_pending_resolution_selection_supports_tasks_kind(self) -> None:
         planner = self._planner()
 
@@ -2140,7 +2348,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
         )
 
         self.assertEqual(result.get('response_mode'), 'chat')
-        self.assertEqual(result.get('parse_mode'), 'openai_edit_clarifier')
+        self.assertEqual(result.get('parse_mode'), 'openai_edit_schema_clarifier')
         self.assertEqual(result.get('provider_error_code'), 'missing_tool_call')
         self.assertEqual(result.get('planned_operations'), [])
         self.assertEqual(result.get('clarifier_action'), 'ask_clarifier')
@@ -2182,6 +2390,357 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(result.get('planned_operations'), [])
         self.assertEqual(result.get('clarifier_schema_retries'), 1)
         self.assertNotIn('specific node IDs', str(result.get('assistant_message')))
+
+    def test_plan_operations_llm_first_invalid_schema_retries_once(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_edit_planner_repair_retries': 1,
+                'agent_edit_planner_max_attempts': 2,
+            }
+        )
+        call_count = {'value': 0}
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                call_count['value'] += 1
+                if call_count['value'] == 1:
+                    return ProviderCallOutcome(
+                        value='not valid json',
+                        provider_used='openai',
+                        fallback_used=False,
+                        provider_error_code=None,
+                    )
+                return ProviderCallOutcome(
+                    value=(
+                        '{"action":"ask_clarifier","reason":"missing_parent",'
+                        '"question":"Which epic should this feature go under?",'
+                        '"options":["Use Roadmap epic","Use Platform epic","Cancel"],'
+                        '"operations":[],"references_used":[]}'
+                    ),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        result = planner._plan_operations(
+            {
+                'user_message': 'Create feature AI Module',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-llm-first-retry',
+                },
+            }
+        )
+
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'openai_edit_schema_clarifier')
+        self.assertEqual(result.get('planned_operations'), [])
+        self.assertEqual(result.get('clarifier_action'), 'ask_clarifier')
+        self.assertEqual(result.get('planner_schema_invalid_attempts'), 1)
+        self.assertTrue(result.get('planner_repair_attempted'))
+
+    def test_build_llm_first_prompt_uses_compact_state_summaries(self) -> None:
+        planner = self._planner()
+        operations = [
+            RoadmapOperation(
+                op='update_node',
+                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                patch={'title': 'Platform Foundation 1', 'status': 'in_progress'},
+            ),
+            RoadmapOperation(
+                op='add_feature',
+                parent_id='2a427e59-926b-4af5-8e2a-9e01aa26aa72',
+                data={'title': 'Auth Module'},
+            ),
+        ]
+        prompt = planner._build_llm_first_edit_prompt(
+            user_message='Proceed with the correction',
+            existing_operations=operations,
+            session_context={
+                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                'pending_edit_context': {
+                    'intent_family': 'create_feature',
+                    'confirmation_mode': 'awaiting_clarification',
+                    'required_fields': ['parent'],
+                    'default_title': 'Auth Module',
+                    'draft_operations': [{'op': 'add_feature'}],
+                    'resolved_references': {
+                        'epic_id': 'd84f2277-176a-4eaa-a6c2-540f484b380f',
+                        'epic_label': 'Roadmap and Project Management Module',
+                    },
+                },
+            },
+            parse_error_hint=None,
+        )
+
+        self.assertIn('Current staged operations summary:', prompt)
+        self.assertIn('Pending edit context summary:', prompt)
+        self.assertNotIn('Current staged operations: [', prompt)
+        self.assertNotIn('Pending edit context: {', prompt)
+        self.assertIn('"draft_operations_count": 1', prompt)
+        self.assertNotIn('"draft_operations":', prompt)
+
+    def test_plan_operations_llm_first_execute_returns_operations(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_edit_planner_repair_retries': 1,
+                'agent_edit_planner_max_attempts': 2,
+            }
+        )
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                return ProviderCallOutcome(
+                    value=(
+                        '{"action":"execute","reason":"clear_request",'
+                        '"question":"Create epic AI Module.",'
+                        '"options":[],"operations":[{"op":"add_epic","data":{"title":"AI Module"}}],'
+                        '"references_used":["title"]}'
+                    ),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=10,
+                    tokens_output=20,
+                    tokens_total=30,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        result = planner._plan_operations(
+            {
+                'user_message': 'Create epic AI Module',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-llm-first-execute',
+                },
+            }
+        )
+
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+        self.assertEqual(result.get('parse_mode'), 'openai_edit_schema')
+        planned_ops = result.get('planned_operations') or []
+        self.assertEqual(len(planned_ops), 1)
+        self.assertEqual(planned_ops[0].op.value, 'add_epic')
+        self.assertEqual(planned_ops[0].data, {'title': 'AI Module'})
+
+    def test_plan_operations_llm_first_execute_with_empty_operations_retries_then_clarifies(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_edit_planner_repair_retries': 1,
+                'agent_edit_planner_max_attempts': 2,
+            }
+        )
+        call_count = {'value': 0}
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                call_count['value'] += 1
+                if call_count['value'] == 1:
+                    return ProviderCallOutcome(
+                        value=(
+                            '{"action":"execute","reason":"clear_request",'
+                            '"question":"Prepare operations.",'
+                            '"options":[],"operations":[],"references_used":[]}'
+                        ),
+                        provider_used='openai',
+                        fallback_used=False,
+                        provider_error_code=None,
+                    )
+                return ProviderCallOutcome(
+                    value=(
+                        '{"action":"ask_clarifier","reason":"missing_operation",'
+                        '"question":"What exact change should I stage?",'
+                        '"options":["Rename a node","Create an item","Cancel"],'
+                        '"operations":[],"references_used":[]}'
+                    ),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        result = planner._plan_operations(
+            {
+                'user_message': 'Do the edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-llm-first-empty-execute',
+                },
+            }
+        )
+
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'openai_edit_schema_clarifier')
+        self.assertEqual(result.get('planned_operations'), [])
+        self.assertEqual(result.get('clarifier_action'), 'ask_clarifier')
+        self.assertEqual(result.get('planner_schema_invalid_attempts'), 1)
+        self.assertTrue(result.get('planner_repair_attempted'))
+
+    def test_plan_operations_llm_first_tool_tuple_execute_returns_operations(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_edit_planner_repair_retries': 1,
+                'agent_edit_planner_max_attempts': 2,
+            }
+        )
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                return ProviderCallOutcome(
+                    value=(
+                        'Rename Platform Foundation to Platform Foundation 1.',
+                        [
+                            {
+                                'op': 'update_node',
+                                'node_id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                                'patch': {'title': 'Platform Foundation 1'},
+                            }
+                        ],
+                    ),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        result = planner._plan_operations(
+            {
+                'user_message': 'Rename my Platform Foundation to Platform Foundation 1',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-llm-first-tool-tuple',
+                },
+            }
+        )
+
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+        self.assertEqual(result.get('parse_mode'), 'openai_tool_calling')
+        planned_ops = result.get('planned_operations') or []
+        self.assertEqual(len(planned_ops), 1)
+        self.assertEqual(planned_ops[0].op.value, 'update_node')
+
+    def test_plan_operations_llm_first_tuple_wrong_arity_retries_then_clarifies(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_edit_planner_repair_retries': 1,
+                'agent_edit_planner_max_attempts': 2,
+            }
+        )
+        call_count = {'value': 0}
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                call_count['value'] += 1
+                if call_count['value'] == 1:
+                    return ProviderCallOutcome(
+                        value=('oops', [], 'unexpected-third-item'),
+                        provider_used='openai',
+                        fallback_used=False,
+                        provider_error_code=None,
+                    )
+                return ProviderCallOutcome(
+                    value=(
+                        '{"action":"ask_clarifier","reason":"ambiguous_target",'
+                        '"question":"Which node should I update?",'
+                        '"options":["Use node label","Provide node ID","Cancel"],'
+                        '"operations":[],"references_used":[]}'
+                    ),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        result = planner._plan_operations(
+            {
+                'user_message': 'Rename platform foundation',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-llm-first-wrong-arity',
+                },
+            }
+        )
+
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'openai_edit_schema_clarifier')
+        self.assertEqual(result.get('planned_operations'), [])
+        self.assertEqual(result.get('planner_schema_invalid_attempts'), 1)
+        self.assertTrue(result.get('planner_repair_attempted'))
+
+    def test_plan_operations_llm_first_max_tool_turns_exceeded_escalates_immediately(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_edit_planner_repair_retries': 1,
+                'agent_edit_planner_max_attempts': 2,
+            }
+        )
+        edit_plan_attempts = {'value': 0}
+        clarifier_attempts = {'value': 0}
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                phase = (trace_context or {}).get('phase')
+                if phase == 'edit_plan':
+                    edit_plan_attempts['value'] += 1
+                    raise ProviderAdapterError(
+                        provider='openai',
+                        code='max_tool_turns_exceeded',
+                        message='Reached max tool turns while resolving targets.',
+                    )
+                clarifier_attempts['value'] += 1
+                return ProviderCallOutcome(
+                    value=(
+                        '{"action":"ask_clarifier","reason":"discovery_budget_exhausted",'
+                        '"question":"I could not resolve the target in time. Which exact node should I rename?",'
+                        '"options":["Use exact label","Provide node ID","Cancel"]}'
+                    ),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        result = planner._plan_operations(
+            {
+                'user_message': 'Rename my platform foundation',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-llm-first-tool-budget',
+                },
+            }
+        )
+
+        self.assertEqual(edit_plan_attempts['value'], 1)
+        self.assertEqual(clarifier_attempts['value'], 1)
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'openai_edit_clarifier')
+        self.assertEqual(result.get('provider_error_code'), 'max_tool_turns_exceeded')
+        self.assertEqual(result.get('planned_operations'), [])
 
 
 if __name__ == '__main__':

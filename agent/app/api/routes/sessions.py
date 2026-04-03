@@ -104,7 +104,7 @@ def _service_unavailable(reason: str) -> HTTPException:
     return HTTPException(
         status_code=503,
         detail={
-            'code': 'SERVICE_UNAVAILABLE',
+            'code': 'SESSION_STORE_UNAVAILABLE',
             'message': (
                 'Agent session service is unavailable. Configure Redis and restart the agent.'
             ),
@@ -464,6 +464,22 @@ async def send_message(
             preview_error_code=preview_error_code,
             preview_error_retryable=preview_error_retryable,
             preview_error_upstream_status=preview_error_upstream_status,
+            planner_mode=(outcome.planner_mode if outcome else None),
+            pending_edit_context_present=(
+                outcome.pending_edit_context_present if outcome else False
+            ),
+            edit_continuation_trigger=(
+                outcome.edit_continuation_trigger if outcome else None
+            ),
+            planner_schema_invalid_attempts=(
+                outcome.planner_schema_invalid_attempts if outcome else None
+            ),
+            planner_repair_attempted=(
+                outcome.planner_repair_attempted if outcome else None
+            ),
+            deterministic_create_fastpath_skipped=(
+                outcome.deterministic_create_fastpath_skipped if outcome else False
+            ),
         )
 
 
@@ -587,8 +603,8 @@ async def commit_session(
     if isinstance(committed_revision_token, str):
         session.revision_token = committed_revision_token
     session.latest_preview_id = None
-    session.metadata.pending_disambiguation = None
     session.metadata.pending_context_resolution = None
+    session.metadata.pending_edit_context = None
     await _run_store_call(store.update, session)
 
     return {
@@ -625,8 +641,8 @@ async def discard_session(
     session.staged_operations_version += 1
     session.latest_preview_id = None
     session.artifacts = []
-    session.metadata.pending_disambiguation = None
     session.metadata.pending_context_resolution = None
+    session.metadata.pending_edit_context = None
     await _run_store_call(store.update, session)
 
     return DiscardResponse(

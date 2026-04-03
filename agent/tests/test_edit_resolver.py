@@ -1,27 +1,13 @@
 import unittest
 
 from app.core.orchestration.edit_resolver import (
-    build_ambiguity_message,
     extract_create_intent,
-    extract_mark_status_intent,
-    extract_move_intent,
-    extract_rename_intent,
     parse_selection_index,
     resolve_candidates,
 )
 
 
 class EditResolverTests(unittest.TestCase):
-    def test_extract_rename_intent_with_node_type(self) -> None:
-        intent = extract_rename_intent(
-            'Can you rename my Platform Foundation epic to Platform Foundation1?'
-        )
-        self.assertIsNotNone(intent)
-        assert intent is not None
-        self.assertEqual(intent.label, 'Platform Foundation')
-        self.assertEqual(intent.new_title, 'Platform Foundation1')
-        self.assertEqual(intent.node_type, 'epic')
-
     def test_resolve_unique_candidate(self) -> None:
         result = resolve_candidates(
             [
@@ -53,8 +39,6 @@ class EditResolverTests(unittest.TestCase):
         )
         self.assertEqual(result.status, 'ambiguous')
         self.assertEqual(len(result.candidates), 2)
-        message = build_ambiguity_message('Platform Foundation', result.candidates)
-        self.assertIn('Please choose one', message)
 
     def test_resolve_falls_back_when_backend_score_missing(self) -> None:
         result = resolve_candidates(
@@ -77,27 +61,6 @@ class EditResolverTests(unittest.TestCase):
         self.assertIsNone(parse_selection_index('rename to v2'))
         self.assertIsNone(parse_selection_index('option 1 rename this'))
         self.assertIsNone(parse_selection_index('pick whichever is best'))
-
-    def test_extract_mark_status_intent_with_node_type(self) -> None:
-        intent = extract_mark_status_intent(
-            'Set Authentication System feature status to in progress'
-        )
-        self.assertIsNotNone(intent)
-        assert intent is not None
-        self.assertEqual(intent.label, 'Authentication System')
-        self.assertEqual(intent.node_type, 'feature')
-        self.assertEqual(intent.status, 'in_progress')
-
-    def test_extract_move_intent_with_types(self) -> None:
-        intent = extract_move_intent(
-            'Move Roadmap JSON Editor feature under Platform Foundation epic'
-        )
-        self.assertIsNotNone(intent)
-        assert intent is not None
-        self.assertEqual(intent.label, 'Roadmap JSON Editor')
-        self.assertEqual(intent.target_label, 'Platform Foundation')
-        self.assertEqual(intent.node_type, 'feature')
-        self.assertEqual(intent.target_node_type, 'epic')
 
     def test_extract_create_epic_intent(self) -> None:
         intent = extract_create_intent('Create a new Epic called "AI Module"')
@@ -132,17 +95,11 @@ class EditResolverTests(unittest.TestCase):
 
     def test_extract_create_epic_intent_with_here_suffix(self) -> None:
         intent = extract_create_intent('Create AI Module here')
-        self.assertIsNotNone(intent)
-        assert intent is not None
-        self.assertEqual(intent.node_type, 'epic')
-        self.assertEqual(intent.title, 'AI Module')
+        self.assertIsNone(intent)
 
     def test_extract_add_epic_intent_without_type_hint(self) -> None:
         intent = extract_create_intent('Add AI Module')
-        self.assertIsNotNone(intent)
-        assert intent is not None
-        self.assertEqual(intent.node_type, 'epic')
-        self.assertEqual(intent.title, 'AI Module')
+        self.assertIsNone(intent)
 
     def test_extract_create_epic_intent_rejects_empty_title(self) -> None:
         intent = extract_create_intent('Can you create new epic for me called ""')
@@ -158,6 +115,10 @@ class EditResolverTests(unittest.TestCase):
         self.assertEqual(intent.title, 'User Auth')
         self.assertEqual(intent.parent_label, 'Platform Foundation')
         self.assertEqual(intent.parent_node_type, 'epic')
+
+    def test_extract_create_intent_does_not_overmatch_feature_batch(self) -> None:
+        intent = extract_create_intent('add three features "Framework","LLM","Tools"')
+        self.assertIsNone(intent)
 
 
 if __name__ == '__main__':

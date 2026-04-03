@@ -15,6 +15,7 @@
 6. [Patterns & Conventions](./06-PATTERNS.md)
 7. [API Reference](./07-API-REFERENCE.md)
 8. [AI Roadmap Editor Architecture](./08-AI-ROADMAP-EDITOR-ARCHITECTURE.md)
+9. [LLM-First Edit Refactor Plan](./09-LLM-FIRST-EDIT-REFACTOR-PLAN.md)
 
 ---
 

@@ -16,12 +16,9 @@ from .deterministic_context import (
     assess_my_tasks_status_confidence,
     is_rich_my_tasks_request,
     try_deterministic_list_answer,
-    try_pending_context_selection,
 )
 from .deterministic_intents import (
-    DeterministicContextIntent,
     match_deterministic_context_intent,
-    match_global_overview_intent,
     should_include_ids,
 )
 from .providers import ProviderAdapterError, ProviderOrchestrator
@@ -104,84 +101,16 @@ class ContextAnswerService:
             cache_scope='context_answer',
             roadmap_id=session_context.get('roadmap_id'),
         )
-        global_overview_match = match_global_overview_intent(user_message)
-        if global_overview_match is not None:
-            overview_intent, overview_label = global_overview_match
-            deterministic_outcome = self._try_deterministic_list_answer(
-                intent=overview_intent,
-                label=overview_label,
-                include_ids=should_include_ids(user_message),
-                user_message=user_message,
-                status_scope_override=None,
-                status_scope_source='deterministic',
-                session_context=session_context,
-                trace_id=trace_id,
-            )
-            if deterministic_outcome is not None:
-                response = {
-                    'assistant_message': deterministic_outcome.answer,
-                    'planned_operations': [],
-                    'response_mode': 'chat',
-                    'preview_recommended': False,
-                    'parse_mode': overview_intent.parse_mode,
-                    'provider_used': 'rule_based',
-                    'fallback_used': False,
-                    'provider_error_code': None,
-                    'pending_context_resolution': deterministic_outcome.pending_context_resolution,
-                    'clear_pending_context_resolution': True,
-                    'route_lane': 'deterministic_fastpath',
-                    'discovery_calls_used': 0,
-                    'discovery_repeat_hits': 0,
-                    'discovery_stop_reason': 'resolved',
-                    'clarifier_returned': False,
-                    'discovery_contract': self._build_discovery_contract(
-                        capability='roadmap_overview',
-                        resolved_targets=[],
-                        status_scope=None,
-                        needs_clarification=False,
-                        clarifier_prompt=None,
-                    ),
-                }
-                self._cache_response_if_safe(cache_key, response)
-                return response
-
-        pending_selection_outcome = self._try_pending_context_selection(
-            user_message=user_message,
-            session_context=session_context,
-            trace_id=trace_id,
-        )
-        if pending_selection_outcome is not None:
-            return {
-                'assistant_message': pending_selection_outcome.answer,
-                'planned_operations': [],
-                'response_mode': 'chat',
-                'preview_recommended': False,
-                'parse_mode': 'deterministic_context_resolution_selection',
-                'provider_used': 'rule_based',
-                'fallback_used': False,
-                'provider_error_code': None,
-                'pending_context_resolution': pending_selection_outcome.pending_context_resolution,
-                'clear_pending_context_resolution': pending_selection_outcome.clear_pending_context_resolution,
-                'route_lane': 'deterministic_fastpath',
-                'discovery_calls_used': 0,
-                'discovery_repeat_hits': 0,
-                'discovery_stop_reason': 'resolved',
-                'clarifier_returned': False,
-                'discovery_contract': self._build_discovery_contract(
-                    capability='pending_selection',
-                    resolved_targets=[],
-                    status_scope=None,
-                    needs_clarification=False,
-                    clarifier_prompt=None,
-                ),
-            }
-
         deterministic_match = match_deterministic_context_intent(user_message)
         if deterministic_match is not None:
             intent, label = deterministic_match
-            status_scope_override: str | None = None
-            status_scope_source = 'deterministic'
-            if intent.pending_kind == 'my_tasks':
+            if intent.pending_kind != 'my_tasks':
+                intent = None  # type: ignore[assignment]
+            if intent is None:
+                pass
+            else:
+                status_scope_override: str | None = None
+                status_scope_source = 'deterministic'
                 inferred_scope, confident = assess_my_tasks_status_confidence(user_message)
                 if confident and inferred_scope is not None:
                     status_scope_override = inferred_scope
@@ -228,53 +157,53 @@ class ContextAnswerService:
                     if isinstance(discovered_scope, str) and discovered_scope in {'open', 'all'}:
                         status_scope_override = discovered_scope
                         status_scope_source = 'discovery'
-            deterministic_outcome = self._try_deterministic_list_answer(
-                intent=intent,
-                label=label,
-                include_ids=should_include_ids(user_message),
-                user_message=user_message,
-                status_scope_override=status_scope_override,
-                status_scope_source=status_scope_source,
-                session_context=session_context,
-                trace_id=trace_id,
-            )
-            if deterministic_outcome is not None:
-                my_tasks_response = self._maybe_synthesize_my_tasks_response(
+                deterministic_outcome = self._try_deterministic_list_answer(
                     intent=intent,
-                    deterministic_outcome=deterministic_outcome,
+                    label=label,
+                    include_ids=should_include_ids(user_message),
                     user_message=user_message,
-                    system_prompt=system_prompt,
+                    status_scope_override=status_scope_override,
+                    status_scope_source=status_scope_source,
                     session_context=session_context,
+                    trace_id=trace_id,
                 )
-                if my_tasks_response is not None:
-                    self._cache_response_if_safe(cache_key, my_tasks_response)
-                    return my_tasks_response
-                response = {
-                    'assistant_message': deterministic_outcome.answer,
-                    'planned_operations': [],
-                    'response_mode': 'chat',
-                    'preview_recommended': False,
-                    'parse_mode': intent.parse_mode,
-                    'provider_used': 'rule_based',
-                    'fallback_used': False,
-                    'provider_error_code': None,
-                    'pending_context_resolution': deterministic_outcome.pending_context_resolution,
-                    'clear_pending_context_resolution': deterministic_outcome.clear_pending_context_resolution,
-                    'route_lane': 'deterministic_fastpath',
-                    'discovery_calls_used': 0,
-                    'discovery_repeat_hits': 0,
-                    'discovery_stop_reason': 'resolved',
-                    'clarifier_returned': False,
-                    'discovery_contract': self._build_discovery_contract(
-                        capability=intent.pending_kind,
-                        resolved_targets=[],
-                        status_scope=status_scope_override if intent.pending_kind == 'my_tasks' else None,
-                        needs_clarification=False,
-                        clarifier_prompt=None,
-                    ),
-                }
-                self._cache_response_if_safe(cache_key, response)
-                return response
+                if deterministic_outcome is not None:
+                    my_tasks_response = self._maybe_synthesize_my_tasks_response(
+                        intent=intent,
+                        deterministic_outcome=deterministic_outcome,
+                        user_message=user_message,
+                        system_prompt=system_prompt,
+                        session_context=session_context,
+                    )
+                    if my_tasks_response is not None:
+                        self._cache_response_if_safe(cache_key, my_tasks_response)
+                        return my_tasks_response
+                    response = {
+                        'assistant_message': deterministic_outcome.answer,
+                        'planned_operations': [],
+                        'response_mode': 'chat',
+                        'preview_recommended': False,
+                        'parse_mode': intent.parse_mode,
+                        'provider_used': 'rule_based',
+                        'fallback_used': False,
+                        'provider_error_code': None,
+                        'pending_context_resolution': deterministic_outcome.pending_context_resolution,
+                        'clear_pending_context_resolution': deterministic_outcome.clear_pending_context_resolution,
+                        'route_lane': 'deterministic_fastpath',
+                        'discovery_calls_used': 0,
+                        'discovery_repeat_hits': 0,
+                        'discovery_stop_reason': 'resolved',
+                        'clarifier_returned': False,
+                        'discovery_contract': self._build_discovery_contract(
+                            capability=intent.pending_kind,
+                            resolved_targets=[],
+                            status_scope=status_scope_override,
+                            needs_clarification=False,
+                            clarifier_prompt=None,
+                        ),
+                    }
+                    self._cache_response_if_safe(cache_key, response)
+                    return response
 
         # Discovery lane is fixed-budget: provider loop turns should not exceed
         # the configured discovery call budget.
@@ -662,22 +591,6 @@ class ContextAnswerService:
             'needs_clarification': needs_clarification,
             'clarifier_prompt': clarifier_prompt,
         }
-
-    def _try_pending_context_selection(
-        self,
-        *,
-        user_message: str,
-        session_context: dict[str, Any],
-        trace_id: str | None,
-    ) -> ContextResolutionOutcome | None:
-        return try_pending_context_selection(
-            user_message=user_message,
-            session_context=session_context,
-            trace_id=trace_id,
-            logger=self._logger,
-            settings=self._settings,
-            execute_context_tool=self._execute_context_tool,
-        )
 
     def _try_deterministic_list_answer(
         self,
