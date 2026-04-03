@@ -39,4 +39,4 @@ export { RoadmapModalLayout } from "./modals/RoadmapModalLayout";
 export { CommentsSection } from "./shared/CommentsSection";
 
 // AI components
-export { TryAiFloatingAssistant } from "./ai/TryAiFloatingAssistant";
+export { RoadmapAiAssistantPanel } from "./ai/RoadmapAiAssistantPanel";

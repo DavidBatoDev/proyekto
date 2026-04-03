@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, Boxes, Paperclip, Send, TriangleAlert, X } from "lucide-react";
+import {
+  Bot,
+  Boxes,
+  Check,
+  Eye,
+  FolderOpen,
+  Paperclip,
+  Send,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useRoadmapStore } from "@/stores/roadmapStore";
@@ -27,7 +37,7 @@ import {
   type RoadmapAiChatMessage,
 } from "./useRoadmapAiAssistantSession";
 
-interface TryAiFloatingAssistantProps {
+interface RoadmapAiAssistantPanelProps {
   roadmapId: string;
   baseRevision?: number;
   roadmapSnapshot?: Roadmap | null;
@@ -154,18 +164,21 @@ const formatAttachmentSize = (bytes: number): string => {
   return `${mb.toFixed(1)} MB`;
 };
 
-export function TryAiFloatingAssistant({
+export function RoadmapAiAssistantPanel({
   roadmapId,
   baseRevision,
   roadmapSnapshot,
   isVisible = true,
-}: TryAiFloatingAssistantProps) {
+}: RoadmapAiAssistantPanelProps) {
   const { messages, appendMessage, updateMessage } =
     useRoadmapAiAssistantSession(roadmapId);
   const toast = useToast();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [previewArtifactId, setPreviewArtifactId] = useState<string | null>(
+    null,
+  );
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -174,6 +187,9 @@ export function TryAiFloatingAssistant({
 
   const roadmapFromStore = useRoadmapStore((state) => state.roadmap);
   const openArtifactTab = useRoadmapStore((state) => state.openArtifactTab);
+  const applyArtifactSnapshot = useRoadmapStore(
+    (state) => state.applyArtifactSnapshot,
+  );
   const currentRoadmap = roadmapSnapshot ?? roadmapFromStore ?? null;
 
   useEffect(() => {
@@ -221,7 +237,7 @@ export function TryAiFloatingAssistant({
           firstError.statusCode === 404;
         if (!isNotFound) {
           console.warn(
-            "[TryAiFloatingAssistant] artifact hydration request failed",
+            "[RoadmapAiAssistantPanel] artifact hydration request failed",
             {
               trace_id: response.debug_trace_id || null,
               session_id: activeSessionId,
@@ -260,7 +276,7 @@ export function TryAiFloatingAssistant({
               fallbackPreviewPayload = previewResponse.preview;
             } catch (fallbackError) {
               console.warn(
-                "[TryAiFloatingAssistant] artifact hydration fallback failed",
+                "[RoadmapAiAssistantPanel] artifact hydration fallback failed",
                 {
                   trace_id: response.debug_trace_id || null,
                   session_id: activeSessionId,
@@ -405,7 +421,7 @@ export function TryAiFloatingAssistant({
           artifactError instanceof Error
             ? artifactError.message
             : "Unable to load artifact preview.";
-        console.warn("[TryAiFloatingAssistant] artifact hydration failed", {
+        console.warn("[RoadmapAiAssistantPanel] artifact hydration failed", {
           trace_id: response.debug_trace_id || null,
           session_id: activeSessionId,
           error: artifactErrorText,
@@ -425,7 +441,7 @@ export function TryAiFloatingAssistant({
       const userFacingMessage = timeoutError ? timeoutMessage : readableError;
       setErrorMessage(userFacingMessage);
       if (timeoutError) {
-        console.warn("[TryAiFloatingAssistant] send_message_timeout", {
+        console.warn("[RoadmapAiAssistantPanel] send_message_timeout", {
           session_id: activeSessionId,
           roadmap_id: roadmapId,
           error: readableError,
@@ -446,6 +462,15 @@ export function TryAiFloatingAssistant({
 
   const handleOpenArtifact = (artifact: RoadmapArtifactPreview) => {
     openArtifactTab(artifact);
+  };
+
+  const handleApplyArtifact = (artifact: RoadmapArtifactPreview) => {
+    applyArtifactSnapshot(artifact.artifactId);
+    toast.success(`${artifact.title} applied to roadmap`);
+  };
+
+  const toggleArtifactPreview = (artifactId: string) => {
+    setPreviewArtifactId((prev) => (prev === artifactId ? null : artifactId));
   };
 
   const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -603,14 +628,72 @@ export function TryAiFloatingAssistant({
                         <div className="mt-1.5 text-[10px] text-orange-800/90">
                           Validation issues: {artifact.validationIssues.length}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenArtifact(artifact)}
-                          className="mt-2 h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5"
-                        >
-                          <Boxes className="w-3.5 h-3.5" />
-                          Open Artifact Tab
-                        </button>
+
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleApplyArtifact(artifact)}
+                            className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            Apply
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenArtifact(artifact)}
+                            className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5"
+                          >
+                            <FolderOpen className="w-3.5 h-3.5" />
+                            Open
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toggleArtifactPreview(artifact.artifactId)
+                            }
+                            className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            Preview
+                          </button>
+                        </div>
+
+                        {previewArtifactId === artifact.artifactId && (
+                          <div className="mt-2 rounded-md border border-orange-200 bg-white p-2 text-[10px] text-gray-700 space-y-1">
+                            <p className="font-semibold text-orange-700">
+                              Semantic Changes
+                            </p>
+                            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                              <span>
+                                Added: {artifact.semanticDiffSummary.node_added}
+                              </span>
+                              <span>
+                                Removed:{" "}
+                                {artifact.semanticDiffSummary.node_removed}
+                              </span>
+                              <span>
+                                Moved: {artifact.semanticDiffSummary.node_moved}
+                              </span>
+                              <span>
+                                Status:{" "}
+                                {artifact.semanticDiffSummary.status_changed}
+                              </span>
+                              <span>
+                                Date:{" "}
+                                {artifact.semanticDiffSummary.date_changed}
+                              </span>
+                              <span>
+                                Dependency:{" "}
+                                {
+                                  artifact.semanticDiffSummary
+                                    .dependency_changed
+                                }
+                              </span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

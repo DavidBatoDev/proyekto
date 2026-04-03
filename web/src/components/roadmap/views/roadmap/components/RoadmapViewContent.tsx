@@ -1,4 +1,10 @@
-import { useState, useEffect, useMemo } from "react";
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { AlertTriangle } from "lucide-react";
 import { motion } from "framer-motion";
 import { Link } from "@tanstack/react-router";
@@ -8,7 +14,7 @@ import {
   RoadmapCanvas,
   ShareRoadmapModal,
   RoadmapMetadataModal,
-  TryAiFloatingAssistant,
+  RoadmapAiAssistantPanel,
   type RoadmapMetadataFormData,
 } from "@/components/roadmap";
 import { RoadmapTopBar } from "../../RoadmapTopBar";
@@ -26,6 +32,16 @@ import { useRoadmapFullLiveQuery } from "@/hooks/useProjectQueries";
 interface RoadmapViewContentProps {
   roadmapId: string;
 }
+
+const CHAT_PANEL_DEFAULT_WIDTH = 380;
+const CHAT_PANEL_MIN_WIDTH = 320;
+const CHAT_PANEL_MAX_WIDTH = 820;
+const CHAT_PANEL_CLOSE_THRESHOLD = 260;
+const ROADMAP_LEFT_PANEL_WIDTH = 320;
+const CANVAS_MIN_WIDTH = 560;
+
+const clampPanelWidth = (value: number, maxAllowed: number) =>
+  Math.min(Math.max(value, CHAT_PANEL_MIN_WIDTH), maxAllowed);
 
 const buildRoadmapJsonDocument = (roadmap: Roadmap): UpsertFullRoadmapDto => ({
   id: roadmap.id,
@@ -97,6 +113,12 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
   const [isJsonPanelOpen, setIsJsonPanelOpen] = useState(false);
   const [isSavingRoadmapJson, setIsSavingRoadmapJson] = useState(false);
   const [isAiChatPanelOpen, setIsAiChatPanelOpen] = useState(false);
+  const [isResizingChatPanel, setIsResizingChatPanel] = useState(false);
+  const [chatPanelWidth, setChatPanelWidth] = useState(
+    CHAT_PANEL_DEFAULT_WIDTH,
+  );
+  const chatPanelRef = useRef<HTMLDivElement | null>(null);
+  const chatPanelWidthRef = useRef(chatPanelWidth);
   const roadmapLiveQuery = useRoadmapFullLiveQuery(roadmapId);
 
   const setSidebarExpanded = useProjectSettingsStore(
@@ -107,6 +129,99 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
   useEffect(() => {
     setSidebarExpanded(false);
   }, [setSidebarExpanded]);
+
+  useEffect(() => {
+    chatPanelWidthRef.current = chatPanelWidth;
+    if (chatPanelRef.current) {
+      chatPanelRef.current.style.width = `${chatPanelWidth}px`;
+    }
+  }, [chatPanelWidth]);
+
+  useEffect(() => {
+    const handleViewportResize = () => {
+      const leftPanelWidth =
+        canvasViewMode !== "milestones" ? ROADMAP_LEFT_PANEL_WIDTH : 0;
+      const maxAllowed = Math.max(
+        CHAT_PANEL_MIN_WIDTH,
+        Math.min(
+          CHAT_PANEL_MAX_WIDTH,
+          window.innerWidth - leftPanelWidth - CANVAS_MIN_WIDTH,
+        ),
+      );
+      setChatPanelWidth((prev) => clampPanelWidth(prev, maxAllowed));
+    };
+
+    handleViewportResize();
+    window.addEventListener("resize", handleViewportResize);
+    return () => window.removeEventListener("resize", handleViewportResize);
+  }, [canvasViewMode]);
+
+  const handleChatPanelResizeStart = (
+    event: ReactMouseEvent<HTMLDivElement>,
+  ) => {
+    event.preventDefault();
+
+    const startX = event.clientX;
+    const startWidth = chatPanelWidthRef.current;
+    const leftPanelWidth =
+      canvasViewMode !== "milestones" ? ROADMAP_LEFT_PANEL_WIDTH : 0;
+    const maxAllowed = Math.max(
+      CHAT_PANEL_MIN_WIDTH,
+      Math.min(
+        CHAT_PANEL_MAX_WIDTH,
+        window.innerWidth - leftPanelWidth - CANVAS_MIN_WIDTH,
+      ),
+    );
+
+    setIsResizingChatPanel(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    let latestWidth = startWidth;
+    let shouldCloseOnRelease = false;
+    let pendingWidth = startWidth;
+    let rafId: number | null = null;
+
+    const flushWidth = () => {
+      rafId = null;
+      latestWidth = pendingWidth;
+      chatPanelWidthRef.current = pendingWidth;
+      if (chatPanelRef.current) {
+        chatPanelRef.current.style.width = `${pendingWidth}px`;
+      }
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const delta = startX - moveEvent.clientX;
+      const rawWidth = startWidth + delta;
+      shouldCloseOnRelease = rawWidth <= CHAT_PANEL_CLOSE_THRESHOLD;
+      pendingWidth = clampPanelWidth(rawWidth, maxAllowed);
+      if (rafId === null) {
+        rafId = window.requestAnimationFrame(flushWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+        flushWidth();
+      }
+      setIsResizingChatPanel(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      if (shouldCloseOnRelease) {
+        setIsAiChatPanelOpen(false);
+        setChatPanelWidth(CHAT_PANEL_DEFAULT_WIDTH);
+      } else {
+        setChatPanelWidth(latestWidth);
+      }
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
 
   // Fetch roadmap data with stale-while-revalidate behavior.
   useEffect(() => {
@@ -265,7 +380,13 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
       <RoadmapTopBar
         onEditBrief={() => setIsBriefOpen(true)}
         onShare={() => setIsShareModalOpen(true)}
-        onOpenChatPanel={() => setIsAiChatPanelOpen((prev) => !prev)}
+        onOpenChatPanel={() => {
+          setIsAiChatPanelOpen((prev) => {
+            if (prev) return false;
+            setChatPanelWidth(CHAT_PANEL_DEFAULT_WIDTH);
+            return true;
+          });
+        }}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -309,20 +430,32 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
         </div>
 
         {isAiChatPanelOpen && (
-          <motion.div
+          <div
+            ref={chatPanelRef}
             id="roadmap-right-ai-chat-panel"
             className="relative h-full border-l border-gray-200 bg-white"
-            initial={false}
-            animate={{ width: 380 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
-            style={{ minWidth: 380 }}
+            style={{ minWidth: CHAT_PANEL_MIN_WIDTH, width: chatPanelWidth }}
           >
-            <TryAiFloatingAssistant
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize assistant panel"
+              onMouseDown={handleChatPanelResizeStart}
+              className="absolute -left-1 top-0 z-30 h-full w-2 cursor-col-resize"
+            >
+              <div
+                className={`mx-auto h-full w-[3px] rounded-full transition-colors ${
+                  isResizingChatPanel ? "bg-orange-400" : "bg-transparent"
+                } hover:bg-orange-300`}
+              />
+            </div>
+
+            <RoadmapAiAssistantPanel
               roadmapId={roadmap.id}
               roadmapSnapshot={roadmap}
               isVisible={isAiChatPanelOpen}
             />
-          </motion.div>
+          </div>
         )}
       </div>
 
