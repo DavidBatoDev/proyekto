@@ -32,9 +32,8 @@ export class RoadmapAiPreviewStoreService {
   ): Promise<T | null> {
     const redis = this.requireRedis();
     const key = this.previewKey(previewId);
-    const value = await redis.get<string | null>(key);
-    if (!value || typeof value !== 'string') return null;
-    return JSON.parse(value) as T;
+    const value = await redis.get(key);
+    return this.decodeStoredValue<T>(value);
   }
 
   async deletePreview(previewId: string): Promise<void> {
@@ -63,11 +62,8 @@ export class RoadmapAiPreviewStoreService {
     resolutionId: string,
   ): Promise<T | null> {
     const redis = this.requireRedis();
-    const value = await redis.get<string | null>(
-      this.resolutionKey(resolutionId),
-    );
-    if (!value || typeof value !== 'string') return null;
-    return JSON.parse(value) as T;
+    const value = await redis.get(this.resolutionKey(resolutionId));
+    return this.decodeStoredValue<T>(value);
   }
 
   async deleteResolution(resolutionId: string): Promise<void> {
@@ -95,9 +91,8 @@ export class RoadmapAiPreviewStoreService {
     cacheKey: string,
   ): Promise<T | null> {
     const redis = this.requireRedis();
-    const value = await redis.get<string | null>(cacheKey);
-    if (!value || typeof value !== 'string') return null;
-    return JSON.parse(value) as T;
+    const value = await redis.get(cacheKey);
+    return this.decodeStoredValue<T>(value);
   }
 
   async deleteResolveLookupByRoadmap(roadmapId: string): Promise<void> {
@@ -134,5 +129,20 @@ export class RoadmapAiPreviewStoreService {
     throw new ServiceUnavailableException(
       'Roadmap AI preview store is unavailable: Redis is not configured.',
     );
+  }
+
+  private decodeStoredValue<T>(value: unknown): T | null {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value) as T;
+      } catch {
+        return null;
+      }
+    }
+    if (typeof value === 'object') {
+      return value as T;
+    }
+    return null;
   }
 }
