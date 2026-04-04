@@ -60,6 +60,10 @@ class Settings(BaseSettings):
         default=False,
         alias='AGENT_HYBRID_REACT_ENABLED',
     )
+    agent_legacy_planner_coercion_enabled: bool = Field(
+        default=False,
+        alias='AGENT_LEGACY_PLANNER_COERCION_ENABLED',
+    )
     agent_draft_graph_enabled: bool = Field(
         default=False,
         alias='AGENT_DRAFT_GRAPH_ENABLED',

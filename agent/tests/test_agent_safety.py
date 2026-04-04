@@ -1102,8 +1102,87 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(len(session.operations), 1)
         self.assertEqual(outcome.phase_timings.get('react_loop_turns'), 2)
         self.assertEqual(outcome.phase_timings.get('react_loop_budget'), 2)
+        self.assertEqual(outcome.phase_timings.get('react_loop_termination_reason'), 'ready_to_stage')
         self.assertEqual(outcome.react_loop_turns, 2)
         self.assertEqual(outcome.react_loop_budget, 2)
+        self.assertEqual(outcome.react_loop_termination_reason, 'ready_to_stage')
+
+    def test_plan_message_react_loop_budget_exhaustion_sets_clarify_terminal(self) -> None:
+        planner_calls = {'count': 0}
+
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                planner_calls['count'] += 1
+                return PlanningResult(
+                    assistant_message='Prepared operation but still unresolved.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Platform Foundation 1'},
+                        )
+                    ],
+                    parse_mode='openai_edit_schema',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    draft_action='continue',
+                    tool_plan=[{'tool_name': 'resolve_node_reference', 'args': {}}],
+                    needs_more_info=False,
+                    stop_reason='insufficient_context',
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_hybrid_react_enabled': True,
+                'agent_edit_planner_max_attempts': 2,
+            }
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Rename Platform Foundation to Platform Foundation 1',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-react-loop-budget-exhaustion',
+        )
+
+        self.assertEqual(planner_calls['count'], 2)
+        self.assertEqual(outcome.response_mode, 'chat')
+        self.assertEqual(outcome.parse_mode, 'deterministic_planner_stop_reason_handoff')
+        self.assertEqual(outcome.provider_error_code, 'planner_stop_reason_conflict')
+        self.assertEqual(outcome.react_terminal_action, 'clarify')
+        self.assertEqual(outcome.react_loop_turns, 2)
+        self.assertEqual(outcome.react_loop_budget, 2)
+        self.assertEqual(outcome.react_loop_termination_reason, 'budget_exhausted')
+        self.assertEqual(outcome.phase_timings.get('react_loop_termination_reason'), 'budget_exhausted')
 
     def test_plan_message_pending_cancel_clears_context(self) -> None:
         class _Planner:
@@ -1175,6 +1254,7 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(outcome.parse_mode, 'openai_edit_schema_clarifier')
         self.assertEqual(outcome.response_mode, 'chat')
         self.assertEqual(outcome.edit_continuation_trigger, 'cancel')
+        self.assertEqual(outcome.react_terminal_action, 'cancel')
         self.assertEqual(len(session.operations), 0)
         self.assertIsNone(session.metadata.pending_edit_context)
 
@@ -1879,7 +1959,7 @@ class AgentSafetyTests(unittest.TestCase):
         )
         self.assertFalse(allowed)
 
-    def test_plan_message_replace_mode_increments_staged_version(self) -> None:
+    def test_plan_message_revise_action_replaces_and_increments_staged_version(self) -> None:
         class _Planner:
             def preview_intent_classification(self, user_message, session_context=None):
                 return ('roadmap_edit', False)
@@ -1901,6 +1981,7 @@ class AgentSafetyTests(unittest.TestCase):
                     provider_used='openai',
                     fallback_used=False,
                     provider_error_code=None,
+                    draft_action='revise',
                 )
 
         class _FakeStore:
@@ -1941,13 +2022,163 @@ class AgentSafetyTests(unittest.TestCase):
         outcome = service.plan_message(
             session=session,
             user_message='Rename Platform Foundation',
-            replace=True,
+            replace=False,
             auth_header=None,
-            trace_id='trace-replace-increments-version',
+            trace_id='trace-revise-increments-version',
         )
 
         self.assertEqual(outcome.response_mode, 'edit_plan')
         self.assertEqual(len(session.operations), 1)
+        self.assertEqual(session.staged_operations_version, 4)
+
+    def test_plan_message_hybrid_mode_ignores_replace_flag_without_revise(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Prepared append operation.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Platform Foundation 1'},
+                        )
+                    ],
+                    parse_mode='openai_edit_schema',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    draft_action='continue',
+                    needs_more_info=False,
+                    stop_reason='ready_to_stage',
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_hybrid_react_enabled': True,
+            }
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            operations=[
+                RoadmapOperation(
+                    op='update_node',
+                    node_id='11111111-1111-1111-1111-111111111111',
+                    patch={'title': 'Existing Title'},
+                )
+            ],
+        )
+        session.staged_operations_version = 3
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Rename Platform Foundation',
+            replace=True,
+            auth_header=None,
+            trace_id='trace-hybrid-ignore-legacy-replace',
+        )
+
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(len(session.operations), 2)
+        self.assertEqual(session.staged_operations_version, 4)
+
+    def test_plan_message_replace_flag_is_ignored_uses_append_mode(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Prepared append operation.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Platform Foundation 1'},
+                        )
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+            }
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            operations=[
+                RoadmapOperation(
+                    op='update_node',
+                    node_id='11111111-1111-1111-1111-111111111111',
+                    patch={'title': 'Existing Title'},
+                )
+            ],
+        )
+        session.staged_operations_version = 3
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Rename Platform Foundation',
+            replace=True,
+            auth_header=None,
+            trace_id='trace-replace-flag-ignored',
+        )
+
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(len(session.operations), 2)
         self.assertEqual(session.staged_operations_version, 4)
 
     def test_plan_message_initializes_root_draft_graph_from_legacy_operations(self) -> None:
@@ -2077,10 +2308,10 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertIsNotNone(session.metadata.active_draft_id)
         active_draft = session.metadata.drafts[session.metadata.active_draft_id]
         self.assertEqual(active_draft.draft_version, 1)
-        self.assertEqual(session.staged_operations_version, 1)
         self.assertEqual(len(active_draft.operations), 1)
-        self.assertEqual(len(session.operations), 1)
         self.assertEqual(outcome.active_draft_version, 1)
+        self.assertEqual(outcome.staged_operations_version, 1)
+        self.assertEqual(outcome.staged_operations_count, 1)
 
     def test_plan_message_restaging_reactivates_non_active_draft_status(self) -> None:
         class _Planner:
@@ -3479,15 +3710,7 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
             return {'revision_token': 'rev-4'}
 
         class _FakeAgentService:
-            def mirror_active_draft_to_legacy_fields(self, _session: AgentSession) -> None:
-                active_draft_id = _session.metadata.active_draft_id
-                if not active_draft_id:
-                    return
-                active = _session.metadata.drafts.get(active_draft_id)
-                if active is None:
-                    return
-                _session.operations = [op.model_copy(deep=True) for op in active.operations]
-                _session.staged_operations_version = active.draft_version
+            pass
 
         original_get_runtime = sessions_routes._get_agent_runtime_async
         original_get_session = sessions_routes._get_session_or_404_async
@@ -3519,8 +3742,11 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(session.metadata.draft_head_ids, ['draft-v1'])
         self.assertEqual(session.metadata.drafts['draft-v2'].status, 'abandoned')
         self.assertEqual(session.metadata.drafts['draft-v3'].status, 'abandoned')
-        self.assertEqual(len(session.operations), 1)
-        self.assertEqual(session.operations[0].patch, {'title': 'Version 1'})
+        self.assertEqual(len(session.metadata.drafts['draft-v1'].operations), 1)
+        self.assertEqual(
+            session.metadata.drafts['draft-v1'].operations[0].patch,
+            {'title': 'Version 1'},
+        )
         self.assertEqual(len(updated_sessions), 1)
 
     async def test_commit_session_strict_mode_allows_adhoc_preview_binding(self) -> None:
@@ -3734,11 +3960,6 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
 
             def get_active_draft(self, _session):
                 return _session.metadata.drafts[_session.metadata.active_draft_id]
-
-            def mirror_active_draft_to_legacy_fields(self, _session):
-                active = _session.metadata.drafts[_session.metadata.active_draft_id]
-                _session.operations = [op.model_copy(deep=True) for op in active.operations]
-                _session.staged_operations_version = active.draft_version
 
         async def _fake_discard_preview(**_kwargs):
             return None
@@ -5012,6 +5233,151 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(result.get('parse_mode'), 'neutral_edit_clarifier')
         self.assertEqual(result.get('planned_operations'), [])
         self.assertEqual(result.get('provider_error_code'), 'invalid_planner_schema')
+
+    def test_plan_operations_llm_first_hybrid_schema_rejects_tool_tuple_when_compat_disabled(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_hybrid_react_enabled': True,
+                'agent_legacy_planner_coercion_enabled': False,
+                'agent_edit_planner_repair_retries': 0,
+                'agent_edit_planner_max_attempts': 1,
+            }
+        )
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                return ProviderCallOutcome(
+                    value=(
+                        'Rename Platform Foundation to Platform Foundation 1.',
+                        [
+                            {
+                                'op': 'update_node',
+                                'node_id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                                'patch': {'title': 'Platform Foundation 1'},
+                            }
+                        ],
+                    ),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        result = planner._plan_operations(
+            {
+                'user_message': 'Rename my Platform Foundation to Platform Foundation 1',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-llm-first-hybrid-tool-tuple-rejected',
+                },
+            }
+        )
+
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'neutral_edit_clarifier')
+        self.assertEqual(result.get('planned_operations'), [])
+        self.assertEqual(result.get('provider_error_code'), 'invalid_planner_schema')
+
+    def test_plan_operations_llm_first_hybrid_schema_allows_tool_tuple_when_compat_enabled(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_hybrid_react_enabled': True,
+                'agent_legacy_planner_coercion_enabled': True,
+                'agent_edit_planner_repair_retries': 0,
+                'agent_edit_planner_max_attempts': 1,
+            }
+        )
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                return ProviderCallOutcome(
+                    value=(
+                        'Rename Platform Foundation to Platform Foundation 1.',
+                        [
+                            {
+                                'op': 'update_node',
+                                'node_id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                                'patch': {'title': 'Platform Foundation 1'},
+                            }
+                        ],
+                    ),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        result = planner._plan_operations(
+            {
+                'user_message': 'Rename my Platform Foundation to Platform Foundation 1',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-llm-first-hybrid-tool-tuple-compat',
+                },
+            }
+        )
+
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+        self.assertEqual(result.get('parse_mode'), 'openai_tool_calling')
+        self.assertEqual(result.get('stop_reason'), 'ready_to_stage')
+        planned_ops = result.get('planned_operations') or []
+        self.assertEqual(len(planned_ops), 1)
+        self.assertEqual(planned_ops[0].op.value, 'update_node')
+
+    def test_plan_operations_llm_first_hybrid_schema_allows_legacy_json_when_compat_enabled(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_hybrid_react_enabled': True,
+                'agent_legacy_planner_coercion_enabled': True,
+                'agent_edit_planner_repair_retries': 0,
+                'agent_edit_planner_max_attempts': 1,
+            }
+        )
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                return ProviderCallOutcome(
+                    value=(
+                        '{"action":"execute","reason":"clear_request",'
+                        '"question":"Rename the node.",'
+                        '"options":[],"operations":[{"op":"update_node",'
+                        '"node_id":"dad5697a-8962-4f80-8bc3-8a964edd8e56",'
+                        '"patch":{"title":"Platform Foundation 1"}}],'
+                        '"references_used":["resolve_node_reference"]}'
+                    ),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        result = planner._plan_operations(
+            {
+                'user_message': 'Rename my Platform Foundation to Platform Foundation 1',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-llm-first-hybrid-legacy-json-compat',
+                },
+            }
+        )
+
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+        self.assertEqual(result.get('parse_mode'), 'openai_edit_schema')
+        planned_ops = result.get('planned_operations') or []
+        self.assertEqual(len(planned_ops), 1)
+        self.assertEqual(planned_ops[0].op.value, 'update_node')
 
     def test_plan_operations_llm_first_execute_with_empty_operations_retries_then_clarifies(self) -> None:
         planner = self._planner()

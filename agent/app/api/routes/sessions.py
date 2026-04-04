@@ -473,7 +473,6 @@ async def send_message(
         session_id=session_id,
         roadmap_id=session.roadmap_id,
         message=payload.message,
-        replace_operations=payload.replace_operations,
         auto_preview=payload.auto_preview,
         actor_present=session.metadata.actor_context is not None,
         roadmap_role=(
@@ -508,9 +507,13 @@ async def send_message(
             agent_service.plan_message,
             session,
             payload.message,
-            payload.replace_operations,
+            False,
             request.headers.get('Authorization'),
             trace_id,
+        )
+        _, _, staged_snapshot_operations = _resolve_draft_snapshot(
+            outcome.session,
+            agent_service,
         )
 
         if (
@@ -527,7 +530,7 @@ async def send_message(
                         'revision_token': outcome.session.revision_token,
                         'operations': [
                             op.model_dump(exclude_none=True)
-                            for op in outcome.session.operations
+                            for op in staged_snapshot_operations
                         ],
                     },
                     auth_header=request.headers.get('Authorization'),
@@ -604,7 +607,7 @@ async def send_message(
                         intent_family='roadmap_edit_clarifier',
                         draft_operations=[
                             operation.model_copy(deep=True)
-                            for operation in outcome.session.operations
+                            for operation in staged_snapshot_operations
                         ],
                         required_fields=['corrected_fields'],
                         resolved_references=(
@@ -899,7 +902,11 @@ async def preview_session(
     started_at = perf_counter()
     session = await _get_session_or_404_async(agent_service, session_id)
 
-    operations = payload.operations if payload.operations is not None else session.operations
+    if payload.operations is not None:
+        operations = payload.operations
+    else:
+        _, _, snapshot_operations = _resolve_draft_snapshot(session, agent_service)
+        operations = snapshot_operations
     base_revision = payload.base_revision if payload.base_revision is not None else session.base_revision
     revision_token = (
         payload.revision_token
@@ -1227,12 +1234,6 @@ async def commit_session(
             session,
             selected_draft_id=selected_draft_id,
         )
-        mirror_active_draft = getattr(agent_service, 'mirror_active_draft_to_legacy_fields', None)
-        if callable(mirror_active_draft):
-            try:
-                mirror_active_draft(session)
-            except Exception:
-                pass
     else:
         abandoned_descendants = 0
     session.latest_preview_id = None
@@ -1296,7 +1297,6 @@ async def discard_session(
             active_draft.draft_version += 1
             active_draft.status = 'abandoned'
             active_draft.updated_at = _utcnow()
-            agent_service.mirror_active_draft_to_legacy_fields(session)
             draft_sync_applied = True
         except Exception:
             session.operations = []
@@ -1312,13 +1312,25 @@ async def discard_session(
     session.metadata.pending_edit_context = None
     await _run_store_call(store.update, session)
 
+    staged_operations_count = len(session.operations)
+    staged_operations_version = session.staged_operations_version
+    if settings.agent_draft_graph_enabled and draft_sync_applied:
+        try:
+            _, staged_operations_version, staged_operations = _resolve_draft_snapshot(
+                session,
+                agent_service,
+            )
+            staged_operations_count = len(staged_operations)
+        except Exception:
+            pass
+
     return DiscardResponse(
         session_id=session.session_id,
         roadmap_id=session.roadmap_id,
         discarded_preview_id=discarded_preview_id,
         discarded_at=session.updated_at,
-        staged_operations_count=len(session.operations),
-        staged_operations_version=session.staged_operations_version,
+        staged_operations_count=staged_operations_count,
+        staged_operations_version=staged_operations_version,
     )
 
 

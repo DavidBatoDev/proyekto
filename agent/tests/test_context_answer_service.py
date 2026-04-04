@@ -100,6 +100,15 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             return {'error': {'code': 'UNKNOWN'}}
 
         service, cache, _provider, build_key = self._service(execute_tool)
+        max_repeat = max(1, int(self.settings.max_repeated_tool_calls_per_signature))
+        tool_sequence = [
+            ('resolve_node_reference', {'label': 'Platform Foundation'})
+            for _ in range(max_repeat + 1)
+        ]
+        service._provider_orchestrator.call = self._orchestrator_call_with_fake_adapter(
+            tool_sequence=tool_sequence,
+            final_answer='unreachable',
+        )
         session_context = {
             'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
             'trace_id': 'trace-ambiguous',
@@ -121,10 +130,11 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             intent_type='question',
         )
 
-        self.assertEqual(calls['resolve'], 2)
-        self.assertIn('Please choose one', first['assistant_message'])
-        self.assertIsNotNone(first.get('pending_context_resolution'))
-        self.assertIn('Please choose one', second['assistant_message'])
+        self.assertEqual(calls['resolve'], 2 * max_repeat)
+        self.assertIn('avoid looping', first['assistant_message'])
+        self.assertEqual(first.get('provider_error_code'), 'discovery_repeat_limit_exhausted')
+        self.assertIn('avoid looping', second['assistant_message'])
+        self.assertEqual(second.get('provider_error_code'), 'discovery_repeat_limit_exhausted')
         cache_key = build_key(
             roadmap_id=session_context['roadmap_id'],
             user_message=message,
@@ -152,6 +162,20 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             return {'error': {'code': 'UNKNOWN'}}
 
         service, _cache, _provider, _build_key = self._service(execute_tool)
+        service._provider_orchestrator.call = self._orchestrator_call_with_fake_adapter(
+            tool_sequence=[
+                ('resolve_node_reference', {'label': 'Platform Foundation'}),
+                (
+                    'get_features',
+                    {
+                        'epic_id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                        'limit': 100,
+                        'offset': 0,
+                    },
+                ),
+            ],
+            final_answer='Features under "Platform Foundation":\n- Authentication',
+        )
         session_context = {
             'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
             'trace_id': 'trace-terminal',
@@ -177,7 +201,7 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
         self.assertEqual(second['assistant_message'], first['assistant_message'])
         self.assertEqual(calls['resolve'], 1)
         self.assertEqual(calls['features'], 1)
-        self.assertEqual(second.get('provider_used'), 'rule_based')
+        self.assertEqual(second.get('provider_used'), 'openai')
         self.assertFalse(second.get('fallback_used'))
         self.assertIsNone(second.get('provider_error_code'))
 

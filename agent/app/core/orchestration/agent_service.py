@@ -152,10 +152,16 @@ class AgentService:
             draft_graph_migration_applied = self._ensure_draft_graph_initialized(session)
             active_draft = self._get_active_draft(session)
         session_context = self._build_session_context(session, auth_header, trace_id)
+        staged_operations = (
+            active_draft.operations if active_draft is not None else session.operations
+        )
+        staged_operations_version = (
+            active_draft.draft_version if active_draft is not None else session.staged_operations_version
+        )
 
         pending_edit_context_present = session.metadata.pending_edit_context is not None
         edit_continuation_trigger = self._detect_edit_continuation_trigger(user_message)
-        has_staged_operations = bool(active_draft.operations) if active_draft is not None else bool(session.operations)
+        has_staged_operations = bool(staged_operations)
         pending_continuation_requested = pending_edit_context_present and (
             edit_continuation_trigger in {'confirm', 'cancel', 'correction', 'retry'}
         )
@@ -231,6 +237,7 @@ class AgentService:
         retry_tool_calls_used: int | None = None
         retry_duplicate_operation_deduped = False
         retry_autostage_applied = False
+        _ = replace  # Kept for API compatibility; replacement semantics are draft_action-driven.
 
         pending_context = session.metadata.pending_edit_context
         if pending_context is not None:
@@ -325,7 +332,7 @@ class AgentService:
         elif planning is None and preview_intent == 'roadmap_edit':
             planning, planning_loop_metrics = self._run_edit_react_planning_loop(
                 user_message=user_message,
-                existing_operations=session.operations,
+                existing_operations=staged_operations,
                 session_context=session_context,
                 route_lane='llm_edit_plan',
             )
@@ -345,7 +352,7 @@ class AgentService:
         elif planning is None:
             planning, planning_loop_metrics = self._run_edit_react_planning_loop(
                 user_message=user_message,
-                existing_operations=session.operations,
+                existing_operations=staged_operations,
                 session_context=session_context,
                 route_lane='llm_edit_plan',
             )
@@ -363,13 +370,18 @@ class AgentService:
             )
             route_lane = 'llm_edit_plan' if planning.response_mode == 'edit_plan' else 'chat'
 
-        planning, edit_guard_intervened = self._run_edit_react_loop(
+        planning, edit_guard_intervened, operation_validation_error = self._run_edit_react_loop(
             planning=planning,
             pending_edit_context_present=pending_edit_context_present,
             edit_continuation_trigger=edit_continuation_trigger,
             route_lane=route_lane,
             user_message=user_message,
         )
+
+        if operation_validation_error is not None:
+            invalid_operation_detected = True
+            invalid_operation_reason = operation_validation_error.get('reason')
+            invalid_operation_index = operation_validation_error.get('index')
 
         internal_metrics = session_context.get('_phase_metrics', {})
         if isinstance(internal_metrics, dict):
@@ -388,32 +400,6 @@ class AgentService:
                 else {}
             )
 
-        validation_error = self._validate_operation_contract(planning.operations)
-        if validation_error is not None:
-            invalid_operation_detected = True
-            invalid_operation_reason = validation_error['reason']
-            invalid_operation_index = validation_error['index']
-            guidance = self._operation_validation_guidance(invalid_operation_reason)
-            planning = PlanningResult(
-                assistant_message=(
-                    'I could not safely stage this edit operation. '
-                    f'{guidance}'
-                ),
-                operations=[],
-                parse_mode='deterministic_invalid_operation_blocked',
-                intent_type=planning.intent_type,
-                response_mode='chat',
-                preview_recommended=False,
-                provider_used='rule_based',
-                fallback_used=True,
-                provider_error_code='invalid_operation_contract',
-                tokens_input=planning.tokens_input,
-                tokens_output=planning.tokens_output,
-                tokens_total=planning.tokens_total,
-                route_lane=route_lane,
-                fastpath_bypass_reason=fastpath_bypass_reason,
-            )
-
         operations = planning.operations
         if planning.response_mode == 'edit_plan' and len(operations) > self._settings.max_operations_per_request:
             raise HTTPException(
@@ -429,6 +415,7 @@ class AgentService:
             planning=planning,
             user_message=user_message,
             edit_continuation_trigger=edit_continuation_trigger,
+            staged_operations_version=staged_operations_version,
             trace_id=trace_id,
         )
 
@@ -466,7 +453,9 @@ class AgentService:
 
         applied_operations: list[RoadmapOperation] = []
         staged_changed = False
-        should_replace_operations = replace or planning.draft_action == 'revise'
+        should_replace_operations = self._should_replace_staged_operations(
+            planning=planning,
+        )
         if planning.response_mode == 'edit_plan':
             if draft_graph_enabled:
                 active_draft = self._get_active_draft(session)
@@ -499,7 +488,6 @@ class AgentService:
                 active_draft.updated_at = _utcnow()
                 if staged_changed:
                     active_draft.draft_version += 1
-                self._mirror_active_draft_to_legacy_fields(session)
             else:
                 if should_replace_operations:
                     session.operations = operations
@@ -534,7 +522,13 @@ class AgentService:
         self._store.append_message(session, 'assistant', planning.assistant_message)
         self._store.update(session)
 
-        preview_available = len(session.operations) > 0
+        staged_operations = (
+            active_draft.operations if active_draft is not None else session.operations
+        )
+        staged_operations_version = (
+            active_draft.draft_version if active_draft is not None else session.staged_operations_version
+        )
+        preview_available = len(staged_operations) > 0
         preview_recommended = planning.preview_recommended and preview_available
         active_draft_id: str | None = None
         active_draft_version: int | None = None
@@ -550,8 +544,8 @@ class AgentService:
             trace_id=trace_id,
             session_id=session.session_id,
             roadmap_id=session.roadmap_id,
-            staged_operations_count=len(session.operations),
-            staged_operations_version=session.staged_operations_version,
+            staged_operations_count=len(staged_operations),
+            staged_operations_version=staged_operations_version,
             active_draft_id=active_draft_id,
             active_draft_version=active_draft_version,
             draft_graph_migration_applied=draft_graph_migration_applied,
@@ -610,8 +604,8 @@ class AgentService:
             operations=applied_operations if planning.response_mode == 'edit_plan' else [],
             preview_available=preview_available,
             preview_recommended=preview_recommended,
-            staged_operations_version=session.staged_operations_version,
-            staged_operations_count=len(session.operations),
+            staged_operations_version=staged_operations_version,
+            staged_operations_count=len(staged_operations),
             provider_used=planning.provider_used,
             fallback_used=planning.fallback_used,
             provider_error_code=planning.provider_error_code,
@@ -659,6 +653,15 @@ class AgentService:
             separators=(',', ':'),
         )
 
+    def _should_replace_staged_operations(
+        self,
+        *,
+        planning: PlanningResult,
+    ) -> bool:
+        if planning.response_mode != 'edit_plan':
+            return False
+        return planning.draft_action == 'revise'
+
     def _detect_edit_continuation_trigger(self, user_message: str) -> str | None:
         normalized = user_message.strip().lower()
         normalized = re.sub(r'[.!?,;:]+', ' ', normalized).strip()
@@ -700,7 +703,8 @@ class AgentService:
         return None
 
     def _infer_last_staged_create_title(self, session: AgentSession) -> str | None:
-        for operation in reversed(session.operations):
+        staged_operations = self._get_current_staged_operations(session)
+        for operation in reversed(staged_operations):
             op_name = operation.op.value if hasattr(operation.op, 'value') else str(operation.op)
             if op_name not in {'add_epic', 'add_feature', 'add_task'}:
                 continue
@@ -740,6 +744,7 @@ class AgentService:
         planning: PlanningResult,
         user_message: str,
         edit_continuation_trigger: str | None,
+        staged_operations_version: int,
         trace_id: str | None,
     ) -> None:
         existing_context = session.metadata.pending_edit_context
@@ -847,7 +852,7 @@ class AgentService:
                 planning=planning,
                 edit_continuation_trigger=edit_continuation_trigger,
                 intent_family=intent_family,
-                staged_operations_version=session.staged_operations_version,
+                staged_operations_version=staged_operations_version,
                 rename_intent=rename_intent,
             ),
             last_planner_stop_reason=planning.stop_reason,
@@ -941,7 +946,7 @@ class AgentService:
         loop_budget = max(1, min(int(self._settings.agent_edit_planner_max_attempts), 4))
         loop_started = perf_counter()
         loop_turns = 0
-        termination_reason = 'terminal'
+        termination_reason = 'planner_terminal'
         planning: PlanningResult | None = None
 
         observation_context = dict(session_context)
@@ -958,12 +963,16 @@ class AgentService:
             planning = replace(planning, route_lane=route_lane)
 
             if not self._settings.agent_hybrid_react_enabled:
+                termination_reason = 'hybrid_disabled'
                 break
             if planning.response_mode != 'edit_plan':
+                termination_reason = 'planner_returned_chat'
                 break
             if not planning.operations:
+                termination_reason = 'planner_returned_no_operations'
                 break
             if planning.stop_reason == 'ready_to_stage':
+                termination_reason = 'ready_to_stage'
                 break
 
             if turn_index + 1 >= loop_budget:
@@ -1007,6 +1016,137 @@ class AgentService:
         }
         return planning, loop_metrics
 
+    def _build_react_guard_handoff(
+        self,
+        *,
+        planning: PlanningResult,
+        route_lane: str | None,
+        assistant_message: str,
+        parse_mode: str,
+        provider_error_code: str,
+        clarifier_reason: str,
+        clarifier_options: list[str],
+        needs_more_info: bool | None = None,
+        stop_reason: str | None = None,
+    ) -> PlanningResult:
+        return PlanningResult(
+            assistant_message=assistant_message,
+            operations=[],
+            parse_mode=parse_mode,
+            intent_type='roadmap_edit',
+            response_mode='chat',
+            preview_recommended=False,
+            provider_used='rule_based',
+            fallback_used=True,
+            provider_error_code=provider_error_code,
+            tokens_input=planning.tokens_input,
+            tokens_output=planning.tokens_output,
+            tokens_total=planning.tokens_total,
+            route_lane=route_lane,
+            fastpath_bypass_reason=planning.fastpath_bypass_reason,
+            clarifier_action='ask_clarifier',
+            clarifier_reason=clarifier_reason,
+            clarifier_options=clarifier_options,
+            draft_action=planning.draft_action,
+            tool_plan=planning.tool_plan,
+            needs_more_info=needs_more_info,
+            stop_reason=stop_reason,
+        )
+
+    def _enforce_hybrid_react_terminal_guard(
+        self,
+        *,
+        planning: PlanningResult,
+        route_lane: str | None,
+        user_message: str,
+    ) -> PlanningResult | None:
+        if not self._settings.agent_hybrid_react_enabled:
+            return None
+        if planning.response_mode != 'edit_plan':
+            return None
+
+        if planning.draft_action not in {'continue', 'revise', 'new_draft'}:
+            return self._build_react_guard_handoff(
+                planning=planning,
+                route_lane=route_lane,
+                assistant_message=(
+                    'I need one more confirmation before staging edits because draft intent metadata '
+                    'was incomplete. Please restate whether this should continue, revise, or start a new draft.'
+                ),
+                parse_mode='deterministic_planner_schema_handoff',
+                provider_error_code='planner_schema_missing_draft_action',
+                clarifier_reason='planner_schema_missing_draft_action',
+                clarifier_options=['Continue current draft', 'Revise current draft', 'Start new draft'],
+            )
+
+        if planning.needs_more_info:
+            return self._build_react_guard_handoff(
+                planning=planning,
+                route_lane=route_lane,
+                assistant_message=(
+                    'I could not safely stage edits yet because required context is still missing. '
+                    'Please answer the clarification so I can continue.'
+                ),
+                parse_mode='deterministic_planner_needs_more_info_handoff',
+                provider_error_code='planner_needs_more_info_conflict',
+                clarifier_reason='planner_needs_more_info_conflict',
+                clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
+            )
+
+        if planning.stop_reason in {'tool_budget_exhausted', 'insufficient_context', 'awaiting_user_input'}:
+            return self._build_react_guard_handoff(
+                planning=planning,
+                route_lane=route_lane,
+                assistant_message=(
+                    'I still need one clarification before I can safely stage edits. '
+                    'Please provide the missing target details and I will continue.'
+                ),
+                parse_mode='deterministic_planner_stop_reason_handoff',
+                provider_error_code='planner_stop_reason_conflict',
+                clarifier_reason='planner_stop_reason_conflict',
+                clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
+                needs_more_info=True,
+                stop_reason=planning.stop_reason,
+            )
+
+        if planning.operations and planning.stop_reason != 'ready_to_stage':
+            return self._build_react_guard_handoff(
+                planning=planning,
+                route_lane=route_lane,
+                assistant_message=(
+                    'I need one more clarification before I can safely stage these edits. '
+                    'Please confirm the exact target details.'
+                ),
+                parse_mode='deterministic_react_terminal_handoff',
+                provider_error_code='planner_terminal_state_conflict',
+                clarifier_reason='planner_terminal_state_conflict',
+                clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
+                needs_more_info=True,
+                stop_reason=(planning.stop_reason or 'awaiting_user_input'),
+            )
+
+        if (
+            planning.operations
+            and self._is_rename_message(user_message)
+            and not self._has_rename_shape_operation(planning.operations)
+        ):
+            return self._build_react_guard_handoff(
+                planning=planning,
+                route_lane=route_lane,
+                assistant_message=(
+                    'I understood this as a rename request, but I could not derive a safe rename '
+                    'operation yet. Please provide the exact current label and the new title.'
+                ),
+                parse_mode='deterministic_rename_shape_handoff',
+                provider_error_code='rename_shape_guard_blocked',
+                clarifier_reason='rename_shape_guard_blocked',
+                clarifier_options=['Provide current label', 'Provide new title', 'Cancel'],
+                needs_more_info=True,
+                stop_reason='insufficient_context',
+            )
+
+        return None
+
     def _derive_react_terminal_action(
         self,
         *,
@@ -1031,8 +1171,9 @@ class AgentService:
         edit_continuation_trigger: str | None,
         route_lane: str | None,
         user_message: str,
-    ) -> tuple[PlanningResult, bool]:
+    ) -> tuple[PlanningResult, bool, dict[str, Any] | None]:
         edit_guard_intervened = False
+        operation_validation_error: dict[str, Any] | None = None
 
         planning = self._apply_context_answer_output_guard(
             planning=planning,
@@ -1099,162 +1240,59 @@ class AgentService:
                 clarifier_options=['Use the matched node ID', 'Refine the node label', 'Cancel'],
             )
             edit_guard_intervened = True
-        if (
-            self._settings.agent_hybrid_react_enabled
-            and planning.response_mode == 'edit_plan'
-            and planning.draft_action not in {'continue', 'revise', 'new_draft'}
-        ):
-            planning = PlanningResult(
-                assistant_message=(
-                    'I need one more confirmation before staging edits because draft intent metadata '
-                    'was incomplete. Please restate whether this should continue, revise, or start a new draft.'
-                ),
-                operations=[],
-                parse_mode='deterministic_planner_schema_handoff',
-                intent_type='roadmap_edit',
-                response_mode='chat',
-                preview_recommended=False,
-                provider_used='rule_based',
-                fallback_used=True,
-                provider_error_code='planner_schema_missing_draft_action',
-                tokens_input=planning.tokens_input,
-                tokens_output=planning.tokens_output,
-                tokens_total=planning.tokens_total,
-                route_lane=route_lane,
-                fastpath_bypass_reason=planning.fastpath_bypass_reason,
-                clarifier_action='ask_clarifier',
-                clarifier_reason='planner_schema_missing_draft_action',
-                clarifier_options=['Continue current draft', 'Revise current draft', 'Start new draft'],
-            )
-            edit_guard_intervened = True
-        if planning.response_mode == 'edit_plan' and planning.needs_more_info:
-            planning = PlanningResult(
-                assistant_message=(
-                    'I could not safely stage edits yet because required context is still missing. '
-                    'Please answer the clarification so I can continue.'
-                ),
-                operations=[],
-                parse_mode='deterministic_planner_needs_more_info_handoff',
-                intent_type='roadmap_edit',
-                response_mode='chat',
-                preview_recommended=False,
-                provider_used='rule_based',
-                fallback_used=True,
-                provider_error_code='planner_needs_more_info_conflict',
-                tokens_input=planning.tokens_input,
-                tokens_output=planning.tokens_output,
-                tokens_total=planning.tokens_total,
-                route_lane=route_lane,
-                fastpath_bypass_reason=planning.fastpath_bypass_reason,
-                clarifier_action='ask_clarifier',
-                clarifier_reason='planner_needs_more_info_conflict',
-                clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
-            )
-            edit_guard_intervened = True
-        if (
-            self._settings.agent_hybrid_react_enabled
-            and planning.response_mode == 'edit_plan'
-            and planning.stop_reason in {'tool_budget_exhausted', 'insufficient_context', 'awaiting_user_input'}
-        ):
-            planning = PlanningResult(
-                assistant_message=(
-                    'I still need one clarification before I can safely stage edits. '
-                    'Please provide the missing target details and I will continue.'
-                ),
-                operations=[],
-                parse_mode='deterministic_planner_stop_reason_handoff',
-                intent_type='roadmap_edit',
-                response_mode='chat',
-                preview_recommended=False,
-                provider_used='rule_based',
-                fallback_used=True,
-                provider_error_code='planner_stop_reason_conflict',
-                tokens_input=planning.tokens_input,
-                tokens_output=planning.tokens_output,
-                tokens_total=planning.tokens_total,
-                route_lane=route_lane,
-                fastpath_bypass_reason=planning.fastpath_bypass_reason,
-                clarifier_action='ask_clarifier',
-                clarifier_reason='planner_stop_reason_conflict',
-                clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
-                draft_action=planning.draft_action,
-                tool_plan=planning.tool_plan,
-                needs_more_info=True,
-                stop_reason=planning.stop_reason,
-            )
+        hybrid_guard_handoff = self._enforce_hybrid_react_terminal_guard(
+            planning=planning,
+            route_lane=route_lane,
+            user_message=user_message,
+        )
+        if hybrid_guard_handoff is not None:
+            planning = hybrid_guard_handoff
             edit_guard_intervened = True
 
-        if (
-            self._settings.agent_hybrid_react_enabled
-            and planning.response_mode == 'edit_plan'
-            and planning.operations
-            and planning.stop_reason != 'ready_to_stage'
-        ):
-            planning = PlanningResult(
-                assistant_message=(
-                    'I need one more clarification before I can safely stage these edits. '
-                    'Please confirm the exact target details.'
-                ),
-                operations=[],
-                parse_mode='deterministic_react_terminal_handoff',
-                intent_type='roadmap_edit',
-                response_mode='chat',
-                preview_recommended=False,
-                provider_used='rule_based',
-                fallback_used=True,
-                provider_error_code='planner_terminal_state_conflict',
-                tokens_input=planning.tokens_input,
-                tokens_output=planning.tokens_output,
-                tokens_total=planning.tokens_total,
-                route_lane=route_lane,
-                fastpath_bypass_reason=planning.fastpath_bypass_reason,
-                clarifier_action='ask_clarifier',
-                clarifier_reason='planner_terminal_state_conflict',
-                clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
-                draft_action=planning.draft_action,
-                tool_plan=planning.tool_plan,
-                needs_more_info=True,
-                stop_reason=(planning.stop_reason or 'awaiting_user_input'),
-            )
-            edit_guard_intervened = True
-
-        if (
-            self._settings.agent_hybrid_react_enabled
-            and planning.response_mode == 'edit_plan'
-            and planning.operations
-            and self._is_rename_message(user_message)
-            and not self._has_rename_shape_operation(planning.operations)
-        ):
-            planning = PlanningResult(
-                assistant_message=(
-                    'I understood this as a rename request, but I could not derive a safe rename '
-                    'operation yet. Please provide the exact current label and the new title.'
-                ),
-                operations=[],
-                parse_mode='deterministic_rename_shape_handoff',
-                intent_type='roadmap_edit',
-                response_mode='chat',
-                preview_recommended=False,
-                provider_used='rule_based',
-                fallback_used=True,
-                provider_error_code='rename_shape_guard_blocked',
-                tokens_input=planning.tokens_input,
-                tokens_output=planning.tokens_output,
-                tokens_total=planning.tokens_total,
-                route_lane=route_lane,
-                fastpath_bypass_reason=planning.fastpath_bypass_reason,
-                clarifier_action='ask_clarifier',
-                clarifier_reason='rename_shape_guard_blocked',
-                clarifier_options=['Provide current label', 'Provide new title', 'Cancel'],
-                draft_action=planning.draft_action,
-                tool_plan=planning.tool_plan,
-                needs_more_info=True,
-                stop_reason='insufficient_context',
-            )
-            edit_guard_intervened = True
+        planning, operation_validation_error = self._apply_operation_contract_guard(
+            planning=planning,
+            route_lane=route_lane,
+        )
 
         planning = self._normalize_planning_clarifier_contract(planning)
-        return planning, edit_guard_intervened
+        return planning, edit_guard_intervened, operation_validation_error
+
+    def _apply_operation_contract_guard(
+        self,
+        *,
+        planning: PlanningResult,
+        route_lane: str | None,
+    ) -> tuple[PlanningResult, dict[str, Any] | None]:
+        if planning.response_mode != 'edit_plan' or not planning.operations:
+            return planning, None
+
+        validation_error = self._validate_operation_contract(planning.operations)
+        if validation_error is None:
+            return planning, None
+
+        guidance = self._operation_validation_guidance(validation_error.get('reason'))
+        return (
+            PlanningResult(
+                assistant_message=(
+                    'I could not safely stage this edit operation. '
+                    f'{guidance}'
+                ),
+                operations=[],
+                parse_mode='deterministic_invalid_operation_blocked',
+                intent_type=planning.intent_type,
+                response_mode='chat',
+                preview_recommended=False,
+                provider_used='rule_based',
+                fallback_used=True,
+                provider_error_code='invalid_operation_contract',
+                tokens_input=planning.tokens_input,
+                tokens_output=planning.tokens_output,
+                tokens_total=planning.tokens_total,
+                route_lane=route_lane,
+                fastpath_bypass_reason=planning.fastpath_bypass_reason,
+            ),
+            validation_error,
+        )
 
     def _is_rename_message(self, user_message: str) -> bool:
         normalized = user_message.strip().lower()
@@ -1533,9 +1571,10 @@ class AgentService:
                 'blocked_reason': 'retry_stale_hints_blocked',
             }
         hint_staged_version = hints.get('hint_staged_operations_version')
+        current_staged_version = self._get_current_staged_operations_version(session)
         if (
             not isinstance(hint_staged_version, int)
-            or hint_staged_version != session.staged_operations_version
+            or hint_staged_version != current_staged_version
         ):
             return {
                 'planning': None,
@@ -1598,7 +1637,7 @@ class AgentService:
             'normalized_label': self._normalize_label(from_label),
             'candidate_ids': [item.get('id') for item in candidates if isinstance(item, dict)],
             'candidate_count': len(candidates),
-            'hint_staged_operations_version': session.staged_operations_version,
+            'hint_staged_operations_version': current_staged_version,
             'hint_intent_version': int(hints.get('intent_version') or 0),
         }
         pending_context.updated_at = _utcnow()
@@ -1970,9 +2009,6 @@ class AgentService:
     def get_active_draft(self, session: AgentSession) -> DraftNode:
         return self._get_active_draft(session)
 
-    def mirror_active_draft_to_legacy_fields(self, session: AgentSession) -> None:
-        self._mirror_active_draft_to_legacy_fields(session)
-
     def _ensure_draft_graph_initialized(self, session: AgentSession) -> bool:
         migration_applied = False
         drafts = session.metadata.drafts
@@ -2007,8 +2043,6 @@ class AgentService:
             )
             active_draft.updated_at = _utcnow()
             migration_applied = True
-
-        self._mirror_active_draft_to_legacy_fields(session)
         return migration_applied
 
     def _build_root_draft_from_legacy_operations(self, session: AgentSession) -> DraftNode:
@@ -2034,12 +2068,21 @@ class AgentService:
             raise RuntimeError(f'Active draft {active_draft_id} is missing from draft graph.')
         return draft
 
-    def _mirror_active_draft_to_legacy_fields(self, session: AgentSession) -> None:
-        active_draft = self._get_active_draft(session)
-        session.operations = [
-            operation.model_copy(deep=True) for operation in active_draft.operations
-        ]
-        session.staged_operations_version = active_draft.draft_version
+    def _get_current_staged_operations(self, session: AgentSession) -> list[RoadmapOperation]:
+        if self._settings.agent_draft_graph_enabled:
+            active_draft_id = session.metadata.active_draft_id
+            active_draft = session.metadata.drafts.get(active_draft_id) if active_draft_id else None
+            if isinstance(active_draft, DraftNode):
+                return active_draft.operations
+        return session.operations
+
+    def _get_current_staged_operations_version(self, session: AgentSession) -> int:
+        if self._settings.agent_draft_graph_enabled:
+            active_draft_id = session.metadata.active_draft_id
+            active_draft = session.metadata.drafts.get(active_draft_id) if active_draft_id else None
+            if isinstance(active_draft, DraftNode):
+                return int(active_draft.draft_version)
+        return int(session.staged_operations_version)
 
     def _build_session_context(
         self,
@@ -2050,6 +2093,11 @@ class AgentService:
         active_draft = None
         if session.metadata.active_draft_id:
             active_draft = session.metadata.drafts.get(session.metadata.active_draft_id)
+        staged_operations_count = (
+            len(active_draft.operations)
+            if isinstance(active_draft, DraftNode)
+            else len(session.operations)
+        )
         recent_messages = [
             {'role': item.role, 'content': item.content}
             for item in session.messages[-self._settings.max_chat_history_messages :]
@@ -2058,7 +2106,7 @@ class AgentService:
             'roadmap_id': session.roadmap_id,
             'base_revision': session.base_revision,
             'revision_token': session.revision_token,
-            'staged_operations_count': len(session.operations),
+            'staged_operations_count': staged_operations_count,
             'active_draft_id': session.metadata.active_draft_id,
             'active_draft_version': (
                 active_draft.draft_version if active_draft is not None else None

@@ -1,0 +1,160 @@
+#!/usr/bin/env node
+
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const scriptFile = fileURLToPath(import.meta.url);
+const repoRoot = path.resolve(path.dirname(scriptFile), "..");
+const agentDir = path.join(repoRoot, "agent");
+const scriptDir = path.dirname(scriptFile);
+
+loadEnvFiles();
+
+const strictModules = [
+  "tests.test_agent_safety.SessionRouteSafetyTests.test_commit_session_strict_mode_blocks_when_preview_fingerprint_mismatches",
+  "tests.test_agent_safety.SessionRouteSafetyTests.test_commit_session_preview_not_found_returns_stale_reference_without_regeneration",
+  "tests.test_agent_safety.AgentSafetyTests.test_plan_message_react_loop_budget_exhaustion_sets_clarify_terminal",
+  "tests.test_agent_safety.AgentSafetyTests.test_plan_message_retry_blocks_on_staged_version_mismatch",
+  "tests.test_agent_safety.AgentSafetyTests.test_plan_message_retry_ambiguous_returns_numbered_id_choices",
+  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_llm_first_hybrid_schema_rejects_tool_tuple_when_compat_disabled",
+  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_llm_first_hybrid_schema_execute_with_needs_more_info_rejected",
+  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_llm_first_hybrid_schema_missing_fields_rejected",
+  "tests.test_draft_graph_versioning.DraftGraphVersioningContractTests.test_draft_graph_migration_preserves_legacy_staged_state",
+  "tests.test_draft_graph_versioning.DraftGraphVersioningContractTests.test_pending_edit_context_roundtrip_preserves_preview_validation_fields",
+  "tests.test_logging_utils.LoggingUtilsLifecycleTests.test_lifecycle_response_includes_react_terminal_and_loop_fields",
+];
+
+const legacyModules = [
+  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_llm_first_hybrid_schema_allows_tool_tuple_when_compat_enabled",
+  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_llm_first_hybrid_schema_allows_legacy_json_when_compat_enabled",
+  "tests.test_agent_safety.SessionRouteSafetyTests.test_commit_session_strict_mode_blocks_when_preview_fingerprint_mismatches",
+  "tests.test_agent_safety.SessionRouteSafetyTests.test_commit_session_preview_not_found_returns_stale_reference_without_regeneration",
+  "tests.test_draft_graph_versioning.DraftGraphVersioningContractTests.test_agent_session_legacy_payload_deserializes_with_draft_defaults",
+  "tests.test_draft_graph_versioning.DraftGraphVersioningContractTests.test_draft_graph_migration_preserves_legacy_staged_state",
+];
+
+const strictEnv = {
+  AGENT_HYBRID_REACT_ENABLED: "true",
+  AGENT_DRAFT_GRAPH_ENABLED: "true",
+  AGENT_LEGACY_PLANNER_COERCION_ENABLED: "false",
+  AGENT_STRICT_PREVIEW_FINGERPRINT: "true",
+  AGENT_EDIT_PLANNER_MAX_ATTEMPTS: "4",
+  MAX_EDIT_TOOL_TURNS: "3",
+};
+
+const legacyEnv = {
+  AGENT_HYBRID_REACT_ENABLED: "false",
+  AGENT_DRAFT_GRAPH_ENABLED: "false",
+  AGENT_LEGACY_PLANNER_COERCION_ENABLED: "true",
+  AGENT_STRICT_PREVIEW_FINGERPRINT: "true",
+  AGENT_EDIT_PLANNER_MAX_ATTEMPTS: "2",
+  MAX_EDIT_TOOL_TURNS: "4",
+};
+
+function loadEnvFiles() {
+  const cwd = process.cwd();
+  const candidates = [
+    path.join(cwd, ".env"),
+    path.join(scriptDir, ".env"),
+    path.join(repoRoot, ".env"),
+    path.join(repoRoot, "agent", ".env"),
+  ];
+
+  for (const filePath of candidates) {
+    if (!existsSync(filePath)) continue;
+    const content = readFileSync(filePath, "utf8");
+    for (const rawLine of content.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith("#")) continue;
+      const equalIndex = line.indexOf("=");
+      if (equalIndex <= 0) continue;
+      const key = line.slice(0, equalIndex).trim();
+      if (!key || process.env[key] !== undefined) continue;
+      let value = line.slice(equalIndex + 1).trim();
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      process.env[key] = value;
+    }
+  }
+}
+
+function canRun(executable) {
+  if (!executable) return false;
+  if (executable.includes(path.sep)) return existsSync(executable);
+  return true;
+}
+
+function pythonArgs(pyExecutable, modules) {
+  if (path.basename(pyExecutable).toLowerCase() === "py") {
+    return ["-3", "-m", "unittest", ...modules, "-v"];
+  }
+  return ["-m", "unittest", ...modules, "-v"];
+}
+
+function pickPython() {
+  const candidates = [
+    process.env.AGENT_PYTHON_BIN,
+    path.join(agentDir, "venv", "Scripts", "python.exe"),
+    path.join(agentDir, ".venv", "Scripts", "python.exe"),
+    "python",
+    "py",
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (!canRun(candidate)) continue;
+    return candidate;
+  }
+  return null;
+}
+
+function runProfile(pyExecutable, name, envOverrides, modules) {
+  console.log(`\n=== ${name} ===`);
+  for (const [key, value] of Object.entries(envOverrides)) {
+    console.log(`${key}=${value}`);
+  }
+
+  const result = spawnSync(pyExecutable, pythonArgs(pyExecutable, modules), {
+    cwd: agentDir,
+    env: { ...process.env, ...envOverrides },
+    stdio: "pipe",
+    shell: false,
+    encoding: "utf8",
+  });
+
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+
+  const ok = (result.status ?? 1) === 0;
+  console.log(`Profile ${name}: ${ok ? "PASS" : "FAIL"}\n`);
+  return ok;
+}
+
+function main() {
+  const py = pickPython();
+  if (!py) {
+    console.error("No Python interpreter found for canary validation.");
+    process.exit(1);
+  }
+
+  console.log(`Using Python: ${py}`);
+  const strictOk = runProfile(py, "strict-canary", strictEnv, strictModules);
+  const legacyOk = runProfile(py, "legacy-safe", legacyEnv, legacyModules);
+
+  if (strictOk && legacyOk) {
+    console.log(
+      "Canary matrix validation passed for strict and legacy profiles.",
+    );
+    process.exit(0);
+  }
+
+  console.error("Canary matrix validation failed.");
+  process.exit(1);
+}
+
+main();

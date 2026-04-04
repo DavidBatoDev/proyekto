@@ -652,15 +652,28 @@ class LLMPlanner:
             if shape is None:
                 if attempt + 1 < max_attempts:
                     schema_invalid_attempts += 1
+                    strict_hybrid = self._is_hybrid_edit_schema_enforced()
+                    legacy_compat = self._is_legacy_planner_coercion_enabled()
+                    expected_shapes = (
+                        '(1) strict JSON schema payload with action/reason/question/options/operations/references_used/draft_action/tool_plan/needs_more_info/stop_reason.'
+                        if strict_hybrid and not legacy_compat
+                        else (
+                            '(1) tool mode tuple: (assistant_message, operations), or '
+                            '(2) strict JSON schema payload with action/reason/question/options/operations/references_used/draft_action/tool_plan/needs_more_info/stop_reason.'
+                            if strict_hybrid
+                            else (
+                                '(1) tool mode tuple: (assistant_message, operations), or '
+                                '(2) JSON schema payload with action/reason/question/options/operations/references_used.'
+                            )
+                        )
+                    )
                     planner_prompt = self._build_llm_first_edit_prompt(
                         user_message=user_message,
                         existing_operations=existing_operations,
                         session_context=session_context,
                         parse_error_hint=(
                             'Previous attempt returned an invalid planner payload shape. '
-                            'Return either: '
-                            '(1) tool mode tuple: (assistant_message, operations), or '
-                            '(2) strict JSON schema payload with action/reason/question/options/operations.'
+                            f'Return {expected_shapes}'
                         ),
                     )
                     continue
@@ -802,6 +815,8 @@ class LLMPlanner:
         _EditPlannerPayload | _HybridEditPlannerPayload | None,
     ] | None:
         if isinstance(raw_value, tuple):
+            if self._is_hybrid_edit_schema_enforced() and not self._is_legacy_planner_coercion_enabled():
+                return None
             if len(raw_value) != 2:
                 return None
             assistant_message, raw_operations = raw_value
@@ -880,6 +895,9 @@ class LLMPlanner:
             'hybrid_react',
         }
 
+    def _is_legacy_planner_coercion_enabled(self) -> bool:
+        return bool(getattr(self._settings, 'agent_legacy_planner_coercion_enabled', False))
+
     def _summarize_existing_operations(
         self,
         operations: list[RoadmapOperation],
@@ -951,7 +969,12 @@ class LLMPlanner:
         strict_hybrid = self._is_hybrid_edit_schema_enforced()
 
         if strict_hybrid:
-            return self._parse_hybrid_edit_planner_payload(candidate)
+            try:
+                return self._parse_hybrid_edit_planner_payload(candidate)
+            except ValueError:
+                if self._is_legacy_planner_coercion_enabled():
+                    return self._parse_legacy_edit_planner_payload(candidate)
+                raise
 
         try:
             parsed = json.loads(candidate)

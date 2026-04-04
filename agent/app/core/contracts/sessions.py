@@ -228,7 +228,6 @@ class CreateSessionResponse(BaseModel):
 
 class MessageRequest(BaseModel):
     message: str
-    replace_operations: bool = False
     auto_preview: bool = True
 
 
