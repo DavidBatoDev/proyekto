@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 from time import perf_counter
@@ -146,6 +147,7 @@ class ContextToolsExecutor:
                         result_summary=summarize_tool_result(result),
                     )
                     return result
+                query = self._normalize_query_text(query)
                 limit_raw = args.get('limit')
                 limit = int(limit_raw) if isinstance(limit_raw, int) else None
                 result = self._run_context_call(
@@ -192,20 +194,39 @@ class ContextToolsExecutor:
                 node_type = node_type_raw if node_type_raw in {'epic', 'feature', 'task'} else None
                 limit_raw = args.get('limit')
                 limit = int(limit_raw) if isinstance(limit_raw, int) else 20
-                search_result = self._run_context_call(
-                    session_context,
-                    self._nest_client.context_search(
-                        roadmap_id=roadmap_id,
-                        query=label,
-                        node_type=node_type,
-                        limit=limit,
-                        auth_header=auth_value,
-                        trace_id=trace_id,
+                raw_matches: list[Any] = []
+                resolution_id: str | None = None
+                seen_ids: set[str] = set()
+                for query in self._query_variants(label):
+                    search_result = self._run_context_call(
+                        session_context,
+                        self._nest_client.context_search(
+                            roadmap_id=roadmap_id,
+                            query=query,
+                            node_type=node_type,
+                            limit=limit,
+                            auth_header=auth_value,
+                            trace_id=trace_id,
+                        )
                     )
-                )
-                raw_matches = search_result.get('matches', [])
-                if not isinstance(raw_matches, list):
-                    raw_matches = []
+                    if resolution_id is None:
+                        maybe_resolution = search_result.get('resolution_id')
+                        if isinstance(maybe_resolution, str) and maybe_resolution.strip():
+                            resolution_id = maybe_resolution
+                    variant_matches = search_result.get('matches', [])
+                    if not isinstance(variant_matches, list):
+                        continue
+                    for item in variant_matches:
+                        if not isinstance(item, dict):
+                            continue
+                        item_id = str(item.get('id') or '').strip()
+                        dedupe_key = item_id or json.dumps(item, sort_keys=True, default=str)
+                        if dedupe_key in seen_ids:
+                            continue
+                        seen_ids.add(dedupe_key)
+                        raw_matches.append(item)
+                    if raw_matches:
+                        break
                 backend_choice_by_id: dict[str, int] = {}
                 for idx, raw_item in enumerate(raw_matches, start=1):
                     if isinstance(raw_item, dict):
@@ -228,7 +249,7 @@ class ContextToolsExecutor:
                         selected_payload['backend_choice'] = backend_choice_by_id[selected_id]
                 result = {
                     'status': resolved.status,
-                    'resolution_id': search_result.get('resolution_id'),
+                    'resolution_id': resolution_id,
                     'selected': selected_payload,
                     'matches': [],
                 }
@@ -245,7 +266,7 @@ class ContextToolsExecutor:
                     trace_id=trace_id,
                     tool_name=tool_name,
                     result_summary=summarize_tool_result(result),
-                    resolution_id=search_result.get('resolution_id'),
+                    resolution_id=resolution_id,
                 )
                 return result
 
@@ -682,3 +703,32 @@ class ContextToolsExecutor:
                 'message': message,
             }
         }
+
+    def _normalize_query_text(self, value: str) -> str:
+        normalized = value.strip()
+        normalized = re.sub(r'[\"\'`]+', ' ', normalized)
+        normalized = re.sub(r'\s+', ' ', normalized).strip()
+        return normalized
+
+    def _query_variants(self, label: str) -> list[str]:
+        base = self._normalize_query_text(label)
+        variants: list[str] = []
+        if base:
+            variants.append(base)
+        compact = re.sub(r'[^a-zA-Z0-9\s-]', ' ', base)
+        compact = re.sub(r'\s+', ' ', compact).strip()
+        if compact and compact not in variants:
+            variants.append(compact)
+        fallback = self._fallback_term(compact or base)
+        if fallback and fallback not in variants:
+            variants.append(fallback)
+        return variants[:3]
+
+    def _fallback_term(self, value: str) -> str | None:
+        tokens = [token for token in value.split(' ') if token]
+        if len(tokens) <= 1:
+            return None
+        for token in reversed(tokens):
+            if len(token) >= 4:
+                return token
+        return None

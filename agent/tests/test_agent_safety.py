@@ -119,6 +119,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         confirm_cases = [
             'Okay Confirm',
+            'OKay proceed',
             'yes, proceed',
             'go ahead please',
             'confirm this',
@@ -1074,6 +1075,491 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(outcome.route_lane, 'chat')
         self.assertEqual(len(session.operations), 0)
 
+    def test_detect_edit_continuation_trigger_retry_tokens(self) -> None:
+        service = self._service({'matches': []})
+        self.assertEqual(service._detect_edit_continuation_trigger('Can you try again?'), 'retry')
+        self.assertEqual(service._detect_edit_continuation_trigger('retry please'), 'retry')
+        self.assertEqual(service._detect_edit_continuation_trigger('again'), 'retry')
+
+    def test_plan_message_pending_retry_autostages_single_rename_match(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('question', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='fallback clarifier',
+                    operations=[],
+                    parse_mode='openai_tool_calling_clarifier',
+                    intent_type='roadmap_edit',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    clarifier_action='ask_clarifier',
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        class _RetryNestClient:
+            def context_search(self, **kwargs):
+                query = str(kwargs.get('query') or '').strip().lower()
+                if query in {'app foundation', 'foundation'}:
+                    return {
+                        'matches': [
+                            {
+                                'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                                'type': 'epic',
+                                'title': 'App  Foundation',
+                                'confidence': 0.95,
+                            }
+                        ]
+                    }
+                return {'matches': []}
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _RetryNestClient()
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        service._run_async_call = lambda value: value
+
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                pending_edit_context=PendingEditContext(
+                    intent_family='rename_node',
+                    draft_operations=[],
+                    required_fields=[],
+                    resolved_references=PendingEditResolvedReferences(),
+                    confirmation_mode='awaiting_clarification',
+                    source_user_message='Rename my App Foundation to Platform Foundation',
+                    default_title=None,
+                    resolver_hints={
+                        'intent_version': 1,
+                        'hint_intent_version': 1,
+                        'hint_staged_operations_version': 0,
+                        'retry_autostage_eligible': True,
+                        'rename_from_label': 'App Foundation',
+                        'rename_to_title': 'Platform Foundation',
+                        'expected_node_type': 'epic',
+                    },
+                )
+            ),
+        )
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Can you try again?',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-retry-autostage',
+        )
+
+        self.assertEqual(outcome.edit_continuation_trigger, 'retry')
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(outcome.parse_mode, 'deterministic_retry_autostage')
+        self.assertEqual(len(session.operations), 1)
+        op = session.operations[0]
+        self.assertEqual(op.op.value, 'update_node')
+        self.assertEqual(op.node_id, 'dad5697a-8962-4f80-8bc3-8a964edd8e56')
+        self.assertEqual(op.patch, {'title': 'Platform Foundation'})
+        self.assertIsNone(outcome.provider_error_code)
+        self.assertTrue(outcome.retry_autostage_applied)
+        self.assertIsNotNone(outcome.retry_tool_calls_used)
+        self.assertGreaterEqual(outcome.retry_tool_calls_used or 0, 1)
+        self.assertLessEqual(outcome.retry_tool_calls_used or 0, 3)
+
+    def test_plan_message_retry_blocks_on_staged_version_mismatch(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('question', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='fallback clarifier',
+                    operations=[],
+                    parse_mode='openai_tool_calling_clarifier',
+                    intent_type='roadmap_edit',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    clarifier_action='ask_clarifier',
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        service._run_async_call = lambda value: value
+
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            staged_operations_version=3,
+            metadata=SessionMetadata(
+                pending_edit_context=PendingEditContext(
+                    intent_family='rename_node',
+                    draft_operations=[],
+                    required_fields=[],
+                    resolved_references=PendingEditResolvedReferences(),
+                    confirmation_mode='awaiting_clarification',
+                    source_user_message='Rename my App Foundation to Platform Foundation',
+                    default_title=None,
+                    resolver_hints={
+                        'intent_version': 2,
+                        'hint_intent_version': 2,
+                        'hint_staged_operations_version': 2,
+                        'retry_autostage_eligible': True,
+                        'rename_from_label': 'App Foundation',
+                        'rename_to_title': 'Platform Foundation',
+                    },
+                )
+            ),
+        )
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='retry',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-retry-staged-version-mismatch',
+        )
+
+        self.assertEqual(outcome.edit_continuation_trigger, 'retry')
+        self.assertEqual(outcome.response_mode, 'chat')
+        self.assertEqual(outcome.provider_error_code, 'retry_stale_hints_blocked')
+        self.assertEqual(len(session.operations), 0)
+
+    def test_plan_message_retry_blocks_when_staged_version_hint_missing(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('question', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='fallback clarifier',
+                    operations=[],
+                    parse_mode='openai_tool_calling_clarifier',
+                    intent_type='roadmap_edit',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    clarifier_action='ask_clarifier',
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        service._run_async_call = lambda value: value
+
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            staged_operations_version=2,
+            metadata=SessionMetadata(
+                pending_edit_context=PendingEditContext(
+                    intent_family='rename_node',
+                    draft_operations=[],
+                    required_fields=[],
+                    resolved_references=PendingEditResolvedReferences(),
+                    confirmation_mode='awaiting_clarification',
+                    source_user_message='Rename my App Foundation to Platform Foundation',
+                    default_title=None,
+                    resolver_hints={
+                        'intent_version': 2,
+                        'hint_intent_version': 2,
+                        'retry_autostage_eligible': True,
+                        'rename_from_label': 'App Foundation',
+                        'rename_to_title': 'Platform Foundation',
+                    },
+                )
+            ),
+        )
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='retry',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-retry-staged-hint-missing',
+        )
+
+        self.assertEqual(outcome.edit_continuation_trigger, 'retry')
+        self.assertEqual(outcome.response_mode, 'chat')
+        self.assertEqual(outcome.provider_error_code, 'retry_stale_hints_blocked')
+        self.assertEqual(len(session.operations), 0)
+
+    def test_plan_message_retry_ambiguous_returns_numbered_id_choices(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('question', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='fallback clarifier',
+                    operations=[],
+                    parse_mode='openai_tool_calling_clarifier',
+                    intent_type='roadmap_edit',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    clarifier_action='ask_clarifier',
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        class _RetryNestClient:
+            def context_search(self, **kwargs):
+                query = str(kwargs.get('query') or '').lower()
+                if query in {'app foundation', 'foundation'}:
+                    return {
+                        'matches': [
+                            {
+                                'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                                'type': 'epic',
+                                'title': 'App Foundation',
+                                'confidence': 0.95,
+                            },
+                            {
+                                'id': '11111111-1111-1111-1111-111111111111',
+                                'type': 'epic',
+                                'title': 'App Foundation Core',
+                                'confidence': 0.92,
+                            },
+                        ]
+                    }
+                return {'matches': []}
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _RetryNestClient()
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        service._run_async_call = lambda value: value
+
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                pending_edit_context=PendingEditContext(
+                    intent_family='rename_node',
+                    draft_operations=[],
+                    required_fields=[],
+                    resolved_references=PendingEditResolvedReferences(),
+                    confirmation_mode='awaiting_clarification',
+                    source_user_message='Rename my App Foundation to Platform Foundation',
+                    default_title=None,
+                    resolver_hints={
+                        'intent_version': 1,
+                        'hint_intent_version': 1,
+                        'hint_staged_operations_version': 0,
+                        'retry_autostage_eligible': True,
+                        'rename_from_label': 'App Foundation',
+                        'rename_to_title': 'Platform Foundation',
+                    },
+                )
+            ),
+        )
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='try again',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-retry-ambiguous',
+        )
+
+        self.assertEqual(outcome.response_mode, 'chat')
+        self.assertEqual(outcome.provider_error_code, 'retry_multiple_matches')
+        self.assertIn('1. epic "App Foundation"', outcome.assistant_message)
+        self.assertIn('(dad5697a-8962-4f80-8bc3-8a964edd8e56)', outcome.assistant_message)
+
+    def test_set_pending_context_normalizes_intent_family_alias(self) -> None:
+        service = self._service({'matches': []})
+        session = AgentSession(roadmap_id='roadmap-1')
+        context = PendingEditContext(
+            intent_family='rename_node',
+            draft_operations=[],
+            required_fields=[],
+            resolved_references=PendingEditResolvedReferences(),
+            confirmation_mode='awaiting_clarification',
+            source_user_message='Rename something',
+            default_title=None,
+        )
+        context.intent_family = 'rename'  # type: ignore[assignment]
+        service._set_pending_edit_context(
+            session=session,
+            context=context,
+            event='set',
+            trace_id='trace-intent-family-normalize',
+        )
+        assert session.metadata.pending_edit_context is not None
+        self.assertEqual(session.metadata.pending_edit_context.intent_family, 'rename_node')
+
+    def test_pending_edit_context_model_normalizes_legacy_intent_family(self) -> None:
+        context = PendingEditContext.model_validate(
+            {
+                'intent_family': 'rename',
+                'draft_operations': [],
+                'required_fields': [],
+                'resolved_references': {},
+                'confirmation_mode': 'awaiting_clarification',
+                'source_user_message': 'Rename X to Y',
+                'default_title': None,
+            }
+        )
+        self.assertEqual(context.intent_family, 'rename_node')
+
+    def test_build_resolver_hints_correction_keeps_retry_autostage_disabled(self) -> None:
+        service = self._service({'matches': []})
+        planning = PlanningResult(
+            assistant_message='I can apply that correction.',
+            operations=[],
+            parse_mode='openai_tool_calling_clarifier',
+            intent_type='roadmap_edit',
+            response_mode='chat',
+            preview_recommended=False,
+            provider_used='openai',
+            fallback_used=False,
+            provider_error_code=None,
+        )
+
+        hints = service._build_resolver_hints(
+            existing_hints={
+                'intent_version': 2,
+                'hint_intent_version': 2,
+                'hint_staged_operations_version': 1,
+                'retry_autostage_eligible': True,
+                'rename_from_label': 'App Foundation',
+                'rename_to_title': 'Platform Foundation',
+            },
+            user_message='Actually, rename App Foundation to Platform Foundation V2',
+            planning=planning,
+            edit_continuation_trigger='correction',
+            intent_family='rename_node',
+            staged_operations_version=1,
+            rename_intent=('App Foundation', 'Platform Foundation V2'),
+        )
+
+        assert hints is not None
+        self.assertFalse(bool(hints.get('retry_autostage_eligible')))
+        self.assertEqual(hints.get('intent_version'), 3)
+        self.assertEqual(hints.get('hint_intent_version'), 3)
+
+    def test_build_resolver_hints_rename_does_not_force_expected_type(self) -> None:
+        service = self._service({'matches': []})
+        planning = PlanningResult(
+            assistant_message='Prepared retry metadata.',
+            operations=[],
+            parse_mode='openai_tool_calling_clarifier',
+            intent_type='roadmap_edit',
+            response_mode='chat',
+            preview_recommended=False,
+            provider_used='openai',
+            fallback_used=False,
+            provider_error_code=None,
+        )
+
+        hints = service._build_resolver_hints(
+            existing_hints={},
+            user_message='Rename Foundation to Platform Foundation',
+            planning=planning,
+            edit_continuation_trigger=None,
+            intent_family='rename_node',
+            staged_operations_version=0,
+            rename_intent=('Foundation', 'Platform Foundation'),
+        )
+
+        assert hints is not None
+        self.assertNotIn('expected_node_type', hints)
+        self.assertTrue(bool(hints.get('retry_autostage_eligible')))
+
+    def test_rename_autostage_gate_blocks_type_mismatch(self) -> None:
+        service = self._service({'matches': []})
+        allowed = service._passes_rename_autostage_gate(
+            candidate={
+                'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                'type': 'epic',
+                'title': 'App Foundation',
+                'confidence': 0.99,
+            },
+            from_label='App Foundation',
+            expected_node_type='feature',
+        )
+        self.assertFalse(allowed)
+
     def test_plan_message_replace_mode_increments_staged_version(self) -> None:
         class _Planner:
             def preview_intent_classification(self, user_message, session_context=None):
@@ -1240,7 +1726,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         self.assertEqual(
             outcome.provider_error_code,
-            'context_answer_operation_payload_blocked',
+            'pending_edit_confirm_requires_edit_plan',
         )
         self.assertTrue(outcome.edit_guard_intervened)
 
@@ -2238,6 +2724,89 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNotNone(observed['trace_id'])
 
+    async def test_commit_session_blocks_duplicate_applied_preview(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.latest_preview_id = 'preview-applied-1'
+        session.metadata.applied_preview_ids = ['preview-applied-1']
+
+        class _FakeStore:
+            def update(self, _session):
+                raise AssertionError('Store update should not run for duplicate applied preview')
+
+        async def _fake_commit(**_kwargs):
+            raise AssertionError('Backend commit should not run for duplicate applied preview')
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_commit = sessions_routes._nest_client.commit
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), object()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.commit = _fake_commit  # type: ignore[assignment]
+        try:
+            with self.assertRaises(HTTPException) as raised:
+                await sessions_routes.commit_session(
+                    session_id='session-1',
+                    payload=sessions_routes.CommitRequest(preview_id='preview-applied-1'),
+                    request=SimpleNamespace(headers={}),
+                )
+        finally:
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.commit = original_commit  # type: ignore[assignment]
+
+        exc = raised.exception
+        self.assertEqual(exc.status_code, 409)
+        detail = exc.detail
+        self.assertIsInstance(detail, dict)
+        self.assertEqual(detail.get('code'), 'ARTIFACT_ALREADY_APPLIED')
+
+    async def test_commit_session_records_applied_preview_id_after_success(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.latest_preview_id = 'preview-new-1'
+        session.revision_token = 'rev-1'
+
+        updated_sessions: list[AgentSession] = []
+
+        class _FakeStore:
+            def update(self, updated_session):
+                updated_sessions.append(updated_session)
+
+        async def _fake_commit(**_kwargs):
+            return {'revision_token': 'rev-2'}
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_commit = sessions_routes._nest_client.commit
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), object()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.commit = _fake_commit  # type: ignore[assignment]
+        try:
+            response = await sessions_routes.commit_session(
+                session_id='session-1',
+                payload=sessions_routes.CommitRequest(preview_id='preview-new-1'),
+                request=SimpleNamespace(headers={}),
+            )
+        finally:
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.commit = original_commit  # type: ignore[assignment]
+
+        self.assertEqual(response['session_id'], 'session-1')
+        self.assertIsNone(session.latest_preview_id)
+        self.assertEqual(session.revision_token, 'rev-2')
+        self.assertIn('preview-new-1', session.metadata.applied_preview_ids)
+        self.assertEqual(len(updated_sessions), 1)
+
 
 async def _async_runtime_result(value):
     return value
@@ -2251,6 +2820,57 @@ class PlannerContextSafetyTests(unittest.TestCase):
         planner._nest_client = SimpleNamespace()
         planner._run_async_context_call = lambda value: value
         return planner
+
+    def test_classify_intent_honors_forced_edit_continuation_override(self) -> None:
+        planner = self._planner()
+        state = planner._classify_intent(
+            {
+                'user_message': 'Can you try again?',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-force-override',
+                    'force_edit_continuation': True,
+                    'force_edit_continuation_reason': 'retry',
+                },
+            }
+        )
+        self.assertEqual(state.get('intent_type'), 'roadmap_edit')
+        self.assertEqual(state.get('parse_mode'), 'deterministic_edit_continuation_override')
+        self.assertFalse(bool(state.get('is_roadmap_question')))
+
+    def test_resolve_node_reference_uses_normalized_query_variant(self) -> None:
+        planner = self._planner()
+        observed_queries: list[str] = []
+
+        def _context_search(**kwargs):
+            query = str(kwargs.get('query') or '')
+            observed_queries.append(query)
+            if query == 'App Foundation':
+                return {
+                    'matches': [
+                        {
+                            'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            'type': 'epic',
+                            'title': 'App  Foundation',
+                        }
+                    ]
+                }
+            return {'matches': []}
+
+        planner._nest_client = SimpleNamespace(context_search=_context_search)
+        result = planner._execute_context_tool(
+            'resolve_node_reference',
+            {
+                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                'label': '  "App   Foundation"  ',
+                'limit': 10,
+            },
+            {'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'},
+        )
+        self.assertIn('App Foundation', observed_queries)
+        self.assertEqual(result.get('status'), 'unique')
+        selected = result.get('selected') or {}
+        self.assertEqual(selected.get('id'), 'dad5697a-8962-4f80-8bc3-8a964edd8e56')
 
     def test_invalid_parent_id_returns_invalid_uuid_error(self) -> None:
         planner = self._planner()

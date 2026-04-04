@@ -63,6 +63,8 @@ class PlannerState(TypedDict, total=False):
     clarifier_schema_retries: int | None
     planner_schema_invalid_attempts: int | None
     planner_repair_attempted: bool | None
+    force_edit_continuation: bool
+    force_edit_continuation_reason: str | None
 
 
 class _EditClarifierPayload(BaseModel):
@@ -254,6 +256,29 @@ class LLMPlanner:
         user_message = state.get('user_message', '')
         session_context = state.get('session_context', {})
         trace_id = session_context.get('trace_id')
+        force_edit_continuation = bool(session_context.get('force_edit_continuation'))
+        force_reason = str(session_context.get('force_edit_continuation_reason') or '').strip() or None
+        if force_edit_continuation:
+            parse_mode = 'deterministic_edit_continuation_override'
+            log_event(
+                self._logger,
+                'intent_classified',
+                settings=self._settings,
+                trace_id=trace_id,
+                intent_type='roadmap_edit',
+                is_roadmap_question=False,
+                parse_mode=parse_mode,
+            )
+            return {
+                'intent_type': 'roadmap_edit',
+                'parse_mode': parse_mode,
+                'provider_used': 'rule_based',
+                'fallback_used': False,
+                'provider_error_code': None,
+                'is_roadmap_question': False,
+                'force_edit_continuation': True,
+                'force_edit_continuation_reason': force_reason,
+            }
         heuristic_intent = self._heuristic_intent(user_message)
         is_roadmap_question = self._is_roadmap_question(
             intent_type=heuristic_intent,
@@ -281,6 +306,8 @@ class LLMPlanner:
 
     def _compose_dynamic_system_prompt(self, state: PlannerState) -> PlannerState:
         intent_type = state.get('intent_type', 'unclear')
+        if state.get('force_edit_continuation'):
+            intent_type = 'roadmap_edit'
         mode = 'edit' if intent_type == 'roadmap_edit' else 'chat'
         session_context = state.get('session_context', {})
         trace_id = session_context.get('trace_id')

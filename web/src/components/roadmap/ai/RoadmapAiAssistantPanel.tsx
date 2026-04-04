@@ -365,6 +365,9 @@ export function RoadmapAiAssistantPanel({
   const [previewArtifactId, setPreviewArtifactId] = useState<string | null>(
     null,
   );
+  const [applyingArtifactIds, setApplyingArtifactIds] = useState<Set<string>>(
+    () => new Set<string>(),
+  );
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -650,23 +653,56 @@ export function RoadmapAiAssistantPanel({
     openArtifactTab(artifact);
   };
 
-  const handleApplyArtifact = async (artifact: RoadmapArtifactPreview) => {
-    const activeSessionId = sessionId;
-    if (!activeSessionId) {
-      toast.error("Missing AI session. Send a message first, then apply again.");
+  const handleApplyArtifact = async (
+    messageId: string,
+    artifact: RoadmapArtifactPreview,
+  ) => {
+    if (artifact.status === "applied") {
+      toast.info("This artifact is already applied.");
       return;
     }
+    if (applyingArtifactIds.has(artifact.artifactId)) {
+      return;
+    }
+
+    const activeSessionId = sessionId;
+    if (!activeSessionId) {
+      toast.error(
+        "Missing AI session. Send a message first, then apply again.",
+      );
+      return;
+    }
+
+    setApplyingArtifactIds((prev) => {
+      const next = new Set(prev);
+      next.add(artifact.artifactId);
+      return next;
+    });
 
     try {
       await roadmapAgentService.commitSession(activeSessionId, {
         preview_id: artifact.previewId,
       });
       applyArtifactSnapshot(artifact.artifactId);
+      updateMessage(messageId, (message) => ({
+        ...message,
+        artifacts: (message.artifacts ?? []).map((entry) =>
+          entry.artifactId === artifact.artifactId
+            ? { ...entry, status: "applied" }
+            : entry,
+        ),
+      }));
       toast.success(`${artifact.title} applied to roadmap`);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to apply artifact.";
       toast.error(message);
+    } finally {
+      setApplyingArtifactIds((prev) => {
+        const next = new Set(prev);
+        next.delete(artifact.artifactId);
+        return next;
+      });
     }
   };
 
@@ -816,6 +852,12 @@ export function RoadmapAiAssistantPanel({
                 {artifacts.length > 0 && (
                   <div className="mt-2.5 space-y-2">
                     {artifacts.map((artifact) => {
+                      const isArtifactApplied = artifact.status === "applied";
+                      const isApplyingArtifact = applyingArtifactIds.has(
+                        artifact.artifactId,
+                      );
+                      const applyDisabled =
+                        isArtifactApplied || isApplyingArtifact;
                       const inlinePreviewSnapshot = hasSameStructureIds(
                         artifact.candidateSnapshot,
                         currentRoadmap,
@@ -831,9 +873,20 @@ export function RoadmapAiAssistantPanel({
                           key={artifact.artifactId}
                           className="rounded-lg border border-orange-200 bg-orange-50/60 p-2.5"
                         >
-                          <p className="text-[11px] font-semibold text-orange-700">
-                            {artifact.title}
-                          </p>
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-[11px] font-semibold text-orange-700">
+                              {artifact.title}
+                            </p>
+                            <span
+                              className={
+                                isArtifactApplied
+                                  ? "inline-flex shrink-0 items-center rounded-full border border-green-300 bg-green-50 px-2 py-0.5 text-[10px] font-semibold text-green-700"
+                                  : "inline-flex shrink-0 items-center rounded-full border border-orange-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-orange-700"
+                              }
+                            >
+                              {isArtifactApplied ? "Applied" : "Draft"}
+                            </span>
+                          </div>
                           <p className="text-[10px] text-orange-700/90 mt-0.5">
                             {artifact.summary}
                           </p>
@@ -841,17 +894,27 @@ export function RoadmapAiAssistantPanel({
                             Validation issues:{" "}
                             {artifact.validationIssues.length}
                           </div>
+                          {isArtifactApplied && (
+                            <p className="mt-1 text-[10px] font-medium text-green-700">
+                              Already applied to roadmap.
+                            </p>
+                          )}
 
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             <button
                               type="button"
                               onClick={() => {
-                                void handleApplyArtifact(artifact);
+                                void handleApplyArtifact(message.id, artifact);
                               }}
-                              className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5"
+                              disabled={applyDisabled}
+                              className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white"
                             >
                               <Check className="w-3.5 h-3.5" />
-                              Apply
+                              {isArtifactApplied
+                                ? "Applied"
+                                : isApplyingArtifact
+                                  ? "Applying..."
+                                  : "Apply"}
                             </button>
 
                             <button

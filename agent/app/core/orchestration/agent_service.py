@@ -8,6 +8,7 @@ from datetime import datetime
 from time import perf_counter
 from typing import Any
 import re
+import string
 
 from fastapi import HTTPException, status
 
@@ -65,9 +66,37 @@ class MessagePlanningOutcome:
     planner_repair_attempted: bool | None = None
     deterministic_create_fastpath_skipped: bool = False
     edit_guard_intervened: bool = False
+    retry_tool_calls_used: int | None = None
+    retry_duplicate_operation_deduped: bool = False
+    retry_autostage_applied: bool = False
 
 
 class AgentService:
+    _CANONICAL_INTENT_FAMILIES = {
+        'rename_node',
+        'create_epic',
+        'create_feature',
+        'create_task',
+        'move_node',
+        'update_node',
+        'delete_node',
+        'mark_status',
+        'shift_dates',
+        'roadmap_edit_clarifier',
+    }
+    _INTENT_FAMILY_ALIASES = {
+        'rename': 'rename_node',
+        'rename_item': 'rename_node',
+        'rename_task': 'rename_node',
+        'rename_feature': 'rename_node',
+        'rename_epic': 'rename_node',
+        'move': 'move_node',
+        'move_item': 'move_node',
+        'update': 'update_node',
+        'delete': 'delete_node',
+        'mark': 'mark_status',
+        'shift': 'shift_dates',
+    }
     def __init__(self, store: SessionStore) -> None:
         self._settings = get_settings()
         self._store = store
@@ -103,7 +132,7 @@ class AgentService:
         edit_continuation_trigger = self._detect_edit_continuation_trigger(user_message)
         has_staged_operations = bool(session.operations)
         pending_continuation_requested = pending_edit_context_present and (
-            edit_continuation_trigger in {'confirm', 'cancel', 'correction'}
+            edit_continuation_trigger in {'confirm', 'cancel', 'correction', 'retry'}
         )
         staged_operation_continuation = (
             edit_continuation_trigger is not None and has_staged_operations
@@ -154,6 +183,11 @@ class AgentService:
                 )
 
         session_context = self._build_session_context(session, auth_header, trace_id)
+        if should_force_edit_preview:
+            session_context['force_edit_continuation'] = True
+            session_context['force_edit_continuation_reason'] = (
+                edit_continuation_trigger or 'pending_context'
+            )
 
         planning: PlanningResult
         route_lane: str | None = None
@@ -170,9 +204,55 @@ class AgentService:
             else 'legacy_tool_calling'
         )
         edit_guard_intervened = False
+        retry_tool_calls_used: int | None = None
+        retry_duplicate_operation_deduped = False
+        retry_autostage_applied = False
 
         pending_context = session.metadata.pending_edit_context
-        if (
+        if pending_context is not None:
+            pending_context.intent_family = self._normalize_intent_family(
+                pending_context.intent_family
+            )
+        if pending_context is not None and edit_continuation_trigger == 'retry':
+            retry_result = self._attempt_retry_autostage(
+                session=session,
+                pending_context=pending_context,
+                trace_id=trace_id,
+                auth_header=auth_header,
+            )
+            retry_tool_calls_used = retry_result.get('tool_calls_used')
+            retry_autostage_applied = bool(retry_result.get('retry_autostage_applied'))
+            if retry_result.get('planning') is not None:
+                planning = retry_result['planning']
+                phase_timings['provider_planning_ms'] = 0
+                route_lane = 'llm_edit_plan'
+                llm_skipped_for_simple_edit = True
+            elif retry_result.get('blocked_reason'):
+                planning = PlanningResult(
+                    assistant_message=(
+                        'I cannot auto-stage this retry yet because the pending edit state changed. '
+                        'Please confirm the target again so I can continue safely.'
+                    ),
+                    operations=[],
+                    parse_mode='deterministic_retry_stale_handoff',
+                    intent_type='roadmap_edit',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='rule_based',
+                    fallback_used=False,
+                    provider_error_code=str(retry_result.get('blocked_reason')),
+                    clarifier_action='ask_clarifier',
+                    clarifier_reason=str(retry_result.get('blocked_reason')),
+                    clarifier_options=['Use exact target label', 'Provide node ID', 'Cancel'],
+                )
+                phase_timings['provider_planning_ms'] = 0
+                route_lane = 'llm_edit_plan'
+                llm_skipped_for_simple_edit = True
+            else:
+                planning = None  # type: ignore[assignment]
+        else:
+            planning = None  # type: ignore[assignment]
+        if planning is None and (
             pending_context is not None
             and edit_continuation_trigger == 'confirm'
             and pending_context.draft_operations
@@ -195,7 +275,7 @@ class AgentService:
             phase_timings['provider_planning_ms'] = 0
             route_lane = 'llm_edit_plan'
             llm_skipped_for_simple_edit = True
-        elif (
+        elif planning is None and (
             pending_context is None
             and has_staged_operations
             and edit_continuation_trigger == 'confirm'
@@ -218,7 +298,7 @@ class AgentService:
             phase_timings['provider_planning_ms'] = 0
             route_lane = 'llm_edit_plan'
             llm_skipped_for_simple_edit = True
-        elif preview_intent == 'roadmap_edit':
+        elif planning is None and preview_intent == 'roadmap_edit':
             planner_started = perf_counter()
             planning = self._planner.plan(
                 user_message=user_message,
@@ -229,7 +309,7 @@ class AgentService:
                 (perf_counter() - planner_started) * 1000
             )
             route_lane = 'llm_edit_plan'
-        else:
+        elif planning is None:
             planner_started = perf_counter()
             planning = self._planner.plan(
                 user_message=user_message,
@@ -274,6 +354,36 @@ class AgentService:
                 clarifier_action='ask_clarifier',
                 clarifier_reason='pending_edit_confirm_requires_edit_plan',
                 clarifier_options=['Proceed with edit planning', 'Change target details', 'Cancel'],
+            )
+            edit_guard_intervened = True
+        if (
+            pending_edit_context_present
+            and edit_continuation_trigger in {'confirm', 'retry'}
+            and planning.response_mode == 'chat'
+            and not planning.operations
+            and self._looks_like_found_node_without_operations(planning.assistant_message)
+        ):
+            planning = PlanningResult(
+                assistant_message=(
+                    'I found likely target node matches, but I still need one explicit selection '
+                    'to stage a safe edit operation. Reply with the exact node ID (or say "cancel").'
+                ),
+                operations=[],
+                parse_mode='deterministic_edit_narrative_handoff',
+                intent_type='roadmap_edit',
+                response_mode='chat',
+                preview_recommended=False,
+                provider_used='rule_based',
+                fallback_used=False,
+                provider_error_code='edit_narrative_without_operations',
+                tokens_input=planning.tokens_input,
+                tokens_output=planning.tokens_output,
+                tokens_total=planning.tokens_total,
+                route_lane=route_lane,
+                fastpath_bypass_reason=planning.fastpath_bypass_reason,
+                clarifier_action='ask_clarifier',
+                clarifier_reason='edit_narrative_without_operations',
+                clarifier_options=['Use the matched node ID', 'Refine the node label', 'Cancel'],
             )
             edit_guard_intervened = True
         if (
@@ -369,6 +479,8 @@ class AgentService:
                 for operation in operations:
                     signature = self._operation_signature(operation)
                     if signature in existing_signatures:
+                        if edit_continuation_trigger == 'retry':
+                            retry_duplicate_operation_deduped = True
                         continue
                     session.operations.append(operation)
                     applied_operations.append(operation)
@@ -432,6 +544,9 @@ class AgentService:
             planner_repair_attempted=planner_repair_attempted,
             deterministic_create_fastpath_skipped=deterministic_create_fastpath_skipped,
             edit_guard_intervened=edit_guard_intervened,
+            retry_tool_calls_used=retry_tool_calls_used,
+            retry_duplicate_operation_deduped=retry_duplicate_operation_deduped,
+            retry_autostage_applied=retry_autostage_applied,
             phase_timings=phase_timings,
         )
 
@@ -470,6 +585,9 @@ class AgentService:
             planner_repair_attempted=planner_repair_attempted,
             deterministic_create_fastpath_skipped=deterministic_create_fastpath_skipped,
             edit_guard_intervened=edit_guard_intervened,
+            retry_tool_calls_used=retry_tool_calls_used,
+            retry_duplicate_operation_deduped=retry_duplicate_operation_deduped,
+            retry_autostage_applied=retry_autostage_applied,
         )
 
     def _operation_signature(self, operation: RoadmapOperation) -> str:
@@ -506,7 +624,16 @@ class AgentService:
             normalized,
         ):
             return 'confirm'
-        if re.search(r'\b(i meant|instead|inside|under|in that|it should)\b', normalized):
+        if re.fullmatch(
+            r"(?:can you\s+)?(?:try again|retry|again|re-?run|re-?attempt)"
+            r"(?:\s+(?:please|kindly|now))?",
+            normalized,
+        ):
+            return 'retry'
+        if re.search(
+            r'\b(i meant|instead|inside|under|in that|it should|changed my mind|change my mind)\b',
+            normalized,
+        ):
             return 'correction'
         return None
 
@@ -529,6 +656,8 @@ class AgentService:
         event: str,
         trace_id: str | None,
     ) -> None:
+        if context is not None:
+            context.intent_family = self._normalize_intent_family(context.intent_family)
         session.metadata.pending_edit_context = context
         log_event(
             self._logger,
@@ -551,6 +680,20 @@ class AgentService:
         edit_continuation_trigger: str | None,
         trace_id: str | None,
     ) -> None:
+        existing_context = session.metadata.pending_edit_context
+        if edit_continuation_trigger == 'correction' and existing_context is not None:
+            invalidated_hints = self._invalidate_retry_hints(
+                existing_context.resolver_hints
+            )
+            existing_context.resolver_hints = invalidated_hints
+            existing_context.updated_at = datetime.utcnow()
+            self._set_pending_edit_context(
+                session=session,
+                context=existing_context,
+                event='updated',
+                trace_id=trace_id,
+            )
+
         if edit_continuation_trigger == 'cancel':
             if session.metadata.pending_edit_context is not None:
                 self._set_pending_edit_context(
@@ -587,6 +730,11 @@ class AgentService:
             if existing is not None
             else PendingEditResolvedReferences()
         )
+        existing_hints = (
+            dict(existing.resolver_hints)
+            if existing is not None and isinstance(existing.resolver_hints, dict)
+            else {}
+        )
         default_title = (
             create_intent.title
             if create_intent is not None
@@ -601,6 +749,10 @@ class AgentService:
             if create_intent is not None
             else (existing.intent_family if existing is not None else 'roadmap_edit_clarifier')
         )
+        intent_family = self._normalize_intent_family(intent_family)
+        rename_intent = self._extract_rename_intent(user_message)
+        if rename_intent is not None:
+            intent_family = 'rename_node'
 
         if clarifier_action == 'propose_safe_default':
             if create_intent is not None and create_intent.node_type == 'epic' and default_title:
@@ -627,6 +779,15 @@ class AgentService:
             confirmation_mode=confirmation_mode,  # type: ignore[arg-type]
             source_user_message=user_message,
             default_title=default_title,
+            resolver_hints=self._build_resolver_hints(
+                existing_hints=existing_hints,
+                user_message=user_message,
+                planning=planning,
+                edit_continuation_trigger=edit_continuation_trigger,
+                intent_family=intent_family,
+                staged_operations_version=session.staged_operations_version,
+                rename_intent=rename_intent,
+            ),
             created_at=(existing.created_at if existing is not None else datetime.utcnow()),
             updated_at=datetime.utcnow(),
         )
@@ -689,6 +850,19 @@ class AgentService:
         if re.search(r'^\s*\[\s*\{', assistant_message.strip()):
             return True
         return False
+
+    def _looks_like_found_node_without_operations(self, assistant_message: str) -> bool:
+        if not assistant_message:
+            return False
+        lowered = assistant_message.lower()
+        if 'id:' not in lowered and 'node id' not in lowered:
+            return False
+        if not re.search(
+            r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
+            assistant_message,
+        ):
+            return False
+        return ('found' in lowered) or ('match' in lowered)
 
     def _should_fetch_actor_context(
         self,
@@ -811,6 +985,396 @@ class AgentService:
 
     def _is_uuid(self, value: str | None) -> bool:
         return bool(isinstance(value, str) and self._uuid_pattern.fullmatch(value.strip()))
+
+    def _build_resolver_hints(
+        self,
+        *,
+        existing_hints: dict[str, Any] | None,
+        user_message: str,
+        planning: PlanningResult,
+        edit_continuation_trigger: str | None,
+        intent_family: str,
+        staged_operations_version: int,
+        rename_intent: tuple[str, str] | None,
+    ) -> dict[str, Any] | None:
+        hints: dict[str, Any] = dict(existing_hints or {})
+        hints['intent_family'] = intent_family
+        normalized_user_message = user_message.strip()
+        if normalized_user_message:
+            hints['last_user_message'] = normalized_user_message[:240]
+        if edit_continuation_trigger:
+            hints['last_trigger'] = edit_continuation_trigger
+        prior_version = hints.get('intent_version')
+        current_version = int(prior_version) if isinstance(prior_version, int) else 0
+        invalidate_retry = edit_continuation_trigger in {'correction', 'cancel'}
+        if invalidate_retry:
+            current_version += 1
+            hints = self._invalidate_retry_hints(hints)
+            hints['retry_autostage_eligible'] = False
+        if rename_intent is not None:
+            from_label, to_title = rename_intent
+            hints['rename_from_label'] = from_label
+            hints['rename_to_title'] = to_title
+            if not invalidate_retry:
+                hints['retry_autostage_eligible'] = True
+        elif intent_family != 'rename_node':
+            hints['retry_autostage_eligible'] = False
+        if planning.clarifier_reason:
+            hints['last_clarifier_reason'] = planning.clarifier_reason
+        if planning.clarifier_options:
+            hints['last_clarifier_options'] = list(planning.clarifier_options[:3])
+        if planning.assistant_message:
+            matched_ids = re.findall(
+                r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
+                planning.assistant_message,
+            )
+            if matched_ids:
+                hints['candidate_ids'] = matched_ids[:5]
+        hints['intent_version'] = current_version
+        hints['hint_intent_version'] = current_version
+        hints['hint_staged_operations_version'] = staged_operations_version
+        return hints or None
+
+    def _attempt_retry_autostage(
+        self,
+        *,
+        session: AgentSession,
+        pending_context: PendingEditContext,
+        trace_id: str | None,
+        auth_header: str | None,
+    ) -> dict[str, Any]:
+        hints = pending_context.resolver_hints or {}
+        if pending_context.intent_family != 'rename_node':
+            return {'planning': None, 'tool_calls_used': 0, 'blocked_reason': None}
+        if not isinstance(hints, dict):
+            return {
+                'planning': None,
+                'tool_calls_used': 0,
+                'blocked_reason': 'retry_stale_hints_blocked',
+            }
+        hint_version = hints.get('hint_intent_version')
+        current_version = hints.get('intent_version')
+        if (
+            not isinstance(hint_version, int)
+            or not isinstance(current_version, int)
+            or hint_version != current_version
+        ):
+            return {
+                'planning': None,
+                'tool_calls_used': 0,
+                'blocked_reason': 'retry_stale_hints_blocked',
+            }
+        if not bool(hints.get('retry_autostage_eligible')):
+            return {
+                'planning': None,
+                'tool_calls_used': 0,
+                'blocked_reason': 'retry_stale_hints_blocked',
+            }
+        hint_staged_version = hints.get('hint_staged_operations_version')
+        if (
+            not isinstance(hint_staged_version, int)
+            or hint_staged_version != session.staged_operations_version
+        ):
+            return {
+                'planning': None,
+                'tool_calls_used': 0,
+                'blocked_reason': 'retry_stale_hints_blocked',
+            }
+
+        from_label = str(hints.get('rename_from_label') or '').strip()
+        to_title = str(hints.get('rename_to_title') or '').strip()
+        if not from_label or not to_title:
+            return {
+                'planning': None,
+                'tool_calls_used': 0,
+                'blocked_reason': 'retry_stale_hints_blocked',
+            }
+
+        retry_resolution = self._resolve_retry_candidates(
+            roadmap_id=session.roadmap_id,
+            label=from_label,
+            expected_node_type=(
+                str(hints.get('expected_node_type')).strip()
+                if isinstance(hints.get('expected_node_type'), str)
+                else None
+            ),
+            auth_header=auth_header,
+            trace_id=trace_id,
+        )
+        candidates = retry_resolution['matches']
+        tool_calls_used = retry_resolution['tool_calls_used']
+        if retry_resolution['budget_exhausted']:
+            return {
+                'planning': PlanningResult(
+                    assistant_message=(
+                        'I reached the retry lookup budget before resolving a safe single target. '
+                        'Please choose one node by ID so I can continue.'
+                    ),
+                    operations=[],
+                    parse_mode='deterministic_retry_clarifier_budget',
+                    intent_type='roadmap_edit',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='rule_based',
+                    fallback_used=False,
+                    provider_error_code='retry_discovery_budget_exhausted',
+                    clarifier_action='ask_clarifier',
+                    clarifier_reason='retry_discovery_budget_exhausted',
+                    clarifier_options=[
+                        'Provide exact node ID',
+                        'Refine target label',
+                        'Cancel',
+                    ],
+                ),
+                'tool_calls_used': tool_calls_used,
+                'blocked_reason': None,
+            }
+        pending_context.resolver_hints = {
+            **hints,
+            'last_label': from_label,
+            'intent_family': pending_context.intent_family,
+            'normalized_label': self._normalize_label(from_label),
+            'candidate_ids': [item.get('id') for item in candidates if isinstance(item, dict)],
+            'candidate_count': len(candidates),
+            'hint_staged_operations_version': session.staged_operations_version,
+            'hint_intent_version': int(hints.get('intent_version') or 0),
+        }
+        pending_context.updated_at = datetime.utcnow()
+        self._set_pending_edit_context(
+            session=session,
+            context=pending_context,
+            event='updated',
+            trace_id=trace_id,
+        )
+
+        if len(candidates) == 1:
+            candidate = candidates[0]
+            node_id = str(candidate.get('id') or '').strip() if isinstance(candidate, dict) else ''
+            expected_node_type = (
+                str(hints.get('expected_node_type')).strip()
+                if isinstance(hints.get('expected_node_type'), str)
+                else None
+            )
+            if self._is_uuid(node_id) and self._passes_rename_autostage_gate(
+                candidate=candidate if isinstance(candidate, dict) else {},
+                from_label=from_label,
+                expected_node_type=expected_node_type,
+            ):
+                return {
+                    'planning': PlanningResult(
+                    assistant_message=(
+                        f'I found one strong match for "{from_label}" and staged the rename to "{to_title}".'
+                    ),
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id=node_id,
+                            patch={'title': to_title},
+                        )
+                    ],
+                    parse_mode='deterministic_retry_autostage',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='rule_based',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    ),
+                    'tool_calls_used': tool_calls_used,
+                    'blocked_reason': None,
+                    'retry_autostage_applied': True,
+                }
+
+        if len(candidates) > 1:
+            options: list[str] = []
+            for index, item in enumerate(candidates[:3], start=1):
+                if not isinstance(item, dict):
+                    continue
+                title = str(item.get('title') or '').strip()
+                node_type = str(item.get('type') or '').strip()
+                node_id = str(item.get('id') or '').strip()
+                if title and node_id:
+                    options.append(f'{index}. {node_type} "{title}" ({node_id})')
+            if options:
+                return {
+                    'planning': PlanningResult(
+                    assistant_message=(
+                        f'I found multiple matches for "{from_label}". '
+                        'Reply with the option number to continue:\n' + '\n'.join(options)
+                    ),
+                    operations=[],
+                    parse_mode='deterministic_retry_clarifier',
+                    intent_type='roadmap_edit',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='rule_based',
+                    fallback_used=False,
+                    provider_error_code='retry_multiple_matches',
+                    clarifier_action='ask_clarifier',
+                    clarifier_reason='retry_multiple_matches',
+                    clarifier_options=options,
+                    ),
+                    'tool_calls_used': tool_calls_used,
+                    'blocked_reason': None,
+                    'retry_autostage_applied': False,
+                }
+        return {
+            'planning': None,
+            'tool_calls_used': tool_calls_used,
+            'blocked_reason': None,
+            'retry_autostage_applied': False,
+        }
+
+    def _resolve_retry_candidates(
+        self,
+        *,
+        roadmap_id: str,
+        label: str,
+        expected_node_type: str | None,
+        auth_header: str | None,
+        trace_id: str | None,
+    ) -> dict[str, Any]:
+        auth_value = auth_header if isinstance(auth_header, str) and auth_header else None
+        variants: list[str] = []
+        primary = label.strip()
+        if primary:
+            variants.append(primary)
+        normalized = self._normalize_label(primary)
+        if normalized and normalized not in variants:
+            variants.append(normalized)
+        fallback = self._fallback_label(normalized or primary)
+        if fallback and fallback not in variants:
+            variants.append(fallback)
+        variants = variants[:3]
+
+        all_matches: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        tool_calls_used = 0
+        for query in variants:
+            tool_calls_used += 1
+            result = self._run_async_call(
+                self._nest_client.context_search(
+                    roadmap_id=roadmap_id,
+                    query=query,
+                    node_type=expected_node_type,
+                    limit=20,
+                    auth_header=auth_value,
+                    trace_id=trace_id,
+                )
+            )
+            matches = result.get('matches', [])
+            if not isinstance(matches, list):
+                continue
+            for raw in matches:
+                if not isinstance(raw, dict):
+                    continue
+                candidate_id = str(raw.get('id') or '').strip()
+                if not candidate_id or candidate_id in seen_ids:
+                    continue
+                seen_ids.add(candidate_id)
+                all_matches.append(raw)
+
+        normalized_label = self._normalize_label(label)
+        high_confidence = [
+            item
+            for item in all_matches
+            if self._is_high_confidence_match(item, normalized_label)
+        ]
+        return {
+            'matches': high_confidence or all_matches[:3],
+            'tool_calls_used': tool_calls_used,
+            'budget_exhausted': tool_calls_used >= 3 and len(all_matches) == 0,
+        }
+
+    def _normalize_label(self, value: str) -> str:
+        lowered = value.strip().lower()
+        if not lowered:
+            return ''
+        lowered = lowered.translate(str.maketrans('', '', string.punctuation.replace('-', '')))
+        lowered = lowered.replace('-', ' ')
+        lowered = re.sub(r'\s+', ' ', lowered).strip()
+        return lowered
+
+    def _fallback_label(self, value: str) -> str | None:
+        tokens = [token for token in value.split(' ') if token]
+        if len(tokens) <= 1:
+            return None
+        if len(tokens[-1]) >= 4:
+            return tokens[-1]
+        if len(tokens) >= 2 and len(tokens[-2]) >= 4:
+            return tokens[-2]
+        return None
+
+    def _is_high_confidence_match(
+        self,
+        candidate: dict[str, Any],
+        normalized_label: str,
+    ) -> bool:
+        title = str(candidate.get('title') or '').strip()
+        if not title:
+            return False
+        candidate_norm = self._normalize_label(title)
+        if candidate_norm == normalized_label:
+            return True
+        if normalized_label and normalized_label in candidate_norm:
+            return True
+        confidence = candidate.get('confidence')
+        return isinstance(confidence, (int, float)) and float(confidence) >= 0.9
+
+    def _normalize_intent_family(self, value: str | None) -> str:
+        normalized = str(value or '').strip().lower()
+        if not normalized:
+            return 'roadmap_edit_clarifier'
+        normalized = self._INTENT_FAMILY_ALIASES.get(normalized, normalized)
+        if normalized not in self._CANONICAL_INTENT_FAMILIES:
+            return 'roadmap_edit_clarifier'
+        return normalized
+
+    def _extract_rename_intent(self, user_message: str) -> tuple[str, str] | None:
+        rename_match = re.search(
+            r'rename\s+(?:my\s+)?["\']?(.+?)["\']?\s+to\s+["\']?(.+?)["\']?$',
+            user_message.strip(),
+            re.IGNORECASE,
+        )
+        if rename_match is None:
+            return None
+        from_label = rename_match.group(1).strip()
+        to_title = rename_match.group(2).strip()
+        if not from_label or not to_title:
+            return None
+        return from_label, to_title
+
+    def _invalidate_retry_hints(self, hints: dict[str, Any] | None) -> dict[str, Any]:
+        next_hints = dict(hints or {})
+        next_hints.pop('candidate_ids', None)
+        next_hints.pop('candidate_count', None)
+        next_hints.pop('last_label', None)
+        next_hints.pop('normalized_label', None)
+        next_hints.pop('rename_from_label', None)
+        next_hints.pop('rename_to_title', None)
+        next_hints.pop('expected_node_type', None)
+        next_hints['hint_intent_version'] = None
+        next_hints['hint_staged_operations_version'] = None
+        return next_hints
+
+    def _passes_rename_autostage_gate(
+        self,
+        *,
+        candidate: dict[str, Any],
+        from_label: str,
+        expected_node_type: str | None,
+    ) -> bool:
+        if expected_node_type:
+            candidate_type = str(candidate.get('type') or '').strip().lower()
+            if candidate_type != expected_node_type.lower():
+                return False
+        normalized_label = self._normalize_label(from_label)
+        title = str(candidate.get('title') or '').strip()
+        candidate_norm = self._normalize_label(title)
+        if candidate_norm == normalized_label:
+            return True
+        confidence = candidate.get('confidence')
+        return isinstance(confidence, (int, float)) and float(confidence) >= 0.9
 
     def _ensure_actor_context(
         self,

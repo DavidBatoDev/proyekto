@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.contracts.operations import RoadmapOperation
 
@@ -63,7 +63,18 @@ class PendingEditResolvedReferences(BaseModel):
 
 
 class PendingEditContext(BaseModel):
-    intent_family: str
+    intent_family: Literal[
+        'rename_node',
+        'create_epic',
+        'create_feature',
+        'create_task',
+        'move_node',
+        'update_node',
+        'delete_node',
+        'mark_status',
+        'shift_dates',
+        'roadmap_edit_clarifier',
+    ]
     draft_operations: list[RoadmapOperation] = Field(default_factory=list)
     required_fields: list[str] = Field(default_factory=list)
     resolved_references: PendingEditResolvedReferences = Field(
@@ -74,8 +85,43 @@ class PendingEditContext(BaseModel):
     )
     source_user_message: str
     default_title: str | None = None
+    resolver_hints: dict[str, Any] | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    @field_validator('intent_family', mode='before')
+    @classmethod
+    def _normalize_intent_family(cls, value: Any) -> str:
+        normalized = str(value or '').strip().lower()
+        alias_map = {
+            'rename': 'rename_node',
+            'rename_item': 'rename_node',
+            'rename_task': 'rename_node',
+            'rename_feature': 'rename_node',
+            'rename_epic': 'rename_node',
+            'move': 'move_node',
+            'move_item': 'move_node',
+            'update': 'update_node',
+            'delete': 'delete_node',
+            'mark': 'mark_status',
+            'shift': 'shift_dates',
+        }
+        canonical = {
+            'rename_node',
+            'create_epic',
+            'create_feature',
+            'create_task',
+            'move_node',
+            'update_node',
+            'delete_node',
+            'mark_status',
+            'shift_dates',
+            'roadmap_edit_clarifier',
+        }
+        mapped = alias_map.get(normalized, normalized)
+        if mapped in canonical:
+            return mapped
+        return 'roadmap_edit_clarifier'
 
 
 class ActorContext(BaseModel):
@@ -93,6 +139,7 @@ class SessionMetadata(BaseModel):
     pending_context_resolution: PendingContextResolution | None = None
     pending_edit_context: PendingEditContext | None = None
     actor_context: ActorContext | None = None
+    applied_preview_ids: list[str] = Field(default_factory=list)
 
 
 class AgentSession(BaseModel):

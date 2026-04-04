@@ -493,6 +493,15 @@ async def send_message(
             deterministic_create_fastpath_skipped=(
                 outcome.deterministic_create_fastpath_skipped if outcome else False
             ),
+            retry_tool_calls_used=(
+                outcome.retry_tool_calls_used if outcome else None
+            ),
+            retry_duplicate_operation_deduped=(
+                outcome.retry_duplicate_operation_deduped if outcome else False
+            ),
+            retry_autostage_applied=(
+                outcome.retry_autostage_applied if outcome else False
+            ),
         )
 
 
@@ -617,6 +626,38 @@ async def commit_session(
     auth_header = request.headers.get('Authorization')
     base_revision = payload.base_revision or session.base_revision
     revision_token = payload.revision_token or session.revision_token
+    applied_preview_ids_raw = session.metadata.applied_preview_ids
+    if isinstance(applied_preview_ids_raw, list):
+        applied_preview_ids = [
+            value
+            for value in applied_preview_ids_raw
+            if isinstance(value, str) and value.strip()
+        ]
+    else:
+        applied_preview_ids = []
+
+    def _is_preview_already_applied(selected_preview_id: str) -> bool:
+        return selected_preview_id in applied_preview_ids
+
+    if _is_preview_already_applied(preview_id):
+        log_event(
+            logger,
+            'session_commit_duplicate_blocked',
+            settings=settings,
+            level=logging.WARNING,
+            trace_id=trace_id,
+            session_id=session.session_id,
+            roadmap_id=session.roadmap_id,
+            preview_id=preview_id,
+            reason='preview_already_applied',
+        )
+        raise HTTPException(
+            status_code=409,
+            detail={
+                'code': 'ARTIFACT_ALREADY_APPLIED',
+                'message': 'This artifact has already been applied. Generate a new preview before applying again.',
+            },
+        )
 
     def _build_commit_payload(selected_preview_id: str) -> dict:
         return {
@@ -702,6 +743,25 @@ async def commit_session(
         regenerated_revision_token = regenerated_preview.get('revision_token')
         if not isinstance(regenerated_preview_id, str):
             raise exc
+        if _is_preview_already_applied(regenerated_preview_id):
+            log_event(
+                logger,
+                'session_commit_duplicate_blocked',
+                settings=settings,
+                level=logging.WARNING,
+                trace_id=trace_id,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                preview_id=regenerated_preview_id,
+                reason='regenerated_preview_already_applied',
+            )
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    'code': 'ARTIFACT_ALREADY_APPLIED',
+                    'message': 'This artifact has already been applied. Generate a new preview before applying again.',
+                },
+            )
         session.latest_preview_id = regenerated_preview_id
         commit_preview_id = regenerated_preview_id
         if isinstance(regenerated_revision_token, str):
@@ -719,6 +779,9 @@ async def commit_session(
     committed_revision_token = commit_result.get('revision_token')
     if isinstance(committed_revision_token, str):
         session.revision_token = committed_revision_token
+    if commit_preview_id not in applied_preview_ids:
+        applied_preview_ids.append(commit_preview_id)
+    session.metadata.applied_preview_ids = applied_preview_ids
     session.latest_preview_id = None
     session.metadata.pending_context_resolution = None
     session.metadata.pending_edit_context = None

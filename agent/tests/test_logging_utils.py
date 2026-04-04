@@ -117,6 +117,9 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
             discovery_stop_reason='resolved',
             clarifier_returned=False,
             edit_guard_intervened=True,
+            retry_tool_calls_used=2,
+            retry_duplicate_operation_deduped=True,
+            retry_autostage_applied=True,
         )
         return self.stream.getvalue()
 
@@ -136,6 +139,9 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
         self.assertIn('ASSISTANT', output)
         self.assertIn('lane        deterministic_fastpath', output)
         self.assertIn('guard       yes', output)
+        self.assertIn('retry_calls 2', output)
+        self.assertIn('retry_dedupe yes', output)
+        self.assertIn('retry_auto  yes', output)
         self.assertIn('EVENT: MESSAGE_COMPLETED', output)
 
     def test_lifecycle_title_prefers_deterministic_parse_mode(self) -> None:

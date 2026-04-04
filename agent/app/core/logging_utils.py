@@ -322,6 +322,11 @@ def _apply_lifecycle_payload(trace: _LifecycleTrace, payload: dict[str, Any]) ->
                 'discovery_stop_reason': payload.get('discovery_stop_reason'),
                 'clarifier_returned': payload.get('clarifier_returned'),
                 'edit_guard_intervened': payload.get('edit_guard_intervened'),
+                'retry_tool_calls_used': payload.get('retry_tool_calls_used'),
+                'retry_duplicate_operation_deduped': payload.get(
+                    'retry_duplicate_operation_deduped'
+                ),
+                'retry_autostage_applied': payload.get('retry_autostage_applied'),
                 'tokens_input': payload.get('tokens_input'),
                 'tokens_output': payload.get('tokens_output'),
                 'tokens_total': payload.get('tokens_total'),
@@ -384,6 +389,9 @@ def _build_lifecycle_block(trace: _LifecycleTrace) -> str:
             f'  stop        {trace.response.get("discovery_stop_reason")}',
             f'  clarifier   {_yes_no(trace.response.get("clarifier_returned"))}',
             f'  guard       {_yes_no(trace.response.get("edit_guard_intervened"))}',
+            f'  retry_calls {trace.response.get("retry_tool_calls_used")}',
+            f'  retry_dedupe {_yes_no(trace.response.get("retry_duplicate_operation_deduped"))}',
+            f'  retry_auto  {_yes_no(trace.response.get("retry_autostage_applied"))}',
             f'  tokens      in={trace.response.get("tokens_input")} out={trace.response.get("tokens_output")} total={trace.response.get("tokens_total")}',
             '',
             'ASSISTANT',
