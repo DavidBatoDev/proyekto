@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
 from app.core.contracts.operations import RoadmapOperation
@@ -65,6 +65,10 @@ class PlannerState(TypedDict, total=False):
     planner_repair_attempted: bool | None
     force_edit_continuation: bool
     force_edit_continuation_reason: str | None
+    draft_action: str | None
+    tool_plan: list[dict[str, Any]]
+    needs_more_info: bool | None
+    stop_reason: str | None
 
 
 class _EditClarifierPayload(BaseModel):
@@ -81,6 +85,24 @@ class _EditPlannerPayload(BaseModel):
     options: list[str] = []
     operations: list[dict[str, Any]] = []
     references_used: list[str] = []
+
+
+class _ToolPlanItemPayload(BaseModel):
+    tool_name: str
+    args: dict[str, Any] = Field(default_factory=dict)
+
+
+class _HybridEditPlannerPayload(_EditPlannerPayload):
+    draft_action: Literal['continue', 'revise', 'new_draft']
+    tool_plan: list[_ToolPlanItemPayload] = Field(default_factory=list)
+    needs_more_info: bool
+    stop_reason: Literal[
+        'ready_to_stage',
+        'awaiting_user_input',
+        'tool_budget_exhausted',
+        'insufficient_context',
+        'safety_blocked',
+    ]
 
 
 @dataclass
@@ -107,6 +129,10 @@ class PlanningResult:
     clarifier_schema_retries: int | None = None
     planner_schema_invalid_attempts: int | None = None
     planner_repair_attempted: bool | None = None
+    draft_action: str | None = None
+    tool_plan: list[dict[str, Any]] | None = None
+    needs_more_info: bool | None = None
+    stop_reason: str | None = None
 
 
 class LLMPlanner:
@@ -250,6 +276,10 @@ class LLMPlanner:
             clarifier_schema_retries=state.get('clarifier_schema_retries'),
             planner_schema_invalid_attempts=state.get('planner_schema_invalid_attempts'),
             planner_repair_attempted=state.get('planner_repair_attempted'),
+            draft_action=state.get('draft_action'),
+            tool_plan=state.get('tool_plan'),
+            needs_more_info=state.get('needs_more_info'),
+            stop_reason=state.get('stop_reason'),
         )
 
     def _classify_intent(self, state: PlannerState) -> PlannerState:
@@ -635,6 +665,24 @@ class LLMPlanner:
                 break
 
             result_kind, assistant_message, operations, payload = shape
+            draft_action: str | None = None
+            tool_plan: list[dict[str, Any]] = []
+            needs_more_info: bool | None = None
+            stop_reason: str | None = None
+            if isinstance(payload, _HybridEditPlannerPayload):
+                draft_action = payload.draft_action
+                tool_plan = [item.model_dump(mode='json') for item in payload.tool_plan]
+                needs_more_info = payload.needs_more_info
+                stop_reason = payload.stop_reason
+            elif result_kind == 'tool':
+                # Compatibility path for provider tool tuples until strict planner schema is fully enabled.
+                draft_action = 'continue'
+                needs_more_info = False
+                stop_reason = 'ready_to_stage' if operations else 'awaiting_user_input'
+            elif isinstance(payload, _EditPlannerPayload):
+                needs_more_info = False if operations else True
+                stop_reason = 'ready_to_stage' if operations else 'awaiting_user_input'
+
             if operations:
                 parse_mode_suffix = 'tool_calling' if result_kind == 'tool' else 'edit_schema'
                 log_event(
@@ -674,6 +722,10 @@ class LLMPlanner:
                     'clarifier_schema_retries': schema_invalid_attempts,
                     'planner_schema_invalid_attempts': schema_invalid_attempts,
                     'planner_repair_attempted': repair_attempted,
+                    'draft_action': draft_action,
+                    'tool_plan': tool_plan,
+                    'needs_more_info': needs_more_info,
+                    'stop_reason': stop_reason,
                 }
 
             if result_kind == 'tool':
@@ -720,6 +772,10 @@ class LLMPlanner:
                 'clarifier_schema_retries': schema_invalid_attempts,
                 'planner_schema_invalid_attempts': schema_invalid_attempts,
                 'planner_repair_attempted': repair_attempted,
+                'draft_action': draft_action,
+                'tool_plan': tool_plan,
+                'needs_more_info': needs_more_info,
+                'stop_reason': stop_reason,
             }
 
         return self._neutral_edit_clarifier_state(
@@ -730,7 +786,12 @@ class LLMPlanner:
     def _coerce_llm_first_result(
         self,
         raw_value: Any,
-    ) -> tuple[str, str, list[RoadmapOperation], _EditPlannerPayload | None] | None:
+    ) -> tuple[
+        str,
+        str,
+        list[RoadmapOperation],
+        _EditPlannerPayload | _HybridEditPlannerPayload | None,
+    ] | None:
         if isinstance(raw_value, tuple):
             if len(raw_value) != 2:
                 return None
@@ -780,6 +841,13 @@ class LLMPlanner:
             if parse_error_hint
             else ''
         )
+        strict_schema_line = ''
+        if self._is_hybrid_edit_schema_enforced():
+            strict_schema_line = (
+                'Final output MUST be strict JSON with keys: action, reason, question, options, '
+                'operations, references_used, draft_action, tool_plan, needs_more_info, stop_reason. '
+                'tool_plan must be an array of {tool_name, args}.\n'
+            )
         return (
             'You are an LLM-first roadmap edit planner with bounded exploration.\n'
             'Step 1: choose capability and resolve targets using context tools when needed.\n'
@@ -792,8 +860,16 @@ class LLMPlanner:
             f'Current staged operations summary: {json.dumps(staged_ops_summary, ensure_ascii=True)}\n'
             f'Pending edit context summary: {json.dumps(pending_context_summary, ensure_ascii=True)}\n'
             f'User request: {user_message}\n'
+            f'{strict_schema_line}'
             f'{hint_line}'
         )
+
+    def _is_hybrid_edit_schema_enforced(self) -> bool:
+        mode = str(self._settings.agent_edit_planner_mode or '').strip().lower()
+        return self._settings.agent_hybrid_react_enabled or mode in {
+            'llm_first_edit_v3',
+            'hybrid_react',
+        }
 
     def _summarize_existing_operations(
         self,
@@ -861,27 +937,96 @@ class LLMPlanner:
     def _parse_edit_planner_payload(
         self,
         raw: Any,
-    ) -> tuple[_EditPlannerPayload, list[RoadmapOperation]]:
+    ) -> tuple[_EditPlannerPayload | _HybridEditPlannerPayload, list[RoadmapOperation]]:
+        candidate = self._extract_planner_json_candidate(raw)
+        strict_hybrid = self._is_hybrid_edit_schema_enforced()
+
+        if strict_hybrid:
+            return self._parse_hybrid_edit_planner_payload(candidate)
+
+        try:
+            parsed = json.loads(candidate)
+        except Exception as exc:
+            raise ValueError('invalid_planner_schema') from exc
+
+        if isinstance(parsed, dict) and any(
+            key in parsed
+            for key in ('draft_action', 'tool_plan', 'needs_more_info', 'stop_reason')
+        ):
+            return self._parse_hybrid_edit_planner_payload(candidate)
+
+        return self._parse_legacy_edit_planner_payload(candidate)
+
+    def _extract_planner_json_candidate(self, raw: Any) -> str:
         if isinstance(raw, dict):
-            candidate = json.dumps(raw, ensure_ascii=True)
-        elif isinstance(raw, str):
+            return json.dumps(raw, ensure_ascii=True)
+        if isinstance(raw, str):
             text = raw.strip()
-            candidate = text
-            if not (text.startswith('{') and text.endswith('}')):
-                match = re.search(r'\{.*\}', text, re.DOTALL)
-                if match:
-                    candidate = match.group(0)
-        else:
+            if text.startswith('{') and text.endswith('}'):
+                return text
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            if match:
+                return match.group(0)
+        raise ValueError('invalid_planner_schema')
+
+    def _clean_planner_options(self, options: list[Any]) -> list[str]:
+        cleaned_options = [opt.strip() for opt in options if isinstance(opt, str) and opt.strip()]
+        if len(cleaned_options) > 5:
+            cleaned_options = cleaned_options[:5]
+        return cleaned_options
+
+    def _parse_hybrid_edit_planner_payload(
+        self,
+        candidate: str,
+    ) -> tuple[_HybridEditPlannerPayload, list[RoadmapOperation]]:
+        try:
+            payload = _HybridEditPlannerPayload.model_validate_json(candidate)
+        except Exception as exc:
+            raise ValueError('invalid_planner_schema') from exc
+
+        cleaned_question = payload.question.strip()
+        cleaned_options = self._clean_planner_options(payload.options)
+        payload = payload.model_copy(update={'question': cleaned_question, 'options': cleaned_options})
+
+        if payload.action == 'execute':
+            if payload.needs_more_info:
+                raise ValueError('invalid_planner_schema')
+            if payload.operations is None:
+                raise ValueError('invalid_planner_schema')
+            try:
+                _, operations = parse_plan_tool_args(
+                    {
+                        'assistant_message': payload.question or 'Prepared roadmap edit operations.',
+                        'operations': payload.operations,
+                    }
+                )
+            except Exception as exc:
+                raise ValueError('invalid_planner_operations') from exc
+            if len(operations) == 0:
+                raise ValueError('invalid_planner_schema')
+            if payload.stop_reason != 'ready_to_stage':
+                raise ValueError('invalid_planner_schema')
+            return payload, operations
+
+        if payload.operations:
             raise ValueError('invalid_planner_schema')
+        if not payload.question:
+            raise ValueError('invalid_planner_schema')
+        if payload.action == 'ask_clarifier' and not payload.needs_more_info:
+            raise ValueError('invalid_planner_schema')
+        return payload, []
+
+    def _parse_legacy_edit_planner_payload(
+        self,
+        candidate: str,
+    ) -> tuple[_EditPlannerPayload, list[RoadmapOperation]]:
         try:
             payload = _EditPlannerPayload.model_validate_json(candidate)
         except Exception as exc:
             raise ValueError('invalid_planner_schema') from exc
 
         cleaned_question = payload.question.strip()
-        cleaned_options = [opt.strip() for opt in payload.options if isinstance(opt, str) and opt.strip()]
-        if len(cleaned_options) > 5:
-            cleaned_options = cleaned_options[:5]
+        cleaned_options = self._clean_planner_options(payload.options)
         payload = payload.model_copy(update={'question': cleaned_question, 'options': cleaned_options})
 
         if payload.action == 'execute':
@@ -984,6 +1129,10 @@ class LLMPlanner:
                     'clarifier_schema_retries': schema_retries,
                     'planner_schema_invalid_attempts': schema_retries,
                     'planner_repair_attempted': schema_retries > 0,
+                    'draft_action': None,
+                    'tool_plan': [],
+                    'needs_more_info': True,
+                    'stop_reason': 'awaiting_user_input',
                 }
             except ValueError:
                 parse_error_code = 'invalid_clarifier_schema'
@@ -1069,6 +1218,10 @@ class LLMPlanner:
             'clarifier_schema_retries': schema_retries,
             'planner_schema_invalid_attempts': schema_retries,
             'planner_repair_attempted': schema_retries > 0,
+            'draft_action': None,
+            'tool_plan': [],
+            'needs_more_info': True,
+            'stop_reason': 'insufficient_context',
         }
 
     def _execute_context_tool(

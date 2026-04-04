@@ -1,6 +1,8 @@
 import logging
 import asyncio
 import json
+import hashlib
+from datetime import datetime
 from time import perf_counter
 from uuid import uuid4
 from typing import cast
@@ -10,6 +12,7 @@ from fastapi.exceptions import HTTPException
 
 from app.core.config import get_settings
 from app.core.contracts.sessions import (
+    AppliedDraftCommit,
     AgentSession,
     ArtifactPreviewResponse,
     CommitRequest,
@@ -20,6 +23,7 @@ from app.core.contracts.sessions import (
     MessageRequest,
     MessageResponse,
     PreviewRequest,
+    PreviewFingerprintBinding,
     RoadmapPreviewArtifact,
     RollbackRequest,
 )
@@ -98,6 +102,150 @@ def _is_preview_not_found_error(normalized: dict) -> bool:
 
     message = str(normalized.get('message') or '').strip().lower()
     return 'preview' in message and 'not found' in message
+
+
+def _resolve_draft_snapshot(
+    session: AgentSession,
+    agent_service: AgentService,
+) -> tuple[str, int, list]:
+    if settings.agent_draft_graph_enabled:
+        try:
+            agent_service._ensure_draft_graph_initialized(session)
+            active_draft = agent_service._get_active_draft(session)
+            return active_draft.draft_id, active_draft.draft_version, active_draft.operations
+        except Exception:
+            pass
+    draft_id = session.metadata.active_draft_id or f'{session.session_id}:legacy'
+    return draft_id, session.staged_operations_version, session.operations
+
+
+def _resolve_draft_snapshot_by_id(
+    session: AgentSession,
+    draft_id: str,
+) -> tuple[str, int, list] | None:
+    candidate = session.metadata.drafts.get(draft_id)
+    if candidate is None:
+        return None
+
+    if hasattr(candidate, 'draft_version') and hasattr(candidate, 'operations'):
+        return draft_id, int(candidate.draft_version), list(candidate.operations)
+
+    if isinstance(candidate, dict):
+        draft_version = candidate.get('draft_version')
+        operations = candidate.get('operations')
+        if isinstance(draft_version, int) and isinstance(operations, list):
+            return draft_id, draft_version, operations
+
+    return None
+
+
+def _resolve_snapshot_for_binding(
+    session: AgentSession,
+    binding: PreviewFingerprintBinding,
+) -> tuple[str, int, list] | None:
+    if binding.binding_scope == 'ad_hoc_operations':
+        return None
+
+    by_id = _resolve_draft_snapshot_by_id(session, binding.draft_id)
+    if by_id is not None:
+        return by_id
+
+    legacy_prefix = f'{session.session_id}:legacy'
+    if binding.draft_id == legacy_prefix:
+        return legacy_prefix, session.staged_operations_version, session.operations
+
+    return None
+
+
+def _set_draft_status(
+    *,
+    session: AgentSession,
+    draft_id: str,
+    status: str,
+) -> bool:
+    candidate = session.metadata.drafts.get(draft_id)
+    if candidate is None:
+        return False
+
+    if hasattr(candidate, 'status') and hasattr(candidate, 'updated_at'):
+        candidate.status = status
+        candidate.updated_at = datetime.utcnow()
+        return True
+
+    if isinstance(candidate, dict):
+        candidate['status'] = status
+        candidate['updated_at'] = datetime.utcnow()
+        return True
+
+    return False
+
+
+def _compute_preview_fingerprint(
+    *,
+    draft_id: str,
+    draft_version: int,
+    operations: list,
+    base_revision: int | None,
+) -> str:
+    payload = {
+        'draft_id': draft_id,
+        'draft_version': draft_version,
+        'base_revision': base_revision,
+        'operations': [
+            op.model_dump(exclude_none=True) if hasattr(op, 'model_dump') else op
+            for op in operations
+        ],
+    }
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(',', ':'),
+        ensure_ascii=True,
+    ).encode('utf-8')
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _upsert_preview_fingerprint_binding(
+    *,
+    session: AgentSession,
+    preview_id: str,
+    draft_id: str,
+    draft_version: int,
+    base_revision: int | None,
+    fingerprint: str,
+    binding_scope: str = 'draft_snapshot',
+) -> None:
+    bindings = session.metadata.preview_fingerprint_bindings
+    if not isinstance(bindings, dict):
+        bindings = {}
+    bindings[preview_id] = PreviewFingerprintBinding(
+        preview_id=preview_id,
+        draft_id=draft_id,
+        draft_version=draft_version,
+        base_revision=base_revision,
+        preview_fingerprint=fingerprint,
+        binding_scope=binding_scope,
+    )
+    session.metadata.preview_fingerprint_bindings = bindings
+    session.metadata.latest_preview_fingerprint = fingerprint
+
+
+def _get_preview_fingerprint_binding(
+    session: AgentSession,
+    preview_id: str,
+) -> PreviewFingerprintBinding | None:
+    bindings = session.metadata.preview_fingerprint_bindings
+    if not isinstance(bindings, dict):
+        return None
+    candidate = bindings.get(preview_id)
+    if isinstance(candidate, PreviewFingerprintBinding):
+        return candidate
+    if isinstance(candidate, dict):
+        try:
+            return PreviewFingerprintBinding.model_validate(candidate)
+        except Exception:
+            return None
+    return None
 
 
 def _service_unavailable(reason: str) -> HTTPException:
@@ -307,6 +455,7 @@ async def send_message(
                     preview_error_upstream_status = None
                     setattr(outcome.session.metadata, 'awaiting_preview_fix', True)
                     outcome.session.latest_preview_id = None
+                    outcome.session.metadata.latest_preview_fingerprint = None
                     outcome.session.artifacts = []
                     outcome.assistant_message = (
                         'I staged your edit, but preview validation failed. '
@@ -317,6 +466,30 @@ async def send_message(
                     preview_id = preview_result.get('preview_id')
                     if isinstance(preview_id, str):
                         outcome.session.latest_preview_id = preview_id
+                        draft_id, draft_version, draft_operations = _resolve_draft_snapshot(
+                            outcome.session,
+                            agent_service,
+                        )
+                        preview_fingerprint = _compute_preview_fingerprint(
+                            draft_id=draft_id,
+                            draft_version=draft_version,
+                            operations=draft_operations,
+                            base_revision=outcome.session.base_revision,
+                        )
+                        _upsert_preview_fingerprint_binding(
+                            session=outcome.session,
+                            preview_id=preview_id,
+                            draft_id=draft_id,
+                            draft_version=draft_version,
+                            base_revision=outcome.session.base_revision,
+                            fingerprint=preview_fingerprint,
+                            binding_scope='draft_snapshot',
+                        )
+                        _set_draft_status(
+                            session=outcome.session,
+                            draft_id=draft_id,
+                            status='previewed',
+                        )
                         revision_token = preview_result.get('revision_token')
                         if isinstance(revision_token, str):
                             outcome.session.revision_token = revision_token
@@ -372,6 +545,8 @@ async def send_message(
             preview_recommended=effective_preview_recommended,
             staged_operations_version=outcome.staged_operations_version,
             staged_operations_count=outcome.staged_operations_count,
+            active_draft_id=outcome.active_draft_id,
+            active_draft_version=outcome.active_draft_version,
             artifacts=response_artifacts or artifacts,
             provider_used=outcome.provider_used,
             fallback_used=outcome.fallback_used,
@@ -565,6 +740,38 @@ async def preview_session(
     )
     if isinstance(preview_id, str):
         session.latest_preview_id = preview_id
+        if payload.operations is not None:
+            draft_id = f'{session.session_id}:adhoc:{preview_id}'
+            draft_version = 0
+            draft_operations = payload.operations
+            binding_scope = 'ad_hoc_operations'
+        else:
+            draft_id, draft_version, draft_operations = _resolve_draft_snapshot(
+                session,
+                agent_service,
+            )
+            binding_scope = 'draft_snapshot'
+        preview_fingerprint = _compute_preview_fingerprint(
+            draft_id=draft_id,
+            draft_version=draft_version,
+            operations=draft_operations,
+            base_revision=base_revision,
+        )
+        _upsert_preview_fingerprint_binding(
+            session=session,
+            preview_id=preview_id,
+            draft_id=draft_id,
+            draft_version=draft_version,
+            base_revision=base_revision,
+            fingerprint=preview_fingerprint,
+            binding_scope=binding_scope,
+        )
+        if binding_scope == 'draft_snapshot':
+            _set_draft_status(
+                session=session,
+                draft_id=draft_id,
+                status='previewed',
+            )
         if isinstance(preview_revision_token, str):
             session.revision_token = preview_revision_token
             effective_revision_token = preview_revision_token
@@ -659,6 +866,92 @@ async def commit_session(
             },
         )
 
+    draft_id, draft_version, draft_operations = _resolve_draft_snapshot(session, agent_service)
+    selected_draft_id = draft_id
+    selected_draft_version = draft_version
+    selected_draft_operations = draft_operations
+    selected_base_revision = base_revision
+    selected_binding_scope = 'draft_snapshot'
+    current_preview_fingerprint = _compute_preview_fingerprint(
+        draft_id=selected_draft_id,
+        draft_version=selected_draft_version,
+        operations=selected_draft_operations,
+        base_revision=selected_base_revision,
+    )
+    binding = _get_preview_fingerprint_binding(session, preview_id)
+    binding_snapshot = None
+    if binding is not None:
+        selected_draft_id = binding.draft_id
+        selected_draft_version = binding.draft_version
+        selected_binding_scope = binding.binding_scope
+        if binding.base_revision is not None:
+            selected_base_revision = binding.base_revision
+        if binding.binding_scope == 'draft_snapshot':
+            binding_snapshot = _resolve_snapshot_for_binding(session, binding)
+            if binding_snapshot is not None:
+                (
+                    selected_draft_id,
+                    selected_draft_version,
+                    selected_draft_operations,
+                ) = binding_snapshot
+                current_preview_fingerprint = _compute_preview_fingerprint(
+                    draft_id=selected_draft_id,
+                    draft_version=selected_draft_version,
+                    operations=selected_draft_operations,
+                    base_revision=selected_base_revision,
+                )
+        else:
+            current_preview_fingerprint = binding.preview_fingerprint
+
+    if settings.agent_strict_preview_fingerprint:
+        if binding is None:
+            log_event(
+                logger,
+                'session_commit_preview_binding_missing',
+                settings=settings,
+                level=logging.WARNING,
+                trace_id=trace_id,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                preview_id=preview_id,
+            )
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    'code': 'STALE_PREVIEW_REFERENCE',
+                    'message': (
+                        'Selected preview is not bound to the current staged snapshot. '
+                        'Regenerate preview and apply again.'
+                    ),
+                },
+            )
+        if binding.binding_scope == 'draft_snapshot' and (
+            binding_snapshot is None
+            or binding.preview_fingerprint != current_preview_fingerprint
+        ):
+            log_event(
+                logger,
+                'session_commit_preview_fingerprint_mismatch',
+                settings=settings,
+                level=logging.WARNING,
+                trace_id=trace_id,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                preview_id=preview_id,
+                draft_id=selected_draft_id,
+                draft_version=selected_draft_version,
+            )
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    'code': 'STALE_PREVIEW_REFERENCE',
+                    'message': (
+                        'Selected preview is stale for the current staged edits. '
+                        'Regenerate preview and apply again.'
+                    ),
+                },
+            )
+
     def _build_commit_payload(selected_preview_id: str) -> dict:
         return {
             'preview_id': selected_preview_id,
@@ -724,16 +1017,31 @@ async def commit_session(
                 },
             )
 
-        if not session.operations:
+        if selected_binding_scope == 'ad_hoc_operations':
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    'code': 'STALE_PREVIEW_REFERENCE',
+                    'message': (
+                        'Selected ad-hoc preview is stale. Regenerate preview with the same operations '
+                        'and apply again.'
+                    ),
+                },
+            )
+
+        if not selected_draft_operations:
             raise exc
 
         regenerated_preview = await _nest_client.preview(
             roadmap_id=session.roadmap_id,
             payload={
-                'base_revision': session.base_revision,
+                'base_revision': selected_base_revision,
                 'revision_token': session.revision_token,
                 'operations': [
-                    op.model_dump(exclude_none=True) for op in session.operations
+                    op.model_dump(exclude_none=True)
+                    if hasattr(op, 'model_dump')
+                    else op
+                    for op in selected_draft_operations
                 ],
             },
             auth_header=auth_header,
@@ -764,6 +1072,15 @@ async def commit_session(
             )
         session.latest_preview_id = regenerated_preview_id
         commit_preview_id = regenerated_preview_id
+        _upsert_preview_fingerprint_binding(
+            session=session,
+            preview_id=regenerated_preview_id,
+            draft_id=selected_draft_id,
+            draft_version=selected_draft_version,
+            base_revision=selected_base_revision,
+            fingerprint=current_preview_fingerprint,
+            binding_scope='draft_snapshot',
+        )
         if isinstance(regenerated_revision_token, str):
             session.revision_token = regenerated_revision_token
             revision_token = regenerated_revision_token
@@ -782,7 +1099,22 @@ async def commit_session(
     if commit_preview_id not in applied_preview_ids:
         applied_preview_ids.append(commit_preview_id)
     session.metadata.applied_preview_ids = applied_preview_ids
+    session.metadata.applied_draft_commits.append(
+        AppliedDraftCommit(
+            preview_id=commit_preview_id,
+            draft_id=selected_draft_id,
+            draft_version=selected_draft_version,
+            preview_fingerprint=current_preview_fingerprint,
+        )
+    )
+    if selected_binding_scope == 'draft_snapshot':
+        _set_draft_status(
+            session=session,
+            draft_id=selected_draft_id,
+            status='applied',
+        )
     session.latest_preview_id = None
+    session.metadata.latest_preview_fingerprint = None
     session.metadata.pending_context_resolution = None
     session.metadata.pending_edit_context = None
     await _run_store_call(store.update, session)
@@ -833,9 +1165,26 @@ async def discard_session(
             if exc.status_code != 404:
                 raise
 
-    session.operations = []
-    session.staged_operations_version += 1
+    draft_sync_applied = False
+    if settings.agent_draft_graph_enabled:
+        try:
+            agent_service._ensure_draft_graph_initialized(session)
+            active_draft = agent_service._get_active_draft(session)
+            active_draft.operations = []
+            active_draft.draft_version += 1
+            active_draft.status = 'abandoned'
+            active_draft.updated_at = datetime.utcnow()
+            agent_service._mirror_active_draft_to_legacy_fields(session)
+            draft_sync_applied = True
+        except Exception:
+            session.operations = []
+
+    if not draft_sync_applied:
+        session.operations = []
+        session.staged_operations_version += 1
     session.latest_preview_id = None
+    session.metadata.latest_preview_fingerprint = None
+    session.metadata.preview_fingerprint_bindings = {}
     session.artifacts = []
     session.metadata.pending_context_resolution = None
     session.metadata.pending_edit_context = None
@@ -935,6 +1284,30 @@ async def get_artifact_preview(
                 if isinstance(regenerated_preview_id, str):
                     artifact.preview_id = regenerated_preview_id
                     session.latest_preview_id = regenerated_preview_id
+                    draft_id, draft_version, draft_operations = _resolve_draft_snapshot(
+                        session,
+                        agent_service,
+                    )
+                    preview_fingerprint = _compute_preview_fingerprint(
+                        draft_id=draft_id,
+                        draft_version=draft_version,
+                        operations=draft_operations,
+                        base_revision=session.base_revision,
+                    )
+                    _upsert_preview_fingerprint_binding(
+                        session=session,
+                        preview_id=regenerated_preview_id,
+                        draft_id=draft_id,
+                        draft_version=draft_version,
+                        base_revision=session.base_revision,
+                        fingerprint=preview_fingerprint,
+                        binding_scope='draft_snapshot',
+                    )
+                    _set_draft_status(
+                        session=session,
+                        draft_id=draft_id,
+                        status='previewed',
+                    )
                 if isinstance(regenerated_revision_token, str):
                     artifact.revision_token = regenerated_revision_token
                     session.revision_token = regenerated_revision_token

@@ -16,6 +16,7 @@ from app.core.config import get_settings
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import (
     ActorContext,
+    DraftNode,
     PendingEditContext,
     PendingEditResolvedReferences,
     PendingContextResolution,
@@ -69,6 +70,13 @@ class MessagePlanningOutcome:
     retry_tool_calls_used: int | None = None
     retry_duplicate_operation_deduped: bool = False
     retry_autostage_applied: bool = False
+    draft_action: str | None = None
+    needs_more_info: bool | None = None
+    stop_reason: str | None = None
+    tool_plan_steps: int | None = None
+    active_draft_id: str | None = None
+    active_draft_version: int | None = None
+    draft_graph_migration_applied: bool = False
 
 
 class AgentService:
@@ -126,11 +134,17 @@ class AgentService:
         trace_id: str | None = None,
     ) -> MessagePlanningOutcome:
         phase_timings: dict[str, Any] = {}
+        draft_graph_enabled = self._settings.agent_draft_graph_enabled
+        draft_graph_migration_applied = False
+        active_draft = None
+        if draft_graph_enabled:
+            draft_graph_migration_applied = self._ensure_draft_graph_initialized(session)
+            active_draft = self._get_active_draft(session)
         session_context = self._build_session_context(session, auth_header, trace_id)
 
         pending_edit_context_present = session.metadata.pending_edit_context is not None
         edit_continuation_trigger = self._detect_edit_continuation_trigger(user_message)
-        has_staged_operations = bool(session.operations)
+        has_staged_operations = bool(active_draft.operations) if active_draft is not None else bool(session.operations)
         pending_continuation_requested = pending_edit_context_present and (
             edit_continuation_trigger in {'confirm', 'cancel', 'correction', 'retry'}
         )
@@ -387,6 +401,58 @@ class AgentService:
             )
             edit_guard_intervened = True
         if (
+            self._settings.agent_hybrid_react_enabled
+            and planning.response_mode == 'edit_plan'
+            and planning.draft_action not in {'continue', 'revise', 'new_draft'}
+        ):
+            planning = PlanningResult(
+                assistant_message=(
+                    'I need one more confirmation before staging edits because draft intent metadata '
+                    'was incomplete. Please restate whether this should continue, revise, or start a new draft.'
+                ),
+                operations=[],
+                parse_mode='deterministic_planner_schema_handoff',
+                intent_type='roadmap_edit',
+                response_mode='chat',
+                preview_recommended=False,
+                provider_used='rule_based',
+                fallback_used=True,
+                provider_error_code='planner_schema_missing_draft_action',
+                tokens_input=planning.tokens_input,
+                tokens_output=planning.tokens_output,
+                tokens_total=planning.tokens_total,
+                route_lane=route_lane,
+                fastpath_bypass_reason=planning.fastpath_bypass_reason,
+                clarifier_action='ask_clarifier',
+                clarifier_reason='planner_schema_missing_draft_action',
+                clarifier_options=['Continue current draft', 'Revise current draft', 'Start new draft'],
+            )
+            edit_guard_intervened = True
+        if planning.response_mode == 'edit_plan' and planning.needs_more_info:
+            planning = PlanningResult(
+                assistant_message=(
+                    'I could not safely stage edits yet because required context is still missing. '
+                    'Please answer the clarification so I can continue.'
+                ),
+                operations=[],
+                parse_mode='deterministic_planner_needs_more_info_handoff',
+                intent_type='roadmap_edit',
+                response_mode='chat',
+                preview_recommended=False,
+                provider_used='rule_based',
+                fallback_used=True,
+                provider_error_code='planner_needs_more_info_conflict',
+                tokens_input=planning.tokens_input,
+                tokens_output=planning.tokens_output,
+                tokens_total=planning.tokens_total,
+                route_lane=route_lane,
+                fastpath_bypass_reason=planning.fastpath_bypass_reason,
+                clarifier_action='ask_clarifier',
+                clarifier_reason='planner_needs_more_info_conflict',
+                clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
+            )
+            edit_guard_intervened = True
+        if (
             (pending_edit_context_present or has_staged_operations)
             and edit_continuation_trigger == 'correction'
             and planning.response_mode == 'edit_plan'
@@ -457,6 +523,10 @@ class AgentService:
 
         planner_schema_invalid_attempts = planning.planner_schema_invalid_attempts
         planner_repair_attempted = planning.planner_repair_attempted
+        draft_action = planning.draft_action
+        needs_more_info = planning.needs_more_info
+        stop_reason = planning.stop_reason
+        tool_plan_steps = len(planning.tool_plan or []) if planning.tool_plan is not None else 0
         deterministic_create_fastpath_skipped = False
         if self._settings.agent_llm_first_edit_enabled:
             fastpath_reason = None
@@ -467,27 +537,60 @@ class AgentService:
         applied_operations: list[RoadmapOperation] = []
         staged_changed = False
         if planning.response_mode == 'edit_plan':
-            if replace or force_replace_operations:
-                session.operations = operations
-                applied_operations = operations
-                staged_changed = bool(operations)
+            if draft_graph_enabled:
+                active_draft = self._get_active_draft(session)
+                if active_draft.status != 'active':
+                    active_draft.status = 'active'
+                if replace or force_replace_operations:
+                    active_draft.operations = [
+                        operation.model_copy(deep=True) for operation in operations
+                    ]
+                    applied_operations = [
+                        operation.model_copy(deep=True) for operation in operations
+                    ]
+                    staged_changed = bool(operations)
+                else:
+                    existing_signatures = {
+                        self._operation_signature(operation)
+                        for operation in active_draft.operations
+                    }
+                    for operation in operations:
+                        signature = self._operation_signature(operation)
+                        if signature in existing_signatures:
+                            if edit_continuation_trigger == 'retry':
+                                retry_duplicate_operation_deduped = True
+                            continue
+                        staged_operation = operation.model_copy(deep=True)
+                        active_draft.operations.append(staged_operation)
+                        applied_operations.append(staged_operation)
+                        existing_signatures.add(signature)
+                    staged_changed = bool(applied_operations)
+                active_draft.updated_at = datetime.utcnow()
+                if staged_changed:
+                    active_draft.draft_version += 1
+                self._mirror_active_draft_to_legacy_fields(session)
             else:
-                existing_signatures = {
-                    self._operation_signature(operation)
-                    for operation in session.operations
-                }
-                for operation in operations:
-                    signature = self._operation_signature(operation)
-                    if signature in existing_signatures:
-                        if edit_continuation_trigger == 'retry':
-                            retry_duplicate_operation_deduped = True
-                        continue
-                    session.operations.append(operation)
-                    applied_operations.append(operation)
-                    existing_signatures.add(signature)
-                staged_changed = bool(applied_operations)
-            if staged_changed:
-                session.staged_operations_version += 1
+                if replace or force_replace_operations:
+                    session.operations = operations
+                    applied_operations = operations
+                    staged_changed = bool(operations)
+                else:
+                    existing_signatures = {
+                        self._operation_signature(operation)
+                        for operation in session.operations
+                    }
+                    for operation in operations:
+                        signature = self._operation_signature(operation)
+                        if signature in existing_signatures:
+                            if edit_continuation_trigger == 'retry':
+                                retry_duplicate_operation_deduped = True
+                            continue
+                        session.operations.append(operation)
+                        applied_operations.append(operation)
+                        existing_signatures.add(signature)
+                    staged_changed = bool(applied_operations)
+                if staged_changed:
+                    session.staged_operations_version += 1
 
         if planning.clear_pending_context_resolution:
             session.metadata.pending_context_resolution = None
@@ -502,6 +605,12 @@ class AgentService:
 
         preview_available = len(session.operations) > 0
         preview_recommended = planning.preview_recommended and preview_available
+        active_draft_id: str | None = None
+        active_draft_version: int | None = None
+        if draft_graph_enabled:
+            active_draft = self._get_active_draft(session)
+            active_draft_id = active_draft.draft_id
+            active_draft_version = active_draft.draft_version
 
         log_event(
             self._logger,
@@ -512,6 +621,9 @@ class AgentService:
             roadmap_id=session.roadmap_id,
             staged_operations_count=len(session.operations),
             staged_operations_version=session.staged_operations_version,
+            active_draft_id=active_draft_id,
+            active_draft_version=active_draft_version,
+            draft_graph_migration_applied=draft_graph_migration_applied,
             preview_available=preview_available,
             preview_recommended=preview_recommended,
             intent_type=planning.intent_type,
@@ -542,6 +654,10 @@ class AgentService:
             edit_continuation_trigger=edit_continuation_trigger,
             planner_schema_invalid_attempts=planner_schema_invalid_attempts,
             planner_repair_attempted=planner_repair_attempted,
+            draft_action=draft_action,
+            needs_more_info=needs_more_info,
+            stop_reason=stop_reason,
+            tool_plan_steps=tool_plan_steps,
             deterministic_create_fastpath_skipped=deterministic_create_fastpath_skipped,
             edit_guard_intervened=edit_guard_intervened,
             retry_tool_calls_used=retry_tool_calls_used,
@@ -583,11 +699,18 @@ class AgentService:
             edit_continuation_trigger=edit_continuation_trigger,
             planner_schema_invalid_attempts=planner_schema_invalid_attempts,
             planner_repair_attempted=planner_repair_attempted,
+            draft_action=draft_action,
+            needs_more_info=needs_more_info,
+            stop_reason=stop_reason,
+            tool_plan_steps=tool_plan_steps,
             deterministic_create_fastpath_skipped=deterministic_create_fastpath_skipped,
             edit_guard_intervened=edit_guard_intervened,
             retry_tool_calls_used=retry_tool_calls_used,
             retry_duplicate_operation_deduped=retry_duplicate_operation_deduped,
             retry_autostage_applied=retry_autostage_applied,
+            active_draft_id=active_draft_id,
+            active_draft_version=active_draft_version,
+            draft_graph_migration_applied=draft_graph_migration_applied,
         )
 
     def _operation_signature(self, operation: RoadmapOperation) -> str:
@@ -1502,12 +1625,83 @@ class AgentService:
             return asyncio.run(coro)
         raise RuntimeError('Async call attempted on running event loop thread')
 
+    def _ensure_draft_graph_initialized(self, session: AgentSession) -> bool:
+        migration_applied = False
+        drafts = session.metadata.drafts
+
+        if not drafts:
+            root_draft = self._build_root_draft_from_legacy_operations(session)
+            session.metadata.drafts[root_draft.draft_id] = root_draft
+            session.metadata.active_draft_id = root_draft.draft_id
+            session.metadata.draft_head_ids = [root_draft.draft_id]
+            migration_applied = True
+
+        active_draft_id = session.metadata.active_draft_id
+        if not active_draft_id or active_draft_id not in session.metadata.drafts:
+            first_draft_id = next(iter(session.metadata.drafts), None)
+            if first_draft_id is None:
+                root_draft = self._build_root_draft_from_legacy_operations(session)
+                session.metadata.drafts[root_draft.draft_id] = root_draft
+                first_draft_id = root_draft.draft_id
+            session.metadata.active_draft_id = first_draft_id
+            if first_draft_id not in session.metadata.draft_head_ids:
+                session.metadata.draft_head_ids.append(first_draft_id)
+            migration_applied = True
+
+        active_draft = self._get_active_draft(session)
+        if not active_draft.operations and session.operations:
+            active_draft.operations = [
+                operation.model_copy(deep=True) for operation in session.operations
+            ]
+            active_draft.draft_version = max(
+                active_draft.draft_version,
+                session.staged_operations_version,
+            )
+            active_draft.updated_at = datetime.utcnow()
+            migration_applied = True
+
+        self._mirror_active_draft_to_legacy_fields(session)
+        return migration_applied
+
+    def _build_root_draft_from_legacy_operations(self, session: AgentSession) -> DraftNode:
+        root_draft_id = f'{session.session_id}:root'
+        return DraftNode(
+            draft_id=root_draft_id,
+            parent_draft_id=None,
+            draft_mode='append',
+            operations=[operation.model_copy(deep=True) for operation in session.operations],
+            draft_version=max(0, session.staged_operations_version),
+            base_revision=session.base_revision,
+            revision_token=session.revision_token,
+            summary='Legacy staged operations root draft',
+            status='active',
+        )
+
+    def _get_active_draft(self, session: AgentSession) -> DraftNode:
+        active_draft_id = session.metadata.active_draft_id
+        if not active_draft_id:
+            raise RuntimeError('Active draft is not initialized.')
+        draft = session.metadata.drafts.get(active_draft_id)
+        if draft is None:
+            raise RuntimeError(f'Active draft {active_draft_id} is missing from draft graph.')
+        return draft
+
+    def _mirror_active_draft_to_legacy_fields(self, session: AgentSession) -> None:
+        active_draft = self._get_active_draft(session)
+        session.operations = [
+            operation.model_copy(deep=True) for operation in active_draft.operations
+        ]
+        session.staged_operations_version = active_draft.draft_version
+
     def _build_session_context(
         self,
         session: AgentSession,
         auth_header: str | None,
         trace_id: str | None,
     ) -> dict:
+        active_draft = None
+        if session.metadata.active_draft_id:
+            active_draft = session.metadata.drafts.get(session.metadata.active_draft_id)
         recent_messages = [
             {'role': item.role, 'content': item.content}
             for item in session.messages[-self._settings.max_chat_history_messages :]
@@ -1517,6 +1711,13 @@ class AgentService:
             'base_revision': session.base_revision,
             'revision_token': session.revision_token,
             'staged_operations_count': len(session.operations),
+            'active_draft_id': session.metadata.active_draft_id,
+            'active_draft_version': (
+                active_draft.draft_version if active_draft is not None else None
+            ),
+            'active_draft_mode': (
+                active_draft.draft_mode if active_draft is not None else None
+            ),
             'last_intent_type': session.last_intent_type,
             'recent_messages': recent_messages,
             'auth_header': auth_header,

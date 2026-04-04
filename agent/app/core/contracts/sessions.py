@@ -17,6 +17,9 @@ IntentType = Literal['smalltalk', 'question', 'roadmap_edit', 'unclear']
 ResponseMode = Literal['chat', 'edit_plan']
 ArtifactType = Literal['roadmap_preview']
 ProviderUsed = Literal['openai', 'rule_based']
+DraftMode = Literal['append', 'revise', 'branch']
+DraftStatus = Literal['active', 'previewed', 'applied', 'abandoned']
+PreviewBindingScope = Literal['draft_snapshot', 'ad_hoc_operations']
 
 
 class RoadmapPreviewArtifact(BaseModel):
@@ -124,6 +127,38 @@ class PendingEditContext(BaseModel):
         return 'roadmap_edit_clarifier'
 
 
+class DraftNode(BaseModel):
+    draft_id: str
+    parent_draft_id: str | None = None
+    draft_mode: DraftMode = 'append'
+    operations: list[RoadmapOperation] = Field(default_factory=list)
+    draft_version: int = 0
+    base_revision: int | None = None
+    revision_token: str | None = None
+    created_from_message_id: str | None = None
+    summary: str | None = None
+    status: DraftStatus = 'active'
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AppliedDraftCommit(BaseModel):
+    preview_id: str
+    draft_id: str
+    draft_version: int
+    preview_fingerprint: str | None = None
+    committed_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PreviewFingerprintBinding(BaseModel):
+    preview_id: str
+    draft_id: str
+    draft_version: int
+    base_revision: int | None = None
+    preview_fingerprint: str
+    binding_scope: PreviewBindingScope = 'draft_snapshot'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class ActorContext(BaseModel):
     actor_id: str
     display_name: str | None = None
@@ -140,6 +175,14 @@ class SessionMetadata(BaseModel):
     pending_edit_context: PendingEditContext | None = None
     actor_context: ActorContext | None = None
     applied_preview_ids: list[str] = Field(default_factory=list)
+    active_draft_id: str | None = None
+    drafts: dict[str, DraftNode] = Field(default_factory=dict)
+    draft_head_ids: list[str] = Field(default_factory=list)
+    applied_draft_commits: list[AppliedDraftCommit] = Field(default_factory=list)
+    preview_fingerprint_bindings: dict[str, PreviewFingerprintBinding] = Field(
+        default_factory=dict
+    )
+    latest_preview_fingerprint: str | None = None
 
 
 class AgentSession(BaseModel):
@@ -192,6 +235,8 @@ class MessageResponse(BaseModel):
     preview_recommended: bool
     staged_operations_version: int
     staged_operations_count: int
+    active_draft_id: str | None = None
+    active_draft_version: int | None = None
     artifacts: list[RoadmapPreviewArtifact] = Field(default_factory=list)
     provider_used: ProviderUsed = 'rule_based'
     fallback_used: bool = False

@@ -15,6 +15,7 @@ from app.core.contracts.sessions import (
     ActorContext,
     AgentSession,
     CreateSessionRequest,
+    DraftNode,
     PendingEditContext,
     PendingEditResolvedReferences,
     PendingContextResolution,
@@ -1631,6 +1632,210 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(len(session.operations), 1)
         self.assertEqual(session.staged_operations_version, 4)
 
+    def test_plan_message_initializes_root_draft_graph_from_legacy_operations(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                raise AssertionError('Planner should not run for staged confirm continuation')
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_draft_graph_enabled': True,
+            }
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            operations=[
+                RoadmapOperation(
+                    op='update_node',
+                    node_id='11111111-1111-1111-1111-111111111111',
+                    patch={'title': 'Legacy Title'},
+                )
+            ],
+        )
+        session.staged_operations_version = 2
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Proceed',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-legacy-graph-init',
+        )
+
+        self.assertEqual(outcome.parse_mode, 'deterministic_staged_edit_confirm')
+        self.assertIsNotNone(session.metadata.active_draft_id)
+        self.assertEqual(len(session.metadata.drafts), 1)
+        active_draft = session.metadata.drafts[session.metadata.active_draft_id]
+        self.assertEqual(active_draft.draft_version, session.staged_operations_version)
+        self.assertEqual(len(active_draft.operations), len(session.operations))
+        self.assertEqual(outcome.active_draft_id, session.metadata.active_draft_id)
+        self.assertEqual(outcome.active_draft_version, active_draft.draft_version)
+
+    def test_plan_message_edit_plan_updates_active_draft_and_legacy_versions(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Prepared operation.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Platform Foundation'},
+                        )
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_draft_graph_enabled': True,
+            }
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Rename Platform Foundation',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-draft-version-sync',
+        )
+
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertIsNotNone(session.metadata.active_draft_id)
+        active_draft = session.metadata.drafts[session.metadata.active_draft_id]
+        self.assertEqual(active_draft.draft_version, 1)
+        self.assertEqual(session.staged_operations_version, 1)
+        self.assertEqual(len(active_draft.operations), 1)
+        self.assertEqual(len(session.operations), 1)
+        self.assertEqual(outcome.active_draft_version, 1)
+
+    def test_plan_message_restaging_reactivates_non_active_draft_status(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Prepared operation.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Platform Foundation'},
+                        )
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_draft_graph_enabled': True,
+            }
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+
+        session = AgentSession(roadmap_id='roadmap-1')
+        session.metadata.active_draft_id = 'draft-1'
+        session.metadata.drafts = {
+            'draft-1': DraftNode(
+                draft_id='draft-1',
+                draft_version=0,
+                status='abandoned',
+                operations=[],
+            )
+        }
+
+        service.plan_message(
+            session=session,
+            user_message='Rename Platform Foundation',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-draft-reactivate',
+        )
+
+        active_draft = session.metadata.drafts['draft-1']
+        self.assertEqual(active_draft.status, 'active')
+
     def test_context_answer_guard_blocks_pseudo_operation_payload(self) -> None:
         service = self._service({'matches': []})
         guarded = service._apply_context_answer_output_guard(
@@ -2724,6 +2929,499 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNotNone(observed['trace_id'])
 
+    async def test_preview_session_with_payload_operations_records_adhoc_binding(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.base_revision = 1
+        session.operations = [
+            RoadmapOperation(
+                op='update_node',
+                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                patch={'title': 'Active Snapshot'},
+            )
+        ]
+        adhoc_ops = [
+            RoadmapOperation(
+                op='update_node',
+                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                patch={'title': 'Adhoc Preview'},
+            )
+        ]
+
+        class _FakeStore:
+            def update(self, _session):
+                return None
+
+        async def _fake_preview(**_kwargs):
+            return {'preview_id': 'preview-adhoc-1', 'revision_token': 'rev-2'}
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_preview = sessions_routes._nest_client.preview
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), object()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.preview = _fake_preview  # type: ignore[assignment]
+        try:
+            await sessions_routes.preview_session(
+                session_id='session-1',
+                payload=sessions_routes.PreviewRequest(operations=adhoc_ops),
+                request=SimpleNamespace(headers={}),
+            )
+        finally:
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.preview = original_preview  # type: ignore[assignment]
+
+        binding = session.metadata.preview_fingerprint_bindings.get('preview-adhoc-1')
+        self.assertIsNotNone(binding)
+        assert binding is not None
+        self.assertEqual(binding.binding_scope, 'ad_hoc_operations')
+        self.assertEqual(binding.draft_id, 'session-1:adhoc:preview-adhoc-1')
+
+    async def test_commit_session_strict_mode_allows_non_active_draft_preview_binding(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.base_revision = 3
+        session.latest_preview_id = 'preview-branch-1'
+        session.metadata.active_draft_id = 'draft-active'
+        session.metadata.drafts = {
+            'draft-active': DraftNode(
+                draft_id='draft-active',
+                draft_version=5,
+                operations=[
+                    RoadmapOperation(
+                        op='update_node',
+                        node_id='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                        patch={'title': 'Active Draft'},
+                    )
+                ],
+            ),
+            'draft-branch': DraftNode(
+                draft_id='draft-branch',
+                draft_version=2,
+                operations=[
+                    RoadmapOperation(
+                        op='update_node',
+                        node_id='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+                        patch={'title': 'Branch Draft'},
+                    )
+                ],
+            ),
+        }
+
+        branch_ops = session.metadata.drafts['draft-branch'].operations
+        branch_fingerprint = sessions_routes._compute_preview_fingerprint(
+            draft_id='draft-branch',
+            draft_version=2,
+            operations=branch_ops,
+            base_revision=session.base_revision,
+        )
+        session.metadata.preview_fingerprint_bindings['preview-branch-1'] = (
+            sessions_routes.PreviewFingerprintBinding(
+                preview_id='preview-branch-1',
+                draft_id='draft-branch',
+                draft_version=2,
+                base_revision=session.base_revision,
+                preview_fingerprint=branch_fingerprint,
+                binding_scope='draft_snapshot',
+            )
+        )
+
+        updated_sessions: list[AgentSession] = []
+
+        class _FakeStore:
+            def update(self, updated_session):
+                updated_sessions.append(updated_session)
+
+        async def _fake_commit(**_kwargs):
+            return {'revision_token': 'rev-4'}
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_commit = sessions_routes._nest_client.commit
+        original_strict = sessions_routes.settings.agent_strict_preview_fingerprint
+        sessions_routes.settings.agent_strict_preview_fingerprint = True
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), object()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.commit = _fake_commit  # type: ignore[assignment]
+        try:
+            response = await sessions_routes.commit_session(
+                session_id='session-1',
+                payload=sessions_routes.CommitRequest(preview_id='preview-branch-1'),
+                request=SimpleNamespace(headers={}),
+            )
+        finally:
+            sessions_routes.settings.agent_strict_preview_fingerprint = original_strict
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.commit = original_commit  # type: ignore[assignment]
+
+        self.assertEqual(response['session_id'], 'session-1')
+        self.assertIn('preview-branch-1', session.metadata.applied_preview_ids)
+        self.assertIsNone(session.latest_preview_id)
+        self.assertEqual(session.metadata.applied_draft_commits[-1].draft_id, 'draft-branch')
+        self.assertEqual(session.metadata.applied_draft_commits[-1].draft_version, 2)
+        self.assertEqual(session.metadata.drafts['draft-branch'].status, 'applied')
+        self.assertEqual(len(updated_sessions), 1)
+
+    async def test_commit_session_strict_mode_allows_adhoc_preview_binding(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.base_revision = 1
+        session.latest_preview_id = 'preview-adhoc-commit-1'
+        session.operations = [
+            RoadmapOperation(
+                op='update_node',
+                node_id='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                patch={'title': 'Active Draft Snapshot'},
+            )
+        ]
+        session.metadata.preview_fingerprint_bindings['preview-adhoc-commit-1'] = (
+            sessions_routes.PreviewFingerprintBinding(
+                preview_id='preview-adhoc-commit-1',
+                draft_id='session-1:adhoc:preview-adhoc-commit-1',
+                draft_version=0,
+                base_revision=1,
+                preview_fingerprint='adhoc-fingerprint',
+                binding_scope='ad_hoc_operations',
+            )
+        )
+
+        updated_sessions: list[AgentSession] = []
+
+        class _FakeStore:
+            def update(self, updated_session):
+                updated_sessions.append(updated_session)
+
+        async def _fake_commit(**_kwargs):
+            return {'revision_token': 'rev-2'}
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_commit = sessions_routes._nest_client.commit
+        original_strict = sessions_routes.settings.agent_strict_preview_fingerprint
+        sessions_routes.settings.agent_strict_preview_fingerprint = True
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), object()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.commit = _fake_commit  # type: ignore[assignment]
+        try:
+            response = await sessions_routes.commit_session(
+                session_id='session-1',
+                payload=sessions_routes.CommitRequest(preview_id='preview-adhoc-commit-1'),
+                request=SimpleNamespace(headers={}),
+            )
+        finally:
+            sessions_routes.settings.agent_strict_preview_fingerprint = original_strict
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.commit = original_commit  # type: ignore[assignment]
+
+        self.assertEqual(response['session_id'], 'session-1')
+        self.assertIn('preview-adhoc-commit-1', session.metadata.applied_preview_ids)
+        self.assertEqual(
+            session.metadata.applied_draft_commits[-1].draft_id,
+            'session-1:adhoc:preview-adhoc-commit-1',
+        )
+        self.assertEqual(len(updated_sessions), 1)
+
+    async def test_preview_session_records_preview_fingerprint_binding(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.base_revision = 1
+        session.operations = [
+            RoadmapOperation(
+                op='update_node',
+                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                patch={'title': 'Platform Foundation 1'},
+            )
+        ]
+
+        class _FakeStore:
+            def update(self, _session):
+                return None
+
+        async def _fake_preview(**_kwargs):
+            return {
+                'preview_id': 'preview-bind-1',
+                'revision_token': 'rev-2',
+            }
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_preview = sessions_routes._nest_client.preview
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), object()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.preview = _fake_preview  # type: ignore[assignment]
+        try:
+            await sessions_routes.preview_session(
+                session_id='session-1',
+                payload=sessions_routes.PreviewRequest(),
+                request=SimpleNamespace(headers={}),
+            )
+        finally:
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.preview = original_preview  # type: ignore[assignment]
+
+        self.assertEqual(session.latest_preview_id, 'preview-bind-1')
+        self.assertIsNotNone(session.metadata.latest_preview_fingerprint)
+        self.assertIn('preview-bind-1', session.metadata.preview_fingerprint_bindings)
+
+    async def test_preview_session_marks_active_draft_as_previewed_with_graph_enabled(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.base_revision = 1
+        session.metadata.active_draft_id = 'draft-1'
+        session.metadata.drafts = {
+            'draft-1': DraftNode(
+                draft_id='draft-1',
+                draft_version=2,
+                status='active',
+                operations=[
+                    RoadmapOperation(
+                        op='update_node',
+                        node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                        patch={'title': 'Platform Foundation 1'},
+                    )
+                ],
+            )
+        }
+        session.operations = [
+            RoadmapOperation(
+                op='update_node',
+                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                patch={'title': 'Platform Foundation 1'},
+            )
+        ]
+
+        class _FakeStore:
+            def update(self, _session):
+                return None
+
+        async def _fake_preview(**_kwargs):
+            return {
+                'preview_id': 'preview-status-1',
+                'revision_token': 'rev-2',
+            }
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_preview = sessions_routes._nest_client.preview
+        original_graph = sessions_routes.settings.agent_draft_graph_enabled
+        sessions_routes.settings.agent_draft_graph_enabled = True
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), object()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.preview = _fake_preview  # type: ignore[assignment]
+        try:
+            await sessions_routes.preview_session(
+                session_id='session-1',
+                payload=sessions_routes.PreviewRequest(),
+                request=SimpleNamespace(headers={}),
+            )
+        finally:
+            sessions_routes.settings.agent_draft_graph_enabled = original_graph
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.preview = original_preview  # type: ignore[assignment]
+
+        self.assertEqual(session.metadata.drafts['draft-1'].status, 'previewed')
+
+    async def test_discard_session_marks_active_draft_abandoned_with_graph_enabled(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.latest_preview_id = 'preview-1'
+        session.metadata.active_draft_id = 'draft-1'
+        session.metadata.drafts = {
+            'draft-1': DraftNode(
+                draft_id='draft-1',
+                draft_version=1,
+                status='previewed',
+                operations=[
+                    RoadmapOperation(
+                        op='update_node',
+                        node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                        patch={'title': 'Platform Foundation 1'},
+                    )
+                ],
+            )
+        }
+        session.operations = [
+            RoadmapOperation(
+                op='update_node',
+                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                patch={'title': 'Platform Foundation 1'},
+            )
+        ]
+
+        class _FakeStore:
+            def update(self, _session):
+                return None
+
+        class _FakeAgentService:
+            def _ensure_draft_graph_initialized(self, _session):
+                return False
+
+            def _get_active_draft(self, _session):
+                return _session.metadata.drafts[_session.metadata.active_draft_id]
+
+            def _mirror_active_draft_to_legacy_fields(self, _session):
+                active = _session.metadata.drafts[_session.metadata.active_draft_id]
+                _session.operations = [op.model_copy(deep=True) for op in active.operations]
+                _session.staged_operations_version = active.draft_version
+
+        async def _fake_discard_preview(**_kwargs):
+            return None
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_discard = sessions_routes._nest_client.discard_preview
+        original_graph = sessions_routes.settings.agent_draft_graph_enabled
+        sessions_routes.settings.agent_draft_graph_enabled = True
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), _FakeAgentService()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.discard_preview = _fake_discard_preview  # type: ignore[assignment]
+        try:
+            response = await sessions_routes.discard_session(
+                session_id='session-1',
+                payload=sessions_routes.DiscardRequest(),
+                request=SimpleNamespace(headers={}),
+            )
+        finally:
+            sessions_routes.settings.agent_draft_graph_enabled = original_graph
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.discard_preview = original_discard  # type: ignore[assignment]
+
+        self.assertEqual(response.session_id, 'session-1')
+        self.assertEqual(session.metadata.drafts['draft-1'].status, 'abandoned')
+        self.assertEqual(len(session.metadata.drafts['draft-1'].operations), 0)
+
+    async def test_commit_session_strict_mode_blocks_when_preview_binding_missing(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.latest_preview_id = 'preview-missing-binding'
+
+        class _FakeStore:
+            def update(self, _session):
+                raise AssertionError('Store update should not run when strict binding check fails')
+
+        async def _fake_commit(**_kwargs):
+            raise AssertionError('Backend commit should not run when preview binding is missing')
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_commit = sessions_routes._nest_client.commit
+        original_strict = sessions_routes.settings.agent_strict_preview_fingerprint
+        sessions_routes.settings.agent_strict_preview_fingerprint = True
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), object()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.commit = _fake_commit  # type: ignore[assignment]
+        try:
+            with self.assertRaises(HTTPException) as raised:
+                await sessions_routes.commit_session(
+                    session_id='session-1',
+                    payload=sessions_routes.CommitRequest(preview_id='preview-missing-binding'),
+                    request=SimpleNamespace(headers={}),
+                )
+        finally:
+            sessions_routes.settings.agent_strict_preview_fingerprint = original_strict
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.commit = original_commit  # type: ignore[assignment]
+
+        exc = raised.exception
+        self.assertEqual(exc.status_code, 409)
+        self.assertIsInstance(exc.detail, dict)
+        detail = exc.detail
+        self.assertEqual(detail.get('code'), 'STALE_PREVIEW_REFERENCE')
+
+    async def test_commit_session_strict_mode_blocks_when_preview_fingerprint_mismatches(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.latest_preview_id = 'preview-mismatch-1'
+        session.operations = [
+            RoadmapOperation(
+                op='update_node',
+                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                patch={'title': 'Platform Foundation 1'},
+            )
+        ]
+        session.metadata.preview_fingerprint_bindings['preview-mismatch-1'] = (
+            sessions_routes.PreviewFingerprintBinding(
+                preview_id='preview-mismatch-1',
+                draft_id='session-1:legacy',
+                draft_version=0,
+                base_revision=session.base_revision,
+                preview_fingerprint='not-the-current-fingerprint',
+            )
+        )
+
+        class _FakeStore:
+            def update(self, _session):
+                raise AssertionError('Store update should not run when fingerprint check fails')
+
+        async def _fake_commit(**_kwargs):
+            raise AssertionError('Backend commit should not run when fingerprint mismatches')
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_commit = sessions_routes._nest_client.commit
+        original_strict = sessions_routes.settings.agent_strict_preview_fingerprint
+        sessions_routes.settings.agent_strict_preview_fingerprint = True
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), object()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.commit = _fake_commit  # type: ignore[assignment]
+        try:
+            with self.assertRaises(HTTPException) as raised:
+                await sessions_routes.commit_session(
+                    session_id='session-1',
+                    payload=sessions_routes.CommitRequest(preview_id='preview-mismatch-1'),
+                    request=SimpleNamespace(headers={}),
+                )
+        finally:
+            sessions_routes.settings.agent_strict_preview_fingerprint = original_strict
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.commit = original_commit  # type: ignore[assignment]
+
+        exc = raised.exception
+        self.assertEqual(exc.status_code, 409)
+        self.assertIsInstance(exc.detail, dict)
+        detail = exc.detail
+        self.assertEqual(detail.get('code'), 'STALE_PREVIEW_REFERENCE')
+
     async def test_commit_session_blocks_duplicate_applied_preview(self) -> None:
         session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
         session.session_id = 'session-1'
@@ -2770,6 +3468,29 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
         session.session_id = 'session-1'
         session.latest_preview_id = 'preview-new-1'
         session.revision_token = 'rev-1'
+        session.operations = [
+            RoadmapOperation(
+                op='update_node',
+                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                patch={'title': 'Platform Foundation 1'},
+            )
+        ]
+        preview_fingerprint = sessions_routes._compute_preview_fingerprint(
+            draft_id='session-1:legacy',
+            draft_version=session.staged_operations_version,
+            operations=session.operations,
+            base_revision=session.base_revision,
+        )
+        session.metadata.preview_fingerprint_bindings['preview-new-1'] = (
+            sessions_routes.PreviewFingerprintBinding(
+                preview_id='preview-new-1',
+                draft_id='session-1:legacy',
+                draft_version=session.staged_operations_version,
+                base_revision=session.base_revision,
+                preview_fingerprint=preview_fingerprint,
+            )
+        )
+        session.metadata.latest_preview_fingerprint = preview_fingerprint
 
         updated_sessions: list[AgentSession] = []
 
@@ -2803,8 +3524,14 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response['session_id'], 'session-1')
         self.assertIsNone(session.latest_preview_id)
+        self.assertIsNone(session.metadata.latest_preview_fingerprint)
         self.assertEqual(session.revision_token, 'rev-2')
         self.assertIn('preview-new-1', session.metadata.applied_preview_ids)
+        self.assertEqual(len(session.metadata.applied_draft_commits), 1)
+        self.assertEqual(
+            session.metadata.applied_draft_commits[0].preview_id,
+            'preview-new-1',
+        )
         self.assertEqual(len(updated_sessions), 1)
 
 
@@ -3618,6 +4345,154 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(len(planned_ops), 1)
         self.assertEqual(planned_ops[0].op.value, 'add_epic')
         self.assertEqual(planned_ops[0].data, {'title': 'AI Module'})
+
+    def test_plan_operations_llm_first_hybrid_schema_execute_includes_draft_metadata(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_hybrid_react_enabled': True,
+                'agent_edit_planner_repair_retries': 0,
+                'agent_edit_planner_max_attempts': 1,
+            }
+        )
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                return ProviderCallOutcome(
+                    value=(
+                        '{"action":"execute","reason":"clear_request",'
+                        '"question":"Rename the node.",'
+                        '"options":[],"operations":[{"op":"update_node",'
+                        '"node_id":"dad5697a-8962-4f80-8bc3-8a964edd8e56",'
+                        '"patch":{"title":"Platform Foundation 1"}}],'
+                        '"references_used":["resolve_node_reference"],'
+                        '"draft_action":"revise",'
+                        '"tool_plan":[{"tool_name":"resolve_node_reference",'
+                        '"args":{"label":"Platform Foundation"}}],'
+                        '"needs_more_info":false,'
+                        '"stop_reason":"ready_to_stage"}'
+                    ),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        result = planner._plan_operations(
+            {
+                'user_message': 'Rename my Platform Foundation to Platform Foundation 1',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-llm-first-hybrid-schema',
+                },
+            }
+        )
+
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+        self.assertEqual(result.get('parse_mode'), 'openai_edit_schema')
+        self.assertEqual(result.get('draft_action'), 'revise')
+        self.assertFalse(bool(result.get('needs_more_info')))
+        self.assertEqual(result.get('stop_reason'), 'ready_to_stage')
+        tool_plan = result.get('tool_plan') or []
+        self.assertEqual(len(tool_plan), 1)
+        self.assertEqual(tool_plan[0].get('tool_name'), 'resolve_node_reference')
+        planned_ops = result.get('planned_operations') or []
+        self.assertEqual(len(planned_ops), 1)
+        self.assertEqual(planned_ops[0].op.value, 'update_node')
+
+    def test_plan_operations_llm_first_hybrid_schema_missing_fields_rejected(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_hybrid_react_enabled': True,
+                'agent_edit_planner_repair_retries': 0,
+                'agent_edit_planner_max_attempts': 1,
+            }
+        )
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                return ProviderCallOutcome(
+                    value=(
+                        '{"action":"execute","reason":"clear_request",'
+                        '"question":"Create epic AI Module.",'
+                        '"options":[],"operations":[{"op":"add_epic",'
+                        '"data":{"title":"AI Module"}}],'
+                        '"references_used":[]}'
+                    ),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        result = planner._plan_operations(
+            {
+                'user_message': 'Create epic AI Module',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-llm-first-hybrid-missing-fields',
+                },
+            }
+        )
+
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'neutral_edit_clarifier')
+        self.assertEqual(result.get('planned_operations'), [])
+        self.assertEqual(result.get('provider_error_code'), 'invalid_planner_schema')
+
+    def test_plan_operations_llm_first_hybrid_schema_execute_with_needs_more_info_rejected(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_hybrid_react_enabled': True,
+                'agent_edit_planner_repair_retries': 0,
+                'agent_edit_planner_max_attempts': 1,
+            }
+        )
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                return ProviderCallOutcome(
+                    value=(
+                        '{"action":"execute","reason":"clear_request",'
+                        '"question":"Rename the node.",'
+                        '"options":[],"operations":[{"op":"update_node",'
+                        '"node_id":"dad5697a-8962-4f80-8bc3-8a964edd8e56",'
+                        '"patch":{"title":"Platform Foundation 1"}}],'
+                        '"references_used":[],"draft_action":"continue",'
+                        '"tool_plan":[],"needs_more_info":true,'
+                        '"stop_reason":"awaiting_user_input"}'
+                    ),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        result = planner._plan_operations(
+            {
+                'user_message': 'Rename my Platform Foundation to Platform Foundation 1',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-llm-first-hybrid-needs-more-info-conflict',
+                },
+            }
+        )
+
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'neutral_edit_clarifier')
+        self.assertEqual(result.get('planned_operations'), [])
+        self.assertEqual(result.get('provider_error_code'), 'invalid_planner_schema')
 
     def test_plan_operations_llm_first_execute_with_empty_operations_retries_then_clarifies(self) -> None:
         planner = self._planner()

@@ -56,6 +56,18 @@ class Settings(BaseSettings):
         default='llm_first_edit_v2',
         alias='AGENT_EDIT_PLANNER_MODE',
     )
+    agent_hybrid_react_enabled: bool = Field(
+        default=False,
+        alias='AGENT_HYBRID_REACT_ENABLED',
+    )
+    agent_draft_graph_enabled: bool = Field(
+        default=False,
+        alias='AGENT_DRAFT_GRAPH_ENABLED',
+    )
+    agent_strict_preview_fingerprint: bool = Field(
+        default=True,
+        alias='AGENT_STRICT_PREVIEW_FINGERPRINT',
+    )
     deterministic_fastpath_search_sla_ms: int = Field(
         default=2000,
         alias='DETERMINISTIC_FASTPATH_SEARCH_SLA_MS',
