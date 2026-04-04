@@ -646,6 +646,41 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
         self.assertTrue(response.get('clarifier_returned'))
         self.assertEqual(execution_count['count'], 2)
 
+    def test_context_discovery_provider_max_turns_returns_budget_clarifier(self) -> None:
+        def execute_tool(name: str, args: dict, _context: dict):
+            return {'ok': True, 'name': name, 'args': args}
+
+        service, _cache, _provider, _build_key = self._service(execute_tool)
+
+        def _call(_operation, trace_context=None):  # noqa: ANN001
+            raise ProviderAdapterError(
+                provider='openai',
+                code='max_tool_turns_exceeded',
+                message='OpenAI context answer loop reached max tool turns.',
+                tokens_input=21,
+                tokens_output=8,
+                tokens_total=29,
+            )
+
+        service._provider_orchestrator.call = _call  # type: ignore[assignment]
+
+        response = service.generate(
+            user_message='Summarize roadmap details',
+            system_prompt='system',
+            session_context={
+                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                'trace_id': 'trace-provider-max-turns',
+            },
+            history_messages=[],
+            intent_type='question',
+        )
+
+        self.assertEqual(response.get('parse_mode'), 'deterministic_context_budget_exhausted')
+        self.assertEqual(response.get('provider_error_code'), 'max_tool_turns_exceeded')
+        self.assertEqual(response.get('discovery_stop_reason'), 'tool_budget_exhausted')
+        self.assertTrue(response.get('clarifier_returned'))
+        self.assertEqual(response.get('tokens_total'), 29)
+
     def test_discovery_guard_state_is_request_local(self) -> None:
         def execute_tool(_name: str, _args: dict, _context: dict):
             return {'ok': True}

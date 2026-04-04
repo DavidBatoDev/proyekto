@@ -14,11 +14,13 @@ from app.core.config import get_settings
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import IntentType, ProviderUsed, ResponseMode
 from app.core.logging_utils import log_event
+from app.core.llm.clarifier_contract import build_clarifier_contract
 from app.core.llm.context_answer_service import ContextAnswerService
 from app.core.llm.context_tools_executor import ContextToolsExecutor
 from app.core.llm.deterministic_context import ContextResolutionOutcome
 from app.core.llm.deterministic_context_adapter import DeterministicContextAdapter
 from app.core.llm.deterministic_intents import DeterministicContextIntent
+from app.core.llm.react_executor import map_provider_error_to_stop_reason
 from app.core.llm.providers import ProviderAdapterError, ProviderOrchestrator
 from app.core.nest_client import NestRoadmapClient
 from app.core.prompts import PromptRepository
@@ -744,13 +746,17 @@ class LLMPlanner:
                     'Provide the node ID',
                     'Cancel',
                 ]
+                clarifier_message, clarifier_options = build_clarifier_contract(
+                    reason=clarifier_reason,
+                    question=clarifier_message,
+                    options=clarifier_options,
+                )
                 parse_mode = f'{result.provider_used}_tool_calling_clarifier'
             else:
                 assert payload is not None
-                clarifier_message = self._format_edit_planner_clarifier_message(payload)
+                clarifier_message, clarifier_options = self._format_edit_planner_clarifier_message(payload)
                 clarifier_action = payload.action
                 clarifier_reason = payload.reason
-                clarifier_options = payload.options
                 parse_mode = f'{result.provider_used}_edit_schema_clarifier'
             return {
                 'assistant_message': clarifier_message,
@@ -1054,14 +1060,15 @@ class LLMPlanner:
     def _format_edit_planner_clarifier_message(
         self,
         payload: _EditPlannerPayload,
-    ) -> str:
+    ) -> tuple[str, list[str]]:
         question = payload.question
         if payload.action == 'propose_safe_default':
             question = f'{question} Reply "yes" to proceed, or tell me what to change.'
-        if not payload.options:
-            return question
-        options_lines = '\n'.join(f'- {option}' for option in payload.options[:5])
-        return f'{question}\n\nOptions:\n{options_lines}'
+        return build_clarifier_contract(
+            reason=payload.reason,
+            question=question,
+            options=payload.options,
+        )
 
     def _build_edit_clarifier_state(
         self,
@@ -1075,6 +1082,7 @@ class LLMPlanner:
         clarification_prompt = self._build_edit_clarifier_prompt(user_message=user_message)
         schema_retries = 0
         parse_error_code: str | None = None
+        stop_reason = map_provider_error_to_stop_reason(provider_error_code)
 
         for attempt in range(2):
             try:
@@ -1095,11 +1103,12 @@ class LLMPlanner:
                 return self._neutral_edit_clarifier_state(
                     provider_error_code=provider_error_code,
                     schema_retries=schema_retries,
+                    stop_reason=stop_reason,
                 )
 
             try:
                 parsed = self._parse_edit_clarifier_payload(result.value)
-                assistant_message = self._format_edit_clarifier_message(parsed)
+                assistant_message, clarifier_options = self._format_edit_clarifier_message(parsed)
                 log_event(
                     self._logger,
                     'edit_clarifier_generated',
@@ -1125,14 +1134,14 @@ class LLMPlanner:
                     'clear_pending_context_resolution': False,
                     'clarifier_action': parsed.action,
                     'clarifier_reason': parsed.reason,
-                    'clarifier_options': parsed.options,
+                    'clarifier_options': clarifier_options,
                     'clarifier_schema_retries': schema_retries,
                     'planner_schema_invalid_attempts': schema_retries,
                     'planner_repair_attempted': schema_retries > 0,
                     'draft_action': None,
                     'tool_plan': [],
                     'needs_more_info': True,
-                    'stop_reason': 'awaiting_user_input',
+                    'stop_reason': stop_reason,
                 }
             except ValueError:
                 parse_error_code = 'invalid_clarifier_schema'
@@ -1144,6 +1153,7 @@ class LLMPlanner:
         return self._neutral_edit_clarifier_state(
             provider_error_code=parse_error_code or provider_error_code,
             schema_retries=schema_retries,
+            stop_reason=stop_reason,
         )
 
     def _build_edit_clarifier_prompt(self, *, user_message: str) -> str:
@@ -1178,24 +1188,39 @@ class LLMPlanner:
             cleaned_options = cleaned_options[:5]
         return payload.model_copy(update={'options': cleaned_options})
 
-    def _format_edit_clarifier_message(self, payload: _EditClarifierPayload) -> str:
+    def _format_edit_clarifier_message(self, payload: _EditClarifierPayload) -> tuple[str, list[str]]:
         question = payload.question.strip()
         if payload.action == 'propose_safe_default':
             question = f'{question} Reply "yes" to proceed, or tell me what to change.'
-        options_lines = '\n'.join(f'- {option}' for option in payload.options)
-        return f'{question}\n\nOptions:\n{options_lines}'
+        return build_clarifier_contract(
+            reason=payload.reason,
+            question=question,
+            options=payload.options,
+        )
 
     def _neutral_edit_clarifier_state(
         self,
         *,
         provider_error_code: str | None,
         schema_retries: int,
+        stop_reason: str | None = None,
     ) -> PlannerState:
-        return {
-            'assistant_message': (
+        resolved_stop_reason = stop_reason or map_provider_error_to_stop_reason(provider_error_code)
+        fallback_options = [
+            'Create epic "AI Module" at roadmap root',
+            'Use a different title',
+            'Create under a specific parent',
+        ]
+        assistant_message, clarifier_options = build_clarifier_contract(
+            reason='edit_clarifier_fallback',
+            question=(
                 'I can help with that edit. Could you confirm the exact action and target '
                 '(for example: create epic, rename feature, or move task)?'
             ),
+            options=fallback_options,
+        )
+        return {
+            'assistant_message': assistant_message,
             'planned_operations': [],
             'response_mode': 'chat',
             'preview_recommended': False,
@@ -1210,18 +1235,14 @@ class LLMPlanner:
             'clear_pending_context_resolution': False,
             'clarifier_action': 'ask_clarifier',
             'clarifier_reason': 'edit_clarifier_fallback',
-            'clarifier_options': [
-                'Create epic "AI Module" at roadmap root',
-                'Use a different title',
-                'Create under a specific parent',
-            ],
+            'clarifier_options': clarifier_options,
             'clarifier_schema_retries': schema_retries,
             'planner_schema_invalid_attempts': schema_retries,
             'planner_repair_attempted': schema_retries > 0,
             'draft_action': None,
             'tool_plan': [],
             'needs_more_info': True,
-            'stop_reason': 'insufficient_context',
+            'stop_reason': resolved_stop_reason,
         }
 
     def _execute_context_tool(

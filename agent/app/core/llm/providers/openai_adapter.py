@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.core.config import Settings
 from app.core.contracts.operations import RoadmapOperation
+from app.core.llm.react_executor import BoundedToolLoopOutcome, run_bounded_tool_loop
 from app.core.contracts.sessions import IntentType
 from app.core.llm.providers.base import LLMProviderAdapter, ProviderAdapterError
 from app.core.tools.registry import PLANNING_TOOL_NAME, parse_plan_tool_args
@@ -124,64 +125,74 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                     message='ToolMessage is unavailable in this runtime; tool loop cannot execute.',
                 )
             tool_model = self._chat_model().bind_tools(tools)
-            messages: list[Any] = [
+            initial_messages: list[Any] = [
                 SystemMessage(content=system_prompt),
                 *history_messages,
                 HumanMessage(content=planner_prompt),
             ]
-            usage_totals = {'tokens_input': 0, 'tokens_output': 0, 'tokens_total': 0}
 
-            for turn in range(max_tool_turns):
-                ai_message = tool_model.invoke(messages)
-                self._add_usage(usage_totals, self._extract_usage(ai_message))
-                messages.append(ai_message)
-                tool_calls = getattr(ai_message, 'tool_calls', []) or []
-                if not tool_calls:
+            def _on_no_tool_calls(
+                _ai_message: Any,
+                usage_totals: dict[str, int],
+            ) -> BoundedToolLoopOutcome:
+                raise ProviderAdapterError(
+                    provider=self.provider_name,
+                    code='missing_tool_call',
+                    message='OpenAI did not return any tool call while planning operations.',
+                    tokens_input=usage_totals['tokens_input'],
+                    tokens_output=usage_totals['tokens_output'],
+                    tokens_total=usage_totals['tokens_total'],
+                )
+
+            def _on_tool_call(
+                name: str,
+                args: dict[str, Any],
+                _tool_call: dict[str, Any],
+                _turn: int,
+                _index: int,
+                usage_totals: dict[str, int],
+            ) -> BoundedToolLoopOutcome | None:
+                if name != PLANNING_TOOL_NAME:
+                    return None
+                try:
+                    assistant_message, operations = parse_plan_tool_args(args)
+                except ValueError as exc:
                     raise ProviderAdapterError(
                         provider=self.provider_name,
-                        code='missing_tool_call',
-                        message='OpenAI did not return any tool call while planning operations.',
-                    )
+                        code='invalid_operation_payload',
+                        message=str(exc),
+                        tokens_input=usage_totals['tokens_input'],
+                        tokens_output=usage_totals['tokens_output'],
+                        tokens_total=usage_totals['tokens_total'],
+                    ) from exc
+                if not assistant_message.strip():
+                    assistant_message = 'Prepared roadmap operations.'
+                return BoundedToolLoopOutcome(
+                    value=(assistant_message, operations),
+                    usage_totals=usage_totals,
+                )
 
-                for index, tool_call in enumerate(tool_calls):
-                    name = str(tool_call.get('name', '')).strip()
-                    args = self._normalize_tool_args(tool_call.get('args'))
-                    if name == PLANNING_TOOL_NAME:
-                        try:
-                            assistant_message, operations = parse_plan_tool_args(args)
-                        except ValueError as exc:
-                            self._last_usage = usage_totals
-                            raise ProviderAdapterError(
-                                provider=self.provider_name,
-                                code='invalid_operation_payload',
-                                message=str(exc),
-                                tokens_input=usage_totals['tokens_input'],
-                                tokens_output=usage_totals['tokens_output'],
-                                tokens_total=usage_totals['tokens_total'],
-                            ) from exc
-                        if not assistant_message.strip():
-                            assistant_message = 'Prepared roadmap operations.'
-                        self._last_usage = usage_totals
-                        return assistant_message, operations
-
-                    tool_result = tool_executor(name, args)
-                    tool_call_id = str(tool_call.get('id') or f'{name}-{turn}-{index}')
-                    messages.append(
-                        ToolMessage(
-                            content=json.dumps(tool_result, ensure_ascii=True),
-                            tool_call_id=tool_call_id,
-                        )
-                    )
-
-            self._last_usage = usage_totals
-            raise ProviderAdapterError(
+            outcome = run_bounded_tool_loop(
                 provider=self.provider_name,
-                code='max_tool_turns_exceeded',
-                message='OpenAI planning loop reached max tool turns before returning a final operation plan.',
-                tokens_input=usage_totals['tokens_input'],
-                tokens_output=usage_totals['tokens_output'],
-                tokens_total=usage_totals['tokens_total'],
+                initial_messages=initial_messages,
+                invoke=lambda messages: tool_model.invoke(messages),
+                tool_executor=tool_executor,
+                normalize_tool_args=self._normalize_tool_args,
+                extract_usage=self._extract_usage,
+                build_tool_message=lambda content, tool_call_id: ToolMessage(
+                    content=content,
+                    tool_call_id=tool_call_id,
+                ),
+                on_no_tool_calls=_on_no_tool_calls,
+                on_tool_call=_on_tool_call,
+                max_tool_turns=max_tool_turns,
+                max_turns_error_code='max_tool_turns_exceeded',
+                max_turns_error_message=(
+                    'OpenAI planning loop reached max tool turns before returning a final operation plan.'
+                ),
             )
+            self._last_usage = outcome.usage_totals
+            return outcome.value
         except ProviderAdapterError:
             raise
         except Exception as exc:  # pragma: no cover
@@ -205,50 +216,57 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                     message='ToolMessage is unavailable in this runtime; tool loop cannot execute.',
                 )
             tool_model = self._chat_model().bind_tools(tools)
-            messages: list[Any] = [
+            initial_messages: list[Any] = [
                 SystemMessage(content=system_prompt),
                 *history_messages,
                 HumanMessage(content=question_prompt),
             ]
-            usage_totals = {'tokens_input': 0, 'tokens_output': 0, 'tokens_total': 0}
 
-            for turn in range(max_tool_turns):
-                ai_message = tool_model.invoke(messages)
-                self._add_usage(usage_totals, self._extract_usage(ai_message))
-                messages.append(ai_message)
-                tool_calls = getattr(ai_message, 'tool_calls', []) or []
-                if not tool_calls:
-                    content = self._extract_text(ai_message.content)
-                    if content:
-                        self._last_usage = usage_totals
-                        return content
-                    raise ProviderAdapterError(
-                        provider=self.provider_name,
-                        code='empty_response',
-                        message='OpenAI returned an empty context answer.',
-                    )
+            def _on_no_tool_calls(
+                ai_message: Any,
+                usage_totals: dict[str, int],
+            ) -> BoundedToolLoopOutcome:
+                content = self._extract_text(ai_message.content)
+                if content:
+                    return BoundedToolLoopOutcome(value=content, usage_totals=usage_totals)
+                raise ProviderAdapterError(
+                    provider=self.provider_name,
+                    code='empty_response',
+                    message='OpenAI returned an empty context answer.',
+                    tokens_input=usage_totals['tokens_input'],
+                    tokens_output=usage_totals['tokens_output'],
+                    tokens_total=usage_totals['tokens_total'],
+                )
 
-                for index, tool_call in enumerate(tool_calls):
-                    name = str(tool_call.get('name', '')).strip()
-                    args = self._normalize_tool_args(tool_call.get('args'))
-                    tool_result = tool_executor(name, args)
-                    tool_call_id = str(tool_call.get('id') or f'{name}-{turn}-{index}')
-                    messages.append(
-                        ToolMessage(
-                            content=json.dumps(tool_result, ensure_ascii=True),
-                            tool_call_id=tool_call_id,
-                        )
-                    )
+            def _on_tool_call(
+                _name: str,
+                _args: dict[str, Any],
+                _tool_call: dict[str, Any],
+                _turn: int,
+                _index: int,
+                _usage_totals: dict[str, int],
+            ) -> BoundedToolLoopOutcome | None:
+                return None
 
-            self._last_usage = usage_totals
-            raise ProviderAdapterError(
+            outcome = run_bounded_tool_loop(
                 provider=self.provider_name,
-                code='max_tool_turns_exceeded',
-                message='OpenAI context answer loop reached max tool turns.',
-                tokens_input=usage_totals['tokens_input'],
-                tokens_output=usage_totals['tokens_output'],
-                tokens_total=usage_totals['tokens_total'],
+                initial_messages=initial_messages,
+                invoke=lambda messages: tool_model.invoke(messages),
+                tool_executor=tool_executor,
+                normalize_tool_args=self._normalize_tool_args,
+                extract_usage=self._extract_usage,
+                build_tool_message=lambda content, tool_call_id: ToolMessage(
+                    content=content,
+                    tool_call_id=tool_call_id,
+                ),
+                on_no_tool_calls=_on_no_tool_calls,
+                on_tool_call=_on_tool_call,
+                max_tool_turns=max_tool_turns,
+                max_turns_error_code='max_tool_turns_exceeded',
+                max_turns_error_message='OpenAI context answer loop reached max tool turns.',
             )
+            self._last_usage = outcome.usage_totals
+            return outcome.value
         except ProviderAdapterError:
             raise
         except Exception as exc:  # pragma: no cover
@@ -359,13 +377,3 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                 }
         return None
 
-    def _add_usage(
-        self,
-        totals: dict[str, int],
-        usage: dict[str, int] | None,
-    ) -> None:
-        if not usage:
-            return
-        totals['tokens_input'] += int(usage.get('tokens_input') or 0)
-        totals['tokens_output'] += int(usage.get('tokens_output') or 0)
-        totals['tokens_total'] += int(usage.get('tokens_total') or 0)

@@ -8,6 +8,7 @@ from typing import Any, Callable
 from app.core.config import Settings
 from app.core.contracts.sessions import IntentType
 from app.core.logging_utils import log_event
+from app.core.llm.react_executor import map_provider_error_to_stop_reason
 from app.core.response_cache import ContextAnswerCache
 from app.core.tools.registry import get_context_tools
 
@@ -303,6 +304,49 @@ class ContextAnswerService:
                         status_scope=None,
                         needs_clarification=True,
                         clarifier_prompt=exc.message,
+                    ),
+                }
+            if exc.code == 'max_tool_turns_exceeded':
+                stop_reason = map_provider_error_to_stop_reason(exc.code)
+                clarifier = (
+                    'I reached the discovery limit for this turn. '
+                    'Do you want me to focus on one epic/feature or one assignee/status filter?'
+                )
+                log_event(
+                    self._logger,
+                    'context_discovery_stopped',
+                    settings=self._settings,
+                    trace_id=trace_id,
+                    discovery_calls_used=discovery_state.calls_used,
+                    discovery_repeat_hits=discovery_state.repeat_hits,
+                    discovery_stop_reason=stop_reason,
+                    clarifier_returned=True,
+                    clarifier_template_id='context_clarifier_budget_v1',
+                    provider_error_code=exc.code,
+                )
+                return {
+                    'assistant_message': clarifier,
+                    'planned_operations': [],
+                    'response_mode': 'chat',
+                    'preview_recommended': False,
+                    'parse_mode': 'deterministic_context_budget_exhausted',
+                    'provider_used': 'rule_based',
+                    'fallback_used': False,
+                    'provider_error_code': exc.code,
+                    'tokens_input': exc.tokens_input,
+                    'tokens_output': exc.tokens_output,
+                    'tokens_total': exc.tokens_total,
+                    'discovery_calls_used': discovery_state.calls_used,
+                    'discovery_repeat_hits': discovery_state.repeat_hits,
+                    'discovery_stop_reason': stop_reason,
+                    'clarifier_returned': True,
+                    'route_lane': 'discovery_lane',
+                    'discovery_contract': self._build_discovery_contract(
+                        capability='context_answer',
+                        resolved_targets=[],
+                        status_scope=None,
+                        needs_clarification=True,
+                        clarifier_prompt=clarifier,
                     ),
                 }
             self._logger.warning(

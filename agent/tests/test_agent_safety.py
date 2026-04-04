@@ -790,6 +790,154 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertIsNotNone(session.metadata.pending_edit_context)
         self.assertTrue(outcome.edit_guard_intervened)
 
+    def test_plan_message_persists_hybrid_clarifier_trace_in_pending_context(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Which platform node should I target?',
+                    operations=[],
+                    parse_mode='openai_edit_schema_clarifier',
+                    intent_type='roadmap_edit',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    clarifier_action='ask_clarifier',
+                    clarifier_reason='insufficient_context',
+                    clarifier_options=['Provide node label', 'Provide node ID', 'Cancel'],
+                    draft_action='continue',
+                    tool_plan=[
+                        {
+                            'tool_name': 'resolve_node_reference',
+                            'args': {'label': 'Platform Foundation'},
+                        }
+                    ],
+                    needs_more_info=True,
+                    stop_reason='insufficient_context',
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True, 'agent_hybrid_react_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Rename Platform Foundation',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-pending-loop-trace',
+        )
+
+        self.assertEqual(outcome.response_mode, 'chat')
+        pending_context = session.metadata.pending_edit_context
+        self.assertIsNotNone(pending_context)
+        assert pending_context is not None
+        self.assertEqual(pending_context.last_planner_stop_reason, 'insufficient_context')
+        self.assertTrue(bool(pending_context.last_planner_needs_more_info))
+        self.assertEqual(pending_context.last_planner_draft_action, 'continue')
+        self.assertEqual(len(pending_context.last_tool_plan_summary), 1)
+        self.assertEqual(
+            pending_context.last_tool_plan_summary[0].get('tool_name'),
+            'resolve_node_reference',
+        )
+        self.assertIn('label', pending_context.last_tool_plan_summary[0].get('arg_keys', []))
+
+    def test_plan_message_stop_reason_conflict_blocks_staging(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Prepared operation but context is still ambiguous.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Platform Foundation 1'},
+                        )
+                    ],
+                    parse_mode='openai_edit_schema',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    draft_action='continue',
+                    tool_plan=[
+                        {
+                            'tool_name': 'resolve_node_reference',
+                            'args': {'label': 'Platform Foundation'},
+                        }
+                    ],
+                    needs_more_info=False,
+                    stop_reason='insufficient_context',
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True, 'agent_hybrid_react_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Rename Platform Foundation to Platform Foundation 1',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-stop-reason-conflict',
+        )
+
+        self.assertEqual(outcome.response_mode, 'chat')
+        self.assertEqual(outcome.parse_mode, 'deterministic_planner_stop_reason_handoff')
+        self.assertEqual(outcome.provider_error_code, 'planner_stop_reason_conflict')
+        self.assertEqual(len(outcome.operations), 0)
+        self.assertEqual(len(session.operations), 0)
+        self.assertTrue(outcome.edit_guard_intervened)
+
     def test_plan_message_pending_cancel_clears_context(self) -> None:
         class _Planner:
             def preview_intent_classification(self, user_message, session_context=None):
@@ -1446,7 +1594,8 @@ class AgentSafetyTests(unittest.TestCase):
 
         self.assertEqual(outcome.response_mode, 'chat')
         self.assertEqual(outcome.provider_error_code, 'retry_multiple_matches')
-        self.assertIn('1. epic "App Foundation"', outcome.assistant_message)
+        self.assertIn('Options:', outcome.assistant_message)
+        self.assertRegex(outcome.assistant_message, r'1\. \[[a-z0-9_]+\] epic "App Foundation"')
         self.assertIn('(dad5697a-8962-4f80-8bc3-8a964edd8e56)', outcome.assistant_message)
 
     def test_set_pending_context_normalizes_intent_family_alias(self) -> None:
@@ -3055,6 +3204,128 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(session.metadata.applied_draft_commits[-1].draft_id, 'draft-branch')
         self.assertEqual(session.metadata.applied_draft_commits[-1].draft_version, 2)
         self.assertEqual(session.metadata.drafts['draft-branch'].status, 'applied')
+        self.assertEqual(session.metadata.active_draft_id, 'draft-branch')
+        self.assertEqual(session.metadata.draft_head_ids, ['draft-branch'])
+        self.assertEqual(len(updated_sessions), 1)
+
+    async def test_commit_session_repoints_active_head_and_abandons_descendants(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.base_revision = 3
+        session.latest_preview_id = 'preview-v1-1'
+        session.metadata.active_draft_id = 'draft-v2'
+        session.metadata.draft_head_ids = ['draft-v2', 'draft-v3']
+        session.metadata.drafts = {
+            'draft-v1': DraftNode(
+                draft_id='draft-v1',
+                draft_version=1,
+                status='previewed',
+                operations=[
+                    RoadmapOperation(
+                        op='update_node',
+                        node_id='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                        patch={'title': 'Version 1'},
+                    )
+                ],
+            ),
+            'draft-v2': DraftNode(
+                draft_id='draft-v2',
+                parent_draft_id='draft-v1',
+                draft_version=2,
+                status='active',
+                operations=[
+                    RoadmapOperation(
+                        op='update_node',
+                        node_id='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+                        patch={'title': 'Version 2'},
+                    )
+                ],
+            ),
+            'draft-v3': DraftNode(
+                draft_id='draft-v3',
+                parent_draft_id='draft-v2',
+                draft_version=3,
+                status='previewed',
+                operations=[
+                    RoadmapOperation(
+                        op='update_node',
+                        node_id='cccccccc-cccc-cccc-cccc-cccccccccccc',
+                        patch={'title': 'Version 3'},
+                    )
+                ],
+            ),
+        }
+
+        v1_ops = session.metadata.drafts['draft-v1'].operations
+        v1_fingerprint = sessions_routes._compute_preview_fingerprint(
+            draft_id='draft-v1',
+            draft_version=1,
+            operations=v1_ops,
+            base_revision=session.base_revision,
+        )
+        session.metadata.preview_fingerprint_bindings['preview-v1-1'] = (
+            sessions_routes.PreviewFingerprintBinding(
+                preview_id='preview-v1-1',
+                draft_id='draft-v1',
+                draft_version=1,
+                base_revision=session.base_revision,
+                preview_fingerprint=v1_fingerprint,
+                binding_scope='draft_snapshot',
+            )
+        )
+
+        updated_sessions: list[AgentSession] = []
+
+        class _FakeStore:
+            def update(self, updated_session):
+                updated_sessions.append(updated_session)
+
+        async def _fake_commit(**_kwargs):
+            return {'revision_token': 'rev-4'}
+
+        class _FakeAgentService:
+            def mirror_active_draft_to_legacy_fields(self, _session: AgentSession) -> None:
+                active_draft_id = _session.metadata.active_draft_id
+                if not active_draft_id:
+                    return
+                active = _session.metadata.drafts.get(active_draft_id)
+                if active is None:
+                    return
+                _session.operations = [op.model_copy(deep=True) for op in active.operations]
+                _session.staged_operations_version = active.draft_version
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_commit = sessions_routes._nest_client.commit
+        original_strict = sessions_routes.settings.agent_strict_preview_fingerprint
+        sessions_routes.settings.agent_strict_preview_fingerprint = True
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), _FakeAgentService()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.commit = _fake_commit  # type: ignore[assignment]
+        try:
+            response = await sessions_routes.commit_session(
+                session_id='session-1',
+                payload=sessions_routes.CommitRequest(preview_id='preview-v1-1'),
+                request=SimpleNamespace(headers={}),
+            )
+        finally:
+            sessions_routes.settings.agent_strict_preview_fingerprint = original_strict
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.commit = original_commit  # type: ignore[assignment]
+
+        self.assertEqual(response['session_id'], 'session-1')
+        self.assertEqual(session.metadata.drafts['draft-v1'].status, 'applied')
+        self.assertEqual(session.metadata.active_draft_id, 'draft-v1')
+        self.assertEqual(session.metadata.draft_head_ids, ['draft-v1'])
+        self.assertEqual(session.metadata.drafts['draft-v2'].status, 'abandoned')
+        self.assertEqual(session.metadata.drafts['draft-v3'].status, 'abandoned')
+        self.assertEqual(len(session.operations), 1)
+        self.assertEqual(session.operations[0].patch, {'title': 'Version 1'})
         self.assertEqual(len(updated_sessions), 1)
 
     async def test_commit_session_strict_mode_allows_adhoc_preview_binding(self) -> None:
@@ -4755,6 +5026,10 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(result.get('response_mode'), 'chat')
         self.assertEqual(result.get('parse_mode'), 'openai_edit_clarifier')
         self.assertEqual(result.get('provider_error_code'), 'max_tool_turns_exceeded')
+        self.assertEqual(result.get('stop_reason'), 'tool_budget_exhausted')
+        self.assertIn('Options:', str(result.get('assistant_message')))
+        self.assertRegex(str(result.get('assistant_message')), r'1\. \[[a-z0-9_]+\] ')
+        self.assertRegex(str((result.get('clarifier_options') or [''])[0]), r'^\[[a-z0-9_]+\] ')
         self.assertEqual(result.get('planned_operations'), [])
 
 

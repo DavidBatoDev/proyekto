@@ -89,6 +89,10 @@ class PendingEditContext(BaseModel):
     source_user_message: str
     default_title: str | None = None
     resolver_hints: dict[str, Any] | None = None
+    last_planner_stop_reason: str | None = None
+    last_planner_needs_more_info: bool | None = None
+    last_planner_draft_action: str | None = None
+    last_tool_plan_summary: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

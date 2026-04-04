@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import asyncio
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from time import perf_counter
 from typing import Any
 import re
@@ -22,6 +22,7 @@ from app.core.contracts.sessions import (
     PendingContextResolution,
 )
 from app.core.contracts.sessions import AgentSession, IntentType, ProviderUsed, ResponseMode
+from app.core.llm.clarifier_contract import build_clarifier_contract
 from app.core.llm.client import LLMPlanner, PlanningResult
 from app.core.logging_utils import log_event
 from app.core.nest_client import NestRoadmapClient
@@ -79,6 +80,11 @@ class MessagePlanningOutcome:
     draft_graph_migration_applied: bool = False
 
 
+def _utcnow() -> datetime:
+    # Keep naive UTC timestamps while avoiding deprecated datetime.utcnow().
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 class AgentService:
     _CANONICAL_INTENT_FAMILIES = {
         'rename_node',
@@ -105,6 +111,7 @@ class AgentService:
         'mark': 'mark_status',
         'shift': 'shift_dates',
     }
+
     def __init__(self, store: SessionStore) -> None:
         self._settings = get_settings()
         self._store = store
@@ -451,6 +458,41 @@ class AgentService:
                 clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
             )
             edit_guard_intervened = True
+        if (
+            self._settings.agent_hybrid_react_enabled
+            and planning.response_mode == 'edit_plan'
+            and planning.stop_reason in {'tool_budget_exhausted', 'insufficient_context', 'awaiting_user_input'}
+        ):
+            planning = PlanningResult(
+                assistant_message=(
+                    'I still need one clarification before I can safely stage edits. '
+                    'Please provide the missing target details and I will continue.'
+                ),
+                operations=[],
+                parse_mode='deterministic_planner_stop_reason_handoff',
+                intent_type='roadmap_edit',
+                response_mode='chat',
+                preview_recommended=False,
+                provider_used='rule_based',
+                fallback_used=True,
+                provider_error_code='planner_stop_reason_conflict',
+                tokens_input=planning.tokens_input,
+                tokens_output=planning.tokens_output,
+                tokens_total=planning.tokens_total,
+                route_lane=route_lane,
+                fastpath_bypass_reason=planning.fastpath_bypass_reason,
+                clarifier_action='ask_clarifier',
+                clarifier_reason='planner_stop_reason_conflict',
+                clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
+                draft_action=planning.draft_action,
+                tool_plan=planning.tool_plan,
+                needs_more_info=True,
+                stop_reason=planning.stop_reason,
+            )
+            edit_guard_intervened = True
+
+        planning = self._normalize_planning_clarifier_contract(planning)
+
         internal_metrics = session_context.get('_phase_metrics', {})
         if isinstance(internal_metrics, dict):
             context_tools_total_ms = float(internal_metrics.get('context_tools_ms') or 0.0)
@@ -557,7 +599,7 @@ class AgentService:
                         applied_operations.append(staged_operation)
                         existing_signatures.add(signature)
                     staged_changed = bool(applied_operations)
-                active_draft.updated_at = datetime.utcnow()
+                active_draft.updated_at = _utcnow()
                 if staged_changed:
                     active_draft.draft_version += 1
                 self._mirror_active_draft_to_legacy_fields(session)
@@ -801,7 +843,7 @@ class AgentService:
                 existing_context.resolver_hints
             )
             existing_context.resolver_hints = invalidated_hints
-            existing_context.updated_at = datetime.utcnow()
+            existing_context.updated_at = _utcnow()
             self._set_pending_edit_context(
                 session=session,
                 context=existing_context,
@@ -903,8 +945,12 @@ class AgentService:
                 staged_operations_version=session.staged_operations_version,
                 rename_intent=rename_intent,
             ),
-            created_at=(existing.created_at if existing is not None else datetime.utcnow()),
-            updated_at=datetime.utcnow(),
+            last_planner_stop_reason=planning.stop_reason,
+            last_planner_needs_more_info=planning.needs_more_info,
+            last_planner_draft_action=planning.draft_action,
+            last_tool_plan_summary=self._summarize_tool_plan(planning.tool_plan),
+            created_at=(existing.created_at if existing is not None else _utcnow()),
+            updated_at=_utcnow(),
         )
         self._set_pending_edit_context(
             session=session,
@@ -1101,6 +1147,36 @@ class AgentService:
     def _is_uuid(self, value: str | None) -> bool:
         return bool(isinstance(value, str) and self._uuid_pattern.fullmatch(value.strip()))
 
+    def _normalize_planning_clarifier_contract(
+        self,
+        planning: PlanningResult,
+    ) -> PlanningResult:
+        if planning.response_mode != 'chat':
+            return planning
+        if planning.clarifier_action not in {
+            'ask_clarifier',
+            'propose_safe_default',
+            'cannot_proceed',
+        }:
+            return planning
+
+        fallback_options = [
+            'Provide target details',
+            'Provide node ID',
+            'Cancel',
+        ]
+        question = planning.assistant_message or 'I need one clarification before I can safely continue.'
+        message, normalized_options = build_clarifier_contract(
+            reason=planning.clarifier_reason,
+            question=question,
+            options=planning.clarifier_options or fallback_options,
+        )
+        return replace(
+            planning,
+            assistant_message=message,
+            clarifier_options=normalized_options,
+        )
+
     def _build_resolver_hints(
         self,
         *,
@@ -1149,6 +1225,27 @@ class AgentService:
         hints['hint_intent_version'] = current_version
         hints['hint_staged_operations_version'] = staged_operations_version
         return hints or None
+
+    def _summarize_tool_plan(
+        self,
+        tool_plan: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
+        if not isinstance(tool_plan, list):
+            return []
+        summary: list[dict[str, Any]] = []
+        for item in tool_plan[:5]:
+            if not isinstance(item, dict):
+                continue
+            tool_name = item.get('tool_name')
+            args = item.get('args')
+            arg_keys = sorted(args.keys())[:6] if isinstance(args, dict) else []
+            summary.append(
+                {
+                    'tool_name': str(tool_name or ''),
+                    'arg_keys': arg_keys,
+                }
+            )
+        return summary
 
     def _attempt_retry_autostage(
         self,
@@ -1254,7 +1351,7 @@ class AgentService:
             'hint_staged_operations_version': session.staged_operations_version,
             'hint_intent_version': int(hints.get('intent_version') or 0),
         }
-        pending_context.updated_at = datetime.utcnow()
+        pending_context.updated_at = _utcnow()
         self._set_pending_edit_context(
             session=session,
             context=pending_context,
@@ -1658,7 +1755,7 @@ class AgentService:
                 active_draft.draft_version,
                 session.staged_operations_version,
             )
-            active_draft.updated_at = datetime.utcnow()
+            active_draft.updated_at = _utcnow()
             migration_applied = True
 
         self._mirror_active_draft_to_legacy_fields(session)

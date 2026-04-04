@@ -2,7 +2,7 @@ import logging
 import asyncio
 import json
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from time import perf_counter
 from uuid import uuid4
 from typing import cast
@@ -51,6 +51,11 @@ _ACTOR_METADATA_KEYS = {
     'timezone',
     'fetched_at',
 }
+
+
+def _utcnow() -> datetime:
+    # Keep naive UTC timestamps while avoiding deprecated datetime.utcnow().
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _serialized_payload_bytes(payload: dict) -> int:
@@ -169,15 +174,99 @@ def _set_draft_status(
 
     if hasattr(candidate, 'status') and hasattr(candidate, 'updated_at'):
         candidate.status = status
-        candidate.updated_at = datetime.utcnow()
+        candidate.updated_at = _utcnow()
         return True
 
     if isinstance(candidate, dict):
         candidate['status'] = status
-        candidate['updated_at'] = datetime.utcnow()
+        candidate['updated_at'] = _utcnow()
         return True
 
     return False
+
+
+def _get_draft_parent_id(
+    session: AgentSession,
+    draft_id: str,
+) -> str | None:
+    candidate = session.metadata.drafts.get(draft_id)
+    if candidate is None:
+        return None
+    if hasattr(candidate, 'parent_draft_id'):
+        parent_draft_id = candidate.parent_draft_id
+        return parent_draft_id if isinstance(parent_draft_id, str) and parent_draft_id else None
+    if isinstance(candidate, dict):
+        parent_draft_id = candidate.get('parent_draft_id')
+        return parent_draft_id if isinstance(parent_draft_id, str) and parent_draft_id else None
+    return None
+
+
+def _get_draft_status(
+    session: AgentSession,
+    draft_id: str,
+) -> str | None:
+    candidate = session.metadata.drafts.get(draft_id)
+    if candidate is None:
+        return None
+    if hasattr(candidate, 'status'):
+        status = candidate.status
+        return status if isinstance(status, str) and status else None
+    if isinstance(candidate, dict):
+        status = candidate.get('status')
+        return status if isinstance(status, str) and status else None
+    return None
+
+
+def _is_descendant_of_draft(
+    session: AgentSession,
+    *,
+    draft_id: str,
+    ancestor_draft_id: str,
+) -> bool:
+    visited: set[str] = set()
+    current = _get_draft_parent_id(session, draft_id)
+    while current is not None and current not in visited:
+        if current == ancestor_draft_id:
+            return True
+        visited.add(current)
+        current = _get_draft_parent_id(session, current)
+    return False
+
+
+def _repoint_active_draft_after_commit(
+    session: AgentSession,
+    *,
+    selected_draft_id: str,
+) -> int:
+    if selected_draft_id not in session.metadata.drafts:
+        return 0
+
+    session.metadata.active_draft_id = selected_draft_id
+    session.metadata.draft_head_ids = [selected_draft_id]
+
+    abandoned_descendants = 0
+    for candidate_draft_id in list(session.metadata.drafts.keys()):
+        if candidate_draft_id == selected_draft_id:
+            continue
+        if not _is_descendant_of_draft(
+            session,
+            draft_id=candidate_draft_id,
+            ancestor_draft_id=selected_draft_id,
+        ):
+            continue
+
+        current_status = _get_draft_status(session, candidate_draft_id)
+        if current_status in {'applied', 'abandoned'}:
+            continue
+
+        if _set_draft_status(
+            session=session,
+            draft_id=candidate_draft_id,
+            status='abandoned',
+        ):
+            abandoned_descendants += 1
+
+    return abandoned_descendants
 
 
 def _compute_preview_fingerprint(
@@ -1015,6 +1104,18 @@ async def commit_session(
             draft_id=selected_draft_id,
             status='applied',
         )
+        abandoned_descendants = _repoint_active_draft_after_commit(
+            session,
+            selected_draft_id=selected_draft_id,
+        )
+        mirror_active_draft = getattr(agent_service, 'mirror_active_draft_to_legacy_fields', None)
+        if callable(mirror_active_draft):
+            try:
+                mirror_active_draft(session)
+            except Exception:
+                pass
+    else:
+        abandoned_descendants = 0
     session.latest_preview_id = None
     session.metadata.latest_preview_fingerprint = None
     session.metadata.pending_context_resolution = None
@@ -1032,6 +1133,8 @@ async def commit_session(
         committed_revision_token=(
             committed_revision_token if isinstance(committed_revision_token, str) else None
         ),
+        active_draft_id=session.metadata.active_draft_id,
+        abandoned_descendants=abandoned_descendants,
         elapsed_ms=int((perf_counter() - started_at) * 1000),
     )
 
@@ -1073,7 +1176,7 @@ async def discard_session(
             active_draft.operations = []
             active_draft.draft_version += 1
             active_draft.status = 'abandoned'
-            active_draft.updated_at = datetime.utcnow()
+            active_draft.updated_at = _utcnow()
             agent_service.mirror_active_draft_to_legacy_fields(session)
             draft_sync_applied = True
         except Exception:
