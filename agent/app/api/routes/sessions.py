@@ -22,11 +22,14 @@ from app.core.contracts.sessions import (
     DiscardResponse,
     MessageRequest,
     MessageResponse,
+    PendingEditContext,
+    PendingEditResolvedReferences,
     PreviewRequest,
     PreviewFingerprintBinding,
     RoadmapPreviewArtifact,
     RollbackRequest,
 )
+from app.core.llm.clarifier_contract import build_clarifier_contract
 from app.core.nest_client import NestRoadmapClient
 from app.core.logging_utils import log_event
 from app.core.orchestration.agent_service import AgentService
@@ -492,6 +495,10 @@ async def send_message(
     preview_error_code: str | None = None
     preview_error_retryable: bool | None = None
     preview_error_upstream_status: int | None = None
+    preview_validation_error_count = 0
+    preview_validation_error_codes: list[str] = []
+    preview_validation_error_paths: list[str] = []
+    preview_validation_clarifier_shown = False
     inline_preview_skipped_due_to_size = False
     inline_preview_size_bytes: int | None = None
     effective_preview_available: bool = False
@@ -542,14 +549,107 @@ async def send_message(
                     preview_error_code = 'PREVIEW_VALIDATION_ERROR'
                     preview_error_retryable = False
                     preview_error_upstream_status = None
+                    validation_errors = [
+                        issue
+                        for issue in validation_issues
+                        if isinstance(issue, dict)
+                        and str(issue.get('severity') or '').lower() == 'error'
+                    ]
+                    preview_validation_error_count = len(validation_errors)
+                    preview_validation_error_codes = [
+                        str(issue.get('code') or '').strip()
+                        for issue in validation_errors
+                        if str(issue.get('code') or '').strip()
+                    ]
+                    preview_validation_error_paths = [
+                        str(issue.get('path') or '').strip()
+                        for issue in validation_errors
+                        if str(issue.get('path') or '').strip()
+                    ]
+                    preview_validation_clarifier_shown = True
+
+                    summary_fields: list[str] = []
+                    for issue in validation_errors[:3]:
+                        issue_path = str(issue.get('path') or '').strip()
+                        issue_message = str(issue.get('message') or '').strip()
+                        field_name = issue_path.split('/')[-1] if issue_path else 'field'
+                        if issue_message:
+                            summary_fields.append(f'{field_name}: {issue_message}')
+                        else:
+                            summary_fields.append(field_name)
+                    summary_text = ', '.join(summary_fields) if summary_fields else 'one or more required fields'
+                    if preview_validation_error_count > 3:
+                        summary_text += f', and {preview_validation_error_count - 3} more issue(s)'
+
+                    clarifier_message, _ = build_clarifier_contract(
+                        reason='preview_validation_failed',
+                        question=(
+                            'I staged your edit, but preview validation found issues '
+                            f'({summary_text}). Please tell me the corrected details.'
+                        ),
+                        options=[
+                            'Provide corrected field values',
+                            'Change target details',
+                            'Cancel',
+                        ],
+                    )
+
+                    existing_pending = outcome.session.metadata.pending_edit_context
+                    pending_created_at = (
+                        existing_pending.created_at
+                        if existing_pending is not None
+                        else _utcnow()
+                    )
+                    pending_context = PendingEditContext(
+                        intent_family='roadmap_edit_clarifier',
+                        draft_operations=[
+                            operation.model_copy(deep=True)
+                            for operation in outcome.session.operations
+                        ],
+                        required_fields=['corrected_fields'],
+                        resolved_references=(
+                            existing_pending.resolved_references
+                            if existing_pending is not None
+                            else PendingEditResolvedReferences()
+                        ),
+                        confirmation_mode='awaiting_clarification',
+                        source_user_message=payload.message,
+                        default_title=(
+                            existing_pending.default_title
+                            if existing_pending is not None
+                            else None
+                        ),
+                        resolver_hints=(
+                            dict(existing_pending.resolver_hints)
+                            if existing_pending is not None
+                            and isinstance(existing_pending.resolver_hints, dict)
+                            else None
+                        ),
+                        last_planner_stop_reason=(outcome.stop_reason or 'preview_validation_failed'),
+                        last_planner_needs_more_info=True,
+                        last_planner_draft_action=outcome.draft_action,
+                        last_tool_plan_summary=[],
+                        preview_validation_errors=validation_errors,
+                        awaiting_preview_fix=True,
+                        created_at=pending_created_at,
+                        updated_at=_utcnow(),
+                    )
+                    outcome.session.metadata.pending_edit_context = pending_context
                     setattr(outcome.session.metadata, 'awaiting_preview_fix', True)
                     outcome.session.latest_preview_id = None
                     outcome.session.metadata.latest_preview_fingerprint = None
-                    outcome.session.artifacts = []
-                    outcome.assistant_message = (
-                        'I staged your edit, but preview validation failed. '
-                        'Please adjust the change details and try again, or say "cancel".'
+                    validation_artifact = _build_preview_artifact(
+                        outcome.session,
+                        preview_result,
+                        validation_errors=validation_errors,
                     )
+                    if validation_artifact is not None:
+                        outcome.session.artifacts = [validation_artifact]
+                        response_artifacts = [validation_artifact]
+                        artifacts = [validation_artifact]
+                    else:
+                        outcome.session.artifacts = []
+                    outcome.assistant_message = clarifier_message
                     await _run_store_call(store.update, outcome.session)
                 else:
                     preview_id = preview_result.get('preview_id')
@@ -738,6 +838,10 @@ async def send_message(
             preview_error_code=preview_error_code,
             preview_error_retryable=preview_error_retryable,
             preview_error_upstream_status=preview_error_upstream_status,
+            preview_validation_error_count=preview_validation_error_count,
+            preview_validation_error_codes=preview_validation_error_codes,
+            preview_validation_error_paths=preview_validation_error_paths,
+            preview_validation_clarifier_shown=preview_validation_clarifier_shown,
             planner_mode=(outcome.planner_mode if outcome else None),
             pending_edit_context_present=(
                 outcome.pending_edit_context_present if outcome else False
@@ -765,6 +869,21 @@ async def send_message(
             ),
             retry_autostage_applied=(
                 outcome.retry_autostage_applied if outcome else False
+            ),
+            stop_reason=(
+                outcome.stop_reason if outcome else None
+            ),
+            react_terminal_action=(
+                outcome.react_terminal_action if outcome else None
+            ),
+            react_loop_turns=(
+                outcome.react_loop_turns if outcome else None
+            ),
+            react_loop_budget=(
+                outcome.react_loop_budget if outcome else None
+            ),
+            react_loop_termination_reason=(
+                outcome.react_loop_termination_reason if outcome else None
             ),
         )
 
@@ -1326,6 +1445,7 @@ async def get_artifact_preview(
 def _build_preview_artifact(
     session: AgentSession,
     preview_result: dict,
+    validation_errors: list[dict] | None = None,
 ) -> RoadmapPreviewArtifact | None:
     preview_id = preview_result.get('preview_id')
     if not isinstance(preview_id, str):
@@ -1343,6 +1463,9 @@ def _build_preview_artifact(
     validation_issue_count = (
         len(validation_issues) if isinstance(validation_issues, list) else 0
     )
+    filtered_validation_errors = [
+        issue for issue in (validation_errors or []) if isinstance(issue, dict)
+    ]
 
     return RoadmapPreviewArtifact(
         roadmap_id=session.roadmap_id,
@@ -1353,4 +1476,6 @@ def _build_preview_artifact(
         summary=f'Prepared {total_changes} semantic change(s).',
         semantic_diff_summary=semantic_diff_summary,
         validation_issue_count=validation_issue_count,
+        validation_issues=filtered_validation_errors,
+        has_validation_errors=bool(filtered_validation_errors),
     )

@@ -937,6 +937,173 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(len(outcome.operations), 0)
         self.assertEqual(len(session.operations), 0)
         self.assertTrue(outcome.edit_guard_intervened)
+        self.assertEqual(outcome.react_terminal_action, 'clarify')
+
+    def test_plan_message_rename_shape_guard_blocks_non_rename_operations(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Prepared an operation.',
+                    operations=[
+                        RoadmapOperation(
+                            op='add_epic',
+                            data={'title': 'Unexpected Epic'},
+                        )
+                    ],
+                    parse_mode='openai_edit_schema',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    draft_action='continue',
+                    tool_plan=[],
+                    needs_more_info=False,
+                    stop_reason='ready_to_stage',
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_llm_first_edit_enabled': True, 'agent_hybrid_react_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Rename Platform Foundation to Platform Foundation 1',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-rename-shape-guard',
+        )
+
+        self.assertEqual(outcome.response_mode, 'chat')
+        self.assertEqual(outcome.parse_mode, 'deterministic_rename_shape_handoff')
+        self.assertEqual(outcome.provider_error_code, 'rename_shape_guard_blocked')
+        self.assertEqual(len(outcome.operations), 0)
+        self.assertEqual(len(session.operations), 0)
+        self.assertTrue(outcome.edit_guard_intervened)
+
+    def test_plan_message_react_loop_replans_until_ready_to_stage(self) -> None:
+        planner_calls = {'count': 0}
+
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                planner_calls['count'] += 1
+                if planner_calls['count'] == 1:
+                    return PlanningResult(
+                        assistant_message='Prepared operation but still unresolved.',
+                        operations=[
+                            RoadmapOperation(
+                                op='update_node',
+                                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                                patch={'title': 'Platform Foundation 1'},
+                            )
+                        ],
+                        parse_mode='openai_edit_schema',
+                        intent_type='roadmap_edit',
+                        response_mode='edit_plan',
+                        preview_recommended=True,
+                        provider_used='openai',
+                        fallback_used=False,
+                        provider_error_code=None,
+                        draft_action='continue',
+                        tool_plan=[{'tool_name': 'resolve_node_reference', 'args': {}}],
+                        needs_more_info=False,
+                        stop_reason='insufficient_context',
+                    )
+                return PlanningResult(
+                    assistant_message='Prepared operation and ready to stage.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Platform Foundation 1'},
+                        )
+                    ],
+                    parse_mode='openai_edit_schema',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    draft_action='continue',
+                    tool_plan=[{'tool_name': 'resolve_node_reference', 'args': {}}],
+                    needs_more_info=False,
+                    stop_reason='ready_to_stage',
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_hybrid_react_enabled': True,
+                'agent_edit_planner_max_attempts': 2,
+            }
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Rename Platform Foundation to Platform Foundation 1',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-react-loop-replan',
+        )
+
+        self.assertEqual(planner_calls['count'], 2)
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(outcome.stop_reason, 'ready_to_stage')
+        self.assertEqual(outcome.react_terminal_action, 'execute')
+        self.assertEqual(len(outcome.operations), 1)
+        self.assertEqual(len(session.operations), 1)
+        self.assertEqual(outcome.phase_timings.get('react_loop_turns'), 2)
+        self.assertEqual(outcome.phase_timings.get('react_loop_budget'), 2)
+        self.assertEqual(outcome.react_loop_turns, 2)
+        self.assertEqual(outcome.react_loop_budget, 2)
 
     def test_plan_message_pending_cancel_clears_context(self) -> None:
         class _Planner:
@@ -2812,6 +2979,7 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
                     invalid_operation_detected=False,
                     invalid_operation_reason=None,
                     invalid_operation_index=None,
+                    react_terminal_action='execute',
                 )
 
         async def _fake_preview(**_kwargs):
@@ -2864,8 +3032,24 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(response.preview_available)
         self.assertFalse(response.preview_recommended)
         self.assertEqual(len(response.operations), 1)
-        self.assertEqual(len(response.artifacts), 0)
-        self.assertEqual(len(session.artifacts), 0)
+        self.assertEqual(len(response.artifacts), 1)
+        self.assertEqual(len(session.artifacts), 1)
+        self.assertIn('Options:', response.assistant_message)
+        self.assertIn('preview validation found issues', response.assistant_message)
+        self.assertIsNotNone(session.metadata.pending_edit_context)
+        assert session.metadata.pending_edit_context is not None
+        self.assertTrue(session.metadata.pending_edit_context.awaiting_preview_fix)
+        self.assertEqual(
+            len(session.metadata.pending_edit_context.preview_validation_errors),
+            1,
+        )
+        self.assertEqual(
+            session.metadata.pending_edit_context.preview_validation_errors[0].get('code'),
+            'MISSING_REQUIRED_FIELD',
+        )
+        self.assertEqual(response.artifacts[0].validation_issue_count, 1)
+        self.assertTrue(response.artifacts[0].has_validation_errors)
+        self.assertEqual(len(response.artifacts[0].validation_issues), 1)
         message_completed_events = [
             payload
             for event_name, payload in observed_events
@@ -2874,6 +3058,17 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(message_completed_events)
         latest = message_completed_events[-1]
         self.assertEqual(latest.get('preview_error_code'), 'PREVIEW_VALIDATION_ERROR')
+        self.assertEqual(latest.get('preview_validation_error_count'), 1)
+        self.assertTrue(latest.get('preview_validation_clarifier_shown'))
+        self.assertEqual(
+            latest.get('preview_validation_error_codes'),
+            ['MISSING_REQUIRED_FIELD'],
+        )
+        self.assertEqual(
+            latest.get('preview_validation_error_paths'),
+            ['/operations/0/data/title'],
+        )
+        self.assertEqual(latest.get('react_terminal_action'), 'execute')
 
     async def test_send_message_inline_preview_skipped_when_payload_too_large(self) -> None:
         session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')

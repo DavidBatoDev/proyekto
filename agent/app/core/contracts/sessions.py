@@ -33,6 +33,8 @@ class RoadmapPreviewArtifact(BaseModel):
     summary: str
     semantic_diff_summary: dict[str, int] = Field(default_factory=dict)
     validation_issue_count: int = 0
+    validation_issues: list[dict[str, Any]] = Field(default_factory=list)
+    has_validation_errors: bool = False
     inline_preview: dict[str, Any] | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -93,6 +95,8 @@ class PendingEditContext(BaseModel):
     last_planner_needs_more_info: bool | None = None
     last_planner_draft_action: str | None = None
     last_tool_plan_summary: list[dict[str, Any]] = Field(default_factory=list)
+    preview_validation_errors: list[dict[str, Any]] = Field(default_factory=list)
+    awaiting_preview_fix: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

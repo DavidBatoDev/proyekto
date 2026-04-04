@@ -114,6 +114,11 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
             roadmap_role='editor',
             actor_context_source='backend_context_actor',
             route_lane='deterministic_fastpath',
+            stop_reason='ready_to_stage',
+            react_terminal_action='execute',
+            react_loop_turns=2,
+            react_loop_budget=3,
+            react_loop_termination_reason='terminal',
             discovery_stop_reason='resolved',
             clarifier_returned=False,
             edit_guard_intervened=True,
@@ -327,6 +332,12 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
         self.assertIn('\n\nTOOL CALL\n', output)
         self.assertIn('\n\nRESPONSE\n', output)
         self.assertIn('\n\nASSISTANT\n', output)
+
+    def test_lifecycle_response_includes_react_terminal_and_loop_fields(self) -> None:
+        output = self._emit_minimal_lifecycle()
+        self.assertIn('stop        ready_to_stage', output)
+        self.assertIn('action      execute', output)
+        self.assertIn('react_loop  turns=2 budget=3 end=terminal', output)
 
 
 if __name__ == '__main__':

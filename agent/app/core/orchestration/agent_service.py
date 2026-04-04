@@ -78,6 +78,10 @@ class MessagePlanningOutcome:
     active_draft_id: str | None = None
     active_draft_version: int | None = None
     draft_graph_migration_applied: bool = False
+    react_terminal_action: str | None = None
+    react_loop_turns: int | None = None
+    react_loop_budget: int | None = None
+    react_loop_termination_reason: str | None = None
 
 
 def _utcnow() -> datetime:
@@ -319,179 +323,53 @@ class AgentService:
             route_lane = 'llm_edit_plan'
             llm_skipped_for_simple_edit = True
         elif planning is None and preview_intent == 'roadmap_edit':
-            planner_started = perf_counter()
-            planning = self._planner.plan(
+            planning, planning_loop_metrics = self._run_edit_react_planning_loop(
                 user_message=user_message,
                 existing_operations=session.operations,
                 session_context=session_context,
+                route_lane='llm_edit_plan',
             )
             phase_timings['provider_planning_ms'] = int(
-                (perf_counter() - planner_started) * 1000
+                planning_loop_metrics.get('elapsed_ms') or 0
+            )
+            phase_timings['react_loop_turns'] = int(
+                planning_loop_metrics.get('loop_turns') or 0
+            )
+            phase_timings['react_loop_budget'] = int(
+                planning_loop_metrics.get('loop_budget') or 0
+            )
+            phase_timings['react_loop_termination_reason'] = planning_loop_metrics.get(
+                'termination_reason'
             )
             route_lane = 'llm_edit_plan'
         elif planning is None:
-            planner_started = perf_counter()
-            planning = self._planner.plan(
+            planning, planning_loop_metrics = self._run_edit_react_planning_loop(
                 user_message=user_message,
                 existing_operations=session.operations,
                 session_context=session_context,
+                route_lane='llm_edit_plan',
             )
             phase_timings['provider_planning_ms'] = int(
-                (perf_counter() - planner_started) * 1000
+                planning_loop_metrics.get('elapsed_ms') or 0
+            )
+            phase_timings['react_loop_turns'] = int(
+                planning_loop_metrics.get('loop_turns') or 0
+            )
+            phase_timings['react_loop_budget'] = int(
+                planning_loop_metrics.get('loop_budget') or 0
+            )
+            phase_timings['react_loop_termination_reason'] = planning_loop_metrics.get(
+                'termination_reason'
             )
             route_lane = 'llm_edit_plan' if planning.response_mode == 'edit_plan' else 'chat'
 
-        planning = self._apply_context_answer_output_guard(
+        planning, edit_guard_intervened = self._run_edit_react_loop(
             planning=planning,
-            pending_edit_context_present=session.metadata.pending_edit_context is not None,
+            pending_edit_context_present=pending_edit_context_present,
+            edit_continuation_trigger=edit_continuation_trigger,
+            route_lane=route_lane,
+            user_message=user_message,
         )
-        if planning.provider_error_code == 'context_answer_operation_payload_blocked':
-            edit_guard_intervened = True
-        if (
-            pending_edit_context_present
-            and edit_continuation_trigger == 'confirm'
-            and planning.response_mode != 'edit_plan'
-        ):
-            planning = PlanningResult(
-                assistant_message=(
-                    'I still have your pending edit draft, but I could not stage it from that '
-                    'confirmation alone. Please provide the exact change in one line '
-                    '(or say "cancel").'
-                ),
-                operations=[],
-                parse_mode='deterministic_pending_edit_confirm_handoff',
-                intent_type='roadmap_edit',
-                response_mode='chat',
-                preview_recommended=False,
-                provider_used='rule_based',
-                fallback_used=False,
-                provider_error_code='pending_edit_confirm_requires_edit_plan',
-                tokens_input=planning.tokens_input,
-                tokens_output=planning.tokens_output,
-                tokens_total=planning.tokens_total,
-                route_lane=route_lane,
-                fastpath_bypass_reason=planning.fastpath_bypass_reason,
-                clarifier_action='ask_clarifier',
-                clarifier_reason='pending_edit_confirm_requires_edit_plan',
-                clarifier_options=['Proceed with edit planning', 'Change target details', 'Cancel'],
-            )
-            edit_guard_intervened = True
-        if (
-            pending_edit_context_present
-            and edit_continuation_trigger in {'confirm', 'retry'}
-            and planning.response_mode == 'chat'
-            and not planning.operations
-            and self._looks_like_found_node_without_operations(planning.assistant_message)
-        ):
-            planning = PlanningResult(
-                assistant_message=(
-                    'I found likely target node matches, but I still need one explicit selection '
-                    'to stage a safe edit operation. Reply with the exact node ID (or say "cancel").'
-                ),
-                operations=[],
-                parse_mode='deterministic_edit_narrative_handoff',
-                intent_type='roadmap_edit',
-                response_mode='chat',
-                preview_recommended=False,
-                provider_used='rule_based',
-                fallback_used=False,
-                provider_error_code='edit_narrative_without_operations',
-                tokens_input=planning.tokens_input,
-                tokens_output=planning.tokens_output,
-                tokens_total=planning.tokens_total,
-                route_lane=route_lane,
-                fastpath_bypass_reason=planning.fastpath_bypass_reason,
-                clarifier_action='ask_clarifier',
-                clarifier_reason='edit_narrative_without_operations',
-                clarifier_options=['Use the matched node ID', 'Refine the node label', 'Cancel'],
-            )
-            edit_guard_intervened = True
-        if (
-            self._settings.agent_hybrid_react_enabled
-            and planning.response_mode == 'edit_plan'
-            and planning.draft_action not in {'continue', 'revise', 'new_draft'}
-        ):
-            planning = PlanningResult(
-                assistant_message=(
-                    'I need one more confirmation before staging edits because draft intent metadata '
-                    'was incomplete. Please restate whether this should continue, revise, or start a new draft.'
-                ),
-                operations=[],
-                parse_mode='deterministic_planner_schema_handoff',
-                intent_type='roadmap_edit',
-                response_mode='chat',
-                preview_recommended=False,
-                provider_used='rule_based',
-                fallback_used=True,
-                provider_error_code='planner_schema_missing_draft_action',
-                tokens_input=planning.tokens_input,
-                tokens_output=planning.tokens_output,
-                tokens_total=planning.tokens_total,
-                route_lane=route_lane,
-                fastpath_bypass_reason=planning.fastpath_bypass_reason,
-                clarifier_action='ask_clarifier',
-                clarifier_reason='planner_schema_missing_draft_action',
-                clarifier_options=['Continue current draft', 'Revise current draft', 'Start new draft'],
-            )
-            edit_guard_intervened = True
-        if planning.response_mode == 'edit_plan' and planning.needs_more_info:
-            planning = PlanningResult(
-                assistant_message=(
-                    'I could not safely stage edits yet because required context is still missing. '
-                    'Please answer the clarification so I can continue.'
-                ),
-                operations=[],
-                parse_mode='deterministic_planner_needs_more_info_handoff',
-                intent_type='roadmap_edit',
-                response_mode='chat',
-                preview_recommended=False,
-                provider_used='rule_based',
-                fallback_used=True,
-                provider_error_code='planner_needs_more_info_conflict',
-                tokens_input=planning.tokens_input,
-                tokens_output=planning.tokens_output,
-                tokens_total=planning.tokens_total,
-                route_lane=route_lane,
-                fastpath_bypass_reason=planning.fastpath_bypass_reason,
-                clarifier_action='ask_clarifier',
-                clarifier_reason='planner_needs_more_info_conflict',
-                clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
-            )
-            edit_guard_intervened = True
-        if (
-            self._settings.agent_hybrid_react_enabled
-            and planning.response_mode == 'edit_plan'
-            and planning.stop_reason in {'tool_budget_exhausted', 'insufficient_context', 'awaiting_user_input'}
-        ):
-            planning = PlanningResult(
-                assistant_message=(
-                    'I still need one clarification before I can safely stage edits. '
-                    'Please provide the missing target details and I will continue.'
-                ),
-                operations=[],
-                parse_mode='deterministic_planner_stop_reason_handoff',
-                intent_type='roadmap_edit',
-                response_mode='chat',
-                preview_recommended=False,
-                provider_used='rule_based',
-                fallback_used=True,
-                provider_error_code='planner_stop_reason_conflict',
-                tokens_input=planning.tokens_input,
-                tokens_output=planning.tokens_output,
-                tokens_total=planning.tokens_total,
-                route_lane=route_lane,
-                fastpath_bypass_reason=planning.fastpath_bypass_reason,
-                clarifier_action='ask_clarifier',
-                clarifier_reason='planner_stop_reason_conflict',
-                clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
-                draft_action=planning.draft_action,
-                tool_plan=planning.tool_plan,
-                needs_more_info=True,
-                stop_reason=planning.stop_reason,
-            )
-            edit_guard_intervened = True
-
-        planning = self._normalize_planning_clarifier_contract(planning)
 
         internal_metrics = session_context.get('_phase_metrics', {})
         if isinstance(internal_metrics, dict):
@@ -560,6 +438,25 @@ class AgentService:
         needs_more_info = planning.needs_more_info
         stop_reason = planning.stop_reason
         tool_plan_steps = len(planning.tool_plan or []) if planning.tool_plan is not None else 0
+        react_terminal_action = self._derive_react_terminal_action(
+            planning=planning,
+            edit_continuation_trigger=edit_continuation_trigger,
+        )
+        react_loop_turns = (
+            int(phase_timings.get('react_loop_turns'))
+            if phase_timings.get('react_loop_turns') is not None
+            else None
+        )
+        react_loop_budget = (
+            int(phase_timings.get('react_loop_budget'))
+            if phase_timings.get('react_loop_budget') is not None
+            else None
+        )
+        react_loop_termination_reason = (
+            str(phase_timings.get('react_loop_termination_reason'))
+            if phase_timings.get('react_loop_termination_reason') is not None
+            else None
+        )
         deterministic_create_fastpath_skipped = False
         if self._settings.agent_llm_first_edit_enabled:
             fastpath_reason = None
@@ -692,6 +589,10 @@ class AgentService:
             needs_more_info=needs_more_info,
             stop_reason=stop_reason,
             tool_plan_steps=tool_plan_steps,
+            react_terminal_action=react_terminal_action,
+            react_loop_turns=react_loop_turns,
+            react_loop_budget=react_loop_budget,
+            react_loop_termination_reason=react_loop_termination_reason,
             deterministic_create_fastpath_skipped=deterministic_create_fastpath_skipped,
             edit_guard_intervened=edit_guard_intervened,
             retry_tool_calls_used=retry_tool_calls_used,
@@ -737,6 +638,10 @@ class AgentService:
             needs_more_info=needs_more_info,
             stop_reason=stop_reason,
             tool_plan_steps=tool_plan_steps,
+            react_terminal_action=react_terminal_action,
+            react_loop_turns=react_loop_turns,
+            react_loop_budget=react_loop_budget,
+            react_loop_termination_reason=react_loop_termination_reason,
             deterministic_create_fastpath_skipped=deterministic_create_fastpath_skipped,
             edit_guard_intervened=edit_guard_intervened,
             retry_tool_calls_used=retry_tool_calls_used,
@@ -1024,6 +929,351 @@ class AgentService:
         ):
             return False
         return ('found' in lowered) or ('match' in lowered)
+
+    def _run_edit_react_planning_loop(
+        self,
+        *,
+        user_message: str,
+        existing_operations: list[RoadmapOperation],
+        session_context: dict[str, Any],
+        route_lane: str,
+    ) -> tuple[PlanningResult, dict[str, Any]]:
+        loop_budget = max(1, min(int(self._settings.agent_edit_planner_max_attempts), 4))
+        loop_started = perf_counter()
+        loop_turns = 0
+        termination_reason = 'terminal'
+        planning: PlanningResult | None = None
+
+        observation_context = dict(session_context)
+        for turn_index in range(loop_budget):
+            loop_turns += 1
+            observation_context['_react_loop_turn'] = turn_index + 1
+            observation_context['_react_loop_budget'] = loop_budget
+
+            planning = self._planner.plan(
+                user_message=user_message,
+                existing_operations=existing_operations,
+                session_context=observation_context,
+            )
+            planning = replace(planning, route_lane=route_lane)
+
+            if not self._settings.agent_hybrid_react_enabled:
+                break
+            if planning.response_mode != 'edit_plan':
+                break
+            if not planning.operations:
+                break
+            if planning.stop_reason == 'ready_to_stage':
+                break
+
+            if turn_index + 1 >= loop_budget:
+                termination_reason = 'budget_exhausted'
+                break
+
+            observation_context['_react_loop_observation'] = {
+                'stop_reason': planning.stop_reason,
+                'needs_more_info': planning.needs_more_info,
+                'draft_action': planning.draft_action,
+                'tool_plan_steps': len(planning.tool_plan or []),
+            }
+            termination_reason = 'replanned_after_observation'
+
+        if planning is None:
+            planning = PlanningResult(
+                assistant_message=(
+                    'I could not complete planning in this turn. Please restate the exact change '
+                    'you want to apply.'
+                ),
+                operations=[],
+                parse_mode='deterministic_react_planner_empty',
+                intent_type='roadmap_edit',
+                response_mode='chat',
+                preview_recommended=False,
+                provider_used='rule_based',
+                fallback_used=True,
+                provider_error_code='planner_empty_result',
+                route_lane=route_lane,
+                clarifier_action='ask_clarifier',
+                clarifier_reason='planner_empty_result',
+                clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
+                stop_reason='insufficient_context',
+            )
+
+        loop_metrics = {
+            'elapsed_ms': int((perf_counter() - loop_started) * 1000),
+            'loop_turns': loop_turns,
+            'loop_budget': loop_budget,
+            'termination_reason': termination_reason,
+        }
+        return planning, loop_metrics
+
+    def _derive_react_terminal_action(
+        self,
+        *,
+        planning: PlanningResult,
+        edit_continuation_trigger: str | None,
+    ) -> str:
+        if edit_continuation_trigger == 'cancel':
+            return 'cancel'
+        if planning.response_mode == 'edit_plan' and planning.operations:
+            return 'execute'
+        if planning.clarifier_action in {'ask_clarifier', 'propose_safe_default', 'cannot_proceed'}:
+            return 'clarify'
+        if planning.response_mode == 'chat':
+            return 'clarify'
+        return 'execute'
+
+    def _run_edit_react_loop(
+        self,
+        *,
+        planning: PlanningResult,
+        pending_edit_context_present: bool,
+        edit_continuation_trigger: str | None,
+        route_lane: str | None,
+        user_message: str,
+    ) -> tuple[PlanningResult, bool]:
+        edit_guard_intervened = False
+
+        planning = self._apply_context_answer_output_guard(
+            planning=planning,
+            pending_edit_context_present=pending_edit_context_present,
+        )
+        if planning.provider_error_code == 'context_answer_operation_payload_blocked':
+            edit_guard_intervened = True
+        if (
+            pending_edit_context_present
+            and edit_continuation_trigger == 'confirm'
+            and planning.response_mode != 'edit_plan'
+        ):
+            planning = PlanningResult(
+                assistant_message=(
+                    'I still have your pending edit draft, but I could not stage it from that '
+                    'confirmation alone. Please provide the exact change in one line '
+                    '(or say "cancel").'
+                ),
+                operations=[],
+                parse_mode='deterministic_pending_edit_confirm_handoff',
+                intent_type='roadmap_edit',
+                response_mode='chat',
+                preview_recommended=False,
+                provider_used='rule_based',
+                fallback_used=False,
+                provider_error_code='pending_edit_confirm_requires_edit_plan',
+                tokens_input=planning.tokens_input,
+                tokens_output=planning.tokens_output,
+                tokens_total=planning.tokens_total,
+                route_lane=route_lane,
+                fastpath_bypass_reason=planning.fastpath_bypass_reason,
+                clarifier_action='ask_clarifier',
+                clarifier_reason='pending_edit_confirm_requires_edit_plan',
+                clarifier_options=['Proceed with edit planning', 'Change target details', 'Cancel'],
+            )
+            edit_guard_intervened = True
+        if (
+            pending_edit_context_present
+            and edit_continuation_trigger in {'confirm', 'retry'}
+            and planning.response_mode == 'chat'
+            and not planning.operations
+            and self._looks_like_found_node_without_operations(planning.assistant_message)
+        ):
+            planning = PlanningResult(
+                assistant_message=(
+                    'I found likely target node matches, but I still need one explicit selection '
+                    'to stage a safe edit operation. Reply with the exact node ID (or say "cancel").'
+                ),
+                operations=[],
+                parse_mode='deterministic_edit_narrative_handoff',
+                intent_type='roadmap_edit',
+                response_mode='chat',
+                preview_recommended=False,
+                provider_used='rule_based',
+                fallback_used=False,
+                provider_error_code='edit_narrative_without_operations',
+                tokens_input=planning.tokens_input,
+                tokens_output=planning.tokens_output,
+                tokens_total=planning.tokens_total,
+                route_lane=route_lane,
+                fastpath_bypass_reason=planning.fastpath_bypass_reason,
+                clarifier_action='ask_clarifier',
+                clarifier_reason='edit_narrative_without_operations',
+                clarifier_options=['Use the matched node ID', 'Refine the node label', 'Cancel'],
+            )
+            edit_guard_intervened = True
+        if (
+            self._settings.agent_hybrid_react_enabled
+            and planning.response_mode == 'edit_plan'
+            and planning.draft_action not in {'continue', 'revise', 'new_draft'}
+        ):
+            planning = PlanningResult(
+                assistant_message=(
+                    'I need one more confirmation before staging edits because draft intent metadata '
+                    'was incomplete. Please restate whether this should continue, revise, or start a new draft.'
+                ),
+                operations=[],
+                parse_mode='deterministic_planner_schema_handoff',
+                intent_type='roadmap_edit',
+                response_mode='chat',
+                preview_recommended=False,
+                provider_used='rule_based',
+                fallback_used=True,
+                provider_error_code='planner_schema_missing_draft_action',
+                tokens_input=planning.tokens_input,
+                tokens_output=planning.tokens_output,
+                tokens_total=planning.tokens_total,
+                route_lane=route_lane,
+                fastpath_bypass_reason=planning.fastpath_bypass_reason,
+                clarifier_action='ask_clarifier',
+                clarifier_reason='planner_schema_missing_draft_action',
+                clarifier_options=['Continue current draft', 'Revise current draft', 'Start new draft'],
+            )
+            edit_guard_intervened = True
+        if planning.response_mode == 'edit_plan' and planning.needs_more_info:
+            planning = PlanningResult(
+                assistant_message=(
+                    'I could not safely stage edits yet because required context is still missing. '
+                    'Please answer the clarification so I can continue.'
+                ),
+                operations=[],
+                parse_mode='deterministic_planner_needs_more_info_handoff',
+                intent_type='roadmap_edit',
+                response_mode='chat',
+                preview_recommended=False,
+                provider_used='rule_based',
+                fallback_used=True,
+                provider_error_code='planner_needs_more_info_conflict',
+                tokens_input=planning.tokens_input,
+                tokens_output=planning.tokens_output,
+                tokens_total=planning.tokens_total,
+                route_lane=route_lane,
+                fastpath_bypass_reason=planning.fastpath_bypass_reason,
+                clarifier_action='ask_clarifier',
+                clarifier_reason='planner_needs_more_info_conflict',
+                clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
+            )
+            edit_guard_intervened = True
+        if (
+            self._settings.agent_hybrid_react_enabled
+            and planning.response_mode == 'edit_plan'
+            and planning.stop_reason in {'tool_budget_exhausted', 'insufficient_context', 'awaiting_user_input'}
+        ):
+            planning = PlanningResult(
+                assistant_message=(
+                    'I still need one clarification before I can safely stage edits. '
+                    'Please provide the missing target details and I will continue.'
+                ),
+                operations=[],
+                parse_mode='deterministic_planner_stop_reason_handoff',
+                intent_type='roadmap_edit',
+                response_mode='chat',
+                preview_recommended=False,
+                provider_used='rule_based',
+                fallback_used=True,
+                provider_error_code='planner_stop_reason_conflict',
+                tokens_input=planning.tokens_input,
+                tokens_output=planning.tokens_output,
+                tokens_total=planning.tokens_total,
+                route_lane=route_lane,
+                fastpath_bypass_reason=planning.fastpath_bypass_reason,
+                clarifier_action='ask_clarifier',
+                clarifier_reason='planner_stop_reason_conflict',
+                clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
+                draft_action=planning.draft_action,
+                tool_plan=planning.tool_plan,
+                needs_more_info=True,
+                stop_reason=planning.stop_reason,
+            )
+            edit_guard_intervened = True
+
+        if (
+            self._settings.agent_hybrid_react_enabled
+            and planning.response_mode == 'edit_plan'
+            and planning.operations
+            and planning.stop_reason != 'ready_to_stage'
+        ):
+            planning = PlanningResult(
+                assistant_message=(
+                    'I need one more clarification before I can safely stage these edits. '
+                    'Please confirm the exact target details.'
+                ),
+                operations=[],
+                parse_mode='deterministic_react_terminal_handoff',
+                intent_type='roadmap_edit',
+                response_mode='chat',
+                preview_recommended=False,
+                provider_used='rule_based',
+                fallback_used=True,
+                provider_error_code='planner_terminal_state_conflict',
+                tokens_input=planning.tokens_input,
+                tokens_output=planning.tokens_output,
+                tokens_total=planning.tokens_total,
+                route_lane=route_lane,
+                fastpath_bypass_reason=planning.fastpath_bypass_reason,
+                clarifier_action='ask_clarifier',
+                clarifier_reason='planner_terminal_state_conflict',
+                clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
+                draft_action=planning.draft_action,
+                tool_plan=planning.tool_plan,
+                needs_more_info=True,
+                stop_reason=(planning.stop_reason or 'awaiting_user_input'),
+            )
+            edit_guard_intervened = True
+
+        if (
+            self._settings.agent_hybrid_react_enabled
+            and planning.response_mode == 'edit_plan'
+            and planning.operations
+            and self._is_rename_message(user_message)
+            and not self._has_rename_shape_operation(planning.operations)
+        ):
+            planning = PlanningResult(
+                assistant_message=(
+                    'I understood this as a rename request, but I could not derive a safe rename '
+                    'operation yet. Please provide the exact current label and the new title.'
+                ),
+                operations=[],
+                parse_mode='deterministic_rename_shape_handoff',
+                intent_type='roadmap_edit',
+                response_mode='chat',
+                preview_recommended=False,
+                provider_used='rule_based',
+                fallback_used=True,
+                provider_error_code='rename_shape_guard_blocked',
+                tokens_input=planning.tokens_input,
+                tokens_output=planning.tokens_output,
+                tokens_total=planning.tokens_total,
+                route_lane=route_lane,
+                fastpath_bypass_reason=planning.fastpath_bypass_reason,
+                clarifier_action='ask_clarifier',
+                clarifier_reason='rename_shape_guard_blocked',
+                clarifier_options=['Provide current label', 'Provide new title', 'Cancel'],
+                draft_action=planning.draft_action,
+                tool_plan=planning.tool_plan,
+                needs_more_info=True,
+                stop_reason='insufficient_context',
+            )
+            edit_guard_intervened = True
+
+        planning = self._normalize_planning_clarifier_contract(planning)
+        return planning, edit_guard_intervened
+
+    def _is_rename_message(self, user_message: str) -> bool:
+        normalized = user_message.strip().lower()
+        if not normalized:
+            return False
+        return normalized.startswith('rename ') or ' rename ' in normalized
+
+    def _has_rename_shape_operation(self, operations: list[RoadmapOperation]) -> bool:
+        for operation in operations:
+            op_name = operation.op.value if hasattr(operation.op, 'value') else str(operation.op)
+            if op_name != 'update_node':
+                continue
+            if not operation.node_id:
+                continue
+            if isinstance(operation.patch, dict):
+                title = operation.patch.get('title')
+                if isinstance(title, str) and title.strip():
+                    return True
+        return False
 
     def _should_fetch_actor_context(
         self,

@@ -685,6 +685,9 @@ class LLMPlanner:
                 needs_more_info = False if operations else True
                 stop_reason = 'ready_to_stage' if operations else 'awaiting_user_input'
 
+            if stop_reason is None:
+                stop_reason = 'ready_to_stage' if operations else 'awaiting_user_input'
+
             if operations:
                 parse_mode_suffix = 'tool_calling' if result_kind == 'tool' else 'edit_schema'
                 log_event(

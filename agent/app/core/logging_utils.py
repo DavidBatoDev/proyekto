@@ -24,6 +24,8 @@ _KEY_PRIORITY = (
     'provider_error_code',
     'error_code',
     'elapsed_ms',
+    'stop_reason',
+    'react_terminal_action',
 )
 
 _SENSITIVE_KEYS = {
@@ -320,6 +322,11 @@ def _apply_lifecycle_payload(trace: _LifecycleTrace, payload: dict[str, Any]) ->
                 'artifacts_count': payload.get('artifacts_count'),
                 'route_lane': payload.get('route_lane'),
                 'discovery_stop_reason': payload.get('discovery_stop_reason'),
+                'stop_reason': payload.get('stop_reason'),
+                'react_terminal_action': payload.get('react_terminal_action'),
+                'react_loop_turns': payload.get('react_loop_turns'),
+                'react_loop_budget': payload.get('react_loop_budget'),
+                'react_loop_termination_reason': payload.get('react_loop_termination_reason'),
                 'clarifier_returned': payload.get('clarifier_returned'),
                 'edit_guard_intervened': payload.get('edit_guard_intervened'),
                 'retry_tool_calls_used': payload.get('retry_tool_calls_used'),
@@ -386,7 +393,9 @@ def _build_lifecycle_block(trace: _LifecycleTrace) -> str:
             f'  ops         {trace.response.get("operations_count")}',
             f'  elapsed     {trace.response.get("elapsed_ms")} ms',
             f'  lane        {trace.response.get("route_lane")}',
-            f'  stop        {trace.response.get("discovery_stop_reason")}',
+            f'  stop        {trace.response.get("stop_reason") or trace.response.get("discovery_stop_reason")}',
+            f'  action      {trace.response.get("react_terminal_action")}',
+            f'  react_loop  turns={trace.response.get("react_loop_turns")} budget={trace.response.get("react_loop_budget")} end={trace.response.get("react_loop_termination_reason")}',
             f'  clarifier   {_yes_no(trace.response.get("clarifier_returned"))}',
             f'  guard       {_yes_no(trace.response.get("edit_guard_intervened"))}',
             f'  retry_calls {trace.response.get("retry_tool_calls_used")}',
