@@ -110,8 +110,8 @@ def _resolve_draft_snapshot(
 ) -> tuple[str, int, list]:
     if settings.agent_draft_graph_enabled:
         try:
-            agent_service._ensure_draft_graph_initialized(session)
-            active_draft = agent_service._get_active_draft(session)
+            agent_service.ensure_draft_graph_initialized(session)
+            active_draft = agent_service.get_active_draft(session)
             return active_draft.draft_id, active_draft.draft_version, active_draft.operations
         except Exception:
             pass
@@ -959,8 +959,6 @@ async def commit_session(
             'revision_token': revision_token,
         }
 
-    self_heal_attempted = False
-    self_heal_succeeded = False
     commit_preview_id = preview_id
 
     try:
@@ -972,126 +970,30 @@ async def commit_session(
         )
     except HTTPException as exc:
         normalized = _normalize_artifact_preview_error(exc)
-        if not _is_preview_not_found_error(normalized):
-            raise
-
-        self_heal_attempted = True
-        log_event(
-            logger,
-            'session_commit_self_heal_attempted',
-            settings=settings,
-            level=logging.WARNING,
-            trace_id=trace_id,
-            session_id=session.session_id,
-            roadmap_id=session.roadmap_id,
-            preview_id=commit_preview_id,
-            latest_preview_id=session.latest_preview_id,
-            reason='preview_not_found',
-        )
-
-        if (
-            payload.preview_id
-            and session.latest_preview_id
-            and payload.preview_id != session.latest_preview_id
-        ):
+        if _is_preview_not_found_error(normalized):
             log_event(
                 logger,
-                'session_commit_self_heal_blocked',
+                'session_commit_preview_not_found_stale',
                 settings=settings,
                 level=logging.WARNING,
                 trace_id=trace_id,
                 session_id=session.session_id,
                 roadmap_id=session.roadmap_id,
-                requested_preview_id=payload.preview_id,
+                preview_id=commit_preview_id,
                 latest_preview_id=session.latest_preview_id,
-                reason='preview_mismatch_requires_repreview',
+                reason='preview_not_found_requires_regeneration',
             )
             raise HTTPException(
                 status_code=409,
                 detail={
                     'code': 'STALE_PREVIEW_REFERENCE',
                     'message': (
-                        'Selected preview is stale. Please regenerate preview for current staged edits '
+                        'Selected preview is no longer available. Regenerate preview for current staged edits '
                         'and apply again.'
                     ),
                 },
-            )
-
-        if selected_binding_scope == 'ad_hoc_operations':
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    'code': 'STALE_PREVIEW_REFERENCE',
-                    'message': (
-                        'Selected ad-hoc preview is stale. Regenerate preview with the same operations '
-                        'and apply again.'
-                    ),
-                },
-            )
-
-        if not selected_draft_operations:
-            raise exc
-
-        regenerated_preview = await _nest_client.preview(
-            roadmap_id=session.roadmap_id,
-            payload={
-                'base_revision': selected_base_revision,
-                'revision_token': session.revision_token,
-                'operations': [
-                    op.model_dump(exclude_none=True)
-                    if hasattr(op, 'model_dump')
-                    else op
-                    for op in selected_draft_operations
-                ],
-            },
-            auth_header=auth_header,
-            trace_id=trace_id,
-        )
-        regenerated_preview_id = regenerated_preview.get('preview_id')
-        regenerated_revision_token = regenerated_preview.get('revision_token')
-        if not isinstance(regenerated_preview_id, str):
-            raise exc
-        if _is_preview_already_applied(regenerated_preview_id):
-            log_event(
-                logger,
-                'session_commit_duplicate_blocked',
-                settings=settings,
-                level=logging.WARNING,
-                trace_id=trace_id,
-                session_id=session.session_id,
-                roadmap_id=session.roadmap_id,
-                preview_id=regenerated_preview_id,
-                reason='regenerated_preview_already_applied',
-            )
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    'code': 'ARTIFACT_ALREADY_APPLIED',
-                    'message': 'This artifact has already been applied. Generate a new preview before applying again.',
-                },
-            )
-        session.latest_preview_id = regenerated_preview_id
-        commit_preview_id = regenerated_preview_id
-        _upsert_preview_fingerprint_binding(
-            session=session,
-            preview_id=regenerated_preview_id,
-            draft_id=selected_draft_id,
-            draft_version=selected_draft_version,
-            base_revision=selected_base_revision,
-            fingerprint=current_preview_fingerprint,
-            binding_scope='draft_snapshot',
-        )
-        if isinstance(regenerated_revision_token, str):
-            session.revision_token = regenerated_revision_token
-            revision_token = regenerated_revision_token
-        await _run_store_call(store.update, session)
-        commit_result = await _nest_client.commit(
-            roadmap_id=session.roadmap_id,
-            payload=_build_commit_payload(commit_preview_id),
-            auth_header=auth_header,
-            trace_id=trace_id,
-        )
-        self_heal_succeeded = True
+            ) from exc
+        raise
 
     committed_revision_token = commit_result.get('revision_token')
     if isinstance(committed_revision_token, str):
@@ -1127,8 +1029,6 @@ async def commit_session(
         session_id=session.session_id,
         roadmap_id=session.roadmap_id,
         preview_id=commit_preview_id,
-        self_heal_attempted=self_heal_attempted,
-        self_heal_succeeded=self_heal_succeeded,
         committed_revision_token=(
             committed_revision_token if isinstance(committed_revision_token, str) else None
         ),
@@ -1168,13 +1068,13 @@ async def discard_session(
     draft_sync_applied = False
     if settings.agent_draft_graph_enabled:
         try:
-            agent_service._ensure_draft_graph_initialized(session)
-            active_draft = agent_service._get_active_draft(session)
+            agent_service.ensure_draft_graph_initialized(session)
+            active_draft = agent_service.get_active_draft(session)
             active_draft.operations = []
             active_draft.draft_version += 1
             active_draft.status = 'abandoned'
             active_draft.updated_at = datetime.utcnow()
-            agent_service._mirror_active_draft_to_legacy_fields(session)
+            agent_service.mirror_active_draft_to_legacy_fields(session)
             draft_sync_applied = True
         except Exception:
             session.operations = []
@@ -1228,7 +1128,7 @@ async def get_artifact_preview(
     artifact_id: str,
     request: Request,
 ) -> ArtifactPreviewResponse:
-    store, agent_service = await _get_agent_runtime_async()
+    _, agent_service = await _get_agent_runtime_async()
     session = await _get_session_or_404_async(agent_service, session_id)
     artifact = next(
         (item for item in session.artifacts if item.artifact_id == artifact_id),
@@ -1239,7 +1139,6 @@ async def get_artifact_preview(
 
     trace_id = str(uuid4())
     fetch_started = perf_counter()
-    self_heal_started: float | None = None
     try:
         preview_result = await _nest_client.get_preview(
             roadmap_id=session.roadmap_id,
@@ -1249,11 +1148,10 @@ async def get_artifact_preview(
         )
     except HTTPException as exc:
         normalized = _normalize_artifact_preview_error(exc)
-        self_heal_attempted = _is_preview_not_found_error(normalized)
-        if self_heal_attempted:
+        if _is_preview_not_found_error(normalized):
             log_event(
                 logger,
-                'artifact_fetch_self_heal_attempted',
+                'artifact_fetch_stale_preview_reference',
                 settings=settings,
                 level=logging.WARNING,
                 trace_id=trace_id,
@@ -1261,86 +1159,21 @@ async def get_artifact_preview(
                 roadmap_id=session.roadmap_id,
                 artifact_id=artifact_id,
                 preview_id=artifact.preview_id,
+                error_code='STALE_PREVIEW_REFERENCE',
+                upstream_status=normalized.get('upstream_status'),
             )
-            try:
-                self_heal_started = perf_counter()
-                regenerated_preview = await _nest_client.preview(
-                    roadmap_id=session.roadmap_id,
-                    payload={
-                        'base_revision': session.base_revision,
-                        'revision_token': session.revision_token,
-                        'operations': [
-                            op.model_dump(exclude_none=True)
-                            for op in session.operations
-                        ],
-                    },
-                    auth_header=request.headers.get('Authorization'),
-                    trace_id=trace_id,
-                )
-
-                regenerated_preview_id = regenerated_preview.get('preview_id')
-                regenerated_revision_token = regenerated_preview.get('revision_token')
-
-                if isinstance(regenerated_preview_id, str):
-                    artifact.preview_id = regenerated_preview_id
-                    session.latest_preview_id = regenerated_preview_id
-                    draft_id, draft_version, draft_operations = _resolve_draft_snapshot(
-                        session,
-                        agent_service,
-                    )
-                    preview_fingerprint = _compute_preview_fingerprint(
-                        draft_id=draft_id,
-                        draft_version=draft_version,
-                        operations=draft_operations,
-                        base_revision=session.base_revision,
-                    )
-                    _upsert_preview_fingerprint_binding(
-                        session=session,
-                        preview_id=regenerated_preview_id,
-                        draft_id=draft_id,
-                        draft_version=draft_version,
-                        base_revision=session.base_revision,
-                        fingerprint=preview_fingerprint,
-                        binding_scope='draft_snapshot',
-                    )
-                    _set_draft_status(
-                        session=session,
-                        draft_id=draft_id,
-                        status='previewed',
-                    )
-                if isinstance(regenerated_revision_token, str):
-                    artifact.revision_token = regenerated_revision_token
-                    session.revision_token = regenerated_revision_token
-                if isinstance(session.base_revision, int):
-                    artifact.base_revision = session.base_revision
-
-                await _run_store_call(store.update, session)
-                log_event(
-                    logger,
-                    'artifact_fetch_self_heal_succeeded',
-                    settings=settings,
-                    trace_id=trace_id,
-                    session_id=session_id,
-                    roadmap_id=session.roadmap_id,
-                    artifact_id=artifact_id,
-                    preview_id=artifact.preview_id,
-                    self_healed=True,
-                    artifact_fetch_ms=int((perf_counter() - fetch_started) * 1000),
-                    artifact_self_heal_ms=(
-                        int((perf_counter() - self_heal_started) * 1000)
-                        if self_heal_started is not None
-                        else None
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    'code': 'STALE_PREVIEW_REFERENCE',
+                    'message': (
+                        'Artifact preview is no longer available. Regenerate preview for current staged edits '
+                        'and retry.'
                     ),
-                    artifact_first_read_source='self_heal',
-                )
-                return ArtifactPreviewResponse(
-                    session_id=session.session_id,
-                    roadmap_id=session.roadmap_id,
-                    artifact=artifact,
-                    preview=regenerated_preview,
-                )
-            except HTTPException as self_heal_exc:
-                normalized = _normalize_artifact_preview_error(self_heal_exc)
+                    'retryable': False,
+                    'upstream_status': normalized.get('upstream_status'),
+                },
+            ) from exc
 
         log_event(
             logger,
@@ -1356,14 +1189,10 @@ async def get_artifact_preview(
             upstream_status=normalized.get('upstream_status'),
             retryable=normalized.get('retryable'),
             self_healed=False,
-            self_heal_attempted=self_heal_attempted,
+            self_heal_attempted=False,
             artifact_fetch_ms=int((perf_counter() - fetch_started) * 1000),
-            artifact_self_heal_ms=(
-                int((perf_counter() - self_heal_started) * 1000)
-                if self_heal_started is not None
-                else None
-            ),
-            artifact_first_read_source='self_heal' if self_heal_attempted else 'fetch',
+            artifact_self_heal_ms=None,
+            artifact_first_read_source='fetch',
         )
         status_code = int(normalized.get('upstream_status') or exc.status_code)
         raise HTTPException(status_code=status_code, detail=normalized) from exc

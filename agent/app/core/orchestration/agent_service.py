@@ -207,7 +207,6 @@ class AgentService:
         route_lane: str | None = None
         fastpath_reason: str | None = None
         fastpath_bypass_reason: str | None = None
-        force_replace_operations = False
         llm_skipped_for_simple_edit = False
         invalid_operation_detected = False
         invalid_operation_reason: str | None = None
@@ -452,14 +451,6 @@ class AgentService:
                 clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
             )
             edit_guard_intervened = True
-        if (
-            (pending_edit_context_present or has_staged_operations)
-            and edit_continuation_trigger == 'correction'
-            and planning.response_mode == 'edit_plan'
-            and planning.operations
-        ):
-            force_replace_operations = True
-
         internal_metrics = session_context.get('_phase_metrics', {})
         if isinstance(internal_metrics, dict):
             context_tools_total_ms = float(internal_metrics.get('context_tools_ms') or 0.0)
@@ -536,12 +527,13 @@ class AgentService:
 
         applied_operations: list[RoadmapOperation] = []
         staged_changed = False
+        should_replace_operations = replace or planning.draft_action == 'revise'
         if planning.response_mode == 'edit_plan':
             if draft_graph_enabled:
                 active_draft = self._get_active_draft(session)
                 if active_draft.status != 'active':
                     active_draft.status = 'active'
-                if replace or force_replace_operations:
+                if should_replace_operations:
                     active_draft.operations = [
                         operation.model_copy(deep=True) for operation in operations
                     ]
@@ -570,7 +562,7 @@ class AgentService:
                     active_draft.draft_version += 1
                 self._mirror_active_draft_to_legacy_fields(session)
             else:
-                if replace or force_replace_operations:
+                if should_replace_operations:
                     session.operations = operations
                     applied_operations = operations
                     staged_changed = bool(operations)
@@ -1624,6 +1616,15 @@ class AgentService:
         except RuntimeError:
             return asyncio.run(coro)
         raise RuntimeError('Async call attempted on running event loop thread')
+
+    def ensure_draft_graph_initialized(self, session: AgentSession) -> bool:
+        return self._ensure_draft_graph_initialized(session)
+
+    def get_active_draft(self, session: AgentSession) -> DraftNode:
+        return self._get_active_draft(session)
+
+    def mirror_active_draft_to_legacy_fields(self, session: AgentSession) -> None:
+        self._mirror_active_draft_to_legacy_fields(session)
 
     def _ensure_draft_graph_initialized(self, session: AgentSession) -> bool:
         migration_applied = False

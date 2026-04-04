@@ -885,6 +885,7 @@ class AgentSafetyTests(unittest.TestCase):
                     provider_used='openai',
                     fallback_used=False,
                     provider_error_code=None,
+                    draft_action='revise',
                 )
 
         class _FakeStore:
@@ -972,6 +973,7 @@ class AgentSafetyTests(unittest.TestCase):
                     provider_used='openai',
                     fallback_used=False,
                     provider_error_code=None,
+                    draft_action='revise',
                 )
 
         class _FakeStore:
@@ -2343,7 +2345,7 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('retryable', detail)
         self.assertEqual(detail.get('upstream_status'), 503)
 
-    async def test_artifact_preview_self_heals_on_preview_not_found(self) -> None:
+    async def test_artifact_preview_preview_not_found_returns_stale_reference(self) -> None:
         session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
         session.session_id = 'session-1'
         session.base_revision = 3
@@ -2370,17 +2372,9 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
                 detail={'message': 'Preview not found'},
             )
 
-        async def _fake_preview(**_kwargs):
-            return {
-                'preview_id': 'preview-regenerated',
-                'revision_token': 'rt-2',
-                'candidate_snapshot': {'id': 'roadmap-1'},
-            }
-
         original_get_runtime = sessions_routes._get_agent_runtime_async
         original_get_session = sessions_routes._get_session_or_404_async
         original_get_preview = sessions_routes._nest_client.get_preview
-        original_preview = sessions_routes._nest_client.preview
         sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
             lambda: _async_runtime_result((_FakeStore(), object()))
         )
@@ -2388,26 +2382,26 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
             lambda _service, _session_id: _async_runtime_result(session)
         )
         sessions_routes._nest_client.get_preview = _fake_get_preview  # type: ignore[assignment]
-        sessions_routes._nest_client.preview = _fake_preview  # type: ignore[assignment]
         try:
-            result = await sessions_routes.get_artifact_preview(
-                session_id='session-1',
-                artifact_id='artifact-1',
-                request=SimpleNamespace(headers={'Authorization': 'Bearer test'}),
-            )
+            with self.assertRaises(HTTPException) as raised:
+                await sessions_routes.get_artifact_preview(
+                    session_id='session-1',
+                    artifact_id='artifact-1',
+                    request=SimpleNamespace(headers={'Authorization': 'Bearer test'}),
+                )
         finally:
             sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
             sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
             sessions_routes._nest_client.get_preview = original_get_preview  # type: ignore[assignment]
-            sessions_routes._nest_client.preview = original_preview  # type: ignore[assignment]
 
-        self.assertEqual(result.preview.get('preview_id'), 'preview-regenerated')
-        self.assertEqual(result.artifact.preview_id, 'preview-regenerated')
-        self.assertEqual(session.latest_preview_id, 'preview-regenerated')
-        self.assertEqual(session.revision_token, 'rt-2')
-        self.assertEqual(len(updated_sessions), 1)
+        exc = raised.exception
+        self.assertEqual(exc.status_code, 409)
+        self.assertIsInstance(exc.detail, dict)
+        detail = exc.detail
+        self.assertEqual(detail.get('code'), 'STALE_PREVIEW_REFERENCE')
+        self.assertEqual(len(updated_sessions), 0)
 
-    async def test_artifact_preview_self_heal_failure_returns_normalized_error(self) -> None:
+    async def test_artifact_preview_non_stale_404_returns_normalized_error(self) -> None:
         session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
         session.session_id = 'session-1'
         session.artifacts = [
@@ -2427,19 +2421,12 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
         async def _fake_get_preview(**_kwargs):
             raise HTTPException(
                 status_code=404,
-                detail={'message': 'Preview not found'},
-            )
-
-        async def _fake_preview(**_kwargs):
-            raise HTTPException(
-                status_code=503,
-                detail={'message': 'Preview regeneration failed'},
+                detail={'message': 'Artifact backing blob not found'},
             )
 
         original_get_runtime = sessions_routes._get_agent_runtime_async
         original_get_session = sessions_routes._get_session_or_404_async
         original_get_preview = sessions_routes._nest_client.get_preview
-        original_preview = sessions_routes._nest_client.preview
         sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
             lambda: _async_runtime_result((_FakeStore(), object()))
         )
@@ -2447,7 +2434,6 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
             lambda _service, _session_id: _async_runtime_result(session)
         )
         sessions_routes._nest_client.get_preview = _fake_get_preview  # type: ignore[assignment]
-        sessions_routes._nest_client.preview = _fake_preview  # type: ignore[assignment]
         try:
             with self.assertRaises(HTTPException) as raised:
                 await sessions_routes.get_artifact_preview(
@@ -2459,14 +2445,13 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
             sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
             sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
             sessions_routes._nest_client.get_preview = original_get_preview  # type: ignore[assignment]
-            sessions_routes._nest_client.preview = original_preview  # type: ignore[assignment]
 
         exc = raised.exception
-        self.assertEqual(exc.status_code, 503)
+        self.assertEqual(exc.status_code, 404)
         detail = exc.detail
         self.assertIsInstance(detail, dict)
-        self.assertEqual(detail.get('message'), 'Preview regeneration failed')
-        self.assertEqual(detail.get('upstream_status'), 503)
+        self.assertEqual(detail.get('message'), 'Artifact backing blob not found')
+        self.assertEqual(detail.get('upstream_status'), 404)
 
     async def test_send_message_auto_preview_failure_marks_preview_unavailable(self) -> None:
         session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
@@ -3278,13 +3263,13 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
                 return None
 
         class _FakeAgentService:
-            def _ensure_draft_graph_initialized(self, _session):
+            def ensure_draft_graph_initialized(self, _session):
                 return False
 
-            def _get_active_draft(self, _session):
+            def get_active_draft(self, _session):
                 return _session.metadata.drafts[_session.metadata.active_draft_id]
 
-            def _mirror_active_draft_to_legacy_fields(self, _session):
+            def mirror_active_draft_to_legacy_fields(self, _session):
                 active = _session.metadata.drafts[_session.metadata.active_draft_id]
                 _session.operations = [op.model_copy(deep=True) for op in active.operations]
                 _session.staged_operations_version = active.draft_version
@@ -3415,6 +3400,74 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
             sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
             sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
             sessions_routes._nest_client.commit = original_commit  # type: ignore[assignment]
+
+        exc = raised.exception
+        self.assertEqual(exc.status_code, 409)
+        self.assertIsInstance(exc.detail, dict)
+        detail = exc.detail
+        self.assertEqual(detail.get('code'), 'STALE_PREVIEW_REFERENCE')
+
+    async def test_commit_session_preview_not_found_returns_stale_reference_without_regeneration(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.latest_preview_id = 'preview-missing-upstream'
+        session.operations = [
+            RoadmapOperation(
+                op='update_node',
+                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                patch={'title': 'Platform Foundation 1'},
+            )
+        ]
+        preview_fingerprint = sessions_routes._compute_preview_fingerprint(
+            draft_id='session-1:legacy',
+            draft_version=session.staged_operations_version,
+            operations=session.operations,
+            base_revision=session.base_revision,
+        )
+        session.metadata.preview_fingerprint_bindings['preview-missing-upstream'] = (
+            sessions_routes.PreviewFingerprintBinding(
+                preview_id='preview-missing-upstream',
+                draft_id='session-1:legacy',
+                draft_version=session.staged_operations_version,
+                base_revision=session.base_revision,
+                preview_fingerprint=preview_fingerprint,
+            )
+        )
+
+        class _FakeStore:
+            def update(self, _session):
+                raise AssertionError('Store update should not run when commit preview is missing upstream')
+
+        async def _fake_commit(**_kwargs):
+            raise HTTPException(status_code=404, detail={'message': 'Preview not found'})
+
+        async def _fake_preview(**_kwargs):
+            raise AssertionError('Preview regeneration should not run in commit path anymore')
+
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_commit = sessions_routes._nest_client.commit
+        original_preview = sessions_routes._nest_client.preview
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), object()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.commit = _fake_commit  # type: ignore[assignment]
+        sessions_routes._nest_client.preview = _fake_preview  # type: ignore[assignment]
+        try:
+            with self.assertRaises(HTTPException) as raised:
+                await sessions_routes.commit_session(
+                    session_id='session-1',
+                    payload=sessions_routes.CommitRequest(preview_id='preview-missing-upstream'),
+                    request=SimpleNamespace(headers={}),
+                )
+        finally:
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.commit = original_commit  # type: ignore[assignment]
+            sessions_routes._nest_client.preview = original_preview  # type: ignore[assignment]
 
         exc = raised.exception
         self.assertEqual(exc.status_code, 409)
