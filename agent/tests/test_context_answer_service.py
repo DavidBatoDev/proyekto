@@ -99,16 +99,7 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
                 }
             return {'error': {'code': 'UNKNOWN'}}
 
-        service, cache, _provider, build_key = self._service(execute_tool)
-        max_repeat = max(1, int(self.settings.max_repeated_tool_calls_per_signature))
-        tool_sequence = [
-            ('resolve_node_reference', {'label': 'Platform Foundation'})
-            for _ in range(max_repeat + 1)
-        ]
-        service._provider_orchestrator.call = self._orchestrator_call_with_fake_adapter(
-            tool_sequence=tool_sequence,
-            final_answer='unreachable',
-        )
+        service, cache, provider, build_key = self._service(execute_tool)
         session_context = {
             'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
             'trace_id': 'trace-ambiguous',
@@ -130,11 +121,14 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             intent_type='question',
         )
 
-        self.assertEqual(calls['resolve'], 2 * max_repeat)
-        self.assertIn('avoid looping', first['assistant_message'])
-        self.assertEqual(first.get('provider_error_code'), 'discovery_repeat_limit_exhausted')
-        self.assertIn('avoid looping', second['assistant_message'])
-        self.assertEqual(second.get('provider_error_code'), 'discovery_repeat_limit_exhausted')
+        self.assertEqual(calls['resolve'], 2)
+        self.assertEqual(provider.calls, 0)
+        self.assertIn('multiple epics', first['assistant_message'])
+        self.assertIsNone(first.get('provider_error_code'))
+        self.assertIn('multiple epics', second['assistant_message'])
+        self.assertIsNone(second.get('provider_error_code'))
+        self.assertEqual(first.get('route_lane'), 'deterministic_fastpath')
+        self.assertEqual(second.get('route_lane'), 'deterministic_fastpath')
         cache_key = build_key(
             roadmap_id=session_context['roadmap_id'],
             user_message=message,
@@ -161,21 +155,7 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
                 return {'children': [{'id': 'f1', 'type': 'feature', 'title': 'Authentication'}]}
             return {'error': {'code': 'UNKNOWN'}}
 
-        service, _cache, _provider, _build_key = self._service(execute_tool)
-        service._provider_orchestrator.call = self._orchestrator_call_with_fake_adapter(
-            tool_sequence=[
-                ('resolve_node_reference', {'label': 'Platform Foundation'}),
-                (
-                    'get_features',
-                    {
-                        'epic_id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                        'limit': 100,
-                        'offset': 0,
-                    },
-                ),
-            ],
-            final_answer='Features under "Platform Foundation":\n- Authentication',
-        )
+        service, _cache, provider, _build_key = self._service(execute_tool)
         session_context = {
             'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
             'trace_id': 'trace-terminal',
@@ -201,9 +181,12 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
         self.assertEqual(second['assistant_message'], first['assistant_message'])
         self.assertEqual(calls['resolve'], 1)
         self.assertEqual(calls['features'], 1)
-        self.assertEqual(second.get('provider_used'), 'openai')
+        self.assertEqual(provider.calls, 0)
+        self.assertEqual(second.get('provider_used'), 'rule_based')
         self.assertFalse(second.get('fallback_used'))
         self.assertIsNone(second.get('provider_error_code'))
+        self.assertEqual(second.get('parse_mode'), 'deterministic_context_features')
+        self.assertEqual(second.get('route_lane'), 'deterministic_fastpath')
 
     def test_provider_response_cache_preserves_provider_metadata(self) -> None:
         def execute_tool(_name: str, _args: dict, _context: dict):
@@ -299,6 +282,194 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
         self.assertEqual(provider.calls, 0)
         self.assertEqual(response.get('parse_mode'), 'deterministic_context_my_tasks')
         self.assertIn('Tasks assigned to Alice (open):', response.get('assistant_message', ''))
+
+    def test_my_tasks_deterministic_response_bypasses_cache(self) -> None:
+        calls = {'my_tasks': 0}
+
+        def execute_tool(name: str, args: dict, _context: dict):
+            if name == 'get_tasks_assigned_to_me':
+                calls['my_tasks'] += 1
+                self.assertEqual(args.get('status'), 'open')
+                if calls['my_tasks'] == 1:
+                    return {'tasks': []}
+                return {
+                    'tasks': [
+                        {
+                            'id': 't2',
+                            'type': 'task',
+                            'title': 'Review release checklist',
+                            'status': 'in_progress',
+                            'feature_title': 'Release Ops',
+                            'epic_title': 'Delivery Excellence',
+                        }
+                    ]
+                }
+            return {'error': {'code': 'UNKNOWN'}}
+
+        service, _cache, provider, _build_key = self._service(execute_tool)
+        session_context = {
+            'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+            'trace_id': 'trace-my-tasks-no-cache',
+            'actor_context': {
+                'actor_id': 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+                'display_name': 'Alice',
+                'roadmap_role': 'editor',
+                'actor_context_source': 'backend_context_actor',
+            },
+        }
+        message = 'What are my pending tasks?'
+
+        first = service.generate(
+            user_message=message,
+            system_prompt='system',
+            session_context=session_context,
+            history_messages=[],
+            intent_type='roadmap_query',
+        )
+        second = service.generate(
+            user_message=message,
+            system_prompt='system',
+            session_context=session_context,
+            history_messages=[],
+            intent_type='roadmap_query',
+        )
+
+        self.assertEqual(provider.calls, 0)
+        self.assertEqual(calls['my_tasks'], 2)
+        self.assertIn('no open tasks', first.get('assistant_message', '').lower())
+        self.assertIn('review release checklist', second.get('assistant_message', '').lower())
+
+    def test_compound_my_tasks_query_routes_to_llm_and_bypasses_cache(self) -> None:
+        calls = {'provider': 0, 'my_tasks': 0, 'summary': 0}
+        roadmap_id = '55e431e2-e416-468c-a973-94d97280e97d'
+
+        def execute_tool(name: str, args: dict, _context: dict):
+            if name == 'get_tasks_assigned_to_me':
+                calls['my_tasks'] += 1
+                self.assertEqual(args.get('roadmap_id'), roadmap_id)
+                self.assertEqual(args.get('status'), 'open')
+                return {
+                    'tasks': [
+                        {
+                            'id': 't1',
+                            'type': 'task',
+                            'title': 'Setup persona switching logic',
+                            'status': 'todo',
+                            'feature_title': 'Authentication System',
+                            'epic_title': 'Platform Foundation',
+                        }
+                    ]
+                }
+            if name == 'get_roadmap_summary':
+                calls['summary'] += 1
+                self.assertEqual(args.get('roadmap_id'), roadmap_id)
+                return {
+                    'roadmap_id': roadmap_id,
+                    'epics': [
+                        {
+                            'id': 'e1',
+                            'title': 'Platform Foundation',
+                            'status': 'in_progress',
+                            'feature_count': 3,
+                        }
+                    ],
+                }
+            return {'error': {'code': 'UNKNOWN'}}
+
+        service, _cache, _provider, _build_key = self._service(execute_tool)
+
+        def provider_call(operation, trace_context=None):  # noqa: ANN001
+            calls['provider'] += 1
+
+            class _Adapter:
+                def answer_with_tools(
+                    self,
+                    *,
+                    system_prompt,
+                    question_prompt,
+                    history_messages,
+                    tools,
+                    tool_executor,
+                    max_tool_turns,
+                ):
+                    tool_executor(
+                        'get_tasks_assigned_to_me',
+                        {'roadmap_id': roadmap_id, 'status': 'open', 'limit': 100},
+                    )
+                    tool_executor('get_roadmap_summary', {'roadmap_id': roadmap_id})
+                    return (
+                        f'provider-call-{calls["provider"]}: '
+                        'You have 1 open task and the roadmap has 1 active epic.'
+                    )
+
+            value = operation(_Adapter())
+            return SimpleNamespace(
+                value=value,
+                provider_used='openai',
+                fallback_used=False,
+                provider_error_code=None,
+                tokens_input=50,
+                tokens_output=20,
+                tokens_total=70,
+            )
+
+        service._provider_orchestrator.call = provider_call  # type: ignore[assignment]
+        session_context = {
+            'roadmap_id': roadmap_id,
+            'trace_id': 'trace-compound-query',
+            'actor_context': {
+                'actor_id': 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+                'display_name': 'Alice',
+                'roadmap_role': 'editor',
+                'actor_context_source': 'backend_context_actor',
+            },
+        }
+        message = 'What are my pending tasks and tell me more about my roadmap'
+
+        first = service.generate(
+            user_message=message,
+            system_prompt='system',
+            session_context=session_context,
+            history_messages=[],
+            intent_type='roadmap_query',
+        )
+        second = service.generate(
+            user_message=message,
+            system_prompt='system',
+            session_context=session_context,
+            history_messages=[],
+            intent_type='roadmap_query',
+        )
+
+        self.assertEqual(calls['provider'], 2)
+        self.assertEqual(calls['my_tasks'], 2)
+        self.assertEqual(calls['summary'], 2)
+        self.assertEqual(first.get('route_lane'), 'discovery_lane')
+        self.assertEqual(first.get('parse_mode'), 'openai_context_tools')
+        self.assertEqual(first.get('provider_used'), 'openai')
+        self.assertIn('provider-call-1', first.get('assistant_message', ''))
+        self.assertIn('provider-call-2', second.get('assistant_message', ''))
+
+    def test_compound_router_detects_my_tasks_plus_roadmap_meta_clause(self) -> None:
+        should_route = ContextAnswerService._should_route_compound_query_to_llm(
+            user_message='What are my pending tasks and tell me more about my roadmap',
+            matched_pending_kind='my_tasks',
+        )
+        self.assertTrue(should_route)
+
+    def test_compound_router_ignores_single_capability_with_qualifier(self) -> None:
+        should_route = ContextAnswerService._should_route_compound_query_to_llm(
+            user_message='What are my pending tasks and include IDs',
+            matched_pending_kind='my_tasks',
+        )
+        self.assertFalse(should_route)
+
+    def test_compound_router_detects_cross_capability_clauses(self) -> None:
+        should_route = ContextAnswerService._should_route_compound_query_to_llm(
+            user_message='Show features of Platform Foundation and tasks of Authentication System',
+            matched_pending_kind='features_of_epic',
+        )
+        self.assertTrue(should_route)
 
     def test_my_tasks_rich_query_uses_synthesis(self) -> None:
         calls = {'my_tasks': 0}

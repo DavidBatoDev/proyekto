@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -19,6 +20,7 @@ from .deterministic_context import (
     try_deterministic_list_answer,
 )
 from .deterministic_intents import (
+    DeterministicContextIntent,
     match_deterministic_context_intent,
     should_include_ids,
 )
@@ -70,6 +72,25 @@ class ContextAnswerService:
         trace_id = session_context.get('trace_id')
         context_tools = get_context_tools()
         fallback_response = self._chat_fallback_builder(user_message, intent_type)
+        deterministic_match = match_deterministic_context_intent(user_message)
+        skip_cache_for_my_tasks = bool(
+            deterministic_match is not None
+            and deterministic_match[0].pending_kind == 'my_tasks'
+        )
+        if deterministic_match is not None and self._should_route_compound_query_to_llm(
+            user_message=user_message,
+            matched_pending_kind=deterministic_match[0].pending_kind,
+        ):
+            log_event(
+                self._logger,
+                'deterministic_fastpath_bypass',
+                settings=self._settings,
+                trace_id=trace_id,
+                roadmap_id=session_context.get('roadmap_id'),
+                reason='compound_query',
+                matched_capability=deterministic_match[0].pending_kind,
+            )
+            deterministic_match = None
         cache_key = self._build_context_cache_key(
             roadmap_id=str(session_context.get('roadmap_id') or ''),
             user_message=user_message,
@@ -83,35 +104,41 @@ class ContextAnswerService:
                 else None
             ),
         )
-        cached_answer = self._context_answer_cache.get(cache_key)
-        if cached_answer:
+        if not skip_cache_for_my_tasks:
+            cached_answer = self._context_answer_cache.get(cache_key)
+            if cached_answer:
+                log_event(
+                    self._logger,
+                    'cache_hit',
+                    settings=self._settings,
+                    trace_id=trace_id,
+                    cache_scope='context_answer',
+                    roadmap_id=session_context.get('roadmap_id'),
+                )
+                return self._build_cached_response(cached_answer)
             log_event(
                 self._logger,
-                'cache_hit',
+                'cache_miss',
                 settings=self._settings,
                 trace_id=trace_id,
                 cache_scope='context_answer',
                 roadmap_id=session_context.get('roadmap_id'),
             )
-            return self._build_cached_response(cached_answer)
-        log_event(
-            self._logger,
-            'cache_miss',
-            settings=self._settings,
-            trace_id=trace_id,
-            cache_scope='context_answer',
-            roadmap_id=session_context.get('roadmap_id'),
-        )
-        deterministic_match = match_deterministic_context_intent(user_message)
+        else:
+            log_event(
+                self._logger,
+                'cache_bypass',
+                settings=self._settings,
+                trace_id=trace_id,
+                cache_scope='context_answer',
+                roadmap_id=session_context.get('roadmap_id'),
+                reason='my_tasks',
+            )
         if deterministic_match is not None:
             intent, label = deterministic_match
-            if intent.pending_kind != 'my_tasks':
-                intent = None  # type: ignore[assignment]
-            if intent is None:
-                pass
-            else:
-                status_scope_override: str | None = None
-                status_scope_source = 'deterministic'
+            status_scope_override: str | None = None
+            status_scope_source = 'deterministic'
+            if intent.pending_kind == 'my_tasks':
                 inferred_scope, confident = assess_my_tasks_status_confidence(user_message)
                 if confident and inferred_scope is not None:
                     status_scope_override = inferred_scope
@@ -158,17 +185,19 @@ class ContextAnswerService:
                     if isinstance(discovered_scope, str) and discovered_scope in {'open', 'all'}:
                         status_scope_override = discovered_scope
                         status_scope_source = 'discovery'
-                deterministic_outcome = self._try_deterministic_list_answer(
-                    intent=intent,
-                    label=label,
-                    include_ids=should_include_ids(user_message),
-                    user_message=user_message,
-                    status_scope_override=status_scope_override,
-                    status_scope_source=status_scope_source,
-                    session_context=session_context,
-                    trace_id=trace_id,
-                )
-                if deterministic_outcome is not None:
+
+            deterministic_outcome = self._try_deterministic_list_answer(
+                intent=intent,
+                label=label,
+                include_ids=should_include_ids(user_message),
+                user_message=user_message,
+                status_scope_override=status_scope_override,
+                status_scope_source=status_scope_source,
+                session_context=session_context,
+                trace_id=trace_id,
+            )
+            if deterministic_outcome is not None:
+                if intent.pending_kind == 'my_tasks':
                     my_tasks_response = self._maybe_synthesize_my_tasks_response(
                         intent=intent,
                         deterministic_outcome=deterministic_outcome,
@@ -177,34 +206,40 @@ class ContextAnswerService:
                         session_context=session_context,
                     )
                     if my_tasks_response is not None:
-                        self._cache_response_if_safe(cache_key, my_tasks_response)
+                        if not skip_cache_for_my_tasks:
+                            self._cache_response_if_safe(cache_key, my_tasks_response)
                         return my_tasks_response
-                    response = {
-                        'assistant_message': deterministic_outcome.answer,
-                        'planned_operations': [],
-                        'response_mode': 'chat',
-                        'preview_recommended': False,
-                        'parse_mode': intent.parse_mode,
-                        'provider_used': 'rule_based',
-                        'fallback_used': False,
-                        'provider_error_code': None,
-                        'pending_context_resolution': deterministic_outcome.pending_context_resolution,
-                        'clear_pending_context_resolution': deterministic_outcome.clear_pending_context_resolution,
-                        'route_lane': 'deterministic_fastpath',
-                        'discovery_calls_used': 0,
-                        'discovery_repeat_hits': 0,
-                        'discovery_stop_reason': 'resolved',
-                        'clarifier_returned': False,
-                        'discovery_contract': self._build_discovery_contract(
-                            capability=intent.pending_kind,
-                            resolved_targets=[],
-                            status_scope=status_scope_override,
-                            needs_clarification=False,
-                            clarifier_prompt=None,
+                response = {
+                    'assistant_message': deterministic_outcome.answer,
+                    'planned_operations': [],
+                    'response_mode': 'chat',
+                    'preview_recommended': False,
+                    'parse_mode': intent.parse_mode,
+                    'provider_used': 'rule_based',
+                    'fallback_used': False,
+                    'provider_error_code': None,
+                    'pending_context_resolution': deterministic_outcome.pending_context_resolution,
+                    'clear_pending_context_resolution': deterministic_outcome.clear_pending_context_resolution,
+                    'route_lane': 'deterministic_fastpath',
+                    'discovery_calls_used': 0,
+                    'discovery_repeat_hits': 0,
+                    'discovery_stop_reason': 'resolved',
+                    'clarifier_returned': False,
+                    'discovery_contract': self._build_discovery_contract(
+                        capability=intent.pending_kind,
+                        resolved_targets=[],
+                        status_scope=(
+                            status_scope_override
+                            if intent.pending_kind == 'my_tasks'
+                            else None
                         ),
-                    }
+                        needs_clarification=False,
+                        clarifier_prompt=None,
+                    ),
+                }
+                if not skip_cache_for_my_tasks:
                     self._cache_response_if_safe(cache_key, response)
-                    return response
+                return response
 
         # Discovery lane is fixed-budget: provider loop turns should not exceed
         # the configured discovery call budget.
@@ -272,7 +307,8 @@ class ContextAnswerService:
                     clarifier_prompt=None,
                 ),
             }
-            self._context_answer_cache.set(cache_key, self._cache_payload(response))
+            if not skip_cache_for_my_tasks:
+                self._context_answer_cache.set(cache_key, self._cache_payload(response))
             return response
         except ProviderAdapterError as exc:
             if exc.code in {
@@ -607,6 +643,72 @@ class ContextAnswerService:
             return self._execute_context_tool(tool_name, args, session_context)
 
         return _guarded_execute, discovery_state
+
+    @staticmethod
+    def _should_route_compound_query_to_llm(
+        *,
+        user_message: str,
+        matched_pending_kind: str,
+    ) -> bool:
+        normalized = ' '.join(user_message.lower().split())
+        if not normalized:
+            return False
+        if normalized.count('?') > 1:
+            return True
+
+        clauses = ContextAnswerService._split_query_clauses(normalized)
+        if len(clauses) <= 1:
+            return False
+
+        detected_capabilities: set[str] = set()
+        for clause in clauses:
+            deterministic_clause_match = match_deterministic_context_intent(clause)
+            if deterministic_clause_match is not None:
+                detected_capabilities.add(deterministic_clause_match[0].pending_kind)
+                continue
+            if ContextAnswerService._looks_like_roadmap_meta_clause(clause):
+                detected_capabilities.add('roadmap_meta')
+
+        if not detected_capabilities:
+            return False
+        if len(detected_capabilities) > 1:
+            return True
+
+        only_capability = next(iter(detected_capabilities))
+        return only_capability != matched_pending_kind
+
+    @staticmethod
+    def _split_query_clauses(normalized_message: str) -> list[str]:
+        split_pattern = (
+            r'\?|;|'
+            r'(?<!\d)\.(?!\d)|'
+            r'\b(?:and\s+then|as\s+well\s+as|along\s+with|in\s+addition(?:\s+to)?|also|plus|and|then)\b'
+        )
+        raw_parts = re.split(split_pattern, normalized_message)
+        clauses: list[str] = []
+        for part in raw_parts:
+            clause = part.strip(' ,:-')
+            if len(clause) >= 4:
+                clauses.append(clause)
+        return clauses
+
+    @staticmethod
+    def _looks_like_roadmap_meta_clause(clause: str) -> bool:
+        return bool(
+            re.search(
+                r'\b(?:'
+                r'tell\s+me\s+more'
+                r'|about\s+(?:my|this|the)\s+roadmap'
+                r'|roadmap\s+(?:overview|summary|status|health|progress)'
+                r'|overall\s+roadmap'
+                r'|roadmap\s+details?'
+                r'|roadmap\s+progress'
+                r'|overview'
+                r'|summary'
+                r')\b',
+                clause,
+            )
+        )
 
     @staticmethod
     def _tool_signature(tool_name: str, args: dict[str, Any]) -> str:

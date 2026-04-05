@@ -18,7 +18,16 @@ class Message(BaseModel):
     created_at: datetime = Field(default_factory=_utcnow)
 
 
-IntentType = Literal['smalltalk', 'question', 'roadmap_edit', 'unclear']
+IntentType = Literal[
+    'smalltalk',
+    'general_question',
+    'roadmap_query',
+    'roadmap_plan',
+    'roadmap_edit',
+    'confirm_action',
+    'unclear',
+    'question',
+]
 ResponseMode = Literal['chat', 'edit_plan']
 ArtifactType = Literal['roadmap_preview']
 ProviderUsed = Literal['openai', 'rule_based']

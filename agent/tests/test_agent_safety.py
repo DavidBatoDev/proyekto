@@ -3106,14 +3106,14 @@ class AgentSafetyTests(unittest.TestCase):
 
         class _FakePlanner:
             def preview_intent_classification(self, user_message, session_context=None):
-                return ('roadmap_question', True)
+                return ('roadmap_query', True)
 
             def plan(self, user_message, existing_operations, session_context=None):
                 return PlanningResult(
                     assistant_message='Here are your open tasks.',
                     operations=[],
                     parse_mode='rule_based_chat',
-                    intent_type='roadmap_question',
+                    intent_type='roadmap_query',
                     response_mode='chat',
                     preview_recommended=False,
                     provider_used='rule_based',
@@ -3146,7 +3146,7 @@ class AgentSafetyTests(unittest.TestCase):
         session = AgentSession(roadmap_id='roadmap-1')
         outcome = service.plan_message(
             session=session,
-            user_message='What tasks are assigned to me?',
+            user_message='What are my pending tasks?',
             replace=False,
             auth_header='Bearer test-token',
             trace_id='trace-actor-dependent',
@@ -4963,6 +4963,76 @@ class PlannerContextSafetyTests(unittest.TestCase):
             'Reassign all tasks in this roadmap to me regardless of existing owners'
         )
         self.assertEqual(intent, 'roadmap_edit')
+
+    def test_heuristic_intent_classifies_confirm_action(self) -> None:
+        planner = self._planner()
+        intent = planner._heuristic_intent('yes go ahead')
+        self.assertEqual(intent, 'confirm_action')
+
+    def test_classify_intent_promotes_roadmap_question_to_roadmap_query(self) -> None:
+        planner = self._planner()
+        state = planner._classify_intent(
+            {
+                'user_message': 'What tasks are overdue?',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-roadmap-query-promotion',
+                },
+            }
+        )
+        self.assertEqual(state.get('intent_type'), 'roadmap_query')
+        self.assertTrue(bool(state.get('is_roadmap_question')))
+
+    def test_compose_dynamic_system_prompt_routes_roadmap_query_mode(self) -> None:
+        planner = self._planner()
+        state = planner._compose_dynamic_system_prompt(
+            {
+                'intent_type': 'roadmap_query',
+                'existing_operations': [],
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-query-mode',
+                },
+            }
+        )
+
+        self.assertEqual(state.get('response_mode'), 'chat')
+        self.assertEqual(state.get('tool_mode'), 'context_answer')
+        self.assertTrue(str(state.get('system_prompt') or '').startswith('query:'))
+
+    def test_compose_dynamic_system_prompt_routes_roadmap_plan_mode(self) -> None:
+        planner = self._planner()
+        state = planner._compose_dynamic_system_prompt(
+            {
+                'intent_type': 'roadmap_plan',
+                'existing_operations': [],
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-plan-mode',
+                },
+            }
+        )
+
+        self.assertEqual(state.get('response_mode'), 'edit_plan')
+        self.assertEqual(state.get('tool_mode'), 'plan_only')
+        self.assertTrue(str(state.get('system_prompt') or '').startswith('plan:'))
+
+    def test_compose_dynamic_system_prompt_confirm_without_context_stays_chat(self) -> None:
+        planner = self._planner()
+        state = planner._compose_dynamic_system_prompt(
+            {
+                'intent_type': 'confirm_action',
+                'existing_operations': [],
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-confirm-no-context',
+                },
+            }
+        )
+
+        self.assertEqual(state.get('response_mode'), 'chat')
+        self.assertEqual(state.get('tool_mode'), 'none')
+        self.assertTrue(str(state.get('system_prompt') or '').startswith('chat:'))
 
     def test_resolve_node_reference_uses_normalized_query_variant(self) -> None:
         planner = self._planner()

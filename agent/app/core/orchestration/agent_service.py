@@ -26,6 +26,7 @@ from app.core.contracts.sessions import (
 from app.core.contracts.sessions import AgentSession, IntentType, ProviderUsed, ResponseMode
 from app.core.llm.clarifier_contract import build_clarifier_contract
 from app.core.llm.client import LLMPlanner, PlanningResult
+from app.core.llm.deterministic_intents import match_deterministic_context_intent
 from app.core.logging_utils import log_event
 from app.core.nest_client import NestRoadmapClient
 from app.core.orchestration.edit_resolver import (
@@ -1576,8 +1577,17 @@ class AgentService:
 
     def _is_actor_context_required_message(self, user_message: str) -> bool:
         lowered = user_message.lower()
+        if not lowered.strip():
+            return False
+
+        deterministic_match = match_deterministic_context_intent(user_message)
+        if deterministic_match is not None:
+            deterministic_intent, _ = deterministic_match
+            if deterministic_intent.pending_kind == 'my_tasks':
+                return True
+
         actor_required_patterns = (
-            r'\bmy\s+tasks\b',
+            r'\bmy(?:\s+\w+){0,2}\s+tasks?\b',
             r'\bassigned\s+to\s+me\b',
             r'\btasks?\s+for\s+me\b',
             r'\bfor\s+me\b',

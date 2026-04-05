@@ -20,7 +20,14 @@ class PromptRepository:
 
     def build_system_prompt(self, mode: str, context: dict[str, Any]) -> str:
         base_prompt = self.load('base_system.md')
-        mode_prompt = self.load('edit_mode.md') if mode == 'edit' else self.load('chat_mode.md')
+        mode_templates = {
+            'chat': 'chat_mode.md',
+            'query': 'query_mode.md',
+            'plan': 'plan_mode.md',
+            'edit': 'edit_mode.md',
+        }
+        template_name = mode_templates.get(mode, 'chat_mode.md')
+        mode_prompt = self.load(template_name)
         context_payload = self._format_context(context)
         return (
             f'{base_prompt}\n\n'

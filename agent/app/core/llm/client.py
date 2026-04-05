@@ -61,7 +61,7 @@ class PlannerState(TypedDict, total=False):
     pending_context_resolution: dict[str, Any] | None
     clear_pending_context_resolution: bool
     is_roadmap_question: bool
-    tool_mode: Literal['none', 'context_answer', 'edit_plan']
+    tool_mode: Literal['none', 'context_answer', 'edit_plan', 'plan_only']
     trace_id: str | None
     clarifier_action: str | None
     clarifier_reason: str | None
@@ -256,7 +256,7 @@ class LLMPlanner:
                 needs_more_info = False
             if stop_reason is None:
                 stop_reason = 'ready_to_stage' if operations else 'awaiting_user_input'
-        elif intent_type == 'roadmap_edit':
+        elif intent_type in {'roadmap_edit', 'confirm_action', 'roadmap_plan'}:
             if draft_action is None:
                 draft_action = 'continue'
             if tool_plan is None:
@@ -331,18 +331,21 @@ class LLMPlanner:
             user_message=user_message,
             session_context=session_context,
         )
+        routed_intent: IntentType = heuristic_intent
+        if heuristic_intent in {'general_question', 'question', 'unclear'} and is_roadmap_question:
+            routed_intent = 'roadmap_query'
         parse_mode = 'heuristic_prerouter'
         log_event(
             self._logger,
             'intent_classified',
             settings=self._settings,
             trace_id=trace_id,
-            intent_type=heuristic_intent,
+            intent_type=routed_intent,
             is_roadmap_question=is_roadmap_question,
             parse_mode=parse_mode,
         )
         return {
-            'intent_type': heuristic_intent,
+            'intent_type': routed_intent,
             'parse_mode': parse_mode,
             'provider_used': 'rule_based',
             'fallback_used': False,
@@ -354,9 +357,34 @@ class LLMPlanner:
         intent_type = state.get('intent_type', 'unclear')
         if state.get('force_edit_continuation'):
             intent_type = 'roadmap_edit'
-        mode = 'edit' if intent_type == 'roadmap_edit' else 'chat'
         session_context = state.get('session_context', {})
         trace_id = session_context.get('trace_id')
+        has_edit_continuation_context = bool(state.get('force_edit_continuation')) or bool(
+            state.get('existing_operations')
+        )
+
+        tool_mode: Literal['none', 'context_answer', 'edit_plan', 'plan_only']
+        if intent_type == 'confirm_action' and not has_edit_continuation_context:
+            mode = 'chat'
+            response_mode = 'chat'
+            tool_mode = 'none'
+        elif intent_type in {'roadmap_edit', 'confirm_action'}:
+            mode = 'edit'
+            response_mode: ResponseMode = 'edit_plan'
+            tool_mode = 'edit_plan'
+        elif intent_type == 'roadmap_plan':
+            mode = 'plan'
+            response_mode = 'edit_plan'
+            tool_mode = 'plan_only'
+        elif intent_type == 'roadmap_query' or state.get('is_roadmap_question'):
+            mode = 'query'
+            response_mode = 'chat'
+            tool_mode = 'context_answer'
+        else:
+            mode = 'chat'
+            response_mode = 'chat'
+            tool_mode = 'none'
+
         prompt_context = {
             'roadmap_id': session_context.get('roadmap_id'),
             'base_revision': session_context.get('base_revision'),
@@ -365,6 +393,7 @@ class LLMPlanner:
             'recent_messages': session_context.get('recent_messages', []),
             'actor_context': session_context.get('actor_context'),
             'intent_type': intent_type,
+            'prompt_mode': mode,
         }
         react_loop_turn = session_context.get('_react_loop_turn')
         if react_loop_turn is not None:
@@ -379,14 +408,6 @@ class LLMPlanner:
         if react_tool_observation_summary is not None:
             prompt_context['react_tool_observation_summary'] = react_tool_observation_summary
         system_prompt = self._prompt_repository.build_system_prompt(mode=mode, context=prompt_context)
-        response_mode: ResponseMode = 'edit_plan' if intent_type == 'roadmap_edit' else 'chat'
-        tool_mode: Literal['none', 'context_answer', 'edit_plan']
-        if intent_type == 'roadmap_edit':
-            tool_mode = 'edit_plan'
-        elif state.get('is_roadmap_question'):
-            tool_mode = 'context_answer'
-        else:
-            tool_mode = 'none'
 
         log_event(
             self._logger,
@@ -406,7 +427,7 @@ class LLMPlanner:
 
     def _route_from_intent(self, state: PlannerState) -> str:
         tool_mode = state.get('tool_mode', 'none')
-        if tool_mode == 'edit_plan':
+        if tool_mode in {'edit_plan', 'plan_only'}:
             return 'plan_operations'
         if tool_mode == 'context_answer':
             return 'generate_context_answer'
@@ -472,7 +493,7 @@ class LLMPlanner:
             system_prompt=system_prompt,
             session_context=session_context,
             history_messages=history_messages,
-            intent_type=state.get('intent_type', 'question'),
+            intent_type=state.get('intent_type', 'roadmap_query'),
         )
 
     def _get_context_answer_service(self) -> ContextAnswerService:
@@ -492,12 +513,15 @@ class LLMPlanner:
 
     def _plan_operations(self, state: PlannerState) -> PlannerState:
         user_message = state.get('user_message', '')
+        intent_type = state.get('intent_type', 'roadmap_edit')
         existing_operations = state.get('existing_operations', [])
         system_prompt = state.get('system_prompt', '')
         session_context = state.get('session_context', {})
         history_messages = self._build_history_messages(session_context)
         trace_id = session_context.get('trace_id')
-        tool_definitions = get_edit_mode_tools()
+        tool_definitions = (
+            get_operation_tools() if intent_type == 'roadmap_plan' else get_edit_mode_tools()
+        )
         total_edit_turns = max(1, int(self._settings.max_edit_tool_turns))
         react_loop_turn_raw = session_context.get('_react_loop_turn')
         react_loop_turn = 1
@@ -506,7 +530,9 @@ class LLMPlanner:
                 react_loop_turn = max(int(react_loop_turn_raw), 1)
             except (TypeError, ValueError):
                 react_loop_turn = 1
-        if react_loop_turn <= 1:
+        if intent_type == 'roadmap_plan':
+            edit_turns = 1
+        elif react_loop_turn <= 1:
             edit_turns = total_edit_turns
         else:
             # Follow-up turns should bias toward closure with existing observations.
@@ -604,10 +630,25 @@ class LLMPlanner:
             and prior_provider_error_code == 'max_tool_turns_exceeded'
             and bool(resolved_node_ids or effective_tool_summary)
         )
-        if followup_closed_world_turn:
+        if followup_closed_world_turn or intent_type == 'roadmap_plan':
             tool_definitions = get_operation_tools()
 
-        if followup_closed_world_turn:
+        if intent_type == 'roadmap_plan':
+            planner_prompt = (
+                'You are in roadmap planning mode.\n'
+                'Call plan_roadmap_operations exactly once.\n'
+                'Generate safe roadmap structure with epic -> feature -> task hierarchy.\n'
+                'Only stage operations that are valid with available IDs and parent constraints.\n'
+                'If required IDs are missing, call plan_roadmap_operations with an empty operations list and place a concise structured plan in assistant_message.\n'
+                'Do not call resolve_node_reference, get_children, or other discovery tools in this mode.\n\n'
+                'Current staged operations:\n'
+                f'{staged_operations_payload}\n\n'
+                'Roadmap ID:\n'
+                f'{roadmap_id_value}\n\n'
+                'User request:\n'
+                f'{user_message}'
+            )
+        elif followup_closed_world_turn:
             planner_prompt = (
                 'You are in edit planning mode, follow-up ReAct turn.\n'
                 f'ReAct loop turn: {react_loop_turn}.\n'
@@ -1695,14 +1736,50 @@ class LLMPlanner:
             'good evening',
         }:
             return 'smalltalk'
+        if self._looks_like_confirm_action(text):
+            return 'confirm_action'
+        if self._looks_like_roadmap_plan_request(text):
+            return 'roadmap_plan'
         if re.search(
             r'\b(add|create|move|delete|remove|update|mark|shift|link|unlink|rename|retitle|change|assign|reassign|unassign)\b',
             text,
         ):
             return 'roadmap_edit'
         if text.endswith('?') or re.search(r'^(what|why|how|when|where|can you|could you|do we)\b', text):
-            return 'question'
+            return 'general_question'
+        if re.search(r'\b(list|show|tell(?:\s+me)?)\b.*\b(roadmap|epic|feature|task|milestone)\b', text):
+            return 'general_question'
         return 'unclear'
+
+    def _looks_like_confirm_action(self, normalized_text: str) -> bool:
+        return bool(
+            re.fullmatch(
+                r"(?:"
+                r"(?:ok|okay|yes|yep)(?:\s+(?:please|kindly))?(?:\s+(?:confirm|proceed|go ahead|do it|apply))?"
+                r"|(?:confirm|proceed|go ahead|do it|let'?s do it|apply(?: those)? changes?)"
+                r")"
+                r"(?:\s+(?:please|kindly|now))?"
+                r"(?:\s+(?:with\s+)?(?:this|it|that))?"
+                r"(?:\s+(?:please|kindly|now))?",
+                normalized_text,
+            )
+        )
+
+    def _looks_like_roadmap_plan_request(self, normalized_text: str) -> bool:
+        return bool(
+            re.search(
+                r'\b(?:'
+                r'(?:create|build|draft|design)\s+(?:a\s+)?roadmap'
+                r'|roadmap\s+for'
+                r'|plan\s+(?:a\s+)?roadmap'
+                r'|break\s+(?:this|that|it)\s+into'
+                r'|suggest\s+(?:tasks?|features?|epics?)'
+                r'|propose\s+(?:tasks?|features?|epics?)'
+                r'|structure\s+(?:this|that|it)'
+                r')\b',
+                normalized_text,
+            )
+        )
 
     def _is_roadmap_question(
         self,
@@ -1713,14 +1790,19 @@ class LLMPlanner:
     ) -> bool:
         if not session_context.get('roadmap_id'):
             return False
-        if intent_type == 'roadmap_edit':
+        if intent_type in {'roadmap_edit', 'roadmap_plan', 'confirm_action'}:
             return False
+        if intent_type == 'roadmap_query':
+            return True
         lowered = user_message.strip().lower()
         roadmap_keywords = (
             'roadmap',
             'epic',
             'feature',
             'task',
+            'overdue',
+            'assigned',
+            'assignee',
             'status',
             'timeline',
             'dependency',
@@ -1728,17 +1810,23 @@ class LLMPlanner:
         )
         if any(keyword in lowered for keyword in roadmap_keywords):
             return True
-        return intent_type in {'question', 'unclear'}
+        return intent_type in {'general_question', 'question', 'unclear'}
 
     def _rule_based_chat_response(self, user_message: str, intent_type: IntentType) -> str:
         lowered = user_message.strip().lower()
         if intent_type == 'smalltalk':
             return 'Hi. I can chat normally and help you prepare roadmap edits when you are ready.'
-        if intent_type == 'question':
+        if intent_type in {'general_question', 'question'}:
             return (
                 'I can help explain roadmap structure, suggest planning steps, and prepare safe edit operations '
                 'that you can preview manually.'
             )
+        if intent_type == 'roadmap_query':
+            return 'I can answer roadmap data questions using read-only context tools. Ask about epics, features, tasks, or statuses.'
+        if intent_type == 'roadmap_plan':
+            return 'I can draft a roadmap plan with epic, feature, and task structure. Share your objective and constraints.'
+        if intent_type == 'confirm_action':
+            return 'I can apply confirmations when there is a pending plan. If you want to execute changes, confirm the exact draft or target.'
         if lowered:
             return (
                 'I can help with normal chat or roadmap edits. If you keep seeing this style of response, '

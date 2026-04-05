@@ -53,6 +53,19 @@ class PromptRepositoryTests(unittest.TestCase):
         parsed = json.loads(raw)
         self.assertEqual(parsed['unknown'], 'unknown-object')
 
+    def test_build_system_prompt_supports_query_and_plan_modes(self) -> None:
+        repository = PromptRepository()
+        prompt_context = {
+            'roadmap_id': 'roadmap-1',
+            'intent_type': 'roadmap_query',
+        }
+
+        query_prompt = repository.build_system_prompt('query', prompt_context)
+        plan_prompt = repository.build_system_prompt('plan', prompt_context)
+
+        self.assertIn('You are in roadmap query mode.', query_prompt)
+        self.assertIn('You are in roadmap planning mode.', plan_prompt)
+
 
 if __name__ == '__main__':
     unittest.main()
