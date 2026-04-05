@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from app.core.config import get_settings
 from app.core.llm.deterministic_context import (
+    assess_my_tasks_status_confidence,
     is_rich_my_tasks_request,
     try_deterministic_list_answer,
     try_pending_context_selection,
@@ -201,6 +202,13 @@ class DeterministicContextTests(unittest.TestCase):
             )
         )
         self.assertFalse(is_rich_my_tasks_request('Show me tasks assigned to me'))
+
+    def test_assess_my_tasks_status_confidence_handles_all_the_tasks_phrase(self) -> None:
+        scope, confident = assess_my_tasks_status_confidence(
+            'Tell me all the tasks that are assigned to me'
+        )
+        self.assertEqual(scope, 'all')
+        self.assertTrue(confident)
 
 
 if __name__ == '__main__':

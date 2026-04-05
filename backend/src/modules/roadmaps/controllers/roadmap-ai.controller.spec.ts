@@ -6,6 +6,7 @@ describe('RoadmapAiController trace forwarding', () => {
   const traceId = 'trace-123';
   const previewDto = { operations: [] } as any;
   const searchQuery = { query: 'platform foundation' } as any;
+  const summaryQuery = {} as any;
   const childrenQuery = { limit: 10 } as any;
   const resolutionChildrenQuery = { choice: 1, limit: 10 } as any;
   const featuresQuery = { epic_id: 'epic-1', limit: 10 } as any;
@@ -51,9 +52,10 @@ describe('RoadmapAiController trace forwarding', () => {
       traceId,
     );
 
-    controller.getContextSummary(roadmapId, user, traceId);
+    controller.getContextSummary(roadmapId, summaryQuery, user, traceId);
     expect(roadmapAiService.getContextSummary).toHaveBeenCalledWith(
       roadmapId,
+      summaryQuery,
       user.id,
       traceId,
     );
@@ -103,7 +105,9 @@ describe('RoadmapAiController trace forwarding', () => {
       user,
       traceId,
     );
-    expect(roadmapAiService.getContextChildrenFromResolution).toHaveBeenCalledWith(
+    expect(
+      roadmapAiService.getContextChildrenFromResolution,
+    ).toHaveBeenCalledWith(
       roadmapId,
       'resolution-1',
       resolutionChildrenQuery,
@@ -119,7 +123,12 @@ describe('RoadmapAiController trace forwarding', () => {
       traceId,
     );
 
-    controller.getContextTasksAssignedToMe(roadmapId, tasksQuery, user, traceId);
+    controller.getContextTasksAssignedToMe(
+      roadmapId,
+      tasksQuery,
+      user,
+      traceId,
+    );
     expect(roadmapAiService.getContextTasksAssignedToMe).toHaveBeenCalledWith(
       roadmapId,
       tasksQuery,
@@ -128,4 +137,3 @@ describe('RoadmapAiController trace forwarding', () => {
     );
   });
 });
-

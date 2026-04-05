@@ -313,6 +313,12 @@ export class RoadmapAiContextSummaryResponseDto {
   epics: RoadmapAiContextSummaryEpicDto[];
 }
 
+export class RoadmapAiContextPreviewSelectorQueryDto {
+  @IsOptional()
+  @IsUUID()
+  preview_id?: string;
+}
+
 export class RoadmapAiContextSearchQueryDto {
   @IsString()
   @IsNotEmpty()
@@ -484,7 +490,7 @@ export class RoadmapAiContextActorResponseDto {
   timezone?: string | null;
 }
 
-export class RoadmapAiContextTasksAssignedQueryDto {
+export class RoadmapAiContextTasksAssignedQueryDto extends RoadmapAiContextPreviewSelectorQueryDto {
   @IsOptional()
   @IsEnum(['open', 'all'])
   status?: 'open' | 'all';

@@ -123,6 +123,14 @@ class AgentService:
         'shift': 'shift_dates',
     }
     _ORDER_INSENSITIVE_SIGNATURE_FIELDS = {'tags'}
+    _MIXED_QUERY_CUE_PATTERN = re.compile(
+        r'\b(?:how many|what|which|who|where|when|summarize|summary|overview|tell me|show me|list|count)\b',
+        re.IGNORECASE,
+    )
+    _MIXED_EDIT_VERB_PATTERN = re.compile(
+        r'\b(?:add|create|remove|delete|mark|rename|move|update|set|assign|unassign|reassign|change)\b',
+        re.IGNORECASE,
+    )
 
     def __init__(self, store: SessionStore) -> None:
         self._settings = get_settings()
@@ -192,6 +200,19 @@ class AgentService:
                 (perf_counter() - classify_started) * 1000
             )
         simple_edit_detected = preview_intent == 'roadmap_edit'
+        mixed_query_followup_message = self._extract_mixed_query_followup_message(
+            user_message=user_message,
+            preview_intent=preview_intent,
+        )
+        mixed_edit_primary_message = self._extract_mixed_edit_primary_message(
+            user_message=user_message,
+            query_message=mixed_query_followup_message,
+        )
+        planning_user_message = mixed_edit_primary_message or user_message
+        if mixed_query_followup_message is not None:
+            phase_timings['mixed_query_detected'] = 1
+        if mixed_edit_primary_message is not None:
+            phase_timings['mixed_query_edit_clause_used'] = 1
 
         actor_fetch_attempted = False
         actor_fetch_skipped_reason: str | None = None
@@ -344,7 +365,7 @@ class AgentService:
             llm_skipped_for_simple_edit = True
         elif planning is None and preview_intent == 'roadmap_edit':
             planning, planning_loop_metrics = self._run_edit_react_planning_loop(
-                user_message=user_message,
+                user_message=planning_user_message,
                 existing_operations=staged_operations,
                 session_context=session_context,
                 route_lane='llm_edit_plan',
@@ -373,7 +394,7 @@ class AgentService:
             route_lane = 'llm_edit_plan'
         elif planning is None:
             planning, planning_loop_metrics = self._run_edit_react_planning_loop(
-                user_message=user_message,
+                user_message=planning_user_message,
                 existing_operations=staged_operations,
                 session_context=session_context,
                 route_lane='llm_edit_plan',
@@ -406,7 +427,7 @@ class AgentService:
             pending_edit_context_present=pending_edit_context_present,
             edit_continuation_trigger=edit_continuation_trigger,
             route_lane=route_lane,
-            user_message=user_message,
+            user_message=planning_user_message,
         )
         planning = react_loop_outcome.planning
         edit_guard_intervened = react_loop_outcome.edit_guard_intervened
@@ -447,7 +468,7 @@ class AgentService:
         self._sync_pending_edit_context(
             session=session,
             planning=planning,
-            user_message=user_message,
+            user_message=planning_user_message,
             edit_continuation_trigger=edit_continuation_trigger,
             staged_operations_version=staged_operations_version,
             trace_id=trace_id,
@@ -550,8 +571,42 @@ class AgentService:
                 planning.pending_context_resolution
             )
 
+        assistant_message = planning.assistant_message
+        parse_mode = planning.parse_mode
+        mixed_query_followup_warning_code: str | None = None
+        if (
+            mixed_query_followup_message is not None
+            and planning.response_mode == 'edit_plan'
+        ):
+            mixed_query_started = perf_counter()
+            staged_operations_for_followup = (
+                active_draft.operations if active_draft is not None else session.operations
+            )
+            followup_answer, mixed_query_followup_warning_code = self._run_mixed_query_followup(
+                session=session,
+                query_message=mixed_query_followup_message,
+                staged_operations=staged_operations_for_followup,
+                auth_header=auth_header,
+                trace_id=trace_id,
+            )
+            phase_timings['mixed_query_followup_ms'] = int(
+                (perf_counter() - mixed_query_started) * 1000
+            )
+            assistant_message = self._compose_mixed_query_assistant_message(
+                edit_message=assistant_message,
+                followup_answer=followup_answer,
+                warning_code=mixed_query_followup_warning_code,
+            )
+            if followup_answer:
+                parse_mode = f'{parse_mode}+mixed_query_followup'
+                phase_timings['mixed_query_followup_applied'] = 1
+            if mixed_query_followup_warning_code is not None:
+                phase_timings['mixed_query_followup_warning_code'] = (
+                    mixed_query_followup_warning_code
+                )
+
         session.last_intent_type = planning.intent_type
-        self._store.append_message(session, 'assistant', planning.assistant_message)
+        self._store.append_message(session, 'assistant', assistant_message)
         self._store.update(session)
 
         staged_operations = (
@@ -621,13 +676,14 @@ class AgentService:
             retry_tool_calls_used=retry_tool_calls_used,
             retry_duplicate_operation_deduped=retry_duplicate_operation_deduped,
             retry_autostage_applied=retry_autostage_applied,
+            mixed_query_followup_warning_code=mixed_query_followup_warning_code,
             phase_timings=phase_timings,
         )
 
         return MessagePlanningOutcome(
             session=session,
-            assistant_message=planning.assistant_message,
-            parse_mode=planning.parse_mode,
+            assistant_message=assistant_message,
+            parse_mode=parse_mode,
             intent_type=planning.intent_type,
             response_mode=planning.response_mode,
             operations=applied_operations if planning.response_mode == 'edit_plan' else [],
@@ -754,6 +810,243 @@ class AgentService:
             normalized,
         ):
             return 'correction'
+        return None
+
+    def _extract_mixed_query_followup_message(
+        self,
+        *,
+        user_message: str,
+        preview_intent: IntentType,
+    ) -> str | None:
+        if preview_intent != 'roadmap_edit':
+            return None
+        message = ' '.join(user_message.strip().split())
+        if not message:
+            return None
+
+        for query_match in self._MIXED_QUERY_CUE_PATTERN.finditer(message):
+            start = query_match.start()
+            if start <= 0:
+                continue
+            prefix = message[:start]
+            if not self._MIXED_EDIT_VERB_PATTERN.search(prefix):
+                continue
+            bridge_window = message[max(0, start - 32) : start]
+            if not re.search(r'(?:\band\b|\bthen\b|[;,.])', bridge_window, re.IGNORECASE):
+                continue
+            query_tail = message[start:]
+            query_tail = re.sub(
+                r'^(?:and|then|also|plus)\s+',
+                '',
+                query_tail,
+                flags=re.IGNORECASE,
+            ).strip()
+            query_tail = query_tail.rstrip(' .!?')
+            if len(query_tail.split()) < 3:
+                continue
+            return query_tail
+        return None
+
+    def _extract_mixed_edit_primary_message(
+        self,
+        *,
+        user_message: str,
+        query_message: str | None,
+    ) -> str | None:
+        if not query_message:
+            return None
+        message = ' '.join(user_message.strip().split())
+        query_tail = ' '.join(query_message.strip().split())
+        if not message or not query_tail:
+            return None
+        lowered_message = message.lower()
+        lowered_query = query_tail.lower()
+        query_index = lowered_message.find(lowered_query)
+        if query_index <= 0:
+            return None
+
+        primary = message[:query_index].rstrip(' ,;:.!?')
+        primary = re.sub(
+            r'(?:\b(?:and|then|also|plus)\b\s*)+$',
+            '',
+            primary,
+            flags=re.IGNORECASE,
+        ).strip()
+        if len(primary.split()) < 2:
+            return None
+        return primary
+
+    def _run_mixed_query_followup(
+        self,
+        *,
+        session: AgentSession,
+        query_message: str,
+        staged_operations: list[RoadmapOperation],
+        auth_header: str | None,
+        trace_id: str | None,
+    ) -> tuple[str | None, str | None]:
+        if not staged_operations:
+            return None, 'mixed_query_no_staged_operations'
+
+        preview_payload = {
+            'base_revision': session.base_revision,
+            'revision_token': session.revision_token,
+            'operations': [
+                operation.model_dump(exclude_none=True) for operation in staged_operations
+            ],
+        }
+        preview_id: str | None = None
+        followup_trace_id = f'{trace_id}:mixed_query_followup' if trace_id else None
+        try:
+            preview_result = self._run_async_call(
+                self._nest_client.preview(
+                    roadmap_id=session.roadmap_id,
+                    payload=preview_payload,
+                    auth_header=auth_header,
+                    trace_id=trace_id,
+                )
+            )
+            preview_candidate = preview_result.get('preview_id')
+            preview_id = (
+                str(preview_candidate).strip()
+                if isinstance(preview_candidate, str) and preview_candidate.strip()
+                else None
+            )
+            if preview_id is None:
+                return None, 'mixed_query_missing_preview_id'
+
+            query_session_context = self._build_session_context(
+                session,
+                auth_header,
+                followup_trace_id,
+            )
+            query_session_context['context_preview_id'] = preview_id
+            query_planning = self._planner.plan(
+                user_message=query_message,
+                existing_operations=staged_operations,
+                session_context=query_session_context,
+            )
+            query_planning = self._apply_context_answer_output_guard(
+                planning=query_planning,
+                pending_edit_context_present=session.metadata.pending_edit_context is not None,
+            )
+            if query_planning.response_mode != 'chat':
+                return None, 'mixed_query_non_chat_response'
+            if self._is_mixed_query_followup_clarifier(query_planning):
+                return None, 'mixed_query_followup_needs_clarification'
+            normalized_answer = query_planning.assistant_message.strip()
+            if not normalized_answer:
+                return None, 'mixed_query_empty_answer'
+            if 'could not confirm your actor context' in normalized_answer.lower():
+                return None, 'mixed_query_followup_actor_context_missing'
+            return normalized_answer, None
+        except HTTPException as exc:
+            error_code = 'mixed_query_preview_failed'
+            detail = exc.detail
+            if isinstance(detail, dict):
+                nested = detail.get('detail') if isinstance(detail.get('detail'), dict) else None
+                error = nested.get('error') if isinstance(nested, dict) else None
+                if isinstance(error, dict):
+                    nested_message = error.get('message')
+                    if isinstance(nested_message, str) and nested_message.strip():
+                        error_code = f'mixed_query_preview_failed:{nested_message.strip()[:40]}'
+            return None, error_code
+        except Exception:
+            return None, 'mixed_query_followup_failed'
+        finally:
+            if preview_id is not None:
+                try:
+                    self._run_async_call(
+                        self._nest_client.discard_preview(
+                            roadmap_id=session.roadmap_id,
+                            payload={'preview_id': preview_id},
+                            auth_header=auth_header,
+                            trace_id=trace_id,
+                        )
+                    )
+                except Exception:
+                    log_event(
+                        self._logger,
+                        'mixed_query_preview_discard_failed',
+                        settings=self._settings,
+                        trace_id=trace_id,
+                        roadmap_id=session.roadmap_id,
+                        preview_id=preview_id,
+                    )
+
+    def _compose_mixed_query_assistant_message(
+        self,
+        *,
+        edit_message: str,
+        followup_answer: str | None,
+        warning_code: str | None,
+    ) -> str:
+        sections: list[str] = []
+        normalized_edit_message = edit_message.strip() if edit_message else ''
+        if normalized_edit_message:
+            sections.append(normalized_edit_message)
+        if followup_answer:
+            sections.append(
+                'Draft-view answer after staging these edits:\n'
+                f'{followup_answer.strip()}'
+            )
+        warning_text = self._mixed_query_warning_text(warning_code)
+        if warning_text:
+            sections.append(f'Note: {warning_text}')
+        if sections:
+            return '\n\n'.join(sections)
+        return edit_message
+
+    def _is_mixed_query_followup_clarifier(self, planning: PlanningResult) -> bool:
+        parse_mode = str(planning.parse_mode or '').strip().lower()
+        provider_error_code = str(planning.provider_error_code or '').strip().lower()
+        if parse_mode in {
+            'deterministic_context_my_tasks_low_confidence',
+            'deterministic_context_my_tasks_provider_error',
+            'deterministic_context_my_tasks_invalid_payload',
+            'deterministic_context_budget_exhausted',
+            'deterministic_context_repeat_limit_exhausted',
+        }:
+            return True
+        if provider_error_code in {
+            'low_confidence',
+            'provider_error',
+            'invalid_payload',
+            'max_tool_turns_exceeded',
+            'discovery_budget_exhausted',
+            'discovery_repeat_limit_exhausted',
+        }:
+            return True
+        return False
+
+    def _mixed_query_warning_text(self, warning_code: str | None) -> str | None:
+        if not warning_code:
+            return None
+        if warning_code == 'mixed_query_no_staged_operations':
+            return 'I staged no changes, so there was no draft-view query context to answer from.'
+        if warning_code == 'mixed_query_missing_preview_id':
+            return 'I could not open a preview snapshot for the follow-up question this turn.'
+        if warning_code == 'mixed_query_non_chat_response':
+            return (
+                'I could not generate a safe draft-view query answer in this turn. '
+                'You can ask the question again and I will answer from staged context.'
+            )
+        if warning_code == 'mixed_query_empty_answer':
+            return 'I could not derive a non-empty draft-view answer for the follow-up query.'
+        if warning_code == 'mixed_query_followup_actor_context_missing':
+            return (
+                'I could not answer the follow-up my-tasks question because actor context was missing. '
+                'Please retry and I will refresh actor context first.'
+            )
+        if warning_code == 'mixed_query_followup_needs_clarification':
+            return (
+                'I staged the edit, but the follow-up query needs clarification '
+                '(for example: open tasks vs all tasks).'
+            )
+        if warning_code.startswith('mixed_query_preview_failed'):
+            return 'Preview generation failed for the follow-up query, so only the edit plan was staged.'
+        if warning_code == 'mixed_query_followup_failed':
+            return 'Draft-view follow-up query execution failed, so only the edit plan was staged.'
         return None
 
     def _infer_last_staged_create_title(self, session: AgentSession) -> str | None:
@@ -1567,9 +1860,10 @@ class AgentService:
     ) -> tuple[bool, str | None]:
         if not auth_header:
             return False, 'missing_auth_header'
-        if preview_intent == 'roadmap_edit' and simple_edit_detected:
+        actor_required = self._is_actor_context_required_message(user_message)
+        if preview_intent == 'roadmap_edit' and simple_edit_detected and not actor_required:
             return False, 'simple_edit_turn'
-        if self._is_actor_context_required_message(user_message):
+        if actor_required:
             return True, None
         if actor_context_present:
             return False, 'not_required_cached'

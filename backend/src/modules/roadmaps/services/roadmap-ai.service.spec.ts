@@ -227,15 +227,19 @@ describe('RoadmapAiService actor + assignee context', () => {
       }),
     };
 
+    const previewStore = {
+      getPreview: jest.fn().mockResolvedValue(null),
+    };
+
     const service = new RoadmapAiService(
       { from } as never,
       roadmapsRepo as never,
       {} as never,
       { assertRoadmapPermission: jest.fn() } as never,
-      {} as never,
+      previewStore as never,
     );
 
-    return { service, roadmapsRepo, from };
+    return { service, roadmapsRepo, from, previewStore };
   };
 
   it('returns backend-authoritative actor context', async () => {
@@ -277,6 +281,62 @@ describe('RoadmapAiService actor + assignee context', () => {
       'Implement login API',
       'Close legacy auth ticket',
     ]);
+  });
+
+  it('uses preview snapshot context for summary and assigned tasks when preview_id is provided', async () => {
+    const { service, roadmapsRepo, previewStore } = createServiceWithMocks();
+    const previewId = '123e4567-e89b-12d3-a456-426614174000';
+    previewStore.getPreview.mockResolvedValue({
+      roadmapId: ROADMAP_ID,
+      userId: USER_ID,
+      candidate: {
+        id: ROADMAP_ID,
+        name: 'Draft Snapshot',
+        description: 'Preview candidate',
+        roadmap_epics: [
+          {
+            id: 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+            title: 'Platform Foundation',
+            roadmap_features: [
+              {
+                id: '60bcab3f-3989-448d-9c84-3261cf38685b',
+                title: 'Authentication System',
+                roadmap_tasks: [
+                  {
+                    id: '1beecdd2-f057-4c41-bf6d-8bb9e5e4b2b1',
+                    title: 'Implement login API',
+                    status: 'done',
+                    assignee_id: USER_ID,
+                  },
+                  {
+                    id: '1beecdd2-f057-4c41-bf6d-8bb9e5e4b2b4',
+                    title: 'Harden auth middleware',
+                    status: 'in_progress',
+                    assignee_id: USER_ID,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const summary = await service.getContextSummary(
+      ROADMAP_ID,
+      { preview_id: previewId },
+      USER_ID,
+    );
+    const tasks = await service.getContextTasksAssignedToMe(
+      ROADMAP_ID,
+      { status: 'open', preview_id: previewId },
+      USER_ID,
+    );
+
+    expect(summary.title).toBe('Draft Snapshot');
+    expect(tasks.tasks).toHaveLength(1);
+    expect(tasks.tasks[0].title).toBe('Harden auth middleware');
+    expect(roadmapsRepo.findFull).not.toHaveBeenCalled();
   });
 });
 
@@ -358,7 +418,7 @@ describe('RoadmapAiService context timing logs', () => {
     const timingSpy = jest.spyOn(service as any, 'logRoadmapAiHandlerTiming');
     const traceId = 'trace-context-timing';
 
-    await service.getContextSummary(ROADMAP_ID, USER_ID, traceId);
+    await service.getContextSummary(ROADMAP_ID, {}, USER_ID, traceId);
     await service.getContextActor(ROADMAP_ID, USER_ID, traceId);
     await service.getContextNodeDetails(ROADMAP_ID, EPIC_ID, USER_ID, traceId);
     await service.getContextNodeChildren(

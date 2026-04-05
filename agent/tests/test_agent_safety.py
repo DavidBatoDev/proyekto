@@ -124,6 +124,255 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(len(session.operations), 1)
         self.assertEqual(session.operations[0].op.value, 'add_epic')
 
+    def test_extract_mixed_query_followup_message_detects_edit_then_query(self) -> None:
+        service = self._service({'matches': []})
+
+        followup = service._extract_mixed_query_followup_message(
+            user_message=(
+                'Delete top 2 todo tasks under API Security feature and '
+                'tell me how many total tasks remain in this roadmap'
+            ),
+            preview_intent='roadmap_edit',
+        )
+
+        self.assertEqual(
+            followup,
+            'tell me how many total tasks remain in this roadmap',
+        )
+        self.assertIsNone(
+            service._extract_mixed_query_followup_message(
+                user_message='Tell me how many tasks remain in this roadmap',
+                preview_intent='roadmap_query',
+            )
+        )
+
+    def test_plan_message_mixed_query_appends_draft_view_followup(self) -> None:
+        class _MixedPlanner:
+            def __init__(self) -> None:
+                self.plan_inputs: list[str] = []
+
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                self.plan_inputs.append(user_message)
+                lowered = user_message.lower()
+                if lowered.startswith('tell me how many total tasks remain'):
+                    return PlanningResult(
+                        assistant_message='There will be 14 total tasks remaining.',
+                        operations=[],
+                        parse_mode='openai_context_answer',
+                        intent_type='roadmap_query',
+                        response_mode='chat',
+                        preview_recommended=False,
+                        provider_used='openai',
+                        fallback_used=False,
+                        provider_error_code=None,
+                    )
+                return PlanningResult(
+                    assistant_message='Prepared delete operations.',
+                    operations=[
+                        RoadmapOperation(
+                            op='delete_node',
+                            node_id='1beecdd2-f057-4c41-bf6d-8bb9e5e4b2b1',
+                        )
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _MixedNestClient:
+            def __init__(self) -> None:
+                self.preview_calls: list[dict[str, Any]] = []
+                self.discard_calls: list[dict[str, Any]] = []
+                self.actor_calls = 0
+
+            def context_actor(self, **kwargs):
+                self.actor_calls += 1
+                return {
+                    'actor_id': 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+                    'display_name': 'Alice',
+                    'roadmap_role': 'editor',
+                    'locale': None,
+                    'timezone': None,
+                }
+
+            def preview(self, **kwargs):
+                self.preview_calls.append(kwargs)
+                return {'preview_id': '123e4567-e89b-12d3-a456-426614174000'}
+
+            def discard_preview(self, **kwargs):
+                self.discard_calls.append(kwargs)
+                return {'ok': True}
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        planner = _MixedPlanner()
+        nest_client = _MixedNestClient()
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_hybrid_react_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = planner
+        service._nest_client = nest_client
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        service._run_async_call = lambda value: value
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            base_revision=3,
+            revision_token='rev-3',
+        )
+
+        outcome = service.plan_message(
+            session=session,
+            user_message=(
+                'Delete top 2 todo tasks under API Security feature and '
+                'tell me how many total tasks remain in this roadmap'
+            ),
+            replace=False,
+            auth_header='Bearer token',
+            trace_id='trace-mixed-query-followup',
+        )
+
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(len(session.operations), 1)
+        self.assertTrue(outcome.parse_mode.endswith('+mixed_query_followup'))
+        self.assertIn('Prepared delete operations.', outcome.assistant_message)
+        self.assertIn(
+            'Draft-view answer after staging these edits:',
+            outcome.assistant_message,
+        )
+        self.assertIn('There will be 14 total tasks remaining.', outcome.assistant_message)
+        self.assertEqual(len(planner.plan_inputs), 2)
+        self.assertEqual(
+            planner.plan_inputs[0],
+            'Delete top 2 todo tasks under API Security feature',
+        )
+        self.assertEqual(
+            planner.plan_inputs[1],
+            'tell me how many total tasks remain in this roadmap',
+        )
+        self.assertEqual(len(nest_client.preview_calls), 1)
+        self.assertEqual(len(nest_client.discard_calls), 1)
+        self.assertFalse(outcome.actor_fetch_attempted)
+        self.assertEqual(nest_client.actor_calls, 0)
+
+    def test_plan_message_mixed_actor_query_fetches_actor_context(self) -> None:
+        class _MixedPlanner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                lowered = user_message.lower()
+                if lowered.startswith('tell me all the tasks'):
+                    return PlanningResult(
+                        assistant_message='Tasks assigned to Alice (all):\n- Implement login API',
+                        operations=[],
+                        parse_mode='deterministic_context_my_tasks',
+                        intent_type='roadmap_query',
+                        response_mode='chat',
+                        preview_recommended=False,
+                        provider_used='rule_based',
+                        fallback_used=False,
+                        provider_error_code=None,
+                    )
+                return PlanningResult(
+                    assistant_message='Prepared delete operations.',
+                    operations=[
+                        RoadmapOperation(
+                            op='delete_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                        )
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _MixedNestClient:
+            def __init__(self) -> None:
+                self.actor_calls = 0
+                self.preview_calls = 0
+
+            def context_actor(self, **kwargs):
+                self.actor_calls += 1
+                return {
+                    'actor_id': 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+                    'display_name': 'Alice',
+                    'roadmap_role': 'editor',
+                    'locale': None,
+                    'timezone': None,
+                }
+
+            def preview(self, **kwargs):
+                self.preview_calls += 1
+                return {'preview_id': '123e4567-e89b-12d3-a456-426614174000'}
+
+            def discard_preview(self, **kwargs):
+                return {'ok': True}
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_hybrid_react_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _MixedPlanner()
+        mixed_client = _MixedNestClient()
+        service._nest_client = mixed_client
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        service._run_async_call = lambda value: value
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Remove the Platform Foundation and tell me all the tasks that are assigned to me',
+            replace=False,
+            auth_header='Bearer token',
+            trace_id='trace-mixed-actor-query',
+        )
+
+        self.assertTrue(outcome.actor_fetch_attempted)
+        self.assertIsNone(outcome.actor_fetch_skipped_reason)
+        self.assertEqual(mixed_client.actor_calls, 1)
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(mixed_client.preview_calls, 1)
+
     def test_detect_edit_continuation_trigger_accepts_common_phrase_variants(self) -> None:
         service = self._service({'matches': []})
 

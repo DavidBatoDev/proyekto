@@ -635,15 +635,19 @@ def _determine_my_tasks_status(user_message: str | None) -> str:
     if not user_message:
         return 'open'
     lowered = user_message.lower()
-    if any(
-        phrase in lowered
-        for phrase in (
-            'all tasks',
-            'including completed',
-            'include completed',
-            'completed tasks',
-            'done tasks',
-            'archived tasks',
+    normalized = re.sub(r'[^a-z0-9\s]', ' ', lowered)
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+    if (
+        re.search(r'\ball\s+(?:of\s+)?(?:the\s+)?(?:my\s+)?tasks?\b', normalized)
+        or any(
+            phrase in normalized
+            for phrase in (
+                'including completed',
+                'include completed',
+                'completed tasks',
+                'done tasks',
+                'archived tasks',
+            )
         )
     ):
         return 'all'
@@ -688,7 +692,7 @@ def assess_my_tasks_status_confidence(
         return 'open', True
 
     explicit_all_patterns = (
-        r'\ball\s+tasks?\b',
+        r'\ball\s+(?:of\s+)?(?:the\s+)?(?:my\s+)?tasks?\b',
         r'\bevery\s+tasks?\b',
         r'\bevry\s+tasks?\b',
         r'\bcompleted\s+tasks?\b',

@@ -87,11 +87,16 @@ class NestRoadmapClient:
     async def context_summary(
         self,
         roadmap_id: str,
+        preview_id: str | None,
         auth_header: str | None,
         trace_id: str | None = None,
     ) -> dict[str, Any]:
+        query_parts: list[str] = []
+        if preview_id:
+            query_parts.append(f"preview_id={quote_plus(preview_id)}")
+        query_string = f"?{'&'.join(query_parts)}" if query_parts else ''
         return await self._get(
-            f"/roadmaps/{roadmap_id}/ai/context/summary",
+            f"/roadmaps/{roadmap_id}/ai/context/summary{query_string}",
             auth_header,
             trace_id=trace_id,
         )
@@ -168,10 +173,13 @@ class NestRoadmapClient:
         roadmap_id: str,
         status: str | None,
         limit: int | None,
+        preview_id: str | None,
         auth_header: str | None,
         trace_id: str | None = None,
     ) -> dict[str, Any]:
         query_parts: list[str] = []
+        if preview_id:
+            query_parts.append(f"preview_id={quote_plus(preview_id)}")
         if status:
             query_parts.append(f"status={quote_plus(status)}")
         if limit is not None:

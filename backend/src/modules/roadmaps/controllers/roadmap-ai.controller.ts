@@ -15,6 +15,7 @@ import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-request.interface';
 import {
   RoadmapAiCommitDto,
+  RoadmapAiContextPreviewSelectorQueryDto,
   RoadmapAiContextChildrenQueryDto,
   RoadmapAiContextTasksAssignedQueryDto,
   RoadmapAiContextFeaturesQueryDto,
@@ -48,16 +49,27 @@ export class RoadmapAiController {
     @CurrentUser() user: AuthenticatedUser,
     @Headers('x-trace-id') traceId?: string,
   ) {
-    return this.roadmapAiService.getPreview(roadmapId, previewId, user.id, traceId);
+    return this.roadmapAiService.getPreview(
+      roadmapId,
+      previewId,
+      user.id,
+      traceId,
+    );
   }
 
   @Get('context/summary')
   getContextSummary(
     @Param('id') roadmapId: string,
+    @Query() query: RoadmapAiContextPreviewSelectorQueryDto,
     @CurrentUser() user: AuthenticatedUser,
     @Headers('x-trace-id') traceId?: string,
   ) {
-    return this.roadmapAiService.getContextSummary(roadmapId, user.id, traceId);
+    return this.roadmapAiService.getContextSummary(
+      roadmapId,
+      query,
+      user.id,
+      traceId,
+    );
   }
 
   @Get('context/actor')
@@ -76,7 +88,12 @@ export class RoadmapAiController {
     @CurrentUser() user: AuthenticatedUser,
     @Headers('x-trace-id') traceId?: string,
   ) {
-    return this.roadmapAiService.searchContextNodes(roadmapId, query, user.id, traceId);
+    return this.roadmapAiService.searchContextNodes(
+      roadmapId,
+      query,
+      user.id,
+      traceId,
+    );
   }
 
   @Get('context/nodes/:nodeId')

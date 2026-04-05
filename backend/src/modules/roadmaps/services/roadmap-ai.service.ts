@@ -32,6 +32,7 @@ import type {
   RoadmapAiContextChildrenQueryDto,
   RoadmapAiContextChildrenResponseDto,
   RoadmapAiContextActorResponseDto,
+  RoadmapAiContextPreviewSelectorQueryDto,
   RoadmapAiContextTasksAssignedQueryDto,
   RoadmapAiContextTasksAssignedResponseDto,
   RoadmapAiContextFeaturesQueryDto,
@@ -131,6 +132,12 @@ type ResolutionRecord = {
   userId: string;
   createdAt: string;
   matches: RoadmapAiContextSearchMatchDto[];
+};
+
+type ContextStateSelection = {
+  state: FullRoadmapState;
+  source: 'live' | 'preview';
+  previewId?: string;
 };
 
 type AuthzDecisionCacheValue = {
@@ -339,6 +346,7 @@ export class RoadmapAiService {
 
   async getContextSummary(
     roadmapId: string,
+    query: RoadmapAiContextPreviewSelectorQueryDto,
     userId: string,
     traceId?: string,
   ): Promise<RoadmapAiContextSummaryResponseDto> {
@@ -346,11 +354,12 @@ export class RoadmapAiService {
     const authzStartedAt = Date.now();
     await this.assertCanEditRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
-    const full = await this.roadmapsRepo.findFull(roadmapId, userId);
-    if (!full) throw new NotFoundException('Roadmap not found');
-    const state = this.normalizeFullRoadmapState(
-      full as Record<string, unknown>,
+    const contextState = await this.resolveContextStateSelection(
+      roadmapId,
+      userId,
+      query.preview_id,
     );
+    const state = contextState.state;
     const roadmapNodeId = this.requireNodeId(state.id, 'roadmap');
 
     const epicCount = state.roadmap_epics?.length ?? 0;
@@ -398,6 +407,7 @@ export class RoadmapAiService {
       path: '/roadmaps/:id/ai/context/summary',
       authzMs,
       totalHandlerMs: Date.now() - handlerStartedAt,
+      previewId: contextState.previewId,
     });
     return response;
   }
@@ -744,12 +754,12 @@ export class RoadmapAiService {
     const authzStartedAt = Date.now();
     await this.assertCanEditRoadmap(roadmapId, userId);
     const authzMs = Date.now() - authzStartedAt;
-    const full = await this.roadmapsRepo.findFull(roadmapId, userId);
-    if (!full)
-      throw this.contextNotFound('NODE_NOT_FOUND', 'Roadmap not found');
-    const state = this.normalizeFullRoadmapState(
-      full as Record<string, unknown>,
+    const contextState = await this.resolveContextStateSelection(
+      roadmapId,
+      userId,
+      query.preview_id,
     );
+    const state = contextState.state;
 
     const statusMode = query.status ?? 'open';
     const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
@@ -788,6 +798,7 @@ export class RoadmapAiService {
       path: '/roadmaps/:id/ai/context/tasks-assigned-to-me',
       authzMs,
       totalHandlerMs: Date.now() - handlerStartedAt,
+      previewId: contextState.previewId,
     });
     return { tasks };
   }
@@ -1333,6 +1344,50 @@ export class RoadmapAiService {
     }
     this.writeAuthzDecisionCache(cacheKey, existing as Record<string, unknown>);
     return existing;
+  }
+
+  private async resolveContextStateSelection(
+    roadmapId: string,
+    userId: string,
+    previewId?: string,
+  ): Promise<ContextStateSelection> {
+    const normalizedPreviewId =
+      typeof previewId === 'string' && previewId.trim().length > 0
+        ? previewId.trim()
+        : undefined;
+    if (normalizedPreviewId) {
+      if (!this.isUuid(normalizedPreviewId)) {
+        throw this.contextBadRequest(
+          'INVALID_UUID',
+          'preview_id must be a valid UUID.',
+        );
+      }
+      const preview =
+        await this.previewStore.getPreview<PreviewRecord>(normalizedPreviewId);
+      if (
+        !preview ||
+        preview.roadmapId !== roadmapId ||
+        preview.userId !== userId
+      ) {
+        throw this.contextNotFound(
+          'PREVIEW_NOT_FOUND',
+          'Preview not found or not accessible for this roadmap context.',
+        );
+      }
+      return {
+        state: this.clone(preview.candidate),
+        source: 'preview',
+        previewId: normalizedPreviewId,
+      };
+    }
+
+    const full = await this.roadmapsRepo.findFull(roadmapId, userId);
+    if (!full)
+      throw this.contextNotFound('NODE_NOT_FOUND', 'Roadmap not found');
+    return {
+      state: this.normalizeFullRoadmapState(full as Record<string, unknown>),
+      source: 'live',
+    };
   }
 
   private buildAuthzDecisionCacheKey(

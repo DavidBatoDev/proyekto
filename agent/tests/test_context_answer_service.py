@@ -283,6 +283,51 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
         self.assertEqual(response.get('parse_mode'), 'deterministic_context_my_tasks')
         self.assertIn('Tasks assigned to Alice (open):', response.get('assistant_message', ''))
 
+    def test_my_tasks_all_the_tasks_phrase_stays_deterministic(self) -> None:
+        calls = {'my_tasks': 0}
+
+        def execute_tool(name: str, args: dict, _context: dict):
+            if name == 'get_tasks_assigned_to_me':
+                calls['my_tasks'] += 1
+                self.assertEqual(args.get('status'), 'all')
+                return {
+                    'tasks': [
+                        {
+                            'id': 't1',
+                            'type': 'task',
+                            'title': 'Implement login API',
+                            'status': 'done',
+                            'feature_title': 'Authentication System',
+                            'epic_title': 'Platform Foundation',
+                        }
+                    ]
+                }
+            return {'error': {'code': 'UNKNOWN'}}
+
+        service, _cache, provider, _build_key = self._service(execute_tool)
+        session_context = {
+            'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+            'trace_id': 'trace-my-tasks-all-the',
+            'actor_context': {
+                'actor_id': 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb',
+                'display_name': 'Alice',
+                'roadmap_role': 'editor',
+                'actor_context_source': 'backend_context_actor',
+            },
+        }
+        response = service.generate(
+            user_message='Tell me all the tasks that are assigned to me',
+            system_prompt='system',
+            session_context=session_context,
+            history_messages=[],
+            intent_type='roadmap_query',
+        )
+
+        self.assertEqual(calls['my_tasks'], 1)
+        self.assertEqual(provider.calls, 0)
+        self.assertEqual(response.get('parse_mode'), 'deterministic_context_my_tasks')
+        self.assertIn('Tasks assigned to Alice (all):', response.get('assistant_message', ''))
+
     def test_my_tasks_deterministic_response_bypasses_cache(self) -> None:
         calls = {'my_tasks': 0}
 
