@@ -1029,6 +1029,40 @@ class AgentService:
         remaining_llm_calls = llm_call_budget
 
         observation_context = dict(session_context)
+
+        def _collect_resolved_node_ids(tool_observation_summary: Any) -> list[str]:
+            if not isinstance(tool_observation_summary, list):
+                return []
+
+            ordered_ids: list[str] = []
+            seen: set[str] = set()
+
+            def _add(node_id: Any) -> None:
+                if not isinstance(node_id, str):
+                    return
+                normalized = node_id.strip()
+                if not normalized or normalized in seen:
+                    return
+                seen.add(normalized)
+                ordered_ids.append(normalized)
+
+            for item in tool_observation_summary:
+                if not isinstance(item, dict):
+                    continue
+                _add(item.get('selected_id'))
+                _add(item.get('node_id'))
+                child_ids = item.get('child_ids')
+                if isinstance(child_ids, list):
+                    for child_id in child_ids:
+                        _add(child_id)
+                children = item.get('children')
+                if isinstance(children, list):
+                    for child in children:
+                        if isinstance(child, dict):
+                            _add(child.get('id'))
+
+            return ordered_ids[:20]
+
         for turn_index in range(loop_budget):
             loop_turns += 1
             if remaining_llm_calls <= 0:
@@ -1103,6 +1137,43 @@ class AgentService:
             if planning.response_mode != 'edit_plan':
                 termination_reason = 'planner_returned_chat'
                 break
+
+            recoverable_tool_budget_replan = (
+                planning.provider_error_code == 'max_tool_turns_exceeded'
+                and not planning.operations
+            )
+            if recoverable_tool_budget_replan:
+                if remaining_llm_calls <= 0:
+                    termination_reason = 'llm_call_budget_exhausted'
+                    planning = replace(
+                        planning,
+                        stop_reason='tool_budget_exhausted',
+                        needs_more_info=True,
+                    )
+                    break
+
+                if turn_index + 1 >= loop_budget:
+                    termination_reason = 'budget_exhausted'
+                    break
+
+                tool_observation_summary = observation_context.get(
+                    '_react_tool_observation_summary', []
+                )
+                resolved_node_ids = _collect_resolved_node_ids(tool_observation_summary)
+                observation_context['_react_loop_observation'] = {
+                    'stop_reason': planning.stop_reason,
+                    'needs_more_info': planning.needs_more_info,
+                    'draft_action': planning.draft_action,
+                    'tool_plan_steps': len(planning.tool_plan or []),
+                    'llm_calls_used': llm_calls_used,
+                    'llm_calls_remaining': remaining_llm_calls,
+                    'provider_error_code': planning.provider_error_code,
+                    'tool_observation_summary': tool_observation_summary,
+                    'resolved_node_ids': resolved_node_ids,
+                }
+                termination_reason = 'replanned_after_observation'
+                continue
+
             if not planning.operations:
                 termination_reason = 'planner_returned_no_operations'
                 break
@@ -1124,6 +1195,8 @@ class AgentService:
                 termination_reason = 'budget_exhausted'
                 break
 
+            tool_observation_summary = observation_context.get('_react_tool_observation_summary', [])
+            resolved_node_ids = _collect_resolved_node_ids(tool_observation_summary)
             observation_context['_react_loop_observation'] = {
                 'stop_reason': planning.stop_reason,
                 'needs_more_info': planning.needs_more_info,
@@ -1131,7 +1204,9 @@ class AgentService:
                 'tool_plan_steps': len(planning.tool_plan or []),
                 'llm_calls_used': llm_calls_used,
                 'llm_calls_remaining': remaining_llm_calls,
-                'tool_observation_summary': observation_context.get('_react_tool_observation_summary', []),
+                'provider_error_code': planning.provider_error_code,
+                'tool_observation_summary': tool_observation_summary,
+                'resolved_node_ids': resolved_node_ids,
             }
             termination_reason = 'replanned_after_observation'
 

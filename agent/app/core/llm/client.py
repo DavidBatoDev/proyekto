@@ -25,7 +25,11 @@ from app.core.llm.providers import ProviderAdapterError, ProviderOrchestrator
 from app.core.nest_client import NestRoadmapClient
 from app.core.prompts import PromptRepository
 from app.core.response_cache import ContextAnswerCache
-from app.core.tools.registry import get_edit_mode_tools, parse_plan_tool_args
+from app.core.tools.registry import (
+    get_edit_mode_tools,
+    get_operation_tools,
+    parse_plan_tool_args,
+)
 
 try:
     from langchain_core.messages import AIMessage, HumanMessage
@@ -494,7 +498,19 @@ class LLMPlanner:
         history_messages = self._build_history_messages(session_context)
         trace_id = session_context.get('trace_id')
         tool_definitions = get_edit_mode_tools()
-        edit_turns = max(1, int(self._settings.max_edit_tool_turns))
+        total_edit_turns = max(1, int(self._settings.max_edit_tool_turns))
+        react_loop_turn_raw = session_context.get('_react_loop_turn')
+        react_loop_turn = 1
+        if isinstance(react_loop_turn_raw, (int, float, str)):
+            try:
+                react_loop_turn = max(int(react_loop_turn_raw), 1)
+            except (TypeError, ValueError):
+                react_loop_turn = 1
+        if react_loop_turn <= 1:
+            edit_turns = total_edit_turns
+        else:
+            # Follow-up turns should bias toward closure with existing observations.
+            edit_turns = max(1, min(total_edit_turns, 3))
         max_attempts = max(1, self._settings.agent_react_max_attempts)
         max_repair_retries = max(0, self._settings.agent_react_repair_retries)
         max_attempts = min(max_attempts, max_repair_retries + 1)
@@ -544,37 +560,124 @@ class LLMPlanner:
                 used_calls=0,
             )
 
-        planner_prompt = (
-            'You are in edit planning mode.\n'
-            'Resolve named targets to node IDs with resolve_node_reference before asking for IDs.\n'
-            'Use context tools when needed to resolve node IDs and hierarchy before drafting operations.\n'
-            'When ready, call plan_roadmap_operations exactly once with assistant_message and operations.\n'
-            'Do not call commit or discard tools. Commit remains a UI action.\n'
-            'Current staged operations:\n'
-            f'{json.dumps([op.model_dump(exclude_none=True) for op in existing_operations])}\n\n'
-            'Roadmap ID:\n'
-            f'{session_context.get("roadmap_id")}\n\n'
-            'User request:\n'
-            f'{user_message}\n\n'
-            'If request is ambiguous, use context tools first, then produce the safest possible operation plan.'
+        staged_operations_payload = json.dumps(
+            [op.model_dump(exclude_none=True) for op in existing_operations]
         )
+        roadmap_id_value = session_context.get('roadmap_id')
         prior_observation = session_context.get('_react_loop_observation')
+        prior_provider_error_code = ''
+        resolved_node_ids: list[str] = []
+        prior_observation_tool_summary: list[dict[str, Any]] = []
         if isinstance(prior_observation, dict) and prior_observation:
-            planner_prompt += (
-                '\n\nPrevious ReAct observation:\n'
-                f'{json.dumps(prior_observation, ensure_ascii=True, indent=2)}'
-            )
+            prior_provider_error_code = str(
+                prior_observation.get('provider_error_code') or ''
+            ).strip().lower()
+            resolved_ids_raw = prior_observation.get('resolved_node_ids')
+            if isinstance(resolved_ids_raw, list):
+                for raw_id in resolved_ids_raw:
+                    if isinstance(raw_id, str) and raw_id.strip():
+                        resolved_node_ids.append(raw_id.strip())
+            tool_summary_raw = prior_observation.get('tool_observation_summary')
+            if isinstance(tool_summary_raw, list):
+                prior_observation_tool_summary = [
+                    item
+                    for item in tool_summary_raw
+                    if isinstance(item, dict)
+                ]
+
         prior_tool_summary = session_context.get('_react_tool_observation_summary')
-        if isinstance(prior_tool_summary, list) and prior_tool_summary:
-            planner_prompt += (
-                '\n\nPrevious tool observation summary:\n'
-                f'{json.dumps(prior_tool_summary[:5], ensure_ascii=True, indent=2)}'
+        prior_tool_summary_list: list[dict[str, Any]] = []
+        if isinstance(prior_tool_summary, list):
+            prior_tool_summary_list = [
+                item
+                for item in prior_tool_summary
+                if isinstance(item, dict)
+            ]
+        effective_tool_summary = (
+            prior_observation_tool_summary
+            if prior_observation_tool_summary
+            else prior_tool_summary_list
+        )
+
+        followup_closed_world_turn = (
+            react_loop_turn > 1
+            and prior_provider_error_code == 'max_tool_turns_exceeded'
+            and bool(resolved_node_ids or effective_tool_summary)
+        )
+        if followup_closed_world_turn:
+            tool_definitions = get_operation_tools()
+
+        if followup_closed_world_turn:
+            planner_prompt = (
+                'You are in edit planning mode, follow-up ReAct turn.\n'
+                f'ReAct loop turn: {react_loop_turn}.\n'
+                f'Max tool calls this turn: {edit_turns}.\n'
+                'ALL CONTEXT BELOW IS ALREADY RESOLVED.\n'
+                'Do not call resolve_node_reference or get_children again for the same target.\n'
+                'Your primary action in this turn is to call plan_roadmap_operations exactly once.\n'
+                'If you still cannot produce safe operations, call plan_roadmap_operations with an empty '
+                'operations list and place the clarifying question in assistant_message.\n\n'
+                'Resolved node IDs:\n'
+                f'{json.dumps(resolved_node_ids[:20], ensure_ascii=True, indent=2)}\n\n'
+                'Prior tool observation summary:\n'
+                f'{json.dumps(effective_tool_summary[:10], ensure_ascii=True, indent=2)}\n\n'
+                'Current staged operations:\n'
+                f'{staged_operations_payload}\n\n'
+                'Roadmap ID:\n'
+                f'{roadmap_id_value}\n\n'
+                'User request:\n'
+                f'{user_message}'
             )
-        if remaining_llm_budget is not None:
-            planner_prompt += (
-                '\n\nRemaining planner call budget for this turn:\n'
-                f'{remaining_llm_budget}'
+        else:
+            planner_prompt = (
+                'You are in edit planning mode.\n'
+                'Resolve named targets to node IDs with resolve_node_reference before asking for IDs.\n'
+                'Use context tools when needed to resolve node IDs and hierarchy before drafting operations.\n'
+                'When ready, call plan_roadmap_operations exactly once with assistant_message and operations.\n'
+                'Do not call commit or discard tools. Commit remains a UI action.\n'
+                'Current staged operations:\n'
+                f'{staged_operations_payload}\n\n'
+                'Roadmap ID:\n'
+                f'{roadmap_id_value}\n\n'
+                'User request:\n'
+                f'{user_message}\n\n'
+                'If request is ambiguous, use context tools first, then produce the safest possible operation plan.'
             )
+            if isinstance(prior_observation, dict) and prior_observation:
+                planner_prompt += (
+                    '\n\nPrevious ReAct observation:\n'
+                    f'{json.dumps(prior_observation, ensure_ascii=True, indent=2)}'
+                )
+                if prior_provider_error_code == 'max_tool_turns_exceeded':
+                    planner_prompt += (
+                        '\n\nPlanning retry guidance:\n'
+                        'The previous planning turn reached its tool-call budget before finalizing operations. '
+                        'Use the prior observations, avoid repeating resolved lookups, and call '
+                        'plan_roadmap_operations as soon as the minimum safe context is available.'
+                    )
+                if resolved_node_ids:
+                    planner_prompt += (
+                        '\n\nResolved node IDs from previous turn:\n'
+                        f'{json.dumps(resolved_node_ids[:20], ensure_ascii=True, indent=2)}'
+                    )
+            if prior_tool_summary_list:
+                planner_prompt += (
+                    '\n\nPrevious tool observation summary:\n'
+                    f'{json.dumps(prior_tool_summary_list[:5], ensure_ascii=True, indent=2)}'
+                )
+            if remaining_llm_budget is not None:
+                planner_prompt += (
+                    '\n\nRemaining planner call budget for this turn:\n'
+                    f'{remaining_llm_budget}'
+                )
+            if react_loop_turn > 1:
+                planner_prompt += (
+                    '\n\nFollow-up planning turn guidance:\n'
+                    f'This is ReAct loop turn {react_loop_turn}. '
+                    f'You have at most {edit_turns} tool calls this turn. '
+                    'Prefer previously resolved context and call plan_roadmap_operations '
+                    'as soon as a safe operation plan can be staged.'
+                )
         schema_invalid_attempts = 0
         repair_attempted = False
         last_provider_error_code: str | None = None
@@ -598,22 +701,46 @@ class LLMPlanner:
             except ProviderAdapterError as exc:
                 last_provider_error_code = exc.code
                 if exc.code == 'max_tool_turns_exceeded':
+                    provider_used: ProviderUsed = (
+                        'openai'
+                        if str(exc.provider).strip().lower() == 'openai'
+                        else 'rule_based'
+                    )
                     self._logger.warning(
-                        'Edit tool-call budget exhausted; escalating to clarifier. code=%s message=%s',
+                        'Edit tool-call budget exhausted; returning replanning observation. code=%s message=%s',
                         exc.code,
                         exc.message,
                     )
-                    clarifier_state = self._build_edit_clarifier_state(
-                        user_message=user_message,
-                        system_prompt=system_prompt,
-                        history_messages=history_messages,
-                        trace_id=trace_id,
-                        provider_error_code=exc.code,
-                        llm_calls_used_base=llm_calls_used,
-                    )
                     return _finalize_state(
-                        clarifier_state,
-                        used_calls=clarifier_state.get('llm_calls_used'),
+                        {
+                            'assistant_message': (
+                                'Collected partial context and will continue edit planning in the next turn.'
+                            ),
+                            'planned_operations': [],
+                            'response_mode': 'edit_plan',
+                            'preview_recommended': False,
+                            'parse_mode': 'deterministic_react_tool_budget_replan',
+                            'provider_used': provider_used,
+                            'fallback_used': False,
+                            'provider_error_code': exc.code,
+                            'tokens_input': exc.tokens_input,
+                            'tokens_output': exc.tokens_output,
+                            'tokens_total': exc.tokens_total,
+                            'pending_context_resolution': None,
+                            'clear_pending_context_resolution': False,
+                            'clarifier_action': None,
+                            'clarifier_reason': None,
+                            'clarifier_options': None,
+                            'clarifier_schema_retries': schema_invalid_attempts,
+                            'planner_schema_invalid_attempts': schema_invalid_attempts,
+                            'planner_repair_attempted': repair_attempted,
+                            'draft_action': 'continue',
+                            'tool_plan': [],
+                            'needs_more_info': True,
+                            'stop_reason': 'tool_budget_exhausted',
+                            'llm_calls_used': llm_calls_used,
+                        },
+                        used_calls=llm_calls_used,
                     )
                 if exc.code in {'invalid_operation_payload', 'missing_tool_call'} and attempt + 1 < max_attempts:
                     schema_invalid_attempts += 1
@@ -622,6 +749,14 @@ class LLMPlanner:
                         planner_prompt=planner_prompt,
                         error_code=exc.code,
                     )
+                    if exc.code == 'missing_tool_call':
+                        # Retry in planning-only mode to avoid rediscovery churn.
+                        tool_definitions = get_operation_tools()
+                        planner_prompt = self._augment_missing_tool_call_retry_prompt(
+                            planner_prompt=planner_prompt,
+                            user_message=user_message,
+                            tool_observations=tool_observations,
+                        )
                     continue
                 self._logger.warning(
                     'Provider operation planning failed in react mode, using edit clarifier lane. code=%s message=%s',
@@ -828,7 +963,7 @@ class LLMPlanner:
         observations: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         summary: list[dict[str, Any]] = []
-        for observation in observations[-5:]:
+        for observation in observations[-10:]:
             if not isinstance(observation, dict):
                 continue
             tool_name = str(observation.get('tool_name') or '').strip()
@@ -841,6 +976,9 @@ class LLMPlanner:
                 label = args.get('label')
                 if isinstance(label, str) and label.strip():
                     summary_item['label'] = label.strip()[:80]
+                node_id_arg = args.get('node_id')
+                if isinstance(node_id_arg, str) and node_id_arg.strip():
+                    summary_item['queried_node_id'] = node_id_arg.strip()
 
             if isinstance(result, dict):
                 status = result.get('status')
@@ -856,9 +994,78 @@ class LLMPlanner:
                     selected_id = selected.get('id')
                     if isinstance(selected_id, str) and selected_id.strip():
                         summary_item['selected_id'] = selected_id.strip()
+                node_id = result.get('id')
+                if isinstance(node_id, str) and node_id.strip():
+                    summary_item['node_id'] = node_id.strip()
+                node_type = result.get('type')
+                if isinstance(node_type, str) and node_type.strip():
+                    summary_item['node_type'] = node_type.strip()[:32]
+                node_status = result.get('status') or result.get('state')
+                if isinstance(node_status, str) and node_status.strip():
+                    summary_item['node_status'] = node_status.strip()[:48]
+                node_title = result.get('title')
+                if isinstance(node_title, str) and node_title.strip():
+                    summary_item['node_title'] = node_title.strip()[:80]
                 matches = result.get('matches')
                 if isinstance(matches, list):
                     summary_item['match_count'] = len(matches)
+                    match_ids: list[str] = []
+                    match_items: list[dict[str, str]] = []
+                    for match in matches[:5]:
+                        if isinstance(match, dict):
+                            match_id = match.get('id')
+                            if isinstance(match_id, str) and match_id.strip():
+                                normalized_match_id = match_id.strip()
+                                match_ids.append(normalized_match_id)
+                                match_items.append(
+                                    {
+                                        'id': normalized_match_id,
+                                        'title': str(match.get('title') or '').strip()[:60],
+                                        'type': str(
+                                            match.get('type') or match.get('node_type') or ''
+                                        ).strip()[:24],
+                                        'status': str(
+                                            match.get('status') or match.get('state') or ''
+                                        ).strip()[:24],
+                                    }
+                                )
+                    if match_ids:
+                        summary_item['match_ids'] = match_ids
+                    if match_items:
+                        summary_item['match_items'] = match_items
+                children = result.get('children')
+                if isinstance(children, list):
+                    summary_item['children_count'] = len(children)
+                    child_ids: list[str] = []
+                    child_statuses: dict[str, str] = {}
+                    child_items: list[dict[str, str]] = []
+                    for child in children[:20]:
+                        if not isinstance(child, dict):
+                            continue
+                        child_id = child.get('id')
+                        if not isinstance(child_id, str) or not child_id.strip():
+                            continue
+                        normalized_child_id = child_id.strip()
+                        child_ids.append(normalized_child_id)
+                        child_status = child.get('status') or child.get('state')
+                        if isinstance(child_status, str) and child_status.strip():
+                            child_statuses[normalized_child_id] = child_status.strip()[:48]
+                        child_items.append(
+                            {
+                                'id': normalized_child_id,
+                                'title': str(child.get('title') or '').strip()[:60],
+                                'type': str(
+                                    child.get('type') or child.get('node_type') or ''
+                                ).strip()[:24],
+                                'status': str(child_status or '').strip()[:24],
+                            }
+                        )
+                    if child_ids:
+                        summary_item['child_ids'] = child_ids
+                    if child_statuses:
+                        summary_item['child_statuses'] = child_statuses
+                    if child_items:
+                        summary_item['children'] = child_items
 
             summary.append(summary_item)
         return summary
@@ -1018,6 +1225,132 @@ class LLMPlanner:
         if guidance.strip() in planner_prompt:
             return planner_prompt
         return planner_prompt + guidance
+
+    def _augment_missing_tool_call_retry_prompt(
+        self,
+        *,
+        planner_prompt: str,
+        user_message: str,
+        tool_observations: list[dict[str, Any]],
+    ) -> str:
+        if not tool_observations:
+            return planner_prompt
+
+        updated_prompt = planner_prompt
+        summary_marker = 'RETRY TOOL OBSERVATION SUMMARY:'
+        if summary_marker not in updated_prompt:
+            retry_summary = self._summarize_react_tool_observations(tool_observations)
+            if retry_summary:
+                updated_prompt += (
+                    '\n\nRETRY TOOL OBSERVATION SUMMARY:\n'
+                    f'{json.dumps(retry_summary[:10], ensure_ascii=True, indent=2)}'
+                )
+
+        requested_count = self._extract_todo_delete_count(user_message)
+        if requested_count is None:
+            return updated_prompt
+
+        ordered_todo_candidates = self._collect_ordered_todo_delete_candidates(tool_observations)
+        if len(ordered_todo_candidates) < requested_count:
+            return updated_prompt
+
+        policy_marker = 'DETERMINISTIC TODO DELETE SELECTION POLICY:'
+        if policy_marker in updated_prompt:
+            return updated_prompt
+
+        updated_prompt += (
+            '\n\nDETERMINISTIC TODO DELETE SELECTION POLICY:\n'
+            f'User requested removing {requested_count} todo tasks.\n'
+            'Use ONLY the ordered candidate list below.\n'
+            f'Select the first {requested_count} candidates in listed order where status is exactly "todo".\n'
+            'Then call plan_roadmap_operations exactly once with delete_node operations for those IDs.\n'
+            'Do not ask which tasks to delete when this deterministic candidate list is available.\n'
+            'Ordered todo task candidates:\n'
+            f'{json.dumps(ordered_todo_candidates[:20], ensure_ascii=True, indent=2)}'
+        )
+        return updated_prompt
+
+    @staticmethod
+    def _extract_todo_delete_count(user_message: str) -> int | None:
+        text = ' '.join(user_message.strip().lower().split())
+        if not text:
+            return None
+
+        digit_match = re.search(
+            r'\b(?:remove|delete)\s+(\d+)\s+(?:\w+\s+)?todo\s+tasks?\b',
+            text,
+        )
+        if digit_match is not None:
+            requested_count = int(digit_match.group(1))
+            return requested_count if requested_count > 0 else None
+
+        word_to_number = {
+            'one': 1,
+            'two': 2,
+            'three': 3,
+            'four': 4,
+            'five': 5,
+            'six': 6,
+            'seven': 7,
+            'eight': 8,
+            'nine': 9,
+            'ten': 10,
+        }
+        word_match = re.search(
+            r'\b(?:remove|delete)\s+(one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:\w+\s+)?todo\s+tasks?\b',
+            text,
+        )
+        if word_match is None:
+            return None
+
+        return word_to_number.get(word_match.group(1))
+
+    @staticmethod
+    def _collect_ordered_todo_delete_candidates(
+        tool_observations: list[dict[str, Any]],
+    ) -> list[dict[str, str]]:
+        candidates: list[dict[str, str]] = []
+        seen_ids: set[str] = set()
+
+        for observation in tool_observations:
+            if str(observation.get('tool_name') or '').strip() != 'get_children':
+                continue
+
+            result = observation.get('result')
+            if not isinstance(result, dict):
+                continue
+
+            children = result.get('children')
+            if not isinstance(children, list):
+                continue
+
+            for child in children:
+                if not isinstance(child, dict):
+                    continue
+
+                node_id = str(child.get('id') or '').strip()
+                if not node_id or node_id in seen_ids:
+                    continue
+
+                node_type = str(child.get('type') or child.get('node_type') or '').strip().lower()
+                if node_type and node_type != 'task':
+                    continue
+
+                status = str(child.get('status') or child.get('state') or '').strip().lower()
+                if status != 'todo':
+                    continue
+
+                seen_ids.add(node_id)
+                candidates.append(
+                    {
+                        'id': node_id,
+                        'title': str(child.get('title') or '').strip()[:80],
+                        'type': node_type or 'task',
+                        'status': status,
+                    }
+                )
+
+        return candidates
 
     def _build_edit_clarifier_state(
         self,

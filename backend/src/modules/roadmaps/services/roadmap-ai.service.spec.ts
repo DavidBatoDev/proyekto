@@ -7,7 +7,9 @@ describe('RoadmapAiService search scoring', () => {
         from: jest.fn().mockReturnValue({
           select: jest.fn().mockReturnValue({
             eq: jest.fn().mockReturnValue({
-              maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+              maybeSingle: jest
+                .fn()
+                .mockResolvedValue({ data: null, error: null }),
             }),
           }),
         }),
@@ -329,13 +331,20 @@ describe('RoadmapAiService context timing logs', () => {
         searchContextCandidates: jest.fn(),
       } as never,
       {} as never,
-      { assertRoadmapPermission: jest.fn().mockResolvedValue(undefined) } as never,
+      {
+        assertRoadmapPermission: jest.fn().mockResolvedValue(undefined),
+      } as never,
       {
         getResolution: jest.fn().mockResolvedValue({
           roadmapId: ROADMAP_ID,
           userId: USER_ID,
           matches: [
-            { id: EPIC_ID, type: 'epic', title: 'Platform Foundation', parent_id: ROADMAP_ID },
+            {
+              id: EPIC_ID,
+              type: 'epic',
+              title: 'Platform Foundation',
+              parent_id: ROADMAP_ID,
+            },
           ],
         }),
       } as never,
@@ -387,6 +396,55 @@ describe('RoadmapAiService context timing logs', () => {
     expect(events).toContain('roadmap_ai_context_resolution_children_timing');
     expect(events).toContain('roadmap_ai_context_features_timing');
     expect(events).toContain('roadmap_ai_context_tasks_assigned_timing');
+  });
+
+  it('includes status in context node children responses', async () => {
+    const service = createService();
+
+    const epicChildren = await service.getContextNodeChildren(
+      ROADMAP_ID,
+      EPIC_ID,
+      { limit: 10 } as any,
+      USER_ID,
+    );
+    expect(epicChildren.children).toHaveLength(1);
+    expect(epicChildren.children[0]).toMatchObject({
+      id: FEATURE_ID,
+      type: 'feature',
+      status: 'not_started',
+      parent_id: EPIC_ID,
+    });
+
+    const featureChildren = await service.getContextNodeChildren(
+      ROADMAP_ID,
+      FEATURE_ID,
+      { limit: 10 } as any,
+      USER_ID,
+    );
+    expect(featureChildren.children).toHaveLength(1);
+    expect(featureChildren.children[0]).toMatchObject({
+      id: TASK_ID,
+      type: 'task',
+      status: 'in_progress',
+      parent_id: FEATURE_ID,
+    });
+  });
+
+  it('includes status in context features responses', async () => {
+    const service = createService();
+    const result = await service.getContextFeatures(
+      ROADMAP_ID,
+      { epic_id: EPIC_ID, limit: 10 } as any,
+      USER_ID,
+    );
+
+    expect(result.children).toHaveLength(1);
+    expect(result.children[0]).toMatchObject({
+      id: FEATURE_ID,
+      type: 'feature',
+      status: 'not_started',
+      parent_id: EPIC_ID,
+    });
   });
 });
 
@@ -769,12 +827,16 @@ describe('RoadmapAiService preview durability', () => {
     const previewStore = {
       setPreview: jest
         .fn()
-        .mockImplementation(async (previewId: string, payload: Record<string, unknown>) => {
-          previews.set(previewId, payload);
-        }),
+        .mockImplementation(
+          async (previewId: string, payload: Record<string, unknown>) => {
+            previews.set(previewId, payload);
+          },
+        ),
       getPreview: jest
         .fn()
-        .mockImplementation(async (previewId: string) => previews.get(previewId) ?? null),
+        .mockImplementation(
+          async (previewId: string) => previews.get(previewId) ?? null,
+        ),
       setResolveLookup: jest.fn().mockResolvedValue(undefined),
       getResolveLookup: jest.fn().mockResolvedValue(null),
       setResolution: jest.fn().mockResolvedValue(undefined),
@@ -793,7 +855,11 @@ describe('RoadmapAiService preview durability', () => {
       { operations: [] } as any,
       USER_ID,
     );
-    const fetched = await service.getPreview(ROADMAP_ID, preview.preview_id, USER_ID);
+    const fetched = await service.getPreview(
+      ROADMAP_ID,
+      preview.preview_id,
+      USER_ID,
+    );
 
     expect(previewStore.setPreview).toHaveBeenCalledTimes(1);
     expect(fetched.preview_id).toBe(preview.preview_id);
@@ -809,17 +875,28 @@ describe('RoadmapAiService authz cache hardening', () => {
       {} as never,
       {} as never,
     ) as unknown as {
-      authzDecisionCache: Map<string, { expiresAtMs: number; roadmap: Record<string, unknown> }>;
+      authzDecisionCache: Map<
+        string,
+        { expiresAtMs: number; roadmap: Record<string, unknown> }
+      >;
       buildAuthzDecisionCacheKey: (roadmapId: string, userId: string) => string;
-      writeAuthzDecisionCache: (cacheKey: string, roadmap: Record<string, unknown>) => void;
-      readAuthzDecisionCache: (cacheKey: string) => Record<string, unknown> | null;
+      writeAuthzDecisionCache: (
+        cacheKey: string,
+        roadmap: Record<string, unknown>,
+      ) => void;
+      readAuthzDecisionCache: (
+        cacheKey: string,
+      ) => Record<string, unknown> | null;
     };
 
   it('evicts old entries when max size is exceeded', () => {
     const service = createService();
     // Fill past the default max size and verify bounded cache behavior.
     for (let index = 0; index < 5005; index += 1) {
-      const key = service.buildAuthzDecisionCacheKey(`roadmap-${index}`, `user-${index}`);
+      const key = service.buildAuthzDecisionCacheKey(
+        `roadmap-${index}`,
+        `user-${index}`,
+      );
       service.writeAuthzDecisionCache(key, { id: `roadmap-${index}` });
     }
 
@@ -848,7 +925,9 @@ describe('RoadmapAiService authz cache hardening', () => {
     let key = '';
     jest.isolateModules(() => {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { RoadmapAiService: ReloadedRoadmapAiService } = require('./roadmap-ai.service');
+      const {
+        RoadmapAiService: ReloadedRoadmapAiService,
+      } = require('./roadmap-ai.service');
       const service = new ReloadedRoadmapAiService(
         {} as never,
         {} as never,

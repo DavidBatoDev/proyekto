@@ -3,6 +3,7 @@ import os
 import unittest
 from datetime import datetime
 from types import SimpleNamespace
+from typing import Any
 import re
 import time
 import asyncio
@@ -1316,6 +1317,128 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(outcome.react_loop_turns, 2)
         self.assertEqual(outcome.react_loop_budget, 2)
         self.assertEqual(outcome.react_loop_termination_reason, 'ready_to_stage')
+
+    def test_plan_message_react_loop_replans_after_tool_budget_observation(self) -> None:
+        planner_calls = {'count': 0}
+        second_turn_context = {
+            'has_observation': False,
+            'provider_error_code': None,
+            'resolved_node_ids': [],
+        }
+
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                planner_calls['count'] += 1
+                if planner_calls['count'] == 2 and isinstance(session_context, dict):
+                    prior_observation = session_context.get('_react_loop_observation')
+                    if isinstance(prior_observation, dict):
+                        second_turn_context['has_observation'] = True
+                        second_turn_context['provider_error_code'] = prior_observation.get(
+                            'provider_error_code'
+                        )
+                        resolved_node_ids = prior_observation.get('resolved_node_ids')
+                        if isinstance(resolved_node_ids, list):
+                            second_turn_context['resolved_node_ids'] = resolved_node_ids
+
+                if planner_calls['count'] == 1:
+                    return PlanningResult(
+                        assistant_message='Collected partial context; retrying planning with observations.',
+                        operations=[],
+                        parse_mode='deterministic_react_tool_budget_replan',
+                        intent_type='roadmap_edit',
+                        response_mode='edit_plan',
+                        preview_recommended=False,
+                        provider_used='openai',
+                        fallback_used=False,
+                        provider_error_code='max_tool_turns_exceeded',
+                        draft_action='continue',
+                        tool_plan=[{'tool_name': 'resolve_node_reference', 'args': {}}],
+                        needs_more_info=True,
+                        stop_reason='tool_budget_exhausted',
+                        llm_calls_used=1,
+                        react_tool_observation_summary=[
+                            {
+                                'tool_name': 'resolve_node_reference',
+                                'selected_id': '4848e4ec-fabf-4002-a703-714e938d6c04',
+                                'status': 'unique',
+                            }
+                        ],
+                    )
+
+                return PlanningResult(
+                    assistant_message='Prepared operation and ready to stage.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Platform Foundation 1'},
+                        )
+                    ],
+                    parse_mode='openai_edit_schema',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    draft_action='continue',
+                    tool_plan=[{'tool_name': 'resolve_node_reference', 'args': {}}],
+                    needs_more_info=False,
+                    stop_reason='ready_to_stage',
+                    llm_calls_used=1,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={
+                'agent_hybrid_react_enabled': True,
+                'agent_edit_planner_max_attempts': 2,
+            }
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Remove 3 todo tasks in the Roadmap JSON Editor',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-react-tool-budget-replan',
+        )
+
+        self.assertEqual(planner_calls['count'], 2)
+        self.assertTrue(second_turn_context['has_observation'])
+        self.assertEqual(second_turn_context['provider_error_code'], 'max_tool_turns_exceeded')
+        self.assertIn(
+            '4848e4ec-fabf-4002-a703-714e938d6c04',
+            second_turn_context['resolved_node_ids'],
+        )
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(outcome.stop_reason, 'ready_to_stage')
+        self.assertEqual(outcome.react_terminal_action, 'execute')
+        self.assertEqual(len(outcome.operations), 1)
+        self.assertEqual(outcome.phase_timings.get('react_loop_turns'), 2)
+        self.assertEqual(outcome.phase_timings.get('react_loop_termination_reason'), 'ready_to_stage')
 
     def test_plan_message_react_loop_budget_exhaustion_sets_clarify_terminal(self) -> None:
         planner_calls = {'count': 0}
@@ -5649,6 +5772,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
         )
         call_count = {'value': 0}
         captured_prompts: list[str] = []
+        captured_tool_names: list[list[str]] = []
 
         class _FakeOrchestrator:
             def call(self, operation, trace_context=None):
@@ -5672,6 +5796,13 @@ class PlannerContextSafetyTests(unittest.TestCase):
                         max_tool_turns,
                     ):
                         captured_prompts.append(planner_prompt)
+                        captured_tool_names.append(
+                            [
+                                str(tool.get('function', {}).get('name') or '')
+                                for tool in tools
+                                if isinstance(tool, dict)
+                            ]
+                        )
                         return ('Which exact node should I rename?', [])
 
                 return ProviderCallOutcome(
@@ -5701,6 +5832,163 @@ class PlannerContextSafetyTests(unittest.TestCase):
             'IMPORTANT REPAIR: Your previous response did not call plan_roadmap_operations.',
             captured_prompts[0],
         )
+        self.assertEqual(captured_tool_names, [['plan_roadmap_operations']])
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'openai_tool_calling_clarifier')
+
+    def test_plan_operations_missing_tool_call_retry_adds_ordered_todo_delete_policy(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={'agent_edit_planner_max_attempts': 2}
+        )
+        call_count = {'value': 0}
+        captured_prompt = {'value': ''}
+        captured_tool_names: list[list[str]] = []
+
+        def fake_execute(name: str, _args: dict, _ctx: dict):
+            if name == 'resolve_node_reference':
+                return {
+                    'status': 'unique',
+                    'selected': {
+                        'id': '4848e4ec-fabf-4002-a703-714e938d6c04',
+                        'type': 'feature',
+                        'title': 'Roadmap JSON Editor',
+                    },
+                }
+            if name == 'get_children':
+                return {
+                    'children': [
+                        {
+                            'id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                            'title': 'Todo Task 1',
+                            'status': 'todo',
+                            'type': 'task',
+                        },
+                        {
+                            'id': 'c12347aa-ef79-4313-aabd-8db137ccbaaf',
+                            'title': 'Done Task',
+                            'status': 'done',
+                            'type': 'task',
+                        },
+                        {
+                            'id': 'd4d5ff11-8ec7-4fa6-a1fc-9b50be24a1a3',
+                            'title': 'Todo Task 2',
+                            'status': 'todo',
+                            'type': 'task',
+                        },
+                        {
+                            'id': 'e5a52172-cdc9-4e9a-bf11-2f0d5a0f4f84',
+                            'title': 'Todo Feature',
+                            'status': 'todo',
+                            'type': 'feature',
+                        },
+                        {
+                            'id': 'f6ee1d09-e4c1-4f2f-92d9-7ea6e89e64f2',
+                            'title': 'Todo Task 3',
+                            'status': 'todo',
+                            'type': 'task',
+                        },
+                    ]
+                }
+            return {'error': {'code': 'UNKNOWN'}}
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                call_count['value'] += 1
+                if call_count['value'] == 1:
+
+                    class _AdapterFirstAttempt:
+                        def plan_operations_with_tools(
+                            self,
+                            *,
+                            system_prompt,
+                            planner_prompt,
+                            history_messages,
+                            tools,
+                            tool_executor,
+                            max_tool_turns,
+                        ):
+                            tool_executor(
+                                'resolve_node_reference',
+                                {
+                                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                                    'label': 'Roadmap JSON Editor',
+                                    'limit': 10,
+                                },
+                            )
+                            tool_executor(
+                                'get_children',
+                                {
+                                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                                    'parent_id': '4848e4ec-fabf-4002-a703-714e938d6c04',
+                                    'limit': 100,
+                                },
+                            )
+                            raise ProviderAdapterError(
+                                provider='openai',
+                                code='missing_tool_call',
+                                message='OpenAI did not return any tool call while planning operations.',
+                            )
+
+                    return ProviderCallOutcome(
+                        value=operation(_AdapterFirstAttempt()),
+                        provider_used='openai',
+                        fallback_used=False,
+                        provider_error_code=None,
+                    )
+
+                class _AdapterSecondAttempt:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                    ):
+                        captured_prompt['value'] = planner_prompt
+                        captured_tool_names.append(
+                            [
+                                str(tool.get('function', {}).get('name') or '')
+                                for tool in tools
+                                if isinstance(tool, dict)
+                            ]
+                        )
+                        return ('Need one more detail.', [])
+
+                return ProviderCallOutcome(
+                    value=operation(_AdapterSecondAttempt()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
+        planner._provider_orchestrator = _FakeOrchestrator()
+
+        result = planner._plan_operations(
+            {
+                'user_message': 'Remove 3 todo tasks in the Roadmap JSON Editor',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-missing-tool-call-todo-delete-policy',
+                },
+            }
+        )
+
+        self.assertEqual(call_count['value'], 2)
+        self.assertEqual(captured_tool_names, [['plan_roadmap_operations']])
+        prompt_text = str(captured_prompt.get('value') or '')
+        self.assertIn('RETRY TOOL OBSERVATION SUMMARY:', prompt_text)
+        self.assertIn('DETERMINISTIC TODO DELETE SELECTION POLICY:', prompt_text)
+        self.assertIn('Select the first 3 candidates in listed order', prompt_text)
+        self.assertIn('b026e967-54c3-4f11-9c49-b95a680aa2a7', prompt_text)
+        self.assertIn('d4d5ff11-8ec7-4fa6-a1fc-9b50be24a1a3', prompt_text)
+        self.assertIn('f6ee1d09-e4c1-4f2f-92d9-7ea6e89e64f2', prompt_text)
         self.assertEqual(result.get('response_mode'), 'chat')
         self.assertEqual(result.get('parse_mode'), 'openai_tool_calling_clarifier')
 
@@ -5826,7 +6114,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(result.get('planner_schema_invalid_attempts'), 1)
         self.assertTrue(result.get('planner_repair_attempted'))
 
-    def test_plan_operations_react_max_tool_turns_exceeded_escalates_immediately(self) -> None:
+    def test_plan_operations_react_max_tool_turns_exceeded_returns_replan_state(self) -> None:
         planner = self._planner()
         planner._settings = planner._settings.model_copy(
             update={'agent_edit_planner_max_attempts': 2}
@@ -5870,15 +6158,176 @@ class PlannerContextSafetyTests(unittest.TestCase):
         )
 
         self.assertEqual(edit_plan_attempts['value'], 1)
-        self.assertEqual(clarifier_attempts['value'], 1)
-        self.assertEqual(result.get('response_mode'), 'chat')
-        self.assertEqual(result.get('parse_mode'), 'openai_edit_clarifier')
+        self.assertEqual(clarifier_attempts['value'], 0)
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+        self.assertEqual(result.get('parse_mode'), 'deterministic_react_tool_budget_replan')
         self.assertEqual(result.get('provider_error_code'), 'max_tool_turns_exceeded')
         self.assertEqual(result.get('stop_reason'), 'tool_budget_exhausted')
-        self.assertIn('Options:', str(result.get('assistant_message')))
-        self.assertRegex(str(result.get('assistant_message')), r'1\. \[[a-z0-9_]+\] ')
-        self.assertRegex(str((result.get('clarifier_options') or [''])[0]), r'^\[[a-z0-9_]+\] ')
+        self.assertTrue(bool(result.get('needs_more_info')))
+        self.assertIsNone(result.get('clarifier_action'))
         self.assertEqual(result.get('planned_operations'), [])
+
+    def test_plan_operations_followup_turn_caps_tool_budget_and_adds_guidance(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={
+                'max_edit_tool_turns': 6,
+                'agent_edit_planner_max_attempts': 1,
+            }
+        )
+        captured: dict[str, Any] = {
+            'max_tool_turns': None,
+            'planner_prompt': None,
+            'tool_names': None,
+        }
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                    ):
+                        captured['max_tool_turns'] = max_tool_turns
+                        captured['planner_prompt'] = planner_prompt
+                        captured['tool_names'] = [
+                            str(tool.get('function', {}).get('name') or '')
+                            for tool in tools
+                            if isinstance(tool, dict)
+                        ]
+                        return ('Can you confirm exact tasks to remove?', [])
+
+                return ProviderCallOutcome(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        result = planner._plan_operations(
+            {
+                'user_message': 'Remove 3 todo tasks in the Roadmap JSON Editor',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-followup-turn-budget',
+                    '_react_loop_turn': 2,
+                    '_react_loop_observation': {
+                        'provider_error_code': 'max_tool_turns_exceeded',
+                        'resolved_node_ids': [
+                            '4848e4ec-fabf-4002-a703-714e938d6c04',
+                        ],
+                    },
+                },
+            }
+        )
+
+        self.assertEqual(captured['max_tool_turns'], 3)
+        prompt_text = str(captured.get('planner_prompt') or '')
+        self.assertIn('ALL CONTEXT BELOW IS ALREADY RESOLVED.', prompt_text)
+        self.assertIn(
+            'Do not call resolve_node_reference or get_children again for the same target.',
+            prompt_text,
+        )
+        self.assertIn('call plan_roadmap_operations exactly once', prompt_text)
+        self.assertEqual(captured.get('tool_names'), ['plan_roadmap_operations'])
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'openai_tool_calling_clarifier')
+
+    def test_summarize_react_tool_observations_includes_children_and_node_details(self) -> None:
+        planner = self._planner()
+        summary = planner._summarize_react_tool_observations(
+            [
+                {
+                    'tool_name': 'get_children',
+                    'args': {
+                        'parent_id': '4848e4ec-fabf-4002-a703-714e938d6c04',
+                        'node_id': '4848e4ec-fabf-4002-a703-714e938d6c04',
+                    },
+                    'result': {
+                        'children': [
+                            {
+                                'id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                                'title': 'Todo Task 1',
+                                'status': 'todo',
+                            },
+                            {
+                                'id': 'c12347aa-ef79-4313-aabd-8db137ccbaaf',
+                                'title': 'Todo Task 2',
+                                'status': 'done',
+                            },
+                        ]
+                    },
+                },
+                {
+                    'tool_name': 'resolve_node_reference',
+                    'args': {'label': 'Roadmap JSON Editor'},
+                    'result': {
+                        'matches': [
+                            {
+                                'id': '4848e4ec-fabf-4002-a703-714e938d6c04',
+                                'title': 'Roadmap JSON Editor',
+                                'type': 'feature',
+                                'status': 'todo',
+                            }
+                        ]
+                    },
+                },
+                {
+                    'tool_name': 'get_node_details',
+                    'args': {'node_id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7'},
+                    'result': {
+                        'id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                        'type': 'task',
+                        'title': 'Todo Task 1',
+                        'status': 'todo',
+                    },
+                },
+            ]
+        )
+
+        self.assertEqual(len(summary), 3)
+        children_summary = summary[0]
+        resolve_summary = summary[1]
+        node_summary = summary[2]
+
+        self.assertEqual(children_summary.get('children_count'), 2)
+        self.assertEqual(
+            children_summary.get('queried_node_id'),
+            '4848e4ec-fabf-4002-a703-714e938d6c04',
+        )
+        self.assertEqual(
+            children_summary.get('child_ids'),
+            [
+                'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                'c12347aa-ef79-4313-aabd-8db137ccbaaf',
+            ],
+        )
+        self.assertEqual(
+            (children_summary.get('children') or [])[0].get('title'),
+            'Todo Task 1',
+        )
+        self.assertEqual(
+            (children_summary.get('child_statuses') or {}).get('b026e967-54c3-4f11-9c49-b95a680aa2a7'),
+            'todo',
+        )
+        self.assertEqual(resolve_summary.get('match_count'), 1)
+        self.assertEqual(
+            (resolve_summary.get('match_items') or [])[0].get('id'),
+            '4848e4ec-fabf-4002-a703-714e938d6c04',
+        )
+        self.assertEqual(node_summary.get('node_id'), 'b026e967-54c3-4f11-9c49-b95a680aa2a7')
+        self.assertEqual(node_summary.get('node_type'), 'task')
+        self.assertEqual(node_summary.get('node_status'), 'todo')
+        self.assertEqual(node_summary.get('node_title'), 'Todo Task 1')
 
 
 if __name__ == '__main__':

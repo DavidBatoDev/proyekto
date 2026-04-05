@@ -449,6 +449,10 @@ export class RoadmapAiContextChildDto {
   title: string;
 
   @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsOptional()
   @IsUUID()
   parent_id?: string;
 }
@@ -529,4 +533,3 @@ export class RoadmapAiContextTasksAssignedResponseDto {
   @Type(() => RoadmapAiContextAssignedTaskDto)
   tasks: RoadmapAiContextAssignedTaskDto[];
 }
-

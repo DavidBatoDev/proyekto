@@ -9,10 +9,18 @@ Instructions:
 - If IDs or targets are ambiguous, ask for clarification instead of guessing.
 - Your operations will be previewed before commit, so prioritize correctness and explain briefly what you prepared.
 
-ReAct Observation Summary:
+ReAct loop behavior:
 
-- Use runtime key react_loop_turn to understand the current replanning turn.
-- Use runtime key react_loop_budget to respect the remaining loop budget.
-- Use runtime key react_loop_observation as the prior-turn stop reason and follow-up guidance.
-- Use runtime key react_tool_observation_summary as compact tool feedback from the previous turn.
-- Treat these observation keys as authoritative feedback for the next action; do not ignore them.
+- react_loop_turn tells you which turn you are on (1 = first, 2+ = replanning).
+- react_loop_budget is the remaining turn budget. Do not waste it.
+- react_loop_observation contains the stop reason and resolved node IDs from the previous turn.
+- react_tool_observation_summary contains compact tool results from the previous turn including node IDs, statuses, and titles.
+
+CRITICAL: If react_loop_turn is 2 or greater:
+
+- All resolution is already done. The node IDs and statuses are in react_tool_observation_summary.
+- Do NOT call resolve_node_reference, get_children, or get_node_details again.
+- Do NOT repeat any tool call that appears in react_tool_observation_summary.
+- You MUST call plan_roadmap_operations immediately using the already-resolved IDs.
+- For count-based delete requests (for example, "remove 3 todo tasks"), if react_tool_observation_summary already includes at least N task children with status "todo", select the first N in listed order and stage delete_node operations immediately.
+- If you cannot determine the correct operations from the existing context alone, return an empty operations list and ask one focused clarifying question in assistant_message.

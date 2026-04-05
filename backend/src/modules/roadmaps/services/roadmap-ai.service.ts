@@ -716,6 +716,7 @@ export class RoadmapAiService {
                 id: feature.id,
                 type: 'feature' as const,
                 title: feature.title ?? 'Untitled feature',
+                status: feature.status,
                 parent_id: epicId,
               },
             ]
@@ -946,6 +947,7 @@ export class RoadmapAiService {
                   id: epic.id,
                   type: 'epic' as const,
                   title: epic.title ?? 'Untitled epic',
+                  status: epic.status,
                   parent_id: roadmapNodeId,
                 },
               ]
@@ -981,6 +983,7 @@ export class RoadmapAiService {
                     id: feature.id,
                     type: 'feature' as const,
                     title: feature.title ?? 'Untitled feature',
+                    status: feature.status,
                     parent_id: parentId,
                   },
                 ]
@@ -1011,6 +1014,7 @@ export class RoadmapAiService {
                     id: task.id,
                     type: 'task' as const,
                     title: task.title ?? 'Untitled task',
+                    status: task.status,
                     parent_id: parentId,
                   },
                 ]
