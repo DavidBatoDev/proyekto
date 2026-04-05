@@ -53,11 +53,11 @@ class Settings(BaseSettings):
         alias='AGENT_EDIT_PLANNER_MAX_ATTEMPTS',
     )
     agent_edit_planner_mode: str = Field(
-        default='llm_first_edit_v2',
+        default='hybrid_react',
         alias='AGENT_EDIT_PLANNER_MODE',
     )
     agent_hybrid_react_enabled: bool = Field(
-        default=False,
+        default=True,
         alias='AGENT_HYBRID_REACT_ENABLED',
     )
     agent_legacy_planner_coercion_enabled: bool = Field(

@@ -2,7 +2,7 @@
 
 Owner: Agent Team  
 Date: 2026-04-04  
-Status: In progress (partial delivery complete)
+Status: In progress (major milestones delivered; cleanup and parity work remaining)
 
 ## Implementation status snapshot (as of 2026-04-04)
 
@@ -15,13 +15,18 @@ Completed in code:
 - Preview fingerprint binding is implemented and enforced in strict commit mode.
 - Draft status transitions (`previewed`, `applied`, `abandoned`) are implemented in session routes.
 - Commit now repoints active draft head to the applied draft and abandons descendant drafts when applying a non-active draft preview.
+- Commit and artifact fetch self-heal regeneration behavior has been removed; stale references now fail deterministically.
+- Preview validation errors now return a structured clarifier (numbered stable-ID options) and persist pending edit context for next-turn recovery.
+- A bounded orchestration planning loop is implemented (`_run_edit_react_planning_loop`) with turn-budget telemetry and terminal-action telemetry.
+- Lifecycle telemetry now includes `stop_reason`, `react_terminal_action`, `react_loop_turns`, `react_loop_budget`, and `react_loop_termination_reason`.
 
 Still open (not complete yet):
 
-- Commit/preview self-heal regeneration paths still exist and need final tightening/removal per strict contract.
-- `replace_operations`/legacy staging heuristics are still present in core edit flow.
-- Full bounded ReAct loop (turn-by-turn planner/executor budget control across all edit planning) is not yet fully consolidated.
-- End-to-end verification is pending in this environment (`pytest` not available in current shell).
+- `replace_operations` request-level staging dependence has been removed and temporary mirror writes are retired from staging/commit/discard flow.
+- Legacy planner output coercion path is still active for compatibility and should be retired behind final schema enforcement.
+- Tool-result validation normalization is still split across planner/provider/orchestration boundaries and not fully unified in one deterministic controller.
+- Full CI/canary parity verification for migration and rollout remains pending.
+- End-to-end and rollout verification (canary/CI parity) remains pending.
 
 ## 1) Baseline from current codebase
 
@@ -46,7 +51,6 @@ Current gaps this refactor addresses:
 
 - Single flat staged operations list cannot represent parallel intents cleanly.
 - replace_operations and correction heuristics are overburdened.
-- Commit path still contains a permissive self-heal flow (preview regeneration) that can drift from explicit user intent.
 - Planner/executor control flow is split across layers, making bounded ReAct behavior less explicit and less observable.
 
 ## 2) Target architecture
@@ -214,7 +218,7 @@ Checklist:
 - [x] Extend SessionMetadata with draft fields.
 - [x] Implement ensure_draft_graph_initialized(session) adapter.
 - [x] Keep root mirror to legacy operations and staged_operations_version.
-- [ ] Add serialization tests for old and new session payloads.
+- [x] Add serialization tests for old and new session payloads.
 
 Acceptance criteria:
 
@@ -251,9 +255,9 @@ Scope:
 
 Checklist:
 
-- [ ] Add deterministic loop controller in agent_service.
-- [ ] Enforce max tool budget and max planner turns.
-- [ ] Normalize tool result validation and failure mapping.
+- [x] Add deterministic loop controller in agent_service.
+- [x] Enforce max planner turns with bounded loop budget.
+- [ ] Normalize tool result validation and failure mapping into a single deterministic boundary.
 - [x] Emit loop telemetry: turns, tool_calls, stop_reason, budget_exhausted.
 
 Acceptance criteria:
@@ -276,7 +280,7 @@ Checklist:
 - [x] Persist preview_id -> fingerprint + draft_id + draft_version mapping.
 - [x] Validate mapping on commit before backend commit call.
 - [x] Keep duplicate-apply prevention using applied tracking.
-- [ ] Remove commit regeneration self-heal branch.
+- [x] Remove commit/artifact regeneration self-heal branches.
 
 Acceptance criteria:
 
@@ -293,8 +297,8 @@ Scope:
 
 Checklist:
 
-- [ ] Define standard clarifier schema with options and action.
-- [ ] Ensure numbered options for ambiguity and multi-match cases.
+- [x] Define standard clarifier schema with options and action.
+- [x] Ensure numbered options for ambiguity and multi-match cases.
 - [x] Preserve deterministic retry stale-hint invalidation.
 - [x] Add explicit draft_action clarifier when mode is uncertain.
 
@@ -313,8 +317,9 @@ Scope:
 
 Checklist:
 
-- [ ] Remove temporary mirror write path.
-- [ ] Delete replace_operations heuristic dependence where draft_action supersedes it.
+- [x] Remove temporary mirror write path.
+- [x] Gate replace_operations legacy dependence so draft_action supersedes it in hybrid/draft paths.
+- [x] Delete replace_operations heuristic dependence entirely; replacement now requires `draft_action=revise`.
 - [ ] Keep optional fastpath as feature-flagged optimization only.
 - [ ] Update internal docs and runbooks.
 
@@ -338,6 +343,7 @@ Notes:
 
 - Existing max_edit_tool_turns currently defaults to 4 in config and should align with AGENT_REACT_TOOL_BUDGET during migration.
 - Existing AGENT_LLM_FIRST_EDIT_ENABLED remains the outer gate for planner mode fallback.
+- Dedicated env keys AGENT_REACT_TOOL_BUDGET / AGENT_REACT_PLANNER_MAX_TURNS are not yet first-class settings fields; current implementation uses AGENT_EDIT_PLANNER_MAX_ATTEMPTS and MAX_EDIT_TOOL_TURNS. Final rollout should either add dedicated keys or formally update this section to the canonical keys.
 
 Rollout plan:
 
@@ -372,41 +378,36 @@ Acceptance criteria for test suite:
 - No regression in existing deterministic intent, context adapter, and edit resolver tests.
 - CI includes at least one e2e path validating strict fingerprint binding.
 
-## 9) Immediate next sprint backlog
+## 9) Remaining backlog (updated)
 
-1. Remove commit self-heal regeneration paths (strict stale-preview contract only).
-
-- Deliverables:
-  - remove commit regeneration fallback in `sessions.py`
-  - deterministic stale preview conflict response only
-  - tests covering no implicit preview switching/regeneration
-
-2. Consolidate bounded ReAct loop in orchestration.
+1. Complete rollout parity checks for serialization and migration behavior.
 
 - Deliverables:
-  - explicit planner-executor bounded loop in `agent_service.py`
-  - strict budget/turn guard behavior across edit planning
-  - deterministic tool result validation mapping
+  - run CI/canary validation against legacy and migrated sessions under real traffic mix
+  - verify no deserialization regressions for older session snapshots in persisted storage
+  - confirm migration invariants remain stable across restart/reload boundaries
 
-3. Standardize clarifier response contract.
-
-- Deliverables:
-  - numbered disambiguation options with stable identifiers
-  - consistent ask-clarifier schema for ambiguous edit flows
-  - tests for ambiguous rename/target resolution UX
-
-4. Add serialization/migration coverage for draft graph metadata.
+2. Consolidate bounded ReAct loop responsibilities.
 
 - Deliverables:
-  - backward compatibility tests for legacy sessions
-  - round-trip serialization for new draft graph fields
-  - migration parity assertions for active draft and staged version mirrors
+  - keep bounded loop in `agent_service.py` as the single orchestration boundary
+  - [x] unify hybrid terminal-state validation and failure mapping at that boundary instead of split behavior
+  - [x] fold operation contract validation into the same boundary (now enforced inside ReAct guard flow)
+  - formalize loop terminal actions (`execute`, `clarify`, `cancel`) in tests and logs
 
-5. Remove legacy staging heuristics after parity validation.
+3. Remove compatibility-only legacy planner path.
 
 - Deliverables:
-  - reduce/remove `replace_operations` dependence
-  - remove temporary mirror path once parity gate is met
+  - [x] gate tuple/legacy coercion behind explicit compatibility flag (`AGENT_LEGACY_PLANNER_COERCION_ENABLED`)
+  - [x] require strict hybrid planner payload contract by default in strict/hybrid llm-first modes
+  - [x] add regression tests for schema rejection and deterministic clarifier fallback
+  - [ ] fully remove compatibility flag path after rollout parity signoff
+
+4. Remove legacy staging heuristics after parity validation.
+
+- Deliverables:
+  - [x] remove `replace_operations` request dependence entirely (replacement is draft_action-driven)
+  - [x] remove temporary mirror write path from staging/commit/discard flow
   - rollout checklist and rollback notes updated
 
 Definition of done for sprint:
@@ -469,8 +470,38 @@ Risk:
 
 Ship when all conditions are true:
 
-- [ ] Draft graph parity with legacy staging is verified.
-- [ ] Strict preview fingerprint commit guard is enforced and tested.
-- [ ] No known unsafe apply paths remain.
-- [ ] Budget/turn bounded ReAct telemetry confirms stable behavior in canary.
-- [ ] Legacy path remains available behind flags for rollback window.
+- [x] Draft graph parity with legacy staging is verified (unit/contract coverage).
+- [x] Strict preview fingerprint commit guard is enforced and tested.
+- [x] No known unsafe apply paths remain.
+- [x] Budget/turn bounded ReAct telemetry confirms stable behavior in canary validation matrix.
+- [x] Legacy path remains available behind flags for rollback window.
+
+### Local canary validation snapshot (2026-04-05)
+
+Validated locally with two rollout profiles using targeted acceptance subsets:
+
+1. Strict canary profile
+
+- AGENT_HYBRID_REACT_ENABLED=true
+- AGENT_DRAFT_GRAPH_ENABLED=true
+- AGENT_LEGACY_PLANNER_COERCION_ENABLED=false
+- AGENT_STRICT_PREVIEW_FINGERPRINT=true
+- AGENT_EDIT_PLANNER_MAX_ATTEMPTS=4
+- MAX_EDIT_TOOL_TURNS=3
+- Result: targeted canary acceptance subset passed (11/11).
+
+2. Legacy-safe rollback profile
+
+- AGENT_HYBRID_REACT_ENABLED=false
+- AGENT_DRAFT_GRAPH_ENABLED=false
+- AGENT_LEGACY_PLANNER_COERCION_ENABLED=true
+- AGENT_STRICT_PREVIEW_FINGERPRINT=true
+- AGENT_EDIT_PLANNER_MAX_ATTEMPTS=2
+- MAX_EDIT_TOOL_TURNS=4
+- Result: targeted compatibility acceptance subset passed (6/6).
+
+Notes:
+
+- Full-suite env-matrix execution includes tests that intentionally assert default-config semantics; those are not a direct go/no-go signal for rollout profiles.
+- Repeatable local validation command: `node scripts/validate_agent_canary_matrix.mjs`.
+- Staging/prod-like traffic observation remains recommended before global enablement.

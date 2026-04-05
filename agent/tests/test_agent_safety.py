@@ -1,4 +1,5 @@
 import logging
+import os
 import unittest
 from datetime import datetime
 from types import SimpleNamespace
@@ -9,7 +10,10 @@ import asyncio
 from fastapi import HTTPException
 
 from app.api.routes import sessions as sessions_routes
-from app.core.config import get_settings
+os.environ.setdefault('AGENT_HYBRID_REACT_ENABLED', 'false')
+os.environ.setdefault('AGENT_DRAFT_GRAPH_ENABLED', 'false')
+
+from app.core.config import get_settings, reload_settings
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import (
     ActorContext,
@@ -28,6 +32,8 @@ from app.core.llm.providers.orchestrator import ProviderCallOutcome
 from app.core.orchestration.agent_service import AgentService, MessagePlanningOutcome
 from app.core.session_store import SessionStoreUnavailableError
 from app.core.tools.registry import parse_plan_tool_args
+
+reload_settings()
 
 
 class _FakeNestClient:
@@ -4305,6 +4311,13 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(state.get('parse_mode'), 'deterministic_edit_continuation_override')
         self.assertFalse(bool(state.get('is_roadmap_question')))
 
+    def test_heuristic_intent_classifies_task_reassignment_as_edit(self) -> None:
+        planner = self._planner()
+        intent = planner._heuristic_intent(
+            'Reassign all tasks in this roadmap to me regardless of existing owners'
+        )
+        self.assertEqual(intent, 'roadmap_edit')
+
     def test_resolve_node_reference_uses_normalized_query_variant(self) -> None:
         planner = self._planner()
         observed_queries: list[str] = []
@@ -4997,6 +5010,83 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(result.get('clarifier_action'), 'ask_clarifier')
         self.assertEqual(result.get('planner_schema_invalid_attempts'), 1)
         self.assertTrue(result.get('planner_repair_attempted'))
+
+    def test_plan_operations_invalid_schema_closes_loop_with_unique_rename_resolution(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={
+                'agent_llm_first_edit_enabled': True,
+                'agent_hybrid_react_enabled': True,
+                'agent_edit_planner_repair_retries': 0,
+                'agent_edit_planner_max_attempts': 1,
+            }
+        )
+
+        def fake_execute(name: str, _args: dict, _ctx: dict):
+            if name == 'resolve_node_reference':
+                return {
+                    'status': 'unique',
+                    'selected': {
+                        'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                        'type': 'epic',
+                        'title': 'Platform Foundation',
+                    },
+                    'matches': [],
+                }
+            return {'error': {'code': 'UNKNOWN'}}
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                    ):
+                        tool_executor(
+                            'resolve_node_reference',
+                            {
+                                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                                'label': 'Platform Foundation',
+                                'node_type': 'epic',
+                                'limit': 5,
+                            },
+                        )
+                        return 'not valid json'
+
+                return ProviderCallOutcome(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
+        planner._provider_orchestrator = _FakeOrchestrator()
+        result = planner._plan_operations(
+            {
+                'user_message': 'Rename my Platform Foundation to App Foundation',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-react-closure-rename',
+                },
+            }
+        )
+
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+        self.assertEqual(result.get('parse_mode'), 'deterministic_react_tool_closure')
+        planned_ops = result.get('planned_operations') or []
+        self.assertEqual(len(planned_ops), 1)
+        self.assertEqual(planned_ops[0].op.value, 'update_node')
+        self.assertEqual(planned_ops[0].node_id, 'dad5697a-8962-4f80-8bc3-8a964edd8e56')
+        self.assertEqual(planned_ops[0].patch, {'title': 'App Foundation'})
 
     def test_build_llm_first_prompt_uses_compact_state_summaries(self) -> None:
         planner = self._planner()

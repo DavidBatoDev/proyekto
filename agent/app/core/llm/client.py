@@ -574,6 +574,18 @@ class LLMPlanner:
         max_attempts = max(1, self._settings.agent_edit_planner_max_attempts)
         max_repair_retries = max(0, self._settings.agent_edit_planner_repair_retries)
         max_attempts = min(max_attempts, max_repair_retries + 1)
+        tool_observations: list[dict[str, Any]] = []
+
+        def _capturing_tool_executor(name: str, args: dict[str, Any]) -> dict[str, Any]:
+            result = self._execute_context_tool(name, args, session_context)
+            tool_observations.append(
+                {
+                    'tool_name': name,
+                    'args': dict(args) if isinstance(args, dict) else {},
+                    'result': result,
+                }
+            )
+            return result
 
         planner_prompt = self._build_llm_first_edit_prompt(
             user_message=user_message,
@@ -595,11 +607,7 @@ class LLMPlanner:
                         planner_prompt=planner_prompt,
                         history_messages=history_messages,
                         tools=tool_definitions,
-                        tool_executor=lambda name, args: self._execute_context_tool(
-                            name,
-                            args,
-                            session_context,
-                        ),
+                        tool_executor=_capturing_tool_executor,
                         max_tool_turns=edit_turns,
                     ),
                     trace_context={'trace_id': trace_id, 'phase': 'edit_plan'},
@@ -640,6 +648,18 @@ class LLMPlanner:
                     exc.code,
                     exc.message,
                 )
+                synthesized_operations = self._maybe_synthesize_react_closure_operations(
+                    user_message=user_message,
+                    tool_observations=tool_observations,
+                )
+                if synthesized_operations:
+                    return self._build_synthesized_react_closure_state(
+                        operations=synthesized_operations,
+                        schema_invalid_attempts=schema_invalid_attempts,
+                        repair_attempted=repair_attempted,
+                        draft_action='continue',
+                        tool_plan=[],
+                    )
                 return self._build_edit_clarifier_state(
                     user_message=user_message,
                     system_prompt=system_prompt,
@@ -747,6 +767,21 @@ class LLMPlanner:
                 }
 
             if result_kind == 'tool':
+                synthesized_operations = self._maybe_synthesize_react_closure_operations(
+                    user_message=user_message,
+                    tool_observations=tool_observations,
+                )
+                if synthesized_operations:
+                    return self._build_synthesized_react_closure_state(
+                        operations=synthesized_operations,
+                        schema_invalid_attempts=schema_invalid_attempts,
+                        repair_attempted=repair_attempted,
+                        draft_action=draft_action or 'continue',
+                        tool_plan=tool_plan,
+                        tokens_input=result.tokens_input,
+                        tokens_output=result.tokens_output,
+                        tokens_total=result.tokens_total,
+                    )
                 clarifier_message = (
                     assistant_message.strip()
                     if isinstance(assistant_message, str) and assistant_message.strip()
@@ -800,10 +835,154 @@ class LLMPlanner:
                 'stop_reason': stop_reason,
             }
 
+        synthesized_operations = self._maybe_synthesize_react_closure_operations(
+            user_message=user_message,
+            tool_observations=tool_observations,
+        )
+        if synthesized_operations:
+            return self._build_synthesized_react_closure_state(
+                operations=synthesized_operations,
+                schema_invalid_attempts=schema_invalid_attempts,
+                repair_attempted=repair_attempted,
+                draft_action='continue',
+                tool_plan=[],
+            )
+
         return self._neutral_edit_clarifier_state(
             provider_error_code=last_provider_error_code or 'invalid_planner_schema',
             schema_retries=schema_invalid_attempts,
         )
+
+    def _build_synthesized_react_closure_state(
+        self,
+        *,
+        operations: list[RoadmapOperation],
+        schema_invalid_attempts: int,
+        repair_attempted: bool,
+        draft_action: str,
+        tool_plan: list[dict[str, Any]],
+        tokens_input: int | None = None,
+        tokens_output: int | None = None,
+        tokens_total: int | None = None,
+    ) -> PlannerState:
+        return {
+            'assistant_message': 'Prepared roadmap edit operations from resolved target context.',
+            'planned_operations': operations,
+            'response_mode': 'edit_plan',
+            'preview_recommended': True,
+            'parse_mode': 'deterministic_react_tool_closure',
+            'provider_used': 'rule_based',
+            'fallback_used': False,
+            'provider_error_code': None,
+            'tokens_input': tokens_input,
+            'tokens_output': tokens_output,
+            'tokens_total': tokens_total,
+            'pending_context_resolution': None,
+            'clear_pending_context_resolution': False,
+            'clarifier_action': None,
+            'clarifier_reason': None,
+            'clarifier_options': None,
+            'clarifier_schema_retries': schema_invalid_attempts,
+            'planner_schema_invalid_attempts': schema_invalid_attempts,
+            'planner_repair_attempted': repair_attempted,
+            'draft_action': draft_action,
+            'tool_plan': tool_plan,
+            'needs_more_info': False,
+            'stop_reason': 'ready_to_stage',
+        }
+
+    def _maybe_synthesize_react_closure_operations(
+        self,
+        *,
+        user_message: str,
+        tool_observations: list[dict[str, Any]],
+    ) -> list[RoadmapOperation] | None:
+        rename_labels = self._extract_rename_request_labels(user_message)
+        if rename_labels is None:
+            return None
+
+        from_label, to_title = rename_labels
+        normalized_from_label = self._normalize_label_for_matching(from_label)
+        for observation in reversed(tool_observations):
+            if str(observation.get('tool_name') or '').strip() != 'resolve_node_reference':
+                continue
+            args = observation.get('args')
+            result = observation.get('result')
+            if not isinstance(args, dict) or not isinstance(result, dict):
+                continue
+
+            status = str(result.get('status') or '').strip().lower()
+            selected_payload = result.get('selected')
+            if not isinstance(selected_payload, dict):
+                matches_payload = result.get('matches')
+                if (
+                    status == 'unique'
+                    and isinstance(matches_payload, list)
+                    and len(matches_payload) == 1
+                    and isinstance(matches_payload[0], dict)
+                ):
+                    selected_payload = matches_payload[0]
+
+            if status != 'unique' or not isinstance(selected_payload, dict):
+                continue
+
+            requested_label = str(args.get('label') or '').strip()
+            normalized_requested_label = self._normalize_label_for_matching(requested_label)
+            if normalized_from_label and normalized_requested_label:
+                if (
+                    normalized_from_label != normalized_requested_label
+                    and normalized_from_label not in normalized_requested_label
+                    and normalized_requested_label not in normalized_from_label
+                ):
+                    continue
+
+            node_id = str(selected_payload.get('id') or '').strip()
+            if not re.fullmatch(
+                r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
+                node_id,
+            ):
+                continue
+
+            return [
+                RoadmapOperation(
+                    op='update_node',
+                    node_id=node_id,
+                    patch={'title': to_title},
+                )
+            ]
+        return None
+
+    def _extract_rename_request_labels(self, user_message: str) -> tuple[str, str] | None:
+        text = ' '.join(user_message.strip().split())
+        if not text:
+            return None
+
+        patterns = [
+            r'(?i)\b(?:rename|retitle)\s+(?:my\s+|the\s+)?(.+?)\s+(?:to|as)\s+(.+)$',
+            r'(?i)\bchange(?:\s+the)?\s+name(?:\s+of)?\s+(?:my\s+|the\s+)?(.+?)\s+(?:to|as)\s+(.+)$',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match is None:
+                continue
+            from_label = self._strip_quotes_and_punctuation(match.group(1))
+            to_title = self._strip_quotes_and_punctuation(match.group(2))
+            if from_label and to_title:
+                return from_label, to_title
+        return None
+
+    @staticmethod
+    def _strip_quotes_and_punctuation(value: str) -> str:
+        cleaned = value.strip()
+        cleaned = cleaned.strip('"\'`')
+        cleaned = re.sub(r'[.?!,;:]+$', '', cleaned)
+        return ' '.join(cleaned.split())
+
+    @staticmethod
+    def _normalize_label_for_matching(value: str) -> str:
+        lowered = value.lower().strip()
+        normalized = re.sub(r'[^a-z0-9]+', ' ', lowered)
+        return ' '.join(normalized.split())
 
     def _coerce_llm_first_result(
         self,
@@ -889,11 +1068,7 @@ class LLMPlanner:
         )
 
     def _is_hybrid_edit_schema_enforced(self) -> bool:
-        mode = str(self._settings.agent_edit_planner_mode or '').strip().lower()
-        return self._settings.agent_hybrid_react_enabled or mode in {
-            'llm_first_edit_v3',
-            'hybrid_react',
-        }
+        return bool(self._settings.agent_hybrid_react_enabled)
 
     def _is_legacy_planner_coercion_enabled(self) -> bool:
         return bool(getattr(self._settings, 'agent_legacy_planner_coercion_enabled', False))
@@ -1437,7 +1612,10 @@ class LLMPlanner:
             'good evening',
         }:
             return 'smalltalk'
-        if re.search(r'\b(add|create|move|delete|remove|update|mark|shift|link|unlink|rename|retitle|change)\b', text):
+        if re.search(
+            r'\b(add|create|move|delete|remove|update|mark|shift|link|unlink|rename|retitle|change|assign|reassign|unassign)\b',
+            text,
+        ):
             return 'roadmap_edit'
         if text.endswith('?') or re.search(r'^(what|why|how|when|where|can you|could you|do we)\b', text):
             return 'question'

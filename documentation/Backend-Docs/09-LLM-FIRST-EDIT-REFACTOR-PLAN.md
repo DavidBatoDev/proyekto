@@ -136,7 +136,7 @@ If invalid:
 ### 6.1 Required telemetry
 
 1. `route_lane` (`llm_edit_plan`, `deterministic_edit_fastpath`, `chat`)
-2. `planner_mode` (`llm_first_edit_v2`)
+2. `planner_mode` (`hybrid_react`)
 3. `pending_edit_context_present` and transition events
 4. `operations_count`, `validation_block_reason`
 5. `provider_error_code`, `fallback_used`
