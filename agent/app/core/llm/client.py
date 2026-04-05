@@ -618,6 +618,10 @@ class LLMPlanner:
                 if exc.code in {'invalid_operation_payload', 'missing_tool_call'} and attempt + 1 < max_attempts:
                     schema_invalid_attempts += 1
                     repair_attempted = True
+                    planner_prompt = self._augment_repair_planner_prompt(
+                        planner_prompt=planner_prompt,
+                        error_code=exc.code,
+                    )
                     continue
                 self._logger.warning(
                     'Provider operation planning failed in react mode, using edit clarifier lane. code=%s message=%s',
@@ -989,6 +993,31 @@ class LLMPlanner:
         lowered = value.lower().strip()
         normalized = re.sub(r'[^a-z0-9]+', ' ', lowered)
         return ' '.join(normalized.split())
+
+    @staticmethod
+    def _augment_repair_planner_prompt(
+        *,
+        planner_prompt: str,
+        error_code: str,
+    ) -> str:
+        if error_code == 'missing_tool_call':
+            guidance = (
+                '\n\nIMPORTANT REPAIR: Your previous response did not call '
+                'plan_roadmap_operations. You MUST call plan_roadmap_operations exactly once. '
+                'If clarification is still needed, return an empty operations list in that tool call '
+                'and ask the clarifying question in assistant_message.'
+            )
+        elif error_code == 'invalid_operation_payload':
+            guidance = (
+                '\n\nIMPORTANT REPAIR: Your previous tool-call payload failed schema validation. '
+                'Retry with a valid plan_roadmap_operations payload using only supported operation fields.'
+            )
+        else:
+            return planner_prompt
+
+        if guidance.strip() in planner_prompt:
+            return planner_prompt
+        return planner_prompt + guidance
 
     def _build_edit_clarifier_state(
         self,

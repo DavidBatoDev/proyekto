@@ -5642,6 +5642,68 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(planned_ops[0].node_id, 'dad5697a-8962-4f80-8bc3-8a964edd8e56')
         self.assertEqual(planned_ops[0].patch, {'title': 'App Foundation'})
 
+    def test_plan_operations_missing_tool_call_repair_prompt_includes_guidance(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={'agent_edit_planner_max_attempts': 2}
+        )
+        call_count = {'value': 0}
+        captured_prompts: list[str] = []
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                call_count['value'] += 1
+                if call_count['value'] == 1:
+                    raise ProviderAdapterError(
+                        provider='openai',
+                        code='missing_tool_call',
+                        message='OpenAI did not return any tool call while planning operations.',
+                    )
+
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                    ):
+                        captured_prompts.append(planner_prompt)
+                        return ('Which exact node should I rename?', [])
+
+                return ProviderCallOutcome(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+
+        result = planner._plan_operations(
+            {
+                'user_message': 'Rename PM Module',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-missing-tool-call-repair-guidance',
+                },
+            }
+        )
+
+        self.assertEqual(call_count['value'], 2)
+        self.assertEqual(len(captured_prompts), 1)
+        self.assertIn(
+            'IMPORTANT REPAIR: Your previous response did not call plan_roadmap_operations.',
+            captured_prompts[0],
+        )
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'openai_tool_calling_clarifier')
+
     def test_plan_operations_react_execute_returns_operations(self) -> None:
         planner = self._planner()
 
