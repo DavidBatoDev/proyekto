@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -7,10 +7,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.core.contracts.operations import RoadmapOperation
 
 
+def _utcnow() -> datetime:
+    # Keep naive UTC timestamps while avoiding deprecated datetime.utcnow().
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 class Message(BaseModel):
     role: str
     content: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 IntentType = Literal['smalltalk', 'question', 'roadmap_edit', 'unclear']
@@ -36,7 +41,7 @@ class RoadmapPreviewArtifact(BaseModel):
     validation_issues: list[dict[str, Any]] = Field(default_factory=list)
     has_validation_errors: bool = False
     inline_preview: dict[str, Any] | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class ResolverCandidate(BaseModel):
@@ -55,7 +60,7 @@ class PendingContextResolution(BaseModel):
     label: str
     node_type: Literal['epic', 'feature', 'task'] | None = None
     option_choices: list[int] | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class PendingEditResolvedReferences(BaseModel):
@@ -95,10 +100,13 @@ class PendingEditContext(BaseModel):
     last_planner_needs_more_info: bool | None = None
     last_planner_draft_action: str | None = None
     last_tool_plan_summary: list[dict[str, Any]] = Field(default_factory=list)
+    last_guard_reason: str | None = None
+    last_retry_blocked_reason: str | None = None
+    last_retry_blocked_intent_family: str | None = None
     preview_validation_errors: list[dict[str, Any]] = Field(default_factory=list)
     awaiting_preview_fix: bool = False
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
     @field_validator('intent_family', mode='before')
     @classmethod
@@ -146,7 +154,7 @@ class DraftNode(BaseModel):
     created_from_message_id: str | None = None
     summary: str | None = None
     status: DraftStatus = 'active'
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 class AppliedDraftCommit(BaseModel):
@@ -154,7 +162,7 @@ class AppliedDraftCommit(BaseModel):
     draft_id: str
     draft_version: int
     preview_fingerprint: str | None = None
-    committed_at: datetime = Field(default_factory=datetime.utcnow)
+    committed_at: datetime = Field(default_factory=_utcnow)
 
 
 class PreviewFingerprintBinding(BaseModel):
@@ -164,7 +172,7 @@ class PreviewFingerprintBinding(BaseModel):
     base_revision: int | None = None
     preview_fingerprint: str
     binding_scope: PreviewBindingScope = 'draft_snapshot'
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class ActorContext(BaseModel):
@@ -174,7 +182,7 @@ class ActorContext(BaseModel):
     locale: str | None = None
     timezone: str | None = None
     actor_context_source: str = 'backend_context_actor'
-    fetched_at: datetime = Field(default_factory=datetime.utcnow)
+    fetched_at: datetime = Field(default_factory=_utcnow)
 
 
 class SessionMetadata(BaseModel):
@@ -207,8 +215,8 @@ class AgentSession(BaseModel):
     artifacts: list[RoadmapPreviewArtifact] = Field(default_factory=list)
     messages: list[Message] = Field(default_factory=list)
     metadata: SessionMetadata = Field(default_factory=SessionMetadata)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 class CreateSessionRequest(BaseModel):

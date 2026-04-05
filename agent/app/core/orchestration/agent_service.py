@@ -4,6 +4,8 @@ from dataclasses import dataclass, field, replace
 import asyncio
 import logging
 import json
+from queue import Empty, Queue
+import threading
 from datetime import datetime, timezone
 from time import perf_counter
 from typing import Any
@@ -81,6 +83,13 @@ class MessagePlanningOutcome:
     react_loop_termination_reason: str | None = None
 
 
+@dataclass
+class EditReactLoopOutcome:
+    planning: PlanningResult
+    edit_guard_intervened: bool
+    operation_validation_error: dict[str, Any] | None = None
+
+
 def _utcnow() -> datetime:
     # Keep naive UTC timestamps while avoiding deprecated datetime.utcnow().
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -112,6 +121,7 @@ class AgentService:
         'mark': 'mark_status',
         'shift': 'shift_dates',
     }
+    _ORDER_INSENSITIVE_SIGNATURE_FIELDS = {'tags'}
 
     def __init__(self, store: SessionStore) -> None:
         self._settings = get_settings()
@@ -249,26 +259,30 @@ class AgentService:
                 route_lane = 'llm_edit_plan'
                 llm_skipped_for_simple_edit = True
             elif retry_result.get('blocked_reason'):
-                planning = PlanningResult(
-                    assistant_message=(
-                        'I cannot auto-stage this retry yet because the pending edit state changed. '
-                        'Please confirm the target again so I can continue safely.'
-                    ),
-                    operations=[],
-                    parse_mode='deterministic_retry_stale_handoff',
-                    intent_type='roadmap_edit',
-                    response_mode='chat',
-                    preview_recommended=False,
-                    provider_used='rule_based',
-                    fallback_used=False,
-                    provider_error_code=str(retry_result.get('blocked_reason')),
-                    clarifier_action='ask_clarifier',
-                    clarifier_reason=str(retry_result.get('blocked_reason')),
-                    clarifier_options=['Use exact target label', 'Provide node ID', 'Cancel'],
-                )
-                phase_timings['provider_planning_ms'] = 0
-                route_lane = 'llm_edit_plan'
-                llm_skipped_for_simple_edit = True
+                blocked_reason = str(retry_result.get('blocked_reason') or '')
+                if blocked_reason == 'retry_autostage_unsupported_intent_family':
+                    planning = None  # Fall through to standard planner path.
+                else:
+                    planning = PlanningResult(
+                        assistant_message=(
+                            'I cannot auto-stage this retry yet because the pending edit state changed. '
+                            'Please confirm the target again so I can continue safely.'
+                        ),
+                        operations=[],
+                        parse_mode='deterministic_retry_stale_handoff',
+                        intent_type='roadmap_edit',
+                        response_mode='chat',
+                        preview_recommended=False,
+                        provider_used='rule_based',
+                        fallback_used=False,
+                        provider_error_code=blocked_reason,
+                        clarifier_action='ask_clarifier',
+                        clarifier_reason=blocked_reason,
+                        clarifier_options=['Use exact target label', 'Provide node ID', 'Cancel'],
+                    )
+                    phase_timings['provider_planning_ms'] = 0
+                    route_lane = 'llm_edit_plan'
+                    llm_skipped_for_simple_edit = True
             else:
                 planning = None  # type: ignore[assignment]
         else:
@@ -346,6 +360,15 @@ class AgentService:
             phase_timings['react_loop_termination_reason'] = planning_loop_metrics.get(
                 'termination_reason'
             )
+            phase_timings['llm_calls_budget'] = int(
+                planning_loop_metrics.get('llm_calls_budget') or 0
+            )
+            phase_timings['llm_calls_used'] = int(
+                planning_loop_metrics.get('llm_calls_used') or 0
+            )
+            phase_timings['llm_calls_remaining'] = int(
+                planning_loop_metrics.get('llm_calls_remaining') or 0
+            )
             route_lane = 'llm_edit_plan'
         elif planning is None:
             planning, planning_loop_metrics = self._run_edit_react_planning_loop(
@@ -366,15 +389,27 @@ class AgentService:
             phase_timings['react_loop_termination_reason'] = planning_loop_metrics.get(
                 'termination_reason'
             )
+            phase_timings['llm_calls_budget'] = int(
+                planning_loop_metrics.get('llm_calls_budget') or 0
+            )
+            phase_timings['llm_calls_used'] = int(
+                planning_loop_metrics.get('llm_calls_used') or 0
+            )
+            phase_timings['llm_calls_remaining'] = int(
+                planning_loop_metrics.get('llm_calls_remaining') or 0
+            )
             route_lane = 'llm_edit_plan' if planning.response_mode == 'edit_plan' else 'chat'
 
-        planning, edit_guard_intervened, operation_validation_error = self._run_edit_react_loop(
+        react_loop_outcome = self._run_edit_react_loop(
             planning=planning,
             pending_edit_context_present=pending_edit_context_present,
             edit_continuation_trigger=edit_continuation_trigger,
             route_lane=route_lane,
             user_message=user_message,
         )
+        planning = react_loop_outcome.planning
+        edit_guard_intervened = react_loop_outcome.edit_guard_intervened
+        operation_validation_error = react_loop_outcome.operation_validation_error
 
         if operation_validation_error is not None:
             invalid_operation_detected = True
@@ -415,6 +450,7 @@ class AgentService:
             edit_continuation_trigger=edit_continuation_trigger,
             staged_operations_version=staged_operations_version,
             trace_id=trace_id,
+            edit_guard_intervened=edit_guard_intervened,
         )
 
         planner_schema_invalid_attempts = planning.planner_schema_invalid_attempts
@@ -636,11 +672,39 @@ class AgentService:
         )
 
     def _operation_signature(self, operation: RoadmapOperation) -> str:
+        payload = self._canonicalize_signature_value(operation.model_dump(exclude_none=True))
         return json.dumps(
-            operation.model_dump(exclude_none=True),
+            payload,
             sort_keys=True,
             separators=(',', ':'),
         )
+
+    def _canonicalize_signature_value(
+        self,
+        value: Any,
+        *,
+        key_path: tuple[str, ...] = (),
+    ) -> Any:
+        if isinstance(value, dict):
+            return {
+                key: self._canonicalize_signature_value(
+                    item,
+                    key_path=key_path + (str(key),),
+                )
+                for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+            }
+        if isinstance(value, list):
+            field_name = key_path[-1] if key_path else ''
+            if (
+                field_name in self._ORDER_INSENSITIVE_SIGNATURE_FIELDS
+                and all(isinstance(item, str) for item in value)
+            ):
+                return sorted(value)
+            return [
+                self._canonicalize_signature_value(item, key_path=key_path)
+                for item in value
+            ]
+        return value
 
     def _should_replace_staged_operations(
         self,
@@ -735,6 +799,7 @@ class AgentService:
         edit_continuation_trigger: str | None,
         staged_operations_version: int,
         trace_id: str | None,
+        edit_guard_intervened: bool,
     ) -> None:
         existing_context = session.metadata.pending_edit_context
         if edit_continuation_trigger == 'correction' and existing_context is not None:
@@ -758,6 +823,22 @@ class AgentService:
                     event='cleared',
                     trace_id=trace_id,
                 )
+            return
+
+        if edit_guard_intervened and existing_context is not None:
+            existing_context.draft_operations = []
+            existing_context.confirmation_mode = 'awaiting_clarification'
+            existing_context.resolver_hints = self._invalidate_retry_hints(
+                existing_context.resolver_hints
+            )
+            existing_context.last_guard_reason = planning.provider_error_code
+            existing_context.updated_at = _utcnow()
+            self._set_pending_edit_context(
+                session=session,
+                context=existing_context,
+                event='updated',
+                trace_id=trace_id,
+            )
             return
 
         if planning.intent_type != 'roadmap_edit':
@@ -848,6 +929,13 @@ class AgentService:
             last_planner_needs_more_info=planning.needs_more_info,
             last_planner_draft_action=planning.draft_action,
             last_tool_plan_summary=self._summarize_tool_plan(planning.tool_plan),
+            last_guard_reason=(existing.last_guard_reason if existing is not None else None),
+            last_retry_blocked_reason=(
+                existing.last_retry_blocked_reason if existing is not None else None
+            ),
+            last_retry_blocked_intent_family=(
+                existing.last_retry_blocked_intent_family if existing is not None else None
+            ),
             created_at=(existing.created_at if existing is not None else _utcnow()),
             updated_at=_utcnow(),
         )
@@ -932,16 +1020,45 @@ class AgentService:
         route_lane: str,
     ) -> tuple[PlanningResult, dict[str, Any]]:
         loop_budget = max(1, min(int(self._settings.agent_react_max_attempts), 4))
+        llm_call_budget = max(1, int(self._settings.agent_max_total_llm_calls_per_message))
+        loop_budget = min(loop_budget, llm_call_budget)
         loop_started = perf_counter()
         loop_turns = 0
         termination_reason = 'planner_terminal'
         planning: PlanningResult | None = None
+        remaining_llm_calls = llm_call_budget
 
         observation_context = dict(session_context)
         for turn_index in range(loop_budget):
             loop_turns += 1
+            if remaining_llm_calls <= 0:
+                termination_reason = 'llm_call_budget_exhausted'
+                planning = PlanningResult(
+                    assistant_message=(
+                        'I reached the planner call budget before safely finalizing this edit. '
+                        'Please provide one precise target detail so I can continue.'
+                    ),
+                    operations=[],
+                    parse_mode='deterministic_react_budget_guard',
+                    intent_type='roadmap_edit',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='rule_based',
+                    fallback_used=True,
+                    provider_error_code='llm_call_budget_exhausted',
+                    route_lane=route_lane,
+                    clarifier_action='ask_clarifier',
+                    clarifier_reason='llm_call_budget_exhausted',
+                    clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
+                    needs_more_info=True,
+                    stop_reason='tool_budget_exhausted',
+                    llm_calls_used=0,
+                )
+                break
             observation_context['_react_loop_turn'] = turn_index + 1
             observation_context['_react_loop_budget'] = loop_budget
+            observation_context['_llm_calls_total_budget'] = llm_call_budget
+            observation_context['_llm_calls_budget_remaining'] = remaining_llm_calls
 
             planning = self._planner.plan(
                 user_message=user_message,
@@ -949,6 +1066,21 @@ class AgentService:
                 session_context=observation_context,
             )
             planning = replace(planning, route_lane=route_lane)
+
+            llm_calls_used_raw = planning.llm_calls_used
+            if isinstance(llm_calls_used_raw, (int, float)):
+                llm_calls_used = max(int(llm_calls_used_raw), 0)
+            else:
+                llm_calls_used = 0 if planning.provider_used == 'rule_based' else 1
+            llm_calls_used = min(llm_calls_used, remaining_llm_calls)
+            remaining_llm_calls = max(remaining_llm_calls - llm_calls_used, 0)
+            observation_context['_llm_calls_budget_remaining'] = remaining_llm_calls
+            observation_context['_react_tool_observation_summary'] = (
+                list(planning.react_tool_observation_summary or [])
+                if isinstance(planning.react_tool_observation_summary, list)
+                else []
+            )
+
             if planning.response_mode == 'edit_plan':
                 planning = replace(
                     planning,
@@ -978,6 +1110,16 @@ class AgentService:
                 termination_reason = 'ready_to_stage'
                 break
 
+            if remaining_llm_calls <= 0:
+                termination_reason = 'llm_call_budget_exhausted'
+                if planning.response_mode == 'edit_plan':
+                    planning = replace(
+                        planning,
+                        stop_reason='tool_budget_exhausted',
+                        needs_more_info=True,
+                    )
+                break
+
             if turn_index + 1 >= loop_budget:
                 termination_reason = 'budget_exhausted'
                 break
@@ -987,6 +1129,9 @@ class AgentService:
                 'needs_more_info': planning.needs_more_info,
                 'draft_action': planning.draft_action,
                 'tool_plan_steps': len(planning.tool_plan or []),
+                'llm_calls_used': llm_calls_used,
+                'llm_calls_remaining': remaining_llm_calls,
+                'tool_observation_summary': observation_context.get('_react_tool_observation_summary', []),
             }
             termination_reason = 'replanned_after_observation'
 
@@ -1016,6 +1161,9 @@ class AgentService:
             'loop_turns': loop_turns,
             'loop_budget': loop_budget,
             'termination_reason': termination_reason,
+            'llm_calls_budget': llm_call_budget,
+            'llm_calls_used': llm_call_budget - remaining_llm_calls,
+            'llm_calls_remaining': remaining_llm_calls,
         }
         return planning, loop_metrics
 
@@ -1189,7 +1337,7 @@ class AgentService:
         edit_continuation_trigger: str | None,
         route_lane: str | None,
         user_message: str,
-    ) -> tuple[PlanningResult, bool, dict[str, Any] | None]:
+    ) -> EditReactLoopOutcome:
         edit_guard_intervened = False
         operation_validation_error: dict[str, Any] | None = None
 
@@ -1271,7 +1419,11 @@ class AgentService:
         )
 
         planning = self._normalize_planning_clarifier_contract(planning)
-        return planning, edit_guard_intervened, operation_validation_error
+        return EditReactLoopOutcome(
+            planning=planning,
+            edit_guard_intervened=edit_guard_intervened,
+            operation_validation_error=operation_validation_error,
+        )
 
     def _apply_operation_contract_guard(
         self,
@@ -1504,7 +1656,6 @@ class AgentService:
         if invalidate_retry:
             current_version += 1
             hints = self._invalidate_retry_hints(hints)
-            hints['retry_autostage_eligible'] = False
         if rename_intent is not None:
             from_label, to_title = rename_intent
             hints['rename_from_label'] = from_label
@@ -1560,12 +1711,39 @@ class AgentService:
     ) -> dict[str, Any]:
         hints = pending_context.resolver_hints or {}
         if pending_context.intent_family != 'rename_node':
-            return {'planning': None, 'tool_calls_used': 0, 'blocked_reason': None}
+            blocked_reason = 'retry_autostage_unsupported_intent_family'
+            blocked_intent_family = self._normalize_intent_family(pending_context.intent_family)
+            pending_context.last_retry_blocked_reason = blocked_reason
+            pending_context.last_retry_blocked_intent_family = blocked_intent_family
+            pending_context.updated_at = _utcnow()
+            self._set_pending_edit_context(
+                session=session,
+                context=pending_context,
+                event='updated',
+                trace_id=trace_id,
+            )
+            log_event(
+                self._logger,
+                'retry_autostage_unsupported_intent_family',
+                settings=self._settings,
+                trace_id=trace_id,
+                roadmap_id=session.roadmap_id,
+                blocked_reason=blocked_reason,
+                blocked_intent_family=blocked_intent_family,
+            )
+            return {
+                'planning': None,
+                'tool_calls_used': 0,
+                'blocked_reason': blocked_reason,
+                'blocked_intent_family': blocked_intent_family,
+                'retry_autostage_applied': False,
+            }
         if not isinstance(hints, dict):
             return {
                 'planning': None,
                 'tool_calls_used': 0,
                 'blocked_reason': 'retry_stale_hints_blocked',
+                'retry_autostage_applied': False,
             }
         hint_version = hints.get('hint_intent_version')
         current_version = hints.get('intent_version')
@@ -1578,12 +1756,14 @@ class AgentService:
                 'planning': None,
                 'tool_calls_used': 0,
                 'blocked_reason': 'retry_stale_hints_blocked',
+                'retry_autostage_applied': False,
             }
         if not bool(hints.get('retry_autostage_eligible')):
             return {
                 'planning': None,
                 'tool_calls_used': 0,
                 'blocked_reason': 'retry_stale_hints_blocked',
+                'retry_autostage_applied': False,
             }
         hint_staged_version = hints.get('hint_staged_operations_version')
         current_staged_version = self._get_current_staged_operations_version(session)
@@ -1595,6 +1775,7 @@ class AgentService:
                 'planning': None,
                 'tool_calls_used': 0,
                 'blocked_reason': 'retry_stale_hints_blocked',
+                'retry_autostage_applied': False,
             }
 
         from_label = str(hints.get('rename_from_label') or '').strip()
@@ -1604,6 +1785,7 @@ class AgentService:
                 'planning': None,
                 'tool_calls_used': 0,
                 'blocked_reason': 'retry_stale_hints_blocked',
+                'retry_autostage_applied': False,
             }
 
         retry_resolution = self._resolve_retry_candidates(
@@ -1644,6 +1826,7 @@ class AgentService:
                 ),
                 'tool_calls_used': tool_calls_used,
                 'blocked_reason': None,
+                'retry_autostage_applied': False,
             }
         pending_context.resolver_hints = {
             **hints,
@@ -1873,6 +2056,7 @@ class AgentService:
         next_hints.pop('rename_from_label', None)
         next_hints.pop('rename_to_title', None)
         next_hints.pop('expected_node_type', None)
+        next_hints['retry_autostage_eligible'] = False
         next_hints['hint_intent_version'] = None
         next_hints['hint_staged_operations_version'] = None
         return next_hints
@@ -2016,11 +2200,87 @@ class AgentService:
         setattr(session.metadata, actor_refresh_failures_key, 0)
 
     def _run_async_call(self, coro: Any) -> dict[str, Any]:
+        if not asyncio.iscoroutine(coro):
+            return coro
         try:
             asyncio.get_running_loop()
         except RuntimeError:
             return asyncio.run(coro)
-        raise RuntimeError('Async call attempted on running event loop thread')
+
+        timeout_seconds = max(float(self._settings.nest_timeout_seconds), 0.1)
+        queue: Queue[tuple[str, Any]] = Queue(maxsize=1)
+
+        def _bridge_runner() -> None:
+            try:
+                queue.put(('result', asyncio.run(coro)))
+            except Exception as exc:  # pragma: no cover
+                queue.put(('error', exc))
+
+        bridge_thread = threading.Thread(
+            target=_bridge_runner,
+            name='agent-async-bridge',
+            daemon=True,
+        )
+        bridge_thread.start()
+        bridge_thread.join(timeout=timeout_seconds)
+
+        if bridge_thread.is_alive():
+            log_event(
+                self._logger,
+                'async_bridge_fallback',
+                settings=self._settings,
+                level=logging.WARNING,
+                status='timeout',
+                timeout_seconds=timeout_seconds,
+            )
+            raise self._async_bridge_unavailable_error(reason='timeout')
+
+        try:
+            outcome_type, payload = queue.get_nowait()
+        except Empty:
+            log_event(
+                self._logger,
+                'async_bridge_fallback',
+                settings=self._settings,
+                level=logging.WARNING,
+                status='missing_result',
+            )
+            raise self._async_bridge_unavailable_error(reason='missing_result')
+
+        if outcome_type == 'error':
+            log_event(
+                self._logger,
+                'async_bridge_fallback',
+                settings=self._settings,
+                level=logging.WARNING,
+                status='error',
+                error_type=type(payload).__name__,
+            )
+            if isinstance(payload, HTTPException):
+                raise payload
+            raise self._async_bridge_unavailable_error(reason='error')
+
+        log_event(
+            self._logger,
+            'async_bridge_fallback',
+            settings=self._settings,
+            status='success',
+        )
+        return payload
+
+    def _async_bridge_unavailable_error(self, *, reason: str) -> HTTPException:
+        return HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                'code': 'ASYNC_BRIDGE_UNAVAILABLE',
+                'message': (
+                    'Agent async bridge is temporarily unavailable. '
+                    'Please retry the request.'
+                ),
+                'reason': reason,
+                'retryable': True,
+            },
+        )
 
     def ensure_draft_graph_initialized(self, session: AgentSession) -> bool:
         return self._ensure_draft_graph_initialized(session)

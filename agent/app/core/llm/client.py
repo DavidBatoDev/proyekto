@@ -71,6 +71,8 @@ class PlannerState(TypedDict, total=False):
     tool_plan: list[dict[str, Any]]
     needs_more_info: bool | None
     stop_reason: str | None
+    llm_calls_used: int | None
+    react_tool_observation_summary: list[dict[str, Any]] | None
 
 
 class _EditClarifierPayload(BaseModel):
@@ -107,6 +109,8 @@ class PlanningResult:
     tool_plan: list[dict[str, Any]] | None = None
     needs_more_info: bool | None = None
     stop_reason: str | None = None
+    llm_calls_used: int | None = None
+    react_tool_observation_summary: list[dict[str, Any]] | None = None
 
 
 class LLMPlanner:
@@ -286,6 +290,8 @@ class LLMPlanner:
             tool_plan=tool_plan,
             needs_more_info=needs_more_info,
             stop_reason=stop_reason,
+            llm_calls_used=state.get('llm_calls_used'),
+            react_tool_observation_summary=state.get('react_tool_observation_summary'),
         )
 
     def _classify_intent(self, state: PlannerState) -> PlannerState:
@@ -356,6 +362,18 @@ class LLMPlanner:
             'actor_context': session_context.get('actor_context'),
             'intent_type': intent_type,
         }
+        react_loop_turn = session_context.get('_react_loop_turn')
+        if react_loop_turn is not None:
+            prompt_context['react_loop_turn'] = react_loop_turn
+        react_loop_budget = session_context.get('_react_loop_budget')
+        if react_loop_budget is not None:
+            prompt_context['react_loop_budget'] = react_loop_budget
+        react_loop_observation = session_context.get('_react_loop_observation')
+        if react_loop_observation is not None:
+            prompt_context['react_loop_observation'] = react_loop_observation
+        react_tool_observation_summary = session_context.get('_react_tool_observation_summary')
+        if react_tool_observation_summary is not None:
+            prompt_context['react_tool_observation_summary'] = react_tool_observation_summary
         system_prompt = self._prompt_repository.build_system_prompt(mode=mode, context=prompt_context)
         response_mode: ResponseMode = 'edit_plan' if intent_type == 'roadmap_edit' else 'chat'
         tool_mode: Literal['none', 'context_answer', 'edit_plan']
@@ -480,7 +498,17 @@ class LLMPlanner:
         max_attempts = max(1, self._settings.agent_react_max_attempts)
         max_repair_retries = max(0, self._settings.agent_react_repair_retries)
         max_attempts = min(max_attempts, max_repair_retries + 1)
+        remaining_llm_budget_raw = session_context.get('_llm_calls_budget_remaining')
+        remaining_llm_budget: int | None = None
+        if isinstance(remaining_llm_budget_raw, (int, float, str)):
+            try:
+                remaining_llm_budget = max(int(remaining_llm_budget_raw), 0)
+            except (TypeError, ValueError):
+                remaining_llm_budget = None
+        if remaining_llm_budget is not None:
+            max_attempts = min(max_attempts, remaining_llm_budget)
         tool_observations: list[dict[str, Any]] = []
+        llm_calls_used = 0
 
         def _capturing_tool_executor(name: str, args: dict[str, Any]) -> dict[str, Any]:
             result = self._execute_context_tool(name, args, session_context)
@@ -492,6 +520,29 @@ class LLMPlanner:
                 }
             )
             return result
+
+        def _finalize_state(
+            next_state: PlannerState,
+            *,
+            used_calls: int | None = None,
+        ) -> PlannerState:
+            next_state['react_tool_observation_summary'] = self._summarize_react_tool_observations(
+                tool_observations
+            )
+            effective_used = llm_calls_used if used_calls is None else used_calls
+            next_state['llm_calls_used'] = max(int(effective_used or 0), 0)
+            return next_state
+
+        if max_attempts <= 0:
+            return _finalize_state(
+                self._neutral_edit_clarifier_state(
+                    provider_error_code='llm_call_budget_exhausted',
+                    schema_retries=0,
+                    stop_reason='tool_budget_exhausted',
+                    llm_calls_used=0,
+                ),
+                used_calls=0,
+            )
 
         planner_prompt = (
             'You are in edit planning mode.\n'
@@ -507,6 +558,23 @@ class LLMPlanner:
             f'{user_message}\n\n'
             'If request is ambiguous, use context tools first, then produce the safest possible operation plan.'
         )
+        prior_observation = session_context.get('_react_loop_observation')
+        if isinstance(prior_observation, dict) and prior_observation:
+            planner_prompt += (
+                '\n\nPrevious ReAct observation:\n'
+                f'{json.dumps(prior_observation, ensure_ascii=True, indent=2)}'
+            )
+        prior_tool_summary = session_context.get('_react_tool_observation_summary')
+        if isinstance(prior_tool_summary, list) and prior_tool_summary:
+            planner_prompt += (
+                '\n\nPrevious tool observation summary:\n'
+                f'{json.dumps(prior_tool_summary[:5], ensure_ascii=True, indent=2)}'
+            )
+        if remaining_llm_budget is not None:
+            planner_prompt += (
+                '\n\nRemaining planner call budget for this turn:\n'
+                f'{remaining_llm_budget}'
+            )
         schema_invalid_attempts = 0
         repair_attempted = False
         last_provider_error_code: str | None = None
@@ -515,6 +583,7 @@ class LLMPlanner:
             if attempt > 0:
                 repair_attempted = True
             try:
+                llm_calls_used += 1
                 result = self._provider_orchestrator.call(
                     lambda adapter: adapter.plan_operations_with_tools(
                         system_prompt=system_prompt,
@@ -534,12 +603,17 @@ class LLMPlanner:
                         exc.code,
                         exc.message,
                     )
-                    return self._build_edit_clarifier_state(
+                    clarifier_state = self._build_edit_clarifier_state(
                         user_message=user_message,
                         system_prompt=system_prompt,
                         history_messages=history_messages,
                         trace_id=trace_id,
                         provider_error_code=exc.code,
+                        llm_calls_used_base=llm_calls_used,
+                    )
+                    return _finalize_state(
+                        clarifier_state,
+                        used_calls=clarifier_state.get('llm_calls_used'),
                     )
                 if exc.code in {'invalid_operation_payload', 'missing_tool_call'} and attempt + 1 < max_attempts:
                     schema_invalid_attempts += 1
@@ -555,19 +629,26 @@ class LLMPlanner:
                     tool_observations=tool_observations,
                 )
                 if synthesized_operations:
-                    return self._build_synthesized_react_closure_state(
-                        operations=synthesized_operations,
-                        schema_invalid_attempts=schema_invalid_attempts,
-                        repair_attempted=repair_attempted,
-                        draft_action='continue',
-                        tool_plan=[],
+                    return _finalize_state(
+                        self._build_synthesized_react_closure_state(
+                            operations=synthesized_operations,
+                            schema_invalid_attempts=schema_invalid_attempts,
+                            repair_attempted=repair_attempted,
+                            draft_action='continue',
+                            tool_plan=[],
+                        )
                     )
-                return self._build_edit_clarifier_state(
+                clarifier_state = self._build_edit_clarifier_state(
                     user_message=user_message,
                     system_prompt=system_prompt,
                     history_messages=history_messages,
                     trace_id=trace_id,
                     provider_error_code=exc.code,
+                    llm_calls_used_base=llm_calls_used,
+                )
+                return _finalize_state(
+                    clarifier_state,
+                    used_calls=clarifier_state.get('llm_calls_used'),
                 )
 
             if not isinstance(result.value, tuple) or len(result.value) != 2:
@@ -618,50 +699,54 @@ class LLMPlanner:
                     tokens_output=result.tokens_output,
                     tokens_total=result.tokens_total,
                 )
-                return {
-                    'assistant_message': (
-                        assistant_message.strip()
-                        if isinstance(assistant_message, str) and assistant_message.strip()
-                        else 'Prepared roadmap edit operations.'
-                    ),
-                    'planned_operations': operations,
-                    'response_mode': 'edit_plan',
-                    'preview_recommended': bool(operations),
-                    'parse_mode': f'{result.provider_used}_tool_calling',
-                    'provider_used': result.provider_used,
-                    'fallback_used': result.fallback_used,
-                    'provider_error_code': result.provider_error_code,
-                    'tokens_input': result.tokens_input,
-                    'tokens_output': result.tokens_output,
-                    'tokens_total': result.tokens_total,
-                    'pending_context_resolution': None,
-                    'clear_pending_context_resolution': False,
-                    'clarifier_action': None,
-                    'clarifier_reason': None,
-                    'clarifier_options': None,
-                    'clarifier_schema_retries': schema_invalid_attempts,
-                    'planner_schema_invalid_attempts': schema_invalid_attempts,
-                    'planner_repair_attempted': repair_attempted,
-                    'draft_action': 'continue',
-                    'tool_plan': [],
-                    'needs_more_info': False,
-                    'stop_reason': 'ready_to_stage',
-                }
+                return _finalize_state(
+                    {
+                        'assistant_message': (
+                            assistant_message.strip()
+                            if isinstance(assistant_message, str) and assistant_message.strip()
+                            else 'Prepared roadmap edit operations.'
+                        ),
+                        'planned_operations': operations,
+                        'response_mode': 'edit_plan',
+                        'preview_recommended': bool(operations),
+                        'parse_mode': f'{result.provider_used}_tool_calling',
+                        'provider_used': result.provider_used,
+                        'fallback_used': result.fallback_used,
+                        'provider_error_code': result.provider_error_code,
+                        'tokens_input': result.tokens_input,
+                        'tokens_output': result.tokens_output,
+                        'tokens_total': result.tokens_total,
+                        'pending_context_resolution': None,
+                        'clear_pending_context_resolution': False,
+                        'clarifier_action': None,
+                        'clarifier_reason': None,
+                        'clarifier_options': None,
+                        'clarifier_schema_retries': schema_invalid_attempts,
+                        'planner_schema_invalid_attempts': schema_invalid_attempts,
+                        'planner_repair_attempted': repair_attempted,
+                        'draft_action': 'continue',
+                        'tool_plan': [],
+                        'needs_more_info': False,
+                        'stop_reason': 'ready_to_stage',
+                    }
+                )
 
             synthesized_operations = self._maybe_synthesize_react_closure_operations(
                 user_message=user_message,
                 tool_observations=tool_observations,
             )
             if synthesized_operations:
-                return self._build_synthesized_react_closure_state(
-                    operations=synthesized_operations,
-                    schema_invalid_attempts=schema_invalid_attempts,
-                    repair_attempted=repair_attempted,
-                    draft_action='continue',
-                    tool_plan=[],
-                    tokens_input=result.tokens_input,
-                    tokens_output=result.tokens_output,
-                    tokens_total=result.tokens_total,
+                return _finalize_state(
+                    self._build_synthesized_react_closure_state(
+                        operations=synthesized_operations,
+                        schema_invalid_attempts=schema_invalid_attempts,
+                        repair_attempted=repair_attempted,
+                        draft_action='continue',
+                        tool_plan=[],
+                        tokens_input=result.tokens_input,
+                        tokens_output=result.tokens_output,
+                        tokens_total=result.tokens_total,
+                    )
                 )
             clarifier_message = (
                 assistant_message.strip()
@@ -683,49 +768,96 @@ class LLMPlanner:
                 question=clarifier_message,
                 options=clarifier_options,
             )
-            return {
-                'assistant_message': clarifier_message,
-                'planned_operations': [],
-                'response_mode': 'chat',
-                'preview_recommended': False,
-                'parse_mode': f'{result.provider_used}_tool_calling_clarifier',
-                'provider_used': result.provider_used,
-                'fallback_used': result.fallback_used,
-                'provider_error_code': last_provider_error_code or result.provider_error_code,
-                'tokens_input': result.tokens_input,
-                'tokens_output': result.tokens_output,
-                'tokens_total': result.tokens_total,
-                'pending_context_resolution': None,
-                'clear_pending_context_resolution': False,
-                'clarifier_action': clarifier_action,
-                'clarifier_reason': clarifier_reason,
-                'clarifier_options': clarifier_options,
-                'clarifier_schema_retries': schema_invalid_attempts,
-                'planner_schema_invalid_attempts': schema_invalid_attempts,
-                'planner_repair_attempted': repair_attempted,
-                'draft_action': 'continue',
-                'tool_plan': [],
-                'needs_more_info': True,
-                'stop_reason': 'awaiting_user_input',
-            }
+            return _finalize_state(
+                {
+                    'assistant_message': clarifier_message,
+                    'planned_operations': [],
+                    'response_mode': 'chat',
+                    'preview_recommended': False,
+                    'parse_mode': f'{result.provider_used}_tool_calling_clarifier',
+                    'provider_used': result.provider_used,
+                    'fallback_used': result.fallback_used,
+                    'provider_error_code': last_provider_error_code or result.provider_error_code,
+                    'tokens_input': result.tokens_input,
+                    'tokens_output': result.tokens_output,
+                    'tokens_total': result.tokens_total,
+                    'pending_context_resolution': None,
+                    'clear_pending_context_resolution': False,
+                    'clarifier_action': clarifier_action,
+                    'clarifier_reason': clarifier_reason,
+                    'clarifier_options': clarifier_options,
+                    'clarifier_schema_retries': schema_invalid_attempts,
+                    'planner_schema_invalid_attempts': schema_invalid_attempts,
+                    'planner_repair_attempted': repair_attempted,
+                    'draft_action': 'continue',
+                    'tool_plan': [],
+                    'needs_more_info': True,
+                    'stop_reason': 'awaiting_user_input',
+                }
+            )
 
         synthesized_operations = self._maybe_synthesize_react_closure_operations(
             user_message=user_message,
             tool_observations=tool_observations,
         )
         if synthesized_operations:
-            return self._build_synthesized_react_closure_state(
-                operations=synthesized_operations,
-                schema_invalid_attempts=schema_invalid_attempts,
-                repair_attempted=repair_attempted,
-                draft_action='continue',
-                tool_plan=[],
+            return _finalize_state(
+                self._build_synthesized_react_closure_state(
+                    operations=synthesized_operations,
+                    schema_invalid_attempts=schema_invalid_attempts,
+                    repair_attempted=repair_attempted,
+                    draft_action='continue',
+                    tool_plan=[],
+                )
             )
 
-        return self._neutral_edit_clarifier_state(
-            provider_error_code=last_provider_error_code or 'invalid_planner_schema',
-            schema_retries=schema_invalid_attempts,
+        return _finalize_state(
+            self._neutral_edit_clarifier_state(
+                provider_error_code=last_provider_error_code or 'invalid_planner_schema',
+                schema_retries=schema_invalid_attempts,
+                llm_calls_used=llm_calls_used,
+            )
         )
+
+    def _summarize_react_tool_observations(
+        self,
+        observations: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        summary: list[dict[str, Any]] = []
+        for observation in observations[-5:]:
+            if not isinstance(observation, dict):
+                continue
+            tool_name = str(observation.get('tool_name') or '').strip()
+            args = observation.get('args')
+            result = observation.get('result')
+            summary_item: dict[str, Any] = {'tool_name': tool_name}
+
+            if isinstance(args, dict):
+                summary_item['arg_keys'] = sorted(str(key) for key in args.keys())[:6]
+                label = args.get('label')
+                if isinstance(label, str) and label.strip():
+                    summary_item['label'] = label.strip()[:80]
+
+            if isinstance(result, dict):
+                status = result.get('status')
+                if isinstance(status, str) and status.strip():
+                    summary_item['status'] = status.strip()[:48]
+                error_payload = result.get('error')
+                if isinstance(error_payload, dict):
+                    error_code = error_payload.get('code')
+                    if error_code is not None:
+                        summary_item['error_code'] = str(error_code)[:80]
+                selected = result.get('selected')
+                if isinstance(selected, dict):
+                    selected_id = selected.get('id')
+                    if isinstance(selected_id, str) and selected_id.strip():
+                        summary_item['selected_id'] = selected_id.strip()
+                matches = result.get('matches')
+                if isinstance(matches, list):
+                    summary_item['match_count'] = len(matches)
+
+            summary.append(summary_item)
+        return summary
 
     def _build_synthesized_react_closure_state(
         self,
@@ -866,14 +998,17 @@ class LLMPlanner:
         history_messages: list[Any],
         trace_id: str | None,
         provider_error_code: str,
+        llm_calls_used_base: int = 0,
     ) -> PlannerState:
         clarification_prompt = self._build_edit_clarifier_prompt(user_message=user_message)
         schema_retries = 0
         parse_error_code: str | None = None
         stop_reason = map_provider_error_to_stop_reason(provider_error_code)
+        llm_calls_used = max(int(llm_calls_used_base), 0)
 
         for attempt in range(2):
             try:
+                llm_calls_used += 1
                 result = self._provider_orchestrator.call(
                     lambda adapter: adapter.generate_chat_reply(
                         system_prompt=system_prompt,
@@ -892,6 +1027,7 @@ class LLMPlanner:
                     provider_error_code=provider_error_code,
                     schema_retries=schema_retries,
                     stop_reason=stop_reason,
+                    llm_calls_used=llm_calls_used,
                 )
 
             try:
@@ -930,6 +1066,7 @@ class LLMPlanner:
                     'tool_plan': [],
                     'needs_more_info': True,
                     'stop_reason': stop_reason or 'awaiting_user_input',
+                    'llm_calls_used': llm_calls_used,
                 }
             except ValueError:
                 parse_error_code = 'invalid_clarifier_schema'
@@ -942,6 +1079,7 @@ class LLMPlanner:
             provider_error_code=parse_error_code or provider_error_code,
             schema_retries=schema_retries,
             stop_reason=stop_reason,
+            llm_calls_used=llm_calls_used,
         )
 
     def _build_edit_clarifier_prompt(self, *, user_message: str) -> str:
@@ -992,6 +1130,7 @@ class LLMPlanner:
         provider_error_code: str | None,
         schema_retries: int,
         stop_reason: str | None = None,
+        llm_calls_used: int | None = None,
     ) -> PlannerState:
         resolved_stop_reason = (
             stop_reason
@@ -1035,6 +1174,7 @@ class LLMPlanner:
             'tool_plan': [],
             'needs_more_info': True,
             'stop_reason': resolved_stop_reason,
+            'llm_calls_used': max(int(llm_calls_used or 0), 0),
         }
 
     def _execute_context_tool(

@@ -377,6 +377,77 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(len(session.operations), 1)
         self.assertEqual(session.staged_operations_version, 2)
 
+    def test_plan_message_reordered_tags_operation_is_deduped(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Prepared tag update.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'tags': ['beta', 'alpha']},
+                        )
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_hybrid_react_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            operations=[
+                RoadmapOperation(
+                    op='update_node',
+                    node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                    patch={'tags': ['alpha', 'beta']},
+                )
+            ],
+        )
+        session.staged_operations_version = 2
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Update tags on Platform Foundation',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-dedupe-tags',
+        )
+
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(len(outcome.operations), 0)
+        self.assertEqual(len(session.operations), 1)
+        self.assertEqual(session.staged_operations_version, 2)
+
     def test_plan_message_create_prompt_uses_planner_not_deterministic_fastpath(self) -> None:
         class _FakePlanner:
             def preview_intent_classification(self, user_message, session_context=None):
@@ -544,6 +615,41 @@ class AgentSafetyTests(unittest.TestCase):
             trace_id='trace-fail-2',
         )
         self.assertIsNone(session.metadata.actor_context)
+
+    def test_run_async_call_uses_bridge_thread_when_loop_running(self) -> None:
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(update={'nest_timeout_seconds': 0.2})
+        service._logger = logging.getLogger('agent-safety-tests')
+
+        async def _payload():
+            return {'ok': True}
+
+        async def _invoke():
+            return service._run_async_call(_payload())
+
+        result = asyncio.run(_invoke())
+        self.assertEqual(result, {'ok': True})
+
+    def test_run_async_call_timeout_raises_structured_service_unavailable(self) -> None:
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(update={'nest_timeout_seconds': 0.1})
+        service._logger = logging.getLogger('agent-safety-tests')
+
+        async def _slow_payload():
+            await asyncio.sleep(0.5)
+            return {'ok': True}
+
+        async def _invoke():
+            with self.assertRaises(HTTPException) as raised:
+                service._run_async_call(_slow_payload())
+            self.assertEqual(raised.exception.status_code, 503)
+            self.assertIsInstance(raised.exception.detail, dict)
+            detail = raised.exception.detail
+            assert isinstance(detail, dict)
+            self.assertEqual(detail.get('code'), 'ASYNC_BRIDGE_UNAVAILABLE')
+            self.assertTrue(bool(detail.get('retryable')))
+
+        asyncio.run(_invoke())
 
     def test_build_session_context_serializes_datetime_fields(self) -> None:
         service = self._service({'matches': []})
@@ -1013,6 +1119,103 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(len(session.operations), 0)
         self.assertTrue(outcome.edit_guard_intervened)
 
+    def test_plan_message_guard_intervention_keeps_context_and_invalidates_retry_state(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Prepared an operation.',
+                    operations=[
+                        RoadmapOperation(
+                            op='add_epic',
+                            data={'title': 'Unexpected Epic'},
+                        )
+                    ],
+                    parse_mode='openai_edit_schema',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    draft_action='continue',
+                    tool_plan=[],
+                    needs_more_info=False,
+                    stop_reason='ready_to_stage',
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_hybrid_react_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                pending_edit_context=PendingEditContext(
+                    intent_family='rename_node',
+                    draft_operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Platform Foundation 1'},
+                        )
+                    ],
+                    required_fields=[],
+                    resolved_references=PendingEditResolvedReferences(),
+                    confirmation_mode='draft_ready',
+                    source_user_message='Rename Platform Foundation to Platform Foundation 1',
+                    resolver_hints={
+                        'retry_autostage_eligible': True,
+                        'rename_from_label': 'Platform Foundation',
+                        'rename_to_title': 'Platform Foundation 1',
+                        'intent_version': 2,
+                        'hint_intent_version': 2,
+                        'hint_staged_operations_version': 0,
+                    },
+                )
+            ),
+        )
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Rename Platform Foundation to Platform Foundation 1',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-guard-context-invalidate',
+        )
+
+        self.assertTrue(outcome.edit_guard_intervened)
+        pending_context = session.metadata.pending_edit_context
+        self.assertIsNotNone(pending_context)
+        assert pending_context is not None
+        self.assertEqual(pending_context.draft_operations, [])
+        self.assertEqual(pending_context.confirmation_mode, 'awaiting_clarification')
+        self.assertEqual(pending_context.last_guard_reason, 'rename_shape_guard_blocked')
+        hints = pending_context.resolver_hints or {}
+        self.assertNotIn('rename_from_label', hints)
+        self.assertFalse(bool(hints.get('retry_autostage_eligible')))
+
     def test_plan_message_react_loop_replans_until_ready_to_stage(self) -> None:
         planner_calls = {'count': 0}
 
@@ -1189,6 +1392,81 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(outcome.react_loop_budget, 2)
         self.assertEqual(outcome.react_loop_termination_reason, 'budget_exhausted')
         self.assertEqual(outcome.phase_timings.get('react_loop_termination_reason'), 'budget_exhausted')
+
+    def test_plan_message_joint_llm_budget_caps_react_loop(self) -> None:
+        planner_calls = {'count': 0}
+
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                planner_calls['count'] += 1
+                return PlanningResult(
+                    assistant_message='Prepared operation but still unresolved.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Platform Foundation 1'},
+                        )
+                    ],
+                    parse_mode='openai_edit_schema',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    draft_action='continue',
+                    tool_plan=[{'tool_name': 'resolve_node_reference', 'args': {}}],
+                    needs_more_info=False,
+                    stop_reason='insufficient_context',
+                    llm_calls_used=4,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={
+                'agent_hybrid_react_enabled': True,
+                'agent_edit_planner_max_attempts': 4,
+                'agent_max_total_llm_calls_per_message': 5,
+            }
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Rename Platform Foundation to Platform Foundation 1',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-react-joint-llm-budget',
+        )
+
+        self.assertEqual(planner_calls['count'], 2)
+        self.assertEqual(outcome.phase_timings.get('llm_calls_budget'), 5)
+        self.assertEqual(outcome.phase_timings.get('llm_calls_used'), 5)
+        self.assertEqual(outcome.phase_timings.get('llm_calls_remaining'), 0)
+        self.assertEqual(outcome.react_loop_termination_reason, 'llm_call_budget_exhausted')
+        self.assertEqual(outcome.phase_timings.get('react_loop_termination_reason'), 'llm_call_budget_exhausted')
 
     def test_plan_message_pending_cancel_clears_context(self) -> None:
         class _Planner:
@@ -1484,6 +1762,95 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(service._detect_edit_continuation_trigger('Can you try again?'), 'retry')
         self.assertEqual(service._detect_edit_continuation_trigger('retry please'), 'retry')
         self.assertEqual(service._detect_edit_continuation_trigger('again'), 'retry')
+
+    def test_plan_message_retry_non_rename_persists_signal_and_falls_back_to_planner(self) -> None:
+        planner_calls = {'count': 0}
+
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                planner_calls['count'] += 1
+                return PlanningResult(
+                    assistant_message='Please confirm the exact parent target.',
+                    operations=[],
+                    parse_mode='openai_tool_calling_clarifier',
+                    intent_type='roadmap_edit',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    clarifier_action='ask_clarifier',
+                    clarifier_reason='insufficient_context',
+                    clarifier_options=['Provide parent node', 'Provide node ID', 'Cancel'],
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_hybrid_react_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        service._run_async_call = lambda value: value
+
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                pending_edit_context=PendingEditContext(
+                    intent_family='create_task',
+                    draft_operations=[],
+                    required_fields=['parent'],
+                    resolved_references=PendingEditResolvedReferences(),
+                    confirmation_mode='awaiting_clarification',
+                    source_user_message='Create task under Platform Foundation',
+                    default_title='Create migration job',
+                    resolver_hints={
+                        'intent_version': 1,
+                        'hint_intent_version': 1,
+                        'hint_staged_operations_version': 0,
+                        'retry_autostage_eligible': False,
+                    },
+                )
+            ),
+        )
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='retry',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-retry-non-rename-contract',
+        )
+
+        self.assertEqual(outcome.edit_continuation_trigger, 'retry')
+        self.assertEqual(planner_calls['count'], 1)
+        pending_context = session.metadata.pending_edit_context
+        self.assertIsNotNone(pending_context)
+        assert pending_context is not None
+        self.assertEqual(
+            pending_context.last_retry_blocked_reason,
+            'retry_autostage_unsupported_intent_family',
+        )
+        self.assertEqual(pending_context.last_retry_blocked_intent_family, 'create_task')
+        self.assertEqual(outcome.response_mode, 'chat')
 
     def test_plan_message_pending_retry_autostages_single_rename_match(self) -> None:
         class _Planner:
@@ -2833,8 +3200,42 @@ class ConfigCompatibilityTests(unittest.TestCase):
                     os.environ[key] = value
             reload_settings()
 
+    def test_total_llm_call_budget_setting_reads_and_clamps_bounds(self) -> None:
+        previous_value = os.environ.get('AGENT_MAX_TOTAL_LLM_CALLS_PER_MESSAGE')
+
+        try:
+            os.environ['AGENT_MAX_TOTAL_LLM_CALLS_PER_MESSAGE'] = '40'
+            reload_settings()
+            settings = get_settings()
+            self.assertEqual(settings.agent_max_total_llm_calls_per_message, 16)
+
+            os.environ['AGENT_MAX_TOTAL_LLM_CALLS_PER_MESSAGE'] = '0'
+            reload_settings()
+            settings = get_settings()
+            self.assertEqual(settings.agent_max_total_llm_calls_per_message, 1)
+
+            os.environ['AGENT_MAX_TOTAL_LLM_CALLS_PER_MESSAGE'] = '5'
+            reload_settings()
+            settings = get_settings()
+            self.assertEqual(settings.agent_max_total_llm_calls_per_message, 5)
+        finally:
+            if previous_value is None:
+                os.environ.pop('AGENT_MAX_TOTAL_LLM_CALLS_PER_MESSAGE', None)
+            else:
+                os.environ['AGENT_MAX_TOTAL_LLM_CALLS_PER_MESSAGE'] = previous_value
+            reload_settings()
+
 
 class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self._original_agent_draft_graph_enabled = sessions_routes.settings.agent_draft_graph_enabled
+        sessions_routes.settings.agent_draft_graph_enabled = False
+
+    def tearDown(self) -> None:
+        sessions_routes.settings.agent_draft_graph_enabled = (
+            self._original_agent_draft_graph_enabled
+        )
+
     def test_resolve_snapshot_for_binding_supports_legacy_prefix_for_transition(self) -> None:
         session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
         session.session_id = 'session-legacy'
@@ -4377,6 +4778,9 @@ class PlannerContextSafetyTests(unittest.TestCase):
         planner._logger = logging.getLogger('planner-context-safety-tests')
         planner._nest_client = SimpleNamespace()
         planner._run_async_context_call = lambda value: value
+        planner._prompt_repository = SimpleNamespace(
+            build_system_prompt=lambda mode, context: f'{mode}:{context}'
+        )
         return planner
 
     def test_classify_intent_honors_forced_edit_continuation_override(self) -> None:
@@ -4395,6 +4799,40 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(state.get('intent_type'), 'roadmap_edit')
         self.assertEqual(state.get('parse_mode'), 'deterministic_edit_continuation_override')
         self.assertFalse(bool(state.get('is_roadmap_question')))
+
+    def test_compose_dynamic_system_prompt_includes_react_observation_keys(self) -> None:
+        planner = self._planner()
+        state = planner._compose_dynamic_system_prompt(
+            {
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'base_revision': 12,
+                    'revision_token': 'rev-token',
+                    'recent_messages': [],
+                    'trace_id': 'trace-prompt-react-observation',
+                    '_react_loop_turn': 2,
+                    '_react_loop_budget': 4,
+                    '_react_loop_observation': {
+                        'stop_reason': 'insufficient_context',
+                        'tool_plan_steps': 1,
+                    },
+                    '_react_tool_observation_summary': [
+                        {
+                            'tool_name': 'resolve_node_reference',
+                            'status': 'ambiguous',
+                        }
+                    ],
+                },
+            }
+        )
+
+        system_prompt = str(state.get('system_prompt') or '')
+        self.assertIn('react_loop_turn', system_prompt)
+        self.assertIn('react_loop_budget', system_prompt)
+        self.assertIn('react_loop_observation', system_prompt)
+        self.assertIn('react_tool_observation_summary', system_prompt)
 
     def test_heuristic_intent_classifies_task_reassignment_as_edit(self) -> None:
         planner = self._planner()
@@ -4963,6 +5401,43 @@ class PlannerContextSafetyTests(unittest.TestCase):
         )
         self.assertIsNone(outcome)
 
+    def test_plan_operations_respects_remaining_llm_call_budget(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={'agent_edit_planner_max_attempts': 4}
+        )
+        call_count = {'value': 0}
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                call_count['value'] += 1
+                return ProviderCallOutcome(
+                    value=('not-valid', [], 'unexpected-third-item'),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+
+        result = planner._plan_operations(
+            {
+                'user_message': 'Rename platform foundation',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-react-budget-throttle',
+                    '_llm_calls_budget_remaining': 1,
+                },
+            }
+        )
+
+        self.assertEqual(call_count['value'], 1)
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'neutral_edit_clarifier')
+        self.assertEqual(result.get('llm_calls_used'), 1)
+
     def test_plan_operations_missing_tool_call_uses_edit_clarifier_lane(self) -> None:
         planner = self._planner()
         call_count = {'value': 0}
@@ -5047,6 +5522,8 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(result.get('tool_plan'), [])
         self.assertTrue(bool(result.get('needs_more_info')))
         self.assertEqual(result.get('stop_reason'), 'insufficient_context')
+        self.assertEqual(call_count['value'], 2)
+        self.assertEqual(result.get('llm_calls_used'), 2)
         self.assertNotIn('specific node IDs', str(result.get('assistant_message')))
 
     def test_plan_operations_react_invalid_shape_retries_once(self) -> None:

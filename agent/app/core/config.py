@@ -56,6 +56,10 @@ class Settings(BaseSettings):
             'AGENT_EDIT_PLANNER_MAX_ATTEMPTS',
         ),
     )
+    agent_max_total_llm_calls_per_message: int = Field(
+        default=8,
+        alias='AGENT_MAX_TOTAL_LLM_CALLS_PER_MESSAGE',
+    )
     agent_hybrid_react_enabled: bool = Field(
         default=True,
         alias='AGENT_HYBRID_REACT_ENABLED',
@@ -111,6 +115,15 @@ class Settings(BaseSettings):
             return 1
         if value > 4:
             return 4
+        return value
+
+    @field_validator('agent_max_total_llm_calls_per_message')
+    @classmethod
+    def normalize_agent_max_total_llm_calls_per_message(cls, value: int) -> int:
+        if value < 1:
+            return 1
+        if value > 16:
+            return 16
         return value
 
     @property
