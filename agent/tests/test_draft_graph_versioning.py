@@ -1,5 +1,7 @@
 import unittest
 
+from fastapi import HTTPException
+
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import AgentSession, DraftNode, MessageResponse, SessionMetadata
 from app.core.orchestration.agent_service import AgentService
@@ -161,25 +163,14 @@ class DraftGraphVersioningContractTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
 
-        migration_applied = service.ensure_draft_graph_initialized(session)
-        self.assertTrue(migration_applied)
-        self.assertIsNotNone(session.metadata.active_draft_id)
-        self.assertEqual(len(session.metadata.drafts), 1)
+        with self.assertRaises(HTTPException) as raised:
+            service.ensure_draft_graph_initialized(session)
 
-        active_draft_id = session.metadata.active_draft_id
-        assert active_draft_id is not None
-        self.assertEqual(session.metadata.draft_head_ids, [active_draft_id])
-        active_draft = session.metadata.drafts[active_draft_id]
-        self.assertEqual(active_draft.draft_version, 4)
-        self.assertEqual(len(active_draft.operations), 1)
-        self.assertEqual(active_draft.operations[0].op.value, 'update_node')
-
-        # Legacy mirror remains parity-compatible during migration window.
-        self.assertEqual(len(session.operations), 1)
-        self.assertEqual(session.staged_operations_version, active_draft.draft_version)
-
-        migration_applied_second = service.ensure_draft_graph_initialized(session)
-        self.assertFalse(migration_applied_second)
+        exc = raised.exception
+        self.assertEqual(exc.status_code, 409)
+        self.assertIsInstance(exc.detail, dict)
+        detail = exc.detail
+        self.assertEqual(detail.get('code'), 'LEGACY_SESSION_UNSUPPORTED')
 
 
 if __name__ == '__main__':

@@ -91,7 +91,7 @@ So you can place `AGENT_PYTHON_BIN=...` in `scripts/.env` and run without extra 
 
 ## Canary Validation Matrix
 
-Run rollout/canary acceptance subsets for both strict and legacy-safe profiles:
+Run rollout/canary acceptance subsets for both strict and react-compat profiles:
 
 ```bash
 node scripts/validate_agent_canary_matrix.mjs
@@ -102,17 +102,20 @@ This runs two profiles with explicit environment overrides and targeted unittest
 - `strict-canary`:
   - `AGENT_HYBRID_REACT_ENABLED=true`
   - `AGENT_DRAFT_GRAPH_ENABLED=true`
-  - `AGENT_LEGACY_PLANNER_COERCION_ENABLED=false`
   - `AGENT_STRICT_PREVIEW_FINGERPRINT=true`
-  - `AGENT_EDIT_PLANNER_MAX_ATTEMPTS=4`
+  - `AGENT_REACT_MAX_ATTEMPTS=4`
   - `MAX_EDIT_TOOL_TURNS=3`
 
-- `legacy-safe`:
-  - `AGENT_HYBRID_REACT_ENABLED=false`
+- `react-compat`:
+  - `AGENT_HYBRID_REACT_ENABLED=true`
   - `AGENT_DRAFT_GRAPH_ENABLED=false`
-  - `AGENT_LEGACY_PLANNER_COERCION_ENABLED=true`
   - `AGENT_STRICT_PREVIEW_FINGERPRINT=true`
-  - `AGENT_EDIT_PLANNER_MAX_ATTEMPTS=2`
+  - `AGENT_REACT_MAX_ATTEMPTS=2`
   - `MAX_EDIT_TOOL_TURNS=4`
+
+Legacy aliases remain supported for one release:
+
+- `AGENT_EDIT_PLANNER_MAX_ATTEMPTS`
+- `AGENT_EDIT_PLANNER_REPAIR_RETRIES`
 
 Exit code is non-zero if either profile fails.

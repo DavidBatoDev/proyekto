@@ -1,8 +1,10 @@
-# LLM-First Edit Refactor Plan
+# ReAct-Only Edit Refactor Plan (Historical LLM-First Draft)
 
-> **Status:** Proposed (major refactor plan)  
+> **Status:** Archived (superseded by ReAct-only cutover)  
 > **Scope:** `agent` orchestration + NestJS safety/preview integration  
-> **Primary goal:** Move edit understanding to LLM-first while keeping execution deterministic and safe
+> **Primary goal (current):** Keep edit understanding in ReAct planner flow while preserving deterministic validation and safe execution
+
+> This document is kept for historical context. Active implementation details are tracked in `docs/ai-hybrid-react-draft-graph-refactor.md` and current code contracts.
 
 ## Related docs
 
@@ -29,11 +31,11 @@ This refactor changes intent understanding strategy, not safety boundaries.
 
 ### 2.1 Core principle
 
-Use **LLM-first for edit planning**, then **deterministic validation + execution**.
+Use **ReAct planner flow for edit planning**, then **deterministic validation + execution**.
 
 ### 2.2 Lane model
 
-1. **Edit planning lane (LLM-first)**
+1. **Edit planning lane (ReAct planner)**
    - Interprets user intent.
    - Produces strict structured output (`operations` or `clarifier`).
 2. **Safety lane (deterministic)**
@@ -74,7 +76,7 @@ Temporary policy during migration:
    - mark status exact target
    - move exact target
 
-All other edit understanding goes through LLM planner first.
+All other edit understanding goes through the ReAct planner flow first.
 
 ### 3.3 Conversation continuity state
 
@@ -136,11 +138,10 @@ If invalid:
 ### 6.1 Required telemetry
 
 1. `route_lane` (`llm_edit_plan`, `deterministic_edit_fastpath`, `chat`)
-2. `planner_mode` (`hybrid_react`)
-3. `pending_edit_context_present` and transition events
-4. `operations_count`, `validation_block_reason`
-5. `provider_error_code`, `fallback_used`
-6. per-phase timings (`intent_classification_ms`, `provider_planning_ms`, `context_tools_ms`, `preview_generation_ms`)
+2. `pending_edit_context_present` and transition events
+3. `operations_count`, `validation_block_reason`
+4. `provider_error_code`, `fallback_used`
+5. per-phase timings (`intent_classification_ms`, `provider_planning_ms`, `context_tools_ms`, `preview_generation_ms`)
 
 ### 6.2 Budget controls
 
@@ -178,7 +179,7 @@ This must ship as part of the refactor baseline.
 
 ### Phase 2: Lane shift
 
-1. Route most edit intent understanding to LLM-first planner.
+1. Route most edit intent understanding to the ReAct planner flow.
 2. Restrict deterministic create parser usage.
 3. Keep deterministic validator/executor unchanged.
 

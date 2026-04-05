@@ -18,6 +18,7 @@ from app.core.contracts.sessions import (
     CommitRequest,
     CreateSessionRequest,
     CreateSessionResponse,
+    DraftNode,
     DiscardRequest,
     DiscardResponse,
     MessageRequest,
@@ -117,12 +118,23 @@ def _resolve_draft_snapshot(
     agent_service: AgentService,
 ) -> tuple[str, int, list]:
     if settings.agent_draft_graph_enabled:
-        try:
-            agent_service.ensure_draft_graph_initialized(session)
-            active_draft = agent_service.get_active_draft(session)
+        ensure_fn = getattr(agent_service, 'ensure_draft_graph_initialized', None)
+        get_active_fn = getattr(agent_service, 'get_active_draft', None)
+        if callable(ensure_fn) and callable(get_active_fn):
+            ensure_fn(session)
+            active_draft = get_active_fn(session)
             return active_draft.draft_id, active_draft.draft_version, active_draft.operations
-        except Exception:
-            pass
+
+        drafts = session.metadata.drafts
+        if not isinstance(drafts, dict):
+            raise RuntimeError('Draft graph metadata is malformed: drafts must be a mapping.')
+
+        active_draft_id = session.metadata.active_draft_id
+        if active_draft_id:
+            draft = drafts.get(active_draft_id)
+            if isinstance(draft, DraftNode):
+                return draft.draft_id, draft.draft_version, draft.operations
+        raise RuntimeError('Draft graph runtime does not expose active draft helpers.')
     draft_id = session.metadata.active_draft_id or f'{session.session_id}:legacy'
     return draft_id, session.staged_operations_version, session.operations
 
@@ -158,6 +170,7 @@ def _resolve_snapshot_for_binding(
     if by_id is not None:
         return by_id
 
+    # One-release compatibility path for pre-cutover bindings keyed to legacy snapshots.
     legacy_prefix = f'{session.session_id}:legacy'
     if binding.draft_id == legacy_prefix:
         return legacy_prefix, session.staged_operations_version, session.operations
@@ -812,8 +825,6 @@ async def send_message(
             ),
             error_code=error_code,
             route_lane=outcome.route_lane if outcome else None,
-            fastpath_reason=outcome.fastpath_reason if outcome else None,
-            fastpath_bypass_reason=outcome.fastpath_bypass_reason if outcome else None,
             llm_skipped_for_simple_edit=(
                 outcome.llm_skipped_for_simple_edit if outcome else False
             ),
@@ -845,7 +856,6 @@ async def send_message(
             preview_validation_error_codes=preview_validation_error_codes,
             preview_validation_error_paths=preview_validation_error_paths,
             preview_validation_clarifier_shown=preview_validation_clarifier_shown,
-            planner_mode=(outcome.planner_mode if outcome else None),
             pending_edit_context_present=(
                 outcome.pending_edit_context_present if outcome else False
             ),

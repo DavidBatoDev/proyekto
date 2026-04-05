@@ -45,7 +45,7 @@ Current strengths we will preserve:
 - Staging versioning via staged_operations_version.
 - Retry/autostage stale-hint protection and duplicate operation dedupe.
 - Preview/apply safety checks and idempotency guard using applied_preview_ids.
-- Bounded tool-turn planning in LLM-first planner and clarifier fallbacks.
+- Bounded tool-turn planning in ReAct planner and clarifier fallbacks.
 
 Current gaps this refactor addresses:
 
@@ -333,17 +333,18 @@ Acceptance criteria:
 
 Add in settings and env:
 
-- AGENT_HYBRID_REACT_ENABLED=false
-- AGENT_DRAFT_GRAPH_ENABLED=false
-- AGENT_REACT_TOOL_BUDGET=3
-- AGENT_REACT_PLANNER_MAX_TURNS=4
+- AGENT_HYBRID_REACT_ENABLED=true
+- AGENT_DRAFT_GRAPH_ENABLED=true
 - AGENT_STRICT_PREVIEW_FINGERPRINT=true
+- AGENT_REACT_MAX_ATTEMPTS=4
+- MAX_EDIT_TOOL_TURNS=3
 
 Notes:
 
-- Existing max_edit_tool_turns currently defaults to 4 in config and should align with AGENT_REACT_TOOL_BUDGET during migration.
-- Existing AGENT_LLM_FIRST_EDIT_ENABLED remains the outer gate for planner mode fallback.
-- Dedicated env keys AGENT_REACT_TOOL_BUDGET / AGENT_REACT_PLANNER_MAX_TURNS are not yet first-class settings fields; current implementation uses AGENT_EDIT_PLANNER_MAX_ATTEMPTS and MAX_EDIT_TOOL_TURNS. Final rollout should either add dedicated keys or formally update this section to the canonical keys.
+- LLM-first mode/coercion flags are removed from config/env in ReAct-only cutover.
+- Canonical planner budget knobs are AGENT_REACT_MAX_ATTEMPTS and MAX_EDIT_TOOL_TURNS.
+- Legacy alias AGENT_EDIT_PLANNER_MAX_ATTEMPTS is accepted for one release.
+- A compatibility profile can keep AGENT_DRAFT_GRAPH_ENABLED=false while still using ReAct planning.
 
 Rollout plan:
 
@@ -398,10 +399,11 @@ Acceptance criteria for test suite:
 3. Remove compatibility-only legacy planner path.
 
 - Deliverables:
-  - [x] gate tuple/legacy coercion behind explicit compatibility flag (`AGENT_LEGACY_PLANNER_COERCION_ENABLED`)
-  - [x] require strict hybrid planner payload contract by default in strict/hybrid llm-first modes
+  - [x] remove tuple/legacy JSON coercion branches from planner output handling
+  - [x] enforce tuple-based ReAct planner contract with deterministic clarifier fallback
+  - [x] remove `AGENT_LEGACY_PLANNER_COERCION_ENABLED` from runtime config/env
   - [x] add regression tests for schema rejection and deterministic clarifier fallback
-  - [ ] fully remove compatibility flag path after rollout parity signoff
+  - [ ] close parity window and decide whether to remove `AGENT_HYBRID_REACT_ENABLED` rollback toggle
 
 4. Remove legacy staging heuristics after parity validation.
 
@@ -474,34 +476,33 @@ Ship when all conditions are true:
 - [x] Strict preview fingerprint commit guard is enforced and tested.
 - [x] No known unsafe apply paths remain.
 - [x] Budget/turn bounded ReAct telemetry confirms stable behavior in canary validation matrix.
-- [x] Legacy path remains available behind flags for rollback window.
+- [x] ReAct rollback window remains available through `AGENT_HYBRID_REACT_ENABLED`.
 
 ### Local canary validation snapshot (2026-04-05)
 
-Validated locally with two rollout profiles using targeted acceptance subsets:
+Use two rollout profiles with targeted acceptance subsets:
 
 1. Strict canary profile
 
 - AGENT_HYBRID_REACT_ENABLED=true
 - AGENT_DRAFT_GRAPH_ENABLED=true
-- AGENT_LEGACY_PLANNER_COERCION_ENABLED=false
 - AGENT_STRICT_PREVIEW_FINGERPRINT=true
-- AGENT_EDIT_PLANNER_MAX_ATTEMPTS=4
+- AGENT_REACT_MAX_ATTEMPTS=4
 - MAX_EDIT_TOOL_TURNS=3
 - Result: targeted canary acceptance subset passed (11/11).
 
-2. Legacy-safe rollback profile
+2. React-compat profile
 
-- AGENT_HYBRID_REACT_ENABLED=false
+- AGENT_HYBRID_REACT_ENABLED=true
 - AGENT_DRAFT_GRAPH_ENABLED=false
-- AGENT_LEGACY_PLANNER_COERCION_ENABLED=true
 - AGENT_STRICT_PREVIEW_FINGERPRINT=true
-- AGENT_EDIT_PLANNER_MAX_ATTEMPTS=2
+- AGENT_REACT_MAX_ATTEMPTS=2
 - MAX_EDIT_TOOL_TURNS=4
 - Result: targeted compatibility acceptance subset passed (6/6).
 
 Notes:
 
+- Execute in an environment with agent test dependencies installed (`fastapi`, etc.).
 - Full-suite env-matrix execution includes tests that intentionally assert default-config semantics; those are not a direct go/no-go signal for rollout profiles.
 - Repeatable local validation command: `node scripts/validate_agent_canary_matrix.mjs`.
 - Staging/prod-like traffic observation remains recommended before global enablement.

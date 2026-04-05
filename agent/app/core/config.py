@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _AGENT_ROOT = Path(__file__).resolve().parents[2]
@@ -40,29 +40,25 @@ class Settings(BaseSettings):
         default=2,
         alias='MAX_REPEATED_TOOL_CALLS_PER_SIGNATURE',
     )
-    agent_llm_first_edit_enabled: bool = Field(
-        default=True,
-        alias='AGENT_LLM_FIRST_EDIT_ENABLED',
-    )
     agent_edit_planner_repair_retries: int = Field(
         default=1,
         alias='AGENT_EDIT_PLANNER_REPAIR_RETRIES',
+        validation_alias=AliasChoices(
+            'AGENT_REACT_REPAIR_RETRIES',
+            'AGENT_EDIT_PLANNER_REPAIR_RETRIES',
+        ),
     )
     agent_edit_planner_max_attempts: int = Field(
         default=2,
         alias='AGENT_EDIT_PLANNER_MAX_ATTEMPTS',
-    )
-    agent_edit_planner_mode: str = Field(
-        default='hybrid_react',
-        alias='AGENT_EDIT_PLANNER_MODE',
+        validation_alias=AliasChoices(
+            'AGENT_REACT_MAX_ATTEMPTS',
+            'AGENT_EDIT_PLANNER_MAX_ATTEMPTS',
+        ),
     )
     agent_hybrid_react_enabled: bool = Field(
         default=True,
         alias='AGENT_HYBRID_REACT_ENABLED',
-    )
-    agent_legacy_planner_coercion_enabled: bool = Field(
-        default=False,
-        alias='AGENT_LEGACY_PLANNER_COERCION_ENABLED',
     )
     agent_draft_graph_enabled: bool = Field(
         default=False,
@@ -71,11 +67,6 @@ class Settings(BaseSettings):
     agent_strict_preview_fingerprint: bool = Field(
         default=True,
         alias='AGENT_STRICT_PREVIEW_FINGERPRINT',
-    )
-    deterministic_fastpath_search_sla_ms: int = Field(
-        default=2000,
-        alias='DETERMINISTIC_FASTPATH_SEARCH_SLA_MS',
-        description='Deprecated in LLM-first edit mode; retained for backward compatibility.',
     )
     inline_preview_max_bytes: int = Field(
         default=262144,
@@ -121,6 +112,14 @@ class Settings(BaseSettings):
         if value > 4:
             return 4
         return value
+
+    @property
+    def agent_react_repair_retries(self) -> int:
+        return self.agent_edit_planner_repair_retries
+
+    @property
+    def agent_react_max_attempts(self) -> int:
+        return self.agent_edit_planner_max_attempts
 
 
 @lru_cache

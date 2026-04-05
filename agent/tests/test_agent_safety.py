@@ -58,7 +58,9 @@ class _FakeNestClient:
 class AgentSafetyTests(unittest.TestCase):
     def _service(self, search_response: dict) -> AgentService:
         service = object.__new__(AgentService)
-        service._settings = get_settings()
+        service._settings = get_settings().model_copy(
+            update={'agent_hybrid_react_enabled': True}
+        )
         service._logger = logging.getLogger('agent-safety-tests')
         service._nest_client = _FakeNestClient(search_response)
         service._run_async_call = lambda value: value
@@ -110,7 +112,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         outcome = service.plan_message(
             session=session,
-            user_message='Rename Platform Foundation to Platform Foundation 1',
+            user_message='Create epic AI Module',
             replace=False,
             auth_header=None,
             trace_id='trace-planner-lane',
@@ -205,7 +207,7 @@ class AgentSafetyTests(unittest.TestCase):
         planner = _Planner()
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -265,7 +267,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -340,7 +342,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -599,7 +601,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -679,7 +681,7 @@ class AgentSafetyTests(unittest.TestCase):
         planner = _Planner()
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -749,7 +751,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -838,7 +840,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True, 'agent_hybrid_react_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -917,7 +919,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True, 'agent_hybrid_react_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -984,7 +986,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True, 'agent_hybrid_react_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -1077,7 +1079,6 @@ class AgentSafetyTests(unittest.TestCase):
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
             update={
-                'agent_llm_first_edit_enabled': True,
                 'agent_hybrid_react_enabled': True,
                 'agent_edit_planner_max_attempts': 2,
             }
@@ -1157,7 +1158,6 @@ class AgentSafetyTests(unittest.TestCase):
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
             update={
-                'agent_llm_first_edit_enabled': True,
                 'agent_hybrid_react_enabled': True,
                 'agent_edit_planner_max_attempts': 2,
             }
@@ -1223,7 +1223,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -1301,7 +1301,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -1389,7 +1389,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -1454,7 +1454,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -1532,7 +1532,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -1621,7 +1621,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -1637,6 +1637,14 @@ class AgentSafetyTests(unittest.TestCase):
             roadmap_id='roadmap-1',
             staged_operations_version=3,
             metadata=SessionMetadata(
+                active_draft_id='draft-1',
+                drafts={
+                    'draft-1': DraftNode(
+                        draft_id='draft-1',
+                        draft_version=3,
+                        operations=[],
+                    )
+                },
                 pending_edit_context=PendingEditContext(
                     intent_family='rename_node',
                     draft_operations=[],
@@ -1701,7 +1709,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -1717,6 +1725,14 @@ class AgentSafetyTests(unittest.TestCase):
             roadmap_id='roadmap-1',
             staged_operations_version=2,
             metadata=SessionMetadata(
+                active_draft_id='draft-1',
+                drafts={
+                    'draft-1': DraftNode(
+                        draft_id='draft-1',
+                        draft_version=2,
+                        operations=[],
+                    )
+                },
                 pending_edit_context=PendingEditContext(
                     intent_family='rename_node',
                     draft_operations=[],
@@ -1802,7 +1818,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -2002,7 +2018,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -2077,7 +2093,6 @@ class AgentSafetyTests(unittest.TestCase):
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
             update={
-                'agent_llm_first_edit_enabled': True,
                 'agent_hybrid_react_enabled': True,
             }
         )
@@ -2150,9 +2165,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={
-                'agent_llm_first_edit_enabled': True,
-            }
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -2208,7 +2221,6 @@ class AgentSafetyTests(unittest.TestCase):
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
             update={
-                'agent_llm_first_edit_enabled': True,
                 'agent_draft_graph_enabled': True,
             }
         )
@@ -2233,22 +2245,20 @@ class AgentSafetyTests(unittest.TestCase):
         )
         session.staged_operations_version = 2
 
-        outcome = service.plan_message(
-            session=session,
-            user_message='Proceed',
-            replace=False,
-            auth_header=None,
-            trace_id='trace-legacy-graph-init',
-        )
+        with self.assertRaises(HTTPException) as raised:
+            service.plan_message(
+                session=session,
+                user_message='Proceed',
+                replace=False,
+                auth_header=None,
+                trace_id='trace-legacy-graph-init',
+            )
 
-        self.assertEqual(outcome.parse_mode, 'deterministic_staged_edit_confirm')
-        self.assertIsNotNone(session.metadata.active_draft_id)
-        self.assertEqual(len(session.metadata.drafts), 1)
-        active_draft = session.metadata.drafts[session.metadata.active_draft_id]
-        self.assertEqual(active_draft.draft_version, session.staged_operations_version)
-        self.assertEqual(len(active_draft.operations), len(session.operations))
-        self.assertEqual(outcome.active_draft_id, session.metadata.active_draft_id)
-        self.assertEqual(outcome.active_draft_version, active_draft.draft_version)
+        exc = raised.exception
+        self.assertEqual(exc.status_code, 409)
+        self.assertIsInstance(exc.detail, dict)
+        detail = exc.detail
+        self.assertEqual(detail.get('code'), 'LEGACY_SESSION_UNSUPPORTED')
 
     def test_plan_message_edit_plan_updates_active_draft_and_legacy_versions(self) -> None:
         class _Planner:
@@ -2287,7 +2297,6 @@ class AgentSafetyTests(unittest.TestCase):
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
             update={
-                'agent_llm_first_edit_enabled': True,
                 'agent_draft_graph_enabled': True,
             }
         )
@@ -2356,7 +2365,6 @@ class AgentSafetyTests(unittest.TestCase):
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
             update={
-                'agent_llm_first_edit_enabled': True,
                 'agent_draft_graph_enabled': True,
             }
         )
@@ -2396,7 +2404,7 @@ class AgentSafetyTests(unittest.TestCase):
         guarded = service._apply_context_answer_output_guard(
             planning=PlanningResult(
                 assistant_message=(
-                    'Got it. Planned operations (won’t be applied here): '
+                    "Got it. Planned operations (won't be applied here): "
                     '[{"action":"create","type":"feature","parent_id":"x"}]'
                 ),
                 operations=[],
@@ -2451,7 +2459,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
-            update={'agent_llm_first_edit_enabled': True}
+            update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
@@ -2795,7 +2803,67 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(outcome.invalid_operation_index, 0)
 
 
+class ConfigCompatibilityTests(unittest.TestCase):
+    def test_react_prefixed_planner_aliases_override_legacy_names(self) -> None:
+        previous_values = {
+            'AGENT_REACT_REPAIR_RETRIES': os.environ.get('AGENT_REACT_REPAIR_RETRIES'),
+            'AGENT_REACT_MAX_ATTEMPTS': os.environ.get('AGENT_REACT_MAX_ATTEMPTS'),
+            'AGENT_EDIT_PLANNER_REPAIR_RETRIES': os.environ.get('AGENT_EDIT_PLANNER_REPAIR_RETRIES'),
+            'AGENT_EDIT_PLANNER_MAX_ATTEMPTS': os.environ.get('AGENT_EDIT_PLANNER_MAX_ATTEMPTS'),
+        }
+
+        try:
+            os.environ['AGENT_REACT_REPAIR_RETRIES'] = '2'
+            os.environ['AGENT_REACT_MAX_ATTEMPTS'] = '3'
+            os.environ['AGENT_EDIT_PLANNER_REPAIR_RETRIES'] = '1'
+            os.environ['AGENT_EDIT_PLANNER_MAX_ATTEMPTS'] = '1'
+
+            reload_settings()
+            settings = get_settings()
+
+            self.assertEqual(settings.agent_edit_planner_repair_retries, 2)
+            self.assertEqual(settings.agent_edit_planner_max_attempts, 3)
+            self.assertEqual(settings.agent_react_repair_retries, 2)
+            self.assertEqual(settings.agent_react_max_attempts, 3)
+        finally:
+            for key, value in previous_values.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+            reload_settings()
+
+
 class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
+    def test_resolve_snapshot_for_binding_supports_legacy_prefix_for_transition(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-legacy'
+        session.staged_operations_version = 4
+        session.operations = [
+            RoadmapOperation(
+                op='update_node',
+                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                patch={'title': 'Platform Foundation 1'},
+            )
+        ]
+        binding = sessions_routes.PreviewFingerprintBinding(
+            preview_id='preview-legacy-1',
+            draft_id='session-legacy:legacy',
+            draft_version=4,
+            base_revision=session.base_revision,
+            preview_fingerprint='fingerprint-legacy',
+            binding_scope='draft_snapshot',
+        )
+
+        resolved = sessions_routes._resolve_snapshot_for_binding(session, binding)
+
+        self.assertIsNotNone(resolved)
+        assert resolved is not None
+        draft_id, draft_version, operations = resolved
+        self.assertEqual(draft_id, 'session-legacy:legacy')
+        self.assertEqual(draft_version, 4)
+        self.assertEqual(len(operations), 1)
+
     async def test_store_unavailable_response_is_sanitized(self) -> None:
         def _raise_store_error():
             raise SessionStoreUnavailableError('get', 'dns failure: internal-hostname')
@@ -3041,7 +3109,6 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
                     tokens_output=5,
                     tokens_total=15,
                     route_lane='llm_edit_plan',
-                    fastpath_bypass_reason=None,
                     phase_timings={},
                     invalid_operation_detected=False,
                     invalid_operation_reason=None,
@@ -3126,7 +3193,6 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
                     tokens_output=None,
                     tokens_total=None,
                     route_lane='deterministic_edit_fastpath',
-                    fastpath_bypass_reason=None,
                     phase_timings={},
                     invalid_operation_detected=False,
                     invalid_operation_reason=None,
@@ -3211,7 +3277,6 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
                     tokens_output=None,
                     tokens_total=None,
                     route_lane='deterministic_edit_fastpath',
-                    fastpath_bypass_reason=None,
                     phase_timings={},
                     invalid_operation_detected=False,
                     invalid_operation_reason=None,
@@ -3345,7 +3410,6 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
                     tokens_output=None,
                     tokens_total=None,
                     route_lane='deterministic_edit_fastpath',
-                    fastpath_bypass_reason=None,
                     phase_timings={},
                     invalid_operation_detected=False,
                     invalid_operation_reason=None,
@@ -4045,17 +4109,24 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
         session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
         session.session_id = 'session-1'
         session.latest_preview_id = 'preview-mismatch-1'
-        session.operations = [
-            RoadmapOperation(
-                op='update_node',
-                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                patch={'title': 'Platform Foundation 1'},
+        session.metadata.active_draft_id = 'draft-1'
+        session.metadata.drafts = {
+            'draft-1': DraftNode(
+                draft_id='draft-1',
+                draft_version=0,
+                operations=[
+                    RoadmapOperation(
+                        op='update_node',
+                        node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                        patch={'title': 'Platform Foundation 1'},
+                    )
+                ],
             )
-        ]
+        }
         session.metadata.preview_fingerprint_bindings['preview-mismatch-1'] = (
             sessions_routes.PreviewFingerprintBinding(
                 preview_id='preview-mismatch-1',
-                draft_id='session-1:legacy',
+                draft_id='draft-1',
                 draft_version=0,
                 base_revision=session.base_revision,
                 preview_fingerprint='not-the-current-fingerprint',
@@ -4104,24 +4175,31 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
         session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
         session.session_id = 'session-1'
         session.latest_preview_id = 'preview-missing-upstream'
-        session.operations = [
-            RoadmapOperation(
-                op='update_node',
-                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                patch={'title': 'Platform Foundation 1'},
+        session.metadata.active_draft_id = 'draft-1'
+        session.metadata.drafts = {
+            'draft-1': DraftNode(
+                draft_id='draft-1',
+                draft_version=0,
+                operations=[
+                    RoadmapOperation(
+                        op='update_node',
+                        node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                        patch={'title': 'Platform Foundation 1'},
+                    )
+                ],
             )
-        ]
+        }
         preview_fingerprint = sessions_routes._compute_preview_fingerprint(
-            draft_id='session-1:legacy',
-            draft_version=session.staged_operations_version,
-            operations=session.operations,
+            draft_id='draft-1',
+            draft_version=0,
+            operations=session.metadata.drafts['draft-1'].operations,
             base_revision=session.base_revision,
         )
         session.metadata.preview_fingerprint_bindings['preview-missing-upstream'] = (
             sessions_routes.PreviewFingerprintBinding(
                 preview_id='preview-missing-upstream',
-                draft_id='session-1:legacy',
-                draft_version=session.staged_operations_version,
+                draft_id='draft-1',
+                draft_version=0,
                 base_revision=session.base_revision,
                 preview_fingerprint=preview_fingerprint,
             )
@@ -4214,24 +4292,31 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
         session.session_id = 'session-1'
         session.latest_preview_id = 'preview-new-1'
         session.revision_token = 'rev-1'
-        session.operations = [
-            RoadmapOperation(
-                op='update_node',
-                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                patch={'title': 'Platform Foundation 1'},
+        session.metadata.active_draft_id = 'draft-1'
+        session.metadata.drafts = {
+            'draft-1': DraftNode(
+                draft_id='draft-1',
+                draft_version=0,
+                operations=[
+                    RoadmapOperation(
+                        op='update_node',
+                        node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                        patch={'title': 'Platform Foundation 1'},
+                    )
+                ],
             )
-        ]
+        }
         preview_fingerprint = sessions_routes._compute_preview_fingerprint(
-            draft_id='session-1:legacy',
-            draft_version=session.staged_operations_version,
-            operations=session.operations,
+            draft_id='draft-1',
+            draft_version=0,
+            operations=session.metadata.drafts['draft-1'].operations,
             base_revision=session.base_revision,
         )
         session.metadata.preview_fingerprint_bindings['preview-new-1'] = (
             sessions_routes.PreviewFingerprintBinding(
                 preview_id='preview-new-1',
-                draft_id='session-1:legacy',
-                draft_version=session.staged_operations_version,
+                draft_id='draft-1',
+                draft_version=0,
                 base_revision=session.base_revision,
                 preview_fingerprint=preview_fingerprint,
             )
@@ -4893,10 +4978,8 @@ class PlannerContextSafetyTests(unittest.TestCase):
                     )
                 return ProviderCallOutcome(
                     value=(
-                        '{"action":"ask_clarifier","reason":"ambiguous_target",'
-                        '"question":"Do you want me to create a new epic named '
-                        '\\"AI Module\\" at the roadmap root?",'
-                        '"options":["Create at roadmap root","Use different title","Cancel"]}'
+                        'Do you want me to create a new epic named "AI Module" at the roadmap root?',
+                        [],
                     ),
                     provider_used='openai',
                     fallback_used=False,
@@ -4915,10 +4998,14 @@ class PlannerContextSafetyTests(unittest.TestCase):
         )
 
         self.assertEqual(result.get('response_mode'), 'chat')
-        self.assertEqual(result.get('parse_mode'), 'openai_edit_schema_clarifier')
+        self.assertEqual(result.get('parse_mode'), 'openai_tool_calling_clarifier')
         self.assertEqual(result.get('provider_error_code'), 'missing_tool_call')
         self.assertEqual(result.get('planned_operations'), [])
         self.assertEqual(result.get('clarifier_action'), 'ask_clarifier')
+        self.assertEqual(result.get('draft_action'), 'continue')
+        self.assertEqual(result.get('tool_plan'), [])
+        self.assertTrue(bool(result.get('needs_more_info')))
+        self.assertEqual(result.get('stop_reason'), 'awaiting_user_input')
         self.assertIn('Options:', str(result.get('assistant_message')))
 
     def test_plan_operations_invalid_clarifier_schema_retries_then_neutral(self) -> None:
@@ -4956,16 +5043,16 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(result.get('parse_mode'), 'neutral_edit_clarifier')
         self.assertEqual(result.get('planned_operations'), [])
         self.assertEqual(result.get('clarifier_schema_retries'), 1)
+        self.assertEqual(result.get('draft_action'), 'continue')
+        self.assertEqual(result.get('tool_plan'), [])
+        self.assertTrue(bool(result.get('needs_more_info')))
+        self.assertEqual(result.get('stop_reason'), 'insufficient_context')
         self.assertNotIn('specific node IDs', str(result.get('assistant_message')))
 
-    def test_plan_operations_llm_first_invalid_schema_retries_once(self) -> None:
+    def test_plan_operations_react_invalid_shape_retries_once(self) -> None:
         planner = self._planner()
         planner._settings = planner._settings.model_copy(
-            update={
-                'agent_llm_first_edit_enabled': True,
-                'agent_edit_planner_repair_retries': 1,
-                'agent_edit_planner_max_attempts': 2,
-            }
+            update={'agent_edit_planner_max_attempts': 2}
         )
         call_count = {'value': 0}
 
@@ -4980,12 +5067,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
                         provider_error_code=None,
                     )
                 return ProviderCallOutcome(
-                    value=(
-                        '{"action":"ask_clarifier","reason":"missing_parent",'
-                        '"question":"Which epic should this feature go under?",'
-                        '"options":["Use Roadmap epic","Use Platform epic","Cancel"],'
-                        '"operations":[],"references_used":[]}'
-                    ),
+                    value=('Need one more detail to continue safely.', []),
                     provider_used='openai',
                     fallback_used=False,
                     provider_error_code=None,
@@ -4999,13 +5081,13 @@ class PlannerContextSafetyTests(unittest.TestCase):
                 'system_prompt': 'system',
                 'session_context': {
                     'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                    'trace_id': 'trace-llm-first-retry',
+                    'trace_id': 'trace-react-retry',
                 },
             }
         )
 
         self.assertEqual(result.get('response_mode'), 'chat')
-        self.assertEqual(result.get('parse_mode'), 'openai_edit_schema_clarifier')
+        self.assertEqual(result.get('parse_mode'), 'openai_tool_calling_clarifier')
         self.assertEqual(result.get('planned_operations'), [])
         self.assertEqual(result.get('clarifier_action'), 'ask_clarifier')
         self.assertEqual(result.get('planner_schema_invalid_attempts'), 1)
@@ -5014,12 +5096,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
     def test_plan_operations_invalid_schema_closes_loop_with_unique_rename_resolution(self) -> None:
         planner = self._planner()
         planner._settings = planner._settings.model_copy(
-            update={
-                'agent_llm_first_edit_enabled': True,
-                'agent_hybrid_react_enabled': True,
-                'agent_edit_planner_repair_retries': 0,
-                'agent_edit_planner_max_attempts': 1,
-            }
+            update={'agent_edit_planner_max_attempts': 1}
         )
 
         def fake_execute(name: str, _args: dict, _ctx: dict):
@@ -5088,65 +5165,20 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(planned_ops[0].node_id, 'dad5697a-8962-4f80-8bc3-8a964edd8e56')
         self.assertEqual(planned_ops[0].patch, {'title': 'App Foundation'})
 
-    def test_build_llm_first_prompt_uses_compact_state_summaries(self) -> None:
+    def test_plan_operations_react_execute_returns_operations(self) -> None:
         planner = self._planner()
-        operations = [
-            RoadmapOperation(
-                op='update_node',
-                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                patch={'title': 'Platform Foundation 1', 'status': 'in_progress'},
-            ),
-            RoadmapOperation(
-                op='add_feature',
-                parent_id='2a427e59-926b-4af5-8e2a-9e01aa26aa72',
-                data={'title': 'Auth Module'},
-            ),
-        ]
-        prompt = planner._build_llm_first_edit_prompt(
-            user_message='Proceed with the correction',
-            existing_operations=operations,
-            session_context={
-                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                'pending_edit_context': {
-                    'intent_family': 'create_feature',
-                    'confirmation_mode': 'awaiting_clarification',
-                    'required_fields': ['parent'],
-                    'default_title': 'Auth Module',
-                    'draft_operations': [{'op': 'add_feature'}],
-                    'resolved_references': {
-                        'epic_id': 'd84f2277-176a-4eaa-a6c2-540f484b380f',
-                        'epic_label': 'Roadmap and Project Management Module',
-                    },
-                },
-            },
-            parse_error_hint=None,
-        )
-
-        self.assertIn('Current staged operations summary:', prompt)
-        self.assertIn('Pending edit context summary:', prompt)
-        self.assertNotIn('Current staged operations: [', prompt)
-        self.assertNotIn('Pending edit context: {', prompt)
-        self.assertIn('"draft_operations_count": 1', prompt)
-        self.assertNotIn('"draft_operations":', prompt)
-
-    def test_plan_operations_llm_first_execute_returns_operations(self) -> None:
-        planner = self._planner()
-        planner._settings = planner._settings.model_copy(
-            update={
-                'agent_llm_first_edit_enabled': True,
-                'agent_edit_planner_repair_retries': 1,
-                'agent_edit_planner_max_attempts': 2,
-            }
-        )
 
         class _FakeOrchestrator:
             def call(self, operation, trace_context=None):
                 return ProviderCallOutcome(
                     value=(
-                        '{"action":"execute","reason":"clear_request",'
-                        '"question":"Create epic AI Module.",'
-                        '"options":[],"operations":[{"op":"add_epic","data":{"title":"AI Module"}}],'
-                        '"references_used":["title"]}'
+                        'Create epic AI Module.',
+                        [
+                            {
+                                'op': 'add_epic',
+                                'data': {'title': 'AI Module'},
+                            }
+                        ],
                     ),
                     provider_used='openai',
                     fallback_used=False,
@@ -5164,253 +5196,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
                 'system_prompt': 'system',
                 'session_context': {
                     'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                    'trace_id': 'trace-llm-first-execute',
-                },
-            }
-        )
-
-        self.assertEqual(result.get('response_mode'), 'edit_plan')
-        self.assertEqual(result.get('parse_mode'), 'openai_edit_schema')
-        planned_ops = result.get('planned_operations') or []
-        self.assertEqual(len(planned_ops), 1)
-        self.assertEqual(planned_ops[0].op.value, 'add_epic')
-        self.assertEqual(planned_ops[0].data, {'title': 'AI Module'})
-
-    def test_plan_operations_llm_first_hybrid_schema_execute_includes_draft_metadata(self) -> None:
-        planner = self._planner()
-        planner._settings = planner._settings.model_copy(
-            update={
-                'agent_llm_first_edit_enabled': True,
-                'agent_hybrid_react_enabled': True,
-                'agent_edit_planner_repair_retries': 0,
-                'agent_edit_planner_max_attempts': 1,
-            }
-        )
-
-        class _FakeOrchestrator:
-            def call(self, operation, trace_context=None):
-                return ProviderCallOutcome(
-                    value=(
-                        '{"action":"execute","reason":"clear_request",'
-                        '"question":"Rename the node.",'
-                        '"options":[],"operations":[{"op":"update_node",'
-                        '"node_id":"dad5697a-8962-4f80-8bc3-8a964edd8e56",'
-                        '"patch":{"title":"Platform Foundation 1"}}],'
-                        '"references_used":["resolve_node_reference"],'
-                        '"draft_action":"revise",'
-                        '"tool_plan":[{"tool_name":"resolve_node_reference",'
-                        '"args":{"label":"Platform Foundation"}}],'
-                        '"needs_more_info":false,'
-                        '"stop_reason":"ready_to_stage"}'
-                    ),
-                    provider_used='openai',
-                    fallback_used=False,
-                    provider_error_code=None,
-                )
-
-        planner._provider_orchestrator = _FakeOrchestrator()
-        result = planner._plan_operations(
-            {
-                'user_message': 'Rename my Platform Foundation to Platform Foundation 1',
-                'existing_operations': [],
-                'system_prompt': 'system',
-                'session_context': {
-                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                    'trace_id': 'trace-llm-first-hybrid-schema',
-                },
-            }
-        )
-
-        self.assertEqual(result.get('response_mode'), 'edit_plan')
-        self.assertEqual(result.get('parse_mode'), 'openai_edit_schema')
-        self.assertEqual(result.get('draft_action'), 'revise')
-        self.assertFalse(bool(result.get('needs_more_info')))
-        self.assertEqual(result.get('stop_reason'), 'ready_to_stage')
-        tool_plan = result.get('tool_plan') or []
-        self.assertEqual(len(tool_plan), 1)
-        self.assertEqual(tool_plan[0].get('tool_name'), 'resolve_node_reference')
-        planned_ops = result.get('planned_operations') or []
-        self.assertEqual(len(planned_ops), 1)
-        self.assertEqual(planned_ops[0].op.value, 'update_node')
-
-    def test_plan_operations_llm_first_hybrid_schema_missing_fields_rejected(self) -> None:
-        planner = self._planner()
-        planner._settings = planner._settings.model_copy(
-            update={
-                'agent_llm_first_edit_enabled': True,
-                'agent_hybrid_react_enabled': True,
-                'agent_edit_planner_repair_retries': 0,
-                'agent_edit_planner_max_attempts': 1,
-            }
-        )
-
-        class _FakeOrchestrator:
-            def call(self, operation, trace_context=None):
-                return ProviderCallOutcome(
-                    value=(
-                        '{"action":"execute","reason":"clear_request",'
-                        '"question":"Create epic AI Module.",'
-                        '"options":[],"operations":[{"op":"add_epic",'
-                        '"data":{"title":"AI Module"}}],'
-                        '"references_used":[]}'
-                    ),
-                    provider_used='openai',
-                    fallback_used=False,
-                    provider_error_code=None,
-                )
-
-        planner._provider_orchestrator = _FakeOrchestrator()
-        result = planner._plan_operations(
-            {
-                'user_message': 'Create epic AI Module',
-                'existing_operations': [],
-                'system_prompt': 'system',
-                'session_context': {
-                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                    'trace_id': 'trace-llm-first-hybrid-missing-fields',
-                },
-            }
-        )
-
-        self.assertEqual(result.get('response_mode'), 'chat')
-        self.assertEqual(result.get('parse_mode'), 'neutral_edit_clarifier')
-        self.assertEqual(result.get('planned_operations'), [])
-        self.assertEqual(result.get('provider_error_code'), 'invalid_planner_schema')
-
-    def test_plan_operations_llm_first_hybrid_schema_execute_with_needs_more_info_rejected(self) -> None:
-        planner = self._planner()
-        planner._settings = planner._settings.model_copy(
-            update={
-                'agent_llm_first_edit_enabled': True,
-                'agent_hybrid_react_enabled': True,
-                'agent_edit_planner_repair_retries': 0,
-                'agent_edit_planner_max_attempts': 1,
-            }
-        )
-
-        class _FakeOrchestrator:
-            def call(self, operation, trace_context=None):
-                return ProviderCallOutcome(
-                    value=(
-                        '{"action":"execute","reason":"clear_request",'
-                        '"question":"Rename the node.",'
-                        '"options":[],"operations":[{"op":"update_node",'
-                        '"node_id":"dad5697a-8962-4f80-8bc3-8a964edd8e56",'
-                        '"patch":{"title":"Platform Foundation 1"}}],'
-                        '"references_used":[],"draft_action":"continue",'
-                        '"tool_plan":[],"needs_more_info":true,'
-                        '"stop_reason":"awaiting_user_input"}'
-                    ),
-                    provider_used='openai',
-                    fallback_used=False,
-                    provider_error_code=None,
-                )
-
-        planner._provider_orchestrator = _FakeOrchestrator()
-        result = planner._plan_operations(
-            {
-                'user_message': 'Rename my Platform Foundation to Platform Foundation 1',
-                'existing_operations': [],
-                'system_prompt': 'system',
-                'session_context': {
-                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                    'trace_id': 'trace-llm-first-hybrid-needs-more-info-conflict',
-                },
-            }
-        )
-
-        self.assertEqual(result.get('response_mode'), 'chat')
-        self.assertEqual(result.get('parse_mode'), 'neutral_edit_clarifier')
-        self.assertEqual(result.get('planned_operations'), [])
-        self.assertEqual(result.get('provider_error_code'), 'invalid_planner_schema')
-
-    def test_plan_operations_llm_first_hybrid_schema_rejects_tool_tuple_when_compat_disabled(self) -> None:
-        planner = self._planner()
-        planner._settings = planner._settings.model_copy(
-            update={
-                'agent_llm_first_edit_enabled': True,
-                'agent_hybrid_react_enabled': True,
-                'agent_legacy_planner_coercion_enabled': False,
-                'agent_edit_planner_repair_retries': 0,
-                'agent_edit_planner_max_attempts': 1,
-            }
-        )
-
-        class _FakeOrchestrator:
-            def call(self, operation, trace_context=None):
-                return ProviderCallOutcome(
-                    value=(
-                        'Rename Platform Foundation to Platform Foundation 1.',
-                        [
-                            {
-                                'op': 'update_node',
-                                'node_id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                                'patch': {'title': 'Platform Foundation 1'},
-                            }
-                        ],
-                    ),
-                    provider_used='openai',
-                    fallback_used=False,
-                    provider_error_code=None,
-                )
-
-        planner._provider_orchestrator = _FakeOrchestrator()
-        result = planner._plan_operations(
-            {
-                'user_message': 'Rename my Platform Foundation to Platform Foundation 1',
-                'existing_operations': [],
-                'system_prompt': 'system',
-                'session_context': {
-                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                    'trace_id': 'trace-llm-first-hybrid-tool-tuple-rejected',
-                },
-            }
-        )
-
-        self.assertEqual(result.get('response_mode'), 'chat')
-        self.assertEqual(result.get('parse_mode'), 'neutral_edit_clarifier')
-        self.assertEqual(result.get('planned_operations'), [])
-        self.assertEqual(result.get('provider_error_code'), 'invalid_planner_schema')
-
-    def test_plan_operations_llm_first_hybrid_schema_allows_tool_tuple_when_compat_enabled(self) -> None:
-        planner = self._planner()
-        planner._settings = planner._settings.model_copy(
-            update={
-                'agent_llm_first_edit_enabled': True,
-                'agent_hybrid_react_enabled': True,
-                'agent_legacy_planner_coercion_enabled': True,
-                'agent_edit_planner_repair_retries': 0,
-                'agent_edit_planner_max_attempts': 1,
-            }
-        )
-
-        class _FakeOrchestrator:
-            def call(self, operation, trace_context=None):
-                return ProviderCallOutcome(
-                    value=(
-                        'Rename Platform Foundation to Platform Foundation 1.',
-                        [
-                            {
-                                'op': 'update_node',
-                                'node_id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                                'patch': {'title': 'Platform Foundation 1'},
-                            }
-                        ],
-                    ),
-                    provider_used='openai',
-                    fallback_used=False,
-                    provider_error_code=None,
-                )
-
-        planner._provider_orchestrator = _FakeOrchestrator()
-        result = planner._plan_operations(
-            {
-                'user_message': 'Rename my Platform Foundation to Platform Foundation 1',
-                'existing_operations': [],
-                'system_prompt': 'system',
-                'session_context': {
-                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                    'trace_id': 'trace-llm-first-hybrid-tool-tuple-compat',
+                    'trace_id': 'trace-react-execute',
                 },
             }
         )
@@ -5418,89 +5204,19 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(result.get('response_mode'), 'edit_plan')
         self.assertEqual(result.get('parse_mode'), 'openai_tool_calling')
         self.assertEqual(result.get('stop_reason'), 'ready_to_stage')
+        self.assertEqual(result.get('draft_action'), 'continue')
         planned_ops = result.get('planned_operations') or []
         self.assertEqual(len(planned_ops), 1)
-        self.assertEqual(planned_ops[0].op.value, 'update_node')
+        self.assertEqual(planned_ops[0].op.value, 'add_epic')
+        self.assertEqual(planned_ops[0].data, {'title': 'AI Module'})
 
-    def test_plan_operations_llm_first_hybrid_schema_allows_legacy_json_when_compat_enabled(self) -> None:
+    def test_plan_operations_react_clarifies_on_empty_operations(self) -> None:
         planner = self._planner()
-        planner._settings = planner._settings.model_copy(
-            update={
-                'agent_llm_first_edit_enabled': True,
-                'agent_hybrid_react_enabled': True,
-                'agent_legacy_planner_coercion_enabled': True,
-                'agent_edit_planner_repair_retries': 0,
-                'agent_edit_planner_max_attempts': 1,
-            }
-        )
 
         class _FakeOrchestrator:
             def call(self, operation, trace_context=None):
                 return ProviderCallOutcome(
-                    value=(
-                        '{"action":"execute","reason":"clear_request",'
-                        '"question":"Rename the node.",'
-                        '"options":[],"operations":[{"op":"update_node",'
-                        '"node_id":"dad5697a-8962-4f80-8bc3-8a964edd8e56",'
-                        '"patch":{"title":"Platform Foundation 1"}}],'
-                        '"references_used":["resolve_node_reference"]}'
-                    ),
-                    provider_used='openai',
-                    fallback_used=False,
-                    provider_error_code=None,
-                )
-
-        planner._provider_orchestrator = _FakeOrchestrator()
-        result = planner._plan_operations(
-            {
-                'user_message': 'Rename my Platform Foundation to Platform Foundation 1',
-                'existing_operations': [],
-                'system_prompt': 'system',
-                'session_context': {
-                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                    'trace_id': 'trace-llm-first-hybrid-legacy-json-compat',
-                },
-            }
-        )
-
-        self.assertEqual(result.get('response_mode'), 'edit_plan')
-        self.assertEqual(result.get('parse_mode'), 'openai_edit_schema')
-        planned_ops = result.get('planned_operations') or []
-        self.assertEqual(len(planned_ops), 1)
-        self.assertEqual(planned_ops[0].op.value, 'update_node')
-
-    def test_plan_operations_llm_first_execute_with_empty_operations_retries_then_clarifies(self) -> None:
-        planner = self._planner()
-        planner._settings = planner._settings.model_copy(
-            update={
-                'agent_llm_first_edit_enabled': True,
-                'agent_edit_planner_repair_retries': 1,
-                'agent_edit_planner_max_attempts': 2,
-            }
-        )
-        call_count = {'value': 0}
-
-        class _FakeOrchestrator:
-            def call(self, operation, trace_context=None):
-                call_count['value'] += 1
-                if call_count['value'] == 1:
-                    return ProviderCallOutcome(
-                        value=(
-                            '{"action":"execute","reason":"clear_request",'
-                            '"question":"Prepare operations.",'
-                            '"options":[],"operations":[],"references_used":[]}'
-                        ),
-                        provider_used='openai',
-                        fallback_used=False,
-                        provider_error_code=None,
-                    )
-                return ProviderCallOutcome(
-                    value=(
-                        '{"action":"ask_clarifier","reason":"missing_operation",'
-                        '"question":"What exact change should I stage?",'
-                        '"options":["Rename a node","Create an item","Cancel"],'
-                        '"operations":[],"references_used":[]}'
-                    ),
+                    value=('What exact change should I stage?', []),
                     provider_used='openai',
                     fallback_used=False,
                     provider_error_code=None,
@@ -5514,73 +5230,24 @@ class PlannerContextSafetyTests(unittest.TestCase):
                 'system_prompt': 'system',
                 'session_context': {
                     'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                    'trace_id': 'trace-llm-first-empty-execute',
+                    'trace_id': 'trace-react-empty-operations',
                 },
             }
         )
 
         self.assertEqual(result.get('response_mode'), 'chat')
-        self.assertEqual(result.get('parse_mode'), 'openai_edit_schema_clarifier')
+        self.assertEqual(result.get('parse_mode'), 'openai_tool_calling_clarifier')
         self.assertEqual(result.get('planned_operations'), [])
         self.assertEqual(result.get('clarifier_action'), 'ask_clarifier')
-        self.assertEqual(result.get('planner_schema_invalid_attempts'), 1)
-        self.assertTrue(result.get('planner_repair_attempted'))
+        self.assertEqual(result.get('planner_schema_invalid_attempts'), 0)
+        self.assertFalse(bool(result.get('planner_repair_attempted')))
+        self.assertTrue(bool(result.get('needs_more_info')))
+        self.assertEqual(result.get('stop_reason'), 'awaiting_user_input')
 
-    def test_plan_operations_llm_first_tool_tuple_execute_returns_operations(self) -> None:
+    def test_plan_operations_react_tuple_wrong_arity_retries_then_clarifies(self) -> None:
         planner = self._planner()
         planner._settings = planner._settings.model_copy(
-            update={
-                'agent_llm_first_edit_enabled': True,
-                'agent_edit_planner_repair_retries': 1,
-                'agent_edit_planner_max_attempts': 2,
-            }
-        )
-
-        class _FakeOrchestrator:
-            def call(self, operation, trace_context=None):
-                return ProviderCallOutcome(
-                    value=(
-                        'Rename Platform Foundation to Platform Foundation 1.',
-                        [
-                            {
-                                'op': 'update_node',
-                                'node_id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                                'patch': {'title': 'Platform Foundation 1'},
-                            }
-                        ],
-                    ),
-                    provider_used='openai',
-                    fallback_used=False,
-                    provider_error_code=None,
-                )
-
-        planner._provider_orchestrator = _FakeOrchestrator()
-        result = planner._plan_operations(
-            {
-                'user_message': 'Rename my Platform Foundation to Platform Foundation 1',
-                'existing_operations': [],
-                'system_prompt': 'system',
-                'session_context': {
-                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                    'trace_id': 'trace-llm-first-tool-tuple',
-                },
-            }
-        )
-
-        self.assertEqual(result.get('response_mode'), 'edit_plan')
-        self.assertEqual(result.get('parse_mode'), 'openai_tool_calling')
-        planned_ops = result.get('planned_operations') or []
-        self.assertEqual(len(planned_ops), 1)
-        self.assertEqual(planned_ops[0].op.value, 'update_node')
-
-    def test_plan_operations_llm_first_tuple_wrong_arity_retries_then_clarifies(self) -> None:
-        planner = self._planner()
-        planner._settings = planner._settings.model_copy(
-            update={
-                'agent_llm_first_edit_enabled': True,
-                'agent_edit_planner_repair_retries': 1,
-                'agent_edit_planner_max_attempts': 2,
-            }
+            update={'agent_edit_planner_max_attempts': 2}
         )
         call_count = {'value': 0}
 
@@ -5595,12 +5262,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
                         provider_error_code=None,
                     )
                 return ProviderCallOutcome(
-                    value=(
-                        '{"action":"ask_clarifier","reason":"ambiguous_target",'
-                        '"question":"Which node should I update?",'
-                        '"options":["Use node label","Provide node ID","Cancel"],'
-                        '"operations":[],"references_used":[]}'
-                    ),
+                    value=('Which node should I update?', []),
                     provider_used='openai',
                     fallback_used=False,
                     provider_error_code=None,
@@ -5614,25 +5276,21 @@ class PlannerContextSafetyTests(unittest.TestCase):
                 'system_prompt': 'system',
                 'session_context': {
                     'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                    'trace_id': 'trace-llm-first-wrong-arity',
+                    'trace_id': 'trace-react-wrong-arity',
                 },
             }
         )
 
         self.assertEqual(result.get('response_mode'), 'chat')
-        self.assertEqual(result.get('parse_mode'), 'openai_edit_schema_clarifier')
+        self.assertEqual(result.get('parse_mode'), 'openai_tool_calling_clarifier')
         self.assertEqual(result.get('planned_operations'), [])
         self.assertEqual(result.get('planner_schema_invalid_attempts'), 1)
         self.assertTrue(result.get('planner_repair_attempted'))
 
-    def test_plan_operations_llm_first_max_tool_turns_exceeded_escalates_immediately(self) -> None:
+    def test_plan_operations_react_max_tool_turns_exceeded_escalates_immediately(self) -> None:
         planner = self._planner()
         planner._settings = planner._settings.model_copy(
-            update={
-                'agent_llm_first_edit_enabled': True,
-                'agent_edit_planner_repair_retries': 1,
-                'agent_edit_planner_max_attempts': 2,
-            }
+            update={'agent_edit_planner_max_attempts': 2}
         )
         edit_plan_attempts = {'value': 0}
         clarifier_attempts = {'value': 0}
@@ -5686,3 +5344,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+
+

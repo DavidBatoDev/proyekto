@@ -51,8 +51,6 @@ class MessagePlanningOutcome:
     tokens_output: int | None
     tokens_total: int | None
     route_lane: str | None
-    fastpath_reason: str | None = None
-    fastpath_bypass_reason: str | None = None
     phase_timings: dict[str, Any] = field(default_factory=dict)
     invalid_operation_detected: bool = False
     invalid_operation_reason: str | None = None
@@ -61,7 +59,6 @@ class MessagePlanningOutcome:
     actor_fetch_attempted: bool = False
     actor_fetch_skipped_reason: str | None = None
     actor_fetch_ms: int | None = None
-    planner_mode: str | None = None
     pending_edit_context_present: bool = False
     edit_continuation_trigger: str | None = None
     planner_schema_invalid_attempts: int | None = None
@@ -222,17 +219,10 @@ class AgentService:
 
         planning: PlanningResult
         route_lane: str | None = None
-        fastpath_reason: str | None = None
-        fastpath_bypass_reason: str | None = None
         llm_skipped_for_simple_edit = False
         invalid_operation_detected = False
         invalid_operation_reason: str | None = None
         invalid_operation_index: int | None = None
-        planner_mode = (
-            self._settings.agent_edit_planner_mode
-            if self._settings.agent_llm_first_edit_enabled
-            else 'legacy_tool_calling'
-        )
         edit_guard_intervened = False
         retry_tool_calls_used: int | None = None
         retry_duplicate_operation_deduped = False
@@ -302,6 +292,10 @@ class AgentService:
                 fallback_used=False,
                 provider_error_code=None,
                 route_lane='llm_edit_plan',
+                draft_action='continue',
+                tool_plan=[],
+                needs_more_info=False,
+                stop_reason='ready_to_stage',
             )
             phase_timings['provider_planning_ms'] = 0
             route_lane = 'llm_edit_plan'
@@ -325,6 +319,10 @@ class AgentService:
                 fallback_used=False,
                 provider_error_code=None,
                 route_lane='llm_edit_plan',
+                draft_action='continue',
+                tool_plan=[],
+                needs_more_info=False,
+                stop_reason='ready_to_stage',
             )
             phase_timings['provider_planning_ms'] = 0
             route_lane = 'llm_edit_plan'
@@ -445,9 +443,6 @@ class AgentService:
             else None
         )
         deterministic_create_fastpath_skipped = False
-        if self._settings.agent_llm_first_edit_enabled:
-            fastpath_reason = None
-            fastpath_bypass_reason = None
 
         self._store.append_message(session, 'user', user_message)
 
@@ -565,8 +560,6 @@ class AgentService:
                 else None
             ),
             route_lane=route_lane,
-            fastpath_reason=fastpath_reason,
-            fastpath_bypass_reason=fastpath_bypass_reason,
             invalid_operation_detected=invalid_operation_detected,
             invalid_operation_reason=invalid_operation_reason,
             invalid_operation_index=invalid_operation_index,
@@ -574,7 +567,6 @@ class AgentService:
             actor_fetch_attempted=actor_fetch_attempted,
             actor_fetch_skipped_reason=actor_fetch_skipped_reason,
             actor_fetch_ms=actor_fetch_ms,
-            planner_mode=planner_mode,
             pending_edit_context_present=session.metadata.pending_edit_context is not None,
             edit_continuation_trigger=edit_continuation_trigger,
             planner_schema_invalid_attempts=planner_schema_invalid_attempts,
@@ -613,8 +605,6 @@ class AgentService:
             tokens_output=planning.tokens_output,
             tokens_total=planning.tokens_total,
             route_lane=route_lane,
-            fastpath_reason=fastpath_reason,
-            fastpath_bypass_reason=fastpath_bypass_reason,
             phase_timings=phase_timings,
             invalid_operation_detected=invalid_operation_detected,
             invalid_operation_reason=invalid_operation_reason,
@@ -623,7 +613,6 @@ class AgentService:
             actor_fetch_attempted=actor_fetch_attempted,
             actor_fetch_skipped_reason=actor_fetch_skipped_reason,
             actor_fetch_ms=actor_fetch_ms,
-            planner_mode=planner_mode,
             pending_edit_context_present=session.metadata.pending_edit_context is not None,
             edit_continuation_trigger=edit_continuation_trigger,
             planner_schema_invalid_attempts=planner_schema_invalid_attempts,
@@ -899,7 +888,6 @@ class AgentService:
             tokens_output=planning.tokens_output,
             tokens_total=planning.tokens_total,
             route_lane=planning.route_lane,
-            fastpath_bypass_reason=planning.fastpath_bypass_reason,
             clarifier_action='ask_clarifier',
             clarifier_reason='context_answer_operation_payload_blocked',
             clarifier_options=['Proceed with edit planning', 'Change target details', 'Cancel'],
@@ -943,7 +931,7 @@ class AgentService:
         session_context: dict[str, Any],
         route_lane: str,
     ) -> tuple[PlanningResult, dict[str, Any]]:
-        loop_budget = max(1, min(int(self._settings.agent_edit_planner_max_attempts), 4))
+        loop_budget = max(1, min(int(self._settings.agent_react_max_attempts), 4))
         loop_started = perf_counter()
         loop_turns = 0
         termination_reason = 'planner_terminal'
@@ -961,6 +949,21 @@ class AgentService:
                 session_context=observation_context,
             )
             planning = replace(planning, route_lane=route_lane)
+            if planning.response_mode == 'edit_plan':
+                planning = replace(
+                    planning,
+                    draft_action=(planning.draft_action or 'continue'),
+                    tool_plan=(planning.tool_plan or []),
+                    needs_more_info=(
+                        planning.needs_more_info
+                        if planning.needs_more_info is not None
+                        else False
+                    ),
+                    stop_reason=(
+                        planning.stop_reason
+                        or ('ready_to_stage' if planning.operations else 'awaiting_user_input')
+                    ),
+                )
 
             if not self._settings.agent_hybrid_react_enabled:
                 termination_reason = 'hybrid_disabled'
@@ -1043,7 +1046,6 @@ class AgentService:
             tokens_output=planning.tokens_output,
             tokens_total=planning.tokens_total,
             route_lane=route_lane,
-            fastpath_bypass_reason=planning.fastpath_bypass_reason,
             clarifier_action='ask_clarifier',
             clarifier_reason=clarifier_reason,
             clarifier_options=clarifier_options,
@@ -1064,6 +1066,22 @@ class AgentService:
             return None
         if planning.response_mode != 'edit_plan':
             return None
+
+        normalized_draft_action = planning.draft_action or 'continue'
+        normalized_tool_plan = planning.tool_plan or []
+        normalized_needs_more_info = (
+            planning.needs_more_info if planning.needs_more_info is not None else False
+        )
+        normalized_stop_reason = planning.stop_reason or (
+            'ready_to_stage' if planning.operations else 'awaiting_user_input'
+        )
+        planning = replace(
+            planning,
+            draft_action=normalized_draft_action,
+            tool_plan=normalized_tool_plan,
+            needs_more_info=normalized_needs_more_info,
+            stop_reason=normalized_stop_reason,
+        )
 
         if planning.draft_action not in {'continue', 'revise', 'new_draft'}:
             return self._build_react_guard_handoff(
@@ -1204,7 +1222,6 @@ class AgentService:
                 tokens_output=planning.tokens_output,
                 tokens_total=planning.tokens_total,
                 route_lane=route_lane,
-                fastpath_bypass_reason=planning.fastpath_bypass_reason,
                 clarifier_action='ask_clarifier',
                 clarifier_reason='pending_edit_confirm_requires_edit_plan',
                 clarifier_options=['Proceed with edit planning', 'Change target details', 'Cancel'],
@@ -1234,7 +1251,6 @@ class AgentService:
                 tokens_output=planning.tokens_output,
                 tokens_total=planning.tokens_total,
                 route_lane=route_lane,
-                fastpath_bypass_reason=planning.fastpath_bypass_reason,
                 clarifier_action='ask_clarifier',
                 clarifier_reason='edit_narrative_without_operations',
                 clarifier_options=['Use the matched node ID', 'Refine the node label', 'Cancel'],
@@ -1289,7 +1305,6 @@ class AgentService:
                 tokens_output=planning.tokens_output,
                 tokens_total=planning.tokens_total,
                 route_lane=route_lane,
-                fastpath_bypass_reason=planning.fastpath_bypass_reason,
             ),
             validation_error,
         )
@@ -1680,6 +1695,10 @@ class AgentService:
                     provider_used='rule_based',
                     fallback_used=False,
                     provider_error_code=None,
+                    draft_action='continue',
+                    tool_plan=[],
+                    needs_more_info=False,
+                    stop_reason='ready_to_stage',
                     ),
                     'tool_calls_used': tool_calls_used,
                     'blocked_reason': None,
@@ -2010,54 +2029,48 @@ class AgentService:
         return self._get_active_draft(session)
 
     def _ensure_draft_graph_initialized(self, session: AgentSession) -> bool:
-        migration_applied = False
+        initialization_applied = False
         drafts = session.metadata.drafts
 
         if not drafts:
-            root_draft = self._build_root_draft_from_legacy_operations(session)
+            if session.operations or int(session.staged_operations_version or 0) > 0:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        'code': 'LEGACY_SESSION_UNSUPPORTED',
+                        'message': (
+                            'This session uses legacy staged operations and is not compatible with '
+                            'draft-graph-only mode. Please create a new session.'
+                        ),
+                    },
+                )
+            root_draft = DraftNode(
+                draft_id=f'{session.session_id}:root',
+                parent_draft_id=None,
+                draft_mode='append',
+                operations=[],
+                draft_version=0,
+                base_revision=session.base_revision,
+                revision_token=session.revision_token,
+                summary='Initial root draft',
+                status='active',
+            )
             session.metadata.drafts[root_draft.draft_id] = root_draft
             session.metadata.active_draft_id = root_draft.draft_id
             session.metadata.draft_head_ids = [root_draft.draft_id]
-            migration_applied = True
+            initialization_applied = True
 
         active_draft_id = session.metadata.active_draft_id
         if not active_draft_id or active_draft_id not in session.metadata.drafts:
             first_draft_id = next(iter(session.metadata.drafts), None)
             if first_draft_id is None:
-                root_draft = self._build_root_draft_from_legacy_operations(session)
-                session.metadata.drafts[root_draft.draft_id] = root_draft
-                first_draft_id = root_draft.draft_id
+                raise RuntimeError('Draft graph initialization failed because no drafts are available.')
             session.metadata.active_draft_id = first_draft_id
             if first_draft_id not in session.metadata.draft_head_ids:
                 session.metadata.draft_head_ids.append(first_draft_id)
-            migration_applied = True
+            initialization_applied = True
 
-        active_draft = self._get_active_draft(session)
-        if not active_draft.operations and session.operations:
-            active_draft.operations = [
-                operation.model_copy(deep=True) for operation in session.operations
-            ]
-            active_draft.draft_version = max(
-                active_draft.draft_version,
-                session.staged_operations_version,
-            )
-            active_draft.updated_at = _utcnow()
-            migration_applied = True
-        return migration_applied
-
-    def _build_root_draft_from_legacy_operations(self, session: AgentSession) -> DraftNode:
-        root_draft_id = f'{session.session_id}:root'
-        return DraftNode(
-            draft_id=root_draft_id,
-            parent_draft_id=None,
-            draft_mode='append',
-            operations=[operation.model_copy(deep=True) for operation in session.operations],
-            draft_version=max(0, session.staged_operations_version),
-            base_revision=session.base_revision,
-            revision_token=session.revision_token,
-            summary='Legacy staged operations root draft',
-            status='active',
-        )
+        return initialization_applied
 
     def _get_active_draft(self, session: AgentSession) -> DraftNode:
         active_draft_id = session.metadata.active_draft_id

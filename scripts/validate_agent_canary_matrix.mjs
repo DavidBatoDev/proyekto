@@ -18,38 +18,36 @@ const strictModules = [
   "tests.test_agent_safety.AgentSafetyTests.test_plan_message_react_loop_budget_exhaustion_sets_clarify_terminal",
   "tests.test_agent_safety.AgentSafetyTests.test_plan_message_retry_blocks_on_staged_version_mismatch",
   "tests.test_agent_safety.AgentSafetyTests.test_plan_message_retry_ambiguous_returns_numbered_id_choices",
-  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_llm_first_hybrid_schema_rejects_tool_tuple_when_compat_disabled",
-  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_llm_first_hybrid_schema_execute_with_needs_more_info_rejected",
-  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_llm_first_hybrid_schema_missing_fields_rejected",
+  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_react_invalid_shape_retries_once",
+  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_react_tuple_wrong_arity_retries_then_clarifies",
+  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_react_max_tool_turns_exceeded_escalates_immediately",
   "tests.test_draft_graph_versioning.DraftGraphVersioningContractTests.test_draft_graph_migration_preserves_legacy_staged_state",
   "tests.test_draft_graph_versioning.DraftGraphVersioningContractTests.test_pending_edit_context_roundtrip_preserves_preview_validation_fields",
   "tests.test_logging_utils.LoggingUtilsLifecycleTests.test_lifecycle_response_includes_react_terminal_and_loop_fields",
 ];
 
-const legacyModules = [
-  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_llm_first_hybrid_schema_allows_tool_tuple_when_compat_enabled",
-  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_llm_first_hybrid_schema_allows_legacy_json_when_compat_enabled",
-  "tests.test_agent_safety.SessionRouteSafetyTests.test_commit_session_strict_mode_blocks_when_preview_fingerprint_mismatches",
-  "tests.test_agent_safety.SessionRouteSafetyTests.test_commit_session_preview_not_found_returns_stale_reference_without_regeneration",
+const compatModules = [
+  "tests.test_agent_safety.AgentSafetyTests.test_plan_message_pending_context_without_continuation_does_not_force_edit",
+  "tests.test_agent_safety.AgentSafetyTests.test_plan_message_hybrid_mode_ignores_replace_flag_without_revise",
+  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_react_execute_returns_operations",
   "tests.test_draft_graph_versioning.DraftGraphVersioningContractTests.test_agent_session_legacy_payload_deserializes_with_draft_defaults",
   "tests.test_draft_graph_versioning.DraftGraphVersioningContractTests.test_draft_graph_migration_preserves_legacy_staged_state",
+  "tests.test_logging_utils.LoggingUtilsLifecycleTests.test_lifecycle_response_includes_react_terminal_and_loop_fields",
 ];
 
 const strictEnv = {
   AGENT_HYBRID_REACT_ENABLED: "true",
   AGENT_DRAFT_GRAPH_ENABLED: "true",
-  AGENT_LEGACY_PLANNER_COERCION_ENABLED: "false",
   AGENT_STRICT_PREVIEW_FINGERPRINT: "true",
-  AGENT_EDIT_PLANNER_MAX_ATTEMPTS: "4",
+  AGENT_REACT_MAX_ATTEMPTS: "4",
   MAX_EDIT_TOOL_TURNS: "3",
 };
 
-const legacyEnv = {
-  AGENT_HYBRID_REACT_ENABLED: "false",
+const compatEnv = {
+  AGENT_HYBRID_REACT_ENABLED: "true",
   AGENT_DRAFT_GRAPH_ENABLED: "false",
-  AGENT_LEGACY_PLANNER_COERCION_ENABLED: "true",
   AGENT_STRICT_PREVIEW_FINGERPRINT: "true",
-  AGENT_EDIT_PLANNER_MAX_ATTEMPTS: "2",
+  AGENT_REACT_MAX_ATTEMPTS: "2",
   MAX_EDIT_TOOL_TURNS: "4",
 };
 
@@ -144,11 +142,11 @@ function main() {
 
   console.log(`Using Python: ${py}`);
   const strictOk = runProfile(py, "strict-canary", strictEnv, strictModules);
-  const legacyOk = runProfile(py, "legacy-safe", legacyEnv, legacyModules);
+  const compatOk = runProfile(py, "react-compat", compatEnv, compatModules);
 
-  if (strictOk && legacyOk) {
+  if (strictOk && compatOk) {
     console.log(
-      "Canary matrix validation passed for strict and legacy profiles.",
+      "Canary matrix validation passed for strict and react-compat profiles.",
     );
     process.exit(0);
   }
