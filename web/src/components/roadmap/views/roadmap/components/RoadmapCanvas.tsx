@@ -157,8 +157,9 @@ const RoadmapCanvas = ({
     (state) => state.applyArtifactSnapshot,
   );
   const discardArtifact = useRoadmapStore((state) => state.discardArtifact);
-  const selectedArtifact =
-    selectedArtifactId ? artifactsById[selectedArtifactId] : null;
+  const selectedArtifact = selectedArtifactId
+    ? artifactsById[selectedArtifactId]
+    : null;
 
   if (!roadmap) {
     return null;
