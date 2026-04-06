@@ -252,7 +252,6 @@ def _apply_lifecycle_payload(trace: _LifecycleTrace, payload: dict[str, Any]) ->
         trace.request = {
             'message': payload.get('message'),
             'replace_operations': payload.get('replace_operations'),
-            'auto_preview': payload.get('auto_preview'),
             'ts': payload.get('ts'),
         }
         return
@@ -317,7 +316,11 @@ def _apply_lifecycle_payload(trace: _LifecycleTrace, payload: dict[str, Any]) ->
                 'fallback_used': payload.get('fallback_used'),
                 'provider_error_code': payload.get('provider_error_code'),
                 'elapsed_ms': payload.get('elapsed_ms'),
-                'preview_available': payload.get('preview_available'),
+                'staged_changes_present': (
+                    payload.get('staged_changes_present')
+                    if payload.get('staged_changes_present') is not None
+                    else payload.get('preview_available')
+                ),
                 'operations_count': payload.get('operations_count'),
                 'artifacts_count': payload.get('artifacts_count'),
                 'route_lane': payload.get('route_lane'),
@@ -389,7 +392,7 @@ def _build_lifecycle_block(trace: _LifecycleTrace) -> str:
             'RESPONSE',
             f'  provider    {trace.response.get("provider_used") or trace.response.get("provider")}',
             f'  fallback    {_yes_no(trace.response.get("fallback_used"))}',
-            f'  preview     {_yes_no(trace.response.get("preview_available"))}',
+            f'  staged      {_yes_no(trace.response.get("staged_changes_present"))}',
             f'  ops         {trace.response.get("operations_count")}',
             f'  elapsed     {trace.response.get("elapsed_ms")} ms',
             f'  lane        {trace.response.get("route_lane")}',

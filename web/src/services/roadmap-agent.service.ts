@@ -53,28 +53,28 @@ export interface AgentSemanticDiff {
   changes: AgentSemanticDiffChange[];
 }
 
-export interface AgentPreviewPayload {
-  preview_id: string;
-  base_revision?: number;
-  base_updated_at: string;
+export interface AgentCommitPayload {
+  change_id?: string;
+  committed_at?: string;
+  revision_token?: string;
   semantic_diff: AgentSemanticDiff;
-  validation_issues: AgentValidationIssue[];
   candidate_snapshot: Record<string, unknown>;
+  timeline?: Array<Record<string, unknown>>;
+  roadmap?: Record<string, unknown>;
 }
 
-export interface AgentRoadmapPreviewArtifact {
+export interface AgentRoadmapCommitArtifact {
   artifact_id: string;
-  type: "roadmap_preview";
+  type: "roadmap_commit";
   roadmap_id: string;
   base_revision?: number;
-  preview_id: string;
   change_id?: string;
   status?: "draft" | "applied" | "discarded";
   title: string;
   summary: string;
   semantic_diff_summary: Record<string, number>;
   validation_issue_count: number;
-  inline_preview?: AgentPreviewPayload;
+  inline_commit?: AgentCommitPayload;
   created_at: string;
 }
 
@@ -94,7 +94,6 @@ export interface AgentCreateSessionResponse {
 export interface AgentMessageRequest {
   message: string;
   replace_operations?: boolean;
-  auto_preview?: boolean;
 }
 
 export interface AgentMessageResponse {
@@ -112,39 +111,17 @@ export interface AgentMessageResponse {
     | "unclear";
   response_mode: "chat" | "edit_plan";
   operations: AgentOperation[];
-  preview_available: boolean;
-  preview_recommended: boolean;
   staged_operations_version: number;
   staged_operations_count: number;
-  artifacts: AgentRoadmapPreviewArtifact[];
+  artifacts: AgentRoadmapCommitArtifact[];
   provider_used?: "openai" | "rule_based";
   fallback_used?: boolean;
   provider_error_code?: string | null;
   debug_trace_id?: string | null;
 }
 
-export interface AgentPreviewRequest {
-  operations?: AgentOperation[];
-  base_revision?: number;
-}
-
 export interface AgentDiscardRequest {
   change_id?: string;
-}
-
-export interface AgentPreviewResponse {
-  session_id: string;
-  roadmap_id: string;
-  base_revision?: number;
-  operations: AgentOperation[];
-  preview: AgentPreviewPayload;
-}
-
-export interface AgentArtifactPreviewResponse {
-  session_id: string;
-  roadmap_id: string;
-  artifact: AgentRoadmapPreviewArtifact;
-  preview: AgentPreviewPayload;
 }
 
 export interface AgentDiscardResponse {
@@ -180,7 +157,6 @@ export interface AgentRollbackResponse {
 }
 
 export interface AgentCommitRequest {
-  preview_id?: string;
   operations?: AgentOperation[];
   base_revision?: number;
   revision_token?: string;
@@ -309,35 +285,6 @@ export const roadmapAgentService = {
       return response.data;
     } catch (error) {
       throwAgentError(error, "Send AI message");
-    }
-  },
-
-  async previewSession(
-    sessionId: string,
-    payload: AgentPreviewRequest,
-  ): Promise<AgentPreviewResponse> {
-    try {
-      const response = await agentApiClient.post<AgentPreviewResponse>(
-        `/agent/sessions/${sessionId}/preview`,
-        payload,
-      );
-      return response.data;
-    } catch (error) {
-      throwAgentError(error, "Preview AI operations");
-    }
-  },
-
-  async getArtifactPreview(
-    sessionId: string,
-    artifactId: string,
-  ): Promise<AgentArtifactPreviewResponse> {
-    try {
-      const response = await agentApiClient.get<AgentArtifactPreviewResponse>(
-        `/agent/sessions/${sessionId}/artifacts/${artifactId}`,
-      );
-      return response.data;
-    } catch (error) {
-      throwAgentError(error, "Get AI artifact preview");
     }
   },
 

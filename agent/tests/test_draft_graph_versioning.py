@@ -69,8 +69,6 @@ class DraftGraphVersioningContractTests(unittest.TestCase):
             intent_type='roadmap_edit',
             response_mode='edit_plan',
             operations=[],
-            preview_available=False,
-            preview_recommended=False,
             staged_operations_version=0,
             staged_operations_count=0,
         )
@@ -78,7 +76,7 @@ class DraftGraphVersioningContractTests(unittest.TestCase):
         self.assertIsNone(response.active_draft_id)
         self.assertIsNone(response.active_draft_version)
 
-    def test_pending_edit_context_roundtrip_preserves_preview_validation_fields(self) -> None:
+    def test_pending_edit_context_roundtrip_preserves_staging_validation_fields(self) -> None:
         payload = {
             'session_id': '5f37eaee-4e03-4af0-a3c7-827775f2ba53',
             'roadmap_id': 'roadmap-1',
@@ -115,7 +113,7 @@ class DraftGraphVersioningContractTests(unittest.TestCase):
                         }
                     ],
                     'awaiting_preview_fix': True,
-                    'last_planner_stop_reason': 'preview_validation_failed',
+                    'last_planner_stop_reason': 'staging_validation_failed',
                     'last_planner_needs_more_info': True,
                     'last_planner_draft_action': 'continue',
                     'last_tool_plan_summary': [
@@ -131,23 +129,29 @@ class DraftGraphVersioningContractTests(unittest.TestCase):
         session = AgentSession.model_validate(payload)
         self.assertIsNotNone(session.metadata.pending_edit_context)
         assert session.metadata.pending_edit_context is not None
-        self.assertTrue(session.metadata.pending_edit_context.awaiting_preview_fix)
+        self.assertTrue(session.metadata.pending_edit_context.awaiting_staging_fix)
         self.assertEqual(
-            len(session.metadata.pending_edit_context.preview_validation_errors),
+            len(session.metadata.pending_edit_context.staging_validation_errors),
             1,
         )
 
         dumped = session.model_dump(mode='json')
+        pending_context_dump = dumped.get('metadata', {}).get('pending_edit_context', {})
+        self.assertIn('staging_validation_errors', pending_context_dump)
+        self.assertIn('awaiting_staging_fix', pending_context_dump)
+        self.assertNotIn('preview_validation_errors', pending_context_dump)
+        self.assertNotIn('awaiting_preview_fix', pending_context_dump)
+
         restored = AgentSession.model_validate(dumped)
         assert restored.metadata.pending_edit_context is not None
-        self.assertTrue(restored.metadata.pending_edit_context.awaiting_preview_fix)
+        self.assertTrue(restored.metadata.pending_edit_context.awaiting_staging_fix)
         self.assertEqual(
-            restored.metadata.pending_edit_context.preview_validation_errors[0].get('code'),
+            restored.metadata.pending_edit_context.staging_validation_errors[0].get('code'),
             'MISSING_REQUIRED_FIELD',
         )
         self.assertEqual(
             restored.metadata.pending_edit_context.last_planner_stop_reason,
-            'preview_validation_failed',
+            'staging_validation_failed',
         )
 
     def test_draft_graph_migration_preserves_legacy_staged_state(self) -> None:

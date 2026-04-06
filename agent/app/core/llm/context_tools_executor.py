@@ -97,10 +97,10 @@ class ContextToolsExecutor:
 
             auth_header = session_context.get('auth_header')
             auth_value = auth_header if isinstance(auth_header, str) and auth_header else None
-            preview_selector_raw = session_context.get('context_preview_id')
-            preview_selector = (
-                str(preview_selector_raw).strip()
-                if isinstance(preview_selector_raw, str) and preview_selector_raw.strip()
+            context_selector_raw = session_context.get('context_change_selector')
+            context_selector = (
+                str(context_selector_raw).strip()
+                if isinstance(context_selector_raw, str) and context_selector_raw.strip()
                 else None
             )
             log_event(
@@ -120,7 +120,7 @@ class ContextToolsExecutor:
                     session_context,
                     self._nest_client.context_summary(
                         roadmap_id=roadmap_id,
-                        preview_id=preview_selector,
+                        preview_id=context_selector,
                         auth_header=auth_value,
                         trace_id=trace_id,
                     )

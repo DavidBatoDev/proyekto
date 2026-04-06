@@ -1,11 +1,9 @@
 import logging
 import asyncio
 import json
-import hashlib
 from datetime import datetime, timezone
 from time import perf_counter
 from uuid import uuid4
-from typing import cast
 
 from fastapi import APIRouter, Request
 from fastapi.exceptions import HTTPException
@@ -14,8 +12,8 @@ from app.core.config import get_settings
 from app.core.contracts.sessions import (
     AppliedDraftCommit,
     AgentSession,
-    ArtifactPreviewResponse,
     CommitRequest,
+    RoadmapCommitArtifact,
     CreateSessionRequest,
     CreateSessionResponse,
     DraftNode,
@@ -23,14 +21,8 @@ from app.core.contracts.sessions import (
     DiscardResponse,
     MessageRequest,
     MessageResponse,
-    PendingEditContext,
-    PendingEditResolvedReferences,
-    PreviewRequest,
-    PreviewFingerprintBinding,
-    RoadmapPreviewArtifact,
     RollbackRequest,
 )
-from app.core.llm.clarifier_contract import build_clarifier_contract
 from app.core.nest_client import NestRoadmapClient
 from app.core.logging_utils import log_event
 from app.core.orchestration.agent_service import AgentService
@@ -66,51 +58,27 @@ def _serialized_payload_bytes(payload: dict) -> int:
     return len(json.dumps(payload, separators=(',', ':'), ensure_ascii=False).encode('utf-8'))
 
 
-def _normalize_artifact_preview_error(exc: HTTPException) -> dict:
-    detail = exc.detail if isinstance(exc.detail, dict) else {'message': str(exc.detail)}
-    upstream_status = int(exc.status_code)
-    code = 'ARTIFACT_PREVIEW_FAILED'
-    message = 'Failed to load artifact preview.'
+def _extract_upstream_error_code(detail: object) -> str | None:
+    if not isinstance(detail, dict):
+        return None
 
-    upstream_error = detail.get('detail') if isinstance(detail, dict) else None
-    if isinstance(upstream_error, dict):
-        nested_error = upstream_error.get('error')
+    code = detail.get('code')
+    if isinstance(code, str) and code.strip():
+        return code.strip()
+
+    nested_detail = detail.get('detail')
+    if isinstance(nested_detail, dict):
+        nested_code = nested_detail.get('code')
+        if isinstance(nested_code, str) and nested_code.strip():
+            return nested_code.strip()
+
+        nested_error = nested_detail.get('error')
         if isinstance(nested_error, dict):
-            nested_message = nested_error.get('message')
-            if isinstance(nested_message, str) and nested_message.strip():
-                message = nested_message
-            nested_code = nested_error.get('code')
-            if isinstance(nested_code, str) and nested_code.strip():
-                code = nested_code
+            error_code = nested_error.get('code')
+            if isinstance(error_code, str) and error_code.strip():
+                return error_code.strip()
 
-    if isinstance(detail, dict):
-        maybe_message = detail.get('message')
-        if isinstance(maybe_message, str) and maybe_message.strip():
-            message = maybe_message
-        maybe_code = detail.get('code')
-        if isinstance(maybe_code, str) and maybe_code.strip():
-            code = maybe_code
-
-    retryable = upstream_status >= 500 or upstream_status in {408, 429}
-    return {
-        'code': code,
-        'message': message,
-        'retryable': retryable,
-        'upstream_status': upstream_status,
-    }
-
-
-def _is_preview_not_found_error(normalized: dict) -> bool:
-    upstream_status = normalized.get('upstream_status')
-    if upstream_status != 404:
-        return False
-
-    code = str(normalized.get('code') or '').strip().upper()
-    if code in {'PREVIEW_NOT_FOUND', 'NOT_FOUND'}:
-        return True
-
-    message = str(normalized.get('message') or '').strip().lower()
-    return 'preview' in message and 'not found' in message
+    return None
 
 
 def _resolve_draft_snapshot(
@@ -137,36 +105,6 @@ def _resolve_draft_snapshot(
         raise RuntimeError('Draft graph runtime does not expose active draft helpers.')
     draft_id = session.metadata.active_draft_id or f'{session.session_id}:draft'
     return draft_id, session.staged_operations_version, session.operations
-
-
-def _resolve_draft_snapshot_by_id(
-    session: AgentSession,
-    draft_id: str,
-) -> tuple[str, int, list] | None:
-    candidate = session.metadata.drafts.get(draft_id)
-    if candidate is None:
-        return None
-
-    if hasattr(candidate, 'draft_version') and hasattr(candidate, 'operations'):
-        return draft_id, int(candidate.draft_version), list(candidate.operations)
-
-    if isinstance(candidate, dict):
-        draft_version = candidate.get('draft_version')
-        operations = candidate.get('operations')
-        if isinstance(draft_version, int) and isinstance(operations, list):
-            return draft_id, draft_version, operations
-
-    return None
-
-
-def _resolve_snapshot_for_binding(
-    session: AgentSession,
-    binding: PreviewFingerprintBinding,
-) -> tuple[str, int, list] | None:
-    if binding.binding_scope == 'ad_hoc_operations':
-        return None
-
-    return _resolve_draft_snapshot_by_id(session, binding.draft_id)
 
 
 def _set_draft_status(
@@ -274,74 +212,6 @@ def _repoint_active_draft_after_commit(
             abandoned_descendants += 1
 
     return abandoned_descendants
-
-
-def _compute_preview_fingerprint(
-    *,
-    draft_id: str,
-    draft_version: int,
-    operations: list,
-    base_revision: int | None,
-) -> str:
-    payload = {
-        'draft_id': draft_id,
-        'draft_version': draft_version,
-        'base_revision': base_revision,
-        'operations': [
-            op.model_dump(exclude_none=True) if hasattr(op, 'model_dump') else op
-            for op in operations
-        ],
-    }
-    encoded = json.dumps(
-        payload,
-        sort_keys=True,
-        separators=(',', ':'),
-        ensure_ascii=True,
-    ).encode('utf-8')
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def _upsert_preview_fingerprint_binding(
-    *,
-    session: AgentSession,
-    preview_id: str,
-    draft_id: str,
-    draft_version: int,
-    base_revision: int | None,
-    fingerprint: str,
-    binding_scope: str = 'draft_snapshot',
-) -> None:
-    bindings = session.metadata.preview_fingerprint_bindings
-    if not isinstance(bindings, dict):
-        bindings = {}
-    bindings[preview_id] = PreviewFingerprintBinding(
-        preview_id=preview_id,
-        draft_id=draft_id,
-        draft_version=draft_version,
-        base_revision=base_revision,
-        preview_fingerprint=fingerprint,
-        binding_scope=binding_scope,
-    )
-    session.metadata.preview_fingerprint_bindings = bindings
-    session.metadata.latest_preview_fingerprint = fingerprint
-
-
-def _get_preview_fingerprint_binding(
-    session: AgentSession,
-    preview_id: str,
-) -> PreviewFingerprintBinding | None:
-    bindings = session.metadata.preview_fingerprint_bindings
-    if not isinstance(bindings, dict):
-        return None
-    candidate = bindings.get(preview_id)
-    if isinstance(candidate, PreviewFingerprintBinding):
-        return candidate
-    if isinstance(candidate, dict):
-        try:
-            return PreviewFingerprintBinding.model_validate(candidate)
-        except Exception:
-            return None
-    return None
 
 
 def _service_unavailable(reason: str) -> HTTPException:
@@ -477,7 +347,6 @@ async def send_message(
         session_id=session_id,
         roadmap_id=session.roadmap_id,
         message=payload.message,
-        auto_preview=payload.auto_preview,
         actor_present=session.metadata.actor_context is not None,
         roadmap_role=(
             session.metadata.actor_context.roadmap_role
@@ -491,21 +360,14 @@ async def send_message(
         ),
     )
     outcome = None
-    artifacts: list[RoadmapPreviewArtifact] = []
-    response_artifacts: list[RoadmapPreviewArtifact] = []
+    artifacts: list[RoadmapCommitArtifact] = []
+    response_artifacts: list[RoadmapCommitArtifact] = []
     error_code: int | None = None
-    preview_generation_ms: int | None = None
-    preview_error_code: str | None = None
-    preview_error_retryable: bool | None = None
-    preview_error_upstream_status: int | None = None
-    preview_validation_error_count = 0
-    preview_validation_error_codes: list[str] = []
-    preview_validation_error_paths: list[str] = []
-    preview_validation_clarifier_shown = False
-    inline_preview_skipped_due_to_size = False
-    inline_preview_size_bytes: int | None = None
-    effective_preview_available: bool = False
-    effective_preview_recommended: bool = False
+    auto_commit_ms: int | None = None
+    auto_commit_error_code: str | None = None
+    auto_commit_error_retryable: bool | None = None
+    auto_commit_error_upstream_status: int | None = None
+    inline_commit_size_bytes: int | None = None
     response_staged_operations_version: int | None = None
     response_staged_operations_count: int | None = None
     response_active_draft_id: str | None = None
@@ -528,347 +390,141 @@ async def send_message(
         response_active_draft_id = outcome.active_draft_id
         response_active_draft_version = outcome.active_draft_version
 
-        if (
-            payload.auto_preview
-            and outcome.response_mode == 'edit_plan'
-            and outcome.preview_available
-        ):
-            preview_started = perf_counter()
-            try:
-                preview_result = await _nest_client.preview(
+        should_auto_commit = (
+            outcome.response_mode == 'edit_plan'
+            and len(staged_snapshot_operations) > 0
+        )
+
+        if should_auto_commit:
+            auth_header = request.headers.get('Authorization')
+            if auth_header:
+                draft_id, draft_version, draft_operations = _resolve_draft_snapshot(
+                    outcome.session,
+                    agent_service,
+                )
+
+                commit_started = perf_counter()
+                commit_result = await _nest_client.commit(
                     roadmap_id=outcome.session.roadmap_id,
                     payload={
                         'base_revision': outcome.session.base_revision,
                         'revision_token': outcome.session.revision_token,
                         'operations': [
-                            op.model_dump(exclude_none=True)
-                            for op in staged_snapshot_operations
+                            operation.model_dump(exclude_none=True)
+                            for operation in draft_operations
                         ],
                     },
-                    auth_header=request.headers.get('Authorization'),
+                    auth_header=auth_header,
                     trace_id=trace_id,
                 )
-                preview_generation_ms = int((perf_counter() - preview_started) * 1000)
-                validation_issues = preview_result.get('validation_issues')
-                has_validation_errors = (
-                    isinstance(validation_issues, list)
-                    and any(
-                        isinstance(issue, dict)
-                        and str(issue.get('severity') or '').lower() == 'error'
-                        for issue in validation_issues
-                    )
-                )
-                if has_validation_errors:
-                    effective_preview_available = False
-                    effective_preview_recommended = False
-                    preview_error_code = 'PREVIEW_VALIDATION_ERROR'
-                    preview_error_retryable = False
-                    preview_error_upstream_status = None
-                    validation_errors = [
-                        issue
-                        for issue in validation_issues
-                        if isinstance(issue, dict)
-                        and str(issue.get('severity') or '').lower() == 'error'
-                    ]
-                    preview_validation_error_count = len(validation_errors)
-                    preview_validation_error_codes = [
-                        str(issue.get('code') or '').strip()
-                        for issue in validation_errors
-                        if str(issue.get('code') or '').strip()
-                    ]
-                    preview_validation_error_paths = [
-                        str(issue.get('path') or '').strip()
-                        for issue in validation_errors
-                        if str(issue.get('path') or '').strip()
-                    ]
-                    preview_validation_clarifier_shown = True
+                auto_commit_ms = int((perf_counter() - commit_started) * 1000)
 
-                    summary_fields: list[str] = []
-                    for issue in validation_errors[:3]:
-                        issue_path = str(issue.get('path') or '').strip()
-                        issue_message = str(issue.get('message') or '').strip()
-                        field_name = issue_path.split('/')[-1] if issue_path else 'field'
-                        if issue_message:
-                            summary_fields.append(f'{field_name}: {issue_message}')
-                        else:
-                            summary_fields.append(field_name)
-                    summary_text = ', '.join(summary_fields) if summary_fields else 'one or more required fields'
-                    if preview_validation_error_count > 3:
-                        summary_text += f', and {preview_validation_error_count - 3} more issue(s)'
-
-                    clarifier_message, _ = build_clarifier_contract(
-                        reason='preview_validation_failed',
-                        question=(
-                            'I staged your edit, but preview validation found issues '
-                            f'({summary_text}). Please tell me the corrected details.'
-                        ),
-                        options=[
-                            'Provide corrected field values',
-                            'Change target details',
-                            'Cancel',
-                        ],
-                    )
-
-                    existing_pending = outcome.session.metadata.pending_edit_context
-                    pending_created_at = (
-                        existing_pending.created_at
-                        if existing_pending is not None
-                        else _utcnow()
-                    )
-                    pending_context = PendingEditContext(
-                        intent_family='roadmap_edit_clarifier',
-                        draft_operations=[
-                            operation.model_copy(deep=True)
-                            for operation in staged_snapshot_operations
-                        ],
-                        required_fields=['corrected_fields'],
-                        resolved_references=(
-                            existing_pending.resolved_references
-                            if existing_pending is not None
-                            else PendingEditResolvedReferences()
-                        ),
-                        confirmation_mode='awaiting_clarification',
-                        source_user_message=payload.message,
-                        default_title=(
-                            existing_pending.default_title
-                            if existing_pending is not None
-                            else None
-                        ),
-                        resolver_hints=(
-                            dict(existing_pending.resolver_hints)
-                            if existing_pending is not None
-                            and isinstance(existing_pending.resolver_hints, dict)
-                            else None
-                        ),
-                        last_planner_stop_reason=(outcome.stop_reason or 'preview_validation_failed'),
-                        last_planner_needs_more_info=True,
-                        last_planner_draft_action=outcome.draft_action,
-                        last_tool_plan_summary=[],
-                        preview_validation_errors=validation_errors,
-                        awaiting_preview_fix=True,
-                        created_at=pending_created_at,
-                        updated_at=_utcnow(),
-                    )
-                    outcome.session.metadata.pending_edit_context = pending_context
-                    setattr(outcome.session.metadata, 'awaiting_preview_fix', True)
-                    outcome.session.latest_preview_id = None
-                    outcome.session.metadata.latest_preview_fingerprint = None
-                    validation_artifact = _build_preview_artifact(
-                        outcome.session,
-                        preview_result,
-                        validation_errors=validation_errors,
-                    )
-                    if validation_artifact is not None:
-                        outcome.session.artifacts = [validation_artifact]
-                        response_artifacts = [validation_artifact]
-                        artifacts = [validation_artifact]
-                    else:
-                        outcome.session.artifacts = []
-                    outcome.assistant_message = clarifier_message
-                    await _run_store_call(store.update, outcome.session)
-                else:
-                    preview_id = preview_result.get('preview_id')
-                    draft_id, draft_version, draft_operations = _resolve_draft_snapshot(
-                        outcome.session,
-                        agent_service,
-                    )
-                    preview_fingerprint: str | None = None
-                    if isinstance(preview_id, str):
-                        outcome.session.latest_preview_id = preview_id
-                        preview_fingerprint = _compute_preview_fingerprint(
-                            draft_id=draft_id,
-                            draft_version=draft_version,
-                            operations=draft_operations,
-                            base_revision=outcome.session.base_revision,
-                        )
-                        _upsert_preview_fingerprint_binding(
-                            session=outcome.session,
-                            preview_id=preview_id,
-                            draft_id=draft_id,
-                            draft_version=draft_version,
-                            base_revision=outcome.session.base_revision,
-                            fingerprint=preview_fingerprint,
-                            binding_scope='draft_snapshot',
-                        )
-
-                    auth_header = request.headers.get('Authorization')
-                    if not auth_header:
-                        _set_draft_status(
-                            session=outcome.session,
-                            draft_id=draft_id,
-                            status='previewed',
-                        )
-                        preview_revision_token = preview_result.get('revision_token')
-                        if isinstance(preview_revision_token, str):
-                            outcome.session.revision_token = preview_revision_token
-                        if bool(getattr(outcome.session.metadata, 'awaiting_preview_fix', False)):
-                            setattr(outcome.session.metadata, 'awaiting_preview_fix', False)
-                        artifact = _build_preview_artifact(
-                            outcome.session,
-                            preview_result,
-                            status='draft',
-                        )
-                        if artifact is not None:
-                            outcome.session.artifacts.append(artifact)
-                            inline_preview_size_bytes = _serialized_payload_bytes(preview_result)
-                            if inline_preview_size_bytes <= settings.inline_preview_max_bytes:
-                                response_artifacts.append(
-                                    artifact.model_copy(update={'inline_preview': preview_result})
-                                )
-                            else:
-                                inline_preview_skipped_due_to_size = True
-                                response_artifacts.append(artifact)
-                            artifacts.append(artifact)
-
-                        await _run_store_call(store.update, outcome.session)
-                        effective_preview_available = outcome.preview_available
-                        effective_preview_recommended = outcome.preview_recommended
-                    else:
-                        commit_result = await _nest_client.commit(
-                            roadmap_id=outcome.session.roadmap_id,
-                            payload={
-                                'base_revision': outcome.session.base_revision,
-                                'revision_token': (
-                                    preview_result.get('revision_token')
-                                    if isinstance(preview_result.get('revision_token'), str)
-                                    else outcome.session.revision_token
-                                ),
-                                'operations': [
-                                    operation.model_dump(exclude_none=True)
-                                    for operation in draft_operations
-                                ],
-                            },
-                            auth_header=auth_header,
-                            trace_id=trace_id,
-                        )
-
-                        change_id_raw = commit_result.get('change_id')
-                        change_id = (
-                            str(change_id_raw).strip()
-                            if isinstance(change_id_raw, str) and str(change_id_raw).strip()
-                            else None
-                        )
-                        committed_revision_token = commit_result.get('revision_token')
-                        if isinstance(committed_revision_token, str):
-                            outcome.session.revision_token = committed_revision_token
-
-                        if change_id is not None:
-                            applied_change_ids_raw = outcome.session.metadata.applied_change_ids
-                            if isinstance(applied_change_ids_raw, list):
-                                applied_change_ids = [
-                                    value
-                                    for value in applied_change_ids_raw
-                                    if isinstance(value, str) and value.strip()
-                                ]
-                            else:
-                                applied_change_ids = []
-                            if change_id not in applied_change_ids:
-                                applied_change_ids.append(change_id)
-                            outcome.session.metadata.applied_change_ids = applied_change_ids
-                            outcome.session.metadata.applied_draft_commits.append(
-                                AppliedDraftCommit(
-                                    change_id=change_id,
-                                    preview_id=(preview_id if isinstance(preview_id, str) else None),
-                                    draft_id=draft_id,
-                                    draft_version=draft_version,
-                                    preview_fingerprint=preview_fingerprint,
-                                    status='applied',
-                                )
-                            )
-
-                        _set_draft_status(
-                            session=outcome.session,
-                            draft_id=draft_id,
-                            status='applied',
-                        )
-
-                        if settings.agent_draft_graph_enabled:
-                            agent_service.ensure_draft_graph_initialized(outcome.session)
-                            next_draft_id = f'{outcome.session.session_id}:draft:{uuid4()}'
-                            next_draft = DraftNode(
-                                draft_id=next_draft_id,
-                                parent_draft_id=draft_id,
-                                draft_mode='append',
-                                operations=[],
-                                draft_version=0,
-                                base_revision=outcome.session.base_revision,
-                                revision_token=outcome.session.revision_token,
-                                summary='Post-commit working draft',
-                                status='active',
-                            )
-                            outcome.session.metadata.drafts[next_draft_id] = next_draft
-                            outcome.session.metadata.active_draft_id = next_draft_id
-                            outcome.session.metadata.draft_head_ids = [next_draft_id]
-                            response_staged_operations_count = 0
-                            response_staged_operations_version = 0
-                            response_active_draft_id = next_draft_id
-                            response_active_draft_version = next_draft.draft_version
-                        else:
-                            outcome.session.operations = []
-                            outcome.session.staged_operations_version += 1
-                            response_staged_operations_count = 0
-                            response_staged_operations_version = (
-                                outcome.session.staged_operations_version
-                            )
-                            response_active_draft_id = None
-                            response_active_draft_version = None
-
-                        if isinstance(preview_id, str):
-                            outcome.session.metadata.preview_fingerprint_bindings.pop(
-                                preview_id,
-                                None,
-                            )
-                        outcome.session.latest_preview_id = None
-                        outcome.session.metadata.latest_preview_fingerprint = None
-                        outcome.session.metadata.pending_context_resolution = None
-                        outcome.session.metadata.pending_edit_context = None
-                        if bool(getattr(outcome.session.metadata, 'awaiting_preview_fix', False)):
-                            setattr(outcome.session.metadata, 'awaiting_preview_fix', False)
-
-                        artifact = _build_preview_artifact(
-                            outcome.session,
-                            preview_result,
-                            change_id=change_id,
-                            status='applied',
-                        )
-                        if artifact is not None:
-                            outcome.session.artifacts.append(artifact)
-                            inline_preview_size_bytes = _serialized_payload_bytes(preview_result)
-                            if inline_preview_size_bytes <= settings.inline_preview_max_bytes:
-                                response_artifacts.append(
-                                    artifact.model_copy(update={'inline_preview': preview_result})
-                                )
-                            else:
-                                inline_preview_skipped_due_to_size = True
-                                response_artifacts.append(artifact)
-                            artifacts.append(artifact)
-
-                        await _run_store_call(store.update, outcome.session)
-                        effective_preview_available = False
-                        effective_preview_recommended = False
-            except HTTPException as exc:
-                preview_generation_ms = int((perf_counter() - preview_started) * 1000)
-                normalized_preview_error = _normalize_artifact_preview_error(exc)
-                preview_error_code = str(normalized_preview_error.get('code') or '')
-                preview_error_retryable = bool(normalized_preview_error.get('retryable'))
-                upstream_status_value = normalized_preview_error.get('upstream_status')
-                preview_error_upstream_status = (
-                    int(upstream_status_value)
-                    if isinstance(upstream_status_value, int)
+                change_id_raw = commit_result.get('change_id')
+                change_id = (
+                    str(change_id_raw).strip()
+                    if isinstance(change_id_raw, str) and str(change_id_raw).strip()
                     else None
                 )
-                effective_preview_available = False
-                effective_preview_recommended = False
-                logger.warning(
-                    'Auto-preview artifact generation failed for session_id=%s roadmap_id=%s status=%s detail=%s',
+                committed_revision_token = commit_result.get('revision_token')
+                if isinstance(committed_revision_token, str):
+                    outcome.session.revision_token = committed_revision_token
+
+                if change_id is not None:
+                    applied_change_ids_raw = outcome.session.metadata.applied_change_ids
+                    if isinstance(applied_change_ids_raw, list):
+                        applied_change_ids = [
+                            value
+                            for value in applied_change_ids_raw
+                            if isinstance(value, str) and value.strip()
+                        ]
+                    else:
+                        applied_change_ids = []
+                    if change_id not in applied_change_ids:
+                        applied_change_ids.append(change_id)
+                    outcome.session.metadata.applied_change_ids = applied_change_ids
+
+                outcome.session.metadata.applied_draft_commits.append(
+                    AppliedDraftCommit(
+                        change_id=change_id,
+                        draft_id=draft_id,
+                        draft_version=draft_version,
+                        status='applied',
+                    )
+                )
+
+                record_recent_targets_from_preview = getattr(
+                    agent_service,
+                    'record_recent_targets_from_preview',
+                    None,
+                )
+                if callable(record_recent_targets_from_preview):
+                    record_recent_targets_from_preview(
+                        session=outcome.session,
+                        preview_result=commit_result,
+                        source='commit_semantic_diff',
+                    )
+
+                _set_draft_status(
+                    session=outcome.session,
+                    draft_id=draft_id,
+                    status='applied',
+                )
+
+                if settings.agent_draft_graph_enabled:
+                    agent_service.ensure_draft_graph_initialized(outcome.session)
+                    next_draft_id = f'{outcome.session.session_id}:draft:{uuid4()}'
+                    next_draft = DraftNode(
+                        draft_id=next_draft_id,
+                        parent_draft_id=draft_id,
+                        draft_mode='append',
+                        operations=[],
+                        draft_version=0,
+                        base_revision=outcome.session.base_revision,
+                        revision_token=outcome.session.revision_token,
+                        summary='Post-commit working draft',
+                        status='active',
+                    )
+                    outcome.session.metadata.drafts[next_draft_id] = next_draft
+                    outcome.session.metadata.active_draft_id = next_draft_id
+                    outcome.session.metadata.draft_head_ids = [next_draft_id]
+                    response_staged_operations_count = 0
+                    response_staged_operations_version = 0
+                    response_active_draft_id = next_draft_id
+                    response_active_draft_version = next_draft.draft_version
+                else:
+                    outcome.session.operations = []
+                    outcome.session.staged_operations_version += 1
+                    response_staged_operations_count = 0
+                    response_staged_operations_version = (
+                        outcome.session.staged_operations_version
+                    )
+                    response_active_draft_id = None
+                    response_active_draft_version = None
+
+                outcome.session.metadata.pending_context_resolution = None
+                outcome.session.metadata.pending_edit_context = None
+
+                artifact = _build_commit_artifact(
+                    outcome.session,
+                    commit_result,
+                    change_id=change_id,
+                    status='applied',
+                )
+                if artifact is not None:
+                    inline_payload = dict(commit_result)
+                    inline_commit_size_bytes = _serialized_payload_bytes(inline_payload)
+                    inline_artifact = artifact.model_copy(update={'inline_commit': inline_payload})
+                    outcome.session.artifacts.append(inline_artifact)
+                    response_artifacts.append(inline_artifact)
+                    artifacts.append(inline_artifact)
+
+                await _run_store_call(store.update, outcome.session)
+            else:
+                logger.info(
+                    'Auto-commit skipped due to missing auth header. session_id=%s roadmap_id=%s',
                     outcome.session.session_id,
                     outcome.session.roadmap_id,
-                    exc.status_code,
-                    exc.detail,
                 )
-        else:
-            effective_preview_available = outcome.preview_available
-            effective_preview_recommended = outcome.preview_recommended
 
         return MessageResponse(
             session_id=outcome.session.session_id,
@@ -877,8 +533,6 @@ async def send_message(
             intent_type=outcome.intent_type,
             response_mode=outcome.response_mode,
             operations=outcome.operations,
-            preview_available=effective_preview_available,
-            preview_recommended=effective_preview_recommended,
             staged_operations_version=(
                 response_staged_operations_version
                 if response_staged_operations_version is not None
@@ -907,6 +561,10 @@ async def send_message(
         )
     except HTTPException as exc:
         error_code = exc.status_code
+        if outcome is not None and outcome.response_mode == 'edit_plan':
+            auto_commit_error_code = _extract_upstream_error_code(exc.detail)
+            auto_commit_error_retryable = exc.status_code >= 500 or exc.status_code in {408, 429}
+            auto_commit_error_upstream_status = exc.status_code
         raise
     finally:
         elapsed_ms = int((perf_counter() - started_at) * 1000)
@@ -914,6 +572,14 @@ async def send_message(
             elapsed_ms
             if outcome is not None and outcome.response_mode == 'edit_plan'
             else None
+        )
+        staged_changes_present = (
+            (
+                response_staged_operations_count
+                if response_staged_operations_count is not None
+                else (outcome.staged_operations_count if outcome is not None else 0)
+            )
+            > 0
         )
         log_event(
             logger,
@@ -935,18 +601,17 @@ async def send_message(
             tokens_total=outcome.tokens_total if outcome else None,
             operations_count=len(outcome.operations) if outcome else 0,
             artifacts_count=len(artifacts),
-            inline_preview_included=any(
-                artifact.inline_preview is not None for artifact in response_artifacts
+            inline_commit_included=any(
+                artifact.inline_commit is not None for artifact in response_artifacts
             ),
-            inline_preview_skipped_due_to_size=inline_preview_skipped_due_to_size,
-            inline_preview_size_bytes=inline_preview_size_bytes,
+            inline_commit_skipped_due_to_size=False,
+            inline_commit_size_bytes=inline_commit_size_bytes,
             artifact_first_read_source=(
                 'inline'
-                if any(artifact.inline_preview is not None for artifact in response_artifacts)
+                if any(artifact.inline_commit is not None for artifact in response_artifacts)
                 else None
             ),
-            preview_available=effective_preview_available if outcome else False,
-            preview_recommended=effective_preview_recommended if outcome else False,
+            staged_changes_present=staged_changes_present,
             actor_present=(
                 outcome.session.metadata.actor_context is not None
                 if outcome is not None
@@ -985,7 +650,6 @@ async def send_message(
                 outcome.actor_fetch_ms if outcome else None
             ),
             phase_timings=outcome.phase_timings if outcome else None,
-            preview_generation_ms=preview_generation_ms,
             total_edit_turn_ms=total_edit_turn_ms,
             invalid_operation_detected=(
                 outcome.invalid_operation_detected if outcome else False
@@ -996,13 +660,10 @@ async def send_message(
             invalid_operation_index=(
                 outcome.invalid_operation_index if outcome else None
             ),
-            preview_error_code=preview_error_code,
-            preview_error_retryable=preview_error_retryable,
-            preview_error_upstream_status=preview_error_upstream_status,
-            preview_validation_error_count=preview_validation_error_count,
-            preview_validation_error_codes=preview_validation_error_codes,
-            preview_validation_error_paths=preview_validation_error_paths,
-            preview_validation_clarifier_shown=preview_validation_clarifier_shown,
+            auto_commit_ms=auto_commit_ms,
+            auto_commit_error_code=auto_commit_error_code,
+            auto_commit_error_retryable=auto_commit_error_retryable,
+            auto_commit_error_upstream_status=auto_commit_error_upstream_status,
             pending_edit_context_present=(
                 outcome.pending_edit_context_present if outcome else False
             ),
@@ -1048,143 +709,6 @@ async def send_message(
         )
 
 
-@router.post('/{session_id}/preview')
-async def preview_session(
-    session_id: str,
-    payload: PreviewRequest,
-    request: Request,
-) -> dict:
-    store, agent_service = await _get_agent_runtime_async()
-    trace_id = request.headers.get('X-Trace-Id') or str(uuid4())
-    started_at = perf_counter()
-    session = await _get_session_or_404_async(agent_service, session_id)
-
-    if payload.operations is not None:
-        operations = payload.operations
-    else:
-        _, _, snapshot_operations = _resolve_draft_snapshot(session, agent_service)
-        operations = snapshot_operations
-    base_revision = payload.base_revision if payload.base_revision is not None else session.base_revision
-    revision_token = (
-        payload.revision_token
-        if payload.revision_token is not None
-        else session.revision_token
-    )
-
-    try:
-        preview_result = await _nest_client.preview(
-            roadmap_id=session.roadmap_id,
-            payload={
-                'base_revision': base_revision,
-                'revision_token': revision_token,
-                'operations': [op.model_dump(exclude_none=True) for op in operations],
-            },
-            auth_header=request.headers.get('Authorization'),
-            trace_id=trace_id,
-        )
-    except HTTPException as exc:
-        logger.warning(
-            'Preview failed for session_id=%s roadmap_id=%s status=%s detail=%s',
-            session_id,
-            session.roadmap_id,
-            exc.status_code,
-            exc.detail,
-        )
-        log_event(
-            logger,
-            'session_preview_completed',
-            settings=settings,
-            level=logging.WARNING,
-            trace_id=trace_id,
-            session_id=session_id,
-            roadmap_id=session.roadmap_id,
-            elapsed_ms=int((perf_counter() - started_at) * 1000),
-            preview_available=False,
-            preview_error_code='PREVIEW_FAILED',
-            preview_error_upstream_status=exc.status_code,
-        )
-        raise
-
-    preview_id = preview_result.get('preview_id')
-    preview_revision_token = preview_result.get('revision_token')
-    effective_revision_token = (
-        preview_revision_token if isinstance(preview_revision_token, str) else revision_token
-    )
-    if isinstance(preview_id, str):
-        session.latest_preview_id = preview_id
-        if payload.operations is not None:
-            draft_id = f'{session.session_id}:adhoc:{preview_id}'
-            draft_version = 0
-            draft_operations = payload.operations
-            binding_scope = 'ad_hoc_operations'
-            session.metadata.drafts[draft_id] = DraftNode(
-                draft_id=draft_id,
-                parent_draft_id=session.metadata.active_draft_id,
-                draft_mode='branch',
-                operations=[operation.model_copy(deep=True) for operation in payload.operations],
-                draft_version=0,
-                base_revision=base_revision,
-                revision_token=revision_token,
-                summary='Ad-hoc preview snapshot',
-                status='previewed',
-            )
-        else:
-            draft_id, draft_version, draft_operations = _resolve_draft_snapshot(
-                session,
-                agent_service,
-            )
-            binding_scope = 'draft_snapshot'
-        preview_fingerprint = _compute_preview_fingerprint(
-            draft_id=draft_id,
-            draft_version=draft_version,
-            operations=draft_operations,
-            base_revision=base_revision,
-        )
-        _upsert_preview_fingerprint_binding(
-            session=session,
-            preview_id=preview_id,
-            draft_id=draft_id,
-            draft_version=draft_version,
-            base_revision=base_revision,
-            fingerprint=preview_fingerprint,
-            binding_scope=binding_scope,
-        )
-        if binding_scope == 'draft_snapshot':
-            _set_draft_status(
-                session=session,
-                draft_id=draft_id,
-                status='previewed',
-            )
-        if isinstance(preview_revision_token, str):
-            session.revision_token = preview_revision_token
-            effective_revision_token = preview_revision_token
-        else:
-            effective_revision_token = cast(str | None, session.revision_token) or revision_token
-        await _run_store_call(store.update, session)
-
-    log_event(
-        logger,
-        'session_preview_completed',
-        settings=settings,
-        trace_id=trace_id,
-        session_id=session_id,
-        roadmap_id=session.roadmap_id,
-        elapsed_ms=int((perf_counter() - started_at) * 1000),
-        preview_available=True,
-        preview_error_code=None,
-        preview_error_upstream_status=None,
-    )
-
-    return {
-        'session_id': session.session_id,
-        'roadmap_id': session.roadmap_id,
-        'base_revision': base_revision,
-        'revision_token': effective_revision_token,
-        'operations': [op.model_dump(exclude_none=True) for op in operations],
-        'preview': preview_result,
-    }
-
-
 @router.post('/{session_id}/commit')
 async def commit_session(
     session_id: str,
@@ -1195,123 +719,14 @@ async def commit_session(
     session = await _get_session_or_404_async(agent_service, session_id)
     trace_id = request.headers.get('X-Trace-Id') or str(uuid4())
     started_at = perf_counter()
-    selected_preview_id = payload.preview_id if isinstance(payload.preview_id, str) else None
-    selected_binding = (
-        _get_preview_fingerprint_binding(session, selected_preview_id)
-        if selected_preview_id
-        else None
-    )
-
     if payload.operations is not None:
         selected_draft_id = session.metadata.active_draft_id or f'{session.session_id}:adhoc'
         selected_draft_version = 0
         selected_operations = payload.operations
-        selected_binding_scope = 'ad_hoc_operations'
-        current_preview_fingerprint = None
-    elif selected_preview_id:
-        applied_preview_ids_raw = session.metadata.applied_preview_ids
-        if isinstance(applied_preview_ids_raw, list):
-            applied_preview_ids = [
-                value
-                for value in applied_preview_ids_raw
-                if isinstance(value, str) and value.strip()
-            ]
-        else:
-            applied_preview_ids = []
-
-        if selected_preview_id in applied_preview_ids:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    'code': 'ARTIFACT_ALREADY_APPLIED',
-                    'message': 'This artifact has already been applied. Generate a new preview before applying again.',
-                },
-            )
-
-        if settings.agent_strict_preview_fingerprint and selected_binding is None:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    'code': 'STALE_PREVIEW_REFERENCE',
-                    'message': (
-                        'Selected preview is not bound to the current staged snapshot. '
-                        'Regenerate preview and apply again.'
-                    ),
-                },
-            )
-
-        selected_draft_id = session.metadata.active_draft_id or f'{session.session_id}:preview'
-        selected_draft_version = 0
-        selected_operations = []
-        selected_binding_scope = 'draft_snapshot'
-        current_preview_fingerprint = None
-
-        if selected_binding is not None:
-            selected_draft_id = selected_binding.draft_id
-            selected_draft_version = selected_binding.draft_version
-            selected_binding_scope = selected_binding.binding_scope
-            if selected_binding.binding_scope == 'draft_snapshot':
-                binding_snapshot = _resolve_snapshot_for_binding(session, selected_binding)
-                if binding_snapshot is not None:
-                    (
-                        selected_draft_id,
-                        selected_draft_version,
-                        selected_operations,
-                    ) = binding_snapshot
-                    current_preview_fingerprint = _compute_preview_fingerprint(
-                        draft_id=selected_draft_id,
-                        draft_version=selected_draft_version,
-                        operations=selected_operations,
-                        base_revision=(payload.base_revision or session.base_revision),
-                    )
-                    if (
-                        settings.agent_strict_preview_fingerprint
-                        and selected_binding.preview_fingerprint != current_preview_fingerprint
-                    ):
-                        raise HTTPException(
-                            status_code=409,
-                            detail={
-                                'code': 'STALE_PREVIEW_REFERENCE',
-                                'message': (
-                                    'Selected preview is stale for the current staged edits. '
-                                    'Regenerate preview and apply again.'
-                                ),
-                            },
-                        )
-                elif settings.agent_strict_preview_fingerprint:
-                    raise HTTPException(
-                        status_code=409,
-                        detail={
-                            'code': 'STALE_PREVIEW_REFERENCE',
-                            'message': (
-                                'Selected preview is stale for the current staged edits. '
-                                'Regenerate preview and apply again.'
-                            ),
-                        },
-                    )
-            else:
-                current_preview_fingerprint = selected_binding.preview_fingerprint
-                adhoc_snapshot = _resolve_draft_snapshot_by_id(
-                    session,
-                    selected_binding.draft_id,
-                )
-                if adhoc_snapshot is not None:
-                    (
-                        selected_draft_id,
-                        selected_draft_version,
-                        selected_operations,
-                    ) = adhoc_snapshot
     else:
         selected_draft_id, selected_draft_version, selected_operations = _resolve_draft_snapshot(
             session,
             agent_service,
-        )
-        selected_binding_scope = 'draft_snapshot'
-        current_preview_fingerprint = _compute_preview_fingerprint(
-            draft_id=selected_draft_id,
-            draft_version=selected_draft_version,
-            operations=selected_operations,
-            base_revision=(payload.base_revision or session.base_revision),
         )
 
     if len(selected_operations) == 0:
@@ -1337,20 +752,7 @@ async def commit_session(
             auth_header=request.headers.get('Authorization'),
             trace_id=trace_id,
         )
-    except HTTPException as exc:
-        if selected_preview_id:
-            normalized = _normalize_artifact_preview_error(exc)
-            if _is_preview_not_found_error(normalized):
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        'code': 'STALE_PREVIEW_REFERENCE',
-                        'message': (
-                            'Selected preview is no longer available. Regenerate preview for current staged edits '
-                            'and apply again.'
-                        ),
-                    },
-                ) from exc
+    except HTTPException:
         raise
 
     committed_revision_token = commit_result.get('revision_token')
@@ -1378,43 +780,34 @@ async def commit_session(
             applied_change_ids.append(change_id)
         session.metadata.applied_change_ids = applied_change_ids
 
-    if selected_preview_id:
-        applied_preview_ids_raw = session.metadata.applied_preview_ids
-        if isinstance(applied_preview_ids_raw, list):
-            applied_preview_ids = [
-                value
-                for value in applied_preview_ids_raw
-                if isinstance(value, str) and value.strip()
-            ]
-        else:
-            applied_preview_ids = []
-        if selected_preview_id not in applied_preview_ids:
-            applied_preview_ids.append(selected_preview_id)
-        session.metadata.applied_preview_ids = applied_preview_ids
-
     session.metadata.applied_draft_commits.append(
         AppliedDraftCommit(
             change_id=change_id,
-            preview_id=selected_preview_id,
             draft_id=selected_draft_id,
             draft_version=selected_draft_version,
-            preview_fingerprint=current_preview_fingerprint,
             status='applied',
         )
     )
 
-    if selected_binding_scope == 'draft_snapshot':
+    record_recent_targets_from_preview = getattr(
+        agent_service,
+        'record_recent_targets_from_preview',
+        None,
+    )
+    if callable(record_recent_targets_from_preview):
+        record_recent_targets_from_preview(
+            session=session,
+            preview_result=commit_result,
+            source='commit_semantic_diff',
+        )
+
+    if payload.operations is None:
         _set_draft_status(
             session=session,
             draft_id=selected_draft_id,
             status='applied',
         )
-        if selected_preview_id:
-            _repoint_active_draft_after_commit(
-                session,
-                selected_draft_id=selected_draft_id,
-            )
-        elif settings.agent_draft_graph_enabled:
+        if settings.agent_draft_graph_enabled:
             agent_service.ensure_draft_graph_initialized(session)
             next_draft_id = f'{session.session_id}:draft:{uuid4()}'
             next_draft = DraftNode(
@@ -1442,8 +835,6 @@ async def commit_session(
             artifact.status = 'applied'
             artifact.change_id = change_id
 
-    session.latest_preview_id = None
-    session.metadata.latest_preview_fingerprint = None
     session.metadata.pending_context_resolution = None
     session.metadata.pending_edit_context = None
     await _run_store_call(store.update, session)
@@ -1649,142 +1040,39 @@ async def rollback_session(
     }
 
 
-@router.get('/{session_id}/artifacts/{artifact_id}', response_model=ArtifactPreviewResponse)
-async def get_artifact_preview(
-    session_id: str,
-    artifact_id: str,
-    request: Request,
-) -> ArtifactPreviewResponse:
-    _, agent_service = await _get_agent_runtime_async()
-    session = await _get_session_or_404_async(agent_service, session_id)
-    artifact = next(
-        (item for item in session.artifacts if item.artifact_id == artifact_id),
-        None,
-    )
-    if artifact is None:
-        raise HTTPException(status_code=404, detail=f'Artifact {artifact_id} not found for session {session_id}.')
-
-    trace_id = str(uuid4())
-    fetch_started = perf_counter()
-    try:
-        preview_result = await _nest_client.get_preview(
-            roadmap_id=session.roadmap_id,
-            preview_id=artifact.preview_id,
-            auth_header=request.headers.get('Authorization'),
-            trace_id=trace_id,
-        )
-    except HTTPException as exc:
-        normalized = _normalize_artifact_preview_error(exc)
-        if _is_preview_not_found_error(normalized):
-            log_event(
-                logger,
-                'artifact_fetch_stale_preview_reference',
-                settings=settings,
-                level=logging.WARNING,
-                trace_id=trace_id,
-                session_id=session_id,
-                roadmap_id=session.roadmap_id,
-                artifact_id=artifact_id,
-                preview_id=artifact.preview_id,
-                error_code='STALE_PREVIEW_REFERENCE',
-                upstream_status=normalized.get('upstream_status'),
-            )
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    'code': 'STALE_PREVIEW_REFERENCE',
-                    'message': (
-                        'Artifact preview is no longer available. Regenerate preview for current staged edits '
-                        'and retry.'
-                    ),
-                    'retryable': False,
-                    'upstream_status': normalized.get('upstream_status'),
-                },
-            ) from exc
-
-        log_event(
-            logger,
-            'artifact_fetch_error',
-            settings=settings,
-            level=logging.WARNING,
-            trace_id=trace_id,
-            session_id=session_id,
-            roadmap_id=session.roadmap_id,
-            artifact_id=artifact_id,
-            preview_id=artifact.preview_id,
-            error_code=normalized.get('code'),
-            upstream_status=normalized.get('upstream_status'),
-            retryable=normalized.get('retryable'),
-            self_healed=False,
-            self_heal_attempted=False,
-            artifact_fetch_ms=int((perf_counter() - fetch_started) * 1000),
-            artifact_self_heal_ms=None,
-            artifact_first_read_source='fetch',
-        )
-        status_code = int(normalized.get('upstream_status') or exc.status_code)
-        raise HTTPException(status_code=status_code, detail=normalized) from exc
-
-    artifact_fetch_ms = int((perf_counter() - fetch_started) * 1000)
-    log_event(
-        logger,
-        'artifact_fetch_succeeded',
-        settings=settings,
-        trace_id=trace_id,
-        session_id=session_id,
-        roadmap_id=session.roadmap_id,
-        artifact_id=artifact_id,
-        preview_id=artifact.preview_id,
-        artifact_fetch_ms=artifact_fetch_ms,
-        artifact_self_heal_ms=None,
-        self_healed=False,
-        artifact_first_read_source='fetch',
-    )
-    return ArtifactPreviewResponse(
-        session_id=session.session_id,
-        roadmap_id=session.roadmap_id,
-        artifact=artifact,
-        preview=preview_result,
-    )
-
-
-def _build_preview_artifact(
+def _build_commit_artifact(
     session: AgentSession,
-    preview_result: dict,
-    validation_errors: list[dict] | None = None,
+    commit_result: dict,
     change_id: str | None = None,
-    status: str = 'draft',
-) -> RoadmapPreviewArtifact | None:
-    preview_id = preview_result.get('preview_id')
-    if not isinstance(preview_id, str):
-        return None
+    status: str = 'applied',
+) -> RoadmapCommitArtifact | None:
+    effective_change_id = change_id
+    if effective_change_id is None:
+        change_id_raw = commit_result.get('change_id')
+        if isinstance(change_id_raw, str) and change_id_raw.strip():
+            effective_change_id = change_id_raw.strip()
 
-    semantic_diff = preview_result.get('semantic_diff')
+    semantic_diff = commit_result.get('semantic_diff')
     summary_payload = semantic_diff.get('summary') if isinstance(semantic_diff, dict) else {}
-    semantic_diff_summary = (
-        summary_payload if isinstance(summary_payload, dict) else {}
-    )
+    semantic_diff_summary = summary_payload if isinstance(summary_payload, dict) else {}
     total_changes = sum(
         value for value in semantic_diff_summary.values() if isinstance(value, int)
     )
-    validation_issues = preview_result.get('validation_issues')
+    validation_issues = commit_result.get('validation_issues')
     validation_issue_count = (
         len(validation_issues) if isinstance(validation_issues, list) else 0
     )
-    filtered_validation_errors = [
-        issue for issue in (validation_errors or []) if isinstance(issue, dict)
-    ]
 
-    return RoadmapPreviewArtifact(
+    return RoadmapCommitArtifact(
         roadmap_id=session.roadmap_id,
         base_revision=session.base_revision,
         revision_token=session.revision_token,
-        preview_id=preview_id,
-        change_id=change_id,
-        title='Roadmap Preview',
-        summary=f'Prepared {total_changes} semantic change(s).',
+        change_id=effective_change_id,
+        title='Roadmap Commit Artifact',
+        summary=f'Applied {total_changes} semantic change(s).',
         semantic_diff_summary=semantic_diff_summary,
         validation_issue_count=validation_issue_count,
-        validation_issues=filtered_validation_errors,
-        has_validation_errors=bool(filtered_validation_errors),
-        status=status if status in {'draft', 'applied', 'discarded'} else 'draft',
+        validation_issues=[],
+        has_validation_errors=False,
+        status=status if status in {'draft', 'applied', 'discarded'} else 'applied',
     )

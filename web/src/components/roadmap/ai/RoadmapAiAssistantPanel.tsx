@@ -27,10 +27,9 @@ import type {
 } from "@/types/roadmapArtifact";
 import roadmapAgentService, {
   type AgentMessageResponse,
-  type AgentPreviewPayload,
-  type AgentRoadmapPreviewArtifact,
+  type AgentCommitPayload,
+  type AgentRoadmapCommitArtifact,
   isAgentTimeoutError,
-  RoadmapAgentServiceError,
 } from "@/services/roadmap-agent.service";
 import {
   ArtifactSnapshotNormalizationError,
@@ -296,16 +295,16 @@ const hasSameStructureIds = (
   return true;
 };
 
-const mapPreviewToArtifact = (
+const mapCommitToArtifact = (
   roadmapId: string,
-  payload: AgentPreviewPayload,
-  metadata?: AgentRoadmapPreviewArtifact,
+  payload: AgentCommitPayload,
+  metadata?: AgentRoadmapCommitArtifact,
   fallbackRoadmap?: Roadmap | null,
 ): RoadmapArtifactPreview => {
   const semanticDiffSummary = toDiffSummary(payload.semantic_diff?.summary);
   const normalizedSnapshot = normalizeArtifactCandidateSnapshot({
     candidateSnapshot: payload.candidate_snapshot,
-    baseUpdatedAt: payload.base_updated_at,
+    baseUpdatedAt: undefined,
     fallbackRoadmap: fallbackRoadmap || null,
   });
   const candidateSnapshot = hasSameStructureIds(
@@ -316,29 +315,22 @@ const mapPreviewToArtifact = (
     : normalizedSnapshot;
 
   return {
-    artifactId: metadata?.artifact_id || payload.preview_id,
-    previewId: metadata?.preview_id || payload.preview_id,
+    artifactId:
+      metadata?.artifact_id || payload.change_id || crypto.randomUUID(),
     changeId: metadata?.change_id,
-    title: metadata?.title || "AI Artifact Preview",
-    summary: metadata?.summary || "Generated preview from AI operations.",
+    title: metadata?.title || "AI Commit Artifact",
+    summary:
+      metadata?.summary || "Generated commit snapshot from AI operations.",
     createdAt: metadata?.created_at || new Date().toISOString(),
     baseRoadmapId: roadmapId,
     baseRevision: metadata?.base_revision,
     candidateSnapshot,
     semanticDiffSummary,
     semanticDiffChanges: toDiffChanges(payload.semantic_diff?.changes),
-    validationIssues: (payload.validation_issues || []).map((issue) => ({
-      code: issue.code,
-      severity: issue.severity,
-      path: issue.path,
-      message: issue.message,
-    })),
+    validationIssues: [],
     status: metadata?.status || "draft",
   };
 };
-
-const delay = (ms: number): Promise<void> =>
-  new Promise((resolve) => window.setTimeout(resolve, ms));
 
 interface PendingAttachment {
   id: string;
@@ -420,127 +412,25 @@ export function RoadmapAiAssistantPanel({
     response: AgentMessageResponse,
   ): Promise<RoadmapArtifactPreview[]> => {
     const hydrated: RoadmapArtifactPreview[] = [];
-    let fallbackPreviewPayload: AgentPreviewPayload | null = null;
-
-    const fetchArtifactDetailWithRecovery = async (
-      artifactMeta: AgentRoadmapPreviewArtifact,
-    ) => {
-      try {
-        return await roadmapAgentService.getArtifactPreview(
-          activeSessionId,
-          artifactMeta.artifact_id,
-        );
-      } catch (firstError) {
-        const isNotFound =
-          firstError instanceof RoadmapAgentServiceError &&
-          firstError.statusCode === 404;
-        if (!isNotFound) {
-          console.warn(
-            "[RoadmapAiAssistantPanel] artifact hydration request failed",
-            {
-              trace_id: response.debug_trace_id || null,
-              session_id: activeSessionId,
-              artifact_id: artifactMeta.artifact_id,
-              preview_id: artifactMeta.preview_id,
-              error:
-                firstError instanceof Error
-                  ? firstError.message
-                  : String(firstError),
-            },
-          );
-          throw firstError;
-        }
-
-        await delay(250);
-
-        try {
-          return await roadmapAgentService.getArtifactPreview(
-            activeSessionId,
-            artifactMeta.artifact_id,
-          );
-        } catch (retryError) {
-          const retryNotFound =
-            retryError instanceof RoadmapAgentServiceError &&
-            retryError.statusCode === 404;
-          if (!retryNotFound) throw retryError;
-
-          if (fallbackPreviewPayload === null) {
-            try {
-              const previewResponse = await roadmapAgentService.previewSession(
-                activeSessionId,
-                {
-                  base_revision: baseRevision,
-                },
-              );
-              fallbackPreviewPayload = previewResponse.preview;
-            } catch (fallbackError) {
-              console.warn(
-                "[RoadmapAiAssistantPanel] artifact hydration fallback failed",
-                {
-                  trace_id: response.debug_trace_id || null,
-                  session_id: activeSessionId,
-                  artifact_id: artifactMeta.artifact_id,
-                  preview_id: artifactMeta.preview_id,
-                  error:
-                    fallbackError instanceof Error
-                      ? fallbackError.message
-                      : String(fallbackError),
-                },
-              );
-              throw fallbackError;
-            }
-          }
-
-          return {
-            artifact: artifactMeta,
-            preview: fallbackPreviewPayload,
-          };
-        }
-      }
-    };
-
     for (const artifactMeta of response.artifacts || []) {
-      if (artifactMeta.inline_preview) {
+      if (artifactMeta.inline_commit) {
         hydrated.push(
-          mapPreviewToArtifact(
+          mapCommitToArtifact(
             roadmapId,
-            artifactMeta.inline_preview,
+            artifactMeta.inline_commit,
             artifactMeta,
             currentRoadmap,
           ),
         );
         continue;
       }
-      const artifactDetail =
-        await fetchArtifactDetailWithRecovery(artifactMeta);
-      hydrated.push(
-        mapPreviewToArtifact(
-          roadmapId,
-          artifactDetail.preview,
-          artifactDetail.artifact,
-          currentRoadmap,
-        ),
-      );
-    }
-
-    if (
-      hydrated.length === 0 &&
-      response.response_mode === "edit_plan" &&
-      response.preview_available
-    ) {
-      const previewResponse = await roadmapAgentService.previewSession(
-        activeSessionId,
+      console.warn(
+        "[RoadmapAiAssistantPanel] commit artifact missing inline payload",
         {
-          base_revision: baseRevision,
+          trace_id: response.debug_trace_id || null,
+          session_id: activeSessionId,
+          artifact_id: artifactMeta.artifact_id,
         },
-      );
-      hydrated.push(
-        mapPreviewToArtifact(
-          roadmapId,
-          previewResponse.preview,
-          undefined,
-          currentRoadmap,
-        ),
       );
     }
 
@@ -588,7 +478,6 @@ export function RoadmapAiAssistantPanel({
       activeSessionId = await ensureSession();
       const response = await roadmapAgentService.sendMessage(activeSessionId, {
         message: agentMessage,
-        auto_preview: true,
       });
 
       const assistantId = crypto.randomUUID();
@@ -695,9 +584,10 @@ export function RoadmapAiAssistantPanel({
     });
 
     try {
-      const result = await roadmapAgentService.commitSession(activeSessionId, {
-        preview_id: artifact.previewId,
-      });
+      const result = await roadmapAgentService.commitSession(
+        activeSessionId,
+        {},
+      );
       const committedChangeId =
         typeof result.commit?.change_id === "string"
           ? (result.commit.change_id as string)
@@ -1041,7 +931,10 @@ export function RoadmapAiAssistantPanel({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  void handleApplyArtifact(message.id, artifact);
+                                  void handleApplyArtifact(
+                                    message.id,
+                                    artifact,
+                                  );
                                 }}
                                 disabled={applyDisabled}
                                 className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white"
@@ -1055,13 +948,18 @@ export function RoadmapAiAssistantPanel({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  void handleDiscardArtifact(message.id, artifact);
+                                  void handleDiscardArtifact(
+                                    message.id,
+                                    artifact,
+                                  );
                                 }}
                                 disabled={isApplyingArtifact}
                                 className="h-7 px-2.5 rounded-md border border-red-300 bg-white text-[10px] font-semibold text-red-700 hover:bg-red-50 inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 <X className="w-3.5 h-3.5" />
-                                {isApplyingArtifact ? "Discarding..." : "Discard"}
+                                {isApplyingArtifact
+                                  ? "Discarding..."
+                                  : "Discard"}
                               </button>
                             )}
 
@@ -1069,13 +967,18 @@ export function RoadmapAiAssistantPanel({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  void handleReapplyArtifact(message.id, artifact);
+                                  void handleReapplyArtifact(
+                                    message.id,
+                                    artifact,
+                                  );
                                 }}
                                 disabled={isApplyingArtifact}
                                 className="h-7 px-2.5 rounded-md border border-green-300 bg-white text-[10px] font-semibold text-green-700 hover:bg-green-50 inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 <Check className="w-3.5 h-3.5" />
-                                {isApplyingArtifact ? "Reapplying..." : "Reapply"}
+                                {isApplyingArtifact
+                                  ? "Reapplying..."
+                                  : "Reapply"}
                               </button>
                             )}
 

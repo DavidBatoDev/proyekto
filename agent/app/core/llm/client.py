@@ -391,10 +391,17 @@ class LLMPlanner:
             'revision_token': session_context.get('revision_token'),
             'staged_operations_count': len(state.get('existing_operations', [])),
             'recent_messages': session_context.get('recent_messages', []),
+            'recent_resolved_targets': session_context.get('recent_resolved_targets', []),
             'actor_context': session_context.get('actor_context'),
             'intent_type': intent_type,
             'prompt_mode': mode,
         }
+        deictic_parent_hint = session_context.get('deictic_parent_hint')
+        if isinstance(deictic_parent_hint, dict):
+            prompt_context['deictic_parent_hint'] = deictic_parent_hint
+        deictic_resolution_status = session_context.get('deictic_resolution_status')
+        if isinstance(deictic_resolution_status, str) and deictic_resolution_status.strip():
+            prompt_context['deictic_resolution_status'] = deictic_resolution_status.strip()
         react_loop_turn = session_context.get('_react_loop_turn')
         if react_loop_turn is not None:
             prompt_context['react_loop_turn'] = react_loop_turn
@@ -590,6 +597,11 @@ class LLMPlanner:
             [op.model_dump(exclude_none=True) for op in existing_operations]
         )
         roadmap_id_value = session_context.get('roadmap_id')
+        deictic_parent_hint = (
+            session_context.get('deictic_parent_hint')
+            if isinstance(session_context.get('deictic_parent_hint'), dict)
+            else None
+        )
         prior_observation = session_context.get('_react_loop_observation')
         prior_provider_error_code = ''
         resolved_node_ids: list[str] = []
@@ -866,6 +878,76 @@ class LLMPlanner:
                 break
 
             if operations:
+                (
+                    operations,
+                    parent_hint_applied,
+                    parent_uuid_violations,
+                ) = self._coerce_parent_hint_for_operations(
+                    operations=operations,
+                    deictic_parent_hint=deictic_parent_hint,
+                )
+                if parent_uuid_violations:
+                    if attempt + 1 < max_attempts:
+                        schema_invalid_attempts += 1
+                        repair_attempted = True
+                        planner_prompt = self._augment_parent_uuid_retry_prompt(
+                            planner_prompt=planner_prompt,
+                            parent_uuid_violations=parent_uuid_violations,
+                            deictic_parent_hint=deictic_parent_hint,
+                        )
+                        continue
+
+                    required_parent_types = sorted(
+                        {
+                            str(item.get('required_parent_type') or '').strip()
+                            for item in parent_uuid_violations
+                            if str(item.get('required_parent_type') or '').strip()
+                        }
+                    )
+                    if required_parent_types:
+                        target_text = ' or '.join(required_parent_types)
+                        question = (
+                            'I need the exact parent node before I can safely stage this edit. '
+                            f'Please provide the parent {target_text} label or node ID.'
+                        )
+                    else:
+                        question = (
+                            'I need the exact parent node before I can safely stage this edit. '
+                            'Please provide the parent label or node ID.'
+                        )
+                    clarifier_message, clarifier_options = build_clarifier_contract(
+                        reason='invalid_parent_uuid_unresolved',
+                        question=question,
+                        options=['Provide parent label', 'Provide parent node ID', 'Cancel'],
+                    )
+                    return _finalize_state(
+                        {
+                            'assistant_message': clarifier_message,
+                            'planned_operations': [],
+                            'response_mode': 'chat',
+                            'preview_recommended': False,
+                            'parse_mode': 'deterministic_react_parent_uuid_clarifier',
+                            'provider_used': 'rule_based',
+                            'fallback_used': True,
+                            'provider_error_code': 'invalid_parent_uuid_unresolved',
+                            'tokens_input': result.tokens_input,
+                            'tokens_output': result.tokens_output,
+                            'tokens_total': result.tokens_total,
+                            'pending_context_resolution': None,
+                            'clear_pending_context_resolution': False,
+                            'clarifier_action': 'ask_clarifier',
+                            'clarifier_reason': 'invalid_parent_uuid_unresolved',
+                            'clarifier_options': clarifier_options,
+                            'clarifier_schema_retries': schema_invalid_attempts,
+                            'planner_schema_invalid_attempts': schema_invalid_attempts,
+                            'planner_repair_attempted': repair_attempted,
+                            'draft_action': 'continue',
+                            'tool_plan': [],
+                            'needs_more_info': True,
+                            'stop_reason': 'awaiting_user_input',
+                        }
+                    )
+
                 log_event(
                     self._logger,
                     'plan_generated',
@@ -875,6 +957,7 @@ class LLMPlanner:
                     fallback_used=result.fallback_used,
                     operations_count=len(operations),
                     operation_types=[op.op.value for op in operations],
+                    parent_hint_applied=parent_hint_applied,
                     tokens_input=result.tokens_input,
                     tokens_output=result.tokens_output,
                     tokens_total=result.tokens_total,
@@ -1110,6 +1193,94 @@ class LLMPlanner:
 
             summary.append(summary_item)
         return summary
+
+    def _is_uuid(self, value: Any) -> bool:
+        if not isinstance(value, str):
+            return False
+        return bool(
+            re.fullmatch(
+                r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
+                value.strip(),
+            )
+        )
+
+    def _coerce_parent_hint_for_operations(
+        self,
+        *,
+        operations: list[RoadmapOperation],
+        deictic_parent_hint: dict[str, Any] | None,
+    ) -> tuple[list[RoadmapOperation], bool, list[dict[str, Any]]]:
+        hint_node_id = ''
+        hint_node_type = ''
+        if isinstance(deictic_parent_hint, dict):
+            hint_node_id = str(deictic_parent_hint.get('node_id') or '').strip()
+            hint_node_type = str(deictic_parent_hint.get('node_type') or '').strip().lower()
+        if not self._is_uuid(hint_node_id):
+            hint_node_id = ''
+            hint_node_type = ''
+
+        corrected_operations: list[RoadmapOperation] = []
+        parent_hint_applied = False
+        violations: list[dict[str, Any]] = []
+
+        for index, operation in enumerate(operations):
+            op_name = operation.op.value if hasattr(operation.op, 'value') else str(operation.op)
+            required_parent_type = None
+            if op_name == 'add_feature':
+                required_parent_type = 'epic'
+            elif op_name == 'add_task':
+                required_parent_type = 'feature'
+
+            if required_parent_type is None:
+                corrected_operations.append(operation)
+                continue
+
+            if self._is_uuid(operation.parent_id):
+                corrected_operations.append(operation)
+                continue
+
+            if hint_node_id and (hint_node_type == required_parent_type):
+                corrected_operation = operation.model_copy(deep=True)
+                corrected_operation.parent_id = hint_node_id
+                corrected_operations.append(corrected_operation)
+                parent_hint_applied = True
+                continue
+
+            corrected_operations.append(operation)
+            violations.append(
+                {
+                    'index': index,
+                    'operation': op_name,
+                    'required_parent_type': required_parent_type,
+                    'parent_id': operation.parent_id,
+                }
+            )
+
+        return corrected_operations, parent_hint_applied, violations
+
+    def _augment_parent_uuid_retry_prompt(
+        self,
+        *,
+        planner_prompt: str,
+        parent_uuid_violations: list[dict[str, Any]],
+        deictic_parent_hint: dict[str, Any] | None,
+    ) -> str:
+        violation_payload = json.dumps(parent_uuid_violations[:5], ensure_ascii=True, indent=2)
+        hint_payload = (
+            json.dumps(deictic_parent_hint, ensure_ascii=True, indent=2)
+            if isinstance(deictic_parent_hint, dict)
+            else 'null'
+        )
+        return (
+            f'{planner_prompt}\n\n'
+            'PARENT UUID CONTRACT REPAIR:\n'
+            'One or more add_feature/add_task operations used a parent_id that is not a valid UUID.\n'
+            'Retry by calling plan_roadmap_operations exactly once and ensure every add_feature/add_task '
+            'operation has a valid UUID parent_id.\n'
+            'If parent UUID is still unknown, return empty operations and ask one focused clarifier.\n\n'
+            f'Parent UUID violations:\n{violation_payload}\n\n'
+            f'Deictic parent hint (if available):\n{hint_payload}'
+        )
 
     def _build_synthesized_react_closure_state(
         self,

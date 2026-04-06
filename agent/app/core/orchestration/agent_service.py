@@ -6,7 +6,7 @@ import logging
 import json
 from queue import Empty, Queue
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from typing import Any
 import re
@@ -22,6 +22,7 @@ from app.core.contracts.sessions import (
     PendingEditContext,
     PendingEditResolvedReferences,
     PendingContextResolution,
+    RecentResolvedTarget,
 )
 from app.core.contracts.sessions import AgentSession, IntentType, ProviderUsed, ResponseMode
 from app.core.llm.clarifier_contract import build_clarifier_contract
@@ -131,6 +132,19 @@ class AgentService:
         r'\b(?:add|create|remove|delete|mark|rename|move|update|set|assign|unassign|reassign|change)\b',
         re.IGNORECASE,
     )
+    _RECENT_TARGET_MAX_ITEMS = 20
+    _RECENT_TARGET_MAX_AGE_HOURS = 24
+    _RECENT_TARGET_SOURCE_PRIORITY = {
+        'deictic_pre_resolver': 4,
+        'staged_operations': 3,
+        'commit_semantic_diff': 2,
+        'context_tool': 1,
+    }
+    _DEICTIC_PARENT_PATTERN = re.compile(
+        r'\b(?:inside|under|within|in)\s+(?:that|it|this|there)\b'
+        r'|\b(?:that|it|this)\s+(?:epic|feature|task)\b',
+        re.IGNORECASE,
+    )
 
     def __init__(self, store: SessionStore) -> None:
         self._settings = get_settings()
@@ -168,25 +182,35 @@ class AgentService:
             draft_graph_migration_applied = self._ensure_draft_graph_initialized(session)
             active_draft = self._get_active_draft(session)
         session_context = self._build_session_context(session, auth_header, trace_id)
-        staged_operations = (
-            active_draft.operations if active_draft is not None else session.operations
-        )
-        staged_operations_version = (
-            active_draft.draft_version if active_draft is not None else session.staged_operations_version
+        staged_operations, staged_operations_version = self._resolve_staged_state(
+            session,
+            draft_graph_enabled=draft_graph_enabled,
+            active_draft=active_draft,
         )
 
         pending_edit_context_present = session.metadata.pending_edit_context is not None
         edit_continuation_trigger = self._detect_edit_continuation_trigger(user_message)
         has_staged_operations = bool(staged_operations)
+        deictic_reference_present = self._looks_like_deictic_parent_reference(user_message)
+        recent_targets_available = bool(self._get_recent_resolved_targets(session))
         pending_continuation_requested = pending_edit_context_present and (
             edit_continuation_trigger in {'confirm', 'cancel', 'correction', 'retry'}
         )
         staged_operation_continuation = (
             edit_continuation_trigger is not None and has_staged_operations
         )
-        should_force_edit_preview = (
-            pending_continuation_requested or staged_operation_continuation
+        recent_target_continuation = (
+            edit_continuation_trigger is not None
+            and deictic_reference_present
+            and recent_targets_available
         )
+        should_force_edit_preview = (
+            pending_continuation_requested
+            or staged_operation_continuation
+            or recent_target_continuation
+        )
+        if recent_target_continuation:
+            phase_timings['deictic_recent_target_continuation'] = 1
         if should_force_edit_preview:
             preview_intent: IntentType = 'roadmap_edit'
             phase_timings['intent_classification_ms'] = 0
@@ -248,6 +272,37 @@ class AgentService:
             session_context['force_edit_continuation_reason'] = (
                 edit_continuation_trigger or 'pending_context'
             )
+        deictic_resolution = self._resolve_deictic_parent_reference(
+            session=session,
+            user_message=user_message,
+        )
+        if deictic_resolution is not None:
+            deictic_status = str(deictic_resolution.get('status') or '')
+            session_context['deictic_resolution_status'] = deictic_status
+            phase_timings['deictic_resolution_detected'] = 1
+            if deictic_status == 'resolved':
+                parent_hint = {
+                    'node_id': deictic_resolution.get('node_id'),
+                    'node_type': deictic_resolution.get('node_type'),
+                    'title': deictic_resolution.get('title'),
+                    'label': deictic_resolution.get('label'),
+                }
+                session_context['deictic_parent_hint'] = parent_hint
+                phase_timings['deictic_resolution_candidates'] = 1
+                self._append_recent_resolved_target(
+                    session=session,
+                    node_id=parent_hint.get('node_id'),
+                    node_type=parent_hint.get('node_type'),
+                    title=parent_hint.get('title'),
+                    label=parent_hint.get('label'),
+                    source='deictic_pre_resolver',
+                    confidence=1.0,
+                )
+            elif deictic_status == 'ambiguous':
+                candidates = deictic_resolution.get('candidates')
+                phase_timings['deictic_resolution_candidates'] = (
+                    len(candidates) if isinstance(candidates, list) else 0
+                )
 
         planning: PlanningResult
         route_lane: str | None = None
@@ -266,7 +321,17 @@ class AgentService:
             pending_context.intent_family = self._normalize_intent_family(
                 pending_context.intent_family
             )
-        if pending_context is not None and edit_continuation_trigger == 'retry':
+        if (
+            isinstance(deictic_resolution, dict)
+            and str(deictic_resolution.get('status') or '') == 'ambiguous'
+        ):
+            planning = self._build_deictic_ambiguity_planning(
+                deictic_resolution=deictic_resolution,
+            )
+            phase_timings['provider_planning_ms'] = 0
+            route_lane = 'llm_edit_plan'
+            llm_skipped_for_simple_edit = True
+        elif pending_context is not None and edit_continuation_trigger == 'retry':
             retry_result = self._attempt_retry_autostage(
                 session=session,
                 pending_context=pending_context,
@@ -564,6 +629,20 @@ class AgentService:
                 if staged_changed:
                     session.staged_operations_version += 1
 
+        self._record_recent_targets_from_observation_summary(
+            session=session,
+            observation_summary=planning.react_tool_observation_summary,
+        )
+        if planning.response_mode == 'edit_plan' and staged_changed:
+            recently_staged_operations = (
+                applied_operations if applied_operations else operations
+            )
+            self._record_recent_targets_from_operations(
+                session=session,
+                operations=recently_staged_operations,
+                source='staged_operations',
+            )
+
         if planning.clear_pending_context_resolution:
             session.metadata.pending_context_resolution = None
         if planning.pending_context_resolution is not None:
@@ -579,8 +658,10 @@ class AgentService:
             and planning.response_mode == 'edit_plan'
         ):
             mixed_query_started = perf_counter()
-            staged_operations_for_followup = (
-                active_draft.operations if active_draft is not None else session.operations
+            staged_operations_for_followup, _ = self._resolve_staged_state(
+                session,
+                draft_graph_enabled=draft_graph_enabled,
+                active_draft=active_draft,
             )
             followup_answer, mixed_query_followup_warning_code = self._run_mixed_query_followup(
                 session=session,
@@ -609,11 +690,10 @@ class AgentService:
         self._store.append_message(session, 'assistant', assistant_message)
         self._store.update(session)
 
-        staged_operations = (
-            active_draft.operations if active_draft is not None else session.operations
-        )
-        staged_operations_version = (
-            active_draft.draft_version if active_draft is not None else session.staged_operations_version
+        staged_operations, staged_operations_version = self._resolve_staged_state(
+            session,
+            draft_graph_enabled=draft_graph_enabled,
+            active_draft=active_draft,
         )
         preview_available = len(staged_operations) > 0
         preview_recommended = planning.preview_recommended and preview_available
@@ -887,40 +967,13 @@ class AgentService:
     ) -> tuple[str | None, str | None]:
         if not staged_operations:
             return None, 'mixed_query_no_staged_operations'
-
-        preview_payload = {
-            'base_revision': session.base_revision,
-            'revision_token': session.revision_token,
-            'operations': [
-                operation.model_dump(exclude_none=True) for operation in staged_operations
-            ],
-        }
-        preview_id: str | None = None
         followup_trace_id = f'{trace_id}:mixed_query_followup' if trace_id else None
         try:
-            preview_result = self._run_async_call(
-                self._nest_client.preview(
-                    roadmap_id=session.roadmap_id,
-                    payload=preview_payload,
-                    auth_header=auth_header,
-                    trace_id=trace_id,
-                )
-            )
-            preview_candidate = preview_result.get('preview_id')
-            preview_id = (
-                str(preview_candidate).strip()
-                if isinstance(preview_candidate, str) and preview_candidate.strip()
-                else None
-            )
-            if preview_id is None:
-                return None, 'mixed_query_missing_preview_id'
-
             query_session_context = self._build_session_context(
                 session,
                 auth_header,
                 followup_trace_id,
             )
-            query_session_context['context_preview_id'] = preview_id
             query_planning = self._planner.plan(
                 user_message=query_message,
                 existing_operations=staged_operations,
@@ -940,39 +993,8 @@ class AgentService:
             if 'could not confirm your actor context' in normalized_answer.lower():
                 return None, 'mixed_query_followup_actor_context_missing'
             return normalized_answer, None
-        except HTTPException as exc:
-            error_code = 'mixed_query_preview_failed'
-            detail = exc.detail
-            if isinstance(detail, dict):
-                nested = detail.get('detail') if isinstance(detail.get('detail'), dict) else None
-                error = nested.get('error') if isinstance(nested, dict) else None
-                if isinstance(error, dict):
-                    nested_message = error.get('message')
-                    if isinstance(nested_message, str) and nested_message.strip():
-                        error_code = f'mixed_query_preview_failed:{nested_message.strip()[:40]}'
-            return None, error_code
         except Exception:
             return None, 'mixed_query_followup_failed'
-        finally:
-            if preview_id is not None:
-                try:
-                    self._run_async_call(
-                        self._nest_client.discard_preview(
-                            roadmap_id=session.roadmap_id,
-                            payload={'preview_id': preview_id},
-                            auth_header=auth_header,
-                            trace_id=trace_id,
-                        )
-                    )
-                except Exception:
-                    log_event(
-                        self._logger,
-                        'mixed_query_preview_discard_failed',
-                        settings=self._settings,
-                        trace_id=trace_id,
-                        roadmap_id=session.roadmap_id,
-                        preview_id=preview_id,
-                    )
 
     def _compose_mixed_query_assistant_message(
         self,
@@ -1023,16 +1045,14 @@ class AgentService:
         if not warning_code:
             return None
         if warning_code == 'mixed_query_no_staged_operations':
-            return 'I staged no changes, so there was no draft-view query context to answer from.'
-        if warning_code == 'mixed_query_missing_preview_id':
-            return 'I could not open a preview snapshot for the follow-up question this turn.'
+            return 'I staged no changes, so there was no staged context to answer the follow-up query.'
         if warning_code == 'mixed_query_non_chat_response':
             return (
-                'I could not generate a safe draft-view query answer in this turn. '
+                'I could not generate a safe staged-context query answer in this turn. '
                 'You can ask the question again and I will answer from staged context.'
             )
         if warning_code == 'mixed_query_empty_answer':
-            return 'I could not derive a non-empty draft-view answer for the follow-up query.'
+            return 'I could not derive a non-empty staged-context answer for the follow-up query.'
         if warning_code == 'mixed_query_followup_actor_context_missing':
             return (
                 'I could not answer the follow-up my-tasks question because actor context was missing. '
@@ -1043,11 +1063,404 @@ class AgentService:
                 'I staged the edit, but the follow-up query needs clarification '
                 '(for example: open tasks vs all tasks).'
             )
-        if warning_code.startswith('mixed_query_preview_failed'):
-            return 'Preview generation failed for the follow-up query, so only the edit plan was staged.'
         if warning_code == 'mixed_query_followup_failed':
-            return 'Draft-view follow-up query execution failed, so only the edit plan was staged.'
+            return 'Staged-context follow-up query execution failed, so only the edit plan was staged.'
         return None
+
+    def _normalize_recent_target_node_type(self, value: Any) -> str | None:
+        normalized = str(value or '').strip().lower()
+        if normalized in {'epic', 'feature', 'task'}:
+            return normalized
+        return None
+
+    def _normalize_recent_target_label(self, value: str | None) -> str:
+        lowered = str(value or '').strip().lower()
+        lowered = lowered.translate(str.maketrans('', '', string.punctuation.replace('-', '')))
+        lowered = re.sub(r'\s+', ' ', lowered).strip()
+        return lowered
+
+    def _is_recent_target_fresh(self, target: RecentResolvedTarget) -> bool:
+        created_at = target.created_at
+        if not isinstance(created_at, datetime):
+            return False
+        cutoff = _utcnow() - timedelta(hours=self._RECENT_TARGET_MAX_AGE_HOURS)
+        return created_at >= cutoff
+
+    def _recent_target_rank(self, target: RecentResolvedTarget) -> tuple[datetime, float, int]:
+        confidence = float(target.confidence) if isinstance(target.confidence, (int, float)) else 0.0
+        source_priority = int(self._RECENT_TARGET_SOURCE_PRIORITY.get(str(target.source), 0))
+        return (target.created_at, confidence, source_priority)
+
+    def _prune_recent_resolved_targets(
+        self,
+        targets: list[RecentResolvedTarget],
+    ) -> list[RecentResolvedTarget]:
+        fresh_targets = [target for target in targets if self._is_recent_target_fresh(target)]
+        if len(fresh_targets) <= self._RECENT_TARGET_MAX_ITEMS:
+            return fresh_targets
+        return fresh_targets[-self._RECENT_TARGET_MAX_ITEMS :]
+
+    def _get_recent_resolved_targets(self, session: AgentSession) -> list[RecentResolvedTarget]:
+        raw_targets = session.metadata.recent_resolved_targets
+        if not isinstance(raw_targets, list):
+            return []
+
+        normalized_targets: list[RecentResolvedTarget] = []
+        for item in raw_targets:
+            if isinstance(item, RecentResolvedTarget):
+                normalized_targets.append(item)
+                continue
+            if isinstance(item, dict):
+                try:
+                    normalized_targets.append(RecentResolvedTarget.model_validate(item))
+                except Exception:
+                    continue
+
+        pruned_targets = self._prune_recent_resolved_targets(normalized_targets)
+        if len(pruned_targets) != len(normalized_targets):
+            session.metadata.recent_resolved_targets = pruned_targets
+        return pruned_targets
+
+    def _append_recent_resolved_target(
+        self,
+        *,
+        session: AgentSession,
+        node_id: Any,
+        node_type: Any,
+        title: Any = None,
+        label: Any = None,
+        source: str = 'context_tool',
+        confidence: float | None = None,
+    ) -> None:
+        normalized_node_id = str(node_id or '').strip()
+        normalized_node_type = self._normalize_recent_target_node_type(node_type)
+        if not self._is_uuid(normalized_node_id) or normalized_node_type is None:
+            return
+
+        normalized_title = str(title or '').strip() or None
+        normalized_label = str(label or '').strip() or None
+        targets = self._get_recent_resolved_targets(session)
+        deduped_targets = [
+            target
+            for target in targets
+            if not (
+                target.node_id == normalized_node_id
+                and target.node_type == normalized_node_type
+            )
+        ]
+        deduped_targets.append(
+            RecentResolvedTarget(
+                node_id=normalized_node_id,
+                node_type=normalized_node_type,
+                title=normalized_title,
+                label=normalized_label,
+                source=source,
+                confidence=confidence,
+                created_at=_utcnow(),
+            )
+        )
+        session.metadata.recent_resolved_targets = self._prune_recent_resolved_targets(
+            deduped_targets
+        )
+
+    def _record_recent_targets_from_operations(
+        self,
+        *,
+        session: AgentSession,
+        operations: list[RoadmapOperation],
+        source: str,
+    ) -> None:
+        for operation in operations:
+            op_name = operation.op.value if hasattr(operation.op, 'value') else str(operation.op)
+            title = self._read_operation_title(operation)
+            if op_name == 'add_epic' and self._is_uuid(operation.node_id):
+                self._append_recent_resolved_target(
+                    session=session,
+                    node_id=operation.node_id,
+                    node_type='epic',
+                    title=title,
+                    label=title,
+                    source=source,
+                )
+            if op_name == 'add_feature':
+                if self._is_uuid(operation.node_id):
+                    self._append_recent_resolved_target(
+                        session=session,
+                        node_id=operation.node_id,
+                        node_type='feature',
+                        title=title,
+                        label=title,
+                        source=source,
+                    )
+                if self._is_uuid(operation.parent_id):
+                    self._append_recent_resolved_target(
+                        session=session,
+                        node_id=operation.parent_id,
+                        node_type='epic',
+                        source=source,
+                    )
+            if op_name == 'add_task':
+                if self._is_uuid(operation.node_id):
+                    self._append_recent_resolved_target(
+                        session=session,
+                        node_id=operation.node_id,
+                        node_type='task',
+                        title=title,
+                        label=title,
+                        source=source,
+                    )
+                if self._is_uuid(operation.parent_id):
+                    self._append_recent_resolved_target(
+                        session=session,
+                        node_id=operation.parent_id,
+                        node_type='feature',
+                        source=source,
+                    )
+
+    def _record_recent_targets_from_observation_summary(
+        self,
+        *,
+        session: AgentSession,
+        observation_summary: list[dict[str, Any]] | None,
+    ) -> None:
+        if not isinstance(observation_summary, list):
+            return
+
+        for item in observation_summary:
+            if not isinstance(item, dict):
+                continue
+            label = item.get('label')
+            selected_id = item.get('selected_id')
+            node_type = self._normalize_recent_target_node_type(item.get('node_type'))
+            node_title = item.get('node_title')
+
+            if self._is_uuid(selected_id):
+                match_items = item.get('match_items')
+                if node_type is None and isinstance(match_items, list):
+                    for match_item in match_items:
+                        if not isinstance(match_item, dict):
+                            continue
+                        if str(match_item.get('id') or '').strip() != str(selected_id).strip():
+                            continue
+                        node_type = self._normalize_recent_target_node_type(match_item.get('type'))
+                        node_title = node_title or match_item.get('title')
+                        break
+                self._append_recent_resolved_target(
+                    session=session,
+                    node_id=selected_id,
+                    node_type=node_type,
+                    title=node_title,
+                    label=label,
+                    source='context_tool',
+                )
+
+            node_id = item.get('node_id')
+            if self._is_uuid(node_id) and node_type is not None:
+                self._append_recent_resolved_target(
+                    session=session,
+                    node_id=node_id,
+                    node_type=node_type,
+                    title=node_title,
+                    label=label,
+                    source='context_tool',
+                )
+
+            match_items = item.get('match_items')
+            if (
+                isinstance(match_items, list)
+                and int(item.get('match_count') or 0) == 1
+                and len(match_items) >= 1
+                and isinstance(match_items[0], dict)
+            ):
+                only_match = match_items[0]
+                self._append_recent_resolved_target(
+                    session=session,
+                    node_id=only_match.get('id'),
+                    node_type=only_match.get('type'),
+                    title=only_match.get('title'),
+                    label=label,
+                    source='context_tool',
+                )
+
+    def record_recent_targets_from_preview(
+        self,
+        *,
+        session: AgentSession,
+        preview_result: dict[str, Any],
+        source: str = 'commit_semantic_diff',
+    ) -> None:
+        semantic_diff = preview_result.get('semantic_diff')
+        changes = semantic_diff.get('changes') if isinstance(semantic_diff, dict) else None
+        if not isinstance(changes, list):
+            return
+
+        for change in changes[:80]:
+            if not isinstance(change, dict):
+                continue
+            node_payload = change.get('node') if isinstance(change.get('node'), dict) else {}
+            to_payload = change.get('to') if isinstance(change.get('to'), dict) else {}
+
+            node_id = (
+                node_payload.get('id')
+                or node_payload.get('node_id')
+                or to_payload.get('id')
+                or to_payload.get('node_id')
+            )
+            node_type = (
+                node_payload.get('type')
+                or node_payload.get('node_type')
+                or to_payload.get('type')
+                or to_payload.get('node_type')
+            )
+            title = (
+                node_payload.get('title')
+                or to_payload.get('title')
+                or node_payload.get('name')
+                or to_payload.get('name')
+            )
+            self._append_recent_resolved_target(
+                session=session,
+                node_id=node_id,
+                node_type=node_type,
+                title=title,
+                label=title,
+                source=source,
+            )
+
+    def _looks_like_deictic_parent_reference(self, user_message: str) -> bool:
+        normalized = str(user_message or '').strip()
+        if not normalized:
+            return False
+        return bool(self._DEICTIC_PARENT_PATTERN.search(normalized))
+
+    def _infer_required_parent_node_type(self, user_message: str) -> str | None:
+        create_intent = extract_create_intent(user_message)
+        if create_intent is not None:
+            if create_intent.node_type == 'feature':
+                return 'epic'
+            if create_intent.node_type == 'task':
+                return 'feature'
+
+        lowered = user_message.strip().lower()
+        if re.search(r'\bfeature(?:s)?\b', lowered):
+            return 'epic'
+        if re.search(r'\btask(?:s)?\b', lowered):
+            return 'feature'
+        return None
+
+    def _resolve_deictic_parent_reference(
+        self,
+        *,
+        session: AgentSession,
+        user_message: str,
+    ) -> dict[str, Any] | None:
+        if not self._looks_like_deictic_parent_reference(user_message):
+            return None
+
+        required_parent_type = self._infer_required_parent_node_type(user_message)
+        recent_targets = self._get_recent_resolved_targets(session)
+        if not recent_targets:
+            return None
+
+        ranked_targets = sorted(
+            recent_targets,
+            key=self._recent_target_rank,
+            reverse=True,
+        )
+
+        candidates_by_id: dict[str, RecentResolvedTarget] = {}
+        for target in ranked_targets:
+            if required_parent_type is not None and target.node_type != required_parent_type:
+                continue
+            if target.node_id in candidates_by_id:
+                continue
+            candidates_by_id[target.node_id] = target
+
+        if not candidates_by_id:
+            return None
+
+        candidates = list(candidates_by_id.values())
+        if len(candidates) == 1:
+            target = candidates[0]
+            return {
+                'status': 'resolved',
+                'node_id': target.node_id,
+                'node_type': target.node_type,
+                'title': target.title,
+                'label': target.label,
+            }
+
+        return {
+            'status': 'ambiguous',
+            'required_parent_type': required_parent_type,
+            'candidates': [
+                {
+                    'node_id': target.node_id,
+                    'node_type': target.node_type,
+                    'title': target.title,
+                    'label': target.label,
+                }
+                for target in candidates[:5]
+            ],
+        }
+
+    def _build_deictic_ambiguity_planning(
+        self,
+        *,
+        deictic_resolution: dict[str, Any],
+    ) -> PlanningResult:
+        candidates_raw = deictic_resolution.get('candidates')
+        required_parent_type = self._normalize_recent_target_node_type(
+            deictic_resolution.get('required_parent_type')
+        )
+        option_candidates: list[str] = []
+        if isinstance(candidates_raw, list):
+            for candidate in candidates_raw[:3]:
+                if not isinstance(candidate, dict):
+                    continue
+                node_type = self._normalize_recent_target_node_type(candidate.get('node_type'))
+                node_id = str(candidate.get('node_id') or '').strip()
+                if not self._is_uuid(node_id):
+                    continue
+                title = str(candidate.get('title') or candidate.get('label') or '').strip()
+                display_type = node_type.title() if node_type else 'Node'
+                if title:
+                    option_candidates.append(f'{display_type}: {title} ({node_id})')
+                else:
+                    option_candidates.append(f'{display_type}: {node_id}')
+
+        options = option_candidates + ['Provide node ID', 'Cancel']
+        if required_parent_type is not None:
+            question = (
+                'I found multiple recent targets for "that". '
+                f'Which {required_parent_type} should I use as the parent?'
+            )
+        else:
+            question = 'I found multiple recent targets for "that". Which target should I use as the parent?'
+
+        message, normalized_options = build_clarifier_contract(
+            reason='deictic_target_ambiguous',
+            question=question,
+            options=options,
+        )
+        return PlanningResult(
+            assistant_message=message,
+            operations=[],
+            parse_mode='deterministic_deictic_target_ambiguous',
+            intent_type='roadmap_edit',
+            response_mode='chat',
+            preview_recommended=False,
+            provider_used='rule_based',
+            fallback_used=False,
+            provider_error_code='deictic_target_ambiguous',
+            clarifier_action='ask_clarifier',
+            clarifier_reason='deictic_target_ambiguous',
+            clarifier_options=normalized_options,
+            draft_action='continue',
+            tool_plan=[],
+            needs_more_info=True,
+            stop_reason='awaiting_user_input',
+        )
 
     def _infer_last_staged_create_title(self, session: AgentSession) -> str | None:
         staged_operations = self._get_current_staged_operations(session)
@@ -2715,26 +3128,53 @@ class AgentService:
         active_draft_id = session.metadata.active_draft_id
         if not active_draft_id:
             raise RuntimeError('Active draft is not initialized.')
-        draft = session.metadata.drafts.get(active_draft_id)
+        draft = self._get_active_draft_if_available(session)
         if draft is None:
             raise RuntimeError(f'Active draft {active_draft_id} is missing from draft graph.')
         return draft
 
+    def _get_active_draft_if_available(self, session: AgentSession) -> DraftNode | None:
+        active_draft_id = session.metadata.active_draft_id
+        if not isinstance(active_draft_id, str) or not active_draft_id:
+            return None
+
+        candidate = session.metadata.drafts.get(active_draft_id)
+        if isinstance(candidate, DraftNode):
+            return candidate
+        if isinstance(candidate, dict):
+            try:
+                normalized_draft = DraftNode.model_validate(candidate)
+            except Exception:
+                return None
+            session.metadata.drafts[active_draft_id] = normalized_draft
+            return normalized_draft
+        return None
+
+    def _resolve_staged_state(
+        self,
+        session: AgentSession,
+        *,
+        draft_graph_enabled: bool | None = None,
+        active_draft: DraftNode | None = None,
+    ) -> tuple[list[RoadmapOperation], int]:
+        use_draft_graph = (
+            self._settings.agent_draft_graph_enabled
+            if draft_graph_enabled is None
+            else draft_graph_enabled
+        )
+        if use_draft_graph:
+            resolved_draft = active_draft or self._get_active_draft_if_available(session)
+            if isinstance(resolved_draft, DraftNode):
+                return resolved_draft.operations, int(resolved_draft.draft_version)
+        return session.operations, int(session.staged_operations_version)
+
     def _get_current_staged_operations(self, session: AgentSession) -> list[RoadmapOperation]:
-        if self._settings.agent_draft_graph_enabled:
-            active_draft_id = session.metadata.active_draft_id
-            active_draft = session.metadata.drafts.get(active_draft_id) if active_draft_id else None
-            if isinstance(active_draft, DraftNode):
-                return active_draft.operations
-        return session.operations
+        staged_operations, _ = self._resolve_staged_state(session)
+        return staged_operations
 
     def _get_current_staged_operations_version(self, session: AgentSession) -> int:
-        if self._settings.agent_draft_graph_enabled:
-            active_draft_id = session.metadata.active_draft_id
-            active_draft = session.metadata.drafts.get(active_draft_id) if active_draft_id else None
-            if isinstance(active_draft, DraftNode):
-                return int(active_draft.draft_version)
-        return int(session.staged_operations_version)
+        _, staged_operations_version = self._resolve_staged_state(session)
+        return staged_operations_version
 
     def _build_session_context(
         self,
@@ -2742,9 +3182,7 @@ class AgentService:
         auth_header: str | None,
         trace_id: str | None,
     ) -> dict:
-        active_draft = None
-        if session.metadata.active_draft_id:
-            active_draft = session.metadata.drafts.get(session.metadata.active_draft_id)
+        active_draft = self._get_active_draft_if_available(session)
         staged_operations_count = (
             len(active_draft.operations)
             if isinstance(active_draft, DraftNode)
@@ -2753,6 +3191,10 @@ class AgentService:
         recent_messages = [
             {'role': item.role, 'content': item.content}
             for item in session.messages[-self._settings.max_chat_history_messages :]
+        ]
+        recent_resolved_targets = [
+            target.model_dump(mode='json', exclude_none=True)
+            for target in self._get_recent_resolved_targets(session)
         ]
         return {
             'roadmap_id': session.roadmap_id,
@@ -2768,6 +3210,7 @@ class AgentService:
             ),
             'last_intent_type': session.last_intent_type,
             'recent_messages': recent_messages,
+            'recent_resolved_targets': recent_resolved_targets,
             'auth_header': auth_header,
             'trace_id': trace_id,
             'actor_context': (

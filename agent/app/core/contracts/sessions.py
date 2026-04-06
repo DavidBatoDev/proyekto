@@ -29,20 +29,25 @@ IntentType = Literal[
     'question',
 ]
 ResponseMode = Literal['chat', 'edit_plan']
-ArtifactType = Literal['roadmap_preview']
+ArtifactType = Literal['roadmap_commit']
 ProviderUsed = Literal['openai', 'rule_based']
 DraftMode = Literal['append', 'revise', 'branch']
 DraftStatus = Literal['active', 'previewed', 'applied', 'abandoned']
-PreviewBindingScope = Literal['draft_snapshot', 'ad_hoc_operations']
+RecentResolvedTargetType = Literal['epic', 'feature', 'task']
+RecentResolvedTargetSource = Literal[
+    'context_tool',
+    'deictic_pre_resolver',
+    'staged_operations',
+    'commit_semantic_diff',
+]
 
 
-class RoadmapPreviewArtifact(BaseModel):
+class RoadmapCommitArtifact(BaseModel):
     artifact_id: str = Field(default_factory=lambda: str(uuid4()))
-    type: ArtifactType = 'roadmap_preview'
+    type: ArtifactType = 'roadmap_commit'
     roadmap_id: str
     base_revision: int | None = None
     revision_token: str | None = None
-    preview_id: str
     change_id: str | None = None
     title: str
     summary: str
@@ -51,7 +56,7 @@ class RoadmapPreviewArtifact(BaseModel):
     validation_issues: list[dict[str, Any]] = Field(default_factory=list)
     has_validation_errors: bool = False
     status: Literal['draft', 'applied', 'discarded'] = 'draft'
-    inline_preview: dict[str, Any] | None = None
+    inline_commit: dict[str, Any] | None = None
     created_at: datetime = Field(default_factory=_utcnow)
 
 
@@ -83,7 +88,19 @@ class PendingEditResolvedReferences(BaseModel):
     parent_label: str | None = None
 
 
+class RecentResolvedTarget(BaseModel):
+    node_id: str
+    node_type: RecentResolvedTargetType
+    title: str | None = None
+    label: str | None = None
+    source: RecentResolvedTargetSource = 'context_tool'
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
 class PendingEditContext(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     intent_family: Literal[
         'rename_node',
         'create_epic',
@@ -114,8 +131,14 @@ class PendingEditContext(BaseModel):
     last_guard_reason: str | None = None
     last_retry_blocked_reason: str | None = None
     last_retry_blocked_intent_family: str | None = None
-    preview_validation_errors: list[dict[str, Any]] = Field(default_factory=list)
-    awaiting_preview_fix: bool = False
+    staging_validation_errors: list[dict[str, Any]] = Field(
+        default_factory=list,
+        alias='preview_validation_errors',
+    )
+    awaiting_staging_fix: bool = Field(
+        default=False,
+        alias='awaiting_preview_fix',
+    )
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 
@@ -170,23 +193,11 @@ class DraftNode(BaseModel):
 
 class AppliedDraftCommit(BaseModel):
     change_id: str | None = None
-    preview_id: str | None = None
     draft_id: str
     draft_version: int
     status: Literal['applied', 'discarded'] = 'applied'
     discarded_at: datetime | None = None
-    preview_fingerprint: str | None = None
     committed_at: datetime = Field(default_factory=_utcnow)
-
-
-class PreviewFingerprintBinding(BaseModel):
-    preview_id: str
-    draft_id: str
-    draft_version: int
-    base_revision: int | None = None
-    preview_fingerprint: str
-    binding_scope: PreviewBindingScope = 'draft_snapshot'
-    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class ActorContext(BaseModel):
@@ -203,17 +214,13 @@ class SessionMetadata(BaseModel):
     model_config = ConfigDict(extra='allow')
     pending_context_resolution: PendingContextResolution | None = None
     pending_edit_context: PendingEditContext | None = None
+    recent_resolved_targets: list[RecentResolvedTarget] = Field(default_factory=list)
     actor_context: ActorContext | None = None
-    applied_preview_ids: list[str] = Field(default_factory=list)
     applied_change_ids: list[str] = Field(default_factory=list)
     active_draft_id: str | None = None
     drafts: dict[str, DraftNode] = Field(default_factory=dict)
     draft_head_ids: list[str] = Field(default_factory=list)
     applied_draft_commits: list[AppliedDraftCommit] = Field(default_factory=list)
-    preview_fingerprint_bindings: dict[str, PreviewFingerprintBinding] = Field(
-        default_factory=dict
-    )
-    latest_preview_fingerprint: str | None = None
 
 
 class AgentSession(BaseModel):
@@ -225,9 +232,8 @@ class AgentSession(BaseModel):
     revision_token: str | None = None
     operations: list[RoadmapOperation] = Field(default_factory=list)
     staged_operations_version: int = 0
-    latest_preview_id: str | None = None
     last_intent_type: IntentType | None = None
-    artifacts: list[RoadmapPreviewArtifact] = Field(default_factory=list)
+    artifacts: list[RoadmapCommitArtifact] = Field(default_factory=list)
     messages: list[Message] = Field(default_factory=list)
     metadata: SessionMetadata = Field(default_factory=SessionMetadata)
     created_at: datetime = Field(default_factory=_utcnow)
@@ -251,7 +257,6 @@ class CreateSessionResponse(BaseModel):
 
 class MessageRequest(BaseModel):
     message: str
-    auto_preview: bool = True
 
 
 class MessageResponse(BaseModel):
@@ -261,27 +266,18 @@ class MessageResponse(BaseModel):
     intent_type: IntentType
     response_mode: ResponseMode
     operations: list[RoadmapOperation]
-    preview_available: bool
-    preview_recommended: bool
     staged_operations_version: int
     staged_operations_count: int
     active_draft_id: str | None = None
     active_draft_version: int | None = None
-    artifacts: list[RoadmapPreviewArtifact] = Field(default_factory=list)
+    artifacts: list[RoadmapCommitArtifact] = Field(default_factory=list)
     provider_used: ProviderUsed = 'rule_based'
     fallback_used: bool = False
     provider_error_code: str | None = None
     debug_trace_id: str | None = None
 
 
-class PreviewRequest(BaseModel):
-    operations: list[RoadmapOperation] | None = None
-    base_revision: int | None = None
-    revision_token: str | None = None
-
-
 class CommitRequest(BaseModel):
-    preview_id: str | None = None
     operations: list[RoadmapOperation] | None = None
     base_revision: int | None = None
     revision_token: str | None = None
@@ -302,10 +298,3 @@ class DiscardResponse(BaseModel):
 
 class RollbackRequest(BaseModel):
     change_id: str
-
-
-class ArtifactPreviewResponse(BaseModel):
-    session_id: str
-    roadmap_id: str
-    artifact: RoadmapPreviewArtifact
-    preview: dict[str, Any]
