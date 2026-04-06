@@ -55,7 +55,15 @@ const buildAssistantMessage = (
   content: string,
   parseMode: string,
   options?: {
-    intentType?: "smalltalk" | "question" | "roadmap_edit" | "unclear";
+    intentType?:
+      | "smalltalk"
+      | "general_question"
+      | "roadmap_query"
+      | "roadmap_plan"
+      | "roadmap_edit"
+      | "confirm_action"
+      | "question"
+      | "unclear";
     responseMode?: "chat" | "edit_plan";
     artifacts?: RoadmapArtifactPreview[];
   },
@@ -310,6 +318,7 @@ const mapPreviewToArtifact = (
   return {
     artifactId: metadata?.artifact_id || payload.preview_id,
     previewId: metadata?.preview_id || payload.preview_id,
+    changeId: metadata?.change_id,
     title: metadata?.title || "AI Artifact Preview",
     summary: metadata?.summary || "Generated preview from AI operations.",
     createdAt: metadata?.created_at || new Date().toISOString(),
@@ -324,7 +333,7 @@ const mapPreviewToArtifact = (
       path: issue.path,
       message: issue.message,
     })),
-    status: "draft",
+    status: metadata?.status || "draft",
   };
 };
 
@@ -379,6 +388,7 @@ export function RoadmapAiAssistantPanel({
   const applyArtifactSnapshot = useRoadmapStore(
     (state) => state.applyArtifactSnapshot,
   );
+  const loadRoadmap = useRoadmapStore((state) => state.loadRoadmap);
   const currentRoadmap = roadmapSnapshot ?? roadmapFromStore ?? null;
 
   useEffect(() => {
@@ -602,6 +612,11 @@ export function RoadmapAiAssistantPanel({
             ...message,
             artifacts,
           }));
+          for (const artifact of artifacts) {
+            if (artifact.status === "applied") {
+              applyArtifactSnapshot(artifact.artifactId);
+            }
+          }
         }
       } catch (artifactError) {
         const isNormalizationError =
@@ -680,15 +695,24 @@ export function RoadmapAiAssistantPanel({
     });
 
     try {
-      await roadmapAgentService.commitSession(activeSessionId, {
+      const result = await roadmapAgentService.commitSession(activeSessionId, {
         preview_id: artifact.previewId,
       });
+      const committedChangeId =
+        typeof result.commit?.change_id === "string"
+          ? (result.commit.change_id as string)
+          : undefined;
       applyArtifactSnapshot(artifact.artifactId);
+      await loadRoadmap(roadmapId, { force: true });
       updateMessage(messageId, (message) => ({
         ...message,
         artifacts: (message.artifacts ?? []).map((entry) =>
           entry.artifactId === artifact.artifactId
-            ? { ...entry, status: "applied" }
+            ? {
+                ...entry,
+                status: "applied",
+                changeId: committedChangeId || entry.changeId,
+              }
             : entry,
         ),
       }));
@@ -696,6 +720,104 @@ export function RoadmapAiAssistantPanel({
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to apply artifact.";
+      toast.error(message);
+    } finally {
+      setApplyingArtifactIds((prev) => {
+        const next = new Set(prev);
+        next.delete(artifact.artifactId);
+        return next;
+      });
+    }
+  };
+
+  const handleDiscardArtifact = async (
+    messageId: string,
+    artifact: RoadmapArtifactPreview,
+  ) => {
+    if (!artifact.changeId) {
+      toast.error("This artifact is missing a committed change id.");
+      return;
+    }
+    if (applyingArtifactIds.has(artifact.artifactId)) {
+      return;
+    }
+    if (!sessionId) {
+      toast.error("Missing AI session. Send a message first, then retry.");
+      return;
+    }
+
+    setApplyingArtifactIds((prev) => {
+      const next = new Set(prev);
+      next.add(artifact.artifactId);
+      return next;
+    });
+
+    try {
+      await roadmapAgentService.discardSession(sessionId, {
+        change_id: artifact.changeId,
+      });
+      await loadRoadmap(roadmapId, { force: true });
+      updateMessage(messageId, (message) => ({
+        ...message,
+        artifacts: (message.artifacts ?? []).map((entry) =>
+          entry.changeId === artifact.changeId
+            ? { ...entry, status: "discarded" }
+            : entry,
+        ),
+      }));
+      toast.success("Committed AI change discarded.");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to discard commit.";
+      toast.error(message);
+    } finally {
+      setApplyingArtifactIds((prev) => {
+        const next = new Set(prev);
+        next.delete(artifact.artifactId);
+        return next;
+      });
+    }
+  };
+
+  const handleReapplyArtifact = async (
+    messageId: string,
+    artifact: RoadmapArtifactPreview,
+  ) => {
+    if (!artifact.changeId) {
+      toast.error("This artifact is missing a committed change id.");
+      return;
+    }
+    if (applyingArtifactIds.has(artifact.artifactId)) {
+      return;
+    }
+    if (!sessionId) {
+      toast.error("Missing AI session. Send a message first, then retry.");
+      return;
+    }
+
+    setApplyingArtifactIds((prev) => {
+      const next = new Set(prev);
+      next.add(artifact.artifactId);
+      return next;
+    });
+
+    try {
+      await roadmapAgentService.rollbackSession(sessionId, {
+        change_id: artifact.changeId,
+      });
+      await loadRoadmap(roadmapId, { force: true });
+      updateMessage(messageId, (message) => ({
+        ...message,
+        artifacts: (message.artifacts ?? []).map((entry) =>
+          entry.changeId === artifact.changeId
+            ? { ...entry, status: "applied" }
+            : entry,
+        ),
+      }));
+      toast.success("Discarded AI change reapplied.");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to reapply change.";
       toast.error(message);
     } finally {
       setApplyingArtifactIds((prev) => {
@@ -852,12 +974,15 @@ export function RoadmapAiAssistantPanel({
                 {artifacts.length > 0 && (
                   <div className="mt-2.5 space-y-2">
                     {artifacts.map((artifact) => {
+                      const isArtifactDraft = artifact.status === "draft";
                       const isArtifactApplied = artifact.status === "applied";
+                      const isArtifactDiscarded =
+                        artifact.status === "discarded";
                       const isApplyingArtifact = applyingArtifactIds.has(
                         artifact.artifactId,
                       );
                       const applyDisabled =
-                        isArtifactApplied || isApplyingArtifact;
+                        !isArtifactDraft || isApplyingArtifact;
                       const inlinePreviewSnapshot = hasSameStructureIds(
                         artifact.candidateSnapshot,
                         currentRoadmap,
@@ -878,13 +1003,19 @@ export function RoadmapAiAssistantPanel({
                               {artifact.title}
                             </p>
                             <span
-                              className={
+                              className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                                 isArtifactApplied
-                                  ? "inline-flex shrink-0 items-center rounded-full border border-green-300 bg-green-50 px-2 py-0.5 text-[10px] font-semibold text-green-700"
-                                  : "inline-flex shrink-0 items-center rounded-full border border-orange-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-orange-700"
-                              }
+                                  ? "border border-green-300 bg-green-50 text-green-700"
+                                  : isArtifactDiscarded
+                                    ? "border border-gray-300 bg-gray-100 text-gray-700"
+                                    : "border border-orange-300 bg-white text-orange-700"
+                              }`}
                             >
-                              {isArtifactApplied ? "Applied" : "Draft"}
+                              {isArtifactApplied
+                                ? "Applied"
+                                : isArtifactDiscarded
+                                  ? "Discarded"
+                                  : "Draft"}
                             </span>
                           </div>
                           <p className="text-[10px] text-orange-700/90 mt-0.5">
@@ -899,23 +1030,54 @@ export function RoadmapAiAssistantPanel({
                               Already applied to roadmap.
                             </p>
                           )}
+                          {isArtifactDiscarded && (
+                            <p className="mt-1 text-[10px] font-medium text-gray-700">
+                              Discarded. You can reapply this committed change.
+                            </p>
+                          )}
 
                           <div className="mt-2 flex flex-wrap gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void handleApplyArtifact(message.id, artifact);
-                              }}
-                              disabled={applyDisabled}
-                              className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white"
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              {isArtifactApplied
-                                ? "Applied"
-                                : isApplyingArtifact
-                                  ? "Applying..."
-                                  : "Apply"}
-                            </button>
+                            {isArtifactDraft && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleApplyArtifact(message.id, artifact);
+                                }}
+                                disabled={applyDisabled}
+                                className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                {isApplyingArtifact ? "Applying..." : "Apply"}
+                              </button>
+                            )}
+
+                            {isArtifactApplied && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleDiscardArtifact(message.id, artifact);
+                                }}
+                                disabled={isApplyingArtifact}
+                                className="h-7 px-2.5 rounded-md border border-red-300 bg-white text-[10px] font-semibold text-red-700 hover:bg-red-50 inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                {isApplyingArtifact ? "Discarding..." : "Discard"}
+                              </button>
+                            )}
+
+                            {isArtifactDiscarded && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleReapplyArtifact(message.id, artifact);
+                                }}
+                                disabled={isApplyingArtifact}
+                                className="h-7 px-2.5 rounded-md border border-green-300 bg-white text-[10px] font-semibold text-green-700 hover:bg-green-50 inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                {isApplyingArtifact ? "Reapplying..." : "Reapply"}
+                              </button>
+                            )}
 
                             <button
                               type="button"

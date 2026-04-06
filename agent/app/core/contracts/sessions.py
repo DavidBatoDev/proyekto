@@ -43,12 +43,14 @@ class RoadmapPreviewArtifact(BaseModel):
     base_revision: int | None = None
     revision_token: str | None = None
     preview_id: str
+    change_id: str | None = None
     title: str
     summary: str
     semantic_diff_summary: dict[str, int] = Field(default_factory=dict)
     validation_issue_count: int = 0
     validation_issues: list[dict[str, Any]] = Field(default_factory=list)
     has_validation_errors: bool = False
+    status: Literal['draft', 'applied', 'discarded'] = 'draft'
     inline_preview: dict[str, Any] | None = None
     created_at: datetime = Field(default_factory=_utcnow)
 
@@ -167,9 +169,12 @@ class DraftNode(BaseModel):
 
 
 class AppliedDraftCommit(BaseModel):
-    preview_id: str
+    change_id: str | None = None
+    preview_id: str | None = None
     draft_id: str
     draft_version: int
+    status: Literal['applied', 'discarded'] = 'applied'
+    discarded_at: datetime | None = None
     preview_fingerprint: str | None = None
     committed_at: datetime = Field(default_factory=_utcnow)
 
@@ -200,6 +205,7 @@ class SessionMetadata(BaseModel):
     pending_edit_context: PendingEditContext | None = None
     actor_context: ActorContext | None = None
     applied_preview_ids: list[str] = Field(default_factory=list)
+    applied_change_ids: list[str] = Field(default_factory=list)
     active_draft_id: str | None = None
     drafts: dict[str, DraftNode] = Field(default_factory=dict)
     draft_head_ids: list[str] = Field(default_factory=list)
@@ -276,25 +282,26 @@ class PreviewRequest(BaseModel):
 
 class CommitRequest(BaseModel):
     preview_id: str | None = None
+    operations: list[RoadmapOperation] | None = None
     base_revision: int | None = None
     revision_token: str | None = None
 
 
 class DiscardRequest(BaseModel):
-    preview_id: str | None = None
+    change_id: str | None = None
 
 
 class DiscardResponse(BaseModel):
     session_id: str
     roadmap_id: str
-    discarded_preview_id: str | None = None
+    discarded_change_id: str | None = None
     discarded_at: datetime
     staged_operations_count: int
     staged_operations_version: int
 
 
 class RollbackRequest(BaseModel):
-    target_revision: int
+    change_id: str
 
 
 class ArtifactPreviewResponse(BaseModel):

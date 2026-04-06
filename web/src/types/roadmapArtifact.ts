@@ -31,6 +31,7 @@ export type NormalizedArtifactSnapshot = Roadmap;
 export interface RoadmapArtifactPreview {
   artifactId: string;
   previewId?: string;
+  changeId?: string;
   title: string;
   summary: string;
   createdAt: string;
@@ -40,5 +41,5 @@ export interface RoadmapArtifactPreview {
   semanticDiffSummary: ArtifactSemanticDiffSummary;
   semanticDiffChanges: ArtifactSemanticDiffChange[];
   validationIssues: ArtifactValidationIssue[];
-  status: "draft" | "applied";
+  status: "draft" | "applied" | "discarded";
 }

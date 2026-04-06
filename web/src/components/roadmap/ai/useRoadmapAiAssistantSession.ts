@@ -16,7 +16,15 @@ export interface RoadmapAiChatMessage {
   content: string;
   timestamp: string;
   parseMode?: string;
-  intentType?: "smalltalk" | "question" | "roadmap_edit" | "unclear";
+  intentType?:
+    | "smalltalk"
+    | "general_question"
+    | "roadmap_query"
+    | "roadmap_plan"
+    | "roadmap_edit"
+    | "confirm_action"
+    | "question"
+    | "unclear";
   responseMode?: "chat" | "edit_plan";
   artifacts?: RoadmapArtifactPreview[];
   attachments?: RoadmapAiChatAttachment[];

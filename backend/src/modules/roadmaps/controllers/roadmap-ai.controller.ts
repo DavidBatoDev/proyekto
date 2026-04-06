@@ -196,7 +196,7 @@ export class RoadmapAiController {
   }
 
   @Post('rollback')
-  @HttpCode(HttpStatus.NOT_IMPLEMENTED)
+  @HttpCode(HttpStatus.OK)
   rollback(
     @Param('id') roadmapId: string,
     @Body() dto: RoadmapAiRollbackDto,

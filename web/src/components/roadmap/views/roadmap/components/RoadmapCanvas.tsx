@@ -282,12 +282,17 @@ const RoadmapCanvas = ({
           <ArtifactTabView
             artifact={selectedArtifact}
             onApply={(artifactId) => {
+              const currentStatus = artifactsById[artifactId]?.status;
               applyArtifactSnapshot(artifactId);
-              toast.success("Artifact preview applied to roadmap");
+              if (currentStatus === "discarded") {
+                toast.success("Artifact change reapplied");
+              } else {
+                toast.success("Artifact preview applied to roadmap");
+              }
             }}
             onDiscard={(artifactId) => {
               discardArtifact(artifactId);
-              toast.success("Artifact discarded");
+              toast.success("Artifact change discarded");
             }}
           />
         )}

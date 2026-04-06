@@ -71,6 +71,37 @@ export class RoadmapAiPreviewStoreService {
     await redis.del(this.resolutionKey(resolutionId));
   }
 
+  async setChangeTimeline<T extends Record<string, unknown>>(
+    roadmapId: string,
+    userId: string,
+    payload: T,
+    options?: { ttlSeconds?: number },
+  ): Promise<void> {
+    const redis = this.requireRedis();
+    const ttlSeconds = Math.max(60, options?.ttlSeconds ?? 60 * 60 * 24 * 30);
+    await redis.set(
+      this.timelineKey(roadmapId, userId),
+      JSON.stringify(payload),
+      {
+        ex: ttlSeconds,
+      },
+    );
+  }
+
+  async getChangeTimeline<T extends Record<string, unknown>>(
+    roadmapId: string,
+    userId: string,
+  ): Promise<T | null> {
+    const redis = this.requireRedis();
+    const value = await redis.get(this.timelineKey(roadmapId, userId));
+    return this.decodeStoredValue<T>(value);
+  }
+
+  async deleteChangeTimeline(roadmapId: string, userId: string): Promise<void> {
+    const redis = this.requireRedis();
+    await redis.del(this.timelineKey(roadmapId, userId));
+  }
+
   async setResolveLookup<T extends Record<string, unknown> | unknown[]>(
     cacheKey: string,
     payload: T,
@@ -115,6 +146,10 @@ export class RoadmapAiPreviewStoreService {
 
   private resolveLookupRoadmapKey(roadmapId: string): string {
     return `roadmap:resolve:index:${roadmapId}`;
+  }
+
+  private timelineKey(roadmapId: string, userId: string): string {
+    return `roadmap:ai:timeline:${roadmapId}:${userId}`;
   }
 
   private extractRoadmapIdFromResolveKey(cacheKey: string): string | null {

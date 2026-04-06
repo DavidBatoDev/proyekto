@@ -68,6 +68,8 @@ export interface AgentRoadmapPreviewArtifact {
   roadmap_id: string;
   base_revision?: number;
   preview_id: string;
+  change_id?: string;
+  status?: "draft" | "applied" | "discarded";
   title: string;
   summary: string;
   semantic_diff_summary: Record<string, number>;
@@ -99,7 +101,15 @@ export interface AgentMessageResponse {
   session_id: string;
   assistant_message: string;
   parse_mode: string;
-  intent_type: "smalltalk" | "question" | "roadmap_edit" | "unclear";
+  intent_type:
+    | "smalltalk"
+    | "general_question"
+    | "roadmap_query"
+    | "roadmap_plan"
+    | "roadmap_edit"
+    | "confirm_action"
+    | "question"
+    | "unclear";
   response_mode: "chat" | "edit_plan";
   operations: AgentOperation[];
   preview_available: boolean;
@@ -119,7 +129,7 @@ export interface AgentPreviewRequest {
 }
 
 export interface AgentDiscardRequest {
-  preview_id?: string;
+  change_id?: string;
 }
 
 export interface AgentPreviewResponse {
@@ -140,14 +150,38 @@ export interface AgentArtifactPreviewResponse {
 export interface AgentDiscardResponse {
   session_id: string;
   roadmap_id: string;
-  discarded_preview_id?: string;
+  discarded_change_id?: string;
   discarded_at: string;
   staged_operations_count: number;
   staged_operations_version: number;
 }
 
+export interface AgentRollbackRequest {
+  change_id: string;
+}
+
+export interface AgentRollbackResponse {
+  session_id: string;
+  roadmap_id: string;
+  rollback: {
+    change_id: string;
+    reapplied_at: string;
+    revision_token: string;
+    timeline: Array<{
+      change_id: string;
+      committed_at: string;
+      discarded_at?: string;
+      status: "applied" | "discarded";
+      operations_count: number;
+      semantic_diff: AgentSemanticDiff;
+    }>;
+    roadmap: Record<string, unknown>;
+  };
+}
+
 export interface AgentCommitRequest {
   preview_id?: string;
+  operations?: AgentOperation[];
   base_revision?: number;
   revision_token?: string;
 }
@@ -224,10 +258,7 @@ function throwAgentError(error: unknown, operation: string): never {
     const detail = error.response?.data?.detail as unknown;
     const nestedDetailMessage = extractNestedMessage(detail);
     const responseMessage = extractNestedMessage(error.response?.data);
-    const message =
-      nestedDetailMessage ||
-      responseMessage ||
-      error.message;
+    const message = nestedDetailMessage || responseMessage || error.message;
 
     throw new RoadmapAgentServiceError(
       `${operation} failed: ${message}`,
@@ -337,6 +368,21 @@ export const roadmapAgentService = {
       return response.data;
     } catch (error) {
       throwAgentError(error, "Commit AI staged edits");
+    }
+  },
+
+  async rollbackSession(
+    sessionId: string,
+    payload: AgentRollbackRequest,
+  ): Promise<AgentRollbackResponse> {
+    try {
+      const response = await agentApiClient.post<AgentRollbackResponse>(
+        `/agent/sessions/${sessionId}/rollback`,
+        payload,
+      );
+      return response.data;
+    } catch (error) {
+      throwAgentError(error, "Reapply AI committed change");
     }
   },
 };

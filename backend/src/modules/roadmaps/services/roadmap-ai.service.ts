@@ -7,7 +7,6 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
-  NotImplementedException,
 } from '@nestjs/common';
 import { createHash, randomUUID } from 'crypto';
 import { SupabaseClient } from '@supabase/supabase-js';
@@ -29,6 +28,7 @@ import { RoadmapAuthorizationService } from './roadmap-authorization.service';
 import type {
   RoadmapAiCommitDto,
   RoadmapAiCommitResponseDto,
+  RoadmapAiChangeTimelineEntryDto,
   RoadmapAiContextChildrenQueryDto,
   RoadmapAiContextChildrenResponseDto,
   RoadmapAiContextActorResponseDto,
@@ -106,6 +106,27 @@ type PreviewRecord = {
   validationIssues: RoadmapValidationIssueDto[];
 };
 
+type ChangeTimelineEntryRecord = {
+  changeId: string;
+  committedAt: string;
+  discardedAt?: string;
+  status: 'applied' | 'discarded';
+  operations: RoadmapAiOperationDto[];
+  operationsCount: number;
+  semanticDiff: SemanticDiffDto;
+  stateBefore: FullRoadmapState;
+  stateAfter: FullRoadmapState;
+  revisionTokenBefore: string;
+  revisionTokenAfter: string;
+};
+
+type ChangeTimelineRecord = {
+  roadmapId: string;
+  userId: string;
+  updatedAt: string;
+  entries: ChangeTimelineEntryRecord[];
+};
+
 type FlatNodeSnapshot = {
   id: string;
   type: RoadmapNodeType;
@@ -147,6 +168,8 @@ type AuthzDecisionCacheValue = {
 
 const PREVIEW_TTL_MS = 1000 * 60 * 30;
 const RESOLUTION_TTL_SECONDS = 60 * 10;
+const CHANGE_TIMELINE_TTL_SECONDS = 60 * 60 * 24 * 30;
+const CHANGE_TIMELINE_MAX_ENTRIES = 250;
 const RESOLVE_LOOKUP_CACHE_TTL_SECONDS = 60 * 3;
 const RESOLVE_LOOKUP_CACHE_VERSION = 'v1';
 const AUTHZ_DECISION_CACHE_VERSION =
@@ -1062,94 +1085,63 @@ export class RoadmapAiService {
     userId: string,
   ): Promise<RoadmapAiCommitResponseDto> {
     const startedAt = Date.now();
+    const operations = Array.isArray(dto.operations) ? dto.operations : [];
+    if (operations.length === 0) {
+      throw new BadRequestException({
+        message: 'Commit requires at least one operation',
+        code: 'EMPTY_OPERATIONS',
+      });
+    }
+
     this.logger.log(
       [
         'event=roadmap_ai_commit_start',
         `roadmap_id=${roadmapId}`,
-        `preview_id=${dto.preview_id}`,
+        `operation_count=${operations.length}`,
         `revision_token_provided=${Boolean(dto.revision_token)}`,
       ].join(' '),
     );
 
-    const preview = await this.previewStore.getPreview<PreviewRecord>(
-      dto.preview_id,
-    );
-    if (
-      !preview ||
-      preview.roadmapId !== roadmapId ||
-      preview.userId !== userId
-    ) {
-      let previewTtlSeconds: number | null = null;
-      try {
-        previewTtlSeconds = await this.previewStore.getPreviewTtlSeconds(
-          dto.preview_id,
-        );
-      } catch {
-        previewTtlSeconds = null;
-      }
-      this.logger.warn(
-        [
-          'event=roadmap_ai_commit_preview_not_found',
-          `roadmap_id=${roadmapId}`,
-          `preview_id=${dto.preview_id}`,
-          `preview_present=${Boolean(preview)}`,
-          `preview_roadmap_match=${preview?.roadmapId === roadmapId}`,
-          `preview_user_match=${preview?.userId === userId}`,
-          `preview_ttl_seconds=${previewTtlSeconds ?? 'unknown'}`,
-        ].join(' '),
-      );
-      throw new NotFoundException('Preview not found');
-    }
-
-    if (dto.revision_token && dto.revision_token !== preview.revisionToken) {
+    const current = await this.assertCanEditRoadmap(roadmapId, userId);
+    const currentRevisionToken = this.requireRevisionToken(current.updated_at);
+    if (dto.revision_token && dto.revision_token !== currentRevisionToken) {
       this.logger.warn(
         [
           'event=roadmap_ai_commit_revision_mismatch',
           `roadmap_id=${roadmapId}`,
-          `preview_id=${dto.preview_id}`,
-          `expected_revision_token=${preview.revisionToken}`,
-          `received_revision_token=${dto.revision_token}`,
-        ].join(' '),
-      );
-      throw new ConflictException({
-        message: 'Preview revision token does not match request',
-        code: 'STALE_REVISION',
-      });
-    }
-
-    const errorIssues = preview.validationIssues.filter(
-      (issue) => issue.severity === 'error',
-    );
-    if (errorIssues.length > 0) {
-      this.logger.warn(
-        [
-          'event=roadmap_ai_commit_blocked_validation_errors',
-          `roadmap_id=${roadmapId}`,
-          `preview_id=${dto.preview_id}`,
-          `error_issue_count=${errorIssues.length}`,
-        ].join(' '),
-      );
-      throw new BadRequestException({
-        message: 'Preview has validation errors and cannot be committed',
-        validation_issues: errorIssues,
-      });
-    }
-
-    const current = await this.assertCanEditRoadmap(roadmapId, userId);
-    const currentRevisionToken = this.requireRevisionToken(current.updated_at);
-    if (currentRevisionToken !== preview.revisionToken) {
-      this.logger.warn(
-        [
-          'event=roadmap_ai_commit_stale_revision',
-          `roadmap_id=${roadmapId}`,
-          `preview_id=${dto.preview_id}`,
-          `preview_revision_token=${preview.revisionToken}`,
+          `provided_revision_token=${dto.revision_token}`,
           `current_revision_token=${currentRevisionToken}`,
         ].join(' '),
       );
       throw new ConflictException({
-        message: 'Roadmap changed since preview was generated',
+        message: 'Revision token does not match current roadmap revision',
         code: 'STALE_REVISION',
+      });
+    }
+
+    const full = await this.roadmapsRepo.findFull(roadmapId, userId);
+    if (!full) {
+      throw new NotFoundException('Roadmap not found');
+    }
+
+    const base = this.normalizeFullRoadmapState(
+      full as Record<string, unknown>,
+    );
+    const candidate = this.clone(base);
+    const operationIssues = this.applyOperations(candidate, operations);
+    const validationIssues = [
+      ...operationIssues,
+      ...this.validateState(candidate),
+      ...this.validateOptimisticRevision(dto.base_revision),
+    ];
+    const semanticDiff = this.computeSemanticDiff(base, candidate);
+    const errorIssues = validationIssues.filter(
+      (issue) => issue.severity === 'error',
+    );
+    if (errorIssues.length > 0) {
+      throw new BadRequestException({
+        message: 'Commit has validation errors and cannot be applied',
+        validation_issues: errorIssues,
       });
     }
 
@@ -1158,7 +1150,6 @@ export class RoadmapAiService {
         [
           'event=roadmap_ai_commit_owner_missing',
           `roadmap_id=${roadmapId}`,
-          `preview_id=${dto.preview_id}`,
         ].join(' '),
       );
       throw new InternalServerErrorException(
@@ -1166,13 +1157,13 @@ export class RoadmapAiService {
       );
     }
 
-    const stateCounts = this.summarizeRoadmapState(preview.candidate);
-    const semanticDiffSummary = preview.semanticDiff.summary ?? {};
+    const stateCounts = this.summarizeRoadmapState(candidate);
+    const semanticDiffSummary = semanticDiff.summary ?? {};
     this.logger.log(
       [
         'event=roadmap_ai_commit_upsert_start',
         `roadmap_id=${roadmapId}`,
-        `preview_id=${dto.preview_id}`,
+        `operation_count=${operations.length}`,
         `epics=${stateCounts.epics}`,
         `features=${stateCounts.features}`,
         `tasks=${stateCounts.tasks}`,
@@ -1183,7 +1174,7 @@ export class RoadmapAiService {
     await this.patchRepo.upsertFullRoadmap({
       roadmapId,
       ownerId: current.owner_id,
-      fullState: preview.candidate,
+      fullState: candidate,
       createIfMissing: false,
     });
 
@@ -1191,7 +1182,6 @@ export class RoadmapAiService {
       [
         'event=roadmap_ai_commit_upsert_success',
         `roadmap_id=${roadmapId}`,
-        `preview_id=${dto.preview_id}`,
       ].join(' '),
     );
 
@@ -1201,7 +1191,6 @@ export class RoadmapAiService {
         [
           'event=roadmap_ai_commit_persisted_missing',
           `roadmap_id=${roadmapId}`,
-          `preview_id=${dto.preview_id}`,
         ].join(' '),
       );
       throw new InternalServerErrorException(
@@ -1210,31 +1199,50 @@ export class RoadmapAiService {
     }
 
     const persistedMeta = await this.roadmapsRepo.findById(roadmapId, userId);
-    await this.previewStore.deletePreview(dto.preview_id);
-    this.logger.log(
-      [
-        'event=roadmap_ai_preview_deleted',
-        `roadmap_id=${roadmapId}`,
-        `preview_id=${dto.preview_id}`,
-        'reason=commit_success',
-      ].join(' '),
+    const revisionTokenAfter = this.requireRevisionToken(
+      persistedMeta?.updated_at ?? currentRevisionToken,
     );
+    const committedAt = new Date().toISOString();
+    const changeId = randomUUID();
+    const timeline = await this.appendChangeToTimeline({
+      roadmapId,
+      userId,
+      entry: {
+        changeId,
+        committedAt,
+        status: 'applied',
+        operations,
+        operationsCount: operations.length,
+        semanticDiff,
+        stateBefore: this.clone(base),
+        stateAfter: this.normalizeFullRoadmapState(
+          persisted as Record<string, unknown>,
+        ),
+        revisionTokenBefore: currentRevisionToken,
+        revisionTokenAfter,
+      },
+      tolerateStoreFailure: true,
+    });
+
     await this.invalidateResolveLookupCache(roadmapId);
 
     this.logger.log(
       [
         'event=roadmap_ai_commit_success',
         `roadmap_id=${roadmapId}`,
-        `preview_id=${dto.preview_id}`,
-        `revision_token=${persistedMeta?.updated_at ?? 'unknown'}`,
+        `change_id=${changeId}`,
+        `revision_token=${revisionTokenAfter}`,
         `elapsed_ms=${Date.now() - startedAt}`,
       ].join(' '),
     );
 
     return {
-      committed_at: new Date().toISOString(),
-      revision_token: persistedMeta?.updated_at ?? new Date().toISOString(),
-      semantic_diff: preview.semanticDiff,
+      change_id: changeId,
+      committed_at: committedAt,
+      revision_token: revisionTokenAfter,
+      semantic_diff: semanticDiff,
+      candidate_snapshot: persisted as Record<string, unknown>,
+      timeline,
       roadmap: persisted as Record<string, unknown>,
     };
   }
@@ -1267,43 +1275,219 @@ export class RoadmapAiService {
     dto: RoadmapAiDiscardDto,
     userId: string,
   ): Promise<RoadmapAiDiscardResponseDto> {
-    await this.assertCanEditRoadmap(roadmapId, userId);
-
-    const preview = await this.previewStore.getPreview<PreviewRecord>(
-      dto.preview_id,
-    );
-    if (
-      !preview ||
-      preview.roadmapId !== roadmapId ||
-      preview.userId !== userId
-    ) {
-      throw new NotFoundException('Preview not found');
+    const current = await this.assertCanEditRoadmap(roadmapId, userId);
+    if (!current.owner_id) {
+      throw new InternalServerErrorException(
+        'Roadmap owner is missing for an existing roadmap',
+      );
     }
 
-    await this.previewStore.deletePreview(dto.preview_id);
-    this.logger.log(
-      [
-        'event=roadmap_ai_preview_deleted',
-        `roadmap_id=${roadmapId}`,
-        `preview_id=${dto.preview_id}`,
-        'reason=discard',
-      ].join(' '),
+    const timelineRecord = await this.getChangeTimeline(roadmapId, userId);
+    const targetIndex = timelineRecord.entries.findIndex(
+      (entry) => entry.changeId === dto.change_id,
     );
+    if (targetIndex < 0) {
+      throw new NotFoundException('Change not found');
+    }
+
+    const discardedAt = new Date().toISOString();
+    const rollbackState = this.clone(
+      timelineRecord.entries[targetIndex].stateBefore,
+    );
+    await this.patchRepo.upsertFullRoadmap({
+      roadmapId,
+      ownerId: current.owner_id,
+      fullState: rollbackState,
+      createIfMissing: false,
+    });
+
+    for (
+      let index = targetIndex;
+      index < timelineRecord.entries.length;
+      index += 1
+    ) {
+      timelineRecord.entries[index].status = 'discarded';
+      timelineRecord.entries[index].discardedAt = discardedAt;
+    }
+    timelineRecord.updatedAt = discardedAt;
+    await this.persistChangeTimeline(timelineRecord);
+    await this.invalidateResolveLookupCache(roadmapId);
+
+    const persisted = await this.roadmapsRepo.findFull(roadmapId, userId);
+    const persistedMeta = await this.roadmapsRepo.findById(roadmapId, userId);
+    const revisionToken = this.requireRevisionToken(
+      persistedMeta?.updated_at ?? discardedAt,
+    );
+
     return {
-      ok: true,
-      preview_id: dto.preview_id,
-      discarded_at: new Date().toISOString(),
+      change_id: dto.change_id,
+      discarded_at: discardedAt,
+      revision_token: revisionToken,
+      timeline: timelineRecord.entries.map((entry) =>
+        this.toTimelineEntryDto(entry),
+      ),
+      roadmap: (persisted ?? rollbackState) as Record<string, unknown>,
     };
   }
 
   async rollback(
-    _roadmapId: string,
+    roadmapId: string,
     dto: RoadmapAiRollbackDto,
-    _userId: string,
+    userId: string,
   ): Promise<RoadmapAiRollbackResponseDto> {
-    throw new NotImplementedException(
-      `Rollback is planned but not implemented yet for target revision ${dto.target_revision}`,
+    const current = await this.assertCanEditRoadmap(roadmapId, userId);
+    if (!current.owner_id) {
+      throw new InternalServerErrorException(
+        'Roadmap owner is missing for an existing roadmap',
+      );
+    }
+
+    const timelineRecord = await this.getChangeTimeline(roadmapId, userId);
+    const targetIndex = timelineRecord.entries.findIndex(
+      (entry) => entry.changeId === dto.change_id,
     );
+    if (targetIndex < 0) {
+      throw new NotFoundException('Change not found');
+    }
+
+    let applyUntilIndex = targetIndex;
+    while (
+      applyUntilIndex + 1 < timelineRecord.entries.length &&
+      timelineRecord.entries[applyUntilIndex + 1].status === 'discarded'
+    ) {
+      applyUntilIndex += 1;
+    }
+
+    const reappliedAt = new Date().toISOString();
+    const replayState = this.clone(
+      timelineRecord.entries[applyUntilIndex].stateAfter,
+    );
+    await this.patchRepo.upsertFullRoadmap({
+      roadmapId,
+      ownerId: current.owner_id,
+      fullState: replayState,
+      createIfMissing: false,
+    });
+
+    for (let index = targetIndex; index <= applyUntilIndex; index += 1) {
+      timelineRecord.entries[index].status = 'applied';
+      timelineRecord.entries[index].discardedAt = undefined;
+    }
+    timelineRecord.updatedAt = reappliedAt;
+    await this.persistChangeTimeline(timelineRecord);
+    await this.invalidateResolveLookupCache(roadmapId);
+
+    const persisted = await this.roadmapsRepo.findFull(roadmapId, userId);
+    const persistedMeta = await this.roadmapsRepo.findById(roadmapId, userId);
+    const revisionToken = this.requireRevisionToken(
+      persistedMeta?.updated_at ?? reappliedAt,
+    );
+
+    return {
+      change_id: dto.change_id,
+      reapplied_at: reappliedAt,
+      revision_token: revisionToken,
+      timeline: timelineRecord.entries.map((entry) =>
+        this.toTimelineEntryDto(entry),
+      ),
+      roadmap: (persisted ?? replayState) as Record<string, unknown>,
+    };
+  }
+
+  private async getChangeTimeline(
+    roadmapId: string,
+    userId: string,
+  ): Promise<ChangeTimelineRecord> {
+    const now = new Date().toISOString();
+    const stored =
+      await this.previewStore.getChangeTimeline<ChangeTimelineRecord>(
+        roadmapId,
+        userId,
+      );
+
+    if (!stored || !Array.isArray(stored.entries)) {
+      return {
+        roadmapId,
+        userId,
+        updatedAt: now,
+        entries: [],
+      };
+    }
+
+    return {
+      roadmapId,
+      userId,
+      updatedAt: typeof stored.updatedAt === 'string' ? stored.updatedAt : now,
+      entries: stored.entries.filter(
+        (entry) =>
+          Boolean(entry) &&
+          typeof entry.changeId === 'string' &&
+          Boolean(entry.changeId) &&
+          entry.stateBefore !== undefined &&
+          entry.stateAfter !== undefined,
+      ),
+    };
+  }
+
+  private async persistChangeTimeline(
+    record: ChangeTimelineRecord,
+  ): Promise<void> {
+    await this.previewStore.setChangeTimeline(
+      record.roadmapId,
+      record.userId,
+      record as unknown as Record<string, unknown>,
+      { ttlSeconds: CHANGE_TIMELINE_TTL_SECONDS },
+    );
+  }
+
+  private async appendChangeToTimeline(params: {
+    roadmapId: string;
+    userId: string;
+    entry: ChangeTimelineEntryRecord;
+    tolerateStoreFailure: boolean;
+  }): Promise<RoadmapAiChangeTimelineEntryDto[]> {
+    try {
+      const timelineRecord = await this.getChangeTimeline(
+        params.roadmapId,
+        params.userId,
+      );
+      timelineRecord.entries.push(params.entry);
+      if (timelineRecord.entries.length > CHANGE_TIMELINE_MAX_ENTRIES) {
+        timelineRecord.entries = timelineRecord.entries.slice(
+          timelineRecord.entries.length - CHANGE_TIMELINE_MAX_ENTRIES,
+        );
+      }
+      timelineRecord.updatedAt = params.entry.committedAt;
+      await this.persistChangeTimeline(timelineRecord);
+      return timelineRecord.entries.map((entry) =>
+        this.toTimelineEntryDto(entry),
+      );
+    } catch (error) {
+      if (!params.tolerateStoreFailure) {
+        throw error;
+      }
+      this.logger.warn(
+        [
+          'event=roadmap_ai_timeline_store_failed',
+          `roadmap_id=${params.roadmapId}`,
+          `error=${(error as Error)?.message ?? 'unknown'}`,
+        ].join(' '),
+      );
+      return [];
+    }
+  }
+
+  private toTimelineEntryDto(
+    entry: ChangeTimelineEntryRecord,
+  ): RoadmapAiChangeTimelineEntryDto {
+    return {
+      change_id: entry.changeId,
+      committed_at: entry.committedAt,
+      discarded_at: entry.discardedAt,
+      status: entry.status,
+      operations_count: entry.operationsCount,
+      semantic_diff: entry.semanticDiff,
+    };
   }
 
   private async assertCanEditRoadmap(roadmapId: string, userId: string) {

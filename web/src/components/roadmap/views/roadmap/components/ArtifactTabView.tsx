@@ -16,6 +16,24 @@ interface ArtifactTabViewProps {
   onDiscard: (artifactId: string) => void;
 }
 
+const STATUS_STYLE: Record<
+  RoadmapArtifactPreview["status"],
+  { label: string; className: string }
+> = {
+  draft: {
+    label: "Draft",
+    className: "border-orange-300 bg-orange-50 text-orange-700",
+  },
+  applied: {
+    label: "Applied",
+    className: "border-green-300 bg-green-50 text-green-700",
+  },
+  discarded: {
+    label: "Discarded",
+    className: "border-gray-300 bg-gray-100 text-gray-700",
+  },
+};
+
 const noopUpdateEpic = (_epic: RoadmapEpic) => {};
 const noopDeleteEpic = (_epicId: string) => {};
 const noopUpdateFeature = (_feature: RoadmapFeature) => {};
@@ -194,6 +212,10 @@ export function ArtifactTabView({
 }: ArtifactTabViewProps) {
   const [isDiffOpen, setIsDiffOpen] = useState(false);
   const currentRoadmap = useRoadmapStore((state) => state.roadmap);
+  const isDraft = artifact.status === "draft";
+  const isApplied = artifact.status === "applied";
+  const isDiscarded = artifact.status === "discarded";
+  const statusStyle = STATUS_STYLE[artifact.status];
   const candidateRoadmap = artifact.candidateSnapshot;
   const displayRoadmap = useMemo(() => {
     if (!hasSameStructureIds(candidateRoadmap, currentRoadmap)) {
@@ -209,6 +231,11 @@ export function ArtifactTabView({
     [artifact.semanticDiffSummary],
   );
   const changeRows = artifact.semanticDiffChanges ?? [];
+  const blockingValidationIssueCount = artifact.validationIssues.filter(
+    (issue) => issue.severity === "error",
+  ).length;
+  const canApply = isDraft || isDiscarded;
+  const applyLabel = isDiscarded ? "Reapply" : "Apply";
 
   return (
     <div className="relative h-full bg-white">
@@ -224,6 +251,11 @@ export function ArtifactTabView({
       />
 
       <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+        <span
+          className={`inline-flex h-9 items-center rounded-lg border px-3 text-xs font-semibold ${statusStyle.className}`}
+        >
+          {statusStyle.label}
+        </span>
         <button
           type="button"
           onClick={() => setIsDiffOpen((prev) => !prev)}
@@ -232,22 +264,27 @@ export function ArtifactTabView({
           <FileDiff className="w-4 h-4" />
           See Diff
         </button>
-        <button
-          type="button"
-          onClick={() => onApply(artifact.artifactId)}
-          className="h-9 px-3 rounded-lg border border-green-300 bg-green-50 text-sm text-green-700 inline-flex items-center gap-1.5 hover:bg-green-100"
-        >
-          <Check className="w-4 h-4" />
-          Apply/Commit
-        </button>
-        <button
-          type="button"
-          onClick={() => onDiscard(artifact.artifactId)}
-          className="h-9 px-3 rounded-lg border border-red-300 bg-red-50 text-sm text-red-700 inline-flex items-center gap-1.5 hover:bg-red-100"
-        >
-          <X className="w-4 h-4" />
-          Discard
-        </button>
+        {canApply && (
+          <button
+            type="button"
+            onClick={() => onApply(artifact.artifactId)}
+            disabled={isDraft && blockingValidationIssueCount > 0}
+            className="h-9 px-3 rounded-lg border border-green-300 bg-green-50 text-sm text-green-700 inline-flex items-center gap-1.5 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Check className="w-4 h-4" />
+            {applyLabel}
+          </button>
+        )}
+        {isApplied && (
+          <button
+            type="button"
+            onClick={() => onDiscard(artifact.artifactId)}
+            className="h-9 px-3 rounded-lg border border-red-300 bg-red-50 text-sm text-red-700 inline-flex items-center gap-1.5 hover:bg-red-100"
+          >
+            <X className="w-4 h-4" />
+            Discard
+          </button>
+        )}
       </div>
 
       {isDiffOpen && (
@@ -258,8 +295,17 @@ export function ArtifactTabView({
                 Artifact Diff
               </p>
               <p className="text-xs text-gray-500">
-                Mock semantic diff and validation
+                {isDiscarded
+                  ? "Discarded change snapshot"
+                  : isApplied
+                    ? "Applied change snapshot"
+                    : "Draft preview snapshot"}
               </p>
+              {artifact.changeId && (
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  Change: {artifact.changeId}
+                </p>
+              )}
             </div>
             <button
               type="button"

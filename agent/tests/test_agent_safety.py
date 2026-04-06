@@ -3608,17 +3608,9 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
             self._original_agent_draft_graph_enabled
         )
 
-    def test_resolve_snapshot_for_binding_supports_legacy_prefix_for_transition(self) -> None:
+    def test_resolve_snapshot_for_binding_returns_none_for_unknown_snapshot(self) -> None:
         session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
         session.session_id = 'session-legacy'
-        session.staged_operations_version = 4
-        session.operations = [
-            RoadmapOperation(
-                op='update_node',
-                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                patch={'title': 'Platform Foundation 1'},
-            )
-        ]
         binding = sessions_routes.PreviewFingerprintBinding(
             preview_id='preview-legacy-1',
             draft_id='session-legacy:legacy',
@@ -3630,12 +3622,7 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
 
         resolved = sessions_routes._resolve_snapshot_for_binding(session, binding)
 
-        self.assertIsNotNone(resolved)
-        assert resolved is not None
-        draft_id, draft_version, operations = resolved
-        self.assertEqual(draft_id, 'session-legacy:legacy')
-        self.assertEqual(draft_version, 4)
-        self.assertEqual(len(operations), 1)
+        self.assertIsNone(resolved)
 
     async def test_store_unavailable_response_is_sanitized(self) -> None:
         def _raise_store_error():
@@ -4604,6 +4591,20 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
                 patch={'title': 'Active Draft Snapshot'},
             )
         ]
+        session.metadata.drafts['session-1:adhoc:preview-adhoc-commit-1'] = DraftNode(
+            draft_id='session-1:adhoc:preview-adhoc-commit-1',
+            draft_mode='branch',
+            operations=[
+                RoadmapOperation(
+                    op='update_node',
+                    node_id='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+                    patch={'title': 'Adhoc Snapshot'},
+                )
+            ],
+            draft_version=0,
+            base_revision=1,
+            status='previewed',
+        )
         session.metadata.preview_fingerprint_bindings['preview-adhoc-commit-1'] = (
             sessions_routes.PreviewFingerprintBinding(
                 preview_id='preview-adhoc-commit-1',
@@ -4766,74 +4767,40 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(session.metadata.drafts['draft-1'].status, 'previewed')
 
-    async def test_discard_session_marks_active_draft_abandoned_with_graph_enabled(self) -> None:
+    async def test_discard_session_requires_change_id_without_applied_commits(self) -> None:
         session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
         session.session_id = 'session-1'
-        session.latest_preview_id = 'preview-1'
-        session.metadata.active_draft_id = 'draft-1'
-        session.metadata.drafts = {
-            'draft-1': DraftNode(
-                draft_id='draft-1',
-                draft_version=1,
-                status='previewed',
-                operations=[
-                    RoadmapOperation(
-                        op='update_node',
-                        node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                        patch={'title': 'Platform Foundation 1'},
-                    )
-                ],
-            )
-        }
-        session.operations = [
-            RoadmapOperation(
-                op='update_node',
-                node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                patch={'title': 'Platform Foundation 1'},
-            )
-        ]
 
         class _FakeStore:
             def update(self, _session):
-                return None
+                raise AssertionError('Store update should not run when change_id is missing')
 
         class _FakeAgentService:
-            def ensure_draft_graph_initialized(self, _session):
-                return False
-
-            def get_active_draft(self, _session):
-                return _session.metadata.drafts[_session.metadata.active_draft_id]
-
-        async def _fake_discard_preview(**_kwargs):
-            return None
+            pass
 
         original_get_runtime = sessions_routes._get_agent_runtime_async
         original_get_session = sessions_routes._get_session_or_404_async
-        original_discard = sessions_routes._nest_client.discard_preview
-        original_graph = sessions_routes.settings.agent_draft_graph_enabled
-        sessions_routes.settings.agent_draft_graph_enabled = True
         sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
             lambda: _async_runtime_result((_FakeStore(), _FakeAgentService()))
         )
         sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
             lambda _service, _session_id: _async_runtime_result(session)
         )
-        sessions_routes._nest_client.discard_preview = _fake_discard_preview  # type: ignore[assignment]
         try:
-            response = await sessions_routes.discard_session(
-                session_id='session-1',
-                payload=sessions_routes.DiscardRequest(),
-                request=SimpleNamespace(headers={}),
-            )
+            with self.assertRaises(HTTPException) as raised:
+                await sessions_routes.discard_session(
+                    session_id='session-1',
+                    payload=sessions_routes.DiscardRequest(),
+                    request=SimpleNamespace(headers={}),
+                )
         finally:
-            sessions_routes.settings.agent_draft_graph_enabled = original_graph
             sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
             sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
-            sessions_routes._nest_client.discard_preview = original_discard  # type: ignore[assignment]
 
-        self.assertEqual(response.session_id, 'session-1')
-        self.assertEqual(session.metadata.drafts['draft-1'].status, 'abandoned')
-        self.assertEqual(len(session.metadata.drafts['draft-1'].operations), 0)
+        exc = raised.exception
+        self.assertEqual(exc.status_code, 400)
+        self.assertIsInstance(exc.detail, dict)
+        self.assertEqual(exc.detail.get('code'), 'MISSING_CHANGE_ID')
 
     async def test_commit_session_strict_mode_blocks_when_preview_binding_missing(self) -> None:
         session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')

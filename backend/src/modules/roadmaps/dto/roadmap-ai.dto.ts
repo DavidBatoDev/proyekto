@@ -97,8 +97,10 @@ export class RoadmapAiPreviewDto {
 }
 
 export class RoadmapAiCommitDto {
-  @IsUUID()
-  preview_id: string;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapAiOperationDto)
+  operations: RoadmapAiOperationDto[];
 
   @IsOptional()
   @IsInt()
@@ -110,13 +112,13 @@ export class RoadmapAiCommitDto {
 }
 
 export class RoadmapAiRollbackDto {
-  @IsInt()
-  target_revision: number;
+  @IsUUID()
+  change_id: string;
 }
 
 export class RoadmapAiDiscardDto {
   @IsUUID()
-  preview_id: string;
+  change_id: string;
 }
 
 export type RoadmapValidationIssueCode =
@@ -207,6 +209,29 @@ export class SemanticDiffDto {
   changes: SemanticDiffChangeDto[];
 }
 
+export class RoadmapAiChangeTimelineEntryDto {
+  @IsUUID()
+  change_id: string;
+
+  @IsString()
+  committed_at: string;
+
+  @IsOptional()
+  @IsString()
+  discarded_at?: string;
+
+  @IsEnum(['applied', 'discarded'])
+  status: 'applied' | 'discarded';
+
+  @IsInt()
+  @Min(0)
+  operations_count: number;
+
+  @ValidateNested()
+  @Type(() => SemanticDiffDto)
+  semantic_diff: SemanticDiffDto;
+}
+
 export class RoadmapAiPreviewResponseDto {
   @IsUUID()
   preview_id: string;
@@ -235,6 +260,9 @@ export class RoadmapAiPreviewResponseDto {
 }
 
 export class RoadmapAiCommitResponseDto {
+  @IsUUID()
+  change_id: string;
+
   @IsString()
   committed_at: string;
 
@@ -246,26 +274,53 @@ export class RoadmapAiCommitResponseDto {
   semantic_diff: SemanticDiffDto;
 
   @IsObject()
+  candidate_snapshot: Record<string, unknown>;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapAiChangeTimelineEntryDto)
+  timeline: RoadmapAiChangeTimelineEntryDto[];
+
+  @IsObject()
   roadmap: Record<string, unknown>;
 }
 
 export class RoadmapAiRollbackResponseDto {
-  @IsBoolean()
-  ok: boolean;
+  @IsUUID()
+  change_id: string;
 
   @IsString()
-  message: string;
+  reapplied_at: string;
+
+  @IsString()
+  revision_token: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapAiChangeTimelineEntryDto)
+  timeline: RoadmapAiChangeTimelineEntryDto[];
+
+  @IsObject()
+  roadmap: Record<string, unknown>;
 }
 
 export class RoadmapAiDiscardResponseDto {
-  @IsBoolean()
-  ok: boolean;
-
   @IsUUID()
-  preview_id: string;
+  change_id: string;
 
   @IsString()
   discarded_at: string;
+
+  @IsString()
+  revision_token: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapAiChangeTimelineEntryDto)
+  timeline: RoadmapAiChangeTimelineEntryDto[];
+
+  @IsObject()
+  roadmap: Record<string, unknown>;
 }
 
 export class RoadmapAiContextSummaryEpicDto {

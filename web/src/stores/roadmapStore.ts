@@ -1337,7 +1337,24 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 	},
 
 	discardArtifact: (artifactId: string) => {
-		get().closeCanvasArtifactTab(artifactId);
+		set((state) => {
+			const artifact = state.artifactsById[artifactId];
+			if (!artifact) return {};
+
+			if (artifact.status === "draft") {
+				return {};
+			}
+
+			return {
+				artifactsById: {
+					...state.artifactsById,
+					[artifactId]: {
+						...artifact,
+						status: "discarded",
+					},
+				},
+			};
+		});
 	},
 }));
 

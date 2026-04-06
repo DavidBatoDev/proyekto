@@ -779,40 +779,21 @@ describe('RoadmapAiService context search lookup', () => {
 describe('RoadmapAiService resolve cache invalidation on commit', () => {
   const ROADMAP_ID = '55e431e2-e416-468c-a973-94d97280e97d';
   const USER_ID = 'f4a8b7e5-cf32-4d03-bad8-7e385efef7cb';
-  const PREVIEW_ID = 'd76dfba4-0f02-4988-bec3-e9af9510ff72';
   const REVISION_TOKEN = '2026-04-02T11:00:00.000Z';
 
   const createCommitService = () => {
     const previewStore = {
-      getPreview: jest.fn().mockResolvedValue({
-        roadmapId: ROADMAP_ID,
-        userId: USER_ID,
-        revisionToken: REVISION_TOKEN,
-        candidate: {
-          id: ROADMAP_ID,
-          name: 'Q2 SaaS Platform Development',
-          roadmap_epics: [],
-        },
-        semanticDiff: { summary: {}, changes: [] },
-        validationIssues: [],
-      }),
-      deletePreview: jest.fn().mockResolvedValue(undefined),
+      getChangeTimeline: jest.fn().mockResolvedValue(null),
+      setChangeTimeline: jest.fn().mockResolvedValue(undefined),
       deleteResolveLookupByRoadmap: jest.fn().mockResolvedValue(undefined),
     };
 
     const roadmapsRepo = {
-      findById: jest
-        .fn()
-        .mockResolvedValueOnce({
-          id: ROADMAP_ID,
-          owner_id: USER_ID,
-          updated_at: REVISION_TOKEN,
-        })
-        .mockResolvedValueOnce({
-          id: ROADMAP_ID,
-          owner_id: USER_ID,
-          updated_at: REVISION_TOKEN,
-        }),
+      findById: jest.fn().mockResolvedValue({
+        id: ROADMAP_ID,
+        owner_id: USER_ID,
+        updated_at: REVISION_TOKEN,
+      }),
       findFull: jest.fn().mockResolvedValue({
         id: ROADMAP_ID,
         name: 'Q2 SaaS Platform Development',
@@ -834,34 +815,48 @@ describe('RoadmapAiService resolve cache invalidation on commit', () => {
     return { service, previewStore, roadmapsRepo, patchRepo };
   };
 
-  it('invalidates resolve lookup cache on successful commit', async () => {
+  it('invalidates resolve lookup cache and appends timeline on successful commit', async () => {
     const { service, previewStore } = createCommitService();
 
-    await service.commit(
+    const result = await service.commit(
       ROADMAP_ID,
-      { preview_id: PREVIEW_ID, revision_token: REVISION_TOKEN },
+      {
+        revision_token: REVISION_TOKEN,
+        operations: [
+          { op: 'add_epic', data: { title: 'Platform Foundation' } },
+        ],
+      } as any,
       USER_ID,
     );
 
     expect(previewStore.deleteResolveLookupByRoadmap).toHaveBeenCalledWith(
       ROADMAP_ID,
     );
+    expect(previewStore.setChangeTimeline).toHaveBeenCalledTimes(1);
+    expect(result.change_id).toEqual(expect.any(String));
+    expect(result.timeline).toHaveLength(1);
   });
 
-  it('keeps commit successful when resolve cache invalidation fails', async () => {
+  it('keeps commit successful when timeline persistence fails', async () => {
     const { service, previewStore } = createCommitService();
-    previewStore.deleteResolveLookupByRoadmap.mockRejectedValueOnce(
+    previewStore.setChangeTimeline.mockRejectedValueOnce(
       new Error('redis down'),
     );
 
     await expect(
       service.commit(
         ROADMAP_ID,
-        { preview_id: PREVIEW_ID, revision_token: REVISION_TOKEN },
+        {
+          revision_token: REVISION_TOKEN,
+          operations: [
+            { op: 'add_epic', data: { title: 'Platform Foundation' } },
+          ],
+        } as any,
         USER_ID,
       ),
     ).resolves.toMatchObject({
       revision_token: REVISION_TOKEN,
+      timeline: [],
     });
   });
 });
