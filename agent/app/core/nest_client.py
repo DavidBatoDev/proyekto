@@ -14,6 +14,16 @@ class NestRoadmapClient:
     def __init__(self) -> None:
         self._settings = get_settings()
         self._logger = logging.getLogger(__name__)
+        self._client: httpx.AsyncClient | None = None
+
+    def _http_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self._settings.nest_timeout_seconds)
+        return self._client
+
+    async def aclose(self) -> None:
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
 
     async def preview(
         self,
@@ -235,11 +245,37 @@ class NestRoadmapClient:
             headers['X-Trace-Id'] = trace_id
 
         url = f"{self._settings.nest_api_base_url}{path}"
-        timeout = self._settings.nest_timeout_seconds
-
         started = perf_counter()
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(url, json=payload, headers=headers)
+        network_started = perf_counter()
+        response = await self._http_client().post(url, json=payload, headers=headers)
+        network_ms = int((perf_counter() - network_started) * 1000)
+
+        if response.is_success:
+            parse_started = perf_counter()
+            payload_result = self._extract_success_payload(response)
+            parse_ms = int((perf_counter() - parse_started) * 1000)
+            elapsed_ms = int((perf_counter() - started) * 1000)
+            log_event(
+                self._logger,
+                'nest_http_call',
+                settings=self._settings,
+                trace_id=trace_id,
+                method='POST',
+                path=path,
+                status_code=response.status_code,
+                nest_http_call_ms=elapsed_ms,
+                nest_http_network_ms=network_ms,
+                nest_http_parse_ms=parse_ms,
+            )
+            return payload_result
+
+        parse_started = perf_counter()
+        detail: Any
+        try:
+            detail = response.json()
+        except Exception:
+            detail = response.text or 'Unknown NestJS error'
+        parse_ms = int((perf_counter() - parse_started) * 1000)
         elapsed_ms = int((perf_counter() - started) * 1000)
         log_event(
             self._logger,
@@ -250,16 +286,9 @@ class NestRoadmapClient:
             path=path,
             status_code=response.status_code,
             nest_http_call_ms=elapsed_ms,
+            nest_http_network_ms=network_ms,
+            nest_http_parse_ms=parse_ms,
         )
-
-        if response.is_success:
-            return self._extract_success_payload(response)
-
-        detail: Any
-        try:
-            detail = response.json()
-        except Exception:
-            detail = response.text or 'Unknown NestJS error'
 
         raise HTTPException(
             status_code=response.status_code,
@@ -283,11 +312,37 @@ class NestRoadmapClient:
             headers['X-Trace-Id'] = trace_id
 
         url = f"{self._settings.nest_api_base_url}{path}"
-        timeout = self._settings.nest_timeout_seconds
-
         started = perf_counter()
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(url, headers=headers)
+        network_started = perf_counter()
+        response = await self._http_client().get(url, headers=headers)
+        network_ms = int((perf_counter() - network_started) * 1000)
+
+        if response.is_success:
+            parse_started = perf_counter()
+            payload_result = self._extract_success_payload(response)
+            parse_ms = int((perf_counter() - parse_started) * 1000)
+            elapsed_ms = int((perf_counter() - started) * 1000)
+            log_event(
+                self._logger,
+                'nest_http_call',
+                settings=self._settings,
+                trace_id=trace_id,
+                method='GET',
+                path=path,
+                status_code=response.status_code,
+                nest_http_call_ms=elapsed_ms,
+                nest_http_network_ms=network_ms,
+                nest_http_parse_ms=parse_ms,
+            )
+            return payload_result
+
+        parse_started = perf_counter()
+        detail: Any
+        try:
+            detail = response.json()
+        except Exception:
+            detail = response.text or 'Unknown NestJS error'
+        parse_ms = int((perf_counter() - parse_started) * 1000)
         elapsed_ms = int((perf_counter() - started) * 1000)
         log_event(
             self._logger,
@@ -298,16 +353,9 @@ class NestRoadmapClient:
             path=path,
             status_code=response.status_code,
             nest_http_call_ms=elapsed_ms,
+            nest_http_network_ms=network_ms,
+            nest_http_parse_ms=parse_ms,
         )
-
-        if response.is_success:
-            return self._extract_success_payload(response)
-
-        detail: Any
-        try:
-            detail = response.json()
-        except Exception:
-            detail = response.text or 'Unknown NestJS error'
 
         raise HTTPException(
             status_code=response.status_code,

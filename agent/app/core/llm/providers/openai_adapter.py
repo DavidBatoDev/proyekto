@@ -40,6 +40,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._last_usage: dict[str, int] | None = None
+        self._chat_model_instance: Any | None = None
 
     def is_available(self) -> bool:
         return bool(
@@ -273,12 +274,21 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
             raise self._to_provider_error(exc)
 
     def _chat_model(self) -> Any:
-        return ChatOpenAI(
-            api_key=self._settings.openai_api_key,
-            model=self._settings.openai_model,
-            temperature=self._settings.openai_temperature,
-            timeout=30,
-        )
+        if self._chat_model_instance is None:
+            model_kwargs: dict[str, Any] = {
+                'api_key': self._settings.openai_api_key,
+                'model': self._settings.openai_model,
+                'temperature': self._settings.openai_temperature,
+                'timeout': 30,
+            }
+            if self._settings.openai_reasoning_effort is not None:
+                model_kwargs['reasoning_effort'] = self._settings.openai_reasoning_effort
+            if self._settings.openai_max_tokens is not None:
+                model_kwargs['max_tokens'] = self._settings.openai_max_tokens
+            self._chat_model_instance = ChatOpenAI(
+                **model_kwargs,
+            )
+        return self._chat_model_instance
 
     def _to_provider_error(self, exc: Exception) -> ProviderAdapterError:
         exc_name = exc.__class__.__name__.lower()

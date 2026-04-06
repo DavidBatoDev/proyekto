@@ -42,7 +42,7 @@ class PromptRepository:
         return json.dumps(
             context,
             ensure_ascii=True,
-            indent=2,
+            separators=(',', ':'),
             default=self._safe_default,
         )
 

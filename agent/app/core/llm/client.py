@@ -359,6 +359,8 @@ class LLMPlanner:
             intent_type = 'roadmap_edit'
         session_context = state.get('session_context', {})
         trace_id = session_context.get('trace_id')
+        recent_messages_raw = session_context.get('recent_messages')
+        recent_message_count = len(recent_messages_raw) if isinstance(recent_messages_raw, list) else 0
         has_edit_continuation_context = bool(state.get('force_edit_continuation')) or bool(
             state.get('existing_operations')
         )
@@ -390,7 +392,7 @@ class LLMPlanner:
             'base_revision': session_context.get('base_revision'),
             'revision_token': session_context.get('revision_token'),
             'staged_operations_count': len(state.get('existing_operations', [])),
-            'recent_messages': session_context.get('recent_messages', []),
+            'recent_message_count': recent_message_count,
             'recent_resolved_targets': session_context.get('recent_resolved_targets', []),
             'actor_context': session_context.get('actor_context'),
             'intent_type': intent_type,
@@ -524,7 +526,10 @@ class LLMPlanner:
         existing_operations = state.get('existing_operations', [])
         system_prompt = state.get('system_prompt', '')
         session_context = state.get('session_context', {})
-        history_messages = self._build_history_messages(session_context)
+        history_messages = self._build_history_messages(
+            session_context,
+            max_messages=self._settings.max_edit_history_messages,
+        )
         trace_id = session_context.get('trace_id')
         tool_definitions = (
             get_operation_tools() if intent_type == 'roadmap_plan' else get_edit_mode_tools()
@@ -594,7 +599,9 @@ class LLMPlanner:
             )
 
         staged_operations_payload = json.dumps(
-            [op.model_dump(exclude_none=True) for op in existing_operations]
+            [op.model_dump(exclude_none=True) for op in existing_operations],
+            ensure_ascii=True,
+            separators=(',', ':'),
         )
         roadmap_id_value = session_context.get('roadmap_id')
         deictic_parent_hint = (
@@ -671,9 +678,9 @@ class LLMPlanner:
                 'If you still cannot produce safe operations, call plan_roadmap_operations with an empty '
                 'operations list and place the clarifying question in assistant_message.\n\n'
                 'Resolved node IDs:\n'
-                f'{json.dumps(resolved_node_ids[:20], ensure_ascii=True, indent=2)}\n\n'
+                f'{json.dumps(resolved_node_ids[:20], ensure_ascii=True, separators=(",", ":"))}\n\n'
                 'Prior tool observation summary:\n'
-                f'{json.dumps(effective_tool_summary[:10], ensure_ascii=True, indent=2)}\n\n'
+                f'{json.dumps(effective_tool_summary[:10], ensure_ascii=True, separators=(",", ":"))}\n\n'
                 'Current staged operations:\n'
                 f'{staged_operations_payload}\n\n'
                 'Roadmap ID:\n'
@@ -699,7 +706,7 @@ class LLMPlanner:
             if isinstance(prior_observation, dict) and prior_observation:
                 planner_prompt += (
                     '\n\nPrevious ReAct observation:\n'
-                    f'{json.dumps(prior_observation, ensure_ascii=True, indent=2)}'
+                    f'{json.dumps(prior_observation, ensure_ascii=True, separators=(",", ":"))}'
                 )
                 if prior_provider_error_code == 'max_tool_turns_exceeded':
                     planner_prompt += (
@@ -711,12 +718,12 @@ class LLMPlanner:
                 if resolved_node_ids:
                     planner_prompt += (
                         '\n\nResolved node IDs from previous turn:\n'
-                        f'{json.dumps(resolved_node_ids[:20], ensure_ascii=True, indent=2)}'
+                        f'{json.dumps(resolved_node_ids[:20], ensure_ascii=True, separators=(",", ":"))}'
                     )
             if prior_tool_summary_list:
                 planner_prompt += (
                     '\n\nPrevious tool observation summary:\n'
-                    f'{json.dumps(prior_tool_summary_list[:5], ensure_ascii=True, indent=2)}'
+                    f'{json.dumps(prior_tool_summary_list[:5], ensure_ascii=True, separators=(",", ":"))}'
                 )
             if remaining_llm_budget is not None:
                 planner_prompt += (
@@ -1880,13 +1887,28 @@ class LLMPlanner:
             return asyncio.run(coro)
         raise RuntimeError('Context tool call attempted on running event loop thread')
 
-    def _build_history_messages(self, session_context: dict[str, Any]) -> list[Any]:
+    def _build_history_messages(
+        self,
+        session_context: dict[str, Any],
+        *,
+        max_messages: int | None = None,
+    ) -> list[Any]:
         if AIMessage is None or HumanMessage is None:
             return []
 
         history = session_context.get('recent_messages', [])
+        if max_messages is None:
+            history_limit = self._settings.max_chat_history_messages
+        else:
+            try:
+                history_limit = max(int(max_messages), 0)
+            except (TypeError, ValueError):
+                history_limit = self._settings.max_chat_history_messages
+        if history_limit <= 0:
+            return []
+
         messages: list[Any] = []
-        for item in history[-self._settings.max_chat_history_messages :]:
+        for item in history[-history_limit:]:
             role = str(item.get('role', '')).strip().lower()
             content = str(item.get('content', '')).strip()
             if not content:

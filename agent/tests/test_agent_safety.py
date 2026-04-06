@@ -3891,11 +3891,18 @@ class ConfigCompatibilityTests(unittest.TestCase):
 class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self._original_agent_draft_graph_enabled = sessions_routes.settings.agent_draft_graph_enabled
+        self._original_agent_async_auto_commit_enabled = (
+            sessions_routes.settings.agent_async_auto_commit_enabled
+        )
         sessions_routes.settings.agent_draft_graph_enabled = False
+        sessions_routes.settings.agent_async_auto_commit_enabled = False
 
     def tearDown(self) -> None:
         sessions_routes.settings.agent_draft_graph_enabled = (
             self._original_agent_draft_graph_enabled
+        )
+        sessions_routes.settings.agent_async_auto_commit_enabled = (
+            self._original_agent_async_auto_commit_enabled
         )
 
     def test_preview_binding_helpers_are_removed_from_route_module(self) -> None:
@@ -4138,6 +4145,106 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
             '4cf13eb2-01fc-4b58-b5f4-d43fa7154f7a',
         )
         self.assertEqual(inline_commit.get('revision_token'), 'rev-2')
+
+    async def test_send_message_async_auto_commit_enqueues_background_task(self) -> None:
+        session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
+        session.session_id = 'session-1'
+        session.base_revision = 1
+        session.revision_token = 'rev-1'
+        session.operations = [
+            RoadmapOperation(
+                op='add_epic',
+                data={'title': 'AI Module'},
+            )
+        ]
+        update_calls = 0
+        commit_calls = 0
+        scheduled_calls = 0
+
+        class _FakeStore:
+            def update(self, _session):
+                nonlocal update_calls
+                update_calls += 1
+                return None
+
+        class _FakeAgentService:
+            def plan_message(self, _session, _message, _replace, _auth_header, _trace_id):
+                return MessagePlanningOutcome(
+                    session=session,
+                    assistant_message='Create epic AI Module.',
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    operations=session.operations,
+                    preview_available=True,
+                    preview_recommended=True,
+                    staged_operations_version=1,
+                    staged_operations_count=1,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=10,
+                    tokens_output=5,
+                    tokens_total=15,
+                    route_lane='llm_edit_plan',
+                    phase_timings={},
+                    invalid_operation_detected=False,
+                    invalid_operation_reason=None,
+                    invalid_operation_index=None,
+                )
+
+        async def _fake_commit(**_kwargs):
+            nonlocal commit_calls
+            commit_calls += 1
+            await asyncio.sleep(0)
+            return {
+                'change_id': '2d8f6290-a5c7-4a2d-8b8f-29e5b8bc6d85',
+                'revision_token': 'rev-2',
+                'semantic_diff': {'summary': {'NODE_ADDED': 1}, 'changes': []},
+                'candidate_snapshot': {'id': '55e431e2-e416-468c-a973-94d97280e97d'},
+            }
+
+        def _capture_schedule(coro):
+            nonlocal scheduled_calls
+            scheduled_calls += 1
+            coro.close()
+            return None
+
+        original_async_flag = sessions_routes.settings.agent_async_auto_commit_enabled
+        original_get_runtime = sessions_routes._get_agent_runtime_async
+        original_get_session = sessions_routes._get_session_or_404_async
+        original_commit = sessions_routes._nest_client.commit
+        original_schedule = sessions_routes._schedule_auto_commit_task
+        sessions_routes.settings.agent_async_auto_commit_enabled = True
+        sessions_routes._get_agent_runtime_async = (  # type: ignore[assignment]
+            lambda: _async_runtime_result((_FakeStore(), _FakeAgentService()))
+        )
+        sessions_routes._get_session_or_404_async = (  # type: ignore[assignment]
+            lambda _service, _session_id: _async_runtime_result(session)
+        )
+        sessions_routes._nest_client.commit = _fake_commit  # type: ignore[assignment]
+        sessions_routes._schedule_auto_commit_task = _capture_schedule  # type: ignore[assignment]
+        try:
+            response = await sessions_routes.send_message(
+                session_id='session-1',
+                payload=sessions_routes.MessageRequest(
+                    message='Create Epic called AI Module',
+                ),
+                request=SimpleNamespace(headers={'Authorization': 'Bearer test'}),
+            )
+        finally:
+            sessions_routes.settings.agent_async_auto_commit_enabled = original_async_flag
+            sessions_routes._get_agent_runtime_async = original_get_runtime  # type: ignore[assignment]
+            sessions_routes._get_session_or_404_async = original_get_session  # type: ignore[assignment]
+            sessions_routes._nest_client.commit = original_commit  # type: ignore[assignment]
+            sessions_routes._schedule_auto_commit_task = original_schedule  # type: ignore[assignment]
+
+        self.assertEqual(scheduled_calls, 1)
+        self.assertEqual(commit_calls, 0)
+        self.assertEqual(update_calls, 0)
+        self.assertEqual(response.staged_operations_count, 1)
+        self.assertEqual(response.staged_operations_version, 1)
+        self.assertEqual(len(response.artifacts), 0)
 
     async def test_send_message_auto_commit_records_recent_targets_from_commit_result(self) -> None:
         session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')

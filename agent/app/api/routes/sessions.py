@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import json
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from time import perf_counter
 from uuid import uuid4
@@ -36,6 +37,7 @@ _store: SessionStore | None = None
 _agent_service: AgentService | None = None
 _session_service_unavailable_reason: str | None = None
 _nest_client = NestRoadmapClient()
+_pending_auto_commit_tasks: set[asyncio.Task] = set()
 
 _ACTOR_METADATA_KEYS = {
     'actor_context',
@@ -47,6 +49,17 @@ _ACTOR_METADATA_KEYS = {
     'timezone',
     'fetched_at',
 }
+
+
+@dataclass
+class _AutoCommitExecutionResult:
+    auto_commit_ms: int
+    staged_operations_version: int
+    staged_operations_count: int
+    active_draft_id: str | None
+    active_draft_version: int | None
+    artifact: RoadmapCommitArtifact | None
+    inline_commit_size_bytes: int | None
 
 
 def _utcnow() -> datetime:
@@ -300,6 +313,222 @@ def _sanitize_session_metadata(
     return sanitized, stripped
 
 
+def _schedule_auto_commit_task(coro) -> asyncio.Task:
+    task = asyncio.create_task(coro)
+    _pending_auto_commit_tasks.add(task)
+    task.add_done_callback(_pending_auto_commit_tasks.discard)
+    return task
+
+
+async def _execute_auto_commit(
+    *,
+    store: SessionStore,
+    agent_service: AgentService,
+    session: AgentSession,
+    auth_header: str,
+    trace_id: str | None,
+) -> _AutoCommitExecutionResult:
+    draft_id, draft_version, draft_operations = _resolve_draft_snapshot(
+        session,
+        agent_service,
+    )
+
+    commit_started = perf_counter()
+    commit_result = await _nest_client.commit(
+        roadmap_id=session.roadmap_id,
+        payload={
+            'base_revision': session.base_revision,
+            'revision_token': session.revision_token,
+            'operations': [
+                operation.model_dump(exclude_none=True)
+                for operation in draft_operations
+            ],
+        },
+        auth_header=auth_header,
+        trace_id=trace_id,
+    )
+    auto_commit_ms = int((perf_counter() - commit_started) * 1000)
+
+    change_id_raw = commit_result.get('change_id')
+    change_id = (
+        str(change_id_raw).strip()
+        if isinstance(change_id_raw, str) and str(change_id_raw).strip()
+        else None
+    )
+    committed_revision_token = commit_result.get('revision_token')
+    if isinstance(committed_revision_token, str):
+        session.revision_token = committed_revision_token
+
+    if change_id is not None:
+        applied_change_ids_raw = session.metadata.applied_change_ids
+        if isinstance(applied_change_ids_raw, list):
+            applied_change_ids = [
+                value
+                for value in applied_change_ids_raw
+                if isinstance(value, str) and value.strip()
+            ]
+        else:
+            applied_change_ids = []
+        if change_id not in applied_change_ids:
+            applied_change_ids.append(change_id)
+        session.metadata.applied_change_ids = applied_change_ids
+
+    session.metadata.applied_draft_commits.append(
+        AppliedDraftCommit(
+            change_id=change_id,
+            draft_id=draft_id,
+            draft_version=draft_version,
+            status='applied',
+        )
+    )
+
+    record_recent_targets_from_preview = getattr(
+        agent_service,
+        'record_recent_targets_from_preview',
+        None,
+    )
+    if callable(record_recent_targets_from_preview):
+        record_recent_targets_from_preview(
+            session=session,
+            preview_result=commit_result,
+            source='commit_semantic_diff',
+        )
+
+    _set_draft_status(
+        session=session,
+        draft_id=draft_id,
+        status='applied',
+    )
+
+    staged_operations_count: int
+    staged_operations_version: int
+    active_draft_id: str | None
+    active_draft_version: int | None
+    if settings.agent_draft_graph_enabled:
+        agent_service.ensure_draft_graph_initialized(session)
+        next_draft_id = f'{session.session_id}:draft:{uuid4()}'
+        next_draft = DraftNode(
+            draft_id=next_draft_id,
+            parent_draft_id=draft_id,
+            draft_mode='append',
+            operations=[],
+            draft_version=0,
+            base_revision=session.base_revision,
+            revision_token=session.revision_token,
+            summary='Post-commit working draft',
+            status='active',
+        )
+        session.metadata.drafts[next_draft_id] = next_draft
+        session.metadata.active_draft_id = next_draft_id
+        session.metadata.draft_head_ids = [next_draft_id]
+        staged_operations_count = 0
+        staged_operations_version = 0
+        active_draft_id = next_draft_id
+        active_draft_version = next_draft.draft_version
+    else:
+        session.operations = []
+        session.staged_operations_version += 1
+        staged_operations_count = 0
+        staged_operations_version = session.staged_operations_version
+        active_draft_id = None
+        active_draft_version = None
+
+    session.metadata.pending_context_resolution = None
+    session.metadata.pending_edit_context = None
+
+    artifact = _build_commit_artifact(
+        session,
+        commit_result,
+        change_id=change_id,
+        status='applied',
+    )
+    inline_commit_size_bytes: int | None = None
+    if artifact is not None:
+        inline_payload = dict(commit_result)
+        inline_commit_size_bytes = _serialized_payload_bytes(inline_payload)
+        inline_artifact = artifact.model_copy(update={'inline_commit': inline_payload})
+        session.artifacts.append(inline_artifact)
+        artifact = inline_artifact
+
+    await _run_store_call(store.update, session)
+    return _AutoCommitExecutionResult(
+        auto_commit_ms=auto_commit_ms,
+        staged_operations_version=staged_operations_version,
+        staged_operations_count=staged_operations_count,
+        active_draft_id=active_draft_id,
+        active_draft_version=active_draft_version,
+        artifact=artifact,
+        inline_commit_size_bytes=inline_commit_size_bytes,
+    )
+
+
+async def _run_auto_commit_in_background(
+    *,
+    store: SessionStore,
+    agent_service: AgentService,
+    session: AgentSession,
+    auth_header: str,
+    trace_id: str | None,
+) -> None:
+    started_at = perf_counter()
+    try:
+        result = await _execute_auto_commit(
+            store=store,
+            agent_service=agent_service,
+            session=session,
+            auth_header=auth_header,
+            trace_id=trace_id,
+        )
+        log_event(
+            logger,
+            'auto_commit_async_completed',
+            settings=settings,
+            trace_id=trace_id,
+            session_id=session.session_id,
+            roadmap_id=session.roadmap_id,
+            auto_commit_ms=result.auto_commit_ms,
+            staged_operations_count=result.staged_operations_count,
+            staged_operations_version=result.staged_operations_version,
+            active_draft_id=result.active_draft_id,
+            active_draft_version=result.active_draft_version,
+            inline_commit_size_bytes=result.inline_commit_size_bytes,
+            elapsed_ms=int((perf_counter() - started_at) * 1000),
+        )
+    except HTTPException as exc:
+        log_event(
+            logger,
+            'auto_commit_async_failed',
+            settings=settings,
+            trace_id=trace_id,
+            session_id=session.session_id,
+            roadmap_id=session.roadmap_id,
+            auto_commit_error_code=_extract_upstream_error_code(exc.detail),
+            auto_commit_error_retryable=(
+                exc.status_code >= 500 or exc.status_code in {408, 429}
+            ),
+            auto_commit_error_upstream_status=exc.status_code,
+            elapsed_ms=int((perf_counter() - started_at) * 1000),
+        )
+    except Exception:
+        logger.exception(
+            'Async auto-commit failed. session_id=%s roadmap_id=%s',
+            session.session_id,
+            session.roadmap_id,
+        )
+        log_event(
+            logger,
+            'auto_commit_async_failed',
+            settings=settings,
+            trace_id=trace_id,
+            session_id=session.session_id,
+            roadmap_id=session.roadmap_id,
+            auto_commit_error_code='INTERNAL_ERROR',
+            auto_commit_error_retryable=True,
+            auto_commit_error_upstream_status=None,
+            elapsed_ms=int((perf_counter() - started_at) * 1000),
+        )
+
+
 @router.post('', response_model=CreateSessionResponse)
 async def create_session(payload: CreateSessionRequest) -> CreateSessionResponse:
     store, _ = await _get_agent_runtime_async()
@@ -367,6 +596,7 @@ async def send_message(
     auto_commit_error_code: str | None = None
     auto_commit_error_retryable: bool | None = None
     auto_commit_error_upstream_status: int | None = None
+    auto_commit_async_enqueued = False
     inline_commit_size_bytes: int | None = None
     response_staged_operations_version: int | None = None
     response_staged_operations_count: int | None = None
@@ -398,127 +628,34 @@ async def send_message(
         if should_auto_commit:
             auth_header = request.headers.get('Authorization')
             if auth_header:
-                draft_id, draft_version, draft_operations = _resolve_draft_snapshot(
-                    outcome.session,
-                    agent_service,
-                )
-
-                commit_started = perf_counter()
-                commit_result = await _nest_client.commit(
-                    roadmap_id=outcome.session.roadmap_id,
-                    payload={
-                        'base_revision': outcome.session.base_revision,
-                        'revision_token': outcome.session.revision_token,
-                        'operations': [
-                            operation.model_dump(exclude_none=True)
-                            for operation in draft_operations
-                        ],
-                    },
-                    auth_header=auth_header,
-                    trace_id=trace_id,
-                )
-                auto_commit_ms = int((perf_counter() - commit_started) * 1000)
-
-                change_id_raw = commit_result.get('change_id')
-                change_id = (
-                    str(change_id_raw).strip()
-                    if isinstance(change_id_raw, str) and str(change_id_raw).strip()
-                    else None
-                )
-                committed_revision_token = commit_result.get('revision_token')
-                if isinstance(committed_revision_token, str):
-                    outcome.session.revision_token = committed_revision_token
-
-                if change_id is not None:
-                    applied_change_ids_raw = outcome.session.metadata.applied_change_ids
-                    if isinstance(applied_change_ids_raw, list):
-                        applied_change_ids = [
-                            value
-                            for value in applied_change_ids_raw
-                            if isinstance(value, str) and value.strip()
-                        ]
-                    else:
-                        applied_change_ids = []
-                    if change_id not in applied_change_ids:
-                        applied_change_ids.append(change_id)
-                    outcome.session.metadata.applied_change_ids = applied_change_ids
-
-                outcome.session.metadata.applied_draft_commits.append(
-                    AppliedDraftCommit(
-                        change_id=change_id,
-                        draft_id=draft_id,
-                        draft_version=draft_version,
-                        status='applied',
+                if settings.agent_async_auto_commit_enabled:
+                    _schedule_auto_commit_task(
+                        _run_auto_commit_in_background(
+                            store=store,
+                            agent_service=agent_service,
+                            session=outcome.session,
+                            auth_header=auth_header,
+                            trace_id=trace_id,
+                        )
                     )
-                )
-
-                record_recent_targets_from_preview = getattr(
-                    agent_service,
-                    'record_recent_targets_from_preview',
-                    None,
-                )
-                if callable(record_recent_targets_from_preview):
-                    record_recent_targets_from_preview(
-                        session=outcome.session,
-                        preview_result=commit_result,
-                        source='commit_semantic_diff',
-                    )
-
-                _set_draft_status(
-                    session=outcome.session,
-                    draft_id=draft_id,
-                    status='applied',
-                )
-
-                if settings.agent_draft_graph_enabled:
-                    agent_service.ensure_draft_graph_initialized(outcome.session)
-                    next_draft_id = f'{outcome.session.session_id}:draft:{uuid4()}'
-                    next_draft = DraftNode(
-                        draft_id=next_draft_id,
-                        parent_draft_id=draft_id,
-                        draft_mode='append',
-                        operations=[],
-                        draft_version=0,
-                        base_revision=outcome.session.base_revision,
-                        revision_token=outcome.session.revision_token,
-                        summary='Post-commit working draft',
-                        status='active',
-                    )
-                    outcome.session.metadata.drafts[next_draft_id] = next_draft
-                    outcome.session.metadata.active_draft_id = next_draft_id
-                    outcome.session.metadata.draft_head_ids = [next_draft_id]
-                    response_staged_operations_count = 0
-                    response_staged_operations_version = 0
-                    response_active_draft_id = next_draft_id
-                    response_active_draft_version = next_draft.draft_version
+                    auto_commit_async_enqueued = True
                 else:
-                    outcome.session.operations = []
-                    outcome.session.staged_operations_version += 1
-                    response_staged_operations_count = 0
-                    response_staged_operations_version = (
-                        outcome.session.staged_operations_version
+                    auto_commit_result = await _execute_auto_commit(
+                        store=store,
+                        agent_service=agent_service,
+                        session=outcome.session,
+                        auth_header=auth_header,
+                        trace_id=trace_id,
                     )
-                    response_active_draft_id = None
-                    response_active_draft_version = None
-
-                outcome.session.metadata.pending_context_resolution = None
-                outcome.session.metadata.pending_edit_context = None
-
-                artifact = _build_commit_artifact(
-                    outcome.session,
-                    commit_result,
-                    change_id=change_id,
-                    status='applied',
-                )
-                if artifact is not None:
-                    inline_payload = dict(commit_result)
-                    inline_commit_size_bytes = _serialized_payload_bytes(inline_payload)
-                    inline_artifact = artifact.model_copy(update={'inline_commit': inline_payload})
-                    outcome.session.artifacts.append(inline_artifact)
-                    response_artifacts.append(inline_artifact)
-                    artifacts.append(inline_artifact)
-
-                await _run_store_call(store.update, outcome.session)
+                    auto_commit_ms = auto_commit_result.auto_commit_ms
+                    inline_commit_size_bytes = auto_commit_result.inline_commit_size_bytes
+                    response_staged_operations_count = auto_commit_result.staged_operations_count
+                    response_staged_operations_version = auto_commit_result.staged_operations_version
+                    response_active_draft_id = auto_commit_result.active_draft_id
+                    response_active_draft_version = auto_commit_result.active_draft_version
+                    if auto_commit_result.artifact is not None:
+                        response_artifacts.append(auto_commit_result.artifact)
+                        artifacts.append(auto_commit_result.artifact)
             else:
                 logger.info(
                     'Auto-commit skipped due to missing auth header. session_id=%s roadmap_id=%s',
@@ -661,6 +798,8 @@ async def send_message(
                 outcome.invalid_operation_index if outcome else None
             ),
             auto_commit_ms=auto_commit_ms,
+            auto_commit_async_enabled=settings.agent_async_auto_commit_enabled,
+            auto_commit_async_enqueued=auto_commit_async_enqueued,
             auto_commit_error_code=auto_commit_error_code,
             auto_commit_error_retryable=auto_commit_error_retryable,
             auto_commit_error_upstream_status=auto_commit_error_upstream_status,

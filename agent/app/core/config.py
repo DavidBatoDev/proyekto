@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     openai_api_key: str | None = Field(default=None, alias='OPENAI_API_KEY')
     openai_model: str = Field(default='gpt-5.3-mini', alias='OPENAI_MODEL')
     openai_temperature: float = Field(default=0.2, alias='OPENAI_TEMPERATURE')
+    openai_reasoning_effort: str | None = Field(
+        default='low',
+        alias='OPENAI_REASONING_EFFORT',
+    )
+    openai_max_tokens: int | None = Field(default=None, alias='OPENAI_MAX_TOKENS')
 
     session_ttl_seconds: int = Field(default=1800, alias='SESSION_TTL_SECONDS')
     upstash_redis_rest_url: str | None = Field(default=None, alias='UPSTASH_REDIS_REST_URL')
@@ -33,6 +38,7 @@ class Settings(BaseSettings):
     redis_session_key_prefix: str = Field(default='roadmap:ai:session', alias='REDIS_SESSION_KEY_PREFIX')
     max_operations_per_request: int = Field(default=25, alias='MAX_OPERATIONS_PER_REQUEST')
     max_chat_history_messages: int = Field(default=8, alias='MAX_CHAT_HISTORY_MESSAGES')
+    max_edit_history_messages: int = Field(default=4, alias='MAX_EDIT_HISTORY_MESSAGES')
     max_edit_tool_turns: int = Field(default=4, alias='MAX_EDIT_TOOL_TURNS')
     max_context_tool_turns: int = Field(default=4, alias='MAX_CONTEXT_TOOL_TURNS')
     max_discovery_tool_calls: int = Field(default=4, alias='MAX_DISCOVERY_TOOL_CALLS')
@@ -68,6 +74,10 @@ class Settings(BaseSettings):
         default=False,
         alias='AGENT_DRAFT_GRAPH_ENABLED',
     )
+    agent_async_auto_commit_enabled: bool = Field(
+        default=False,
+        alias='AGENT_ASYNC_AUTO_COMMIT_ENABLED',
+    )
     agent_strict_preview_fingerprint: bool = Field(
         default=True,
         alias='AGENT_STRICT_PREVIEW_FINGERPRINT',
@@ -99,6 +109,29 @@ class Settings(BaseSettings):
             return 'auto'
         return normalized
 
+    @field_validator('openai_reasoning_effort')
+    @classmethod
+    def normalize_openai_reasoning_effort(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip().lower()
+        if not normalized:
+            return None
+        if normalized not in {'low', 'medium', 'high'}:
+            return 'low'
+        return normalized
+
+    @field_validator('openai_max_tokens')
+    @classmethod
+    def normalize_openai_max_tokens(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if value < 64:
+            return 64
+        if value > 4096:
+            return 4096
+        return value
+
     @field_validator('agent_edit_planner_repair_retries')
     @classmethod
     def normalize_agent_edit_planner_repair_retries(cls, value: int) -> int:
@@ -122,6 +155,15 @@ class Settings(BaseSettings):
     def normalize_agent_max_total_llm_calls_per_message(cls, value: int) -> int:
         if value < 1:
             return 1
+        if value > 16:
+            return 16
+        return value
+
+    @field_validator('max_edit_history_messages')
+    @classmethod
+    def normalize_max_edit_history_messages(cls, value: int) -> int:
+        if value < 0:
+            return 0
         if value > 16:
             return 16
         return value
