@@ -41,6 +41,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
         self._settings = settings
         self._last_usage: dict[str, int] | None = None
         self._chat_model_instance: Any | None = None
+        self._planner_chat_model_instance: Any | None = None
 
     def is_available(self) -> bool:
         return bool(
@@ -125,7 +126,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                     code='tooling_not_supported',
                     message='ToolMessage is unavailable in this runtime; tool loop cannot execute.',
                 )
-            tool_model = self._chat_model().bind_tools(tools)
+            tool_model = self._planner_chat_model().bind_tools(tools)
             initial_messages: list[Any] = [
                 SystemMessage(content=system_prompt),
                 *history_messages,
@@ -275,20 +276,33 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
 
     def _chat_model(self) -> Any:
         if self._chat_model_instance is None:
-            model_kwargs: dict[str, Any] = {
-                'api_key': self._settings.openai_api_key,
-                'model': self._settings.openai_model,
-                'temperature': self._settings.openai_temperature,
-                'timeout': 30,
-            }
-            if self._settings.openai_reasoning_effort is not None:
-                model_kwargs['reasoning_effort'] = self._settings.openai_reasoning_effort
-            if self._settings.openai_max_tokens is not None:
-                model_kwargs['max_tokens'] = self._settings.openai_max_tokens
             self._chat_model_instance = ChatOpenAI(
-                **model_kwargs,
+                **self._base_model_kwargs(max_tokens=self._settings.openai_max_tokens),
             )
         return self._chat_model_instance
+
+    def _planner_chat_model(self) -> Any:
+        planner_max_tokens = self._settings.openai_planner_max_tokens
+        if planner_max_tokens is None or planner_max_tokens == self._settings.openai_max_tokens:
+            return self._chat_model()
+        if self._planner_chat_model_instance is None:
+            self._planner_chat_model_instance = ChatOpenAI(
+                **self._base_model_kwargs(max_tokens=planner_max_tokens),
+            )
+        return self._planner_chat_model_instance
+
+    def _base_model_kwargs(self, *, max_tokens: int | None) -> dict[str, Any]:
+        model_kwargs: dict[str, Any] = {
+            'api_key': self._settings.openai_api_key,
+            'model': self._settings.openai_model,
+            'temperature': self._settings.openai_temperature,
+            'timeout': 30,
+        }
+        if self._settings.openai_reasoning_effort is not None:
+            model_kwargs['reasoning_effort'] = self._settings.openai_reasoning_effort
+        if max_tokens is not None:
+            model_kwargs['max_tokens'] = max_tokens
+        return model_kwargs
 
     def _to_provider_error(self, exc: Exception) -> ProviderAdapterError:
         exc_name = exc.__class__.__name__.lower()

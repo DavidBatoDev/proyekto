@@ -31,6 +31,10 @@ class Settings(BaseSettings):
         alias='OPENAI_REASONING_EFFORT',
     )
     openai_max_tokens: int | None = Field(default=None, alias='OPENAI_MAX_TOKENS')
+    openai_planner_max_tokens: int | None = Field(
+        default=None,
+        alias='OPENAI_PLANNER_MAX_TOKENS',
+    )
 
     session_ttl_seconds: int = Field(default=1800, alias='SESSION_TTL_SECONDS')
     upstash_redis_rest_url: str | None = Field(default=None, alias='UPSTASH_REDIS_REST_URL')
@@ -92,6 +96,10 @@ class Settings(BaseSettings):
     agent_log_color: str = Field(default='auto', alias='AGENT_LOG_COLOR')
     agent_log_include_content: bool = Field(default=False, alias='AGENT_LOG_INCLUDE_CONTENT')
     agent_cache_ttl_seconds: int = Field(default=600, alias='AGENT_CACHE_TTL_SECONDS')
+    agent_resolve_cache_ttl_seconds: int = Field(
+        default=30,
+        alias='AGENT_RESOLVE_CACHE_TTL_SECONDS',
+    )
 
     @field_validator('nest_api_base_url')
     @classmethod
@@ -124,6 +132,17 @@ class Settings(BaseSettings):
     @field_validator('openai_max_tokens')
     @classmethod
     def normalize_openai_max_tokens(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if value < 64:
+            return 64
+        if value > 4096:
+            return 4096
+        return value
+
+    @field_validator('openai_planner_max_tokens')
+    @classmethod
+    def normalize_openai_planner_max_tokens(cls, value: int | None) -> int | None:
         if value is None:
             return None
         if value < 64:
@@ -166,6 +185,15 @@ class Settings(BaseSettings):
             return 0
         if value > 16:
             return 16
+        return value
+
+    @field_validator('agent_resolve_cache_ttl_seconds')
+    @classmethod
+    def normalize_agent_resolve_cache_ttl_seconds(cls, value: int) -> int:
+        if value < 0:
+            return 0
+        if value > 300:
+            return 300
         return value
 
     @property

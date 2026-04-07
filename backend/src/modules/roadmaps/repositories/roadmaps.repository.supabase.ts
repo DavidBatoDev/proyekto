@@ -297,14 +297,10 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     }
 
     if (!nodeType || nodeType === 'task') {
-      const taskFeatureRows = await this.loadRoadmapFeaturesForTaskSearch(
-        roadmapId,
-        Math.min(Math.max(scanLimit * 20, 1000), 5000),
-      );
       const tasks = await this.searchTasks(
+        roadmapId,
         normalizedQuery,
         scanLimit,
-        taskFeatureRows,
       );
       candidates.push(...tasks);
     }
@@ -364,13 +360,13 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
   > {
     const rows = await this.runBoundedSearchPasses<{
       id: string;
+      roadmap_id: string;
       title: string;
       description?: string;
       epic_id: string;
-      roadmap_id: string;
     }>({
       table: 'roadmap_features',
-      select: 'id, title, description, epic_id, roadmap_id',
+      select: 'id, roadmap_id, title, description, epic_id',
       roadmapId,
       query: normalizedQuery,
       scanLimit,
@@ -419,112 +415,23 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
   }
 
   private async searchTasks(
+    roadmapId: string,
     normalizedQuery: string,
     scanLimit: number,
-    features: Array<{
-      id: string;
-      title: string;
-      description?: string;
-      epic_id: string;
-      roadmap_id: string;
-    }>,
   ): Promise<RoadmapContextSearchCandidateRecord[]> {
-    const featureIdSet = new Set(features.map((feature) => feature.id));
-    if (featureIdSet.size === 0) {
-      return [];
-    }
+    const taskRows = await this.runTaskSearchPasses({
+      roadmapId,
+      query: normalizedQuery,
+      scanLimit,
+    });
 
-    const featureIds = [...featureIdSet];
-    const featureTitleById = new Map(
-      features.map((feature) => [feature.id, feature.title]),
-    );
-    const chunkSize = 200;
-    const taskRows: Array<{ id: string; title: string; feature_id: string }> =
-      [];
-    const seenTaskIds = new Set<string>();
-
-    for (let offset = 0; offset < featureIds.length; offset += chunkSize) {
-      const chunk = featureIds.slice(offset, offset + chunkSize);
-      const passRows = await this.runTaskSearchPasses({
-        featureIds: chunk,
-        query: normalizedQuery,
-        scanLimit,
-      });
-      for (const task of passRows) {
-        const id = String(task.id);
-        if (seenTaskIds.has(id)) continue;
-        taskRows.push(task);
-        seenTaskIds.add(id);
-      }
-      if (taskRows.length >= scanLimit) {
-        break;
-      }
-    }
-
-    if (taskRows.length < scanLimit) {
-      for (let offset = 0; offset < featureIds.length; offset += chunkSize) {
-        const chunk = featureIds.slice(offset, offset + chunkSize);
-        const { data, error } = await this.db
-          .from('roadmap_tasks')
-          .select('id, title, feature_id')
-          .in('feature_id', chunk)
-          .limit(scanLimit);
-        if (error) throw new Error(error.message);
-        for (const task of data ?? []) {
-          if (!task?.id || !task?.feature_id) continue;
-          const id = String(task.id);
-          if (seenTaskIds.has(id)) continue;
-          taskRows.push({
-            id,
-            title: String(task.title ?? 'Untitled task'),
-            feature_id: String(task.feature_id),
-          });
-          seenTaskIds.add(id);
-          if (taskRows.length >= scanLimit) break;
-        }
-        if (taskRows.length >= scanLimit) break;
-      }
-    }
-
-    return taskRows.slice(0, scanLimit).map((task) => ({
+    return taskRows.map((task) => ({
       id: task.id,
       type: 'task' as const,
       title: task.title,
       parent_id: task.feature_id,
-      parent_title: featureTitleById.get(task.feature_id),
+      parent_title: task.feature_title,
     }));
-  }
-
-  private async loadRoadmapFeaturesForTaskSearch(
-    roadmapId: string,
-    scanLimit: number,
-  ): Promise<
-    Array<{
-      id: string;
-      title: string;
-      description?: string;
-      epic_id: string;
-      roadmap_id: string;
-    }>
-  > {
-    const { data, error } = await this.db
-      .from('roadmap_features')
-      .select('id, title, epic_id, roadmap_id')
-      .eq('roadmap_id', roadmapId)
-      .limit(scanLimit);
-    if (error) throw new Error(error.message);
-    return (data ?? []).flatMap((feature) =>
-      feature?.id && feature?.epic_id && feature?.roadmap_id
-        ? [
-            {
-              id: String(feature.id),
-              title: String(feature.title ?? 'Untitled feature'),
-              epic_id: String(feature.epic_id),
-              roadmap_id: String(feature.roadmap_id),
-            },
-          ]
-        : [],
-    );
   }
 
   private async loadEpicTitles(
@@ -608,31 +515,92 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
   }
 
   private async runTaskSearchPasses(params: {
-    featureIds: string[];
+    roadmapId: string;
     query: string;
     scanLimit: number;
-  }): Promise<Array<{ id: string; title: string; feature_id: string }>> {
-    const rows: Array<{ id: string; title: string; feature_id: string }> = [];
+  }): Promise<
+    Array<{
+      id: string;
+      title: string;
+      feature_id: string;
+      feature_title?: string;
+    }>
+  > {
+    const rows: Array<{
+      id: string;
+      title: string;
+      feature_id: string;
+      feature_title?: string;
+    }> = [];
     const seen = new Set<string>();
     const patterns = [params.query, `${params.query}%`, `%${params.query}%`];
 
     for (const pattern of patterns) {
-      const data = await this.fetchRows<{
-        id: string;
-        title: string;
-        feature_id: string;
-      }>(
+      const data = await this.fetchRows<any>(
         this.db
           .from('roadmap_tasks')
-          .select('id, title, feature_id')
-          .in('feature_id', params.featureIds)
+          .select(
+            'id, title, feature_id, roadmap_features!inner(roadmap_id, title)',
+          )
+          .eq('roadmap_features.roadmap_id', params.roadmapId)
           .ilike('title', pattern)
           .limit(params.scanLimit),
       );
-      this.appendUniqueRows(rows, seen, data, params.scanLimit);
+      this.appendUniqueRows(
+        rows,
+        seen,
+        data.flatMap((task) => {
+          if (!task?.id || !task?.feature_id) return [];
+          const feature = Array.isArray(task.roadmap_features)
+            ? task.roadmap_features[0]
+            : task.roadmap_features;
+          return [
+            {
+              id: String(task.id),
+              title: String(task.title ?? 'Untitled task'),
+              feature_id: String(task.feature_id),
+              feature_title:
+                feature?.title == null ? undefined : String(feature.title),
+            },
+          ];
+        }),
+        params.scanLimit,
+      );
       if (rows.length >= params.scanLimit) {
         return this.sortByTitleAndId(rows).slice(0, params.scanLimit);
       }
+    }
+
+    if (rows.length < params.scanLimit) {
+      const data = await this.fetchRows<any>(
+        this.db
+          .from('roadmap_tasks')
+          .select(
+            'id, title, feature_id, roadmap_features!inner(roadmap_id, title)',
+          )
+          .eq('roadmap_features.roadmap_id', params.roadmapId)
+          .limit(params.scanLimit),
+      );
+      this.appendUniqueRows(
+        rows,
+        seen,
+        data.flatMap((task) => {
+          if (!task?.id || !task?.feature_id) return [];
+          const feature = Array.isArray(task.roadmap_features)
+            ? task.roadmap_features[0]
+            : task.roadmap_features;
+          return [
+            {
+              id: String(task.id),
+              title: String(task.title ?? 'Untitled task'),
+              feature_id: String(task.feature_id),
+              feature_title:
+                feature?.title == null ? undefined : String(feature.title),
+            },
+          ];
+        }),
+        params.scanLimit,
+      );
     }
 
     return this.sortByTitleAndId(rows).slice(0, params.scanLimit);

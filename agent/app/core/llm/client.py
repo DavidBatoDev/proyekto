@@ -741,6 +741,8 @@ class LLMPlanner:
         schema_invalid_attempts = 0
         repair_attempted = False
         last_provider_error_code: str | None = None
+        planner_prompt_bytes = len(planner_prompt.encode('utf-8'))
+        history_messages_count = len(history_messages)
 
         for attempt in range(max_attempts):
             if attempt > 0:
@@ -756,7 +758,12 @@ class LLMPlanner:
                         tool_executor=_capturing_tool_executor,
                         max_tool_turns=edit_turns,
                     ),
-                    trace_context={'trace_id': trace_id, 'phase': 'edit_plan'},
+                    trace_context={
+                        'trace_id': trace_id,
+                        'phase': 'edit_plan',
+                        'planner_prompt_bytes': planner_prompt_bytes,
+                        'history_messages_count': history_messages_count,
+                    },
                 )
             except ProviderAdapterError as exc:
                 last_provider_error_code = exc.code
@@ -965,6 +972,8 @@ class LLMPlanner:
                     operations_count=len(operations),
                     operation_types=[op.op.value for op in operations],
                     parent_hint_applied=parent_hint_applied,
+                    planner_prompt_bytes=planner_prompt_bytes,
+                    history_messages_count=history_messages_count,
                     tokens_input=result.tokens_input,
                     tokens_output=result.tokens_output,
                     tokens_total=result.tokens_total,

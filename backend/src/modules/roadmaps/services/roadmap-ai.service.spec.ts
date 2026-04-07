@@ -785,6 +785,9 @@ describe('RoadmapAiService resolve cache invalidation on commit', () => {
     const previewStore = {
       getChangeTimeline: jest.fn().mockResolvedValue(null),
       setChangeTimeline: jest.fn().mockResolvedValue(undefined),
+      deleteResolveLookupByRoadmapAndNodeTypes: jest
+        .fn()
+        .mockResolvedValue(undefined),
       deleteResolveLookupByRoadmap: jest.fn().mockResolvedValue(undefined),
     };
 
@@ -829,9 +832,10 @@ describe('RoadmapAiService resolve cache invalidation on commit', () => {
       USER_ID,
     );
 
-    expect(previewStore.deleteResolveLookupByRoadmap).toHaveBeenCalledWith(
-      ROADMAP_ID,
-    );
+    expect(
+      previewStore.deleteResolveLookupByRoadmapAndNodeTypes,
+    ).toHaveBeenCalledWith(ROADMAP_ID, ['epic']);
+    expect(previewStore.deleteResolveLookupByRoadmap).not.toHaveBeenCalled();
     expect(previewStore.setChangeTimeline).toHaveBeenCalledTimes(1);
     expect(result.change_id).toEqual(expect.any(String));
     expect(result.timeline).toHaveLength(1);
@@ -858,6 +862,39 @@ describe('RoadmapAiService resolve cache invalidation on commit', () => {
       revision_token: REVISION_TOKEN,
       timeline: [],
     });
+  });
+
+  it('falls back to roadmap-wide invalidation when typed invalidation api is unavailable', async () => {
+    const { service, previewStore } = createCommitService();
+    delete (previewStore as any).deleteResolveLookupByRoadmapAndNodeTypes;
+
+    await service.commit(
+      ROADMAP_ID,
+      {
+        revision_token: REVISION_TOKEN,
+        operations: [
+          { op: 'add_epic', data: { title: 'Platform Foundation' } },
+        ],
+      } as any,
+      USER_ID,
+    );
+
+    expect(previewStore.deleteResolveLookupByRoadmap).toHaveBeenCalledWith(
+      ROADMAP_ID,
+    );
+  });
+
+  it('falls back to roadmap-wide invalidation when no node types are provided', async () => {
+    const { service, previewStore } = createCommitService();
+
+    await (service as any).invalidateResolveLookupCache(ROADMAP_ID, new Set());
+
+    expect(previewStore.deleteResolveLookupByRoadmap).toHaveBeenCalledWith(
+      ROADMAP_ID,
+    );
+    expect(
+      previewStore.deleteResolveLookupByRoadmapAndNodeTypes,
+    ).not.toHaveBeenCalled();
   });
 });
 

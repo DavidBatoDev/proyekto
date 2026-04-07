@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 import logging
 import re
@@ -27,6 +28,8 @@ class ContextToolsExecutor:
         self._logger = logger
         self._nest_client = nest_client
         self._run_async_context_call = run_async_context_call
+        self._resolve_lookup_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._max_resolve_lookup_cache_entries = 256
 
     def execute(
         self,
@@ -197,10 +200,75 @@ class ContextToolsExecutor:
                         result_summary=summarize_tool_result(result),
                     )
                     return result
+                normalized_label = self._normalize_query_text(label)
                 node_type_raw = str(args.get('node_type', '')).strip().lower()
                 node_type = node_type_raw if node_type_raw in {'epic', 'feature', 'task'} else None
                 limit_raw = args.get('limit')
                 limit = int(limit_raw) if isinstance(limit_raw, int) else 20
+                request_cache_key = self._build_resolve_request_cache_key(
+                    roadmap_id=roadmap_id,
+                    node_type=node_type,
+                    label=normalized_label,
+                    limit=limit,
+                    context_selector=context_selector,
+                )
+                request_cached_result = self._read_resolve_request_cache(
+                    session_context=session_context,
+                    cache_key=request_cache_key,
+                )
+                if request_cached_result is not None:
+                    self._increment_phase_counter(
+                        session_context,
+                        'resolve_dedup_hits',
+                    )
+                    log_event(
+                        self._logger,
+                        'tool_call_result',
+                        settings=self._settings,
+                        trace_id=trace_id,
+                        tool_name=tool_name,
+                        result_summary=summarize_tool_result(request_cached_result),
+                        resolution_id=request_cached_result.get('resolution_id'),
+                        resolve_dedup_hit=True,
+                        resolve_cache_hit=False,
+                    )
+                    return request_cached_result
+
+                resolve_cache_key = self._build_resolve_cache_key(
+                    roadmap_id=roadmap_id,
+                    node_type=node_type,
+                    label=normalized_label,
+                    limit=limit,
+                    context_selector=context_selector,
+                )
+                resolve_cached_result = self._read_resolve_lookup_cache(resolve_cache_key)
+                if resolve_cached_result is not None:
+                    self._increment_phase_counter(
+                        session_context,
+                        'resolve_cache_hits',
+                    )
+                    self._write_resolve_request_cache(
+                        session_context=session_context,
+                        cache_key=request_cache_key,
+                        value=resolve_cached_result,
+                    )
+                    log_event(
+                        self._logger,
+                        'tool_call_result',
+                        settings=self._settings,
+                        trace_id=trace_id,
+                        tool_name=tool_name,
+                        result_summary=summarize_tool_result(resolve_cached_result),
+                        resolution_id=resolve_cached_result.get('resolution_id'),
+                        resolve_dedup_hit=False,
+                        resolve_cache_hit=True,
+                    )
+                    return resolve_cached_result
+
+                self._increment_phase_counter(
+                    session_context,
+                    'resolve_cache_misses',
+                )
                 raw_matches: list[Any] = []
                 resolution_id: str | None = None
                 seen_ids: set[str] = set()
@@ -266,6 +334,12 @@ class ContextToolsExecutor:
                     if item_id in backend_choice_by_id:
                         payload['backend_choice'] = backend_choice_by_id[item_id]
                     result['matches'].append(payload)
+                self._write_resolve_lookup_cache(resolve_cache_key, result)
+                self._write_resolve_request_cache(
+                    session_context=session_context,
+                    cache_key=request_cache_key,
+                    value=result,
+                )
                 log_event(
                     self._logger,
                     'tool_call_result',
@@ -274,6 +348,8 @@ class ContextToolsExecutor:
                     tool_name=tool_name,
                     result_summary=summarize_tool_result(result),
                     resolution_id=resolution_id,
+                    resolve_dedup_hit=False,
+                    resolve_cache_hit=False,
                 )
                 return result
 
@@ -437,7 +513,7 @@ class ContextToolsExecutor:
                         roadmap_id=roadmap_id,
                         status=status_filter,
                         limit=limit,
-                        preview_id=preview_selector,
+                        preview_id=context_selector,
                         auth_header=auth_value,
                         trace_id=trace_id,
                     )
@@ -740,3 +816,107 @@ class ContextToolsExecutor:
             if len(token) >= 4:
                 return token
         return None
+
+    def _build_resolve_request_cache_key(
+        self,
+        *,
+        roadmap_id: str,
+        node_type: str | None,
+        label: str,
+        limit: int,
+        context_selector: str | None,
+    ) -> str:
+        return json.dumps(
+            {
+                'roadmap_id': roadmap_id,
+                'node_type': node_type,
+                'label': label,
+                'limit': limit,
+                'context_selector': context_selector,
+            },
+            sort_keys=True,
+            separators=(',', ':'),
+        )
+
+    def _build_resolve_cache_key(
+        self,
+        *,
+        roadmap_id: str,
+        node_type: str | None,
+        label: str,
+        limit: int,
+        context_selector: str | None,
+    ) -> str:
+        return self._build_resolve_request_cache_key(
+            roadmap_id=roadmap_id,
+            node_type=node_type,
+            label=label,
+            limit=limit,
+            context_selector=context_selector,
+        )
+
+    def _read_resolve_request_cache(
+        self,
+        *,
+        session_context: dict[str, Any],
+        cache_key: str,
+    ) -> dict[str, Any] | None:
+        cache = session_context.setdefault('_resolve_request_cache', {})
+        if not isinstance(cache, dict):
+            return None
+        cached_value = cache.get(cache_key)
+        if not isinstance(cached_value, dict):
+            return None
+        return deepcopy(cached_value)
+
+    def _write_resolve_request_cache(
+        self,
+        *,
+        session_context: dict[str, Any],
+        cache_key: str,
+        value: dict[str, Any],
+    ) -> None:
+        cache = session_context.setdefault('_resolve_request_cache', {})
+        if not isinstance(cache, dict):
+            return
+        cache[cache_key] = deepcopy(value)
+
+    def _read_resolve_lookup_cache(self, cache_key: str) -> dict[str, Any] | None:
+        entry = self._resolve_lookup_cache.get(cache_key)
+        if entry is None:
+            return None
+        cached_at, payload = entry
+        ttl_seconds = max(int(self._settings.agent_resolve_cache_ttl_seconds), 0)
+        if ttl_seconds <= 0:
+            self._resolve_lookup_cache.pop(cache_key, None)
+            return None
+        age_seconds = perf_counter() - cached_at
+        if age_seconds > float(ttl_seconds):
+            self._resolve_lookup_cache.pop(cache_key, None)
+            return None
+        return deepcopy(payload)
+
+    def _write_resolve_lookup_cache(
+        self,
+        cache_key: str,
+        value: dict[str, Any],
+    ) -> None:
+        if int(self._settings.agent_resolve_cache_ttl_seconds) <= 0:
+            return
+        self._resolve_lookup_cache[cache_key] = (perf_counter(), deepcopy(value))
+        while len(self._resolve_lookup_cache) > self._max_resolve_lookup_cache_entries:
+            oldest_key = next(iter(self._resolve_lookup_cache), None)
+            if oldest_key is None:
+                break
+            self._resolve_lookup_cache.pop(oldest_key, None)
+
+    def _increment_phase_counter(
+        self,
+        session_context: dict[str, Any],
+        metric_name: str,
+    ) -> None:
+        metrics = session_context.setdefault('_phase_metrics', {})
+        if not isinstance(metrics, dict):
+            return
+        current = int(metrics.get(metric_name) or 0)
+        metrics[metric_name] = current + 1

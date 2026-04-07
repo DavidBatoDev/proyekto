@@ -83,6 +83,9 @@ class MessagePlanningOutcome:
     react_loop_turns: int | None = None
     react_loop_budget: int | None = None
     react_loop_termination_reason: str | None = None
+    resolve_cache_hits: int | None = None
+    resolve_cache_misses: int | None = None
+    resolve_dedup_hits: int | None = None
 
 
 @dataclass
@@ -519,6 +522,19 @@ class AgentService:
                 if isinstance(internal_metrics.get('context_tools_by_name'), dict)
                 else {}
             )
+            phase_timings['resolve_cache_hits'] = int(
+                internal_metrics.get('resolve_cache_hits') or 0
+            )
+            phase_timings['resolve_cache_misses'] = int(
+                internal_metrics.get('resolve_cache_misses') or 0
+            )
+            phase_timings['resolve_dedup_hits'] = int(
+                internal_metrics.get('resolve_dedup_hits') or 0
+            )
+
+        resolve_cache_hits = int(phase_timings.get('resolve_cache_hits') or 0)
+        resolve_cache_misses = int(phase_timings.get('resolve_cache_misses') or 0)
+        resolve_dedup_hits = int(phase_timings.get('resolve_dedup_hits') or 0)
 
         operations = planning.operations
         if planning.response_mode == 'edit_plan' and len(operations) > self._settings.max_operations_per_request:
@@ -757,6 +773,9 @@ class AgentService:
             retry_duplicate_operation_deduped=retry_duplicate_operation_deduped,
             retry_autostage_applied=retry_autostage_applied,
             mixed_query_followup_warning_code=mixed_query_followup_warning_code,
+            resolve_cache_hits=resolve_cache_hits,
+            resolve_cache_misses=resolve_cache_misses,
+            resolve_dedup_hits=resolve_dedup_hits,
             phase_timings=phase_timings,
         )
 
@@ -803,6 +822,9 @@ class AgentService:
             retry_tool_calls_used=retry_tool_calls_used,
             retry_duplicate_operation_deduped=retry_duplicate_operation_deduped,
             retry_autostage_applied=retry_autostage_applied,
+            resolve_cache_hits=resolve_cache_hits,
+            resolve_cache_misses=resolve_cache_misses,
+            resolve_dedup_hits=resolve_dedup_hits,
             active_draft_id=active_draft_id,
             active_draft_version=active_draft_version,
             draft_graph_migration_applied=draft_graph_migration_applied,

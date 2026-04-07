@@ -5196,9 +5196,82 @@ class PlannerContextSafetyTests(unittest.TestCase):
             {'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'},
         )
         self.assertIn('App Foundation', observed_queries)
+        self.assertEqual(len(observed_queries), 1)
         self.assertEqual(result.get('status'), 'unique')
         selected = result.get('selected') or {}
         self.assertEqual(selected.get('id'), 'dad5697a-8962-4f80-8bc3-8a964edd8e56')
+
+    def test_resolve_node_reference_dedupes_within_single_session_context(self) -> None:
+        planner = self._planner()
+        call_count = 0
+
+        def _context_search(**_kwargs):
+            nonlocal call_count
+            call_count += 1
+            return {
+                'matches': [
+                    {
+                        'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                        'type': 'epic',
+                        'title': 'AI Module',
+                    }
+                ]
+            }
+
+        planner._nest_client = SimpleNamespace(context_search=_context_search)
+        session_context = {'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'}
+        args = {
+            'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+            'label': 'AI Module',
+            'node_type': 'epic',
+            'limit': 5,
+        }
+
+        first = planner._execute_context_tool('resolve_node_reference', args, session_context)
+        second = planner._execute_context_tool('resolve_node_reference', args, session_context)
+
+        self.assertEqual(call_count, 1)
+        self.assertEqual(first.get('status'), 'unique')
+        self.assertEqual(second.get('status'), 'unique')
+
+    def test_resolve_node_reference_uses_short_lived_lookup_cache_across_contexts(self) -> None:
+        planner = self._planner()
+        call_count = 0
+
+        def _context_search(**_kwargs):
+            nonlocal call_count
+            call_count += 1
+            return {
+                'matches': [
+                    {
+                        'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                        'type': 'epic',
+                        'title': 'AI Module',
+                    }
+                ]
+            }
+
+        planner._nest_client = SimpleNamespace(context_search=_context_search)
+        planner._settings = planner._settings.model_copy(
+            update={'agent_resolve_cache_ttl_seconds': 30}
+        )
+        planner._context_tools_executor = None
+
+        args = {
+            'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+            'label': 'AI Module',
+            'node_type': 'epic',
+            'limit': 5,
+        }
+        first_context = {'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'}
+        second_context = {'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'}
+
+        first = planner._execute_context_tool('resolve_node_reference', args, first_context)
+        second = planner._execute_context_tool('resolve_node_reference', args, second_context)
+
+        self.assertEqual(call_count, 1)
+        self.assertEqual(first.get('status'), 'unique')
+        self.assertEqual(second.get('status'), 'unique')
 
     def test_invalid_parent_id_returns_invalid_uuid_error(self) -> None:
         planner = self._planner()

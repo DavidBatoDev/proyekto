@@ -115,6 +115,18 @@ export class RoadmapAiPreviewStoreService {
     if (roadmapId) {
       await redis.sadd(this.resolveLookupRoadmapKey(roadmapId), cacheKey);
       await redis.expire(this.resolveLookupRoadmapKey(roadmapId), ttlSeconds);
+
+      const nodeType = this.extractNodeTypeFromResolveKey(cacheKey);
+      if (nodeType) {
+        await redis.sadd(
+          this.resolveLookupRoadmapNodeTypeKey(roadmapId, nodeType),
+          cacheKey,
+        );
+        await redis.expire(
+          this.resolveLookupRoadmapNodeTypeKey(roadmapId, nodeType),
+          ttlSeconds,
+        );
+      }
     }
   }
 
@@ -134,6 +146,45 @@ export class RoadmapAiPreviewStoreService {
       await redis.del(...keys);
     }
     await redis.del(roadmapKey);
+    await redis.del(
+      this.resolveLookupRoadmapNodeTypeKey(roadmapId, 'epic'),
+      this.resolveLookupRoadmapNodeTypeKey(roadmapId, 'feature'),
+      this.resolveLookupRoadmapNodeTypeKey(roadmapId, 'task'),
+    );
+  }
+
+  async deleteResolveLookupByRoadmapAndNodeTypes(
+    roadmapId: string,
+    nodeTypes: Array<'epic' | 'feature' | 'task'>,
+  ): Promise<void> {
+    if (!Array.isArray(nodeTypes) || nodeTypes.length === 0) {
+      await this.deleteResolveLookupByRoadmap(roadmapId);
+      return;
+    }
+
+    const redis = this.requireRedis();
+    const normalizedNodeTypes = [...new Set(nodeTypes)];
+    const keysToDelete = new Set<string>();
+
+    for (const nodeType of normalizedNodeTypes) {
+      const typeIndexKey = this.resolveLookupRoadmapNodeTypeKey(
+        roadmapId,
+        nodeType,
+      );
+      const keys = await redis.smembers<string[]>(typeIndexKey);
+      for (const key of keys ?? []) {
+        if (typeof key === 'string' && key.length > 0) {
+          keysToDelete.add(key);
+        }
+      }
+      await redis.del(typeIndexKey);
+    }
+
+    const deleteList = [...keysToDelete];
+    if (deleteList.length > 0) {
+      await redis.del(...deleteList);
+      await redis.srem(this.resolveLookupRoadmapKey(roadmapId), ...deleteList);
+    }
   }
 
   private previewKey(previewId: string): string {
@@ -148,6 +199,13 @@ export class RoadmapAiPreviewStoreService {
     return `roadmap:resolve:index:${roadmapId}`;
   }
 
+  private resolveLookupRoadmapNodeTypeKey(
+    roadmapId: string,
+    nodeType: 'epic' | 'feature' | 'task',
+  ): string {
+    return `roadmap:resolve:index:${roadmapId}:${nodeType}`;
+  }
+
   private timelineKey(roadmapId: string, userId: string): string {
     return `roadmap:ai:timeline:${roadmapId}:${userId}`;
   }
@@ -157,6 +215,19 @@ export class RoadmapAiPreviewStoreService {
     if (parts.length < 5) return null;
     if (parts[0] !== 'roadmap' || parts[1] !== 'resolve') return null;
     return parts[3] || null;
+  }
+
+  private extractNodeTypeFromResolveKey(
+    cacheKey: string,
+  ): 'epic' | 'feature' | 'task' | null {
+    const parts = cacheKey.split(':');
+    if (parts.length < 6) return null;
+    if (parts[0] !== 'roadmap' || parts[1] !== 'resolve') return null;
+    const nodeType = parts[4];
+    if (nodeType === 'epic' || nodeType === 'feature' || nodeType === 'task') {
+      return nodeType;
+    }
+    return null;
   }
 
   private requireRedis(): Redis {

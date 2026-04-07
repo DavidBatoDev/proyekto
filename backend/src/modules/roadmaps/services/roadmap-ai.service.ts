@@ -148,6 +148,8 @@ type ContextSearchCandidate = {
   parent_title?: string;
 };
 
+type ResolveLookupNodeType = 'epic' | 'feature' | 'task';
+
 type ResolutionRecord = {
   roadmapId: string;
   userId: string;
@@ -1224,7 +1226,10 @@ export class RoadmapAiService {
       tolerateStoreFailure: true,
     });
 
-    await this.invalidateResolveLookupCache(roadmapId);
+    await this.invalidateResolveLookupCache(
+      roadmapId,
+      this.collectResolveLookupNodeTypesFromSemanticDiff(semanticDiff),
+    );
 
     this.logger.log(
       [
@@ -1301,6 +1306,7 @@ export class RoadmapAiService {
       createIfMissing: false,
     });
 
+    const affectedEntries = timelineRecord.entries.slice(targetIndex);
     for (
       let index = targetIndex;
       index < timelineRecord.entries.length;
@@ -1311,7 +1317,10 @@ export class RoadmapAiService {
     }
     timelineRecord.updatedAt = discardedAt;
     await this.persistChangeTimeline(timelineRecord);
-    await this.invalidateResolveLookupCache(roadmapId);
+    await this.invalidateResolveLookupCache(
+      roadmapId,
+      this.collectResolveLookupNodeTypesFromTimelineEntries(affectedEntries),
+    );
 
     const persisted = await this.roadmapsRepo.findFull(roadmapId, userId);
     const persistedMeta = await this.roadmapsRepo.findById(roadmapId, userId);
@@ -1369,13 +1378,20 @@ export class RoadmapAiService {
       createIfMissing: false,
     });
 
+    const affectedEntries = timelineRecord.entries.slice(
+      targetIndex,
+      applyUntilIndex + 1,
+    );
     for (let index = targetIndex; index <= applyUntilIndex; index += 1) {
       timelineRecord.entries[index].status = 'applied';
       timelineRecord.entries[index].discardedAt = undefined;
     }
     timelineRecord.updatedAt = reappliedAt;
     await this.persistChangeTimeline(timelineRecord);
-    await this.invalidateResolveLookupCache(roadmapId);
+    await this.invalidateResolveLookupCache(
+      roadmapId,
+      this.collectResolveLookupNodeTypesFromTimelineEntries(affectedEntries),
+    );
 
     const persisted = await this.roadmapsRepo.findFull(roadmapId, userId);
     const persistedMeta = await this.roadmapsRepo.findById(roadmapId, userId);
@@ -3131,9 +3147,34 @@ export class RoadmapAiService {
     void this.writeResolveLookupCache(cacheKey, candidates);
   }
 
-  private async invalidateResolveLookupCache(roadmapId: string): Promise<void> {
+  private async invalidateResolveLookupCache(
+    roadmapId: string,
+    nodeTypes?: Iterable<ResolveLookupNodeType>,
+  ): Promise<void> {
     try {
-      await this.previewStore.deleteResolveLookupByRoadmap(roadmapId);
+      const normalizedTypes = new Set<ResolveLookupNodeType>(nodeTypes ?? []);
+      if (
+        normalizedTypes.size === 0 ||
+        normalizedTypes.size >= 3 ||
+        typeof (
+          this.previewStore as unknown as {
+            deleteResolveLookupByRoadmapAndNodeTypes?: unknown;
+          }
+        ).deleteResolveLookupByRoadmapAndNodeTypes !== 'function'
+      ) {
+        await this.previewStore.deleteResolveLookupByRoadmap(roadmapId);
+      } else {
+        await (
+          this.previewStore as unknown as {
+            deleteResolveLookupByRoadmapAndNodeTypes: (
+              roadmapId: string,
+              nodeTypes: ResolveLookupNodeType[],
+            ) => Promise<void>;
+          }
+        ).deleteResolveLookupByRoadmapAndNodeTypes(roadmapId, [
+          ...normalizedTypes,
+        ]);
+      }
     } catch (error) {
       this.logger.warn(
         `resolve_lookup cache invalidation failed roadmap_id=${roadmapId}: ${
@@ -3141,6 +3182,36 @@ export class RoadmapAiService {
         }`,
       );
     }
+  }
+
+  private collectResolveLookupNodeTypesFromTimelineEntries(
+    entries: ChangeTimelineEntryRecord[],
+  ): Set<ResolveLookupNodeType> {
+    const nodeTypes = new Set<ResolveLookupNodeType>();
+    for (const entry of entries) {
+      this.collectResolveLookupNodeTypesFromSemanticDiff(
+        entry?.semanticDiff,
+        nodeTypes,
+      );
+    }
+    return nodeTypes;
+  }
+
+  private collectResolveLookupNodeTypesFromSemanticDiff(
+    semanticDiff: SemanticDiffDto | undefined,
+    target: Set<ResolveLookupNodeType> = new Set<ResolveLookupNodeType>(),
+  ): Set<ResolveLookupNodeType> {
+    for (const change of semanticDiff?.changes ?? []) {
+      const nodeType = change?.node?.type;
+      if (
+        nodeType === 'epic' ||
+        nodeType === 'feature' ||
+        nodeType === 'task'
+      ) {
+        target.add(nodeType);
+      }
+    }
+    return target;
   }
 
   private logResolveLookupTelemetry(params: {
