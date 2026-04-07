@@ -41,7 +41,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
         self._settings = settings
         self._last_usage: dict[str, int] | None = None
         self._chat_model_instance: Any | None = None
-        self._planner_chat_model_instance: Any | None = None
+        self._planner_chat_model_instances: dict[str, Any] = {}
 
     def is_available(self) -> bool:
         return bool(
@@ -117,6 +117,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
         tools: list[dict[str, Any]],
         tool_executor: Callable[[str, dict[str, Any]], dict[str, Any]],
         max_tool_turns: int,
+        planner_profile: str | None = None,
     ) -> tuple[str, list[RoadmapOperation]]:
         try:
             self._last_usage = None
@@ -126,7 +127,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                     code='tooling_not_supported',
                     message='ToolMessage is unavailable in this runtime; tool loop cannot execute.',
                 )
-            tool_model = self._planner_chat_model().bind_tools(tools)
+            tool_model = self._planner_chat_model(planner_profile=planner_profile).bind_tools(tools)
             initial_messages: list[Any] = [
                 SystemMessage(content=system_prompt),
                 *history_messages,
@@ -281,15 +282,26 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
             )
         return self._chat_model_instance
 
-    def _planner_chat_model(self) -> Any:
-        planner_max_tokens = self._settings.openai_planner_max_tokens
+    def _planner_chat_model(self, *, planner_profile: str | None = None) -> Any:
+        planner_max_tokens = self._planner_max_tokens_for_profile(planner_profile)
         if planner_max_tokens is None or planner_max_tokens == self._settings.openai_max_tokens:
             return self._chat_model()
-        if self._planner_chat_model_instance is None:
-            self._planner_chat_model_instance = ChatOpenAI(
+        cache_key = str(planner_max_tokens)
+        model_instance = self._planner_chat_model_instances.get(cache_key)
+        if model_instance is None:
+            model_instance = ChatOpenAI(
                 **self._base_model_kwargs(max_tokens=planner_max_tokens),
             )
-        return self._planner_chat_model_instance
+            self._planner_chat_model_instances[cache_key] = model_instance
+        return model_instance
+
+    def _planner_max_tokens_for_profile(self, planner_profile: str | None) -> int | None:
+        normalized_profile = str(planner_profile or '').strip().lower()
+        if normalized_profile == 'simple_edit':
+            profile_tokens = self._settings.openai_simple_edit_max_tokens
+            if profile_tokens is not None:
+                return profile_tokens
+        return self._settings.openai_planner_max_tokens
 
     def _base_model_kwargs(self, *, max_tokens: int | None) -> dict[str, Any]:
         model_kwargs: dict[str, Any] = {

@@ -491,6 +491,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
           .select(params.select)
           .eq('roadmap_id', params.roadmapId)
           .ilike('title', pattern)
+          .order('title', { ascending: true })
           .limit(params.scanLimit),
       );
       this.appendUniqueRows(rows, seen, data, params.scanLimit);
@@ -506,6 +507,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
           .select(params.select)
           .eq('roadmap_id', params.roadmapId)
           .ilike('description', `%${params.query}%`)
+          .order('title', { ascending: true })
           .limit(params.scanLimit),
       );
       this.appendUniqueRows(rows, seen, descRows, params.scanLimit);
@@ -544,6 +546,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
           )
           .eq('roadmap_features.roadmap_id', params.roadmapId)
           .ilike('title', pattern)
+          .order('title', { ascending: true })
           .limit(params.scanLimit),
       );
       this.appendUniqueRows(
@@ -579,6 +582,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
             'id, title, feature_id, roadmap_features!inner(roadmap_id, title)',
           )
           .eq('roadmap_features.roadmap_id', params.roadmapId)
+          .order('title', { ascending: true })
           .limit(params.scanLimit),
       );
       this.appendUniqueRows(

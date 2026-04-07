@@ -2100,6 +2100,20 @@ class AgentService:
             and self._is_rename_message(user_message)
             and not self._has_rename_shape_operation(planning.operations)
         ):
+            recovered_operations = self._recover_rename_shape_operations(
+                user_message=user_message,
+                react_tool_observation_summary=planning.react_tool_observation_summary,
+            )
+            if recovered_operations:
+                return replace(
+                    planning,
+                    operations=recovered_operations,
+                    parse_mode='deterministic_rename_shape_recovered',
+                    provider_error_code=None,
+                    preview_recommended=True,
+                    needs_more_info=False,
+                    stop_reason='ready_to_stage',
+                )
             return self._build_react_guard_handoff(
                 planning=planning,
                 route_lane=route_lane,
@@ -2283,6 +2297,92 @@ class AgentService:
                 if isinstance(title, str) and title.strip():
                     return True
         return False
+
+    def _recover_rename_shape_operations(
+        self,
+        *,
+        user_message: str,
+        react_tool_observation_summary: list[dict[str, Any]] | None,
+    ) -> list[RoadmapOperation] | None:
+        labels = self._extract_rename_labels(user_message)
+        if labels is None:
+            return None
+        from_label, to_title = labels
+        normalized_from_label = self._normalize_label_for_matching(from_label)
+        if not normalized_from_label or not to_title:
+            return None
+        if not isinstance(react_tool_observation_summary, list):
+            return None
+
+        for observation in reversed(react_tool_observation_summary):
+            if not isinstance(observation, dict):
+                continue
+            if str(observation.get('tool_name') or '').strip() != 'resolve_node_reference':
+                continue
+
+            status = str(observation.get('status') or '').strip().lower()
+            if status and status != 'unique':
+                continue
+
+            requested_label = str(observation.get('label') or '').strip()
+            normalized_requested_label = self._normalize_label_for_matching(requested_label)
+            if normalized_requested_label:
+                if (
+                    normalized_from_label != normalized_requested_label
+                    and normalized_from_label not in normalized_requested_label
+                    and normalized_requested_label not in normalized_from_label
+                ):
+                    continue
+
+            node_id = str(
+                observation.get('selected_id')
+                or observation.get('node_id')
+                or ''
+            ).strip()
+            if not self._uuid_pattern.fullmatch(node_id):
+                continue
+
+            return [
+                RoadmapOperation(
+                    op='update_node',
+                    node_id=node_id,
+                    patch={'title': to_title},
+                )
+            ]
+
+        return None
+
+    def _extract_rename_labels(self, user_message: str) -> tuple[str, str] | None:
+        text = ' '.join(user_message.strip().split())
+        if not text:
+            return None
+
+        patterns = [
+            r'(?i)\b(?:rename|retitle)\s+(?:my\s+|the\s+)?(.+?)\s+(?:to|as)\s+(.+)$',
+            r'(?i)\bchange(?:\s+the)?\s+name(?:\s+of)?\s+(?:my\s+|the\s+)?(.+?)\s+(?:to|as)\s+(.+)$',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match is None:
+                continue
+            from_label = self._strip_quotes_and_punctuation(match.group(1))
+            to_title = self._strip_quotes_and_punctuation(match.group(2))
+            if from_label and to_title:
+                return from_label, to_title
+        return None
+
+    @staticmethod
+    def _strip_quotes_and_punctuation(value: str) -> str:
+        cleaned = value.strip()
+        cleaned = cleaned.strip('"\'`')
+        cleaned = re.sub(r'[.?!,;:]+$', '', cleaned)
+        return ' '.join(cleaned.split())
+
+    @staticmethod
+    def _normalize_label_for_matching(value: str) -> str:
+        lowered = value.lower().strip()
+        normalized = re.sub(r'[^a-z0-9]+', ' ', lowered)
+        return ' '.join(normalized.split())
 
     def _should_fetch_actor_context(
         self,

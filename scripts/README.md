@@ -44,6 +44,26 @@ node scripts/benchmark_resolve_lookup.mjs --redis-chaos
 node scripts/benchmark_resolve_lookup.mjs --redis-chaos --assert-warm-p95-ms=100
 ```
 
+## Resolve Lookup SQL Benchmark
+
+For DB-only index/query-plan benchmarking (EXPLAIN + warm-loop percentiles), run:
+
+```sql
+\i scripts/benchmark_resolve_lookup_patterns.sql
+```
+
+File: [scripts/benchmark_resolve_lookup_patterns.sql](scripts/benchmark_resolve_lookup_patterns.sql)
+
+The script benchmarks these runtime lookup shapes:
+
+- Epic title exact/prefix/contains
+- Epic description contains
+- Feature title exact/prefix/contains
+- Feature description contains
+- Task title exact/prefix/contains via roadmap_features join
+
+It also emits p50/p95/avg from repeated warm executions to compare before/after index changes.
+
 ### Environment file precedence
 
 The benchmark auto-loads env values in this order:

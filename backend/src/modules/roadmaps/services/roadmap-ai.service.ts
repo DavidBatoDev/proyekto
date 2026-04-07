@@ -616,11 +616,7 @@ export class RoadmapAiService {
         matches: scoredMatches,
       };
       const previewStoreSetStartedAt = Date.now();
-      await this.previewStore.setResolution(
-        resolutionId,
-        record as unknown as Record<string, unknown>,
-        RESOLUTION_TTL_SECONDS,
-      );
+      this.scheduleResolutionWrite(resolutionId, record, roadmapId, traceId);
       previewStoreSetMs = Date.now() - previewStoreSetStartedAt;
     }
 
@@ -3145,6 +3141,31 @@ export class RoadmapAiService {
     candidates: ContextSearchCandidate[],
   ): void {
     void this.writeResolveLookupCache(cacheKey, candidates);
+  }
+
+  private scheduleResolutionWrite(
+    resolutionId: string,
+    record: ResolutionRecord,
+    roadmapId: string,
+    traceId?: string,
+  ): void {
+    void this.previewStore
+      .setResolution(
+        resolutionId,
+        record as unknown as Record<string, unknown>,
+        RESOLUTION_TTL_SECONDS,
+      )
+      .catch((error: unknown) => {
+        this.logger.warn(
+          [
+            'event=resolution_store_failed',
+            `trace_id=${traceId ?? 'none'}`,
+            `roadmap_id=${roadmapId}`,
+            `resolution_id=${resolutionId}`,
+            `error=${error instanceof Error ? error.message : 'unknown_error'}`,
+          ].join(' '),
+        );
+      });
   }
 
   private async invalidateResolveLookupCache(

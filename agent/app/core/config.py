@@ -35,6 +35,10 @@ class Settings(BaseSettings):
         default=None,
         alias='OPENAI_PLANNER_MAX_TOKENS',
     )
+    openai_simple_edit_max_tokens: int | None = Field(
+        default=320,
+        alias='OPENAI_SIMPLE_EDIT_MAX_TOKENS',
+    )
 
     session_ttl_seconds: int = Field(default=1800, alias='SESSION_TTL_SECONDS')
     upstash_redis_rest_url: str | None = Field(default=None, alias='UPSTASH_REDIS_REST_URL')
@@ -82,6 +86,10 @@ class Settings(BaseSettings):
         default=False,
         alias='AGENT_ASYNC_AUTO_COMMIT_ENABLED',
     )
+    agent_simple_edit_planner_profile_enabled: bool = Field(
+        default=False,
+        alias='AGENT_SIMPLE_EDIT_PLANNER_PROFILE_ENABLED',
+    )
     agent_strict_preview_fingerprint: bool = Field(
         default=True,
         alias='AGENT_STRICT_PREVIEW_FINGERPRINT',
@@ -99,6 +107,10 @@ class Settings(BaseSettings):
     agent_resolve_cache_ttl_seconds: int = Field(
         default=30,
         alias='AGENT_RESOLVE_CACHE_TTL_SECONDS',
+    )
+    agent_resolve_parallel_variants_enabled: bool = Field(
+        default=False,
+        alias='AGENT_RESOLVE_PARALLEL_VARIANTS_ENABLED',
     )
 
     @field_validator('nest_api_base_url')
@@ -143,6 +155,17 @@ class Settings(BaseSettings):
     @field_validator('openai_planner_max_tokens')
     @classmethod
     def normalize_openai_planner_max_tokens(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if value < 64:
+            return 64
+        if value > 4096:
+            return 4096
+        return value
+
+    @field_validator('openai_simple_edit_max_tokens')
+    @classmethod
+    def normalize_openai_simple_edit_max_tokens(cls, value: int | None) -> int | None:
         if value is None:
             return None
         if value < 64:

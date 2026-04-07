@@ -845,6 +845,15 @@ async def send_message(
             react_loop_termination_reason=(
                 outcome.react_loop_termination_reason if outcome else None
             ),
+            resolve_cache_hits=(
+                outcome.resolve_cache_hits if outcome else None
+            ),
+            resolve_cache_misses=(
+                outcome.resolve_cache_misses if outcome else None
+            ),
+            resolve_dedup_hits=(
+                outcome.resolve_dedup_hits if outcome else None
+            ),
         )
 
 

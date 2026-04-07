@@ -950,7 +950,7 @@ class AgentSafetyTests(unittest.TestCase):
                         title='Platform Foundation',
                         label='Platform Foundation',
                         source='context_tool',
-                        created_at=datetime(2026, 4, 6, 12, 0, 0),
+                        created_at=datetime.now() - timedelta(hours=1),
                     )
                 ]
             ),
@@ -1657,6 +1657,87 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(outcome.provider_error_code, 'rename_shape_guard_blocked')
         self.assertEqual(len(outcome.operations), 0)
         self.assertEqual(len(session.operations), 0)
+        self.assertTrue(outcome.edit_guard_intervened)
+
+    def test_plan_message_rename_shape_guard_recovers_from_resolved_tool_summary(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Prepared an operation.',
+                    operations=[
+                        RoadmapOperation(
+                            op='add_epic',
+                            data={'title': 'Unexpected Epic'},
+                        )
+                    ],
+                    parse_mode='openai_edit_schema',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    draft_action='continue',
+                    tool_plan=[],
+                    needs_more_info=False,
+                    stop_reason='ready_to_stage',
+                    react_tool_observation_summary=[
+                        {
+                            'tool_name': 'resolve_node_reference',
+                            'status': 'unique',
+                            'label': 'Product Management and AI Module',
+                            'selected_id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                        }
+                    ],
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_hybrid_react_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        outcome = service.plan_message(
+            session=session,
+            user_message=(
+                'Also rename my Product Management and AI Module '
+                'to PM Module and Artificial Intelligence Module'
+            ),
+            replace=False,
+            auth_header=None,
+            trace_id='trace-rename-shape-recovery',
+        )
+
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(outcome.parse_mode, 'deterministic_rename_shape_recovered')
+        self.assertEqual(outcome.provider_error_code, None)
+        self.assertEqual(len(outcome.operations), 1)
+        self.assertEqual(outcome.operations[0].op.value, 'update_node')
+        self.assertEqual(
+            outcome.operations[0].patch,
+            {'title': 'PM Module and Artificial Intelligence Module'},
+        )
         self.assertTrue(outcome.edit_guard_intervened)
 
     def test_plan_message_guard_intervention_keeps_context_and_invalidates_retry_state(self) -> None:
@@ -4017,6 +4098,9 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
                     invalid_operation_detected=False,
                     invalid_operation_reason=None,
                     invalid_operation_index=None,
+                    resolve_cache_hits=7,
+                    resolve_cache_misses=3,
+                    resolve_dedup_hits=2,
                 )
 
         async def _fake_commit(**_kwargs):
@@ -4099,6 +4183,9 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
                     invalid_operation_detected=False,
                     invalid_operation_reason=None,
                     invalid_operation_index=None,
+                    resolve_cache_hits=7,
+                    resolve_cache_misses=3,
+                    resolve_dedup_hits=2,
                 )
 
         async def _fake_commit(**_kwargs):
@@ -4500,6 +4587,9 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
                     invalid_operation_detected=False,
                     invalid_operation_reason=None,
                     invalid_operation_index=None,
+                    resolve_cache_hits=7,
+                    resolve_cache_misses=3,
+                    resolve_dedup_hits=2,
                 )
 
         async def _fake_commit(**_kwargs):
@@ -4555,6 +4645,9 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
         latest = message_completed_events[-1]
         self.assertFalse(latest.get('inline_commit_skipped_due_to_size'))
         self.assertIsInstance(latest.get('inline_commit_size_bytes'), int)
+        self.assertEqual(latest.get('resolve_cache_hits'), 7)
+        self.assertEqual(latest.get('resolve_cache_misses'), 3)
+        self.assertEqual(latest.get('resolve_dedup_hits'), 2)
 
     async def test_preview_session_endpoint_removed(self) -> None:
         self.assertFalse(hasattr(sessions_routes, 'preview_session'))
@@ -5197,6 +5290,46 @@ class PlannerContextSafetyTests(unittest.TestCase):
         )
         self.assertIn('App Foundation', observed_queries)
         self.assertEqual(len(observed_queries), 1)
+        self.assertEqual(result.get('status'), 'unique')
+        selected = result.get('selected') or {}
+        self.assertEqual(selected.get('id'), 'dad5697a-8962-4f80-8bc3-8a964edd8e56')
+
+    def test_resolve_node_reference_parallel_variants_enabled_executes_multiple_queries(self) -> None:
+        planner = self._planner()
+        observed_queries: list[str] = []
+
+        def _context_search(**kwargs):
+            query = str(kwargs.get('query') or '')
+            observed_queries.append(query)
+            if query == 'App Foundation':
+                return {
+                    'matches': [
+                        {
+                            'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            'type': 'epic',
+                            'title': 'App Foundation',
+                        }
+                    ]
+                }
+            return {'matches': []}
+
+        planner._nest_client = SimpleNamespace(context_search=_context_search)
+        planner._settings = planner._settings.model_copy(
+            update={'agent_resolve_parallel_variants_enabled': True}
+        )
+        planner._context_tools_executor = None
+        result = planner._execute_context_tool(
+            'resolve_node_reference',
+            {
+                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                'label': '  "App   Foundation"  ',
+                'limit': 10,
+            },
+            {'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'},
+        )
+
+        self.assertIn('App Foundation', observed_queries)
+        self.assertGreaterEqual(len(observed_queries), 2)
         self.assertEqual(result.get('status'), 'unique')
         selected = result.get('selected') or {}
         self.assertEqual(selected.get('id'), 'dad5697a-8962-4f80-8bc3-8a964edd8e56')

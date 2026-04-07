@@ -147,6 +147,8 @@ class LLMPlanner:
         )
         self._langgraph_disabled_reason = self._get_langgraph_disabled_reason()
         self._langgraph = self._build_graph() if self._langgraph_disabled_reason is None else None
+        self._history_messages_cache: dict[str, list[Any]] = {}
+        self._history_messages_cache_max_entries = 128
 
         if self._langgraph_disabled_reason is not None:
             self._logger.warning(
@@ -562,16 +564,17 @@ class LLMPlanner:
         if remaining_llm_budget is not None:
             max_attempts = min(max_attempts, remaining_llm_budget)
         tool_observations: list[dict[str, Any]] = []
+        tool_observation_summary: list[dict[str, Any]] = []
         llm_calls_used = 0
 
         def _capturing_tool_executor(name: str, args: dict[str, Any]) -> dict[str, Any]:
             result = self._execute_context_tool(name, args, session_context)
-            tool_observations.append(
-                {
-                    'tool_name': name,
-                    'args': dict(args) if isinstance(args, dict) else {},
-                    'result': result,
-                }
+            self._record_react_tool_observation(
+                observations=tool_observations,
+                summary=tool_observation_summary,
+                tool_name=name,
+                args=args,
+                result=result,
             )
             return result
 
@@ -580,9 +583,7 @@ class LLMPlanner:
             *,
             used_calls: int | None = None,
         ) -> PlannerState:
-            next_state['react_tool_observation_summary'] = self._summarize_react_tool_observations(
-                tool_observations
-            )
+            next_state['react_tool_observation_summary'] = tool_observation_summary[-10:]
             effective_used = llm_calls_used if used_calls is None else used_calls
             next_state['llm_calls_used'] = max(int(effective_used or 0), 0)
             return next_state
@@ -649,8 +650,22 @@ class LLMPlanner:
             and prior_provider_error_code == 'max_tool_turns_exceeded'
             and bool(resolved_node_ids or effective_tool_summary)
         )
+        simple_edit_profile_enabled = bool(
+            self._settings.agent_simple_edit_planner_profile_enabled
+        )
+        simple_edit_profile = (
+            simple_edit_profile_enabled
+            and intent_type == 'roadmap_edit'
+            and self._is_simple_edit_planner_request(user_message)
+            and react_loop_turn <= 1
+        )
         if followup_closed_world_turn or intent_type == 'roadmap_plan':
             tool_definitions = get_operation_tools()
+
+        planner_profile: str | None = None
+        if simple_edit_profile:
+            planner_profile = 'simple_edit'
+            edit_turns = min(edit_turns, 2)
 
         if intent_type == 'roadmap_plan':
             planner_prompt = (
@@ -681,6 +696,20 @@ class LLMPlanner:
                 f'{json.dumps(resolved_node_ids[:20], ensure_ascii=True, separators=(",", ":"))}\n\n'
                 'Prior tool observation summary:\n'
                 f'{json.dumps(effective_tool_summary[:10], ensure_ascii=True, separators=(",", ":"))}\n\n'
+                'Current staged operations:\n'
+                f'{staged_operations_payload}\n\n'
+                'Roadmap ID:\n'
+                f'{roadmap_id_value}\n\n'
+                'User request:\n'
+                f'{user_message}'
+            )
+        elif simple_edit_profile:
+            planner_prompt = (
+                'You are in simple edit planning mode.\n'
+                'Use context tools only if needed to resolve node IDs.\n'
+                'When ready, call plan_roadmap_operations exactly once.\n'
+                'Prefer the smallest safe operation set (typically update_node).\n'
+                'Do not call commit or discard tools.\n'
                 'Current staged operations:\n'
                 f'{staged_operations_payload}\n\n'
                 'Roadmap ID:\n'
@@ -744,23 +773,41 @@ class LLMPlanner:
         planner_prompt_bytes = len(planner_prompt.encode('utf-8'))
         history_messages_count = len(history_messages)
 
-        for attempt in range(max_attempts):
-            if attempt > 0:
-                repair_attempted = True
-            try:
-                llm_calls_used += 1
-                result = self._provider_orchestrator.call(
-                    lambda adapter: adapter.plan_operations_with_tools(
+        def _invoke_plan_with_tools(adapter: Any) -> tuple[str, list[RoadmapOperation]]:
+            if planner_profile:
+                try:
+                    return adapter.plan_operations_with_tools(
                         system_prompt=system_prompt,
                         planner_prompt=planner_prompt,
                         history_messages=history_messages,
                         tools=tool_definitions,
                         tool_executor=_capturing_tool_executor,
                         max_tool_turns=edit_turns,
-                    ),
+                        planner_profile=planner_profile,
+                    )
+                except TypeError:
+                    # Backward compatibility for test doubles and legacy adapters
+                    pass
+            return adapter.plan_operations_with_tools(
+                system_prompt=system_prompt,
+                planner_prompt=planner_prompt,
+                history_messages=history_messages,
+                tools=tool_definitions,
+                tool_executor=_capturing_tool_executor,
+                max_tool_turns=edit_turns,
+            )
+
+        for attempt in range(max_attempts):
+            if attempt > 0:
+                repair_attempted = True
+            try:
+                llm_calls_used += 1
+                result = self._provider_orchestrator.call(
+                    _invoke_plan_with_tools,
                     trace_context={
                         'trace_id': trace_id,
                         'phase': 'edit_plan',
+                        'planner_profile': planner_profile or 'default',
                         'planner_prompt_bytes': planner_prompt_bytes,
                         'history_messages_count': history_messages_count,
                     },
@@ -1106,109 +1153,149 @@ class LLMPlanner:
         for observation in observations[-10:]:
             if not isinstance(observation, dict):
                 continue
-            tool_name = str(observation.get('tool_name') or '').strip()
-            args = observation.get('args')
-            result = observation.get('result')
-            summary_item: dict[str, Any] = {'tool_name': tool_name}
-
-            if isinstance(args, dict):
-                summary_item['arg_keys'] = sorted(str(key) for key in args.keys())[:6]
-                label = args.get('label')
-                if isinstance(label, str) and label.strip():
-                    summary_item['label'] = label.strip()[:80]
-                node_id_arg = args.get('node_id')
-                if isinstance(node_id_arg, str) and node_id_arg.strip():
-                    summary_item['queried_node_id'] = node_id_arg.strip()
-
-            if isinstance(result, dict):
-                status = result.get('status')
-                if isinstance(status, str) and status.strip():
-                    summary_item['status'] = status.strip()[:48]
-                error_payload = result.get('error')
-                if isinstance(error_payload, dict):
-                    error_code = error_payload.get('code')
-                    if error_code is not None:
-                        summary_item['error_code'] = str(error_code)[:80]
-                selected = result.get('selected')
-                if isinstance(selected, dict):
-                    selected_id = selected.get('id')
-                    if isinstance(selected_id, str) and selected_id.strip():
-                        summary_item['selected_id'] = selected_id.strip()
-                node_id = result.get('id')
-                if isinstance(node_id, str) and node_id.strip():
-                    summary_item['node_id'] = node_id.strip()
-                node_type = result.get('type')
-                if isinstance(node_type, str) and node_type.strip():
-                    summary_item['node_type'] = node_type.strip()[:32]
-                node_status = result.get('status') or result.get('state')
-                if isinstance(node_status, str) and node_status.strip():
-                    summary_item['node_status'] = node_status.strip()[:48]
-                node_title = result.get('title')
-                if isinstance(node_title, str) and node_title.strip():
-                    summary_item['node_title'] = node_title.strip()[:80]
-                matches = result.get('matches')
-                if isinstance(matches, list):
-                    summary_item['match_count'] = len(matches)
-                    match_ids: list[str] = []
-                    match_items: list[dict[str, str]] = []
-                    for match in matches[:5]:
-                        if isinstance(match, dict):
-                            match_id = match.get('id')
-                            if isinstance(match_id, str) and match_id.strip():
-                                normalized_match_id = match_id.strip()
-                                match_ids.append(normalized_match_id)
-                                match_items.append(
-                                    {
-                                        'id': normalized_match_id,
-                                        'title': str(match.get('title') or '').strip()[:60],
-                                        'type': str(
-                                            match.get('type') or match.get('node_type') or ''
-                                        ).strip()[:24],
-                                        'status': str(
-                                            match.get('status') or match.get('state') or ''
-                                        ).strip()[:24],
-                                    }
-                                )
-                    if match_ids:
-                        summary_item['match_ids'] = match_ids
-                    if match_items:
-                        summary_item['match_items'] = match_items
-                children = result.get('children')
-                if isinstance(children, list):
-                    summary_item['children_count'] = len(children)
-                    child_ids: list[str] = []
-                    child_statuses: dict[str, str] = {}
-                    child_items: list[dict[str, str]] = []
-                    for child in children[:20]:
-                        if not isinstance(child, dict):
-                            continue
-                        child_id = child.get('id')
-                        if not isinstance(child_id, str) or not child_id.strip():
-                            continue
-                        normalized_child_id = child_id.strip()
-                        child_ids.append(normalized_child_id)
-                        child_status = child.get('status') or child.get('state')
-                        if isinstance(child_status, str) and child_status.strip():
-                            child_statuses[normalized_child_id] = child_status.strip()[:48]
-                        child_items.append(
-                            {
-                                'id': normalized_child_id,
-                                'title': str(child.get('title') or '').strip()[:60],
-                                'type': str(
-                                    child.get('type') or child.get('node_type') or ''
-                                ).strip()[:24],
-                                'status': str(child_status or '').strip()[:24],
-                            }
-                        )
-                    if child_ids:
-                        summary_item['child_ids'] = child_ids
-                    if child_statuses:
-                        summary_item['child_statuses'] = child_statuses
-                    if child_items:
-                        summary_item['children'] = child_items
-
-            summary.append(summary_item)
+            summary_item = self._summarize_react_tool_observation(
+                tool_name=str(observation.get('tool_name') or ''),
+                args=observation.get('args'),
+                result=observation.get('result'),
+            )
+            if summary_item is not None:
+                summary.append(summary_item)
         return summary
+
+    def _record_react_tool_observation(
+        self,
+        *,
+        observations: list[dict[str, Any]],
+        summary: list[dict[str, Any]],
+        tool_name: str,
+        args: dict[str, Any],
+        result: dict[str, Any],
+    ) -> None:
+        observation = {
+            'tool_name': tool_name,
+            'args': dict(args) if isinstance(args, dict) else {},
+            'result': result,
+        }
+        observations.append(observation)
+        summary_item = self._summarize_react_tool_observation(
+            tool_name=tool_name,
+            args=observation.get('args'),
+            result=result,
+        )
+        if summary_item is not None:
+            summary.append(summary_item)
+        if len(summary) > 10:
+            del summary[: len(summary) - 10]
+
+    def _summarize_react_tool_observation(
+        self,
+        *,
+        tool_name: str,
+        args: Any,
+        result: Any,
+    ) -> dict[str, Any] | None:
+        normalized_tool_name = str(tool_name or '').strip()
+        if not normalized_tool_name:
+            return None
+        summary_item: dict[str, Any] = {'tool_name': normalized_tool_name}
+
+        if isinstance(args, dict):
+            summary_item['arg_keys'] = sorted(str(key) for key in args.keys())[:6]
+            label = args.get('label')
+            if isinstance(label, str) and label.strip():
+                summary_item['label'] = label.strip()[:80]
+            node_id_arg = args.get('node_id')
+            if isinstance(node_id_arg, str) and node_id_arg.strip():
+                summary_item['queried_node_id'] = node_id_arg.strip()
+
+        if isinstance(result, dict):
+            status = result.get('status')
+            if isinstance(status, str) and status.strip():
+                summary_item['status'] = status.strip()[:48]
+            error_payload = result.get('error')
+            if isinstance(error_payload, dict):
+                error_code = error_payload.get('code')
+                if error_code is not None:
+                    summary_item['error_code'] = str(error_code)[:80]
+            selected = result.get('selected')
+            if isinstance(selected, dict):
+                selected_id = selected.get('id')
+                if isinstance(selected_id, str) and selected_id.strip():
+                    summary_item['selected_id'] = selected_id.strip()
+            node_id = result.get('id')
+            if isinstance(node_id, str) and node_id.strip():
+                summary_item['node_id'] = node_id.strip()
+            node_type = result.get('type')
+            if isinstance(node_type, str) and node_type.strip():
+                summary_item['node_type'] = node_type.strip()[:32]
+            node_status = result.get('status') or result.get('state')
+            if isinstance(node_status, str) and node_status.strip():
+                summary_item['node_status'] = node_status.strip()[:48]
+            node_title = result.get('title')
+            if isinstance(node_title, str) and node_title.strip():
+                summary_item['node_title'] = node_title.strip()[:80]
+            matches = result.get('matches')
+            if isinstance(matches, list):
+                summary_item['match_count'] = len(matches)
+                match_ids: list[str] = []
+                match_items: list[dict[str, str]] = []
+                for match in matches[:5]:
+                    if isinstance(match, dict):
+                        match_id = match.get('id')
+                        if isinstance(match_id, str) and match_id.strip():
+                            normalized_match_id = match_id.strip()
+                            match_ids.append(normalized_match_id)
+                            match_items.append(
+                                {
+                                    'id': normalized_match_id,
+                                    'title': str(match.get('title') or '').strip()[:60],
+                                    'type': str(
+                                        match.get('type') or match.get('node_type') or ''
+                                    ).strip()[:24],
+                                    'status': str(
+                                        match.get('status') or match.get('state') or ''
+                                    ).strip()[:24],
+                                }
+                            )
+                if match_ids:
+                    summary_item['match_ids'] = match_ids
+                if match_items:
+                    summary_item['match_items'] = match_items
+            children = result.get('children')
+            if isinstance(children, list):
+                summary_item['children_count'] = len(children)
+                child_ids: list[str] = []
+                child_statuses: dict[str, str] = {}
+                child_items: list[dict[str, str]] = []
+                for child in children[:20]:
+                    if not isinstance(child, dict):
+                        continue
+                    child_id = child.get('id')
+                    if not isinstance(child_id, str) or not child_id.strip():
+                        continue
+                    normalized_child_id = child_id.strip()
+                    child_ids.append(normalized_child_id)
+                    child_status = child.get('status') or child.get('state')
+                    if isinstance(child_status, str) and child_status.strip():
+                        child_statuses[normalized_child_id] = child_status.strip()[:48]
+                    child_items.append(
+                        {
+                            'id': normalized_child_id,
+                            'title': str(child.get('title') or '').strip()[:60],
+                            'type': str(
+                                child.get('type') or child.get('node_type') or ''
+                            ).strip()[:24],
+                            'status': str(child_status or '').strip()[:24],
+                        }
+                    )
+                if child_ids:
+                    summary_item['child_ids'] = child_ids
+                if child_statuses:
+                    summary_item['child_statuses'] = child_statuses
+                if child_items:
+                    summary_item['children'] = child_items
+
+        return summary_item
 
     def _is_uuid(self, value: Any) -> bool:
         if not isinstance(value, str):
@@ -1281,9 +1368,13 @@ class LLMPlanner:
         parent_uuid_violations: list[dict[str, Any]],
         deictic_parent_hint: dict[str, Any] | None,
     ) -> str:
-        violation_payload = json.dumps(parent_uuid_violations[:5], ensure_ascii=True, indent=2)
+        violation_payload = json.dumps(
+            parent_uuid_violations[:5],
+            ensure_ascii=True,
+            separators=(',', ':'),
+        )
         hint_payload = (
-            json.dumps(deictic_parent_hint, ensure_ascii=True, indent=2)
+            json.dumps(deictic_parent_hint, ensure_ascii=True, separators=(',', ':'))
             if isinstance(deictic_parent_hint, dict)
             else 'null'
         )
@@ -1471,7 +1562,7 @@ class LLMPlanner:
             if retry_summary:
                 updated_prompt += (
                     '\n\nRETRY TOOL OBSERVATION SUMMARY:\n'
-                    f'{json.dumps(retry_summary[:10], ensure_ascii=True, indent=2)}'
+                    f'{json.dumps(retry_summary[:10], ensure_ascii=True, separators=(",", ":"))}'
                 )
 
         requested_count = self._extract_todo_delete_count(user_message)
@@ -1494,7 +1585,7 @@ class LLMPlanner:
             'Then call plan_roadmap_operations exactly once with delete_node operations for those IDs.\n'
             'Do not ask which tasks to delete when this deterministic candidate list is available.\n'
             'Ordered todo task candidates:\n'
-            f'{json.dumps(ordered_todo_candidates[:20], ensure_ascii=True, indent=2)}'
+            f'{json.dumps(ordered_todo_candidates[:20], ensure_ascii=True, separators=(",", ":"))}'
         )
         return updated_prompt
 
@@ -1916,8 +2007,28 @@ class LLMPlanner:
         if history_limit <= 0:
             return []
 
+        history_slice = history[-history_limit:]
+        cache = getattr(self, '_history_messages_cache', None)
+        if not isinstance(cache, dict):
+            cache = {}
+            setattr(self, '_history_messages_cache', cache)
+        cache_max_entries = getattr(self, '_history_messages_cache_max_entries', 128)
+        if not isinstance(cache_max_entries, int) or cache_max_entries <= 0:
+            cache_max_entries = 128
+            setattr(self, '_history_messages_cache_max_entries', cache_max_entries)
+
+        cache_key = self._history_messages_cache_key(
+            history_slice=history_slice,
+            history_limit=history_limit,
+        )
+        cached_messages = cache.get(cache_key)
+        if cached_messages is not None:
+            return list(cached_messages)
+
         messages: list[Any] = []
-        for item in history[-history_limit:]:
+        for item in history_slice:
+            if not isinstance(item, dict):
+                continue
             role = str(item.get('role', '')).strip().lower()
             content = str(item.get('content', '')).strip()
             if not content:
@@ -1926,7 +2037,33 @@ class LLMPlanner:
                 messages.append(AIMessage(content=content))
             elif role == 'user':
                 messages.append(HumanMessage(content=content))
+
+        cache[cache_key] = list(messages)
+        while len(cache) > cache_max_entries:
+            oldest_key = next(iter(cache), None)
+            if oldest_key is None:
+                break
+            cache.pop(oldest_key, None)
         return messages
+
+    def _history_messages_cache_key(
+        self,
+        *,
+        history_slice: list[Any],
+        history_limit: int,
+    ) -> str:
+        normalized_items: list[dict[str, str]] = []
+        for item in history_slice:
+            if not isinstance(item, dict):
+                continue
+            role = str(item.get('role', '')).strip().lower()
+            content = str(item.get('content', '')).strip()
+            if not content:
+                continue
+            normalized_items.append({'role': role, 'content': content})
+        serialized = json.dumps(normalized_items, ensure_ascii=True, separators=(',', ':'))
+        digest = hashlib.sha1(serialized.encode('utf-8')).hexdigest()[:20]
+        return f'{history_limit}:{digest}:{len(normalized_items)}'
 
     def _heuristic_intent(self, user_message: str) -> IntentType:
         text = user_message.strip().lower()
@@ -1980,6 +2117,21 @@ class LLMPlanner:
                 r'|structure\s+(?:this|that|it)'
                 r')\b',
                 normalized_text,
+            )
+        )
+
+    def _is_simple_edit_planner_request(self, user_message: str) -> bool:
+        normalized = ' '.join(str(user_message or '').strip().lower().split())
+        if not normalized:
+            return False
+        if self._looks_like_roadmap_plan_request(normalized):
+            return False
+        if re.search(r'\b(add|create|delete|remove|move|shift|plan|roadmap)\b', normalized):
+            return False
+        return bool(
+            re.search(
+                r'\b(rename|retitle|change\s+name|update\s+(?:the\s+)?(?:title|name))\b',
+                normalized,
             )
         )
 

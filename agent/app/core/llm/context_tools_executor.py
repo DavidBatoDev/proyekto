@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from copy import deepcopy
 import json
 import logging
@@ -272,9 +273,13 @@ class ContextToolsExecutor:
                 raw_matches: list[Any] = []
                 resolution_id: str | None = None
                 seen_ids: set[str] = set()
-                for query in self._query_variants(label):
-                    search_result = self._run_context_call(
-                        session_context,
+                query_variants = self._query_variants(label)
+                search_results_by_variant: list[tuple[str, dict[str, Any]]] = []
+                if (
+                    self._settings.agent_resolve_parallel_variants_enabled
+                    and len(query_variants) > 1
+                ):
+                    coroutines = [
                         self._nest_client.context_search(
                             roadmap_id=roadmap_id,
                             query=query,
@@ -283,25 +288,72 @@ class ContextToolsExecutor:
                             auth_header=auth_value,
                             trace_id=trace_id,
                         )
+                        for query in query_variants
+                    ]
+                    parallel_results = self._run_context_calls_parallel(
+                        session_context,
+                        coroutines,
                     )
-                    if resolution_id is None:
-                        maybe_resolution = search_result.get('resolution_id')
-                        if isinstance(maybe_resolution, str) and maybe_resolution.strip():
-                            resolution_id = maybe_resolution
-                    variant_matches = search_result.get('matches', [])
-                    if not isinstance(variant_matches, list):
-                        continue
-                    for item in variant_matches:
-                        if not isinstance(item, dict):
+                    search_results_by_variant = [
+                        (query, result if isinstance(result, dict) else {})
+                        for query, result in zip(query_variants, parallel_results)
+                    ]
+                else:
+                    for query in query_variants:
+                        search_result = self._run_context_call(
+                            session_context,
+                            self._nest_client.context_search(
+                                roadmap_id=roadmap_id,
+                                query=query,
+                                node_type=node_type,
+                                limit=limit,
+                                auth_header=auth_value,
+                                trace_id=trace_id,
+                            ),
+                        )
+                        search_results_by_variant.append((query, search_result))
+                        if resolution_id is None:
+                            maybe_resolution = search_result.get('resolution_id')
+                            if isinstance(maybe_resolution, str) and maybe_resolution.strip():
+                                resolution_id = maybe_resolution
+                        variant_matches = search_result.get('matches', [])
+                        if not isinstance(variant_matches, list):
                             continue
-                        item_id = str(item.get('id') or '').strip()
-                        dedupe_key = item_id or json.dumps(item, sort_keys=True, default=str)
-                        if dedupe_key in seen_ids:
+                        for item in variant_matches:
+                            if not isinstance(item, dict):
+                                continue
+                            item_id = str(item.get('id') or '').strip()
+                            dedupe_key = item_id or json.dumps(item, sort_keys=True, default=str)
+                            if dedupe_key in seen_ids:
+                                continue
+                            seen_ids.add(dedupe_key)
+                            raw_matches.append(item)
+                        if raw_matches:
+                            break
+
+                if (
+                    self._settings.agent_resolve_parallel_variants_enabled
+                    and len(query_variants) > 1
+                ):
+                    for _query, search_result in search_results_by_variant:
+                        if resolution_id is None:
+                            maybe_resolution = search_result.get('resolution_id')
+                            if isinstance(maybe_resolution, str) and maybe_resolution.strip():
+                                resolution_id = maybe_resolution
+                        variant_matches = search_result.get('matches', [])
+                        if not isinstance(variant_matches, list):
                             continue
-                        seen_ids.add(dedupe_key)
-                        raw_matches.append(item)
-                    if raw_matches:
-                        break
+                        for item in variant_matches:
+                            if not isinstance(item, dict):
+                                continue
+                            item_id = str(item.get('id') or '').strip()
+                            dedupe_key = item_id or json.dumps(item, sort_keys=True, default=str)
+                            if dedupe_key in seen_ids:
+                                continue
+                            seen_ids.add(dedupe_key)
+                            raw_matches.append(item)
+                        if raw_matches:
+                            break
                 backend_choice_by_id: dict[str, int] = {}
                 for idx, raw_item in enumerate(raw_matches, start=1):
                     if isinstance(raw_item, dict):
@@ -697,6 +749,48 @@ class ContextToolsExecutor:
         elapsed_ms = (perf_counter() - started) * 1000
         self._record_context_http_timing(session_context=session_context, elapsed_ms=elapsed_ms)
         return result
+
+    def _run_context_calls_parallel(
+        self,
+        session_context: dict[str, Any],
+        coroutines: list[Any],
+    ) -> list[dict[str, Any]]:
+        if not coroutines:
+            return []
+        started = perf_counter()
+
+        async def _gather_calls() -> list[dict[str, Any]]:
+            awaitables: list[Any] = []
+            for item in coroutines:
+                if asyncio.iscoroutine(item) or asyncio.isfuture(item):
+                    awaitables.append(item)
+                else:
+                    async def _immediate(value: Any) -> Any:
+                        return value
+
+                    awaitables.append(_immediate(item))
+            gathered = await asyncio.gather(*awaitables, return_exceptions=True)
+            normalized: list[dict[str, Any]] = []
+            for item in gathered:
+                if isinstance(item, Exception):
+                    normalized.append({})
+                elif isinstance(item, dict):
+                    normalized.append(item)
+                else:
+                    normalized.append({})
+            return normalized
+
+        gather_coro = _gather_calls()
+        result = self._run_async_context_call(gather_coro)
+        if asyncio.iscoroutine(result):
+            result = asyncio.run(result)
+        elif not isinstance(result, list):
+            gather_coro.close()
+        elapsed_ms = (perf_counter() - started) * 1000
+        self._record_context_http_timing(session_context=session_context, elapsed_ms=elapsed_ms)
+        if isinstance(result, list):
+            return [item if isinstance(item, dict) else {} for item in result]
+        return []
 
     def _record_context_tool_timing(
         self,
