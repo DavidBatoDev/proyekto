@@ -4993,7 +4993,7 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(len(updated_sessions), 1)
 
-    async def test_commit_session_graph_mode_creates_post_commit_working_draft(self) -> None:
+    async def test_commit_session_graph_mode_reuses_selected_draft_as_post_commit_head(self) -> None:
         session = AgentSession(roadmap_id='55e431e2-e416-468c-a973-94d97280e97d')
         session.session_id = 'session-1'
         session.metadata.active_draft_id = 'draft-1'
@@ -5057,16 +5057,11 @@ class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
             sessions_routes._nest_client.commit = original_commit  # type: ignore[assignment]
 
         self.assertEqual(response['session_id'], 'session-1')
-        self.assertEqual(session.metadata.drafts['draft-1'].status, 'applied')
-        next_draft_id = session.metadata.active_draft_id
-        self.assertIsNotNone(next_draft_id)
-        assert isinstance(next_draft_id, str)
-        self.assertNotEqual(next_draft_id, 'draft-1')
-        self.assertIn(next_draft_id, session.metadata.drafts)
-        next_draft = session.metadata.drafts[next_draft_id]
-        self.assertEqual(next_draft.parent_draft_id, 'draft-1')
-        self.assertEqual(next_draft.status, 'active')
-        self.assertEqual(session.metadata.draft_head_ids, [next_draft_id])
+        self.assertEqual(session.metadata.active_draft_id, 'draft-1')
+        self.assertEqual(session.metadata.draft_head_ids, ['draft-1'])
+        self.assertEqual(session.metadata.drafts['draft-1'].status, 'active')
+        self.assertEqual(session.metadata.drafts['draft-1'].operations, [])
+        self.assertEqual(session.metadata.drafts['draft-1'].draft_version, 3)
         self.assertEqual(len(updated_sessions), 1)
 
     async def test_commit_session_with_strict_preview_setting_enabled_succeeds(self) -> None:

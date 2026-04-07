@@ -227,6 +227,45 @@ def _repoint_active_draft_after_commit(
     return abandoned_descendants
 
 
+def _reuse_selected_draft_as_post_commit_head(
+    session: AgentSession,
+    *,
+    selected_draft_id: str,
+) -> int:
+    candidate = session.metadata.drafts.get(selected_draft_id)
+    if candidate is None:
+        raise RuntimeError(
+            f'Cannot reuse draft as post-commit head; draft not found: {selected_draft_id}'
+        )
+
+    now = _utcnow()
+    if hasattr(candidate, 'operations') and hasattr(candidate, 'draft_version'):
+        next_version = (
+            candidate.draft_version + 1
+            if isinstance(candidate.draft_version, int)
+            else 1
+        )
+        candidate.operations = []
+        candidate.draft_version = next_version
+        candidate.status = 'active'
+        candidate.updated_at = now
+    elif isinstance(candidate, dict):
+        current_version = candidate.get('draft_version')
+        next_version = current_version + 1 if isinstance(current_version, int) else 1
+        candidate['operations'] = []
+        candidate['draft_version'] = next_version
+        candidate['status'] = 'active'
+        candidate['updated_at'] = now
+    else:
+        raise RuntimeError(
+            f'Cannot reuse draft as post-commit head; malformed draft: {selected_draft_id}'
+        )
+
+    session.metadata.active_draft_id = selected_draft_id
+    session.metadata.draft_head_ids = [selected_draft_id]
+    return next_version
+
+
 def _service_unavailable(reason: str) -> HTTPException:
     return HTTPException(
         status_code=503,
@@ -394,38 +433,26 @@ async def _execute_auto_commit(
             source='commit_semantic_diff',
         )
 
-    _set_draft_status(
-        session=session,
-        draft_id=draft_id,
-        status='applied',
-    )
-
     staged_operations_count: int
     staged_operations_version: int
     active_draft_id: str | None
     active_draft_version: int | None
     if settings.agent_draft_graph_enabled:
         agent_service.ensure_draft_graph_initialized(session)
-        next_draft_id = f'{session.session_id}:draft:{uuid4()}'
-        next_draft = DraftNode(
-            draft_id=next_draft_id,
-            parent_draft_id=draft_id,
-            draft_mode='append',
-            operations=[],
-            draft_version=0,
-            base_revision=session.base_revision,
-            revision_token=session.revision_token,
-            summary='Post-commit working draft',
-            status='active',
+        next_draft_version = _reuse_selected_draft_as_post_commit_head(
+            session,
+            selected_draft_id=draft_id,
         )
-        session.metadata.drafts[next_draft_id] = next_draft
-        session.metadata.active_draft_id = next_draft_id
-        session.metadata.draft_head_ids = [next_draft_id]
         staged_operations_count = 0
-        staged_operations_version = 0
-        active_draft_id = next_draft_id
-        active_draft_version = next_draft.draft_version
+        staged_operations_version = next_draft_version
+        active_draft_id = draft_id
+        active_draft_version = next_draft_version
     else:
+        _set_draft_status(
+            session=session,
+            draft_id=draft_id,
+            status='applied',
+        )
         session.operations = []
         session.staged_operations_version += 1
         staged_operations_count = 0
@@ -950,29 +977,18 @@ async def commit_session(
         )
 
     if payload.operations is None:
-        _set_draft_status(
-            session=session,
-            draft_id=selected_draft_id,
-            status='applied',
-        )
         if settings.agent_draft_graph_enabled:
             agent_service.ensure_draft_graph_initialized(session)
-            next_draft_id = f'{session.session_id}:draft:{uuid4()}'
-            next_draft = DraftNode(
-                draft_id=next_draft_id,
-                parent_draft_id=selected_draft_id,
-                draft_mode='append',
-                operations=[],
-                draft_version=0,
-                base_revision=session.base_revision,
-                revision_token=session.revision_token,
-                summary='Post-commit working draft',
-                status='active',
+            _reuse_selected_draft_as_post_commit_head(
+                session,
+                selected_draft_id=selected_draft_id,
             )
-            session.metadata.drafts[next_draft_id] = next_draft
-            session.metadata.active_draft_id = next_draft_id
-            session.metadata.draft_head_ids = [next_draft_id]
         else:
+            _set_draft_status(
+                session=session,
+                draft_id=selected_draft_id,
+                status='applied',
+            )
             session.operations = []
             session.staged_operations_version += 1
 

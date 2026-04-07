@@ -14,16 +14,10 @@ class NestRoadmapClient:
     def __init__(self) -> None:
         self._settings = get_settings()
         self._logger = logging.getLogger(__name__)
-        self._client: httpx.AsyncClient | None = None
-
-    def _http_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=self._settings.nest_timeout_seconds)
-        return self._client
 
     async def aclose(self) -> None:
-        if self._client is not None and not self._client.is_closed:
-            await self._client.aclose()
+        # Client instances are short-lived per request call.
+        return None
 
     async def preview(
         self,
@@ -247,7 +241,8 @@ class NestRoadmapClient:
         url = f"{self._settings.nest_api_base_url}{path}"
         started = perf_counter()
         network_started = perf_counter()
-        response = await self._http_client().post(url, json=payload, headers=headers)
+        async with httpx.AsyncClient(timeout=self._settings.nest_timeout_seconds) as client:
+            response = await client.post(url, json=payload, headers=headers)
         network_ms = int((perf_counter() - network_started) * 1000)
 
         if response.is_success:
@@ -314,7 +309,8 @@ class NestRoadmapClient:
         url = f"{self._settings.nest_api_base_url}{path}"
         started = perf_counter()
         network_started = perf_counter()
-        response = await self._http_client().get(url, headers=headers)
+        async with httpx.AsyncClient(timeout=self._settings.nest_timeout_seconds) as client:
+            response = await client.get(url, headers=headers)
         network_ms = int((perf_counter() - network_started) * 1000)
 
         if response.is_success:
