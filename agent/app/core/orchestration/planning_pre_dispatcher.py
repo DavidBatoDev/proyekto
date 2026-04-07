@@ -1,0 +1,169 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from time import perf_counter
+from typing import Any
+
+from app.core.contracts.operations import RoadmapOperation
+from app.core.contracts.sessions import AgentSession, IntentType
+
+
+@dataclass
+class PrePlanningDispatchResult:
+    session_context: dict[str, Any]
+    pending_edit_context_present: bool
+    edit_continuation_trigger: str | None
+    has_staged_operations: bool
+    preview_intent: IntentType
+    planning_user_message: str
+    mixed_query_followup_message: str | None
+    deictic_resolution: dict[str, Any] | None
+    actor_fetch_attempted: bool
+    actor_fetch_skipped_reason: str | None
+    actor_fetch_ms: int | None
+
+
+def dispatch_pre_planning_phase(
+    *,
+    service: Any,
+    session: AgentSession,
+    user_message: str,
+    auth_header: str | None,
+    trace_id: str | None,
+    staged_operations: list[RoadmapOperation],
+    phase_timings: dict[str, Any],
+) -> PrePlanningDispatchResult:
+    self = service
+
+    pending_edit_context_present = session.metadata.pending_edit_context is not None
+    edit_continuation_trigger = self._detect_edit_continuation_trigger(user_message)
+    has_staged_operations = bool(staged_operations)
+    deictic_reference_present = self._looks_like_deictic_parent_reference(user_message)
+    recent_targets_available = bool(self._get_recent_resolved_targets(session))
+    pending_continuation_requested = pending_edit_context_present and (
+        edit_continuation_trigger in {'confirm', 'cancel', 'correction', 'retry'}
+    )
+    staged_operation_continuation = (
+        edit_continuation_trigger is not None and has_staged_operations
+    )
+    recent_target_continuation = (
+        edit_continuation_trigger is not None
+        and deictic_reference_present
+        and recent_targets_available
+    )
+    should_force_edit_preview = (
+        pending_continuation_requested
+        or staged_operation_continuation
+        or recent_target_continuation
+    )
+    if recent_target_continuation:
+        phase_timings['deictic_recent_target_continuation'] = 1
+
+    session_context = self._build_session_context(session, auth_header, trace_id)
+    if should_force_edit_preview:
+        preview_intent: IntentType = 'roadmap_edit'
+        phase_timings['intent_classification_ms'] = 0
+    else:
+        classify_started = perf_counter()
+        preview_intent, _ = self._planner.preview_intent_classification(
+            user_message=user_message,
+            session_context=session_context,
+        )
+        phase_timings['intent_classification_ms'] = int(
+            (perf_counter() - classify_started) * 1000
+        )
+
+    simple_edit_detected = preview_intent == 'roadmap_edit'
+    mixed_query_followup_message = self._extract_mixed_query_followup_message(
+        user_message=user_message,
+        preview_intent=preview_intent,
+    )
+    mixed_edit_primary_message = self._extract_mixed_edit_primary_message(
+        user_message=user_message,
+        query_message=mixed_query_followup_message,
+    )
+    planning_user_message = mixed_edit_primary_message or user_message
+    if mixed_query_followup_message is not None:
+        phase_timings['mixed_query_detected'] = 1
+    if mixed_edit_primary_message is not None:
+        phase_timings['mixed_query_edit_clause_used'] = 1
+
+    actor_fetch_attempted = False
+    actor_fetch_skipped_reason: str | None = None
+    actor_fetch_ms: int | None = None
+    should_fetch_actor, actor_skip_reason = self._should_fetch_actor_context(
+        preview_intent=preview_intent,
+        user_message=user_message,
+        auth_header=auth_header,
+        simple_edit_detected=simple_edit_detected,
+        actor_context_present=session.metadata.actor_context is not None,
+    )
+    if should_fetch_actor:
+        actor_fetch_attempted = True
+        actor_started = perf_counter()
+        self._ensure_actor_context(
+            session=session,
+            auth_header=auth_header,
+            trace_id=trace_id,
+        )
+        actor_fetch_ms = int((perf_counter() - actor_started) * 1000)
+        phase_timings['actor_fetch_ms'] = actor_fetch_ms
+    else:
+        actor_fetch_skipped_reason = actor_skip_reason
+        if actor_skip_reason == 'missing_auth_header':
+            self._clear_actor_context_for_missing_auth(
+                session=session,
+                trace_id=trace_id,
+            )
+
+    session_context = self._build_session_context(session, auth_header, trace_id)
+    if should_force_edit_preview:
+        session_context['force_edit_continuation'] = True
+        session_context['force_edit_continuation_reason'] = (
+            edit_continuation_trigger or 'pending_context'
+        )
+    deictic_resolution = self._resolve_deictic_parent_reference(
+        session=session,
+        user_message=user_message,
+    )
+    if deictic_resolution is not None:
+        deictic_status = str(deictic_resolution.get('status') or '')
+        session_context['deictic_resolution_status'] = deictic_status
+        phase_timings['deictic_resolution_detected'] = 1
+        if deictic_status == 'resolved':
+            parent_hint = {
+                'node_id': deictic_resolution.get('node_id'),
+                'node_type': deictic_resolution.get('node_type'),
+                'title': deictic_resolution.get('title'),
+                'label': deictic_resolution.get('label'),
+            }
+            session_context['deictic_parent_hint'] = parent_hint
+            phase_timings['deictic_resolution_candidates'] = 1
+            self._append_recent_resolved_target(
+                session=session,
+                node_id=parent_hint.get('node_id'),
+                node_type=parent_hint.get('node_type'),
+                title=parent_hint.get('title'),
+                label=parent_hint.get('label'),
+                source='deictic_pre_resolver',
+                confidence=1.0,
+            )
+        elif deictic_status == 'ambiguous':
+            candidates = deictic_resolution.get('candidates')
+            phase_timings['deictic_resolution_candidates'] = (
+                len(candidates) if isinstance(candidates, list) else 0
+            )
+
+    return PrePlanningDispatchResult(
+        session_context=session_context,
+        pending_edit_context_present=pending_edit_context_present,
+        edit_continuation_trigger=edit_continuation_trigger,
+        has_staged_operations=has_staged_operations,
+        preview_intent=preview_intent,
+        planning_user_message=planning_user_message,
+        mixed_query_followup_message=mixed_query_followup_message,
+        deictic_resolution=deictic_resolution,
+        actor_fetch_attempted=actor_fetch_attempted,
+        actor_fetch_skipped_reason=actor_fetch_skipped_reason,
+        actor_fetch_ms=actor_fetch_ms,
+    )
