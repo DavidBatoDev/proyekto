@@ -101,6 +101,94 @@ def summarize_react_tool_observation(
         node_title = result.get('title')
         if isinstance(node_title, str) and node_title.strip():
             summary_item['node_title'] = node_title.strip()[:80]
+        feature_id = result.get('feature_id')
+        if isinstance(feature_id, str) and feature_id.strip():
+            summary_item['feature_id'] = feature_id.strip()
+        epic_id = result.get('epic_id')
+        if isinstance(epic_id, str) and epic_id.strip():
+            summary_item['epic_id'] = epic_id.strip()
+        operations = result.get('operations')
+        if isinstance(operations, list):
+            summary_item['operation_count'] = len(operations)
+
+        task_ids: list[str] = []
+        task_items: list[dict[str, str]] = []
+        task_statuses: dict[str, str] = {}
+        task_ids_seen: set[str] = set()
+
+        def _append_task_summary(
+            task_id: Any,
+            *,
+            title: Any = '',
+            status_value: Any = '',
+        ) -> None:
+            if not isinstance(task_id, str) or not task_id.strip():
+                return
+            normalized_task_id = task_id.strip()
+            if normalized_task_id in task_ids_seen:
+                return
+            task_ids_seen.add(normalized_task_id)
+            task_ids.append(normalized_task_id)
+            normalized_title = str(title or '').strip()[:60]
+            normalized_status = str(status_value or '').strip()
+            task_items.append(
+                {
+                    'id': normalized_task_id,
+                    'title': normalized_title,
+                    'status': normalized_status[:24],
+                }
+            )
+            if normalized_status:
+                task_statuses[normalized_task_id] = normalized_status[:48]
+
+        task_ids_raw = result.get('task_ids')
+        if isinstance(task_ids_raw, list):
+            for task_id in task_ids_raw[:50]:
+                _append_task_summary(task_id)
+
+        tasks = result.get('tasks')
+        if isinstance(tasks, list):
+            summary_item['task_count'] = len(tasks)
+            for task in tasks[:50]:
+                if not isinstance(task, dict):
+                    continue
+                task_status = task.get('status') or task.get('state')
+                _append_task_summary(
+                    task.get('id'),
+                    title=task.get('title'),
+                    status_value=task_status,
+                )
+
+        if isinstance(operations, list):
+            operation_node_ids: list[str] = []
+            operation_node_ids_seen: set[str] = set()
+            for operation in operations[:50]:
+                if not isinstance(operation, dict):
+                    continue
+                operation_node_id = operation.get('node_id')
+                if isinstance(operation_node_id, str) and operation_node_id.strip():
+                    normalized_operation_node_id = operation_node_id.strip()
+                    if normalized_operation_node_id not in operation_node_ids_seen:
+                        operation_node_ids_seen.add(normalized_operation_node_id)
+                        operation_node_ids.append(normalized_operation_node_id)
+
+                op_node_type = str(operation.get('node_type') or '').strip().lower()
+                if op_node_type == 'task':
+                    _append_task_summary(
+                        operation.get('node_id'),
+                        status_value=operation.get('status'),
+                    )
+
+            if operation_node_ids:
+                summary_item['operation_node_ids'] = operation_node_ids
+
+        if task_ids:
+            summary_item['task_ids'] = task_ids
+        if task_statuses:
+            summary_item['task_statuses'] = task_statuses
+        if task_items:
+            summary_item['tasks'] = task_items
+
         matches = result.get('matches')
         if isinstance(matches, list):
             summary_item['match_count'] = len(matches)

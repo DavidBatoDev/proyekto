@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import re
 from typing import Any
 
 from app.core.contracts.operations import RoadmapOperation
@@ -9,10 +10,78 @@ from app.core.llm.contracts.clarifier_contract import build_clarifier_contract
 from app.core.llm.providers import ProviderAdapterError
 from app.core.logging_utils import log_event
 from app.core.tools.registry import (
+    get_edit_helper_tools,
     get_edit_mode_tools,
     get_operation_tools,
+    get_planning_tool,
     parse_plan_tool_args,
 )
+
+
+def _is_bulk_task_scope_update_intent(user_message: str) -> bool:
+    normalized = ' '.join(str(user_message or '').lower().split())
+    if not normalized or 'task' not in normalized:
+        return False
+    has_bulk_scope = bool(re.search(r'\b(all|every)\b', normalized))
+    has_update_verb = bool(re.search(r'\b(mark|update|set|move|change)\b', normalized))
+    return has_bulk_scope and has_update_verb
+
+
+def _is_parent_scoped_bulk_status_intent(user_message: str) -> bool:
+    normalized = ' '.join(str(user_message or '').lower().split())
+    if not normalized or 'task' not in normalized:
+        return False
+    has_bulk_scope = bool(re.search(r'\b(all|every)\b', normalized))
+    has_status_update_verb = bool(re.search(r'\b(mark|update|set|change)\b', normalized))
+    has_parent_scope = bool(re.search(r'\b(in|under|within|inside|for)\b', normalized))
+    has_filter_hint = bool(
+        re.search(r'\b(assignee|assigned|owner|priority|keyword|title|name|contains)\b', normalized)
+    )
+    return has_bulk_scope and has_status_update_verb and has_parent_scope and not has_filter_hint
+
+
+def _has_resolved_parent_context(
+    *,
+    deictic_parent_hint: dict[str, Any] | None,
+    effective_tool_summary: list[dict[str, Any]],
+) -> bool:
+    if isinstance(deictic_parent_hint, dict):
+        hint_node_type = str(deictic_parent_hint.get('node_type') or '').strip().lower()
+        hint_node_id = str(deictic_parent_hint.get('node_id') or '').strip()
+        if hint_node_type in {'epic', 'feature'} and hint_node_id:
+            return True
+
+    for item in effective_tool_summary:
+        if not isinstance(item, dict):
+            continue
+        node_type = str(item.get('node_type') or '').strip().lower()
+        if node_type in {'epic', 'feature'} and str(item.get('node_id') or '').strip():
+            return True
+        if str(item.get('epic_id') or '').strip() or str(item.get('feature_id') or '').strip():
+            return True
+        matches = item.get('match_items')
+        if not isinstance(matches, list):
+            continue
+        for match in matches:
+            if not isinstance(match, dict):
+                continue
+            match_type = str(match.get('type') or '').strip().lower()
+            match_id = str(match.get('id') or '').strip()
+            if match_type in {'epic', 'feature'} and match_id:
+                return True
+    return False
+
+
+def _select_tools_by_name(
+    tools: list[dict[str, Any]],
+    allowed_names: set[str],
+) -> list[dict[str, Any]]:
+    selected: list[dict[str, Any]] = []
+    for tool in tools:
+        tool_name = str(tool.get('function', {}).get('name') or '').strip()
+        if tool_name in allowed_names:
+            selected.append(tool)
+    return selected
 
 
 def plan_operations(
@@ -178,6 +247,18 @@ def plan_operations(
         and prior_provider_error_code == 'max_tool_turns_exceeded'
         and bool(resolved_node_ids or effective_tool_summary)
     )
+    bulk_scope_parent_guard = (
+        intent_type == 'roadmap_edit'
+        and _is_bulk_task_scope_update_intent(user_message)
+        and _has_resolved_parent_context(
+            deictic_parent_hint=deictic_parent_hint,
+            effective_tool_summary=effective_tool_summary,
+        )
+    )
+    strict_parent_bulk_status_guard = (
+        bulk_scope_parent_guard
+        and _is_parent_scoped_bulk_status_intent(user_message)
+    )
     simple_edit_profile_enabled = bool(
         planner._settings.agent_simple_edit_planner_profile_enabled
     )
@@ -189,6 +270,22 @@ def plan_operations(
     )
     if followup_closed_world_turn or intent_type == 'roadmap_plan':
         tool_definitions = get_operation_tools()
+    elif bulk_scope_parent_guard:
+        helper_tools = get_edit_helper_tools()
+        if strict_parent_bulk_status_guard:
+            tool_definitions = [
+                *_select_tools_by_name(helper_tools, {'bulk_update_tasks_by_parent'}),
+                get_planning_tool(),
+            ]
+        else:
+            tool_definitions = [
+                *_select_tools_by_name(
+                    helper_tools,
+                    {'bulk_update_tasks_by_parent', 'bulk_update_tasks_by_filter'},
+                ),
+                get_planning_tool(),
+            ]
+        edit_turns = max(1, min(edit_turns, 2))
 
     planner_profile: str | None = None
     if simple_edit_profile:
@@ -210,6 +307,32 @@ def plan_operations(
             'User request:\n'
             f'{user_message}'
         )
+    elif bulk_scope_parent_guard and not followup_closed_world_turn:
+        helper_call_guidance = (
+            'Call bulk_update_tasks_by_parent exactly once, then call '
+            'plan_roadmap_operations exactly once.'
+            if strict_parent_bulk_status_guard
+            else (
+                'Call one helper first (bulk_update_tasks_by_parent or '
+                'bulk_update_tasks_by_filter), then call plan_roadmap_operations exactly once.'
+            )
+        )
+        planner_prompt = (
+            'You are in edit planning mode with resolved parent context for a bulk task update.\n'
+            f'ReAct loop turn: {react_loop_turn}.\n'
+            f'Max tool calls this turn: {edit_turns}.\n'
+            'Do not call discovery/read tools in this turn.\n'
+            f'{helper_call_guidance}\n'
+            'Avoid low-level task-by-task discovery when parent scope is already available.\n\n'
+            'Resolved context summary:\n'
+            f'{json.dumps(effective_tool_summary[:10], ensure_ascii=True, separators=(",", ":"))}\n\n'
+            'Current staged operations:\n'
+            f'{staged_operations_payload}\n\n'
+            'Roadmap ID:\n'
+            f'{roadmap_id_value}\n\n'
+            'User request:\n'
+            f'{user_message}'
+        )
     elif followup_closed_world_turn:
         planner_prompt = (
             'You are in edit planning mode, follow-up ReAct turn.\n'
@@ -218,6 +341,10 @@ def plan_operations(
             'ALL CONTEXT BELOW IS ALREADY RESOLVED.\n'
             'Do not call resolve_node_reference or get_children again for the same target.\n'
             'Your primary action in this turn is to call plan_roadmap_operations exactly once.\n'
+            'For intents like "mark/update all tasks in or under X", use '
+            'bulk_update_tasks_by_parent with the resolved parent ID instead of asking for task IDs.\n'
+            'For combined scope + filter updates (for example assignee/status/keyword), use bulk_update_tasks_by_filter.\n'
+            'If task_ids or task summaries are already present in prior observations, stage operations immediately.\n'
             'If you still cannot produce safe operations, call plan_roadmap_operations with an empty '
             'operations list and place the clarifying question in assistant_message.\n\n'
             'Resolved node IDs:\n'
@@ -251,6 +378,8 @@ def plan_operations(
             'Resolve named targets to node IDs with resolve_node_reference before asking for IDs.\n'
             'Use context tools when needed to resolve node IDs and hierarchy before drafting operations.\n'
             'Use intent-level helper tools for common actions (create_*, move_*, reorder_*, bulk_*).\n'
+            'For "all tasks under a feature/epic" status updates, prefer bulk_update_tasks_by_parent.\n'
+            'For broad task updates with filters, prefer bulk_update_tasks_by_filter.\n'
             'When ready, call plan_roadmap_operations exactly once with assistant_message and operations.\n'
             'Do not call commit or discard tools. Commit remains a UI action.\n'
             'Current staged operations:\n'

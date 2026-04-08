@@ -20,7 +20,7 @@ class DeterministicContextAdapterTests(unittest.TestCase):
                         'title': 'Platform Foundation',
                     },
                 }
-            if name == 'get_features':
+            if name == 'get_features_by_epic':
                 return {'children': [{'id': 'f1', 'type': 'feature', 'title': 'Authentication'}]}
             return {'error': {'code': 'UNKNOWN'}}
 

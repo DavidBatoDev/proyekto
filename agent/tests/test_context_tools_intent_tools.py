@@ -98,6 +98,22 @@ class _FakeNestClient:
                 'title': 'Login API',
                 'status': 'in_progress',
             },
+            '11111111-1111-1111-1111-111111111111': {
+                'id': '11111111-1111-1111-1111-111111111111',
+                'type': 'epic',
+                'title': 'Auth Epic',
+                'status': 'in_progress',
+            },
+        }
+        assignees = {
+            't1': 'u1',
+            't2': 'u1',
+            't3': 'u2',
+        }
+        priorities = {
+            't1': 'medium',
+            't2': 'low',
+            't3': 'high',
         }
         known = due_dates.get(node_id)
         if isinstance(known, dict):
@@ -108,6 +124,8 @@ class _FakeNestClient:
             'title': f'Task {node_id}',
             'status': 'todo' if node_id == 't1' else 'done',
             'due_date': due_dates.get(node_id),
+            'assignee_id': assignees.get(node_id),
+            'priority': priorities.get(node_id),
         }
 
     async def context_search(
@@ -208,6 +226,11 @@ class ContextToolIntentTests(unittest.TestCase):
 
         self.assertIn('get_roadmap_overview', context_tool_names)
         self.assertIn('get_tasks_by_status', context_tool_names)
+        self.assertIn('get_tasks_by_parent', context_tool_names)
+        self.assertNotIn('get_features', context_tool_names)
+        self.assertNotIn('get_children', context_tool_names)
+        self.assertNotIn('get_tasks_by_feature', context_tool_names)
+        self.assertNotIn('get_tasks_by_epic', context_tool_names)
         tasks_by_status_tool = next(
             tool for tool in context_tools
             if str(tool.get('function', {}).get('name') or '') == 'get_tasks_by_status'
@@ -225,7 +248,21 @@ class ContextToolIntentTests(unittest.TestCase):
         )
         self.assertIn('create_epic', edit_tool_names)
         self.assertIn('bulk_update_task_status', edit_tool_names)
+        self.assertIn('bulk_update_tasks_by_parent', edit_tool_names)
+        self.assertIn('bulk_update_tasks_by_filter', edit_tool_names)
         self.assertIn('plan_roadmap_operations', edit_tool_names)
+
+        resolve_tool = next(
+            tool for tool in context_tools
+            if str(tool.get('function', {}).get('name') or '') == 'resolve_node_reference'
+        )
+        resolve_props = (
+            resolve_tool.get('function', {})
+            .get('parameters', {})
+            .get('properties', {})
+        )
+        self.assertIn('auto_correct', resolve_props)
+        self.assertIn('fuzzy', resolve_props)
 
     def test_create_epic_returns_add_epic_operation(self) -> None:
         result = self.executor.execute(
@@ -303,6 +340,160 @@ class ContextToolIntentTests(unittest.TestCase):
         self.assertEqual(error.get('code'), 'INVALID_ARGUMENT')
         self.assertEqual(error.get('arg_name'), 'status')
 
+    def test_bulk_update_tasks_by_parent_feature_skips_noop_updates(self) -> None:
+        result = self.executor.execute(
+            'bulk_update_tasks_by_parent',
+            {
+                'roadmap_id': 'r1',
+                'parent_type': 'feature',
+                'parent_id': 'f1',
+                'status': 'done',
+                'include_completed': True,
+            },
+            self.session_context,
+        )
+        operations = result.get('operations')
+        self.assertIsInstance(operations, list)
+        assert isinstance(operations, list)
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].get('node_id'), 't1')
+        self.assertEqual(result.get('parent_type'), 'feature')
+        self.assertEqual(result.get('matched_task_count'), 2)
+        self.assertEqual(result.get('updated_task_count'), 1)
+
+    def test_bulk_update_tasks_by_parent_epic_updates_nested_tasks(self) -> None:
+        result = self.executor.execute(
+            'bulk_update_tasks_by_parent',
+            {
+                'roadmap_id': 'r1',
+                'parent_type': 'epic',
+                'parent_id': '11111111-1111-1111-1111-111111111111',
+                'status': 'in_review',
+                'include_completed': True,
+            },
+            self.session_context,
+        )
+        operations = result.get('operations')
+        self.assertIsInstance(operations, list)
+        assert isinstance(operations, list)
+        self.assertEqual(len(operations), 3)
+        self.assertEqual(
+            [op.get('node_id') for op in operations],
+            ['t1', 't2', 't3'],
+        )
+        self.assertEqual(result.get('matched_task_count'), 3)
+        self.assertEqual(result.get('updated_task_count'), 3)
+
+    def test_bulk_update_tasks_by_parent_excludes_completed_by_default(self) -> None:
+        result = self.executor.execute(
+            'bulk_update_tasks_by_parent',
+            {
+                'roadmap_id': 'r1',
+                'parent_type': 'feature',
+                'parent_id': 'f1',
+                'status': 'in_review',
+            },
+            self.session_context,
+        )
+        operations = result.get('operations')
+        self.assertIsInstance(operations, list)
+        assert isinstance(operations, list)
+        self.assertEqual([op.get('node_id') for op in operations], ['t1'])
+        self.assertEqual(result.get('matched_task_count'), 1)
+
+    def test_bulk_update_tasks_by_parent_include_completed_true_updates_done(self) -> None:
+        result = self.executor.execute(
+            'bulk_update_tasks_by_parent',
+            {
+                'roadmap_id': 'r1',
+                'parent_type': 'feature',
+                'parent_id': 'f1',
+                'status': 'in_review',
+                'include_completed': True,
+            },
+            self.session_context,
+        )
+        operations = result.get('operations')
+        self.assertIsInstance(operations, list)
+        assert isinstance(operations, list)
+        self.assertEqual([op.get('node_id') for op in operations], ['t1', 't2'])
+        self.assertEqual(result.get('matched_task_count'), 2)
+
+    def test_bulk_update_tasks_by_parent_rejects_invalid_parent_type(self) -> None:
+        result = self.executor.execute(
+            'bulk_update_tasks_by_parent',
+            {
+                'roadmap_id': 'r1',
+                'parent_type': 'roadmap',
+                'parent_id': 'r1',
+                'status': 'done',
+            },
+            self.session_context,
+        )
+        error = result.get('error')
+        self.assertIsInstance(error, dict)
+        assert isinstance(error, dict)
+        self.assertEqual(error.get('code'), 'INVALID_ARGUMENT')
+        self.assertEqual(error.get('arg_name'), 'parent_type')
+
+    def test_bulk_update_tasks_by_filter_updates_by_parent_and_status_filter(self) -> None:
+        result = self.executor.execute(
+            'bulk_update_tasks_by_filter',
+            {
+                'roadmap_id': 'r1',
+                'filters': {
+                    'parent_type': 'feature',
+                    'parent_id': 'f1',
+                    'status': 'todo',
+                },
+                'update': {'status': 'in_review'},
+            },
+            self.session_context,
+        )
+        operations = result.get('operations')
+        self.assertIsInstance(operations, list)
+        assert isinstance(operations, list)
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].get('op'), 'mark_status')
+        self.assertEqual(operations[0].get('node_id'), 't1')
+
+    def test_bulk_update_tasks_by_filter_defaults_to_excluding_completed(self) -> None:
+        result = self.executor.execute(
+            'bulk_update_tasks_by_filter',
+            {
+                'roadmap_id': 'r1',
+                'filters': {
+                    'assignee_id': 'u1',
+                },
+                'update': {'priority': 'high'},
+            },
+            self.session_context,
+        )
+        operations = result.get('operations')
+        self.assertIsInstance(operations, list)
+        assert isinstance(operations, list)
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].get('op'), 'update_node')
+        self.assertEqual(operations[0].get('node_id'), 't1')
+        self.assertEqual((operations[0].get('patch') or {}).get('priority'), 'high')
+        self.assertFalse((result.get('filters') or {}).get('include_completed'))
+
+    def test_bulk_update_tasks_by_filter_rejects_empty_update_object(self) -> None:
+        result = self.executor.execute(
+            'bulk_update_tasks_by_filter',
+            {
+                'roadmap_id': 'r1',
+                'filters': {'status': 'todo'},
+                'update': {},
+            },
+            self.session_context,
+        )
+        error = result.get('error')
+        self.assertIsInstance(error, dict)
+        assert isinstance(error, dict)
+        self.assertEqual(error.get('code'), 'INVALID_ARGUMENT')
+        self.assertEqual(error.get('arg_name'), 'update')
+
     def test_update_task_status_rejects_invalid_status(self) -> None:
         result = self.executor.execute(
             'update_task_status',
@@ -329,6 +520,118 @@ class ContextToolIntentTests(unittest.TestCase):
         self.assertIsInstance(tasks, list)
         assert isinstance(tasks, list)
         self.assertEqual([item.get('id') for item in tasks], ['t2', 't3'])
+
+    def test_get_tasks_by_parent_for_feature_filters_by_status(self) -> None:
+        result = self.executor.execute(
+            'get_tasks_by_parent',
+            {
+                'roadmap_id': 'r1',
+                'parent_id': 'f1',
+                'parent_type': 'feature',
+                'status': 'todo',
+            },
+            self.session_context,
+        )
+        tasks = result.get('tasks')
+        self.assertIsInstance(tasks, list)
+        assert isinstance(tasks, list)
+        self.assertEqual([item.get('id') for item in tasks], ['t1'])
+
+    def test_get_tasks_by_parent_infers_epic_type_from_parent_details(self) -> None:
+        result = self.executor.execute(
+            'get_tasks_by_parent',
+            {
+                'roadmap_id': 'r1',
+                'parent_id': '11111111-1111-1111-1111-111111111111',
+                'status': 'done',
+            },
+            self.session_context,
+        )
+        tasks = result.get('tasks')
+        self.assertIsInstance(tasks, list)
+        assert isinstance(tasks, list)
+        self.assertEqual([item.get('id') for item in tasks], ['t2', 't3'])
+
+    def test_get_tasks_by_parent_excludes_completed_by_default(self) -> None:
+        result = self.executor.execute(
+            'get_tasks_by_parent',
+            {
+                'roadmap_id': 'r1',
+                'parent_id': 'f1',
+                'parent_type': 'feature',
+                'status': 'all',
+            },
+            self.session_context,
+        )
+        tasks = result.get('tasks')
+        self.assertIsInstance(tasks, list)
+        assert isinstance(tasks, list)
+        self.assertEqual([item.get('id') for item in tasks], ['t1'])
+        self.assertFalse(bool(result.get('include_completed')))
+
+    def test_get_tasks_by_parent_excludes_completed_when_requested(self) -> None:
+        result = self.executor.execute(
+            'get_tasks_by_parent',
+            {
+                'roadmap_id': 'r1',
+                'parent_id': 'f1',
+                'parent_type': 'feature',
+                'include_completed': False,
+                'status': 'all',
+            },
+            self.session_context,
+        )
+        tasks = result.get('tasks')
+        self.assertIsInstance(tasks, list)
+        assert isinstance(tasks, list)
+        self.assertEqual([item.get('id') for item in tasks], ['t1'])
+
+    def test_legacy_get_tasks_by_feature_still_executes(self) -> None:
+        result = self.executor.execute(
+            'get_tasks_by_feature',
+            {
+                'roadmap_id': 'r1',
+                'feature_id': 'f1',
+                'status': 'all',
+                'limit': 10,
+            },
+            self.session_context,
+        )
+        tasks = result.get('tasks')
+        self.assertIsInstance(tasks, list)
+        assert isinstance(tasks, list)
+        self.assertEqual([item.get('id') for item in tasks], ['t1', 't2'])
+
+    def test_legacy_get_tasks_by_epic_still_executes(self) -> None:
+        result = self.executor.execute(
+            'get_tasks_by_epic',
+            {
+                'roadmap_id': 'r1',
+                'epic_id': '11111111-1111-1111-1111-111111111111',
+                'status': 'done',
+                'limit': 10,
+            },
+            self.session_context,
+        )
+        tasks = result.get('tasks')
+        self.assertIsInstance(tasks, list)
+        assert isinstance(tasks, list)
+        self.assertEqual([item.get('id') for item in tasks], ['t2', 't3'])
+
+    def test_legacy_get_children_still_executes(self) -> None:
+        result = self.executor.execute(
+            'get_children',
+            {
+                'roadmap_id': 'r1',
+                'parent_id': '11111111-1111-1111-1111-111111111111',
+                'limit': 10,
+            },
+            self.session_context,
+        )
+        children = result.get('children')
+        self.assertIsInstance(children, list)
+        assert isinstance(children, list)
+        self.assertEqual(children, [])
 
     def test_get_features_by_epic_filters_by_explicit_status(self) -> None:
         result = self.executor.execute(
@@ -503,6 +806,30 @@ class ContextToolIntentTests(unittest.TestCase):
                     'assignee_id': 'u1',
                 },
                 [('update_node', 'task'), ('update_node', 'task')],
+            ),
+            (
+                'bulk_update_tasks_by_parent',
+                {
+                    'roadmap_id': 'r1',
+                    'parent_type': 'feature',
+                    'parent_id': 'f1',
+                    'status': 'in_review',
+                    'include_completed': True,
+                },
+                [('mark_status', 'task'), ('mark_status', 'task')],
+            ),
+            (
+                'bulk_update_tasks_by_filter',
+                {
+                    'roadmap_id': 'r1',
+                    'filters': {
+                        'parent_type': 'feature',
+                        'parent_id': 'f1',
+                        'status': 'todo',
+                    },
+                    'update': {'status': 'in_review'},
+                },
+                [('mark_status', 'task')],
             ),
             (
                 'bulk_delete_tasks',

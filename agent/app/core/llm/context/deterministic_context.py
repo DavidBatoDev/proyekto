@@ -420,7 +420,7 @@ def try_deterministic_list_answer(
 
     if intent.pending_kind == 'features_of_epic':
         list_result = execute_context_tool(
-            'get_features',
+            'get_features_by_epic',
             {'roadmap_id': roadmap_id, 'epic_id': parent_id, 'limit': 100},
             session_context,
         )
@@ -537,7 +537,7 @@ def _build_deterministic_overview_answer(
             budget_hit = True
             break
         feature_result = execute_context_tool(
-            'get_features',
+            'get_features_by_epic',
             {'roadmap_id': roadmap_id, 'epic_id': epic_id, 'limit': 100},
             session_context,
         )

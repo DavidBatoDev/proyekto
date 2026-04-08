@@ -163,8 +163,78 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         assert isinstance(tool_names, list)
         self.assertIn('create_epic', tool_names)
         self.assertIn('bulk_update_task_status', tool_names)
+        self.assertIn('bulk_update_tasks_by_parent', tool_names)
+        self.assertIn('bulk_update_tasks_by_filter', tool_names)
         self.assertIn('get_roadmap_overview', tool_names)
         self.assertIn('plan_roadmap_operations', tool_names)
+        self.assertNotIn('get_children', tool_names)
+        self.assertNotIn('get_tasks_by_feature', tool_names)
+        self.assertNotIn('get_tasks_by_epic', tool_names)
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+
+    def test_bulk_task_update_with_resolved_parent_uses_helper_and_plan_only(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Mark all tasks in Authentication System as in review',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-bulk-helper-guard',
+                    'deictic_parent_hint': {
+                        'node_type': 'feature',
+                        'node_id': '123e4567-e89b-12d3-a456-426614174000',
+                    },
+                },
+            },
+        )
+
+        tool_names = captured.get('tool_names')
+        self.assertIsInstance(tool_names, list)
+        assert isinstance(tool_names, list)
+        self.assertIn('bulk_update_tasks_by_parent', tool_names)
+        self.assertNotIn('bulk_update_tasks_by_filter', tool_names)
+        self.assertIn('plan_roadmap_operations', tool_names)
+        self.assertNotIn('get_roadmap_overview', tool_names)
+        self.assertNotIn('resolve_node_reference', tool_names)
+        self.assertNotIn('get_tasks_by_feature', tool_names)
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+
+    def test_bulk_task_update_with_filter_hint_keeps_filter_helper_available(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Update all tasks in Authentication System assigned to me to high priority',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-bulk-filter-guard',
+                    'deictic_parent_hint': {
+                        'node_type': 'feature',
+                        'node_id': '123e4567-e89b-12d3-a456-426614174000',
+                    },
+                },
+            },
+        )
+
+        tool_names = captured.get('tool_names')
+        self.assertIsInstance(tool_names, list)
+        assert isinstance(tool_names, list)
+        self.assertIn('bulk_update_tasks_by_parent', tool_names)
+        self.assertIn('bulk_update_tasks_by_filter', tool_names)
+        self.assertIn('plan_roadmap_operations', tool_names)
+        self.assertNotIn('get_roadmap_overview', tool_names)
+        self.assertNotIn('resolve_node_reference', tool_names)
         self.assertEqual(result.get('response_mode'), 'edit_plan')
 
     def test_roadmap_plan_mode_uses_plan_tool_only(self) -> None:

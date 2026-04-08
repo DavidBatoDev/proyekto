@@ -57,7 +57,7 @@ class DeterministicContextTests(unittest.TestCase):
                         {'id': 'e4', 'title': 'Epic D', 'status': 'todo', 'feature_count': 3},
                     ],
                 }
-            if name == 'get_features':
+            if name == 'get_features_by_epic':
                 return {
                     'children': [
                         {'id': f"{args['epic_id']}-f1", 'type': 'feature', 'title': 'Feature 1'},
@@ -103,7 +103,7 @@ class DeterministicContextTests(unittest.TestCase):
                     'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
                     'epics': [{'id': 'e1', 'title': 'Epic A', 'status': 'todo', 'feature_count': 1}],
                 }
-            if name == 'get_features':
+            if name == 'get_features_by_epic':
                 return {'error': {'code': 'CONTEXT_TOOL_FAILED'}}
             return {'children': []}
 

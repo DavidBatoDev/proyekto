@@ -5502,7 +5502,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
                         'title': 'Platform Foundation',
                     },
                 }
-            if name == 'get_features':
+            if name == 'get_features_by_epic':
                 return {
                     'children': [
                         {'id': '1', 'type': 'feature', 'title': 'Authentication'},
@@ -5899,7 +5899,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
                         {'id': 'e4', 'title': 'Epic D', 'status': 'todo', 'feature_count': 3},
                     ],
                 }
-            if name == 'get_features':
+            if name == 'get_features_by_epic':
                 return {
                     'children': [
                         {'id': f"{args['epic_id']}-f1", 'type': 'feature', 'title': 'Feature 1'},
@@ -5944,7 +5944,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
                     'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
                     'epics': [{'id': 'e1', 'title': 'Epic A', 'status': 'todo', 'feature_count': 0}],
                 }
-            if name == 'get_features':
+            if name == 'get_features_by_epic':
                 return {'children': []}
             if name == 'get_children':
                 return {'children': []}
@@ -5985,7 +5985,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
                     'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
                     'epics': [{'id': 'e1', 'title': 'Epic A', 'status': 'todo', 'feature_count': 1}],
                 }
-            if name == 'get_features':
+            if name == 'get_features_by_epic':
                 return {'error': {'code': 'CONTEXT_TOOL_FAILED'}}
             return {'children': []}
 
@@ -6932,13 +6932,33 @@ class PlannerContextSafetyTests(unittest.TestCase):
                         'status': 'todo',
                     },
                 },
+                {
+                    'tool_name': 'get_tasks_by_feature',
+                    'args': {'feature_id': '4848e4ec-fabf-4002-a703-714e938d6c04'},
+                    'result': {
+                        'feature_id': '4848e4ec-fabf-4002-a703-714e938d6c04',
+                        'tasks': [
+                            {
+                                'id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                                'title': 'Todo Task 1',
+                                'status': 'todo',
+                            },
+                            {
+                                'id': 'c12347aa-ef79-4313-aabd-8db137ccbaaf',
+                                'title': 'Todo Task 2',
+                                'status': 'done',
+                            },
+                        ],
+                    },
+                },
             ]
         )
 
-        self.assertEqual(len(summary), 3)
+        self.assertEqual(len(summary), 4)
         children_summary = summary[0]
         resolve_summary = summary[1]
         node_summary = summary[2]
+        tasks_summary = summary[3]
 
         self.assertEqual(children_summary.get('children_count'), 2)
         self.assertEqual(
@@ -6969,6 +6989,18 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(node_summary.get('node_type'), 'task')
         self.assertEqual(node_summary.get('node_status'), 'todo')
         self.assertEqual(node_summary.get('node_title'), 'Todo Task 1')
+        self.assertEqual(tasks_summary.get('feature_id'), '4848e4ec-fabf-4002-a703-714e938d6c04')
+        self.assertEqual(
+            tasks_summary.get('task_ids'),
+            [
+                'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                'c12347aa-ef79-4313-aabd-8db137ccbaaf',
+            ],
+        )
+        self.assertEqual(
+            (tasks_summary.get('task_statuses') or {}).get('b026e967-54c3-4f11-9c49-b95a680aa2a7'),
+            'todo',
+        )
 
 
 if __name__ == '__main__':

@@ -7,7 +7,8 @@ from pydantic import ValidationError
 
 from app.core.contracts.operations import OperationType, RoadmapOperation
 
-TASK_STATUS_FILTER_VALUES = ['todo', 'in_progress', 'in_review', 'done', 'blocked', 'all']
+TASK_STATUS_VALUES = ['todo', 'in_progress', 'in_review', 'done', 'blocked']
+TASK_STATUS_FILTER_VALUES = [*TASK_STATUS_VALUES, 'all']
 FEATURE_STATUS_FILTER_VALUES = [
     'not_started',
     'in_progress',
@@ -28,13 +29,13 @@ CONTEXT_TOOL_NAMES = {
     'get_node_details',
     'get_children',
     'get_children_from_resolution',
-    'get_features',
     'get_features_by_epic',
     'get_feature_details',
     'get_epics_by_roadmap',
     'get_epic_progress',
     'get_tasks_assigned_to_me',
     'get_tasks_by_status',
+    'get_tasks_by_parent',
     'get_tasks_by_feature',
     'get_tasks_by_epic',
     'get_overdue_tasks',
@@ -60,6 +61,8 @@ EDIT_HELPER_TOOL_NAMES = {
     'reorder_features',
     'reorder_epics',
     'bulk_update_task_status',
+    'bulk_update_tasks_by_parent',
+    'bulk_update_tasks_by_filter',
     'bulk_assign_tasks',
     'bulk_delete_tasks',
     'bulk_move_tasks_to_feature',
@@ -118,22 +121,24 @@ def get_context_tools() -> list[dict[str, Any]]:
         _function_tool(
             name='resolve_node_reference',
             description=(
-                'Resolve a user-provided node label to a concrete node id. '
-                'Use this before asking for manual IDs.'
+                'Primary tool for resolving user-mentioned epics, features, or tasks by name '
+                'to a concrete node id. Use this before asking for manual IDs.'
             ),
             required=['roadmap_id', 'label'],
             properties={
                 'roadmap_id': {'type': 'string'},
                 'label': {'type': 'string'},
                 'node_type': {'type': 'string', 'enum': ['epic', 'feature', 'task']},
+                'auto_correct': {'type': 'boolean'},
+                'fuzzy': {'type': 'boolean'},
                 'limit': {'type': 'integer', 'minimum': 1, 'maximum': 50},
             },
         ),
         _function_tool(
             name='search_nodes',
             description=(
-                'Search roadmap nodes by text query to resolve references like '
-                '"auth feature" or "payment task".'
+                'Search roadmap nodes by text query for broad keyword exploration. '
+                'Use only when resolve_node_reference fails to disambiguate.'
             ),
             required=['roadmap_id', 'query'],
             properties={
@@ -162,16 +167,6 @@ def get_context_tools() -> list[dict[str, Any]]:
             },
         ),
         _function_tool(
-            name='get_children',
-            description='Get child nodes for a roadmap node.',
-            required=['roadmap_id', 'parent_id'],
-            properties={
-                'roadmap_id': {'type': 'string'},
-                'parent_id': {'type': 'string'},
-                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
-            },
-        ),
-        _function_tool(
             name='get_children_from_resolution',
             description=(
                 'Get child nodes by selecting a candidate from resolve_node_reference '
@@ -186,19 +181,8 @@ def get_context_tools() -> list[dict[str, Any]]:
             },
         ),
         _function_tool(
-            name='get_features',
-            description='Get features under an epic id.',
-            required=['roadmap_id', 'epic_id'],
-            properties={
-                'roadmap_id': {'type': 'string'},
-                'epic_id': {'type': 'string'},
-                'status': {'type': 'string', 'enum': FEATURE_STATUS_FILTER_VALUES},
-                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
-            },
-        ),
-        _function_tool(
             name='get_features_by_epic',
-            description='Alias for get_features; returns features for an epic id.',
+            description='List features for an epic id.',
             required=['roadmap_id', 'epic_id'],
             properties={
                 'roadmap_id': {'type': 'string'},
@@ -257,24 +241,18 @@ def get_context_tools() -> list[dict[str, Any]]:
             },
         ),
         _function_tool(
-            name='get_tasks_by_feature',
-            description='List tasks under a specific feature.',
-            required=['roadmap_id', 'feature_id'],
+            name='get_tasks_by_parent',
+            description=(
+                'List tasks under a parent epic or feature. '
+                'By default, completed tasks are excluded unless include_completed is true.'
+            ),
+            required=['roadmap_id', 'parent_id'],
             properties={
                 'roadmap_id': {'type': 'string'},
-                'feature_id': {'type': 'string'},
+                'parent_id': {'type': 'string'},
+                'parent_type': {'type': 'string', 'enum': ['epic', 'feature']},
                 'status': {'type': 'string', 'enum': TASK_STATUS_FILTER_VALUES},
-                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 500},
-            },
-        ),
-        _function_tool(
-            name='get_tasks_by_epic',
-            description='List tasks under all features in an epic.',
-            required=['roadmap_id', 'epic_id'],
-            properties={
-                'roadmap_id': {'type': 'string'},
-                'epic_id': {'type': 'string'},
-                'status': {'type': 'string', 'enum': TASK_STATUS_FILTER_VALUES},
+                'include_completed': {'type': 'boolean'},
                 'limit': {'type': 'integer', 'minimum': 1, 'maximum': 500},
             },
         ),
@@ -466,7 +444,56 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
             required=['task_ids', 'status'],
             properties={
                 'task_ids': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1},
-                'status': {'type': 'string'},
+                'status': {'type': 'string', 'enum': TASK_STATUS_VALUES},
+            },
+        ),
+        _function_tool(
+            name='bulk_update_tasks_by_parent',
+            description=(
+                'Draft status updates for all tasks under a resolved feature or epic '
+                'without manually listing task IDs. '
+                'By default, completed tasks are NOT modified unless include_completed is true.'
+            ),
+            required=['parent_type', 'parent_id', 'status'],
+            properties={
+                'parent_type': {
+                    'type': 'string',
+                    'enum': ['feature', 'epic'],
+                },
+                'parent_id': {'type': 'string'},
+                'status': {'type': 'string', 'enum': TASK_STATUS_VALUES},
+                'include_completed': {'type': 'boolean'},
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 2000},
+            },
+        ),
+        _function_tool(
+            name='bulk_update_tasks_by_filter',
+            description=(
+                'Draft status and/or priority updates for tasks selected by scope and filters '
+                '(for example parent, assignee, status, keyword). '
+                'By default, completed tasks are NOT modified unless filters.include_completed is true.'
+            ),
+            required=['filters', 'update'],
+            properties={
+                'filters': {
+                    'type': 'object',
+                    'properties': {
+                        'parent_id': {'type': 'string'},
+                        'parent_type': {'type': 'string', 'enum': ['epic', 'feature']},
+                        'assignee_id': {'type': 'string'},
+                        'status': {'type': 'string', 'enum': TASK_STATUS_FILTER_VALUES},
+                        'keyword': {'type': 'string'},
+                        'include_completed': {'type': 'boolean'},
+                    },
+                },
+                'update': {
+                    'type': 'object',
+                    'properties': {
+                        'status': {'type': 'string', 'enum': TASK_STATUS_VALUES},
+                        'priority': {'type': 'string'},
+                    },
+                },
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 2000},
             },
         ),
         _function_tool(

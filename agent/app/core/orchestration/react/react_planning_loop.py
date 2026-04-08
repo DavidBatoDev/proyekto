@@ -29,6 +29,18 @@ def _collect_resolved_node_ids(tool_observation_summary: Any) -> list[str]:
             continue
         _add(item.get('selected_id'))
         _add(item.get('node_id'))
+        _add(item.get('queried_node_id'))
+        _add(item.get('feature_id'))
+        _add(item.get('epic_id'))
+        match_ids = item.get('match_ids')
+        if isinstance(match_ids, list):
+            for match_id in match_ids:
+                _add(match_id)
+        match_items = item.get('match_items')
+        if isinstance(match_items, list):
+            for match_item in match_items:
+                if isinstance(match_item, dict):
+                    _add(match_item.get('id'))
         child_ids = item.get('child_ids')
         if isinstance(child_ids, list):
             for child_id in child_ids:
@@ -38,8 +50,21 @@ def _collect_resolved_node_ids(tool_observation_summary: Any) -> list[str]:
             for child in children:
                 if isinstance(child, dict):
                     _add(child.get('id'))
+        task_ids = item.get('task_ids')
+        if isinstance(task_ids, list):
+            for task_id in task_ids:
+                _add(task_id)
+        tasks = item.get('tasks')
+        if isinstance(tasks, list):
+            for task in tasks:
+                if isinstance(task, dict):
+                    _add(task.get('id'))
+        operation_node_ids = item.get('operation_node_ids')
+        if isinstance(operation_node_ids, list):
+            for operation_node_id in operation_node_ids:
+                _add(operation_node_id)
 
-    return ordered_ids[:20]
+    return ordered_ids[:50]
 
 
 def run_edit_react_planning_loop(
