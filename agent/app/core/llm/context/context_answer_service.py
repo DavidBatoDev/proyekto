@@ -9,7 +9,7 @@ from typing import Any, Callable
 from app.core.config import Settings
 from app.core.contracts.sessions import IntentType
 from app.core.logging_utils import log_event
-from app.core.llm.react_executor import map_provider_error_to_stop_reason
+from app.core.llm.react.react_executor import map_provider_error_to_stop_reason
 from app.core.response_cache import ContextAnswerCache
 from app.core.tools.registry import get_context_tools
 
@@ -24,7 +24,7 @@ from .deterministic_intents import (
     match_deterministic_context_intent,
     should_include_ids,
 )
-from .providers import ProviderAdapterError, ProviderOrchestrator
+from app.core.llm.providers import ProviderAdapterError, ProviderOrchestrator
 
 ToolExecutor = Callable[[str, dict[str, Any], dict[str, Any]], dict[str, Any]]
 CacheKeyBuilder = Callable[..., str]

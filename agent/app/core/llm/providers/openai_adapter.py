@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from app.core.config import Settings
 from app.core.contracts.operations import RoadmapOperation
-from app.core.llm.react_executor import BoundedToolLoopOutcome, run_bounded_tool_loop
+from app.core.llm.react.react_executor import BoundedToolLoopOutcome, run_bounded_tool_loop
 from app.core.contracts.sessions import IntentType
 from app.core.llm.providers.base import LLMProviderAdapter, ProviderAdapterError
 from app.core.tools.registry import PLANNING_TOOL_NAME, parse_plan_tool_args

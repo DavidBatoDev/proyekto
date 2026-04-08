@@ -2,7 +2,7 @@ import logging
 import unittest
 
 from app.core.config import get_settings
-from app.core.llm.deterministic_context_adapter import DeterministicContextAdapter
+from app.core.llm.context.deterministic_context_adapter import DeterministicContextAdapter
 
 
 class DeterministicContextAdapterTests(unittest.TestCase):

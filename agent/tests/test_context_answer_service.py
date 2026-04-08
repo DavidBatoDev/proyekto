@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.core.config import get_settings
-from app.core.llm.context_answer_service import ContextAnswerService
+from app.core.llm.context.context_answer_service import ContextAnswerService
 from app.core.llm.providers.base import ProviderAdapterError
 from app.core.response_cache import ContextAnswerCache
 
@@ -830,7 +830,7 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             ]
         )
 
-        with patch('app.core.llm.context_answer_service.log_event') as mocked_log_event:
+        with patch('app.core.llm.context.context_answer_service.log_event') as mocked_log_event:
             response = service.generate(
                 user_message='What are roadmap details?',
                 system_prompt='system',

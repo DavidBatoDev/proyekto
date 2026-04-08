@@ -1,6 +1,6 @@
 import unittest
 
-from app.core.llm.deterministic_intents import (
+from app.core.llm.context.deterministic_intents import (
     is_generic_roadmap_label,
     match_deterministic_context_intent,
     match_global_overview_intent,

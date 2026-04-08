@@ -1,7 +1,7 @@
 import unittest
 
 from app.core.llm.providers.base import ProviderAdapterError
-from app.core.llm.react_executor import BoundedToolLoopOutcome, run_bounded_tool_loop
+from app.core.llm.react.react_executor import BoundedToolLoopOutcome, run_bounded_tool_loop
 
 
 class _FakeAIMessage:

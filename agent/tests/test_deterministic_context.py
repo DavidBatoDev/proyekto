@@ -3,13 +3,13 @@ import unittest
 from types import SimpleNamespace
 
 from app.core.config import get_settings
-from app.core.llm.deterministic_context import (
+from app.core.llm.context.deterministic_context import (
     assess_my_tasks_status_confidence,
     is_rich_my_tasks_request,
     try_deterministic_list_answer,
     try_pending_context_selection,
 )
-from app.core.llm.deterministic_intents import get_deterministic_context_intent
+from app.core.llm.context.deterministic_intents import get_deterministic_context_intent
 
 
 class DeterministicContextTests(unittest.TestCase):

@@ -7,7 +7,7 @@ from typing import Any, Callable
 from fastapi import HTTPException
 
 from app.core.contracts.sessions import ActorContext, AgentSession, IntentType
-from app.core.llm.deterministic_intents import match_deterministic_context_intent
+from app.core.llm.context.deterministic_intents import match_deterministic_context_intent
 from app.core.logging_utils import log_event
 
 
