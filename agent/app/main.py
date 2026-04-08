@@ -2,8 +2,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.sessions import router as sessions_router
+from app.api.routes.sessions_support.runtime import configure_runtime_resolver
 from app.core.config import get_settings
 from app.core.logging_utils import configure_logging
+from app.core.orchestration.agent_service import AgentService
+from app.core.session_store import SessionStore
 
 settings = get_settings()
 configure_logging(settings)
@@ -23,6 +26,21 @@ app.add_middleware(
 )
 
 app.include_router(sessions_router)
+
+
+def _resolve_agent_runtime() -> tuple[SessionStore, AgentService]:
+    runtime = getattr(app.state, 'agent_runtime', None)
+    if runtime is not None:
+        return runtime
+
+    store = SessionStore()
+    service = AgentService(store)
+    runtime = (store, service)
+    app.state.agent_runtime = runtime
+    return runtime
+
+
+configure_runtime_resolver(_resolve_agent_runtime)
 
 
 @app.get('/')
