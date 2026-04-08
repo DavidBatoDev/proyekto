@@ -90,7 +90,7 @@ def dispatch_planning_result(
                     provider_error_code=blocked_reason,
                     clarifier_action='ask_clarifier',
                     clarifier_reason=blocked_reason,
-                    clarifier_options=['Use exact target label', 'Provide node ID', 'Cancel'],
+                    clarifier_options=['Use exact target label', 'Provide the exact name', 'Cancel'],
                 )
                 phase_timings['provider_planning_ms'] = 0
                 route_lane = 'llm_edit_plan'

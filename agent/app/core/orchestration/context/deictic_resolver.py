@@ -119,13 +119,13 @@ def build_deictic_ambiguity_planning(
             if not is_uuid(node_id):
                 continue
             title = str(candidate.get('title') or candidate.get('label') or '').strip()
-            display_type = node_type.title() if node_type else 'Node'
+            display_type = node_type.title() if node_type else 'Item'
             if title:
-                option_candidates.append(f'{display_type}: {title} ({node_id})')
+                option_candidates.append(f'{display_type}: {title}')
             else:
-                option_candidates.append(f'{display_type}: {node_id}')
+                option_candidates.append(f'{display_type} (unnamed)')
 
-    options = option_candidates + ['Provide node ID', 'Cancel']
+    options = option_candidates + ['Provide the exact name', 'Cancel']
     if required_parent_type is not None:
         question = (
             'I found multiple recent targets for "that". '

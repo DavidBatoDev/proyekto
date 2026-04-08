@@ -152,15 +152,15 @@ def operation_validation_guidance(reason: str | None) -> str:
         return guidance_map[reason]
     if reason.endswith('node_id_invalid_uuid'):
         return (
-            'The target node reference is invalid. Specify the exact node name and type.'
+            'The target reference is invalid. Please specify the exact item name and type (epic, feature, or task).'
         )
     if reason.endswith('parent_id_invalid_uuid'):
         return (
-            'The parent node reference is invalid. Specify the exact parent node.'
+            'The parent reference is invalid. Please specify the exact parent epic or feature.'
         )
     if reason == 'move_node.new_parent_id_invalid_uuid':
         return (
-            'The move target parent is invalid. Specify the exact destination parent node.'
+            'The move destination is invalid. Please specify the exact destination epic or feature.'
         )
     return 'Please provide the exact target details and try again.'
 

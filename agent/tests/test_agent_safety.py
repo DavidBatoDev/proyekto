@@ -1462,7 +1462,7 @@ class AgentSafetyTests(unittest.TestCase):
                     provider_error_code=None,
                     clarifier_action='ask_clarifier',
                     clarifier_reason='insufficient_context',
-                    clarifier_options=['Provide node label', 'Provide node ID', 'Cancel'],
+                    clarifier_options=['Provide node label', 'Provide the exact name', 'Cancel'],
                     draft_action='continue',
                     tool_plan=[
                         {
@@ -2527,7 +2527,7 @@ class AgentSafetyTests(unittest.TestCase):
                     provider_error_code=None,
                     clarifier_action='ask_clarifier',
                     clarifier_reason='insufficient_context',
-                    clarifier_options=['Provide parent node', 'Provide node ID', 'Cancel'],
+                    clarifier_options=['Provide parent node', 'Provide the exact name', 'Cancel'],
                 )
 
         class _FakeStore:
@@ -2974,8 +2974,8 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(outcome.response_mode, 'chat')
         self.assertEqual(outcome.provider_error_code, 'retry_multiple_matches')
         self.assertIn('Options:', outcome.assistant_message)
-        self.assertRegex(outcome.assistant_message, r'1\. \[[a-z0-9_]+\] epic "App Foundation"')
-        self.assertIn('(dad5697a-8962-4f80-8bc3-8a964edd8e56)', outcome.assistant_message)
+        self.assertRegex(outcome.assistant_message, r'1\. epic "App Foundation"')
+        self.assertNotIn('dad5697a-8962-4f80-8bc3-8a964edd8e56', outcome.assistant_message)
 
     def test_set_pending_context_normalizes_intent_family_alias(self) -> None:
         service = self._service({'matches': []})
@@ -5329,6 +5329,31 @@ class PlannerContextSafetyTests(unittest.TestCase):
         selected = result.get('selected') or {}
         self.assertEqual(selected.get('id'), 'dad5697a-8962-4f80-8bc3-8a964edd8e56')
 
+    def test_resolve_node_reference_skips_generic_fallback_term(self) -> None:
+        planner = self._planner()
+        observed_queries: list[str] = []
+
+        def _context_search(**kwargs):
+            query = str(kwargs.get('query') or '')
+            observed_queries.append(query)
+            return {'matches': []}
+
+        planner._nest_client = SimpleNamespace(context_search=_context_search)
+        result = planner._execute_context_tool(
+            'resolve_node_reference',
+            {
+                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                'label': 'Autenthication System',
+                'node_type': 'epic',
+                'limit': 5,
+            },
+            {'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'},
+        )
+
+        self.assertEqual(result.get('status'), 'not_found')
+        self.assertNotIn('System', observed_queries)
+        self.assertIn('Autenthication System', observed_queries)
+
     def test_resolve_node_reference_dedupes_within_single_session_context(self) -> None:
         planner = self._planner()
         call_count = 0
@@ -6633,7 +6658,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
                     value=(
                         '{"action":"ask_clarifier","reason":"discovery_budget_exhausted",'
                         '"question":"I could not resolve the target in time. Which exact node should I rename?",'
-                        '"options":["Use exact label","Provide node ID","Cancel"]}'
+                        '"options":["Use exact label","Provide the exact name","Cancel"]}'
                     ),
                     provider_used='openai',
                     fallback_used=False,

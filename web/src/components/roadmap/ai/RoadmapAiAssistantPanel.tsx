@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   Bot,
   Check,
@@ -76,6 +83,61 @@ const buildAssistantMessage = (
   responseMode: options?.responseMode,
   artifacts: options?.artifacts,
 });
+
+const BRACKET_TAG_PATTERN = /\[([^\[\]\n]{1,120})\]/g;
+
+const renderBracketTagText = (text: string): ReactNode => {
+  BRACKET_TAG_PATTERN.lastIndex = 0;
+  if (!BRACKET_TAG_PATTERN.test(text)) return text;
+  BRACKET_TAG_PATTERN.lastIndex = 0;
+
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = BRACKET_TAG_PATTERN.exec(text)) !== null) {
+    const [fullMatch, label] = match;
+    const start = match.index;
+    const end = start + fullMatch.length;
+
+    if (start > lastIndex) {
+      parts.push(text.slice(lastIndex, start));
+    }
+
+    parts.push(
+      <span
+        key={`assistant-tag-${start}-${end}`}
+        className="mx-0.5 inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium leading-none text-slate-700"
+      >
+        {label}
+      </span>,
+    );
+
+    lastIndex = end;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts;
+};
+
+const renderBracketTagsInNode = (node: ReactNode): ReactNode => {
+  if (typeof node === "string") return renderBracketTagText(node);
+  if (Array.isArray(node)) {
+    return node.map((child) => renderBracketTagsInNode(child));
+  }
+  if (isValidElement<{ children?: ReactNode }>(node)) {
+    if (node.props.children === undefined) return node;
+    return cloneElement(
+      node,
+      undefined,
+      renderBracketTagsInNode(node.props.children),
+    );
+  }
+  return node;
+};
 
 const toDiffSummary = (
   summary: Record<string, number> | undefined,
@@ -817,17 +879,17 @@ export function RoadmapAiAssistantPanel({
                       components={{
                         p: ({ children }) => (
                           <p className="mb-2 last:mb-0 whitespace-pre-wrap">
-                            {children}
+                            {renderBracketTagsInNode(children)}
                           </p>
                         ),
                         ul: ({ children }) => (
                           <ul className="mb-2 list-disc pl-4 space-y-1">
-                            {children}
+                            {renderBracketTagsInNode(children)}
                           </ul>
                         ),
                         ol: ({ children }) => (
                           <ol className="mb-2 list-decimal pl-4 space-y-1">
-                            {children}
+                            {renderBracketTagsInNode(children)}
                           </ol>
                         ),
                         code: ({ children }) => (

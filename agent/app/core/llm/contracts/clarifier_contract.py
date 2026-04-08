@@ -19,8 +19,8 @@ def build_clarifier_contract(
         return normalized_question, []
 
     numbered_lines = [
-        f'{index}. {option_label}'
-        for index, option_label in enumerate(rendered_options, start=1)
+        f'{index}. {label}'
+        for index, (_, label) in enumerate(option_entries, start=1)
     ]
     message = f'{normalized_question}\n\nOptions:\n' + '\n'.join(numbered_lines)
     return message, rendered_options

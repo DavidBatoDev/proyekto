@@ -68,7 +68,7 @@ def run_edit_react_planning_loop(
             termination_reason = 'llm_call_budget_exhausted'
             planning = PlanningResult(
                 assistant_message=(
-                    'I reached the planner call budget before safely finalizing this edit. '
+                    'I wasn\'t able to finalize this edit in time. '
                     'Please provide one precise target detail so I can continue.'
                 ),
                 operations=[],
@@ -82,7 +82,7 @@ def run_edit_react_planning_loop(
                 route_lane=route_lane,
                 clarifier_action='ask_clarifier',
                 clarifier_reason='llm_call_budget_exhausted',
-                clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
+                clarifier_options=['Provide target details', 'Provide the exact name', 'Cancel'],
                 needs_more_info=True,
                 stop_reason='tool_budget_exhausted',
                 llm_calls_used=0,
@@ -226,7 +226,7 @@ def run_edit_react_planning_loop(
             route_lane=route_lane,
             clarifier_action='ask_clarifier',
             clarifier_reason='planner_empty_result',
-            clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
+            clarifier_options=['Provide target details', 'Provide the exact name', 'Cancel'],
             stop_reason='insufficient_context',
         )
 

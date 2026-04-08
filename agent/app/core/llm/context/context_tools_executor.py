@@ -906,9 +906,30 @@ class ContextToolsExecutor:
         tokens = [token for token in value.split(' ') if token]
         if len(tokens) <= 1:
             return None
+        generic_terms = {
+            'all',
+            'app',
+            'application',
+            'epic',
+            'feature',
+            'item',
+            'items',
+            'module',
+            'platform',
+            'project',
+            'roadmap',
+            'system',
+            'task',
+            'tasks',
+            'work',
+        }
         for token in reversed(tokens):
-            if len(token) >= 4:
-                return token
+            normalized = re.sub(r'[^a-z0-9]+', '', token.lower())
+            if len(normalized) < 4:
+                continue
+            if normalized in generic_terms:
+                continue
+            return token
         return None
 
     def _build_resolve_request_cache_key(

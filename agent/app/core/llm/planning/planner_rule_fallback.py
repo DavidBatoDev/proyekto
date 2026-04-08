@@ -26,7 +26,7 @@ def rule_based_chat_response(user_message: str, intent_type: IntentType) -> str:
         return (
             'I can help with normal chat or roadmap edits. If you keep seeing this style of response, '
             'the model provider is likely unavailable or out of quota. '
-            'If you want edits, describe the action and target node IDs, then we can generate a preview.'
+            'If you want edits, describe the action and target (for example: the epic, feature, or task name), then we can generate a preview.'
         )
     return 'Tell me what you want to do, and I will help.'
 

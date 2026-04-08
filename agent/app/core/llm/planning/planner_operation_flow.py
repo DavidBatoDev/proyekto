@@ -464,17 +464,17 @@ def plan_operations(
                     target_text = ' or '.join(required_parent_types)
                     question = (
                         'I need the exact parent node before I can safely stage this edit. '
-                        f'Please provide the parent {target_text} label or node ID.'
+                        f'Please provide the parent {target_text} name.'
                     )
                 else:
                     question = (
                         'I need the exact parent node before I can safely stage this edit. '
-                        'Please provide the parent label or node ID.'
+                        'Please provide the parent name.'
                     )
                 clarifier_message, clarifier_options = build_clarifier_contract(
                     reason='invalid_parent_uuid_unresolved',
                     question=question,
-                    options=['Provide parent label', 'Provide parent node ID', 'Cancel'],
+                    options=['Provide parent name', 'Provide the exact name', 'Cancel'],
                 )
                 return _finalize_state(
                     {
@@ -574,14 +574,14 @@ def plan_operations(
             if isinstance(assistant_message, str) and assistant_message.strip()
             else (
                 'I can help with that edit. Could you confirm the exact target '
-                'or provide the node ID so I can stage the operation safely?'
+                'or provide more details so I can stage the operation safely?'
             )
         )
         clarifier_action = 'ask_clarifier'
         clarifier_reason = 'discovery_unresolved'
         clarifier_options = [
             'Confirm the exact target label',
-            'Provide the node ID',
+            'Provide the exact name',
             'Cancel',
         ]
         clarifier_message, clarifier_options = build_clarifier_contract(

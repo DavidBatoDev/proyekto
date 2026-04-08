@@ -230,8 +230,8 @@ def attempt_retry_autostage(
         return {
             'planning': PlanningResult(
                 assistant_message=(
-                    'I reached the retry lookup budget before resolving a safe single target. '
-                    'Please choose one node by ID so I can continue.'
+                    'I wasn\'t able to find a single clear match. '
+                    'Please confirm which item you mean so I can continue.'
                 ),
                 operations=[],
                 parse_mode='deterministic_retry_clarifier_budget',
@@ -244,7 +244,7 @@ def attempt_retry_autostage(
                 clarifier_action='ask_clarifier',
                 clarifier_reason='retry_discovery_budget_exhausted',
                 clarifier_options=[
-                    'Provide exact node ID',
+                    'Provide the exact name',
                     'Refine target label',
                     'Cancel',
                 ],
@@ -321,8 +321,8 @@ def attempt_retry_autostage(
             title = str(item.get('title') or '').strip()
             node_type = str(item.get('type') or '').strip()
             node_id = str(item.get('id') or '').strip()
-            if title and node_id:
-                options.append(f'{index}. {node_type} "{title}" ({node_id})')
+            if title:
+                options.append(f'{index}. {node_type} "{title}"')
         if options:
             return {
                 'planning': PlanningResult(

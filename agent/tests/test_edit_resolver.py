@@ -51,6 +51,31 @@ class EditResolverTests(unittest.TestCase):
         self.assertEqual(result.status, 'unique')
         self.assertIsNotNone(result.selected)
 
+    def test_resolve_single_low_confidence_candidate_returns_not_found(self) -> None:
+        result = resolve_candidates(
+            [
+                {'id': '1', 'type': 'epic', 'title': 'Platform Foundation'},
+            ],
+            label='Autenthication System',
+            node_type='epic',
+        )
+        self.assertEqual(result.status, 'not_found')
+        self.assertIsNone(result.selected)
+        self.assertEqual(len(result.candidates), 1)
+
+    def test_resolve_typo_label_still_matches_expected_epic(self) -> None:
+        result = resolve_candidates(
+            [
+                {'id': '1', 'type': 'epic', 'title': 'Authentication System'},
+            ],
+            label='Autenthication System',
+            node_type='epic',
+        )
+        self.assertEqual(result.status, 'unique')
+        self.assertIsNotNone(result.selected)
+        assert result.selected is not None
+        self.assertEqual(result.selected.title, 'Authentication System')
+
     def test_parse_selection_index(self) -> None:
         self.assertEqual(parse_selection_index('first'), 1)
         self.assertEqual(parse_selection_index('the first'), 1)

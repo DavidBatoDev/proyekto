@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from difflib import SequenceMatcher
 import re
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -15,6 +16,8 @@ _SELECTION_WORDS: dict[str, int] = {
     'fourth': 4,
     'fifth': 5,
 }
+
+_MIN_UNIQUE_CONFIDENCE = 0.6
 
 
 @dataclass
@@ -196,7 +199,11 @@ def resolve_candidates(
     if not scored:
         return ResolutionResult(status='not_found', candidates=[])
     if len(scored) == 1:
-        return ResolutionResult(status='unique', candidates=scored, selected=scored[0])
+        only = scored[0]
+        confidence = only.confidence or 0
+        if confidence < _MIN_UNIQUE_CONFIDENCE:
+            return ResolutionResult(status='not_found', candidates=scored)
+        return ResolutionResult(status='unique', candidates=scored, selected=only)
 
     top = scored[0].confidence or 0
     second = scored[1].confidence or 0
@@ -249,6 +256,15 @@ def _score_title_match(
         score += 0.65
     elif normalized_title in normalized_label:
         score += 0.55
+
+    similarity = SequenceMatcher(None, normalized_label, normalized_title).ratio()
+    if similarity >= 0.92:
+        score = max(score, 0.9)
+    elif similarity >= 0.84:
+        score = max(score, 0.72)
+    elif similarity >= 0.75:
+        score = max(score, 0.5)
+
     if expected_type is not None and actual_type == expected_type:
         score += 0.2
     return min(score, 1.0)

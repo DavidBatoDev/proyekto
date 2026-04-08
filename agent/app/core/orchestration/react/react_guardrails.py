@@ -170,7 +170,7 @@ def enforce_hybrid_react_terminal_guard(
             parse_mode='deterministic_planner_needs_more_info_handoff',
             provider_error_code='planner_needs_more_info_conflict',
             clarifier_reason='planner_needs_more_info_conflict',
-            clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
+            clarifier_options=['Provide target details', 'Provide the exact name', 'Cancel'],
         )
 
     if planning.stop_reason in {'tool_budget_exhausted', 'insufficient_context', 'awaiting_user_input'}:
@@ -184,7 +184,7 @@ def enforce_hybrid_react_terminal_guard(
             parse_mode='deterministic_planner_stop_reason_handoff',
             provider_error_code='planner_stop_reason_conflict',
             clarifier_reason='planner_stop_reason_conflict',
-            clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
+            clarifier_options=['Provide target details', 'Provide the exact name', 'Cancel'],
             needs_more_info=True,
             stop_reason=planning.stop_reason,
         )
@@ -200,7 +200,7 @@ def enforce_hybrid_react_terminal_guard(
             parse_mode='deterministic_react_terminal_handoff',
             provider_error_code='planner_terminal_state_conflict',
             clarifier_reason='planner_terminal_state_conflict',
-            clarifier_options=['Provide target details', 'Provide node ID', 'Cancel'],
+            clarifier_options=['Provide target details', 'Provide the exact name', 'Cancel'],
             needs_more_info=True,
             stop_reason=(planning.stop_reason or 'awaiting_user_input'),
         )
@@ -316,8 +316,8 @@ def run_edit_react_loop(
     ):
         planning = PlanningResult(
             assistant_message=(
-                'I found likely target node matches, but I still need one explicit selection '
-                'to stage a safe edit operation. Reply with the exact node ID (or say "cancel").'
+                'I found likely matches, but I still need one explicit selection '
+                'to stage a safe edit operation. Please confirm which item you mean (or say "cancel").'
             ),
             operations=[],
             parse_mode='deterministic_edit_narrative_handoff',
@@ -333,7 +333,7 @@ def run_edit_react_loop(
             route_lane=route_lane,
             clarifier_action='ask_clarifier',
             clarifier_reason='edit_narrative_without_operations',
-            clarifier_options=['Use the matched node ID', 'Refine the node label', 'Cancel'],
+            clarifier_options=['Use the matched item', 'Refine the search', 'Cancel'],
         )
         edit_guard_intervened = True
     hybrid_guard_handoff = enforce_hybrid_react_terminal_guard(
@@ -372,7 +372,7 @@ def normalize_planning_clarifier_contract(
 
     fallback_options = [
         'Provide target details',
-        'Provide node ID',
+        'Provide the exact name',
         'Cancel',
     ]
     question = planning.assistant_message or 'I need one clarification before I can safely continue.'
