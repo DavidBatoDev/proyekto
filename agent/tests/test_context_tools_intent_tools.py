@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from types import SimpleNamespace
 import unittest
 
 from app.core.config import get_settings
@@ -520,6 +521,114 @@ class ContextToolIntentTests(unittest.TestCase):
         self.assertIsInstance(tasks, list)
         assert isinstance(tasks, list)
         self.assertEqual([item.get('id') for item in tasks], ['t2', 't3'])
+
+    def test_resolve_node_reference_relaxes_typed_search_when_empty(self) -> None:
+        observed_node_types: list[str | None] = []
+
+        async def _context_search(
+            roadmap_id: str,
+            query: str,
+            node_type: str | None,
+            limit: int | None,
+            auth_header: str | None,
+            trace_id: str | None = None,
+        ) -> dict:
+            observed_node_types.append(node_type)
+            if node_type == 'epic':
+                return {'matches': []}
+            if query == 'Autenthication System':
+                return {
+                    'matches': [
+                        {
+                            'id': '123e4567-e89b-12d3-a456-426614174000',
+                            'type': 'feature',
+                            'title': 'Authentication System',
+                        }
+                    ]
+                }
+            return {'matches': []}
+
+        executor = ContextToolsExecutor(
+            settings=get_settings().model_copy(
+                update={'agent_resolve_parallel_variants_enabled': False}
+            ),
+            logger=logging.getLogger('context-tools-intent-tests-resolve-fallback'),
+            nest_client=SimpleNamespace(context_search=_context_search),
+            run_async_context_call=self._run_async,
+        )
+        result = executor.execute(
+            'resolve_node_reference',
+            {
+                'roadmap_id': 'r1',
+                'label': 'Autenthication System',
+                'node_type': 'epic',
+                'auto_correct': False,
+                'fuzzy': False,
+                'limit': 5,
+            },
+            self.session_context,
+        )
+
+        self.assertEqual(result.get('status'), 'unique')
+        selected = result.get('selected')
+        self.assertIsInstance(selected, dict)
+        assert isinstance(selected, dict)
+        self.assertEqual(selected.get('type'), 'feature')
+        self.assertTrue(bool(result.get('type_relaxed')))
+        self.assertEqual(observed_node_types, ['epic', None])
+
+    def test_resolve_node_reference_relaxed_single_weak_match_does_not_auto_select(self) -> None:
+        observed_node_types: list[str | None] = []
+
+        async def _context_search(
+            roadmap_id: str,
+            query: str,
+            node_type: str | None,
+            limit: int | None,
+            auth_header: str | None,
+            trace_id: str | None = None,
+        ) -> dict:
+            observed_node_types.append(node_type)
+            if node_type == 'epic':
+                return {'matches': []}
+            if query == 'Autenthication System':
+                return {
+                    'matches': [
+                        {
+                            'id': '123e4567-e89b-12d3-a456-426614174111',
+                            'type': 'feature',
+                            'title': 'Auth UX',
+                            'score': 0.71,
+                        }
+                    ]
+                }
+            return {'matches': []}
+
+        executor = ContextToolsExecutor(
+            settings=get_settings().model_copy(
+                update={'agent_resolve_parallel_variants_enabled': False}
+            ),
+            logger=logging.getLogger('context-tools-intent-tests-resolve-weak-relaxed'),
+            nest_client=SimpleNamespace(context_search=_context_search),
+            run_async_context_call=self._run_async,
+        )
+        result = executor.execute(
+            'resolve_node_reference',
+            {
+                'roadmap_id': 'r1',
+                'label': 'Autenthication System',
+                'node_type': 'epic',
+                'auto_correct': False,
+                'fuzzy': False,
+                'limit': 5,
+            },
+            self.session_context,
+        )
+
+        self.assertEqual(result.get('status'), 'not_found')
+        self.assertIsNone(result.get('selected'))
+        self.assertTrue(bool(result.get('type_relaxed')))
+        self.assertEqual(observed_node_types, ['epic', None])
 
     def test_get_tasks_by_parent_for_feature_filters_by_status(self) -> None:
         result = self.executor.execute(

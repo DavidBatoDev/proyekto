@@ -122,7 +122,8 @@ def get_context_tools() -> list[dict[str, Any]]:
             name='resolve_node_reference',
             description=(
                 'Primary tool for resolving user-mentioned epics, features, or tasks by name '
-                'to a concrete node id. Use this before asking for manual IDs.'
+                'to a concrete node id. Use this before asking for manual IDs. '
+                'Set node_type only when the user explicitly names epic, feature, or task.'
             ),
             required=['roadmap_id', 'label'],
             properties={

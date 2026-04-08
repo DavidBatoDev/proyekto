@@ -27,6 +27,19 @@ def _is_bulk_task_scope_update_intent(user_message: str) -> bool:
     return has_bulk_scope and has_update_verb
 
 
+def _explicit_parent_type_hint(user_message: str) -> str | None:
+    normalized = ' '.join(str(user_message or '').lower().split())
+    if not normalized:
+        return None
+    mentions_epic = bool(re.search(r'\bepic\b', normalized))
+    mentions_feature = bool(re.search(r'\bfeature\b', normalized))
+    if mentions_epic and not mentions_feature:
+        return 'epic'
+    if mentions_feature and not mentions_epic:
+        return 'feature'
+    return None
+
+
 def _is_parent_scoped_bulk_status_intent(user_message: str) -> bool:
     normalized = ' '.join(str(user_message or '').lower().split())
     if not normalized or 'task' not in normalized:
@@ -133,6 +146,11 @@ def plan_operations(
     llm_calls_used = 0
     dedupe_tool_names = {'resolve_node_reference', 'search_nodes'}
     dedupe_result_cache: dict[tuple[str, str], dict[str, Any]] = {}
+    bulk_scope_update_intent = (
+        intent_type == 'roadmap_edit'
+        and _is_bulk_task_scope_update_intent(user_message)
+    )
+    explicit_parent_type_hint = _explicit_parent_type_hint(user_message)
 
     def _serialize_tool_args(value: dict[str, Any]) -> str:
         try:
@@ -147,9 +165,18 @@ def plan_operations(
         metrics['resolve_dedup_hits'] = int(metrics.get('resolve_dedup_hits') or 0) + 1
 
     def _capturing_tool_executor(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        effective_args = dict(args) if isinstance(args, dict) else {}
+        if name == 'resolve_node_reference' and bulk_scope_update_intent:
+            requested_node_type = str(effective_args.get('node_type') or '').strip().lower()
+            if requested_node_type in {'epic', 'feature'}:
+                if explicit_parent_type_hint in {'epic', 'feature'}:
+                    effective_args['node_type'] = explicit_parent_type_hint
+                else:
+                    effective_args.pop('node_type', None)
+
         cache_key: tuple[str, str] | None = None
-        if name in dedupe_tool_names and isinstance(args, dict):
-            cache_key = (name, _serialize_tool_args(args))
+        if name in dedupe_tool_names and isinstance(effective_args, dict):
+            cache_key = (name, _serialize_tool_args(effective_args))
             cached = dedupe_result_cache.get(cache_key)
             if cached is not None:
                 _record_tool_dedupe_hit()
@@ -158,19 +185,19 @@ def plan_operations(
                     observations=tool_observations,
                     summary=tool_observation_summary,
                     tool_name=name,
-                    args=args,
+                    args=effective_args,
                     result=result,
                 )
                 return result
 
-        result = planner._execute_context_tool(name, args, session_context)
+        result = planner._execute_context_tool(name, effective_args, session_context)
         if cache_key is not None and isinstance(result, dict):
             dedupe_result_cache[cache_key] = deepcopy(result)
         planner._record_react_tool_observation(
             observations=tool_observations,
             summary=tool_observation_summary,
             tool_name=name,
-            args=args,
+            args=effective_args,
             result=result,
         )
         return result
@@ -248,8 +275,7 @@ def plan_operations(
         and bool(resolved_node_ids or effective_tool_summary)
     )
     bulk_scope_parent_guard = (
-        intent_type == 'roadmap_edit'
-        and _is_bulk_task_scope_update_intent(user_message)
+        bulk_scope_update_intent
         and _has_resolved_parent_context(
             deictic_parent_hint=deictic_parent_hint,
             effective_tool_summary=effective_tool_summary,
@@ -539,6 +565,7 @@ def plan_operations(
             synthesized_operations = planner._maybe_synthesize_react_closure_operations(
                 user_message=user_message,
                 tool_observations=tool_observations,
+                session_context=session_context,
             )
             if synthesized_operations:
                 return _finalize_state(
@@ -719,6 +746,7 @@ def plan_operations(
         synthesized_operations = planner._maybe_synthesize_react_closure_operations(
             user_message=user_message,
             tool_observations=tool_observations,
+            session_context=session_context,
         )
         if synthesized_operations:
             return _finalize_state(
@@ -784,6 +812,7 @@ def plan_operations(
     synthesized_operations = planner._maybe_synthesize_react_closure_operations(
         user_message=user_message,
         tool_observations=tool_observations,
+        session_context=session_context,
     )
     if synthesized_operations:
         return _finalize_state(

@@ -390,13 +390,156 @@ def maybe_synthesize_react_closure_operations(
     *,
     user_message: str,
     tool_observations: list[dict[str, Any]],
+    session_context: dict[str, Any] | None = None,
 ) -> list[RoadmapOperation] | None:
     rename_labels = extract_rename_request_labels(user_message)
-    if rename_labels is None:
+    if rename_labels is not None:
+        from_label, to_title = rename_labels
+        normalized_from_label = normalize_label_for_matching(from_label)
+        for observation in reversed(tool_observations):
+            if str(observation.get('tool_name') or '').strip() != 'resolve_node_reference':
+                continue
+            args = observation.get('args')
+            result = observation.get('result')
+            if not isinstance(args, dict) or not isinstance(result, dict):
+                continue
+
+            status = str(result.get('status') or '').strip().lower()
+            selected_payload = result.get('selected')
+            if not isinstance(selected_payload, dict):
+                matches_payload = result.get('matches')
+                if (
+                    status == 'unique'
+                    and isinstance(matches_payload, list)
+                    and len(matches_payload) == 1
+                    and isinstance(matches_payload[0], dict)
+                ):
+                    selected_payload = matches_payload[0]
+
+            if status != 'unique' or not isinstance(selected_payload, dict):
+                continue
+
+            requested_label = str(args.get('label') or '').strip()
+            normalized_requested_label = normalize_label_for_matching(requested_label)
+            if normalized_from_label and normalized_requested_label:
+                if (
+                    normalized_from_label != normalized_requested_label
+                    and normalized_from_label not in normalized_requested_label
+                    and normalized_requested_label not in normalized_from_label
+                ):
+                    continue
+
+            node_id = str(selected_payload.get('id') or '').strip()
+            if not re.fullmatch(
+                r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
+                node_id,
+            ):
+                continue
+
+            return [
+                RoadmapOperation(
+                    op='update_node',
+                    node_id=node_id,
+                    patch={'title': to_title},
+                )
+            ]
+
+    bulk_status = extract_bulk_parent_status_target(user_message)
+    if bulk_status is None:
+        return None
+    resolved_parent = extract_latest_unique_parent_resolution(tool_observations)
+    if resolved_parent is None:
         return None
 
-    from_label, to_title = rename_labels
-    normalized_from_label = normalize_label_for_matching(from_label)
+    parent_type_hint = infer_explicit_parent_type_hint(user_message)
+    parent_type = parent_type_hint or resolved_parent.get('node_type')
+    parent_id = str(resolved_parent.get('node_id') or '').strip()
+    if parent_type not in {'epic', 'feature'} or not is_uuid(parent_id):
+        return None
+
+    roadmap_id = str(
+        resolved_parent.get('roadmap_id')
+        or (session_context or {}).get('roadmap_id')
+        or ''
+    ).strip()
+    if not roadmap_id:
+        return None
+
+    tool_session_context = dict(session_context or {})
+    if not str(tool_session_context.get('roadmap_id') or '').strip():
+        tool_session_context['roadmap_id'] = roadmap_id
+
+    helper_result = planner._execute_context_tool(
+        'bulk_update_tasks_by_parent',
+        {
+            'roadmap_id': roadmap_id,
+            'parent_type': parent_type,
+            'parent_id': parent_id,
+            'status': bulk_status,
+            'include_completed': False,
+        },
+        tool_session_context,
+    )
+    if not isinstance(helper_result, dict) or isinstance(helper_result.get('error'), dict):
+        return None
+
+    raw_operations = helper_result.get('operations')
+    if not isinstance(raw_operations, list) or not raw_operations:
+        return None
+
+    synthesized_operations: list[RoadmapOperation] = []
+    for item in raw_operations:
+        if not isinstance(item, dict):
+            continue
+        try:
+            synthesized_operations.append(RoadmapOperation.model_validate(item))
+        except Exception:
+            continue
+    return synthesized_operations or None
+
+
+def extract_bulk_parent_status_target(user_message: str) -> str | None:
+    normalized = ' '.join(str(user_message or '').strip().lower().split())
+    if not normalized or 'task' not in normalized:
+        return None
+    if not re.search(r'\b(all|every)\b', normalized):
+        return None
+    if not re.search(r'\b(mark|update|set|change)\b', normalized):
+        return None
+    if not re.search(r'\b(in|under|within|inside|for)\b', normalized):
+        return None
+
+    status_patterns = [
+        (r'\bin[\s_-]*review\b', 'in_review'),
+        (r'\bin[\s_-]*progress\b', 'in_progress'),
+        (r'\bcompleted\b', 'done'),
+        (r'\bdone\b', 'done'),
+        (r'\bblocked\b', 'blocked'),
+        (r'\btodo\b', 'todo'),
+        (r'\bto\s*do\b', 'todo'),
+    ]
+    for pattern, status in status_patterns:
+        if re.search(pattern, normalized):
+            return status
+    return None
+
+
+def infer_explicit_parent_type_hint(user_message: str) -> str | None:
+    normalized = ' '.join(str(user_message or '').strip().lower().split())
+    if not normalized:
+        return None
+    mentions_epic = bool(re.search(r'\bepic\b', normalized))
+    mentions_feature = bool(re.search(r'\bfeature\b', normalized))
+    if mentions_epic and not mentions_feature:
+        return 'epic'
+    if mentions_feature and not mentions_epic:
+        return 'feature'
+    return None
+
+
+def extract_latest_unique_parent_resolution(
+    tool_observations: list[dict[str, Any]],
+) -> dict[str, str] | None:
     for observation in reversed(tool_observations):
         if str(observation.get('tool_name') or '').strip() != 'resolve_node_reference':
             continue
@@ -404,46 +547,32 @@ def maybe_synthesize_react_closure_operations(
         result = observation.get('result')
         if not isinstance(args, dict) or not isinstance(result, dict):
             continue
-
-        status = str(result.get('status') or '').strip().lower()
-        selected_payload = result.get('selected')
-        if not isinstance(selected_payload, dict):
-            matches_payload = result.get('matches')
-            if (
-                status == 'unique'
-                and isinstance(matches_payload, list)
-                and len(matches_payload) == 1
-                and isinstance(matches_payload[0], dict)
-            ):
-                selected_payload = matches_payload[0]
-
-        if status != 'unique' or not isinstance(selected_payload, dict):
+        if str(result.get('status') or '').strip().lower() != 'unique':
             continue
 
-        requested_label = str(args.get('label') or '').strip()
-        normalized_requested_label = normalize_label_for_matching(requested_label)
-        if normalized_from_label and normalized_requested_label:
+        selected = result.get('selected')
+        if not isinstance(selected, dict):
+            matches = result.get('matches')
             if (
-                normalized_from_label != normalized_requested_label
-                and normalized_from_label not in normalized_requested_label
-                and normalized_requested_label not in normalized_from_label
+                isinstance(matches, list)
+                and len(matches) == 1
+                and isinstance(matches[0], dict)
             ):
-                continue
-
-        node_id = str(selected_payload.get('id') or '').strip()
-        if not re.fullmatch(
-            r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
-            node_id,
-        ):
+                selected = matches[0]
+        if not isinstance(selected, dict):
             continue
 
-        return [
-            RoadmapOperation(
-                op='update_node',
-                node_id=node_id,
-                patch={'title': to_title},
-            )
-        ]
+        node_id = str(selected.get('id') or '').strip()
+        node_type = str(selected.get('type') or '').strip().lower()
+        if node_type not in {'epic', 'feature'} or not is_uuid(node_id):
+            continue
+
+        roadmap_id = str(args.get('roadmap_id') or '').strip()
+        return {
+            'node_id': node_id,
+            'node_type': node_type,
+            'roadmap_id': roadmap_id,
+        }
     return None
 
 

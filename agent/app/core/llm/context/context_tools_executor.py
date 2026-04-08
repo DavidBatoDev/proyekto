@@ -24,6 +24,7 @@ FEATURE_STATUS_VALUES = ('not_started', 'in_progress', 'in_review', 'completed',
 FEATURE_STATUS_SET = set(FEATURE_STATUS_VALUES)
 EPIC_PRIORITY_VALUES = ('critical', 'nice_to_have', 'low', 'medium', 'high')
 EPIC_PRIORITY_SET = set(EPIC_PRIORITY_VALUES)
+RELAXED_RESOLVE_UNIQUE_MIN_CONFIDENCE = 0.8
 
 
 class ContextToolsExecutor:
@@ -505,6 +506,7 @@ class ContextToolsExecutor:
                 raw_matches: list[Any] = []
                 resolution_id: str | None = None
                 seen_ids: set[str] = set()
+                type_relaxed = False
                 if auto_correct_enabled:
                     query_variants = self._query_variants(label)
                 else:
@@ -566,6 +568,94 @@ class ContextToolsExecutor:
                         if raw_matches:
                             break
 
+                if not raw_matches and node_type in {'epic', 'feature', 'task'}:
+                    relaxed_search_results_by_variant: list[tuple[str, dict[str, Any]]] = []
+                    relaxed_resolution_id: str | None = None
+                    if (
+                        self._settings.agent_resolve_parallel_variants_enabled
+                        and len(query_variants) > 1
+                    ):
+                        coroutines = [
+                            self._nest_client.context_search(
+                                roadmap_id=roadmap_id,
+                                query=query,
+                                node_type=None,
+                                limit=limit,
+                                auth_header=auth_value,
+                                trace_id=trace_id,
+                            )
+                            for query in query_variants
+                        ]
+                        parallel_results = self._run_context_calls_parallel(
+                            session_context,
+                            coroutines,
+                        )
+                        relaxed_search_results_by_variant = [
+                            (query, result if isinstance(result, dict) else {})
+                            for query, result in zip(query_variants, parallel_results)
+                        ]
+                    else:
+                        for query in query_variants:
+                            search_result = self._run_context_call(
+                                session_context,
+                                self._nest_client.context_search(
+                                    roadmap_id=roadmap_id,
+                                    query=query,
+                                    node_type=None,
+                                    limit=limit,
+                                    auth_header=auth_value,
+                                    trace_id=trace_id,
+                                ),
+                            )
+                            relaxed_search_results_by_variant.append((query, search_result))
+                            if relaxed_resolution_id is None:
+                                maybe_resolution = search_result.get('resolution_id')
+                                if isinstance(maybe_resolution, str) and maybe_resolution.strip():
+                                    relaxed_resolution_id = maybe_resolution
+                            variant_matches = search_result.get('matches', [])
+                            if not isinstance(variant_matches, list):
+                                continue
+                            for item in variant_matches:
+                                if not isinstance(item, dict):
+                                    continue
+                                item_id = str(item.get('id') or '').strip()
+                                dedupe_key = item_id or json.dumps(item, sort_keys=True, default=str)
+                                if dedupe_key in seen_ids:
+                                    continue
+                                seen_ids.add(dedupe_key)
+                                raw_matches.append(item)
+                            if raw_matches:
+                                break
+
+                    if (
+                        self._settings.agent_resolve_parallel_variants_enabled
+                        and len(query_variants) > 1
+                    ):
+                        for _query, search_result in relaxed_search_results_by_variant:
+                            if relaxed_resolution_id is None:
+                                maybe_resolution = search_result.get('resolution_id')
+                                if isinstance(maybe_resolution, str) and maybe_resolution.strip():
+                                    relaxed_resolution_id = maybe_resolution
+                            variant_matches = search_result.get('matches', [])
+                            if not isinstance(variant_matches, list):
+                                continue
+                            for item in variant_matches:
+                                if not isinstance(item, dict):
+                                    continue
+                                item_id = str(item.get('id') or '').strip()
+                                dedupe_key = item_id or json.dumps(item, sort_keys=True, default=str)
+                                if dedupe_key in seen_ids:
+                                    continue
+                                seen_ids.add(dedupe_key)
+                                raw_matches.append(item)
+                            if raw_matches:
+                                break
+
+                    if raw_matches:
+                        type_relaxed = True
+                        if resolution_id is None:
+                            resolution_id = relaxed_resolution_id
+
                 if (
                     self._settings.agent_resolve_parallel_variants_enabled
                     and len(query_variants) > 1
@@ -624,8 +714,24 @@ class ContextToolsExecutor:
                 resolved = resolve_candidates(
                     raw_matches,
                     label=label,
-                    node_type=node_type,
+                    node_type=None if type_relaxed else node_type,
                 )
+                if type_relaxed and resolved.status == 'unique':
+                    selected_confidence = float(
+                        (resolved.selected.confidence if resolved.selected is not None else 0.0)
+                        or 0.0
+                    )
+                    if selected_confidence < RELAXED_RESOLVE_UNIQUE_MIN_CONFIDENCE:
+                        if len(resolved.candidates) > 1:
+                            resolved = type(resolved)(
+                                status='ambiguous',
+                                candidates=resolved.candidates,
+                            )
+                        else:
+                            resolved = type(resolved)(
+                                status='not_found',
+                                candidates=resolved.candidates,
+                            )
                 selected_payload = (
                     resolved.selected.model_dump(exclude_none=True)
                     if resolved.selected is not None
@@ -638,6 +744,7 @@ class ContextToolsExecutor:
                 result = {
                     'status': resolved.status,
                     'resolution_id': resolution_id,
+                    'type_relaxed': type_relaxed,
                     'selected': selected_payload,
                     'matches': [],
                 }
@@ -665,6 +772,7 @@ class ContextToolsExecutor:
                     resolve_cache_hit=False,
                     resolve_auto_correct=auto_correct_enabled,
                     resolve_fuzzy=fuzzy_enabled,
+                    resolve_type_relaxed=type_relaxed,
                 )
                 return result
 
