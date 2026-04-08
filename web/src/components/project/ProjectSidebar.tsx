@@ -190,7 +190,7 @@ export function ProjectSidebar({
     .filter((section) => section.items.length > 0);
 
   return (
-    <div className="relative w-14 shrink-0 z-50 h-full">
+    <div className="relative z-50 h-full w-14 shrink-0">
       <aside
         onMouseEnter={() => {
           if (!compactMode) setIsExpanded(true);
@@ -198,16 +198,16 @@ export function ProjectSidebar({
         onMouseLeave={() => {
           if (!compactMode) setIsExpanded(false);
         }}
-        className={`absolute top-0 left-0 h-full flex bg-gray-50 border-r border-gray-200 transition-all duration-300 ease-in-out overflow-hidden shadow-sm ${
-          compactMode ? "w-14" : isExpanded ? "w-56 shadow-xl" : "w-14"
+        className={`absolute left-0 top-0 flex h-full overflow-hidden border-r border-slate-200 bg-white/90 shadow-sm backdrop-blur transition-all duration-300 ease-in-out ${
+          compactMode ? "w-14" : isExpanded ? "w-56 shadow-lg" : "w-14"
         }`}
       >
-        <div className="w-full flex flex-col py-3 overflow-y-auto">
+        <div className="flex w-full flex-col overflow-y-auto py-3">
           {visibleSections.map((section, sectionIndex) => (
             <div key={section.title} className="mb-2">
               {sectionIndex > 0 && (
                 <div className="px-3 py-2">
-                  <div className="h-px bg-gray-200" />
+                  <div className="h-px bg-slate-200" />
                 </div>
               )}
 
@@ -233,23 +233,23 @@ export function ProjectSidebar({
                       key={item.label}
                       to={item.to}
                       title={!isExpanded || compactMode ? item.label : undefined}
-                      className={`flex items-center p-2 mx-2 rounded-lg transition-all overflow-hidden ${
+                      className={`mx-2 flex items-center overflow-hidden rounded-lg p-2 transition-all ${
                         isActive
-                          ? "bg-[#ff9933] text-white shadow-sm"
-                          : "text-gray-500 hover:bg-gray-200 hover:text-gray-900"
+                          ? "bg-slate-900 text-white shadow-sm"
+                          : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                       }`}
                     >
-                      <div className="relative flex items-center justify-center w-6 h-6 shrink-0">
-                        <Icon className="w-5 h-5" />
+                      <div className="relative flex h-6 w-6 shrink-0 items-center justify-center">
+                        <Icon className="h-5 w-5" />
                         {showChatUnreadDot ? (
                           <span
-                            className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[#ff9933] ring-2 ring-gray-50"
+                            className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[#ff9933] ring-2 ring-white"
                             aria-label="Unread chat messages"
                           />
                         ) : null}
                       </div>
                       <span
-                        className={`text-sm font-medium transition-all duration-300 ml-3 whitespace-nowrap ${
+                        className={`ml-3 whitespace-nowrap text-sm font-medium transition-all duration-300 ${
                           isExpanded && !compactMode
                             ? "opacity-100 translate-x-0"
                             : "opacity-0 -translate-x-4"

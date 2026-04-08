@@ -69,7 +69,7 @@ export const Route = createFileRoute(
 });
 
 const EPIC_STATUS_MAP: Record<EpicStatus, { label: string; cls: string }> = {
-  backlog: { label: "Backlog", cls: "bg-gray-100 text-gray-600" },
+  backlog: { label: "Backlog", cls: "bg-slate-100 text-slate-600" },
   planned: { label: "Planned", cls: "bg-blue-50 text-blue-600" },
   in_progress: { label: "In Progress", cls: "bg-amber-50 text-amber-600" },
   in_review: { label: "In Review", cls: "bg-purple-50 text-purple-600" },
@@ -81,7 +81,7 @@ const FEATURE_STATUS_MAP: Record<
   FeatureStatus,
   { label: string; cls: string }
 > = {
-  not_started: { label: "Not Started", cls: "bg-gray-100 text-gray-500" },
+  not_started: { label: "Not Started", cls: "bg-slate-100 text-slate-500" },
   in_progress: { label: "In Progress", cls: "bg-amber-50 text-amber-600" },
   in_review: { label: "In Review", cls: "bg-purple-50 text-purple-600" },
   completed: { label: "Completed", cls: "bg-emerald-50 text-emerald-600" },
@@ -89,7 +89,7 @@ const FEATURE_STATUS_MAP: Record<
 };
 
 const TASK_STATUS_MAP: Record<TaskStatus, { label: string; cls: string }> = {
-  todo: { label: "To Do", cls: "bg-gray-100 text-gray-500" },
+  todo: { label: "To Do", cls: "bg-slate-100 text-slate-500" },
   in_progress: { label: "In Progress", cls: "bg-amber-50 text-amber-600" },
   in_review: { label: "In Review", cls: "bg-purple-50 text-purple-600" },
   done: { label: "Done", cls: "bg-emerald-50 text-emerald-600" },
@@ -167,7 +167,7 @@ function StatusBadge({
 }) {
   const cfg = map[status] ?? {
     label: status,
-    cls: "bg-gray-100 text-gray-500",
+    cls: "bg-slate-100 text-slate-500",
   };
   return (
     <span
@@ -235,10 +235,10 @@ function DateRange({
     variant === "epic" ? Map : variant === "task" ? Clock3 : Calendar;
 
   return (
-    <span className="flex items-center gap-1.5 text-xs text-gray-500 whitespace-nowrap">
-      <Icon className="w-5 h-5 text-gray-400 shrink-0" />
+    <span className="flex items-center gap-1.5 text-xs text-slate-500 whitespace-nowrap">
+      <Icon className="w-5 h-5 text-slate-400 shrink-0" />
       {s ?? ""}
-      {s && e ? <span className="text-gray-300 mx-0.5">/</span> : null}
+      {s && e ? <span className="text-slate-300 mx-0.5">/</span> : null}
       {e ?? ""}
     </span>
   );
@@ -273,13 +273,13 @@ function ProgressBar({ value }: { value: number }) {
     pct === 100 ? "bg-emerald-400" : pct > 50 ? "bg-amber-400" : "bg-blue-400";
   return (
     <div className="flex items-center gap-2 w-full">
-      <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+      <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-300 ${color}`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="text-[10px] font-medium text-gray-400 w-7 text-right shrink-0">
+      <span className="text-[10px] font-medium text-slate-400 w-7 text-right shrink-0">
         {pct}%
       </span>
     </div>
@@ -324,7 +324,7 @@ function WorkItemsLoadingSkeleton() {
 
   return (
     <div className="animate-pulse flex flex-col gap-3 py-2">
-      <div className="flex items-center bg-white rounded-xl border border-gray-100 shadow-sm px-0 overflow-hidden">
+      <div className="flex items-center bg-white rounded-xl border border-slate-100 shadow-sm px-0 overflow-hidden">
         <div className={COL.chevron} />
         <div className={`${COL.name} py-2 pr-4`}>
           <div className="h-3 w-24 bg-gray-200 rounded" />
@@ -346,9 +346,9 @@ function WorkItemsLoadingSkeleton() {
       {epicRows.map((epicIndex) => (
         <div
           key={`epic-${epicIndex}`}
-          className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden"
+          className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden"
         >
-          <div className="flex items-center px-0 py-3 border-b border-gray-100 bg-gray-50/60">
+          <div className="flex items-center px-0 py-3 border-b border-slate-100 bg-gray-50/60">
             <div className={`${COL.chevron} flex items-center justify-center`}>
               <div className="w-4 h-4 rounded bg-gray-200" />
             </div>
@@ -363,20 +363,20 @@ function WorkItemsLoadingSkeleton() {
               <div className="w-6 h-6 rounded-full bg-gray-200" />
             </div>
             <div className={`${COL.status} flex items-center`}>
-              <div className="h-5 w-20 bg-gray-100 rounded-full" />
+              <div className="h-5 w-20 bg-slate-100 rounded-full" />
             </div>
             <div className={`${COL.date} hidden lg:flex items-center`}>
-              <div className="h-3 w-28 bg-gray-100 rounded" />
+              <div className="h-3 w-28 bg-slate-100 rounded" />
             </div>
             <div className={`${COL.progress} hidden xl:flex items-center pr-4`}>
-              <div className="w-full h-1.5 bg-gray-100 rounded-full" />
+              <div className="w-full h-1.5 bg-slate-100 rounded-full" />
             </div>
           </div>
 
           {featureRows.map((featureIndex) => (
             <div
               key={`feature-${epicIndex}-${featureIndex}`}
-              className="border-b border-gray-100 last:border-b-0"
+              className="border-b border-slate-100 last:border-b-0"
             >
               <div className="flex items-center px-0 py-2">
                 <div className={`${COL.indent} flex justify-center`}>
@@ -394,18 +394,18 @@ function WorkItemsLoadingSkeleton() {
                   />
                 </div>
                 <div className={`${COL.assignee} flex justify-center`}>
-                  <div className="w-6 h-6 rounded-full bg-gray-100" />
+                  <div className="w-6 h-6 rounded-full bg-slate-100" />
                 </div>
                 <div className={`${COL.status} flex items-center`}>
-                  <div className="h-5 w-18 bg-gray-100 rounded-full" />
+                  <div className="h-5 w-18 bg-slate-100 rounded-full" />
                 </div>
                 <div className={`${COL.date} hidden lg:flex items-center`}>
-                  <div className="h-3 w-20 bg-gray-100 rounded" />
+                  <div className="h-3 w-20 bg-slate-100 rounded" />
                 </div>
                 <div
                   className={`${COL.progress} hidden xl:flex items-center pr-4`}
                 >
-                  <div className="w-full h-1.5 bg-gray-100 rounded-full" />
+                  <div className="w-full h-1.5 bg-slate-100 rounded-full" />
                 </div>
               </div>
 
@@ -428,23 +428,23 @@ function WorkItemsLoadingSkeleton() {
                     </div>
                     <div className={`${COL.name} pr-4`}>
                       <div
-                        className="h-3 bg-gray-100 rounded"
+                        className="h-3 bg-slate-100 rounded"
                         style={{ width: taskIndex === 1 ? "34%" : "40%" }}
                       />
                     </div>
                     <div className={`${COL.assignee} flex justify-center`}>
-                      <div className="w-5 h-5 rounded-full bg-gray-100" />
+                      <div className="w-5 h-5 rounded-full bg-slate-100" />
                     </div>
                     <div className={`${COL.status} flex items-center`}>
-                      <div className="h-4 w-16 bg-gray-100 rounded-full" />
+                      <div className="h-4 w-16 bg-slate-100 rounded-full" />
                     </div>
                     <div className={`${COL.date} hidden lg:flex items-center`}>
-                      <div className="h-3 w-18 bg-gray-100 rounded" />
+                      <div className="h-3 w-18 bg-slate-100 rounded" />
                     </div>
                     <div
                       className={`${COL.progress} hidden xl:flex items-center pr-4`}
                     >
-                      <div className="w-full h-1.5 bg-gray-100 rounded-full" />
+                      <div className="w-full h-1.5 bg-slate-100 rounded-full" />
                     </div>
                   </div>
                 ))}
@@ -511,7 +511,7 @@ function TaskRow({
 
   return (
     <div
-      className={`group relative flex items-center cursor-pointer hover:bg-blue-50/40 active:bg-blue-50/60 transition-colors ${!isLast ? "border-b border-gray-100" : ""}`}
+      className={`group relative flex items-center cursor-pointer hover:bg-blue-50/40 active:bg-blue-50/60 transition-colors ${!isLast ? "border-b border-slate-100" : ""}`}
       onClick={() => onOpen(task)}
       title="View task details"
     >
@@ -575,7 +575,7 @@ function TaskRow({
                     onUpdateStatus(task, status);
                     setIsCheckboxMenuOpen(false);
                   }}
-                  className={`w-full text-left px-3 py-2 text-xs capitalize hover:bg-gray-100 ${task.status === status ? "bg-gray-50 font-semibold" : ""}`}
+                  className={`w-full text-left px-3 py-2 text-xs capitalize hover:bg-slate-100 ${task.status === status ? "bg-gray-50 font-semibold" : ""}`}
                 >
                   {status.replace(/_/g, " ")}
                 </button>
@@ -584,12 +584,12 @@ function TaskRow({
             document.body,
           )}
         <span
-          className={`text-[13px] text-gray-700 truncate block ${isDone ? "line-through text-gray-400" : ""}`}
+          className={`text-[13px] text-slate-700 truncate block ${isDone ? "line-through text-slate-400" : ""}`}
         >
           {task.title}
         </span>
         {isPending && (
-          <Loader2 className="w-3 h-3 text-gray-400 animate-spin shrink-0" />
+          <Loader2 className="w-3 h-3 text-slate-400 animate-spin shrink-0" />
         )}
       </div>
 
@@ -601,8 +601,8 @@ function TaskRow({
             avatarUrl={task.assignee.avatar_url}
           />
         ) : (
-          <span className="w-6 h-6 rounded-full border-2 border-dashed border-gray-200 flex items-center justify-center">
-            <span className="text-gray-300 text-[8px]">+</span>
+          <span className="w-6 h-6 rounded-full border-2 border-dashed border-slate-200 flex items-center justify-center">
+            <span className="text-slate-300 text-[8px]">+</span>
           </span>
         )}
       </div>
@@ -615,7 +615,7 @@ function TaskRow({
           onChange={(e) => {
             onUpdateStatus(task, e.target.value as TaskStatus);
           }}
-          className={`text-xs font-medium rounded px-2 py-1 border border-transparent focus:outline-none focus:ring-2 focus:ring-[#ff9933]/25 cursor-pointer ${TASK_STATUS_MAP[task.status]?.cls ?? "bg-gray-100 text-gray-500"}`}
+          className={`text-xs font-medium rounded px-2 py-1 border border-transparent focus:outline-none focus:ring-2 focus:ring-[#ff9933]/25 cursor-pointer ${TASK_STATUS_MAP[task.status]?.cls ?? "bg-slate-100 text-slate-500"}`}
         >
           {TASK_STATUS_OPTIONS.map((status) => (
             <option key={status} value={status}>
@@ -633,7 +633,7 @@ function TaskRow({
       {/* Priority */}
       <div className={`${COL.progress} hidden xl:flex items-center pr-4`}>
         {task.priority && (
-          <span className="text-[10px] font-medium text-gray-400 capitalize">
+          <span className="text-[10px] font-medium text-slate-400 capitalize">
             {task.priority.replace("_", " ")}
           </span>
         )}
@@ -710,7 +710,7 @@ function FeatureRow({
     <>
       {/* Feature row */}
       <div
-        className={`group relative flex items-center cursor-pointer bg-gray-100/60 hover:bg-gray-100/70 active:bg-gray-100 transition-colors ${!isLast || isExpanded ? "border-b border-gray-100" : ""}`}
+        className={`group relative flex items-center cursor-pointer bg-slate-100/60 hover:bg-slate-100/70 active:bg-slate-100 transition-colors ${!isLast || isExpanded ? "border-b border-slate-100" : ""}`}
         onClick={() => onOpenFeature(feature)}
         title="Edit feature"
       >
@@ -730,9 +730,9 @@ function FeatureRow({
           <span className="w-5 h-px bg-gray-300" />
           {hasVisibleTasks ? (
             isExpanded ? (
-              <ChevronDown className="w-6 h-6 text-gray-500" />
+              <ChevronDown className="w-6 h-6 text-slate-500" />
             ) : (
-              <ChevronRight className="w-6 h-6 text-gray-500" />
+              <ChevronRight className="w-6 h-6 text-slate-500" />
             )
           ) : (
             <div className="w-2 h-2 rounded-full border border-gray-300" />
@@ -742,14 +742,14 @@ function FeatureRow({
         {/* Name */}
         <div className={`${COL.name} py-2.5 pr-4`}>
           <div className="flex items-center gap-2">
-            <span className="text-[13px] font-medium text-gray-800 truncate group-hover:text-gray-900">
+            <span className="text-[13px] font-medium text-gray-800 truncate group-hover:text-slate-900">
               {feature.title}
             </span>
             {isFeaturePending && (
-              <Loader2 className="w-3 h-3 text-gray-400 animate-spin shrink-0" />
+              <Loader2 className="w-3 h-3 text-slate-400 animate-spin shrink-0" />
             )}
             {allTasks.length > 0 && (
-              <span className="text-[10px] text-gray-400 shrink-0 tabular-nums">
+              <span className="text-[10px] text-slate-400 shrink-0 tabular-nums">
                 {doneTasks}/{allTasks.length}
               </span>
             )}
@@ -778,13 +778,13 @@ function FeatureRow({
                 </div>
               ))}
               {featureAssignees.length > 4 && (
-                <span className="-ml-1.5 w-6 h-6 rounded-full bg-gray-100 border border-white flex items-center justify-center text-[9px] font-semibold text-gray-500">
+                <span className="-ml-1.5 w-6 h-6 rounded-full bg-slate-100 border border-white flex items-center justify-center text-[9px] font-semibold text-slate-500">
                   +{featureAssignees.length - 4}
                 </span>
               )}
             </div>
           ) : (
-            <span className="text-[10px] text-gray-300">—</span>
+            <span className="text-[10px] text-slate-300">—</span>
           )}
         </div>
 
@@ -807,7 +807,7 @@ function FeatureRow({
           {allTasks.length > 0 ? (
             <ProgressBar value={progress} />
           ) : (
-            <span className="text-[10px] text-gray-300">—</span>
+            <span className="text-[10px] text-slate-300">—</span>
           )}
         </div>
       </div>
@@ -903,12 +903,12 @@ function EpicCard({
 
   return (
     <div
-      className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
+      className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden"
       style={{ borderLeft: `3px solid ${epicColor}` }}
     >
       {/* ── Epic header row ── */}
       <div
-        className="group flex items-center cursor-pointer bg-[#ff9933]/8 hover:bg-[#ff9933]/14 active:bg-[#ff9933]/18 transition-colors border-b border-gray-100"
+        className="group flex items-center cursor-pointer bg-slate-100 hover:bg-slate-200 active:bg-slate-200 transition-colors border-b border-slate-100"
         onClick={() => onOpenEpic(epic)}
         title="Edit epic"
       >
@@ -944,14 +944,14 @@ function EpicCard({
               className={`w-2 h-2 rounded-full shrink-0 ${dotCls}`}
               title={`Priority: ${epic.priority}`}
             />
-            <span className="text-base font-bold text-gray-900 truncate group-hover:text-gray-950">
+            <span className="text-base font-bold text-slate-900 truncate group-hover:text-gray-950">
               {epic.title}
             </span>
             {isEpicPending && (
-              <Loader2 className="w-3.5 h-3.5 text-gray-500 animate-spin shrink-0" />
+              <Loader2 className="w-3.5 h-3.5 text-slate-500 animate-spin shrink-0" />
             )}
             {features.length > 0 && (
-              <span className="text-[10px] font-medium text-gray-400 shrink-0 bg-gray-100 px-1.5 py-0.5 rounded tabular-nums">
+              <span className="text-[10px] font-medium text-slate-400 shrink-0 bg-slate-100 px-1.5 py-0.5 rounded tabular-nums">
                 {features.length} feat.
               </span>
             )}
@@ -980,7 +980,7 @@ function EpicCard({
           {totalTasks > 0 ? (
             <ProgressBar value={progress} />
           ) : (
-            <span className="text-[10px] text-gray-300">No tasks</span>
+            <span className="text-[10px] text-slate-300">No tasks</span>
           )}
         </div>
       </div>
@@ -1758,19 +1758,19 @@ function WorkItemsViewPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="relative flex flex-col h-full min-h-0 bg-gray-50/30">
+    <div className="relative flex h-full min-h-0 flex-col app-shell-bg">
       {/* Header */}
-      <div className="px-6 pt-6 pb-4 bg-white border-b border-gray-100 shrink-0">
+      <div className="app-surface-card-strong mx-5 mt-4 px-6 pt-6 pb-4 shrink-0 border border-slate-200">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-[#ff9933]/10 flex items-center justify-center shrink-0">
-              <ListChecks className="w-6 h-6 text-[#ff9933]" />
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100">
+              <ListChecks className="h-6 w-6 text-slate-700" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-gray-900 leading-tight">
+              <h1 className="text-lg font-bold leading-tight text-slate-900">
                 Work Items
               </h1>
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-slate-500">
                 Epics, features and tasks from the project roadmap
               </p>
             </div>
@@ -1778,9 +1778,9 @@ function WorkItemsViewPage() {
 
           {isLoading ? (
             <div className="hidden sm:flex items-center gap-2 shrink-0 animate-pulse">
-              <div className="h-8 w-20 rounded-full bg-gray-100 border border-gray-200" />
-              <div className="h-8 w-24 rounded-full bg-gray-100 border border-gray-200" />
-              <div className="h-8 w-24 rounded-full bg-gray-100 border border-gray-200" />
+              <div className="h-8 w-20 rounded-full bg-slate-100 border border-slate-200" />
+              <div className="h-8 w-24 rounded-full bg-slate-100 border border-slate-200" />
+              <div className="h-8 w-24 rounded-full bg-slate-100 border border-slate-200" />
             </div>
           ) : (
             epics.length > 0 && (
@@ -1800,30 +1800,30 @@ function WorkItemsViewPage() {
         </div>
 
         {isLoading ? (
-          <div className="mt-4 flex items-center gap-2.5 flex-wrap animate-pulse">
-            <div className="flex-1 min-w-[180px] max-w-xs h-10 bg-gray-100 border border-gray-200 rounded-lg" />
-            <div className="h-10 w-[150px] bg-gray-100 border border-gray-200 rounded-lg" />
-            <div className="h-10 w-[210px] bg-gray-100 border border-gray-200 rounded-lg" />
-            <div className="h-10 w-[140px] bg-gray-100 border border-gray-200 rounded-lg" />
+          <div className="mt-4 flex flex-wrap items-center gap-2.5 animate-pulse">
+            <div className="flex-1 min-w-[180px] max-w-xs h-10 bg-slate-100 border border-slate-200 rounded-lg" />
+            <div className="h-10 w-[150px] bg-slate-100 border border-slate-200 rounded-lg" />
+            <div className="h-10 w-[210px] bg-slate-100 border border-slate-200 rounded-lg" />
+            <div className="h-10 w-[140px] bg-slate-100 border border-slate-200 rounded-lg" />
           </div>
         ) : (
           epics.length > 0 && (
-            <div className="mt-4 flex items-center gap-2.5 flex-wrap">
+            <div className="mt-4 flex flex-wrap items-center gap-2.5">
               <div className="relative flex-1 min-w-[180px] max-w-xs">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
                 <input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search work items..."
-                  className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ff9933]/25 focus:border-[#ff9933]/50 placeholder:text-gray-400"
+                  className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm placeholder:text-slate-400 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30"
                 />
               </div>
 
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#ff9933]/25 text-gray-700 cursor-pointer"
+                className="h-10 cursor-pointer rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30"
               >
                 <option value="">All statuses</option>
                 <optgroup label="Epic">
@@ -1847,13 +1847,13 @@ function WorkItemsViewPage() {
                   ref={assigneeFilterButtonRef}
                   type="button"
                   onClick={() => setIsAssigneeFilterMenuOpen((prev) => !prev)}
-                  className="min-w-[180px] text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-gray-700 cursor-pointer flex items-center justify-between gap-3 hover:bg-gray-100 transition-colors"
+                  className="min-w-[180px] flex h-10 cursor-pointer items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 transition-colors hover:bg-slate-100"
                 >
                   <span className="flex items-center gap-2 min-w-0">
                     {assigneeFilter === "all" ? (
                       <AllAssigneesAvatar members={assigneeFilterOptions} />
                     ) : assigneeFilter === "unassigned" ? (
-                      <span className="w-6 h-6 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400">
+                      <span className="w-6 h-6 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center text-slate-400">
                         <Users className="w-3.5 h-3.5" />
                       </span>
                     ) : assigneeFilter === "me" ? (
@@ -1886,13 +1886,13 @@ function WorkItemsViewPage() {
                     ) : null}
                     <span className="truncate">{assigneeFilterLabel}</span>
                   </span>
-                  <ChevronDown className="w-4 h-4 text-gray-500 shrink-0" />
+                  <ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
                 </button>
 
                 {isAssigneeFilterMenuOpen && (
                   <div
                     ref={assigneeFilterMenuRef}
-                    className="absolute right-0 mt-1 w-64 rounded-lg border border-gray-200 bg-white shadow-lg z-40 py-1"
+                    className="absolute right-0 mt-1 w-64 rounded-lg border border-slate-200 bg-white shadow-lg z-40 py-1"
                   >
                     <button
                       type="button"
@@ -1900,7 +1900,7 @@ function WorkItemsViewPage() {
                         setAssigneeFilter("me");
                         setIsAssigneeFilterMenuOpen(false);
                       }}
-                      className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${assigneeFilter === "me" ? "bg-gray-50 font-medium" : ""}`}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 ${assigneeFilter === "me" ? "bg-gray-50 font-medium" : ""}`}
                     >
                       <span className="flex items-center gap-2">
                         <Avatar
@@ -1922,7 +1922,7 @@ function WorkItemsViewPage() {
                         setAssigneeFilter("all");
                         setIsAssigneeFilterMenuOpen(false);
                       }}
-                      className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${assigneeFilter === "all" ? "bg-gray-50 font-medium" : ""}`}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 ${assigneeFilter === "all" ? "bg-gray-50 font-medium" : ""}`}
                     >
                       <span className="flex items-center gap-2">
                         <AllAssigneesAvatar members={assigneeFilterOptions} />
@@ -1936,10 +1936,10 @@ function WorkItemsViewPage() {
                         setAssigneeFilter("unassigned");
                         setIsAssigneeFilterMenuOpen(false);
                       }}
-                      className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${assigneeFilter === "unassigned" ? "bg-gray-50 font-medium" : ""}`}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 ${assigneeFilter === "unassigned" ? "bg-gray-50 font-medium" : ""}`}
                     >
                       <span className="flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400">
+                        <span className="w-6 h-6 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center text-slate-400">
                           <Users className="w-3.5 h-3.5" />
                         </span>
                         Unassigned
@@ -1947,7 +1947,7 @@ function WorkItemsViewPage() {
                     </button>
 
                     {assigneeFilterMemberOptions.length > 0 && (
-                      <div className="mt-1 pt-1 border-t border-gray-100">
+                      <div className="mt-1 pt-1 border-t border-slate-100">
                         {assigneeFilterMemberOptions.map((member) => {
                           const memberUserId = member.user_id!;
                           const isSelected = assigneeFilter === memberUserId;
@@ -1964,7 +1964,7 @@ function WorkItemsViewPage() {
                                 setAssigneeFilter(memberUserId);
                                 setIsAssigneeFilterMenuOpen(false);
                               }}
-                              className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${isSelected ? "bg-gray-50 font-medium" : ""}`}
+                              className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 ${isSelected ? "bg-gray-50 font-medium" : ""}`}
                             >
                               <span className="flex items-center gap-2">
                                 <Avatar
@@ -1984,7 +1984,7 @@ function WorkItemsViewPage() {
 
               <button
                 onClick={toggleAll}
-                className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors whitespace-nowrap"
+                className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-600 bg-gray-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors whitespace-nowrap"
               >
                 {allExpanded ? (
                   <>
@@ -2008,18 +2008,18 @@ function WorkItemsViewPage() {
         ) : error ? (
           <div className="flex flex-col items-center justify-center py-28 gap-3 text-center">
             <AlertCircle className="w-8 h-8 text-red-400" />
-            <p className="text-sm font-medium text-gray-700">{error}</p>
+            <p className="text-sm font-medium text-slate-700">{error}</p>
             <button
               onClick={() => window.location.reload()}
-              className="text-xs text-[#ff9933] underline underline-offset-2"
+              className="text-xs text-slate-700 underline underline-offset-2"
             >
               Retry
             </button>
           </div>
         ) : filteredEpics.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
-            <Search className="w-8 h-8 text-gray-300" />
-            <p className="text-sm font-medium text-gray-600">
+            <Search className="w-8 h-8 text-slate-300" />
+            <p className="text-sm font-medium text-slate-600">
               No work items match your filters. Try changing Assignees
             </p>
             <button
@@ -2028,7 +2028,7 @@ function WorkItemsViewPage() {
                 setStatusFilter("");
                 setAssigneeFilter("me");
               }}
-              className="text-xs text-[#ff9933] underline underline-offset-2"
+              className="text-xs text-slate-700 underline underline-offset-2"
             >
               Clear filters
             </button>
@@ -2036,30 +2036,30 @@ function WorkItemsViewPage() {
         ) : (
           <div className="flex flex-col gap-3">
             {/* Column header */}
-            <div className="flex items-center bg-white rounded-xl border border-gray-100 shadow-sm px-0 overflow-hidden">
+            <div className="flex items-center bg-white rounded-xl border border-slate-100 shadow-sm px-0 overflow-hidden">
               <div className={COL.chevron} />
               <div className={`${COL.name} py-2 pr-4`}>
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
                   Item Name
                 </span>
               </div>
               <div className={`${COL.assignee} text-center`}>
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
                   Assignee
                 </span>
               </div>
               <div className={COL.status}>
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
                   Status
                 </span>
               </div>
               <div className={`${COL.date} hidden lg:block`}>
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
                   Date Range
                 </span>
               </div>
               <div className={`${COL.progress} hidden xl:block pr-4`}>
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
                   Progress
                 </span>
               </div>
@@ -2103,7 +2103,7 @@ function WorkItemsViewPage() {
                 type="button"
                 onClick={scrollToTop}
                 aria-label="Scroll to top"
-                className="h-7 w-7 rounded-full bg-primary text-primary-foreground shadow-md hover:bg-primary/90 transition-colors flex items-center justify-center"
+                className="h-7 w-7 rounded-full bg-slate-900 text-white shadow-md hover:bg-slate-700 transition-colors flex items-center justify-center"
               >
                 <ChevronUp className="w-3.5 h-3.5" />
               </button>
@@ -2115,7 +2115,7 @@ function WorkItemsViewPage() {
                 type="button"
                 onClick={scrollToBottom}
                 aria-label="Scroll to bottom"
-                className="h-7 w-7 rounded-full bg-primary text-primary-foreground shadow-md hover:bg-primary/90 transition-colors flex items-center justify-center"
+                className="h-7 w-7 rounded-full bg-slate-900 text-white shadow-md hover:bg-slate-700 transition-colors flex items-center justify-center"
               >
                 <ChevronDown className="w-3.5 h-3.5" />
               </button>
@@ -2183,4 +2183,5 @@ function WorkItemsViewPage() {
     </div>
   );
 }
+
 

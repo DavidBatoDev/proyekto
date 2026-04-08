@@ -591,36 +591,36 @@ function TimeTeamMemberLogsPage() {
       errorMessage={error || pageError}
     >
       {shouldShowAccessDenied ? (
-        <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center">
-          <p className="text-sm text-gray-700 font-semibold">
+        <div className="app-surface-card rounded-2xl border-dashed p-12 text-center">
+          <p className="text-sm font-semibold text-slate-800">
             You do not have permission to access Time tracking.
           </p>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="mt-1 text-sm text-slate-500">
             Ask a manager to enable Time View permission.
           </p>
         </div>
       ) : !canViewTeamLogs ? (
-        <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center">
-          <p className="text-sm text-gray-700 font-semibold">
+        <div className="app-surface-card rounded-2xl border-dashed p-12 text-center">
+          <p className="text-sm font-semibold text-slate-800">
             You do not have permission to access team member logs.
           </p>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="mt-1 text-sm text-slate-500">
             Ask a manager for Team Logs or Approve permission.
           </p>
         </div>
       ) : loadingMembers ? (
-        <div className="rounded-xl border border-gray-200 overflow-hidden bg-white animate-pulse">
-          <div className="h-10 border-b border-gray-200 bg-gray-100" />
+        <div className="rounded-xl border border-slate-200 overflow-hidden bg-white animate-pulse">
+          <div className="h-10 border-b border-slate-200 bg-slate-100" />
           <div className="p-3 space-y-2">
             {Array.from({ length: 6 }).map((_, idx) => (
-              <div key={idx} className="h-8 rounded bg-gray-100" />
+              <div key={idx} className="h-8 rounded bg-slate-100" />
             ))}
           </div>
         </div>
       ) : !targetMember ? (
-        <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center">
-          <p className="text-sm text-gray-700 font-semibold">Project member not found.</p>
-          <p className="text-sm text-gray-500 mt-1">
+        <div className="app-surface-card rounded-2xl border-dashed p-12 text-center">
+          <p className="text-sm font-semibold text-slate-800">Project member not found.</p>
+          <p className="mt-1 text-sm text-slate-500">
             The selected member may have been removed from this project.
           </p>
         </div>
@@ -628,8 +628,8 @@ function TimeTeamMemberLogsPage() {
         <div className="grid grid-cols-1 xl:grid-cols-10 gap-4 items-start">
           <div className="xl:col-span-7 min-w-0">
             {canApproveLogs && selectedLogIds.size > 0 && (
-              <div className="mb-2 flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2">
-                <p className="text-xs text-gray-600">
+              <div className="mb-2 flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2">
+                <p className="text-xs text-slate-600">
                   Selected logs: <span className="font-semibold">{selectedLogIds.size}</span>
                 </p>
                 <div className="flex items-center gap-2">
@@ -641,7 +641,7 @@ function TimeTeamMemberLogsPage() {
                       )
                     }
                     disabled={isBulkReviewing}
-                    className="h-8 rounded-md border border-gray-300 bg-white px-2 text-xs text-gray-700 disabled:opacity-50"
+                    className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-700 disabled:opacity-50"
                   >
                     <option value="approved">Set All Approved</option>
                     <option value="rejected">Set All Rejected</option>
@@ -651,7 +651,7 @@ function TimeTeamMemberLogsPage() {
                     type="button"
                     onClick={() => void applyBulkDecisionToSelected()}
                     disabled={selectedLogIds.size === 0 || isBulkReviewing}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md border border-[#ff9933]/30 bg-[#ff9933]/10 text-[#b35f00] hover:bg-[#ff9933]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Apply
                   </button>
@@ -673,35 +673,35 @@ function TimeTeamMemberLogsPage() {
               onEditLog={beginEditLog}
               onReviewLog={reviewLog}
             />
-            <p className="mt-2 text-[11px] text-gray-500">
+            <p className="mt-2 text-[11px] text-slate-500">
               Running timers are visible for monitoring. Approve/reject is available
               after the member stops the timer.
             </p>
           </div>
 
           <aside className="xl:col-span-3 xl:sticky xl:top-6">
-            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-              <div className="border-b border-gray-200 px-4 py-3 bg-primary">
+            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+              <div className="border-b border-slate-200 bg-slate-900 px-4 py-3">
                 <h3 className="text-sm font-semibold text-white">{targetDisplayName}</h3>
               </div>
 
               <div className="p-4 space-y-2 text-sm">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-gray-500">Employee ID</span>
-                  <span className="font-semibold text-[#b35f00]">
+                  <span className="text-slate-500">Employee ID</span>
+                  <span className="font-semibold text-slate-700">
                     {targetRate?.custom_id || targetMemberUserId || "-"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-gray-500">Start Date</span>
+                  <span className="text-slate-500">Start Date</span>
                   <span className="text-right">{formatRateDate(targetRate?.start_date)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-gray-500">End Date</span>
+                  <span className="text-slate-500">End Date</span>
                   <span className="text-right">{formatRateDate(targetRate?.end_date)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-gray-500">Hourly Rate</span>
+                  <span className="text-slate-500">Hourly Rate</span>
                   <span className="font-semibold">
                     {targetRate
                       ? `${Number(targetRate.hourly_rate).toFixed(2)} ${targetRate.currency}`
@@ -710,14 +710,14 @@ function TimeTeamMemberLogsPage() {
                 </div>
               </div>
 
-              <div className="border-t border-gray-200 p-4">
+              <div className="border-t border-slate-200 p-4">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-xs border border-gray-200">
+                  <table className="w-full text-xs border border-slate-200">
                     <thead>
-                      <tr className="bg-gray-50">
-                        <th className="px-2 py-1 text-left border-b border-gray-200">Work</th>
-                        <th className="px-2 py-1 text-left border-b border-gray-200">Approved</th>
-                        <th className="px-2 py-1 text-left border-b border-gray-200">Rejected</th>
+                      <tr className="bg-slate-50">
+                        <th className="px-2 py-1 text-left border-b border-slate-200">Work</th>
+                        <th className="px-2 py-1 text-left border-b border-slate-200">Approved</th>
+                        <th className="px-2 py-1 text-left border-b border-slate-200">Rejected</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -729,7 +729,7 @@ function TimeTeamMemberLogsPage() {
                     </tbody>
                   </table>
                 </div>
-                <p className="text-[11px] text-gray-500 mt-2">
+                <p className="text-[11px] text-slate-500 mt-2">
                   Total Hours: {totalHoursWorked.toFixed(2)}
                 </p>
               </div>
@@ -751,3 +751,4 @@ function TimeTeamMemberLogsPage() {
     </TimeRouteFrame>
   );
 }
+

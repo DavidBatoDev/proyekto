@@ -65,8 +65,8 @@ const SortableEpicTab = ({
       onClick={onClick}
       className={`flex items-center gap-2 px-4 py-3 border-b-2 shrink-0 cursor-pointer transition-colors text-sm font-medium ${
         isActive
-          ? "text-gray-900 border-gray-900"
-          : "text-gray-600 hover:text-gray-900 border-transparent"
+          ? "border-slate-900 text-slate-900"
+          : "border-transparent text-slate-500 hover:text-slate-900"
       }`}
     >
       <div
@@ -81,7 +81,7 @@ const SortableEpicTab = ({
           event.stopPropagation();
           onClose();
         }}
-        className="p-0.5 rounded hover:bg-gray-200 transition-colors"
+        className="rounded p-0.5 transition-colors hover:bg-slate-200"
         aria-label="Close tab"
       >
         <X className="w-3 h-3" />
@@ -151,8 +151,8 @@ export function RoadmapTopBar({
   };
 
   return (
-    <div className="bg-gray-100 border-b border-gray-200 flex items-center justify-between w-full shrink-0 z-10 overflow-hidden">
-      <div className="flex items-center flex-1 min-w-0 h-full overflow-hidden">
+    <div className="z-10 flex w-full shrink-0 items-center justify-between overflow-hidden border-b border-slate-200 bg-white/80 backdrop-blur">
+      <div className="flex h-full min-w-0 flex-1 items-center overflow-hidden">
         <div
           className="flex items-center shrink-0"
           style={{ width: LEFT_PANEL_WIDTH }}
@@ -164,8 +164,8 @@ export function RoadmapTopBar({
             }}
             className={`w-1/2 px-4 py-3 font-medium text-sm text-center transition-colors border-b-2 shrink-0 ${
               viewMode === "roadmap"
-                ? "text-orange-600 border-orange-600"
-                : "text-gray-600 hover:text-gray-900 border-transparent"
+                ? "border-slate-900 text-slate-900"
+                : "border-transparent text-slate-500 hover:text-slate-900"
             }`}
           >
             <span className="inline-flex items-center gap-1.5">
@@ -177,8 +177,8 @@ export function RoadmapTopBar({
             onClick={() => setViewMode("milestones")}
             className={`w-1/2 px-4 py-3 font-medium text-sm text-center transition-colors border-b-2 shrink-0 ${
               viewMode === "milestones"
-                ? "text-orange-600 border-orange-600"
-                : "text-gray-600 hover:text-gray-900 border-transparent"
+                ? "border-slate-900 text-slate-900"
+                : "border-transparent text-slate-500 hover:text-slate-900"
             }`}
           >
             <span className="inline-flex items-center gap-1.5">
@@ -191,7 +191,7 @@ export function RoadmapTopBar({
         <div className="flex-1 min-w-0 overflow-x-auto no-scrollbar h-full">
           <div className="flex items-center h-full w-max min-w-full">
             {openEpicTabs.length > 0 && (
-              <div className="h-8 w-px bg-gray-300 shrink-0" />
+              <div className="h-8 w-px shrink-0 bg-slate-300" />
             )}
 
             <DndContext
@@ -229,7 +229,7 @@ export function RoadmapTopBar({
 
             {openArtifactTabs.length > 0 && (
               <>
-                <div className="h-8 w-px bg-gray-300 shrink-0 mx-2" />
+                <div className="mx-2 h-8 w-px shrink-0 bg-slate-300" />
                 <div className="flex items-center gap-2">
                   {openArtifactTabs.map((artifactId) => {
                     const artifact = artifactsById[artifactId];
@@ -243,8 +243,8 @@ export function RoadmapTopBar({
                         onClick={() => setSelectedArtifactId(artifactId)}
                         className={`flex items-center gap-2 px-4 py-3 border-b-2 shrink-0 cursor-pointer transition-colors text-sm font-medium ${
                           isActive
-                            ? "text-gray-900 border-gray-900"
-                            : "text-gray-600 hover:text-gray-900 border-transparent"
+                            ? "border-slate-900 text-slate-900"
+                            : "border-transparent text-slate-500 hover:text-slate-900"
                         }`}
                       >
                         <span className="inline-flex items-center gap-1.5">
@@ -256,7 +256,7 @@ export function RoadmapTopBar({
                             event.stopPropagation();
                             closeCanvasArtifactTab(artifactId);
                           }}
-                          className="p-0.5 rounded hover:bg-gray-200 transition-colors"
+                          className="rounded p-0.5 transition-colors hover:bg-slate-200"
                           aria-label="Close artifact tab"
                         >
                           <X className="w-3 h-3" />
@@ -271,11 +271,11 @@ export function RoadmapTopBar({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 px-6 py-2 border-l border-gray-200 bg-gray-100 shrink-0 shadow-sm relative z-20">
+      <div className="relative z-20 flex shrink-0 items-center gap-2 border-l border-slate-200 bg-slate-50/80 px-6 py-2 shadow-sm">
         {onEditBrief && (
           <button
             onClick={onEditBrief}
-            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-md transition-colors"
+            className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100"
             title="Edit Roadmap"
           >
             <FileText className="w-4 h-4" />
@@ -286,7 +286,7 @@ export function RoadmapTopBar({
         {onShare && (
           <button
             onClick={onShare}
-            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-md transition-colors"
+            className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100"
             title="Share Roadmap"
           >
             <Share2 className="w-4 h-4" />
@@ -297,7 +297,7 @@ export function RoadmapTopBar({
         {onOpenJsonPanel && (
           <button
             onClick={onOpenJsonPanel}
-            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-md transition-colors"
+            className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100"
             title="Open roadmap JSON editor"
           >
             <Code2 className="w-4 h-4" />
@@ -308,7 +308,7 @@ export function RoadmapTopBar({
         {onExport && (
           <button
             onClick={onExport}
-            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-md transition-colors shadow-sm"
+            className="app-cta inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium text-white shadow-sm"
             title="Export Roadmap"
           >
             <Download className="w-4 h-4" />

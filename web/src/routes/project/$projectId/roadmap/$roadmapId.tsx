@@ -7,5 +7,9 @@ export const Route = createFileRoute("/project/$projectId/roadmap/$roadmapId")({
 
 function RoadmapViewPage() {
   const { roadmapId } = Route.useParams();
-  return <RoadmapViewContent roadmapId={roadmapId} />;
+  return (
+    <div className="app-fade-in h-full w-full">
+      <RoadmapViewContent roadmapId={roadmapId} />
+    </div>
+  );
 }

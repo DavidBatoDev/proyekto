@@ -228,8 +228,8 @@ function OverviewPage() {
 
   if (error || !project) {
     return (
-      <div className="p-8">
-        <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+      <div className="p-6 md:p-8">
+        <div className="rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error ?? "Project not found."}
         </div>
       </div>
@@ -237,71 +237,77 @@ function OverviewPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto w-full">
-      <div className="px-8 py-8">
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-10">
+    <div className="h-full w-full overflow-y-auto app-shell-bg">
+      <div className="px-5 py-6 md:px-8 md:py-8">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-7">
           <div className="flex flex-col">
-            <OverviewBanner
-              bannerUrl={projectBannerUrl}
-              canEdit={canEditOverview}
-              isUploading={isUploadingBanner}
-              isOpen={bannerModalOpen}
-              onOpenModal={() => setBannerModalOpen(true)}
-              onCloseModal={() => setBannerModalOpen(false)}
-              onUpload={(files) => void handleProjectBannerUpload(files)}
-            />
+            <div className="app-slide-up">
+              <OverviewBanner
+                bannerUrl={projectBannerUrl}
+                canEdit={canEditOverview}
+                isUploading={isUploadingBanner}
+                isOpen={bannerModalOpen}
+                onOpenModal={() => setBannerModalOpen(true)}
+                onCloseModal={() => setBannerModalOpen(false)}
+                onUpload={(files) => void handleProjectBannerUpload(files)}
+              />
+            </div>
 
-            <OverviewContent
-              projectTitle={project.title}
-              clientName={project.client?.display_name}
-              consultantName={project.consultant?.display_name}
-              summaryHtml={summaryHtml}
-              scopeHtml={scopeHtml}
-              constraintsHtml={constraintsHtml}
-              requirementsHtml={requirementsHtml}
-              notesHtml={notesHtml}
-              risks={risks}
-              canEdit={canEditOverview}
-              savingSection={savingSection}
-              editingSummary={editingSummary}
-              editingScope={editingScope}
-              editingConstraints={editingConstraints}
-              editingRequirements={editingRequirements}
-              editingNotes={editingNotes}
-              setEditingSummary={setEditingSummary}
-              setEditingScope={setEditingScope}
-              setEditingConstraints={setEditingConstraints}
-              setEditingRequirements={setEditingRequirements}
-              setEditingNotes={setEditingNotes}
-              onSaveSummary={(value) =>
-                saveBriefPatch("summary", { mission_vision: value })
-              }
-              onSaveScope={(value) =>
-                saveBriefPatch("scope", { scope_statement: value })
-              }
-              onSaveConstraints={(value) =>
-                saveBriefPatch("constraints", { constraints: value })
-              }
-              onSaveRequirements={(value) =>
-                saveBriefPatch("requirements", { requirements: { html: value } })
-              }
-              onSaveNotes={(value) =>
-                saveBriefPatch(
-                  "notes",
-                  briefStorageMode === "visibility_mask"
-                    ? {
-                        visibility_mask: {
-                          ...(projectBrief?.visibility_mask ?? {}),
-                          project_notes: value,
-                        },
-                      }
-                    : { notes: value },
-                )
-              }
-            />
+            <div className="app-surface-card app-slide-up p-5 md:p-7">
+              <OverviewContent
+                projectTitle={project.title}
+                clientName={project.client?.display_name}
+                consultantName={project.consultant?.display_name}
+                summaryHtml={summaryHtml}
+                scopeHtml={scopeHtml}
+                constraintsHtml={constraintsHtml}
+                requirementsHtml={requirementsHtml}
+                notesHtml={notesHtml}
+                risks={risks}
+                canEdit={canEditOverview}
+                savingSection={savingSection}
+                editingSummary={editingSummary}
+                editingScope={editingScope}
+                editingConstraints={editingConstraints}
+                editingRequirements={editingRequirements}
+                editingNotes={editingNotes}
+                setEditingSummary={setEditingSummary}
+                setEditingScope={setEditingScope}
+                setEditingConstraints={setEditingConstraints}
+                setEditingRequirements={setEditingRequirements}
+                setEditingNotes={setEditingNotes}
+                onSaveSummary={(value) =>
+                  saveBriefPatch("summary", { mission_vision: value })
+                }
+                onSaveScope={(value) =>
+                  saveBriefPatch("scope", { scope_statement: value })
+                }
+                onSaveConstraints={(value) =>
+                  saveBriefPatch("constraints", { constraints: value })
+                }
+                onSaveRequirements={(value) =>
+                  saveBriefPatch("requirements", { requirements: { html: value } })
+                }
+                onSaveNotes={(value) =>
+                  saveBriefPatch(
+                    "notes",
+                    briefStorageMode === "visibility_mask"
+                      ? {
+                          visibility_mask: {
+                            ...(projectBrief?.visibility_mask ?? {}),
+                            project_notes: value,
+                          },
+                        }
+                      : { notes: value },
+                  )
+                }
+              />
+            </div>
           </div>
 
-          <OverviewSidebar timelineItems={timelineItems} members={members} />
+          <div className="app-slide-up">
+            <OverviewSidebar timelineItems={timelineItems} members={members} />
+          </div>
         </div>
       </div>
     </div>

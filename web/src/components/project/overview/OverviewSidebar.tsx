@@ -12,21 +12,21 @@ export function OverviewSidebar({ timelineItems, members }: OverviewSidebarProps
   const visibleItems = timelineItems.slice(0, MAX_OVERVIEW_MILESTONES);
 
   return (
-    <aside className="space-y-8 sticky top-6 self-start md:pl-4">
+    <aside className="sticky top-6 self-start space-y-5 md:pl-2">
       {/* Milestones */}
-      <div>
-        <h2 className="text-[16px] font-semibold text-gray-900 mb-4">
+      <div className="app-surface-card p-5">
+        <h2 className="mb-4 text-base font-semibold text-slate-900">
           Milestones
         </h2>
         {timelineItems.length === 0 ? (
-          <div className="relative pl-11 pb-2">
-            <span className="absolute left-[15px] top-7 bottom-0 w-px border-l-2 border-dashed border-gray-200" />
-            <span className="absolute left-0 top-0 w-8 h-8 rounded-full border-2 border-dashed border-gray-200 flex items-center justify-center bg-gray-50/50" />
+          <div className="relative pb-2 pl-11">
+            <span className="absolute bottom-0 left-[15px] top-7 w-px border-l-2 border-dashed border-slate-300" />
+            <span className="absolute left-0 top-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-dashed border-slate-300 bg-slate-50/80" />
             <div className="flex flex-col pt-1.5">
-              <p className="text-[13px] font-medium text-gray-500">
+              <p className="text-[13px] font-medium text-slate-600">
                 No milestones yet
               </p>
-              <p className="text-[11px] text-gray-400 mt-0.5">
+              <p className="mt-0.5 text-[11px] text-slate-500">
                 Project timeline will appear here
               </p>
             </div>
@@ -37,12 +37,12 @@ export function OverviewSidebar({ timelineItems, members }: OverviewSidebarProps
               const style = milestoneState(item.status);
               const DotIcon = style.icon;
               return (
-                <div key={item.id} className="relative pl-9 pb-5 last:pb-0">
+                <div key={item.id} className="relative pb-5 pl-9 last:pb-0">
                   {index < visibleItems.length - 1 && (
-                    <span className="absolute left-[15px] top-7 bottom-0 w-px bg-gray-200" />
+                    <span className="absolute bottom-0 left-[15px] top-7 w-px bg-slate-200" />
                   )}
                   <span
-                    className={`absolute left-0 top-0 w-8 h-8 rounded-full border-2 flex items-center justify-center ${style.dot}`}
+                    className={`absolute left-0 top-0 flex h-8 w-8 items-center justify-center rounded-full border-2 ${style.dot}`}
                   >
                     <DotIcon className="w-4 h-4" />
                   </span>
@@ -51,7 +51,7 @@ export function OverviewSidebar({ timelineItems, members }: OverviewSidebarProps
                   >
                     {item.title}
                   </p>
-                  <p className="text-[12px] text-gray-500 mt-1 inline-flex items-center gap-1">
+                  <p className="mt-1 inline-flex items-center gap-1 text-[12px] text-slate-500">
                     <Calendar className="w-3.5 h-3.5" />
                     {new Date(item.target_date).toLocaleDateString(undefined, {
                       month: "short",
@@ -68,15 +68,13 @@ export function OverviewSidebar({ timelineItems, members }: OverviewSidebarProps
         )}
       </div>
 
-      <hr className="border-gray-200" />
-
       {/* Project Team */}
-      <div>
-        <h2 className="text-[16px] font-semibold text-gray-900 mb-3">
+      <div className="app-surface-card p-5">
+        <h2 className="mb-3 text-base font-semibold text-slate-900">
           Project Team
         </h2>
         {members.length === 0 ? (
-          <p className="text-[13px] text-gray-500">No members yet.</p>
+          <p className="text-[13px] text-slate-500">No members yet.</p>
         ) : (
           <div className="flex items-center gap-2">
             {members.slice(0, 6).map((member, index) => (
@@ -89,17 +87,17 @@ export function OverviewSidebar({ timelineItems, members }: OverviewSidebarProps
                   <img
                     src={member.user.avatar_url}
                     alt={nameFromMember(member)}
-                    className="w-9 h-9 rounded-full border-2 border-white object-cover"
+                    className="h-9 w-9 rounded-full border-2 border-white object-cover"
                   />
                 ) : (
-                  <span className="w-9 h-9 rounded-full border-2 border-white bg-gray-100 text-gray-600 text-xs font-bold flex items-center justify-center">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-xs font-bold text-slate-600">
                     <User className="w-4 h-4" />
                   </span>
                 )}
               </div>
             ))}
             {members.length > 6 && (
-              <span className="-ml-2 w-9 h-9 rounded-full border-2 border-white bg-gray-100 text-gray-600 text-xs font-semibold flex items-center justify-center">
+              <span className="-ml-2 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-xs font-semibold text-slate-600">
                 +{members.length - 6}
               </span>
             )}

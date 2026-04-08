@@ -32,11 +32,11 @@ const EpicOverview = ({ preview }: { preview: RoadmapPreview }) => {
 	if (allEpics.length === 0) {
 		return (
 			<div className="flex flex-col items-center justify-center h-full py-8 px-4">
-				<div className="bg-[#f6f7f8] rounded-full p-3 mb-3">
-					<Inbox className="w-6 h-6 text-[#92969f]" />
+				<div className="mb-3 rounded-full bg-slate-100 p-3">
+					<Inbox className="h-6 w-6 text-slate-500" />
 				</div>
-				<p className="text-sm font-medium text-[#61636c] mb-1">No epics yet</p>
-				<p className="text-xs text-[#92969f] text-center">
+				<p className="mb-1 text-sm font-medium text-slate-600">No epics yet</p>
+				<p className="text-center text-xs text-slate-500">
 					This roadmap is empty
 				</p>
 			</div>
@@ -55,17 +55,14 @@ const EpicOverview = ({ preview }: { preview: RoadmapPreview }) => {
 							className="flex items-start gap-3 px-3 hover:bg-[#f6f7f8] transition-colors"
 						>
 							<div className="flex flex-col items-center shrink-0 pt-1">
-								<div
-									className="w-2 h-2 rounded-full"
-									style={{ backgroundColor: "var(--secondary)" }}
-								/>
-								{!isLast && <div className="w-0.5 h-5 bg-[#e3e5e8] mt-1" />}
+								<div className="h-2 w-2 rounded-full bg-slate-800" />
+								{!isLast && <div className="mt-1 h-5 w-0.5 bg-slate-200" />}
 							</div>
 							<div className="flex items-start justify-between flex-1 min-w-0 pb-1">
-								<span className="text-[14px] font-medium text-[#333438] truncate pt-0.5">
+								<span className="truncate pt-0.5 text-[14px] font-medium text-slate-900">
 									{epic.title}
 								</span>
-								<span className="text-xs text-[#61636c] bg-[#f6f7f8] px-2 py-0.5 rounded-full whitespace-nowrap ml-2">
+								<span className="ml-2 whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
 									{featureCount} {featureCount === 1 ? "feature" : "features"}
 								</span>
 							</div>
@@ -74,8 +71,8 @@ const EpicOverview = ({ preview }: { preview: RoadmapPreview }) => {
 				})}
 			</div>
 			{remainingCount > 0 && (
-				<div className="py-2 px-3 text-center border-t border-[#e3e5e8]">
-					<span className="text-xs text-[#92969f]">
+				<div className="border-t border-slate-200 px-3 py-2 text-center">
+					<span className="text-xs text-slate-500">
 						+{remainingCount} more {remainingCount === 1 ? "epic" : "epics"}
 					</span>
 				</div>
@@ -198,28 +195,29 @@ export function RoadmapsGrid() {
 	);
 
 	return (
-		<div id={roadmapsSectionId} data-roadmaps-section="my-roadmaps-section">
+		<div
+			id={roadmapsSectionId}
+			data-roadmaps-section="my-roadmaps-section"
+			className="app-slide-up"
+		>
 			<div className="mb-6">
 				<div className="flex items-center justify-between mb-1">
 					<div className="flex items-center gap-2">
-						<div
-							className="w-[18px] h-[18px] rounded-full"
-							style={{ backgroundColor: "var(--secondary)" }}
-						/>
-						<h2 className="text-[20px] font-semibold text-[#333438]">
+						<div className="h-[18px] w-[18px] rounded-full bg-slate-900" />
+						<h2 className="text-[20px] font-semibold tracking-tight text-slate-900">
 							{persona === "freelancer" ? "ACTIVE WORKSPACES" : "MY ROADMAPS"}
 						</h2>
 					</div>
 					{persona !== "freelancer" ? (
 						<button
 							type="button"
-							className="text-[20px] font-semibold text-[#333438] hover:text-[var(--secondary)]"
+							className="text-base font-semibold text-slate-700 transition-colors hover:text-slate-900"
 						>
 							{"View All \u2192"}
 						</button>
 					) : null}
 				</div>
-				<p className="text-xs text-[#61636c] mt-1">
+				<p className="mt-1 text-xs text-slate-600">
 					{persona === "freelancer"
 						? "Workspaces assigned to you for active delivery and milestone execution."
 						: "Each matched project unlocks a consultant-led roadmap for structured execution"}
@@ -231,33 +229,33 @@ export function RoadmapsGrid() {
 					<Loader className="w-8 h-8 animate-spin text-primary" />
 				</div>
 			) : isUnavailable ? (
-				<div className="text-center py-12">
-					<p className="text-[#333438] font-semibold mb-2">
+				<div className="rounded-2xl border border-dashed border-slate-300 bg-white py-12 text-center shadow-sm">
+					<p className="mb-2 font-semibold text-slate-900">
 						Your roadmap workspace is preparing
 					</p>
-					<p className="text-[#61636c] text-sm">
+					<p className="text-sm text-slate-600">
 						{persona === "freelancer"
 							? "This is where your milestone roadmap will appear once you're matched."
 							: "After consultant matching starts, your roadmap appears here with milestones and execution phases."}
 					</p>
 					{persona === "freelancer" ? (
-						<p className="text-xs text-[#92969f] mt-2">
+						<p className="mt-2 text-xs text-slate-500">
 							Your roadmap is being prepared based on your project assignment.
 						</p>
 					) : null}
 				</div>
 			) : templates.length === 0 ? (
-				<div className="text-center py-12">
-					<p className="text-[#333438] font-semibold mb-2">
+				<div className="rounded-2xl border border-dashed border-slate-300 bg-white py-12 text-center shadow-sm">
+					<p className="mb-2 font-semibold text-slate-900">
 						Your first roadmap is taking shape
 					</p>
-					<p className="text-[#61636c] text-sm">
+					<p className="text-sm text-slate-600">
 						{persona === "freelancer"
 							? "This is where your milestone roadmap will appear once you're matched."
 							: "Post your project vision to trigger consultant matching and automatically generate your roadmap."}
 					</p>
 					{persona === "freelancer" ? (
-						<p className="text-xs text-[#92969f] mt-2">
+						<p className="mt-2 text-xs text-slate-500">
 							Your roadmap is being prepared based on your project assignment.
 						</p>
 					) : null}
@@ -267,7 +265,7 @@ export function RoadmapsGrid() {
 					{templates.map((template) => (
 						<div
 							key={template.id}
-							className="group relative flex h-[420px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all hover:border-[var(--secondary)] hover:shadow-xl"
+							className="group relative flex h-[420px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg"
 						>
 							<div className="absolute top-3 right-3 z-20" data-roadmap-menu>
 								<button
@@ -338,7 +336,7 @@ export function RoadmapsGrid() {
 								</div>
 								<div className="flex-1 flex flex-col p-5">
 									<div className="flex justify-between items-start gap-3 pr-10">
-										<h3 className="text-[16px] font-bold text-[#333438] leading-tight">
+										<h3 className="text-[16px] font-semibold tracking-tight text-slate-900 leading-tight">
 											{template.title}
 										</h3>
 										<span
@@ -347,22 +345,22 @@ export function RoadmapsGrid() {
 											{template.tag}
 										</span>
 									</div>
-									<p className="mt-2 text-[14px] text-[#61636c] line-clamp-2">
+									<p className="mt-2 line-clamp-2 text-[14px] text-slate-600">
 										{template.category}
 									</p>
 									{persona === "freelancer" ? (
-										<p className="mt-2 text-sm text-[#61636c]">
+										<p className="mt-2 text-sm text-slate-600">
 											Role: {freelancerRoleLabel}
 										</p>
 									) : null}
 									{template.preview.project_id && (
-										<div className="mt-3 mb-2 flex items-center gap-1.5 text-xs text-[#61636c] bg-[#f6f7f8] px-2 py-1 rounded-md w-fit">
+										<div className="mt-3 mb-2 flex w-fit items-center gap-1.5 rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-600">
 											<Briefcase className="w-3 h-3" />
 											<span>Linked to Project</span>
 										</div>
 									)}
 									<div className="mt-auto border-t border-slate-100 pt-4 mt-4 flex justify-end">
-										<span className="inline-flex items-center gap-1 text-[14px] font-semibold text-[#333438] uppercase transition-colors group-hover:text-[var(--secondary)] whitespace-nowrap">
+										<span className="inline-flex items-center gap-1 whitespace-nowrap text-[14px] font-semibold uppercase text-slate-700 transition-colors group-hover:text-slate-900">
 											<CheckCircle2 className="w-3 h-3" />
 											{persona === "client"
 												? "TRACK PROGRESS \u2192"

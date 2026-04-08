@@ -19,7 +19,7 @@ export function ChatMemberProfileCard({
   if (!member) {
     return (
       <div className="h-full flex items-center justify-center px-6">
-        <p className="text-sm text-gray-500 text-center">
+        <p className="text-center text-sm text-slate-500">
           Select a sender in this thread to view their profile.
         </p>
       </div>
@@ -29,7 +29,7 @@ export function ChatMemberProfileCard({
   return (
     <div className="h-full flex flex-col">
       <div className="relative px-4 pt-4">
-        <div className="h-28 rounded-2xl overflow-hidden bg-gradient-to-r from-orange-200 via-amber-200 to-orange-100 border border-orange-100">
+        <div className="h-28 overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-200 via-slate-100 to-slate-50">
           {member.bannerUrl ? (
             <img
               src={member.bannerUrl}
@@ -38,22 +38,22 @@ export function ChatMemberProfileCard({
             />
           ) : null}
         </div>
-        <div className="absolute left-8 -bottom-8 ring-4 ring-[#f5f6f8] rounded-full">
+        <div className="absolute -bottom-8 left-8 rounded-full ring-4 ring-slate-50">
           <ChatAvatar name={member.name} avatarUrl={member.avatarUrl} size="lg" />
         </div>
       </div>
 
       <div className="px-4 pt-10">
-        <h3 className="text-2xl font-semibold text-gray-900 truncate">{member.name}</h3>
-        <p className="mt-1 text-sm text-gray-500">{member.roleLabel}</p>
+        <h3 className="truncate text-2xl font-semibold text-slate-900">{member.name}</h3>
+        <p className="mt-1 text-sm text-slate-500">{member.roleLabel}</p>
       </div>
 
       <div className="px-4 mt-4">
-        <div className="rounded-2xl border border-gray-200 bg-white p-4">
-          <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Position In Project
           </p>
-          <p className="mt-2 text-sm text-gray-900">{member.positionLabel}</p>
+          <p className="mt-2 text-sm text-slate-900">{member.positionLabel}</p>
         </div>
       </div>
 
@@ -61,7 +61,7 @@ export function ChatMemberProfileCard({
         <Link
           to="/profile/$profileId"
           params={{ profileId: member.userId }}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#ff9933] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#e68829]"
+          className="app-cta inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white"
         >
           View Full Profile
           <ExternalLink className="w-4 h-4" />

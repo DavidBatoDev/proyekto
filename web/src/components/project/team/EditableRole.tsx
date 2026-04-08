@@ -18,7 +18,7 @@ export function EditableRole({ label, canEdit, onOpenManage }: EditableRoleProps
             <button
               type="button"
               onClick={onOpenManage}
-              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-1 rounded-md border border-[#ff9933]/35 bg-[#ff9933]/10 text-[#b45f06] hover:bg-[#ff9933]/20 transition-colors"
+              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-1 rounded-md border border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
               title="Manage role and permissions"
             >
               <Shield className="w-3 h-3" />
@@ -31,3 +31,4 @@ export function EditableRole({ label, canEdit, onOpenManage }: EditableRoleProps
     </>
   );
 }
+

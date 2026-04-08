@@ -155,10 +155,10 @@ export function AddRateModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl rounded-3xl border border-orange-100 bg-white shadow-[0_24px_80px_rgba(2,6,23,0.35)] overflow-hidden"
+        className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white shadow-[0_24px_80px_rgba(2,6,23,0.35)] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-orange-100 px-6 py-5 bg-linear-to-r from-orange-50 to-amber-50">
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5 bg-linear-to-r from-slate-50 to-white">
           <div>
             <h3 className="text-base font-semibold text-slate-900">Add Team Rate</h3>
             <p className="text-xs text-slate-500 mt-1">
@@ -183,7 +183,7 @@ export function AddRateModal({
               value={newRateMemberId}
               onChange={(e) => onChangeMemberId(e.target.value)}
               disabled={savingRate || loadingMembers}
-              className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-200"
+              className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
             >
               <option value="">Select member</option>
               {membersWithoutRate.map((member) => {
@@ -212,7 +212,7 @@ export function AddRateModal({
                 onChange={(e) => onChangeCustomId(e.target.value)}
                 placeholder="Employee/Freelancer ID"
                 disabled={savingRate}
-                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-200"
+                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
               />
             </div>
             <div className="space-y-1.5">
@@ -227,7 +227,7 @@ export function AddRateModal({
                 onChange={(e) => onChangeRateValue(e.target.value)}
                 placeholder="e.g. 25.00"
                 disabled={savingRate}
-                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-200"
+                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
               />
             </div>
             <div className="space-y-1.5">
@@ -241,7 +241,7 @@ export function AddRateModal({
                 placeholder="USD"
                 maxLength={8}
                 disabled={savingRate}
-                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg uppercase focus:outline-none focus:ring-2 focus:ring-orange-200"
+                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg uppercase focus:outline-none focus:ring-2 focus:ring-slate-300"
               />
             </div>
           </div>
@@ -256,7 +256,7 @@ export function AddRateModal({
                 value={newRateStartDate}
                 onChange={(e) => onChangeStartDate(e.target.value)}
                 disabled={savingRate}
-                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-200"
+                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
               />
             </div>
             <div className="space-y-1.5">
@@ -268,17 +268,17 @@ export function AddRateModal({
                 value={newRateEndDate}
                 onChange={(e) => onChangeEndDate(e.target.value)}
                 disabled={savingRate}
-                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-200"
+                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
               />
             </div>
           </div>
 
-          <div className="rounded-xl border border-orange-100 bg-orange-50/60 px-3 py-2 text-xs text-slate-600">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
             Members with no rate row cannot use the Time page or timer actions.
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-orange-100 px-6 py-4 bg-slate-50">
+        <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-6 py-4 bg-slate-50">
           <button
             type="button"
             onClick={onClose}
@@ -292,7 +292,7 @@ export function AddRateModal({
             type="button"
             onClick={() => void onCreateRate()}
             disabled={savingRate || loadingMembers}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-md border border-orange-300 bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-md border border-slate-700 bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50"
           >
             <Save className="w-3.5 h-3.5" />
             Save Rate
@@ -358,10 +358,10 @@ export function EditRateModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl rounded-3xl border border-orange-100 bg-white shadow-[0_24px_80px_rgba(2,6,23,0.35)] overflow-hidden"
+        className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white shadow-[0_24px_80px_rgba(2,6,23,0.35)] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-orange-100 px-6 py-5 bg-linear-to-r from-orange-50 to-amber-50">
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5 bg-linear-to-r from-slate-50 to-white">
           <div>
             <h3 className="text-base font-semibold text-slate-900">Edit Team Rate</h3>
             <p className="text-xs text-slate-500 mt-1">{memberName}</p>
@@ -385,7 +385,7 @@ export function EditRateModal({
                 type="text"
                 value={editingRateCustomId}
                 onChange={(e) => onChangeCustomId(e.target.value)}
-                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-200"
+                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
               />
             </div>
             <div className="space-y-1.5">
@@ -398,7 +398,7 @@ export function EditRateModal({
                 step="0.01"
                 value={editingRateValue}
                 onChange={(e) => onChangeRateValue(e.target.value)}
-                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-200"
+                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
               />
             </div>
             <div className="space-y-1.5">
@@ -410,7 +410,7 @@ export function EditRateModal({
                 maxLength={8}
                 value={editingRateCurrency}
                 onChange={(e) => onChangeRateCurrency(e.target.value)}
-                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg uppercase focus:outline-none focus:ring-2 focus:ring-orange-200"
+                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg uppercase focus:outline-none focus:ring-2 focus:ring-slate-300"
               />
             </div>
             <div className="space-y-1.5">
@@ -421,7 +421,7 @@ export function EditRateModal({
                 type="date"
                 value={editingRateStartDate}
                 onChange={(e) => onChangeStartDate(e.target.value)}
-                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-200"
+                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
               />
             </div>
             <div className="space-y-1.5">
@@ -432,13 +432,13 @@ export function EditRateModal({
                 type="date"
                 value={editingRateEndDate}
                 onChange={(e) => onChangeEndDate(e.target.value)}
-                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-200"
+                className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
               />
             </div>
           </div>
         </div>
 
-        <div className="border-t border-orange-100 px-6 py-4 bg-slate-50">
+        <div className="border-t border-slate-200 px-6 py-4 bg-slate-50">
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
@@ -463,7 +463,7 @@ export function EditRateModal({
                 type="button"
                 onClick={() => void onSave(editingRateId)}
                 disabled={savingRate}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-md border border-orange-300 bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-md border border-slate-700 bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50"
               >
                 <Save className="w-3.5 h-3.5" />
                 Save Changes
@@ -964,7 +964,7 @@ export function AddLogModal({
                       }}
                       className={`block w-full rounded px-2 py-1.5 text-left text-sm transition-colors duration-200 ${
                         selectedEpic === epic.epicTitle
-                          ? "bg-orange-100 text-orange-800"
+                          ? "bg-slate-100 text-slate-700"
                           : "text-gray-700 hover:bg-gray-100"
                       }`}
                     >
@@ -993,7 +993,7 @@ export function AddLogModal({
                       }}
                       className={`block w-full rounded px-2 py-1.5 text-left text-sm transition-colors duration-200 ${
                         selectedFeature === feature.featureTitle
-                          ? "bg-orange-100 text-orange-800"
+                          ? "bg-slate-100 text-slate-700"
                           : "text-gray-700 hover:bg-gray-100"
                       }`}
                     >
@@ -1019,7 +1019,7 @@ export function AddLogModal({
                       onClick={() => onChangeTaskId(task.id)}
                       className={`block w-full rounded px-2 py-1.5 text-left text-sm transition-colors duration-200 ${
                         selectedTaskId === task.id
-                          ? "bg-orange-100 text-orange-800"
+                          ? "bg-slate-100 text-slate-700"
                           : "text-gray-700 hover:bg-gray-100"
                       }`}
                     >
@@ -1046,7 +1046,7 @@ export function AddLogModal({
             type="button"
             onClick={() => void onSave()}
             disabled={saving || !selectedTaskId}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md border border-orange-300 bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md border border-slate-700 bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50"
           >
             <Save className="w-3.5 h-3.5" />
             {saveLabel}
@@ -1056,3 +1056,4 @@ export function AddLogModal({
     </div>
   );
 }
+

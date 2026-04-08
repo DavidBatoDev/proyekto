@@ -626,29 +626,29 @@ function TimeMyLogsPage() {
         errorMessage={error || queryErrorMessage}
       >
         {shouldShowAccessDenied ? (
-          <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center">
-            <p className="text-sm text-gray-700 font-semibold">
+          <div className="app-surface-card rounded-2xl border-dashed p-12 text-center">
+            <p className="text-sm font-semibold text-slate-800">
               You do not have permission to access Time tracking.
             </p>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="mt-1 text-sm text-slate-500">
               Ask a manager to enable Time View permission.
             </p>
           </div>
         ) : shouldBlockPage ? (
-          <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center">
-            <p className="text-sm text-gray-700 font-semibold">Time tracking is not enabled.</p>
-            <p className="text-sm text-gray-500 mt-1">
+          <div className="app-surface-card rounded-2xl border-dashed p-12 text-center">
+            <p className="text-sm font-semibold text-slate-800">Time tracking is not enabled.</p>
+            <p className="mt-1 text-sm text-slate-500">
               Ask a manager to add your hourly rate before using the Time page.
             </p>
           </div>
         ) : (
           <>
             {showMyLogsTabSkeleton && (
-              <div className="rounded-xl border border-gray-200 overflow-hidden bg-white animate-pulse">
-                <div className="h-10 border-b border-gray-200 bg-gray-100" />
+              <div className="rounded-xl border border-slate-200 overflow-hidden bg-white animate-pulse">
+                <div className="h-10 border-b border-slate-200 bg-slate-100" />
                 <div className="p-3 space-y-2">
                   {Array.from({ length: 7 }).map((_, idx) => (
-                    <div key={idx} className="h-8 rounded bg-gray-100" />
+                    <div key={idx} className="h-8 rounded bg-slate-100" />
                   ))}
                 </div>
               </div>
@@ -674,8 +674,8 @@ function TimeMyLogsPage() {
                 </div>
 
                 <aside className="xl:col-span-3 xl:sticky xl:top-6">
-                  <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-                    <div className="border-b border-gray-200 px-4 py-3 bg-primary">
+                  <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                    <div className="border-b border-slate-200 bg-slate-900 px-4 py-3">
                       <h3 className="text-sm font-semibold text-white">
                         Project Member Time Rate
                       </h3>
@@ -683,21 +683,21 @@ function TimeMyLogsPage() {
 
                     <div className="p-4 space-y-2 text-sm">
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-gray-500">Employee ID</span>
-                        <span className="font-semibold text-[#b35f00]">
+                        <span className="text-slate-500">Employee ID</span>
+                        <span className="font-semibold text-slate-700">
                           {ownRate?.custom_id || ownRate?.member_user_id || "-"}
                         </span>
                       </div>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-gray-500">Start Date</span>
+                        <span className="text-slate-500">Start Date</span>
                         <span className="text-right">{formatRateDate(ownRate?.start_date)}</span>
                       </div>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-gray-500">End Date</span>
+                        <span className="text-slate-500">End Date</span>
                         <span className="text-right">{formatRateDate(ownRate?.end_date)}</span>
                       </div>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-gray-500">Hourly Rate</span>
+                        <span className="text-slate-500">Hourly Rate</span>
                         <span className="font-semibold">
                           {ownRate
                             ? `${Number(ownRate.hourly_rate).toFixed(2)} ${ownRate.currency}`
@@ -706,16 +706,16 @@ function TimeMyLogsPage() {
                       </div>
                     </div>
 
-                    <div className="border-t border-gray-200 p-4">
+                    <div className="border-t border-slate-200 p-4">
                       <div className="overflow-x-auto">
-                        <table className="w-full text-xs border border-gray-200">
+                        <table className="w-full text-xs border border-slate-200">
                           <thead>
-                            <tr className="bg-gray-50">
-                              <th className="px-2 py-1 text-left border-b border-gray-200">Work</th>
-                              <th className="px-2 py-1 text-left border-b border-gray-200">
+                            <tr className="bg-slate-50">
+                              <th className="px-2 py-1 text-left border-b border-slate-200">Work</th>
+                              <th className="px-2 py-1 text-left border-b border-slate-200">
                                 Approved
                               </th>
-                              <th className="px-2 py-1 text-left border-b border-gray-200">
+                              <th className="px-2 py-1 text-left border-b border-slate-200">
                                 Rejected
                               </th>
                             </tr>
@@ -729,7 +729,7 @@ function TimeMyLogsPage() {
                           </tbody>
                         </table>
                       </div>
-                      <p className="text-[11px] text-gray-500 mt-2">
+                      <p className="text-[11px] text-slate-500 mt-2">
                         Total Hours: {totalHoursWorked.toFixed(2)}
                       </p>
                     </div>
@@ -737,11 +737,11 @@ function TimeMyLogsPage() {
                 </aside>
               </div>
             ) : !showMyLogsTabSkeleton ? (
-              <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center">
-                <p className="text-sm text-gray-700 font-semibold">
+              <div className="app-surface-card rounded-2xl border-dashed p-12 text-center">
+                <p className="text-sm font-semibold text-slate-800">
                   Your personal logs are not available.
                 </p>
-                <p className="text-sm text-gray-500 mt-1">
+                <p className="mt-1 text-sm text-slate-500">
                   Use Team Logs to review member entries and rates.
                 </p>
               </div>
@@ -801,14 +801,14 @@ function TimeMyLogsPage() {
       </TimeRouteFrame>
 
       {(canScrollUp || canScrollDown) && (
-        <div className="fixed right-5 bottom-5 z-50 flex flex-col gap-1.5">
+        <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-1.5">
           <div className="h-7 w-7">
             {canScrollUp && (
               <button
                 type="button"
                 onClick={scrollToTop}
                 aria-label="Scroll to top"
-                className="h-7 w-7 rounded-full bg-primary text-primary-foreground shadow-md hover:bg-primary/90 transition-colors flex items-center justify-center"
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-900 text-white shadow-md transition-colors hover:bg-slate-700"
               >
                 <ChevronUp className="w-3.5 h-3.5" />
               </button>
@@ -820,7 +820,7 @@ function TimeMyLogsPage() {
                 type="button"
                 onClick={scrollToBottom}
                 aria-label="Scroll to bottom"
-                className="h-7 w-7 rounded-full bg-primary text-primary-foreground shadow-md hover:bg-primary/90 transition-colors flex items-center justify-center"
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-900 text-white shadow-md transition-colors hover:bg-slate-700"
               >
                 <ChevronDown className="w-3.5 h-3.5" />
               </button>
@@ -831,3 +831,4 @@ function TimeMyLogsPage() {
     </div>
   );
 }
+

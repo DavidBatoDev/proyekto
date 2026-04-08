@@ -13,21 +13,21 @@ export function TypingIndicator({ names }: { names: string[] }) {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 6 }}
-          className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-600 shadow-sm"
+          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 shadow-sm"
         >
           <div className="flex items-center gap-1">
             <motion.span
-              className="h-1.5 w-1.5 rounded-full bg-orange-400"
+              className="h-1.5 w-1.5 rounded-full bg-slate-500"
               animate={{ opacity: [0.3, 1, 0.3] }}
               transition={{ duration: 1, repeat: Infinity, delay: 0 }}
             />
             <motion.span
-              className="h-1.5 w-1.5 rounded-full bg-orange-400"
+              className="h-1.5 w-1.5 rounded-full bg-slate-500"
               animate={{ opacity: [0.3, 1, 0.3] }}
               transition={{ duration: 1, repeat: Infinity, delay: 0.2 }}
             />
             <motion.span
-              className="h-1.5 w-1.5 rounded-full bg-orange-400"
+              className="h-1.5 w-1.5 rounded-full bg-slate-500"
               animate={{ opacity: [0.3, 1, 0.3] }}
               transition={{ duration: 1, repeat: Infinity, delay: 0.4 }}
             />

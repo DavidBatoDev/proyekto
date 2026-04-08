@@ -54,7 +54,7 @@ const TaskPickerCell = memo(function TaskPickerCell({
       </button>
       {taskSyncing && (
         <Loader2
-          className="h-3.5 w-3.5 shrink-0 animate-spin text-[#b35f00]"
+          className="h-3.5 w-3.5 shrink-0 animate-spin text-slate-700"
           aria-label="Task update syncing"
         />
       )}
@@ -330,7 +330,7 @@ export function MyLogsGrid({
                 onClick={onOpenAddLog}
                 title="Add Log"
                 aria-label="Add Log"
-                className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-[#ff9933]/40 bg-[#ff9933]/10 text-[#b35f00] hover:bg-[#ff9933]/20 cursor-pointer"
+                className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200 cursor-pointer"
               >
                 <Plus className="h-3.5 w-3.5" />
               </button>
@@ -461,3 +461,4 @@ export function MyLogsGrid({
     </div>
   );
 }
+

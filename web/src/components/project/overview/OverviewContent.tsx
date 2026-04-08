@@ -112,31 +112,32 @@ export function OverviewContent({
 
   return (
     <div className="w-full">
-      <header className="pb-3 mt-1 space-y-3 mb-8">
-        <h1 className="text-[28px] font-semibold text-gray-900 uppercase tracking-wide leading-tight">
+      <header className="mb-8 mt-1 space-y-3 border-b border-slate-200 pb-5">
+        <p className="app-section-kicker">Overview</p>
+        <h1 className="text-[28px] font-semibold uppercase leading-tight tracking-wide text-slate-900">
           {projectTitle}
         </h1>
         <div className="flex flex-wrap items-center gap-2.5">
-          <div className="inline-flex items-center px-3 py-1 bg-primary/10 rounded-md text-[13px] text-primary">
-            <span className="font-semibold mr-1.5">Client:</span>
-            <span className="opacity-70 font-medium">{clientName ?? "—"}</span>
+          <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[13px] text-slate-700">
+            <span className="mr-1.5 font-semibold">Client:</span>
+            <span className="font-medium text-slate-500">{clientName ?? "-"}</span>
           </div>
-          <div className="inline-flex items-center px-3 py-1 bg-primary/10 rounded-md text-[13px] text-primary">
-            <span className="font-semibold mr-1.5">Consultant:</span>
-            <span className="opacity-70 font-medium">
-              {consultantName ?? "—"}
+          <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[13px] text-slate-700">
+            <span className="mr-1.5 font-semibold">Consultant:</span>
+            <span className="font-medium text-slate-500">
+              {consultantName ?? "-"}
             </span>
           </div>
         </div>
       </header>
 
-      <div className="space-y-8 pl-4 md:pl-8">
+      <div className="space-y-8">
         {/* Project Summary */}
-        <section className="pb-7 border-b border-gray-200 flex items-start gap-3">
-          <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-1.5" />
+        <section className="flex items-start gap-3 border-b border-slate-200 pb-7">
+          <CheckCircle2 className="mt-1.5 h-5 w-5 shrink-0 text-slate-700" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2 mb-2.5 min-h-[32px]">
-              <h2 className="text-[18px] font-semibold text-gray-900 leading-none">
+              <h2 className="text-[18px] font-semibold leading-none text-slate-900">
                 Project Summary
               </h2>
               {canEdit && !editingSummary && (
@@ -146,7 +147,7 @@ export function OverviewContent({
                     setDraftSummary(summaryHtml);
                     setEditingSummary(true);
                   }}
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"
                 >
                   <Edit2 className="w-4 h-4" />
                   Edit
@@ -161,7 +162,7 @@ export function OverviewContent({
                       setEditingSummary(false);
                     }}
                     disabled={savingSection === "summary"}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
                   >
                     <X className="w-4 h-4" />
                     Cancel
@@ -170,7 +171,7 @@ export function OverviewContent({
                     type="button"
                     onClick={() => void handleSaveSummary()}
                     disabled={savingSection === "summary"}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50"
+                    className="app-cta inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
                   >
                     {savingSection === "summary" ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -182,7 +183,7 @@ export function OverviewContent({
                 </div>
               )}
             </div>
-            <div className="text-[13px] text-gray-600 leading-6 space-y-3">
+            <div className="space-y-3 text-[13px] leading-6 text-slate-600">
               <EditableRichSection
                 value={summaryHtml}
                 placeholder="Write the project summary..."
@@ -197,11 +198,11 @@ export function OverviewContent({
         </section>
 
         {/* Scope */}
-        <section className="pb-7 border-b border-gray-200 flex items-start gap-3">
-          <Shield className="w-5 h-5 text-primary shrink-0 mt-1.5" />
+        <section className="flex items-start gap-3 border-b border-slate-200 pb-7">
+          <Shield className="mt-1.5 h-5 w-5 shrink-0 text-slate-700" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2 mb-2.5 min-h-[32px]">
-              <h2 className="text-[18px] font-semibold text-gray-900 leading-none">
+              <h2 className="text-[18px] font-semibold leading-none text-slate-900">
                 Scope
               </h2>
               {canEdit && !editingScope && (
@@ -211,7 +212,7 @@ export function OverviewContent({
                     setDraftScope(scopeHtml);
                     setEditingScope(true);
                   }}
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"
                 >
                   <Edit2 className="w-4 h-4" />
                   Edit
@@ -226,7 +227,7 @@ export function OverviewContent({
                       setEditingScope(false);
                     }}
                     disabled={savingSection === "scope"}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
                   >
                     <X className="w-4 h-4" />
                     Cancel
@@ -235,7 +236,7 @@ export function OverviewContent({
                     type="button"
                     onClick={() => void handleSaveScope()}
                     disabled={savingSection === "scope"}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50"
+                    className="app-cta inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
                   >
                     {savingSection === "scope" ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -247,7 +248,7 @@ export function OverviewContent({
                 </div>
               )}
             </div>
-            <div className="text-[13px] text-gray-600 leading-6 space-y-3">
+            <div className="space-y-3 text-[13px] leading-6 text-slate-600">
               <EditableRichSection
                 value={scopeHtml}
                 placeholder="Write the scope statement..."
@@ -262,11 +263,11 @@ export function OverviewContent({
         </section>
 
         {/* Constraints */}
-        <section className="pb-7 border-b border-gray-200 flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-primary shrink-0 mt-1.5" />
+        <section className="flex items-start gap-3 border-b border-slate-200 pb-7">
+          <AlertTriangle className="mt-1.5 h-5 w-5 shrink-0 text-slate-700" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2 mb-2.5 min-h-[32px]">
-              <h2 className="text-[18px] font-semibold text-gray-900 leading-none">
+              <h2 className="text-[18px] font-semibold leading-none text-slate-900">
                 Constraints
               </h2>
               {canEdit && !editingConstraints && (
@@ -276,7 +277,7 @@ export function OverviewContent({
                     setDraftConstraints(constraintsHtml);
                     setEditingConstraints(true);
                   }}
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"
                 >
                   <Edit2 className="w-4 h-4" />
                   Edit
@@ -291,7 +292,7 @@ export function OverviewContent({
                       setEditingConstraints(false);
                     }}
                     disabled={savingSection === "constraints"}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
                   >
                     <X className="w-4 h-4" />
                     Cancel
@@ -300,7 +301,7 @@ export function OverviewContent({
                     type="button"
                     onClick={() => void handleSaveConstraints()}
                     disabled={savingSection === "constraints"}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50"
+                    className="app-cta inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
                   >
                     {savingSection === "constraints" ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -312,7 +313,7 @@ export function OverviewContent({
                 </div>
               )}
             </div>
-            <div className="text-[13px] text-gray-600 leading-6 space-y-3 bg-gray-100/70 px-3 py-2.5 rounded-md">
+            <div className="space-y-3 rounded-md bg-slate-100/80 px-3 py-2.5 text-[13px] leading-6 text-slate-600">
               <EditableRichSection
                 value={constraintsHtml}
                 placeholder="Write constraints..."
@@ -327,11 +328,11 @@ export function OverviewContent({
         </section>
 
         {/* Core Requirements */}
-        <section className="pb-7 border-b border-gray-200 flex items-start gap-3">
-          <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-1.5" />
+        <section className="flex items-start gap-3 border-b border-slate-200 pb-7">
+          <CheckCircle2 className="mt-1.5 h-5 w-5 shrink-0 text-slate-700" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2 mb-2.5 min-h-[32px]">
-              <h2 className="text-[18px] font-semibold text-gray-900 leading-none">
+              <h2 className="text-[18px] font-semibold leading-none text-slate-900">
                 Core Requirements
               </h2>
               {canEdit && !editingRequirements && (
@@ -341,7 +342,7 @@ export function OverviewContent({
                     setDraftRequirements(requirementsHtml);
                     setEditingRequirements(true);
                   }}
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"
                 >
                   <Edit2 className="w-4 h-4" />
                   Edit
@@ -356,7 +357,7 @@ export function OverviewContent({
                       setEditingRequirements(false);
                     }}
                     disabled={savingSection === "requirements"}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
                   >
                     <X className="w-4 h-4" />
                     Cancel
@@ -365,7 +366,7 @@ export function OverviewContent({
                     type="button"
                     onClick={() => void handleSaveRequirements()}
                     disabled={savingSection === "requirements"}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50"
+                    className="app-cta inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
                   >
                     {savingSection === "requirements" ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -377,7 +378,7 @@ export function OverviewContent({
                 </div>
               )}
             </div>
-            <div className="text-[13px] text-gray-600 leading-6 space-y-3">
+            <div className="space-y-3 text-[13px] leading-6 text-slate-600">
               <EditableRichSection
                 value={requirementsHtml}
                 placeholder="Describe core requirements..."
@@ -392,11 +393,11 @@ export function OverviewContent({
         </section>
 
         {/* Project Notes */}
-        <section className="pb-7 border-b border-gray-200 flex items-start gap-3">
-          <StickyNote className="w-5 h-5 text-primary shrink-0 mt-1.5" />
+        <section className="flex items-start gap-3 border-b border-slate-200 pb-7">
+          <StickyNote className="mt-1.5 h-5 w-5 shrink-0 text-slate-700" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2 mb-2.5 min-h-[32px]">
-              <h2 className="text-[18px] font-semibold text-gray-900 leading-none">
+              <h2 className="text-[18px] font-semibold leading-none text-slate-900">
                 Project Notes
               </h2>
               {canEdit && !editingNotes && (
@@ -406,7 +407,7 @@ export function OverviewContent({
                     setDraftNotes(notesHtml);
                     setEditingNotes(true);
                   }}
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"
                 >
                   <Edit2 className="w-4 h-4" />
                   Edit
@@ -421,7 +422,7 @@ export function OverviewContent({
                       setEditingNotes(false);
                     }}
                     disabled={savingSection === "notes"}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
                   >
                     <X className="w-4 h-4" />
                     Cancel
@@ -430,7 +431,7 @@ export function OverviewContent({
                     type="button"
                     onClick={() => void handleSaveNotes()}
                     disabled={savingSection === "notes"}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50"
+                    className="app-cta inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
                   >
                     {savingSection === "notes" ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -442,7 +443,7 @@ export function OverviewContent({
                 </div>
               )}
             </div>
-            <div className="text-[13px] text-gray-600 leading-6 space-y-3">
+            <div className="space-y-3 text-[13px] leading-6 text-slate-600">
               <EditableRichSection
                 value={notesHtml}
                 placeholder="Write project notes..."
@@ -457,25 +458,25 @@ export function OverviewContent({
         </section>
 
         {/* Risk Register */}
-        <section className="pb-2 flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-primary shrink-0 mt-1.5" />
+        <section className="flex items-start gap-3 pb-2">
+          <AlertTriangle className="mt-1.5 h-5 w-5 shrink-0 text-slate-700" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center mb-2.5 min-h-[32px]">
-              <h2 className="text-[18px] font-semibold text-gray-900 leading-none">
+              <h2 className="text-[18px] font-semibold leading-none text-slate-900">
                 Risk Register
               </h2>
             </div>
             {risks.length > 0 ? (
-              <ul className="space-y-1.5 text-[13px] text-gray-700">
+              <ul className="space-y-1.5 text-[13px] text-slate-700">
                 {risks.map((item) => (
                   <li key={item} className="flex items-start gap-2">
-                    <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-slate-500" />
                     <span>{item}</span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-[13px] text-gray-500">No risks logged yet.</p>
+              <p className="text-[13px] text-slate-500">No risks logged yet.</p>
             )}
           </div>
         </section>
@@ -483,3 +484,4 @@ export function OverviewContent({
     </div>
   );
 }
+

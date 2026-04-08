@@ -66,7 +66,7 @@ export function ThreadMessageGroup({
   return (
     <div
       className={`group relative -mx-3 px-3 py-2 rounded-md mb-1 min-w-0 transition-colors ${
-        isSelected ? "bg-orange-100/70" : "hover:bg-gray-200/35"
+        isSelected ? "bg-slate-200/70" : "hover:bg-slate-200/35"
       }`}
     >
       {targetMessage && onToggleReaction && (
@@ -78,13 +78,13 @@ export function ThreadMessageGroup({
               : "opacity-0 translate-y-1 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:translate-y-0 group-focus-within:pointer-events-auto"
           }`}
         >
-          <div className="inline-flex items-center gap-0.5 rounded-full border border-gray-200 bg-white px-1.5 py-1 shadow-sm">
+          <div className="inline-flex items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1.5 py-1 shadow-sm">
             {QUICK_REACTIONS.map((emoji) => (
               <button
                 key={`${targetMessage.id}-${emoji}`}
                 type="button"
                 onClick={() => reactWith(emoji)}
-                className="h-7 w-7 inline-flex items-center justify-center rounded-full text-base hover:bg-gray-100"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-base hover:bg-slate-100"
                 aria-label={`React with ${emoji}`}
               >
                 {emoji}
@@ -93,7 +93,7 @@ export function ThreadMessageGroup({
             <button
               type="button"
               onClick={() => setShowPicker((current) => !current)}
-              className="h-7 w-7 inline-flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
               aria-label="Open emoji picker"
             >
               <Plus className="w-4 h-4" />
@@ -101,7 +101,7 @@ export function ThreadMessageGroup({
           </div>
 
           {showPicker && (
-            <div className="absolute z-20 right-0 top-10 rounded-xl border border-gray-200 bg-white shadow-xl overflow-hidden">
+            <div className="absolute right-0 top-10 z-20 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
               <EmojiPicker
                 width={300}
                 height={340}
@@ -167,14 +167,14 @@ export function ThreadMessageGroup({
                   }
                 : undefined
             }
-            className={`flex items-baseline gap-2 rounded-md px-1 -ml-1 ${
-              canSelect ? "hover:bg-gray-200/45 cursor-pointer" : ""
+            className={`-ml-1 flex items-baseline gap-2 rounded-md px-1 ${
+              canSelect ? "cursor-pointer hover:bg-slate-200/45" : ""
             }`}
           >
-            <span className="text-[17px] font-semibold text-gray-900 text-left">
+            <span className="text-left text-[17px] font-semibold text-slate-900">
               {group.sender.name}
             </span>
-            <span className="text-[12px] text-gray-500">{startedAt}</span>
+            <span className="text-[12px] text-slate-500">{startedAt}</span>
           </div>
           <div className="mt-1 space-y-1 min-w-0">
             {group.messages.map((message) => (

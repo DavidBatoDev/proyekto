@@ -324,7 +324,7 @@ export function TaskTreePicker({
                             }}
                             className={`block w-full truncate rounded px-2 py-1 text-left text-xs ${
                               task.id === value
-                                ? "bg-orange-100 text-orange-800"
+                                ? "bg-slate-100 text-slate-700"
                                 : "text-gray-600 hover:bg-gray-100"
                             }`}
                             title={task.title || UNTITLED_TASK}
@@ -432,7 +432,7 @@ export function TaskTreePicker({
             }}
             className={`block w-full truncate rounded px-2 py-1.5 text-left text-xs ${
               task.id === value
-                ? "bg-orange-100 text-orange-800"
+                ? "bg-slate-100 text-slate-700"
                 : "text-gray-700 hover:bg-gray-100"
             }`}
             title={task.title || UNTITLED_TASK}
@@ -510,3 +510,4 @@ export function TaskTreePicker({
     </div>
   );
 }
+
