@@ -53,6 +53,19 @@ def _is_parent_scoped_bulk_status_intent(user_message: str) -> bool:
     return has_bulk_scope and has_status_update_verb and has_parent_scope and not has_filter_hint
 
 
+def _is_parent_scoped_bulk_filter_update_intent(user_message: str) -> bool:
+    normalized = ' '.join(str(user_message or '').lower().split())
+    if not normalized or 'task' not in normalized:
+        return False
+    has_bulk_scope = bool(re.search(r'\b(all|every)\b', normalized))
+    has_update_verb = bool(re.search(r'\b(mark|update|set|change)\b', normalized))
+    has_parent_scope = bool(re.search(r'\b(in|under|within|inside|for)\b', normalized))
+    has_filter_hint = bool(
+        re.search(r'\b(assignee|assigned|owner|priority|keyword|title|name|contains)\b', normalized)
+    )
+    return has_bulk_scope and has_update_verb and has_parent_scope and has_filter_hint
+
+
 def _has_resolved_parent_context(
     *,
     deictic_parent_hint: dict[str, Any] | None,
@@ -167,12 +180,11 @@ def plan_operations(
     def _capturing_tool_executor(name: str, args: dict[str, Any]) -> dict[str, Any]:
         effective_args = dict(args) if isinstance(args, dict) else {}
         if name == 'resolve_node_reference' and bulk_scope_update_intent:
-            requested_node_type = str(effective_args.get('node_type') or '').strip().lower()
-            if requested_node_type in {'epic', 'feature'}:
-                if explicit_parent_type_hint in {'epic', 'feature'}:
-                    effective_args['node_type'] = explicit_parent_type_hint
-                else:
-                    effective_args.pop('node_type', None)
+            if explicit_parent_type_hint in {'epic', 'feature'}:
+                effective_args['allowed_node_types'] = [explicit_parent_type_hint]
+            else:
+                effective_args['allowed_node_types'] = ['feature', 'epic']
+            effective_args.pop('node_type', None)
 
         cache_key: tuple[str, str] | None = None
         if name in dedupe_tool_names and isinstance(effective_args, dict):
@@ -285,6 +297,14 @@ def plan_operations(
         bulk_scope_parent_guard
         and _is_parent_scoped_bulk_status_intent(user_message)
     )
+    parent_scoped_bulk_filter_guard = (
+        bulk_scope_parent_guard
+        and _is_parent_scoped_bulk_filter_update_intent(user_message)
+    )
+    helper_guarded_bulk_scope_intent = (
+        strict_parent_bulk_status_guard
+        or parent_scoped_bulk_filter_guard
+    )
     simple_edit_profile_enabled = bool(
         planner._settings.agent_simple_edit_planner_profile_enabled
     )
@@ -296,7 +316,7 @@ def plan_operations(
     )
     if followup_closed_world_turn or intent_type == 'roadmap_plan':
         tool_definitions = get_operation_tools()
-    elif bulk_scope_parent_guard:
+    elif helper_guarded_bulk_scope_intent:
         helper_tools = get_edit_helper_tools()
         if strict_parent_bulk_status_guard:
             tool_definitions = [
@@ -333,7 +353,7 @@ def plan_operations(
             'User request:\n'
             f'{user_message}'
         )
-    elif bulk_scope_parent_guard and not followup_closed_world_turn:
+    elif helper_guarded_bulk_scope_intent and not followup_closed_world_turn:
         helper_call_guidance = (
             'Call bulk_update_tasks_by_parent exactly once, then call '
             'plan_roadmap_operations exactly once.'

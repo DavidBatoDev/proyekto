@@ -243,6 +243,36 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         self.assertNotIn('resolve_node_reference', tool_names)
         self.assertEqual(result.get('response_mode'), 'edit_plan')
 
+    def test_bulk_move_intent_does_not_force_helper_only_allowlist(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Move all tasks in Authentication System to Payments feature',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-bulk-move-general-tools',
+                    'deictic_parent_hint': {
+                        'node_type': 'feature',
+                        'node_id': '123e4567-e89b-12d3-a456-426614174000',
+                    },
+                },
+            },
+        )
+
+        tool_names = captured.get('tool_names')
+        self.assertIsInstance(tool_names, list)
+        assert isinstance(tool_names, list)
+        self.assertIn('get_roadmap_overview', tool_names)
+        self.assertIn('resolve_node_reference', tool_names)
+        self.assertIn('plan_roadmap_operations', tool_names)
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+
     def test_roadmap_plan_mode_uses_plan_tool_only(self) -> None:
         captured: dict[str, object] = {}
         planner = _FakePlanner(captured)
@@ -446,6 +476,7 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
 
         self.assertEqual(len(observed_args), 1)
         self.assertNotIn('node_type', observed_args[0])
+        self.assertEqual(observed_args[0].get('allowed_node_types'), ['feature', 'epic'])
         self.assertEqual(result.get('response_mode'), 'edit_plan')
 
     def test_bulk_scope_resolve_keeps_explicit_parent_type(self) -> None:
@@ -523,7 +554,8 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         )
 
         self.assertEqual(len(observed_args), 1)
-        self.assertEqual(observed_args[0].get('node_type'), 'epic')
+        self.assertNotIn('node_type', observed_args[0])
+        self.assertEqual(observed_args[0].get('allowed_node_types'), ['epic'])
         self.assertEqual(result.get('response_mode'), 'edit_plan')
 
     def test_missing_tool_call_retry_keeps_resolve_sanitized_for_bulk_scope(self) -> None:
@@ -644,6 +676,9 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         self.assertEqual(call_count['value'], 2)
         self.assertEqual(len(observed_args), 2)
         self.assertTrue(all('node_type' not in args for args in observed_args))
+        self.assertTrue(
+            all(args.get('allowed_node_types') == ['feature', 'epic'] for args in observed_args)
+        )
         self.assertEqual(result.get('response_mode'), 'edit_plan')
 
 

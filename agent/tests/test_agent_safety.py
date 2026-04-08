@@ -6326,11 +6326,28 @@ class PlannerContextSafetyTests(unittest.TestCase):
             if name == 'resolve_node_reference':
                 return {
                     'status': 'unique',
+                    'type_relaxed': False,
+                    'resolve_source': 'typed',
+                    'resolve_diagnostics': {
+                        'candidate_count': 1,
+                        'selected_confidence': 0.97,
+                        'second_confidence': None,
+                        'confidence_margin': None,
+                    },
                     'selected': {
                         'id': '4848e4ec-fabf-4002-a703-714e938d6c04',
                         'type': 'feature',
                         'title': 'Authentication System',
+                        'confidence': 0.97,
                     },
+                    'matches': [
+                        {
+                            'id': '4848e4ec-fabf-4002-a703-714e938d6c04',
+                            'type': 'feature',
+                            'title': 'Authentication System',
+                            'confidence': 0.97,
+                        }
+                    ],
                 }
             if name == 'bulk_update_tasks_by_parent':
                 helper_calls.append(dict(args))
@@ -6436,6 +6453,135 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(planned_ops[0].op.value, 'mark_status')
         self.assertEqual(planned_ops[0].node_id, 'b026e967-54c3-4f11-9c49-b95a680aa2a7')
         self.assertEqual(planned_ops[0].status, 'in_review')
+
+    def test_missing_tool_call_then_empty_clarifier_skips_bulk_synthesis_for_relaxed_resolution(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={'agent_edit_planner_max_attempts': 2}
+        )
+        call_count = {'value': 0}
+        helper_calls: list[dict[str, Any]] = []
+
+        def fake_execute(name: str, args: dict, _ctx: dict):
+            if name == 'resolve_node_reference':
+                return {
+                    'status': 'unique',
+                    'type_relaxed': True,
+                    'resolve_source': 'type_relaxed',
+                    'resolve_diagnostics': {
+                        'candidate_count': 1,
+                        'selected_confidence': 0.98,
+                        'second_confidence': None,
+                        'confidence_margin': None,
+                    },
+                    'selected': {
+                        'id': '4848e4ec-fabf-4002-a703-714e938d6c04',
+                        'type': 'feature',
+                        'title': 'Authentication System',
+                        'confidence': 0.98,
+                    },
+                    'matches': [
+                        {
+                            'id': '4848e4ec-fabf-4002-a703-714e938d6c04',
+                            'type': 'feature',
+                            'title': 'Authentication System',
+                            'confidence': 0.98,
+                        }
+                    ],
+                }
+            if name == 'bulk_update_tasks_by_parent':
+                helper_calls.append(dict(args))
+                return {
+                    'operations': [
+                        {
+                            'op': 'mark_status',
+                            'node_type': 'task',
+                            'node_id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                            'status': 'in_review',
+                        }
+                    ],
+                    'matched_task_count': 1,
+                    'updated_task_count': 1,
+                }
+            return {'error': {'code': 'UNKNOWN'}}
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                call_count['value'] += 1
+                if call_count['value'] == 1:
+
+                    class _AdapterFirstAttempt:
+                        def plan_operations_with_tools(
+                            self,
+                            *,
+                            system_prompt,
+                            planner_prompt,
+                            history_messages,
+                            tools,
+                            tool_executor,
+                            max_tool_turns,
+                        ):
+                            tool_executor(
+                                'resolve_node_reference',
+                                {
+                                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                                    'label': 'Autenthication System',
+                                    'node_type': 'epic',
+                                    'limit': 5,
+                                },
+                            )
+                            raise ProviderAdapterError(
+                                provider='openai',
+                                code='missing_tool_call',
+                                message='OpenAI did not return any tool call while planning operations.',
+                            )
+
+                    return ProviderCallOutcome(
+                        value=operation(_AdapterFirstAttempt()),
+                        provider_used='openai',
+                        fallback_used=False,
+                        provider_error_code=None,
+                    )
+
+                class _AdapterSecondAttempt:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                    ):
+                        return ('Please confirm exact target.', [])
+
+                return ProviderCallOutcome(
+                    value=operation(_AdapterSecondAttempt()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
+        planner._provider_orchestrator = _FakeOrchestrator()
+
+        result = planner._plan_operations(
+            {
+                'user_message': 'Mark all tasks in the Autenthication System as in review',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-missing-tool-call-bulk-relaxed-skip',
+                },
+            }
+        )
+
+        self.assertEqual(call_count['value'], 2)
+        self.assertEqual(len(helper_calls), 0)
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'openai_tool_calling_clarifier')
 
     def test_plan_operations_invalid_payload_repair_prompt_includes_error_detail(self) -> None:
         planner = self._planner()

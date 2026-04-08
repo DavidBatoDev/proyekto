@@ -123,15 +123,24 @@ def get_context_tools() -> list[dict[str, Any]]:
             description=(
                 'Primary tool for resolving user-mentioned epics, features, or tasks by name '
                 'to a concrete node id. Use this before asking for manual IDs. '
-                'Set node_type only when the user explicitly names epic, feature, or task.'
+                'Set node_type only when the user explicitly names epic, feature, or task. '
+                'If the user does not explicitly name the type, omit node_type so resolution can '
+                'consider all node types safely. Use allowed_node_types to scope candidate kinds '
+                'without over-constraining to a single node type.'
             ),
             required=['roadmap_id', 'label'],
             properties={
                 'roadmap_id': {'type': 'string'},
                 'label': {'type': 'string'},
                 'node_type': {'type': 'string', 'enum': ['epic', 'feature', 'task']},
-                'auto_correct': {'type': 'boolean'},
-                'fuzzy': {'type': 'boolean'},
+                'allowed_node_types': {
+                    'type': 'array',
+                    'items': {'type': 'string', 'enum': ['epic', 'feature', 'task']},
+                    'minItems': 1,
+                    'maxItems': 3,
+                },
+                'auto_correct': {'type': 'boolean', 'default': True},
+                'fuzzy': {'type': 'boolean', 'default': False},
                 'limit': {'type': 'integer', 'minimum': 1, 'maximum': 50},
             },
         ),
