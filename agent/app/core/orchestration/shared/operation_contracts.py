@@ -90,39 +90,11 @@ def validate_operation_contract(
     is_uuid: Callable[[str | None], bool],
 ) -> dict[str, Any] | None:
     for index, operation in enumerate(operations):
-        op_name = operation.op.value if hasattr(operation.op, 'value') else str(operation.op)
-        if op_name == 'add_epic':
-            if read_operation_title(operation) is None:
-                return {
-                    'index': index,
-                    'reason': 'add_epic.data.title_missing',
-                }
-        if op_name in {'add_feature', 'add_task'}:
-            if not is_uuid(operation.parent_id):
-                return {
-                    'index': index,
-                    'reason': f'{op_name}.parent_id_invalid_uuid',
-                }
-            if read_operation_title(operation) is None:
-                return {
-                    'index': index,
-                    'reason': f'{op_name}.data.title_missing',
-                }
-        if op_name in {'update_node', 'delete_node', 'move_node', 'mark_status'}:
-            if not is_uuid(operation.node_id):
-                return {
-                    'index': index,
-                    'reason': f'{op_name}.node_id_invalid_uuid',
-                }
-        if op_name == 'move_node' and not is_uuid(operation.new_parent_id):
+        issues = operation.semantic_contract_issues(is_uuid=is_uuid)
+        if issues:
             return {
                 'index': index,
-                'reason': 'move_node.new_parent_id_invalid_uuid',
-            }
-        if operation.parent_id is not None and not is_uuid(operation.parent_id):
-            return {
-                'index': index,
-                'reason': f'{op_name}.parent_id_invalid_uuid',
+                'reason': issues[0],
             }
     return None
 
@@ -146,6 +118,18 @@ def operation_validation_guidance(reason: str | None) -> str:
         ),
         'add_task.parent_id_invalid_uuid': (
             'The task parent reference is invalid. Specify the exact parent feature.'
+        ),
+        'mark_status.status_missing': (
+            'The status update is missing a status value. Specify the exact status to apply.'
+        ),
+        'shift_dates.delta_days_missing': (
+            'The date shift amount is missing. Specify how many days to shift dates by.'
+        ),
+        'shift_dates.delta_days_out_of_range': (
+            'The requested date shift is too large. Use a value between -3650 and 3650 days.'
+        ),
+        'shift_dates.node_id_invalid_uuid': (
+            'The date shift target is invalid. Specify the exact roadmap item to shift.'
         ),
     }
     if reason in guidance_map:

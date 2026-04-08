@@ -39,7 +39,7 @@ class PlannerRuleFallbackTests(unittest.TestCase):
         self.assertEqual(result.parse_mode, 'rule_based_edit')
         self.assertEqual(len(result.operations), 1)
         op = result.operations[0]
-        self.assertEqual(str(op.op), 'OperationType.UPDATE_NODE')
+        self.assertEqual(op.op.value, 'update_node')
         self.assertEqual(op.node_id, '123e4567-e89b-12d3-a456-426614174000')
         self.assertEqual(op.patch, {'title': 'New Title'})
 

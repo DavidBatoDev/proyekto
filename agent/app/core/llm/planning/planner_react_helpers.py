@@ -396,6 +396,7 @@ def augment_repair_planner_prompt(
     *,
     planner_prompt: str,
     error_code: str,
+    error_message: str | None = None,
 ) -> str:
     if error_code == 'missing_tool_call':
         guidance = (
@@ -405,9 +406,13 @@ def augment_repair_planner_prompt(
             'and ask the clarifying question in assistant_message.'
         )
     elif error_code == 'invalid_operation_payload':
+        detail = str(error_message or '').strip()
+        detail_suffix = f' Validation detail: {detail}' if detail else ''
         guidance = (
             '\n\nIMPORTANT REPAIR: Your previous tool-call payload failed schema validation. '
-            'Retry with a valid plan_roadmap_operations payload using only supported operation fields.'
+            'Retry with a valid plan_roadmap_operations payload using only supported operation fields. '
+            'Use existing resolved IDs and avoid repeating discovery tools unless IDs are still missing.'
+            f'{detail_suffix}'
         )
     else:
         return planner_prompt

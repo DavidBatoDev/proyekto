@@ -1035,3 +1035,101 @@ describe('RoadmapAiService authz cache hardening', () => {
     expect(key.startsWith('v-test:')).toBe(true);
   });
 });
+
+describe('RoadmapAiService operation semantics parity', () => {
+  const createService = () =>
+    new RoadmapAiService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+  it('validates task status enums consistently', () => {
+    const service = createService() as unknown as {
+      validateNodeStatus: (nodeType: string, status: string) => boolean;
+    };
+
+    expect(service.validateNodeStatus('task', 'todo')).toBe(true);
+    expect(service.validateNodeStatus('task', 'done')).toBe(true);
+    expect(service.validateNodeStatus('task', 'blocked')).toBe(true);
+    expect(service.validateNodeStatus('task', 'invalid_status')).toBe(false);
+  });
+
+  it('shifts valid dates and preserves invalid date strings', () => {
+    const service = createService() as unknown as {
+      shiftDate: (
+        dateInput: string | undefined,
+        deltaDays: number,
+      ) => string | undefined;
+    };
+
+    expect(service.shiftDate('2026-04-08', 2)).toBe('2026-04-10');
+    expect(service.shiftDate('2026-04-08', -3)).toBe('2026-04-05');
+    expect(service.shiftDate('not-a-date', 5)).toBe('not-a-date');
+    expect(service.shiftDate(undefined, 5)).toBeUndefined();
+  });
+
+  it('applies mark_status for valid statuses and rejects invalid status enums', () => {
+    const service = createService() as unknown as {
+      applyOperations: (
+        state: Record<string, unknown>,
+        operations: any[],
+      ) => any[];
+    };
+
+    const state = {
+      id: '55e431e2-e416-468c-a973-94d97280e97d',
+      name: 'Roadmap',
+      status: 'active',
+      roadmap_epics: [
+        {
+          id: 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+          title: 'Epic',
+          status: 'in_progress',
+          roadmap_features: [
+            {
+              id: '60bcab3f-3989-448d-9c84-3261cf38685b',
+              title: 'Feature',
+              status: 'in_progress',
+              roadmap_tasks: [
+                {
+                  id: '1beecdd2-f057-4c41-bf6d-8bb9e5e4b2b1',
+                  title: 'Task',
+                  status: 'todo',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const invalidIssues = service.applyOperations(state as any, [
+      {
+        op: 'mark_status',
+        node_id: '1beecdd2-f057-4c41-bf6d-8bb9e5e4b2b1',
+        status: 'not_real',
+      },
+    ]);
+    expect(invalidIssues.length).toBeGreaterThan(0);
+    expect(invalidIssues[0].code).toBe('INVALID_ENUM');
+
+    const validIssues = service.applyOperations(state as any, [
+      {
+        op: 'mark_status',
+        node_id: '1beecdd2-f057-4c41-bf6d-8bb9e5e4b2b1',
+        status: 'done',
+      },
+    ]);
+    expect(validIssues).toEqual([]);
+    expect(
+      (
+        state.roadmap_epics[0].roadmap_features[0].roadmap_tasks[0] as {
+          status: string;
+        }
+      ).status,
+    ).toBe('done');
+  });
+});

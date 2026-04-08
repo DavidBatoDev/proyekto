@@ -368,10 +368,12 @@ class LLMPlanner:
         *,
         planner_prompt: str,
         error_code: str,
+        error_message: str | None = None,
     ) -> str:
         return planner_react_helpers.augment_repair_planner_prompt(
             planner_prompt=planner_prompt,
             error_code=error_code,
+            error_message=error_message,
         )
 
     def _augment_missing_tool_call_retry_prompt(

@@ -7,162 +7,513 @@ from pydantic import ValidationError
 
 from app.core.contracts.operations import OperationType, RoadmapOperation
 
+TASK_STATUS_FILTER_VALUES = ['todo', 'in_progress', 'in_review', 'done', 'blocked', 'all']
+FEATURE_STATUS_FILTER_VALUES = [
+    'not_started',
+    'in_progress',
+    'in_review',
+    'completed',
+    'blocked',
+    'all',
+]
+EPIC_PRIORITY_FILTER_VALUES = ['critical', 'nice_to_have', 'low', 'medium', 'high', 'all']
+
 PLANNING_TOOL_NAME = 'plan_roadmap_operations'
 CONTEXT_TOOL_NAMES = {
     'get_roadmap_summary',
+    'get_roadmap_overview',
     'resolve_node_reference',
     'search_nodes',
+    'search_tasks',
     'get_node_details',
     'get_children',
     'get_children_from_resolution',
     'get_features',
+    'get_features_by_epic',
+    'get_feature_details',
+    'get_epics_by_roadmap',
+    'get_epic_progress',
     'get_tasks_assigned_to_me',
+    'get_tasks_by_status',
+    'get_tasks_by_feature',
+    'get_tasks_by_epic',
+    'get_overdue_tasks',
+    'get_blocked_items',
 }
+
+EDIT_HELPER_TOOL_NAMES = {
+    'create_epic',
+    'create_feature',
+    'create_task',
+    'update_task_status',
+    'update_task_priority',
+    'update_task_assignee',
+    'update_feature_status',
+    'update_epic_status',
+    'update_titles',
+    'delete_task',
+    'delete_feature',
+    'delete_epic',
+    'move_task_to_feature',
+    'move_feature_to_epic',
+    'reorder_tasks',
+    'reorder_features',
+    'reorder_epics',
+    'bulk_update_task_status',
+    'bulk_assign_tasks',
+    'bulk_delete_tasks',
+    'bulk_move_tasks_to_feature',
+    'bulk_update_feature_status',
+    'bulk_update_epic_status',
+}
+
+EXECUTABLE_TOOL_NAMES = CONTEXT_TOOL_NAMES | EDIT_HELPER_TOOL_NAMES
+
+
+def _function_tool(
+    *,
+    name: str,
+    description: str,
+    required: list[str],
+    properties: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        'type': 'function',
+        'function': {
+            'name': name,
+            'description': description,
+            'parameters': {
+                'type': 'object',
+                'required': required,
+                'properties': properties,
+            },
+        },
+    }
 
 
 def get_context_tools() -> list[dict[str, Any]]:
     return [
-        {
-            'type': 'function',
-            'function': {
-                'name': 'get_roadmap_summary',
-                'description': (
-                    'Fetch a lightweight roadmap summary for context. '
-                    'Use this before planning edits when the roadmap context is unclear.'
-                ),
-                'parameters': {
-                    'type': 'object',
-                    'required': ['roadmap_id'],
-                    'properties': {
-                        'roadmap_id': {'type': 'string'},
-                    },
-                },
+        _function_tool(
+            name='get_roadmap_summary',
+            description=(
+                'Fetch a lightweight roadmap summary for context. '
+                'Use this before planning edits when the roadmap context is unclear.'
+            ),
+            required=['roadmap_id'],
+            properties={'roadmap_id': {'type': 'string'}},
+        ),
+        _function_tool(
+            name='get_roadmap_overview',
+            description=(
+                'Get a high-level roadmap overview with epic, feature, and task totals '
+                'plus per-epic progress snapshots.'
+            ),
+            required=['roadmap_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'include_epics': {'type': 'boolean'},
+                'max_epics': {'type': 'integer', 'minimum': 1, 'maximum': 100},
             },
-        },
-        {
-            'type': 'function',
-            'function': {
-                'name': 'resolve_node_reference',
-                'description': (
-                    'Resolve a user-provided node label to a concrete node id. '
-                    'Use this before asking for manual IDs.'
-                ),
-                'parameters': {
-                    'type': 'object',
-                    'required': ['roadmap_id', 'label'],
-                    'properties': {
-                        'roadmap_id': {'type': 'string'},
-                        'label': {'type': 'string'},
-                        'node_type': {'type': 'string', 'enum': ['epic', 'feature', 'task']},
-                        'limit': {'type': 'integer', 'minimum': 1, 'maximum': 50},
-                    },
-                },
+        ),
+        _function_tool(
+            name='resolve_node_reference',
+            description=(
+                'Resolve a user-provided node label to a concrete node id. '
+                'Use this before asking for manual IDs.'
+            ),
+            required=['roadmap_id', 'label'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'label': {'type': 'string'},
+                'node_type': {'type': 'string', 'enum': ['epic', 'feature', 'task']},
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 50},
             },
-        },
-        {
-            'type': 'function',
-            'function': {
-                'name': 'search_nodes',
-                'description': (
-                    'Search roadmap nodes by text query to resolve references like '
-                    '"auth feature" or "payment task".'
-                ),
-                'parameters': {
-                    'type': 'object',
-                    'required': ['roadmap_id', 'query'],
-                    'properties': {
-                        'roadmap_id': {'type': 'string'},
-                        'query': {'type': 'string'},
-                        'limit': {'type': 'integer', 'minimum': 1, 'maximum': 50},
-                    },
-                },
+        ),
+        _function_tool(
+            name='search_nodes',
+            description=(
+                'Search roadmap nodes by text query to resolve references like '
+                '"auth feature" or "payment task".'
+            ),
+            required=['roadmap_id', 'query'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'query': {'type': 'string'},
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 50},
             },
-        },
-        {
-            'type': 'function',
-            'function': {
-                'name': 'get_node_details',
-                'description': 'Get full details for a roadmap node by ID.',
-                'parameters': {
-                    'type': 'object',
-                    'required': ['roadmap_id', 'node_id'],
-                    'properties': {
-                        'roadmap_id': {'type': 'string'},
-                        'node_id': {'type': 'string'},
-                    },
-                },
+        ),
+        _function_tool(
+            name='search_tasks',
+            description='Search task nodes by keyword.',
+            required=['roadmap_id', 'query'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'query': {'type': 'string'},
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
             },
-        },
-        {
-            'type': 'function',
-            'function': {
-                'name': 'get_children',
-                'description': 'Get child nodes for a roadmap node.',
-                'parameters': {
-                    'type': 'object',
-                    'required': ['roadmap_id', 'parent_id'],
-                    'properties': {
-                        'roadmap_id': {'type': 'string'},
-                        'parent_id': {'type': 'string'},
-                        'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
-                    },
-                },
+        ),
+        _function_tool(
+            name='get_node_details',
+            description='Get full details for a roadmap node by ID.',
+            required=['roadmap_id', 'node_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'node_id': {'type': 'string'},
             },
-        },
-        {
-            'type': 'function',
-            'function': {
-                'name': 'get_children_from_resolution',
-                'description': (
-                    'Get child nodes by selecting a candidate from resolve_node_reference '
-                    'using a backend-issued resolution_id and choice index.'
-                ),
-                'parameters': {
-                    'type': 'object',
-                    'required': ['roadmap_id', 'resolution_id', 'choice'],
-                    'properties': {
-                        'roadmap_id': {'type': 'string'},
-                        'resolution_id': {'type': 'string'},
-                        'choice': {'type': 'integer', 'minimum': 1},
-                        'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
-                    },
-                },
+        ),
+        _function_tool(
+            name='get_children',
+            description='Get child nodes for a roadmap node.',
+            required=['roadmap_id', 'parent_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'parent_id': {'type': 'string'},
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
             },
-        },
-        {
-            'type': 'function',
-            'function': {
-                'name': 'get_features',
-                'description': 'Get features under an epic id.',
-                'parameters': {
-                    'type': 'object',
-                    'required': ['roadmap_id', 'epic_id'],
-                    'properties': {
-                        'roadmap_id': {'type': 'string'},
-                        'epic_id': {'type': 'string'},
-                        'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
-                    },
-                },
+        ),
+        _function_tool(
+            name='get_children_from_resolution',
+            description=(
+                'Get child nodes by selecting a candidate from resolve_node_reference '
+                'using a backend-issued resolution_id and choice index.'
+            ),
+            required=['roadmap_id', 'resolution_id', 'choice'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'resolution_id': {'type': 'string'},
+                'choice': {'type': 'integer', 'minimum': 1},
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
             },
-        },
-        {
-            'type': 'function',
-            'function': {
-                'name': 'get_tasks_assigned_to_me',
-                'description': (
-                    'Get roadmap tasks assigned to the authenticated actor in the current roadmap.'
-                ),
-                'parameters': {
-                    'type': 'object',
-                    'required': ['roadmap_id'],
-                    'properties': {
-                        'roadmap_id': {'type': 'string'},
-                        'status': {'type': 'string', 'enum': ['open', 'all']},
-                        'limit': {'type': 'integer', 'minimum': 1, 'maximum': 200},
-                    },
-                },
+        ),
+        _function_tool(
+            name='get_features',
+            description='Get features under an epic id.',
+            required=['roadmap_id', 'epic_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'epic_id': {'type': 'string'},
+                'status': {'type': 'string', 'enum': FEATURE_STATUS_FILTER_VALUES},
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
             },
-        },
+        ),
+        _function_tool(
+            name='get_features_by_epic',
+            description='Alias for get_features; returns features for an epic id.',
+            required=['roadmap_id', 'epic_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'epic_id': {'type': 'string'},
+                'status': {'type': 'string', 'enum': FEATURE_STATUS_FILTER_VALUES},
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
+            },
+        ),
+        _function_tool(
+            name='get_feature_details',
+            description='Get details for a feature node by feature_id.',
+            required=['roadmap_id', 'feature_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'feature_id': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='get_epics_by_roadmap',
+            description='List epics in a roadmap with status and feature counts.',
+            required=['roadmap_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'status': {'type': 'string', 'enum': FEATURE_STATUS_FILTER_VALUES},
+                'priority': {'type': 'string', 'enum': EPIC_PRIORITY_FILTER_VALUES},
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 200},
+            },
+        ),
+        _function_tool(
+            name='get_epic_progress',
+            description='Compute completion progress for an epic based on feature/task status.',
+            required=['roadmap_id', 'epic_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'epic_id': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='get_tasks_assigned_to_me',
+            description='Get roadmap tasks assigned to the authenticated actor in the current roadmap.',
+            required=['roadmap_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'status': {'type': 'string', 'enum': TASK_STATUS_FILTER_VALUES},
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 200},
+            },
+        ),
+        _function_tool(
+            name='get_tasks_by_status',
+            description='List tasks in the roadmap filtered by status.',
+            required=['roadmap_id', 'status'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'status': {'type': 'string', 'enum': TASK_STATUS_FILTER_VALUES},
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 500},
+            },
+        ),
+        _function_tool(
+            name='get_tasks_by_feature',
+            description='List tasks under a specific feature.',
+            required=['roadmap_id', 'feature_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'feature_id': {'type': 'string'},
+                'status': {'type': 'string', 'enum': TASK_STATUS_FILTER_VALUES},
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 500},
+            },
+        ),
+        _function_tool(
+            name='get_tasks_by_epic',
+            description='List tasks under all features in an epic.',
+            required=['roadmap_id', 'epic_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'epic_id': {'type': 'string'},
+                'status': {'type': 'string', 'enum': TASK_STATUS_FILTER_VALUES},
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 500},
+            },
+        ),
+        _function_tool(
+            name='get_overdue_tasks',
+            description='List overdue tasks (due_date before reference_date and not completed).',
+            required=['roadmap_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'reference_date': {'type': 'string'},
+                'include_completed': {'type': 'boolean'},
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 500},
+            },
+        ),
+        _function_tool(
+            name='get_blocked_items',
+            description='List blocked epics, features, and tasks in the roadmap.',
+            required=['roadmap_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
+                'include_epics': {'type': 'boolean'},
+                'include_features': {'type': 'boolean'},
+                'include_tasks': {'type': 'boolean'},
+                'limit': {'type': 'integer', 'minimum': 1, 'maximum': 500},
+            },
+        ),
+    ]
+
+
+def get_edit_helper_tools() -> list[dict[str, Any]]:
+    return [
+        _function_tool(
+            name='create_epic',
+            description='Draft an add_epic operation for a new epic.',
+            required=['title'],
+            properties={
+                'title': {'type': 'string'},
+                'description': {'type': 'string'},
+                'status': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='create_feature',
+            description='Draft an add_feature operation under an epic.',
+            required=['epic_id', 'title'],
+            properties={
+                'epic_id': {'type': 'string'},
+                'title': {'type': 'string'},
+                'description': {'type': 'string'},
+                'status': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='create_task',
+            description='Draft an add_task operation under a feature.',
+            required=['feature_id', 'title'],
+            properties={
+                'feature_id': {'type': 'string'},
+                'title': {'type': 'string'},
+                'description': {'type': 'string'},
+                'status': {'type': 'string'},
+                'priority': {'type': 'string'},
+                'assignee_id': {'type': 'string'},
+                'due_date': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='update_task_status',
+            description='Draft a status update for a single task.',
+            required=['task_id', 'status'],
+            properties={
+                'task_id': {'type': 'string'},
+                'status': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='update_task_priority',
+            description='Draft a priority update for a single task.',
+            required=['task_id', 'priority'],
+            properties={
+                'task_id': {'type': 'string'},
+                'priority': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='update_task_assignee',
+            description='Draft an assignee update for a single task.',
+            required=['task_id', 'assignee_id'],
+            properties={
+                'task_id': {'type': 'string'},
+                'assignee_id': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='update_feature_status',
+            description='Draft a status update for a single feature.',
+            required=['feature_id', 'status'],
+            properties={
+                'feature_id': {'type': 'string'},
+                'status': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='update_epic_status',
+            description='Draft a status update for a single epic.',
+            required=['epic_id', 'status'],
+            properties={
+                'epic_id': {'type': 'string'},
+                'status': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='update_titles',
+            description='Draft a title rename operation for an epic, feature, or task.',
+            required=['node_type', 'node_id', 'title'],
+            properties={
+                'node_type': {'type': 'string', 'enum': ['epic', 'feature', 'task']},
+                'node_id': {'type': 'string'},
+                'title': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='delete_task',
+            description='Draft a delete_node operation for a task.',
+            required=['task_id'],
+            properties={'task_id': {'type': 'string'}},
+        ),
+        _function_tool(
+            name='delete_feature',
+            description='Draft a delete_node operation for a feature.',
+            required=['feature_id'],
+            properties={'feature_id': {'type': 'string'}},
+        ),
+        _function_tool(
+            name='delete_epic',
+            description='Draft a delete_node operation for an epic.',
+            required=['epic_id'],
+            properties={'epic_id': {'type': 'string'}},
+        ),
+        _function_tool(
+            name='move_task_to_feature',
+            description='Draft a move_node operation that reparents a task under a feature.',
+            required=['task_id', 'feature_id'],
+            properties={
+                'task_id': {'type': 'string'},
+                'feature_id': {'type': 'string'},
+                'position': {'type': 'integer', 'minimum': 0},
+            },
+        ),
+        _function_tool(
+            name='move_feature_to_epic',
+            description='Draft a move_node operation that reparents a feature under an epic.',
+            required=['feature_id', 'epic_id'],
+            properties={
+                'feature_id': {'type': 'string'},
+                'epic_id': {'type': 'string'},
+                'position': {'type': 'integer', 'minimum': 0},
+            },
+        ),
+        _function_tool(
+            name='reorder_tasks',
+            description='Draft ordered move_node operations for tasks within the same feature.',
+            required=['feature_id', 'task_ids'],
+            properties={
+                'feature_id': {'type': 'string'},
+                'task_ids': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1},
+            },
+        ),
+        _function_tool(
+            name='reorder_features',
+            description='Draft ordered move_node operations for features within the same epic.',
+            required=['epic_id', 'feature_ids'],
+            properties={
+                'epic_id': {'type': 'string'},
+                'feature_ids': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1},
+            },
+        ),
+        _function_tool(
+            name='reorder_epics',
+            description='Draft ordered move_node operations for epics within the roadmap.',
+            required=['epic_ids'],
+            properties={
+                'epic_ids': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1},
+            },
+        ),
+        _function_tool(
+            name='bulk_update_task_status',
+            description='Draft status updates for multiple tasks.',
+            required=['task_ids', 'status'],
+            properties={
+                'task_ids': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1},
+                'status': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='bulk_assign_tasks',
+            description='Draft assignee updates for multiple tasks.',
+            required=['task_ids', 'assignee_id'],
+            properties={
+                'task_ids': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1},
+                'assignee_id': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='bulk_delete_tasks',
+            description='Draft delete_node operations for multiple tasks.',
+            required=['task_ids'],
+            properties={
+                'task_ids': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1},
+            },
+        ),
+        _function_tool(
+            name='bulk_move_tasks_to_feature',
+            description='Draft move_node operations for multiple tasks into one feature.',
+            required=['task_ids', 'feature_id'],
+            properties={
+                'task_ids': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1},
+                'feature_id': {'type': 'string'},
+                'start_position': {'type': 'integer', 'minimum': 0},
+            },
+        ),
+        _function_tool(
+            name='bulk_update_feature_status',
+            description='Draft status updates for multiple features.',
+            required=['feature_ids', 'status'],
+            properties={
+                'feature_ids': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1},
+                'status': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='bulk_update_epic_status',
+            description='Draft status updates for multiple epics.',
+            required=['epic_ids', 'status'],
+            properties={
+                'epic_ids': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1},
+                'status': {'type': 'string'},
+            },
+        ),
     ]
 
 
@@ -219,7 +570,7 @@ def get_operation_tools() -> list[dict[str, Any]]:
 
 
 def get_edit_mode_tools() -> list[dict[str, Any]]:
-    return [*get_context_tools(), get_planning_tool()]
+    return [*get_context_tools(), *get_edit_helper_tools(), get_planning_tool()]
 
 
 def parse_plan_tool_args(raw_args: Any) -> tuple[str, list[RoadmapOperation]]:

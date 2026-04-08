@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -36,6 +36,58 @@ class RoadmapOperation(BaseModel):
     delta_days: int | None = None
     scope: dict[str, Any] | None = None
     data: dict[str, Any] | None = None
+
+    def semantic_contract_issues(
+        self,
+        *,
+        is_uuid: Callable[[str | None], bool],
+    ) -> list[str]:
+        op_name = self.op.value
+        issues: list[str] = []
+
+        if op_name == 'add_epic':
+            if self._read_title() is None:
+                issues.append('add_epic.data.title_missing')
+
+        if op_name in {'add_feature', 'add_task'}:
+            if not is_uuid(self.parent_id):
+                issues.append(f'{op_name}.parent_id_invalid_uuid')
+            if self._read_title() is None:
+                issues.append(f'{op_name}.data.title_missing')
+
+        if op_name in {'update_node', 'delete_node', 'move_node', 'mark_status', 'shift_dates'}:
+            if not is_uuid(self.node_id):
+                issues.append(f'{op_name}.node_id_invalid_uuid')
+
+        if op_name == 'move_node':
+            if self.new_parent_id is not None and not is_uuid(self.new_parent_id):
+                issues.append('move_node.new_parent_id_invalid_uuid')
+
+        if op_name == 'mark_status':
+            normalized_status = self.status.strip() if isinstance(self.status, str) else ''
+            if not normalized_status:
+                issues.append('mark_status.status_missing')
+
+        if op_name == 'shift_dates':
+            if self.delta_days is None:
+                issues.append('shift_dates.delta_days_missing')
+            elif self.delta_days < -3650 or self.delta_days > 3650:
+                issues.append('shift_dates.delta_days_out_of_range')
+
+        if self.parent_id is not None and not is_uuid(self.parent_id):
+            issues.append(f'{op_name}.parent_id_invalid_uuid')
+
+        return issues
+
+    def _read_title(self) -> str | None:
+        if not isinstance(self.data, dict):
+            return None
+        title = self.data.get('title')
+        if isinstance(title, str):
+            normalized = title.strip()
+            if normalized:
+                return normalized
+        return None
 
 
 class ValidationIssue(BaseModel):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 from typing import Any
 
@@ -61,9 +62,41 @@ def plan_operations(
     tool_observations: list[dict[str, Any]] = []
     tool_observation_summary: list[dict[str, Any]] = []
     llm_calls_used = 0
+    dedupe_tool_names = {'resolve_node_reference', 'search_nodes'}
+    dedupe_result_cache: dict[tuple[str, str], dict[str, Any]] = {}
+
+    def _serialize_tool_args(value: dict[str, Any]) -> str:
+        try:
+            return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(',', ':'))
+        except TypeError:
+            return repr(value)
+
+    def _record_tool_dedupe_hit() -> None:
+        metrics = session_context.setdefault('_phase_metrics', {})
+        if not isinstance(metrics, dict):
+            return
+        metrics['resolve_dedup_hits'] = int(metrics.get('resolve_dedup_hits') or 0) + 1
 
     def _capturing_tool_executor(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        cache_key: tuple[str, str] | None = None
+        if name in dedupe_tool_names and isinstance(args, dict):
+            cache_key = (name, _serialize_tool_args(args))
+            cached = dedupe_result_cache.get(cache_key)
+            if cached is not None:
+                _record_tool_dedupe_hit()
+                result = deepcopy(cached)
+                planner._record_react_tool_observation(
+                    observations=tool_observations,
+                    summary=tool_observation_summary,
+                    tool_name=name,
+                    args=args,
+                    result=result,
+                )
+                return result
+
         result = planner._execute_context_tool(name, args, session_context)
+        if cache_key is not None and isinstance(result, dict):
+            dedupe_result_cache[cache_key] = deepcopy(result)
         planner._record_react_tool_observation(
             observations=tool_observations,
             summary=tool_observation_summary,
@@ -217,6 +250,7 @@ def plan_operations(
             'You are in edit planning mode.\n'
             'Resolve named targets to node IDs with resolve_node_reference before asking for IDs.\n'
             'Use context tools when needed to resolve node IDs and hierarchy before drafting operations.\n'
+            'Use intent-level helper tools for common actions (create_*, move_*, reorder_*, bulk_*).\n'
             'When ready, call plan_roadmap_operations exactly once with assistant_message and operations.\n'
             'Do not call commit or discard tools. Commit remains a UI action.\n'
             'Current staged operations:\n'
@@ -357,6 +391,7 @@ def plan_operations(
                 planner_prompt = planner._augment_repair_planner_prompt(
                     planner_prompt=planner_prompt,
                     error_code=exc.code,
+                    error_message=exc.message,
                 )
                 if exc.code == 'missing_tool_call':
                     # Retry in planning-only mode to avoid rediscovery churn.

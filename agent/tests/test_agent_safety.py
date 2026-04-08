@@ -5354,6 +5354,56 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertNotIn('System', observed_queries)
         self.assertIn('Autenthication System', observed_queries)
 
+    def test_resolve_node_reference_fuzzy_epic_fallback_handles_typo(self) -> None:
+        planner = self._planner()
+        observed_queries: list[str] = []
+        summary_calls = {'value': 0}
+
+        def _context_search(**kwargs):
+            query = str(kwargs.get('query') or '')
+            observed_queries.append(query)
+            return {'matches': []}
+
+        def _context_summary(**_kwargs):
+            summary_calls['value'] += 1
+            return {
+                'epics': [
+                    {
+                        'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                        'title': 'Authentication System',
+                        'status': 'in_progress',
+                        'feature_count': 2,
+                    },
+                    {
+                        'id': '58e1cd84-703d-4ce3-97da-77a7908f8e9f',
+                        'title': 'Billing System',
+                        'status': 'todo',
+                        'feature_count': 1,
+                    },
+                ]
+            }
+
+        planner._nest_client = SimpleNamespace(
+            context_search=_context_search,
+            context_summary=_context_summary,
+        )
+        result = planner._execute_context_tool(
+            'resolve_node_reference',
+            {
+                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                'label': 'Autenthication System',
+                'node_type': 'epic',
+                'limit': 5,
+            },
+            {'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'},
+        )
+
+        self.assertIn('Autenthication System', observed_queries)
+        self.assertEqual(summary_calls['value'], 1)
+        self.assertEqual(result.get('status'), 'unique')
+        selected = result.get('selected') or {}
+        self.assertEqual(selected.get('id'), 'dad5697a-8962-4f80-8bc3-8a964edd8e56')
+
     def test_resolve_node_reference_dedupes_within_single_session_context(self) -> None:
         planner = self._planner()
         call_count = 0
@@ -6261,6 +6311,76 @@ class PlannerContextSafetyTests(unittest.TestCase):
             captured_prompts[0],
         )
         self.assertEqual(captured_tool_names, [['plan_roadmap_operations']])
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'openai_tool_calling_clarifier')
+
+    def test_plan_operations_invalid_payload_repair_prompt_includes_error_detail(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={'agent_edit_planner_max_attempts': 2}
+        )
+        call_count = {'value': 0}
+        captured_prompts: list[str] = []
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                call_count['value'] += 1
+                if call_count['value'] == 1:
+                    raise ProviderAdapterError(
+                        provider='openai',
+                        code='invalid_operation_payload',
+                        message='Invalid operation payload at index 0: mark_status.status_missing',
+                    )
+
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                    ):
+                        captured_prompts.append(planner_prompt)
+                        return ('Prepared operations.', [])
+
+                return ProviderCallOutcome(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+
+        result = planner._plan_operations(
+            {
+                'user_message': 'Mark all tasks in Authentication as in review',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-invalid-payload-repair-guidance',
+                },
+            }
+        )
+
+        self.assertEqual(call_count['value'], 2)
+        self.assertEqual(len(captured_prompts), 1)
+        self.assertIn(
+            'IMPORTANT REPAIR: Your previous tool-call payload failed schema validation.',
+            captured_prompts[0],
+        )
+        self.assertIn(
+            'Use existing resolved IDs and avoid repeating discovery tools unless IDs are still missing.',
+            captured_prompts[0],
+        )
+        self.assertIn(
+            'Validation detail: Invalid operation payload at index 0: mark_status.status_missing',
+            captured_prompts[0],
+        )
         self.assertEqual(result.get('response_mode'), 'chat')
         self.assertEqual(result.get('parse_mode'), 'openai_tool_calling_clarifier')
 
