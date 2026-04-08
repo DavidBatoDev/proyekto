@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from app.core.config import Settings
 from app.core.logging_utils import log_event
-from app.core.orchestration.edit_resolver import parse_selection_index
+from app.core.orchestration.edits.edit_resolver import parse_selection_index
 
 from .deterministic_intents import (
     DeterministicContextIntent,

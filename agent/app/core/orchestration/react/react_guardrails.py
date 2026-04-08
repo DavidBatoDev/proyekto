@@ -7,7 +7,7 @@ from typing import Any, Callable
 from app.core.contracts.operations import RoadmapOperation
 from app.core.llm.clarifier_contract import build_clarifier_contract
 from app.core.llm.client import PlanningResult
-from app.core.orchestration.outcomes import EditReactLoopOutcome
+from app.core.orchestration.shared.outcomes import EditReactLoopOutcome
 
 
 def apply_context_answer_output_guard(

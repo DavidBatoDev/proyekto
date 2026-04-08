@@ -18,13 +18,13 @@ from app.core.contracts.sessions import (
 from app.core.contracts.sessions import AgentSession, IntentType
 from app.core.llm.client import LLMPlanner, PlanningResult
 from app.core.nest_client import NestRoadmapClient
-from app.core.orchestration.actor_context_provider import (
+from app.core.orchestration.context.actor_context_provider import (
     clear_actor_context_for_missing_auth as clear_actor_context_for_missing_auth_helper,
     ensure_actor_context as ensure_actor_context_helper,
     should_fetch_actor_context as should_fetch_actor_context_helper,
 )
-from app.core.orchestration.async_bridge import run_async_call
-from app.core.orchestration.common_text import (
+from app.core.orchestration.shared.async_bridge import run_async_call
+from app.core.orchestration.shared.common_text import (
     detect_edit_continuation_trigger,
     extract_mixed_edit_primary_message,
     extract_mixed_query_followup_message,
@@ -36,30 +36,30 @@ from app.core.orchestration.common_text import (
     normalize_label_for_matching,
     strip_quotes_and_punctuation,
 )
-from app.core.orchestration.draft_graph_manager import (
+from app.core.orchestration.edits.draft_graph_manager import (
     ensure_draft_graph_initialized as ensure_draft_graph_initialized_helper,
     get_active_draft as get_active_draft_helper,
     get_active_draft_if_available as get_active_draft_if_available_helper,
     resolve_staged_state as resolve_staged_state_helper,
 )
-from app.core.orchestration.deictic_resolver import (
+from app.core.orchestration.context.deictic_resolver import (
     build_deictic_ambiguity_planning as build_deictic_ambiguity_planning_helper,
     infer_required_parent_node_type as infer_required_parent_node_type_helper,
     looks_like_deictic_parent_reference as looks_like_deictic_parent_reference_helper,
     resolve_deictic_parent_reference as resolve_deictic_parent_reference_helper,
 )
-from app.core.orchestration.edit_resolver import (
+from app.core.orchestration.edits.edit_resolver import (
     extract_create_intent,
 )
-from app.core.orchestration.operation_contracts import (
+from app.core.orchestration.shared.operation_contracts import (
     apply_operation_contract_guard,
     operation_signature,
     read_operation_title,
     should_replace_staged_operations,
     validate_operation_contract,
 )
-from app.core.orchestration.outcomes import EditReactLoopOutcome, MessagePlanningOutcome
-from app.core.orchestration.pending_edit_context_manager import (
+from app.core.orchestration.shared.outcomes import EditReactLoopOutcome, MessagePlanningOutcome
+from app.core.orchestration.context.pending_edit_context_manager import (
     build_resolver_hints as build_resolver_hints_helper,
     infer_last_staged_create_title as infer_last_staged_create_title_helper,
     invalidate_retry_hints as invalidate_retry_hints_helper,
@@ -69,11 +69,11 @@ from app.core.orchestration.pending_edit_context_manager import (
 from app.core.orchestration.planning_orchestrator import (
     plan_message as plan_message_orchestrator,
 )
-from app.core.orchestration.rename_shape_recovery import (
+from app.core.orchestration.edits.rename_shape_recovery import (
     has_rename_shape_operation,
     recover_rename_shape_operations,
 )
-from app.core.orchestration.react_guardrails import (
+from app.core.orchestration.react.react_guardrails import (
     apply_context_answer_output_guard as apply_context_answer_output_guard_helper,
     build_react_guard_handoff as build_react_guard_handoff_helper,
     derive_react_terminal_action as derive_react_terminal_action_helper,
@@ -82,10 +82,10 @@ from app.core.orchestration.react_guardrails import (
     normalize_planning_clarifier_contract as normalize_planning_clarifier_contract_helper,
     run_edit_react_loop as run_edit_react_loop_helper,
 )
-from app.core.orchestration.react_planning_loop import (
+from app.core.orchestration.react.react_planning_loop import (
     run_edit_react_planning_loop as run_edit_react_planning_loop_helper,
 )
-from app.core.orchestration.recent_targets_manager import (
+from app.core.orchestration.context.recent_targets_manager import (
     append_recent_resolved_target as append_recent_resolved_target_helper,
     get_recent_resolved_targets as get_recent_resolved_targets_helper,
     is_recent_target_fresh as is_recent_target_fresh_helper,
@@ -96,22 +96,22 @@ from app.core.orchestration.recent_targets_manager import (
     record_recent_targets_from_operations as record_recent_targets_from_operations_helper,
     record_recent_targets_from_preview as record_recent_targets_from_preview_helper,
 )
-from app.core.orchestration.retry_autostage_handler import (
+from app.core.orchestration.edits.retry_autostage_handler import (
     attempt_retry_autostage as attempt_retry_autostage_helper,
     is_high_confidence_match as is_high_confidence_match_helper,
     passes_rename_autostage_gate as passes_rename_autostage_gate_helper,
     resolve_retry_candidates as resolve_retry_candidates_helper,
 )
-from app.core.orchestration.session_context_builder import (
+from app.core.orchestration.context.session_context_builder import (
     build_session_context as build_session_context_helper,
 )
-from app.core.orchestration.session_runtime_access import (
+from app.core.orchestration.context.session_runtime_access import (
     get_current_staged_operations as get_current_staged_operations_helper,
     get_current_staged_operations_version as get_current_staged_operations_version_helper,
     get_session_or_404 as get_session_or_404_helper,
     resolve_session_staged_state as resolve_session_staged_state_helper,
 )
-from app.core.orchestration.mixed_query_handler import (
+from app.core.orchestration.shared.mixed_query_handler import (
     compose_mixed_query_assistant_message as compose_mixed_query_assistant_message_helper,
     is_mixed_query_followup_clarifier as is_mixed_query_followup_clarifier_helper,
     mixed_query_warning_text as mixed_query_warning_text_helper,

@@ -1,6 +1,6 @@
 import unittest
 
-from app.core.orchestration.edit_resolver import (
+from app.core.orchestration.edits.edit_resolver import (
     extract_create_intent,
     parse_selection_index,
     resolve_candidates,

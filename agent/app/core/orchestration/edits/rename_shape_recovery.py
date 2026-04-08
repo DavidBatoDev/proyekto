@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 from app.core.contracts.operations import RoadmapOperation
-from app.core.orchestration.common_text import extract_rename_labels, normalize_label_for_matching
+from app.core.orchestration.shared.common_text import extract_rename_labels, normalize_label_for_matching
 
 
 def has_rename_shape_operation(operations: list[RoadmapOperation]) -> bool:

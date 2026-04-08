@@ -9,11 +9,11 @@ def __getattr__(name: str):
 
 		return AgentService
 	if name == 'MessagePlanningOutcome':
-		from app.core.orchestration.outcomes import MessagePlanningOutcome
+		from app.core.orchestration.shared.outcomes import MessagePlanningOutcome
 
 		return MessagePlanningOutcome
 	if name == 'EditReactLoopOutcome':
-		from app.core.orchestration.outcomes import EditReactLoopOutcome
+		from app.core.orchestration.shared.outcomes import EditReactLoopOutcome
 
 		return EditReactLoopOutcome
 	raise AttributeError(f'module {__name__!r} has no attribute {name!r}')

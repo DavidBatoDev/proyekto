@@ -8,16 +8,16 @@ from fastapi import HTTPException, status
 
 from app.core.contracts.sessions import AgentSession, PendingContextResolution
 from app.core.logging_utils import log_event
-from app.core.orchestration.outcomes import MessagePlanningOutcome
-from app.core.orchestration.planning_phase_metrics import (
+from app.core.orchestration.shared.outcomes import MessagePlanningOutcome
+from app.core.orchestration.planning.planning_phase_metrics import (
     read_react_loop_metrics,
     read_resolve_cache_metrics,
     record_context_tool_phase_metrics,
 )
-from app.core.orchestration.planning_post_execution import run_post_execution_phase
-from app.core.orchestration.planning_pre_dispatcher import dispatch_pre_planning_phase
-from app.core.orchestration.planning_result_dispatcher import dispatch_planning_result
-from app.core.orchestration.staged_operations_applier import apply_planned_operations
+from app.core.orchestration.planning.planning_post_execution import run_post_execution_phase
+from app.core.orchestration.planning.planning_pre_dispatcher import dispatch_pre_planning_phase
+from app.core.orchestration.planning.planning_result_dispatcher import dispatch_planning_result
+from app.core.orchestration.planning.staged_operations_applier import apply_planned_operations
 
 
 def plan_message(

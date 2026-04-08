@@ -12,7 +12,7 @@ from fastapi import HTTPException
 
 from app.core.config import Settings
 from app.core.logging_utils import log_event, summarize_tool_result
-from app.core.orchestration.edit_resolver import resolve_candidates
+from app.core.orchestration.edits.edit_resolver import resolve_candidates
 from app.core.tools.registry import CONTEXT_TOOL_NAMES
 
 

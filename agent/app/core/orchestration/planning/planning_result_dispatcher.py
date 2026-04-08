@@ -6,7 +6,7 @@ from typing import Any
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import AgentSession, IntentType
 from app.core.llm.client import PlanningResult
-from app.core.orchestration.planning_phase_metrics import record_planning_loop_metrics
+from app.core.orchestration.planning.planning_phase_metrics import record_planning_loop_metrics
 
 
 @dataclass
