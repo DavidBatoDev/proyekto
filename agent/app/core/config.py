@@ -90,6 +90,11 @@ class Settings(BaseSettings):
         default=False,
         alias='AGENT_SIMPLE_EDIT_PLANNER_PROFILE_ENABLED',
     )
+    # Keep disabled by default to preserve hybrid behavior; enable for strict planner authority.
+    agent_strict_mutation_authority_enabled: bool = Field(
+        default=True,
+        alias='AGENT_STRICT_MUTATION_AUTHORITY_ENABLED',
+    )
     agent_strict_preview_fingerprint: bool = Field(
         default=True,
         alias='AGENT_STRICT_PREVIEW_FINGERPRINT',

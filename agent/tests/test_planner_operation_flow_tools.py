@@ -35,7 +35,14 @@ class _FakeOrchestrator:
                 ]
                 return (
                     'Prepared operation.',
-                    [{'op': 'add_epic', 'data': {'title': 'AI Module'}}],
+                    [
+                        {
+                            'op': 'mark_status',
+                            'node_type': 'task',
+                            'node_id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                            'status': 'in_review',
+                        }
+                    ],
                 )
 
         value = operation(_Adapter(self._captured))
@@ -59,6 +66,7 @@ class _FakePlanner:
             agent_react_max_attempts=1,
             agent_react_repair_retries=0,
             agent_simple_edit_planner_profile_enabled=False,
+            agent_strict_mutation_authority_enabled=False,
             agent_log_include_content=False,
             agent_log_json=True,
             agent_log_color='off',
@@ -105,6 +113,7 @@ class _FakePlanner:
         user_message,
         tool_observations,
         session_context=None,
+        force_include_completed=None,
     ):
         return None
 
@@ -360,7 +369,14 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
                         tool_executor('resolve_node_reference', resolve_args)
                         return (
                             'Prepared operation.',
-                            [{'op': 'add_epic', 'data': {'title': 'AI Module'}}],
+                            [
+                                {
+                                    'op': 'mark_status',
+                                    'node_type': 'task',
+                                    'node_id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                                    'status': 'in_review',
+                                }
+                            ],
                         )
 
                 value = operation(_Adapter())
@@ -445,7 +461,14 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
                         )
                         return (
                             'Prepared operation.',
-                            [{'op': 'add_epic', 'data': {'title': 'AI Module'}}],
+                            [
+                                {
+                                    'op': 'mark_status',
+                                    'node_type': 'task',
+                                    'node_id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                                    'status': 'in_review',
+                                }
+                            ],
                         )
 
                 value = operation(_Adapter())
@@ -524,7 +547,14 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
                         )
                         return (
                             'Prepared operation.',
-                            [{'op': 'add_epic', 'data': {'title': 'AI Module'}}],
+                            [
+                                {
+                                    'op': 'mark_status',
+                                    'node_type': 'task',
+                                    'node_id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                                    'status': 'in_review',
+                                }
+                            ],
                         )
 
                 value = operation(_Adapter())
@@ -645,7 +675,14 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
                         )
                         return (
                             'Prepared operation.',
-                            [{'op': 'add_epic', 'data': {'title': 'AI Module'}}],
+                            [
+                                {
+                                    'op': 'mark_status',
+                                    'node_type': 'task',
+                                    'node_id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                                    'status': 'in_review',
+                                }
+                            ],
                         )
 
                 return SimpleNamespace(
@@ -680,6 +717,226 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
             all(args.get('allowed_node_types') == ['feature', 'epic'] for args in observed_args)
         )
         self.assertEqual(result.get('response_mode'), 'edit_plan')
+
+    def test_strict_mutation_authority_skips_synthesis_for_empty_plan_without_provider_error(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+        planner._settings.agent_strict_mutation_authority_enabled = True
+        synth_calls = {'count': 0}
+
+        def fake_synthesize(**kwargs):  # noqa: ANN003
+            synth_calls['count'] += 1
+            return [
+                {
+                    'op': 'mark_status',
+                    'node_type': 'task',
+                    'node_id': '9d40bb32-0768-4e5a-bb6f-1ccf0ce43721',
+                    'status': 'in_review',
+                }
+            ]
+
+        planner._maybe_synthesize_react_closure_operations = fake_synthesize  # type: ignore[method-assign]
+
+        class _EmptyOperationsOrchestrator:
+            def call(self, operation, trace_context=None):  # noqa: ANN001
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                        planner_profile=None,
+                    ):
+                        return ('No staged operations.', [])
+
+                return SimpleNamespace(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=1,
+                    tokens_output=1,
+                    tokens_total=2,
+                )
+
+        planner._provider_orchestrator = _EmptyOperationsOrchestrator()
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Update task status',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-strict-empty-no-synth',
+                },
+            },
+        )
+
+        self.assertEqual(synth_calls['count'], 0)
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'openai_tool_calling_clarifier')
+
+    def test_strict_mutation_authority_allows_synthesis_for_missing_tool_call_fallback(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+        planner._settings.agent_strict_mutation_authority_enabled = True
+        planner._settings.agent_react_max_attempts = 1
+        planner._settings.agent_react_repair_retries = 0
+        synth_calls = {'count': 0}
+
+        def fake_synthesize(**kwargs):  # noqa: ANN003
+            synth_calls['count'] += 1
+            return [
+                {
+                    'op': 'mark_status',
+                    'node_type': 'task',
+                    'node_id': '8f58ac65-2f95-4571-b8c1-cc9fd80e95db',
+                    'status': 'in_review',
+                }
+            ]
+
+        planner._maybe_synthesize_react_closure_operations = fake_synthesize  # type: ignore[method-assign]
+
+        class _MissingToolCallOrchestrator:
+            def call(self, operation, trace_context=None):  # noqa: ANN001
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                        planner_profile=None,
+                    ):
+                        tool_executor(
+                            'bulk_update_tasks_by_parent',
+                            {
+                                'roadmap_id': 'r1',
+                                'parent_id': '123e4567-e89b-12d3-a456-426614174000',
+                                'status': 'in_review',
+                                'include_completed': True,
+                            },
+                        )
+                        raise ProviderAdapterError(
+                            provider='openai',
+                            code='missing_tool_call',
+                            message='OpenAI did not return any tool call while planning operations.',
+                        )
+
+                return SimpleNamespace(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=1,
+                    tokens_output=1,
+                    tokens_total=2,
+                )
+
+        planner._provider_orchestrator = _MissingToolCallOrchestrator()
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Mark all tasks in Authentication System as in review',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-strict-missing-tool-call-synth',
+                },
+            },
+        )
+
+        self.assertEqual(synth_calls['count'], 1)
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+        self.assertEqual(result.get('parse_mode'), 'synth')
+
+    def test_strict_mutation_authority_blocks_mismatch_synthesis_without_provider_error(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+        planner._settings.agent_strict_mutation_authority_enabled = True
+        synth_calls = {'count': 0}
+
+        def fake_synthesize(**kwargs):  # noqa: ANN003
+            synth_calls['count'] += 1
+            return [
+                {
+                    'op': 'mark_status',
+                    'node_type': 'task',
+                    'node_id': '5d53db15-0f2f-4ec8-90b2-c995f72cae30',
+                    'status': 'in_review',
+                }
+            ]
+
+        planner._maybe_synthesize_react_closure_operations = fake_synthesize  # type: ignore[method-assign]
+
+        class _MismatchOrchestrator:
+            def call(self, operation, trace_context=None):  # noqa: ANN001
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                        planner_profile=None,
+                    ):
+                        return (
+                            'Prepared operation.',
+                            [
+                                {
+                                    'op': 'mark_status',
+                                    'node_type': 'feature',
+                                    'node_id': '123e4567-e89b-12d3-a456-426614174000',
+                                    'status': 'in_review',
+                                }
+                            ],
+                        )
+
+                return SimpleNamespace(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=1,
+                    tokens_output=1,
+                    tokens_total=2,
+                )
+
+        planner._provider_orchestrator = _MismatchOrchestrator()
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Mark all tasks in Authentication System as in review',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-strict-mismatch-no-synth',
+                },
+            },
+        )
+
+        self.assertEqual(synth_calls['count'], 0)
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(
+            result.get('parse_mode'),
+            'deterministic_bulk_task_scope_mismatch_clarifier',
+        )
 
 
 if __name__ == '__main__':

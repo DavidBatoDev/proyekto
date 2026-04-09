@@ -157,9 +157,98 @@ def _augment_bulk_task_status_contract_retry_prompt(
         'BULK TASK STATUS CONTRACT REPAIR:\n'
         'User asked to update status for all tasks under a parent scope.\n'
         'Do not mark feature or epic status directly for this intent.\n'
-        'Call bulk_update_tasks_by_parent (or bulk_update_tasks_by_filter when explicit filters are requested), '
+        'Call bulk_update_tasks_by_parent with include_completed=true '
+        '(or bulk_update_tasks_by_filter when explicit filters are requested), '
         'then call plan_roadmap_operations with task-level mark_status operations only.\n\n'
         f'Invalid operations from previous attempt:\n{payload}'
+    )
+
+
+def _safe_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return 0
+    return 0
+
+
+def _latest_bulk_parent_helper_result(
+    tool_observations: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    for observation in reversed(tool_observations):
+        if str(observation.get('tool_name') or '').strip() != 'bulk_update_tasks_by_parent':
+            continue
+        result = observation.get('result')
+        if isinstance(result, dict):
+            return result
+    return None
+
+
+def _synthesize_bulk_parent_operations_from_result(
+    helper_result: dict[str, Any] | None,
+) -> list[RoadmapOperation]:
+    if not isinstance(helper_result, dict):
+        return []
+    raw_operations = helper_result.get('operations')
+    if not isinstance(raw_operations, list):
+        return []
+
+    synthesized: list[RoadmapOperation] = []
+    for item in raw_operations:
+        if not isinstance(item, dict):
+            continue
+        try:
+            synthesized.append(RoadmapOperation.model_validate(item))
+        except Exception:
+            continue
+    return synthesized
+
+
+def _build_bulk_status_noop_message(
+    *,
+    helper_result: dict[str, Any],
+    fallback_message: str,
+) -> str:
+    total_child_count = _safe_int(helper_result.get('total_child_task_count'))
+    excluded_completed_count = _safe_int(helper_result.get('excluded_completed_count'))
+    eligible_count = _safe_int(helper_result.get('eligible_task_count'))
+    already_target_count = _safe_int(helper_result.get('already_target_status_count'))
+    target_status = str(helper_result.get('target_status') or '').strip().replace('_', ' ')
+    target_suffix = f'"{target_status}"' if target_status else 'the requested status'
+
+    if total_child_count <= 0:
+        return (
+            'I found the selected parent scope, but it currently has no child tasks to update.'
+        )
+
+    if excluded_completed_count > 0 and eligible_count <= 0:
+        return (
+            f'I found {total_child_count} child task(s), but all were completed and excluded '
+            'by the current include_completed policy.'
+        )
+
+    if eligible_count > 0 and already_target_count >= eligible_count:
+        return (
+            f'I found {eligible_count} eligible task(s), and they are already set to {target_suffix}. '
+            'No changes were staged.'
+        )
+
+    if eligible_count <= 0:
+        return (
+            f'I found {total_child_count} child task(s), but none were eligible for updates '
+            'with the current filters.'
+        )
+
+    if fallback_message.strip():
+        return fallback_message.strip()
+
+    return (
+        f'I found {eligible_count} eligible task(s), but no status changes were needed.'
     )
 
 
@@ -217,6 +306,20 @@ def plan_operations(
         intent_type == 'roadmap_edit'
         and _is_bulk_task_scope_update_intent(user_message)
     )
+    force_include_completed_for_bulk_status = (
+        intent_type == 'roadmap_edit'
+        and _is_parent_scoped_bulk_status_intent(user_message)
+    )
+    strict_mutation_authority_enabled = (
+        intent_type == 'roadmap_edit'
+        and bool(
+            getattr(
+                planner._settings,
+                'agent_strict_mutation_authority_enabled',
+                False,
+            )
+        )
+    )
     explicit_parent_type_hint = _explicit_parent_type_hint(user_message)
     operation_op_guardrail = (
         'Helper tool names are never valid operation op values. '
@@ -264,6 +367,8 @@ def plan_operations(
             else:
                 effective_args['allowed_node_types'] = ['feature', 'epic']
             effective_args.pop('node_type', None)
+        if name == 'bulk_update_tasks_by_parent' and force_include_completed_for_bulk_status:
+            effective_args['include_completed'] = True
 
         cache_key: tuple[str, str] | None = None
         if name in dedupe_tool_names and isinstance(effective_args, dict):
@@ -302,6 +407,71 @@ def plan_operations(
         effective_used = llm_calls_used if used_calls is None else used_calls
         next_state['llm_calls_used'] = max(int(effective_used or 0), 0)
         return next_state
+
+    def _is_strict_synthesis_fallback_allowed(
+        *,
+        provider_error_code: str | None,
+    ) -> bool:
+        if not strict_mutation_authority_enabled:
+            return True
+        normalized_error_code = str(provider_error_code or '').strip().lower()
+        if normalized_error_code not in {'invalid_operation_payload', 'missing_tool_call'}:
+            return False
+        return bool(tool_observations)
+
+    def _try_synthesize_react_closure_state(
+        *,
+        reason: str,
+        provider_error_code: str | None,
+        tokens_input: int | None = None,
+        tokens_output: int | None = None,
+        tokens_total: int | None = None,
+    ) -> dict[str, Any] | None:
+        if not _is_strict_synthesis_fallback_allowed(provider_error_code=provider_error_code):
+            if strict_mutation_authority_enabled:
+                log_event(
+                    planner._logger,
+                    'react_synthesis_skipped_strict_authority',
+                    settings=planner._settings,
+                    trace_id=trace_id,
+                    reason=reason,
+                    provider_error_code=provider_error_code,
+                    tool_observation_count=len(tool_observations),
+                )
+            return None
+
+        synthesized_operations = planner._maybe_synthesize_react_closure_operations(
+            user_message=user_message,
+            tool_observations=tool_observations,
+            session_context=session_context,
+            force_include_completed=force_include_completed_for_bulk_status,
+        )
+        if not synthesized_operations:
+            return None
+
+        if strict_mutation_authority_enabled:
+            log_event(
+                planner._logger,
+                'react_synthesis_used_strict_fallback',
+                settings=planner._settings,
+                trace_id=trace_id,
+                reason=reason,
+                provider_error_code=provider_error_code,
+                operations_count=len(synthesized_operations),
+            )
+
+        return _finalize_state(
+            planner._build_synthesized_react_closure_state(
+                operations=synthesized_operations,
+                schema_invalid_attempts=schema_invalid_attempts,
+                repair_attempted=repair_attempted,
+                draft_action='continue',
+                tool_plan=[],
+                tokens_input=tokens_input,
+                tokens_output=tokens_output,
+                tokens_total=tokens_total,
+            )
+        )
 
     if max_attempts <= 0:
         return _finalize_state(
@@ -435,7 +605,7 @@ def plan_operations(
         )
     elif helper_guarded_bulk_scope_intent and not followup_closed_world_turn:
         helper_call_guidance = (
-            'Call bulk_update_tasks_by_parent exactly once, then call '
+            'Call bulk_update_tasks_by_parent exactly once with include_completed=true, then call '
             'plan_roadmap_operations exactly once.'
             if strict_parent_bulk_status_guard
             else (
@@ -469,7 +639,7 @@ def plan_operations(
             'Do not call resolve_node_reference or get_children again for the same target.\n'
             'Your primary action in this turn is to call plan_roadmap_operations exactly once.\n'
             'For intents like "mark/update all tasks in or under X", use '
-            'bulk_update_tasks_by_parent with the resolved parent ID instead of asking for task IDs.\n'
+            'bulk_update_tasks_by_parent with include_completed=true and the resolved parent ID instead of asking for task IDs.\n'
             'For combined scope + filter updates (for example assignee/status/keyword), use bulk_update_tasks_by_filter.\n'
             'If task_ids or task summaries are already present in prior observations, stage operations immediately.\n'
             'If you still cannot produce safe operations, call plan_roadmap_operations with an empty '
@@ -508,7 +678,7 @@ def plan_operations(
             'Use context tools when needed to resolve node IDs and hierarchy before drafting operations.\n'
             'Use intent-level helper tools for common actions (create_*, move_*, reorder_*, bulk_*).\n'
             f'{operation_op_guardrail}\n'
-            'For "all tasks under a feature/epic" status updates, prefer bulk_update_tasks_by_parent.\n'
+            'For "all tasks under a feature/epic" status updates, prefer bulk_update_tasks_by_parent with include_completed=true.\n'
             'For broad task updates with filters, prefer bulk_update_tasks_by_filter.\n'
             'When ready, call plan_roadmap_operations exactly once with assistant_message and operations.\n'
             'Do not call commit or discard tools. Commit remains a UI action.\n'
@@ -555,6 +725,12 @@ def plan_operations(
                 'Prefer previously resolved context and call plan_roadmap_operations '
                 'as soon as a safe operation plan can be staged.'
             )
+    if strict_mutation_authority_enabled:
+        planner_prompt += (
+            '\n\nStrict mutation-authority policy:\n'
+            'Only plan_roadmap_operations may finalize staged operations. '
+            'Treat helper tool results as intermediate context or drafts.'
+        )
     schema_invalid_attempts = 0
     repair_attempted = False
     last_provider_error_code: str | None = None
@@ -605,24 +781,15 @@ def plan_operations(
             if exc.code == 'invalid_operation_payload':
                 _record_invalid_payload_metric(_classify_invalid_payload(exc.message))
                 if attempt == 0:
-                    synthesized_operations = planner._maybe_synthesize_react_closure_operations(
-                        user_message=user_message,
-                        tool_observations=tool_observations,
-                        session_context=session_context,
+                    synthesized_state = _try_synthesize_react_closure_state(
+                        reason='provider_invalid_operation_payload_initial',
+                        provider_error_code=exc.code,
+                        tokens_input=exc.tokens_input,
+                        tokens_output=exc.tokens_output,
+                        tokens_total=exc.tokens_total,
                     )
-                    if synthesized_operations:
-                        return _finalize_state(
-                            planner._build_synthesized_react_closure_state(
-                                operations=synthesized_operations,
-                                schema_invalid_attempts=schema_invalid_attempts,
-                                repair_attempted=repair_attempted,
-                                draft_action='continue',
-                                tool_plan=[],
-                                tokens_input=exc.tokens_input,
-                                tokens_output=exc.tokens_output,
-                                tokens_total=exc.tokens_total,
-                            )
-                        )
+                    if synthesized_state is not None:
+                        return synthesized_state
             if exc.code == 'max_tool_turns_exceeded':
                 provider_used = (
                     'openai'
@@ -691,21 +858,12 @@ def plan_operations(
                 exc.code,
                 exc.message,
             )
-            synthesized_operations = planner._maybe_synthesize_react_closure_operations(
-                user_message=user_message,
-                tool_observations=tool_observations,
-                session_context=session_context,
+            synthesized_state = _try_synthesize_react_closure_state(
+                reason='provider_react_exception_fallback',
+                provider_error_code=exc.code,
             )
-            if synthesized_operations:
-                return _finalize_state(
-                    planner._build_synthesized_react_closure_state(
-                        operations=synthesized_operations,
-                        schema_invalid_attempts=schema_invalid_attempts,
-                        repair_attempted=repair_attempted,
-                        draft_action='continue',
-                        tool_plan=[],
-                    )
-                )
+            if synthesized_state is not None:
+                return synthesized_state
             clarifier_state = planner._build_edit_clarifier_state(
                 user_message=user_message,
                 system_prompt=system_prompt,
@@ -908,13 +1066,19 @@ def plan_operations(
                     ]
                     edit_turns = max(1, min(edit_turns, 2))
                     continue
-                synthesized_operations = planner._maybe_synthesize_react_closure_operations(
-                    user_message=user_message,
-                    tool_observations=tool_observations,
-                    session_context=session_context,
+                synthesized_state = _try_synthesize_react_closure_state(
+                    reason='bulk_task_scope_operation_mismatch',
+                    provider_error_code=result.provider_error_code,
+                    tokens_input=result.tokens_input,
+                    tokens_output=result.tokens_output,
+                    tokens_total=result.tokens_total,
                 )
-                if synthesized_operations:
-                    operations = synthesized_operations
+                if synthesized_state is not None:
+                    synthesized_operations = synthesized_state.get('planned_operations')
+                    if isinstance(synthesized_operations, list) and synthesized_operations:
+                        operations = synthesized_operations
+                    else:
+                        return synthesized_state
                 else:
                     clarifier_message, clarifier_options = build_clarifier_contract(
                         reason='bulk_task_scope_requires_task_targets',
@@ -1012,24 +1176,67 @@ def plan_operations(
                 }
             )
 
-        synthesized_operations = planner._maybe_synthesize_react_closure_operations(
-            user_message=user_message,
-            tool_observations=tool_observations,
-            session_context=session_context,
-        )
-        if synthesized_operations:
-            return _finalize_state(
-                planner._build_synthesized_react_closure_state(
-                    operations=synthesized_operations,
-                    schema_invalid_attempts=schema_invalid_attempts,
-                    repair_attempted=repair_attempted,
-                    draft_action='continue',
-                    tool_plan=[],
-                    tokens_input=result.tokens_input,
-                    tokens_output=result.tokens_output,
-                    tokens_total=result.tokens_total,
+        if _is_parent_scoped_bulk_status_intent(user_message):
+            latest_bulk_result = _latest_bulk_parent_helper_result(tool_observations)
+            if latest_bulk_result is not None:
+                synthesized_from_observation = _synthesize_bulk_parent_operations_from_result(
+                    latest_bulk_result
                 )
-            )
+                if synthesized_from_observation:
+                    return _finalize_state(
+                        planner._build_synthesized_react_closure_state(
+                            operations=synthesized_from_observation,
+                            schema_invalid_attempts=schema_invalid_attempts,
+                            repair_attempted=repair_attempted,
+                            draft_action='continue',
+                            tool_plan=[],
+                            tokens_input=result.tokens_input,
+                            tokens_output=result.tokens_output,
+                            tokens_total=result.tokens_total,
+                        )
+                    )
+
+                no_op_message = _build_bulk_status_noop_message(
+                    helper_result=latest_bulk_result,
+                    fallback_message=assistant_message,
+                )
+                return _finalize_state(
+                    {
+                        'assistant_message': no_op_message,
+                        'planned_operations': [],
+                        'response_mode': 'chat',
+                        'preview_recommended': False,
+                        'parse_mode': 'deterministic_bulk_parent_status_noop',
+                        'provider_used': result.provider_used,
+                        'fallback_used': result.fallback_used,
+                        'provider_error_code': result.provider_error_code,
+                        'tokens_input': result.tokens_input,
+                        'tokens_output': result.tokens_output,
+                        'tokens_total': result.tokens_total,
+                        'pending_context_resolution': None,
+                        'clear_pending_context_resolution': False,
+                        'clarifier_action': None,
+                        'clarifier_reason': None,
+                        'clarifier_options': None,
+                        'clarifier_schema_retries': schema_invalid_attempts,
+                        'planner_schema_invalid_attempts': schema_invalid_attempts,
+                        'planner_repair_attempted': repair_attempted,
+                        'draft_action': 'continue',
+                        'tool_plan': [],
+                        'needs_more_info': False,
+                        'stop_reason': 'no_changes_needed',
+                    }
+                )
+
+        synthesized_state = _try_synthesize_react_closure_state(
+            reason='planner_returned_empty_operations',
+            provider_error_code=result.provider_error_code,
+            tokens_input=result.tokens_input,
+            tokens_output=result.tokens_output,
+            tokens_total=result.tokens_total,
+        )
+        if synthesized_state is not None:
+            return synthesized_state
         clarifier_message = (
             assistant_message.strip()
             if isinstance(assistant_message, str) and assistant_message.strip()
@@ -1078,21 +1285,12 @@ def plan_operations(
             }
         )
 
-    synthesized_operations = planner._maybe_synthesize_react_closure_operations(
-        user_message=user_message,
-        tool_observations=tool_observations,
-        session_context=session_context,
+    synthesized_state = _try_synthesize_react_closure_state(
+        reason='planner_attempts_exhausted',
+        provider_error_code=last_provider_error_code,
     )
-    if synthesized_operations:
-        return _finalize_state(
-            planner._build_synthesized_react_closure_state(
-                operations=synthesized_operations,
-                schema_invalid_attempts=schema_invalid_attempts,
-                repair_attempted=repair_attempted,
-                draft_action='continue',
-                tool_plan=[],
-            )
-        )
+    if synthesized_state is not None:
+        return synthesized_state
 
     return _finalize_state(
         planner._neutral_edit_clarifier_state(

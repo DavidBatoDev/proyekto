@@ -394,6 +394,7 @@ def maybe_synthesize_react_closure_operations(
     user_message: str,
     tool_observations: list[dict[str, Any]],
     session_context: dict[str, Any] | None = None,
+    force_include_completed: bool | None = None,
 ) -> list[RoadmapOperation] | None:
     rename_labels = extract_rename_request_labels(user_message)
     if rename_labels is not None:
@@ -476,7 +477,7 @@ def maybe_synthesize_react_closure_operations(
             'parent_type': parent_type,
             'parent_id': parent_id,
             'status': bulk_status,
-            'include_completed': False,
+            'include_completed': bool(force_include_completed),
         },
         tool_session_context,
     )

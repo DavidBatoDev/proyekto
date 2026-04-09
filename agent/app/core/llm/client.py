@@ -346,12 +346,14 @@ class LLMPlanner:
         user_message: str,
         tool_observations: list[dict[str, Any]],
         session_context: dict[str, Any] | None = None,
+        force_include_completed: bool | None = None,
     ) -> list[RoadmapOperation] | None:
         return planner_react_helpers.maybe_synthesize_react_closure_operations(
             self,
             user_message=user_message,
             tool_observations=tool_observations,
             session_context=session_context,
+            force_include_completed=force_include_completed,
         )
 
     def _extract_rename_request_labels(self, user_message: str) -> tuple[str, str] | None:

@@ -738,10 +738,24 @@ class ContextToolsExecutor:
                     if resolved.selected is not None
                     else None
                 )
+                selected_id = ''
+                selected_type = ''
+                selected_title = ''
                 if isinstance(selected_payload, dict):
                     selected_id = str(selected_payload.get('id') or '').strip()
+                    selected_type = str(selected_payload.get('type') or '').strip().lower()
+                    selected_title = str(selected_payload.get('title') or '').strip()
                     if selected_id in backend_choice_by_id:
                         selected_payload['backend_choice'] = backend_choice_by_id[selected_id]
+
+                resolved_subgraph = self._build_resolve_unique_subgraph(
+                    roadmap_id=roadmap_id,
+                    selected=selected_payload,
+                    session_context=session_context,
+                    auth_header=auth_value,
+                    trace_id=trace_id,
+                    child_limit=min(max(1, limit), 20),
+                )
                 result = {
                     'status': resolved.status,
                     'resolution_id': resolution_id,
@@ -755,6 +769,23 @@ class ContextToolsExecutor:
                     if item_id in backend_choice_by_id:
                         payload['backend_choice'] = backend_choice_by_id[item_id]
                     result['matches'].append(payload)
+                if selected_id:
+                    result['node_id'] = selected_id
+                if selected_type:
+                    result['node_type'] = selected_type
+                if selected_title:
+                    result['title'] = selected_title
+                if isinstance(resolved_subgraph, dict):
+                    result['resolved_subgraph'] = resolved_subgraph
+                    node_payload = resolved_subgraph.get('node')
+                    if isinstance(node_payload, dict):
+                        result['node'] = node_payload
+                    parent_payload = resolved_subgraph.get('parent')
+                    if isinstance(parent_payload, dict):
+                        result['parent'] = parent_payload
+                    children_payload = resolved_subgraph.get('children')
+                    if isinstance(children_payload, list):
+                        result['children'] = children_payload
                 self._write_resolve_lookup_cache(resolve_cache_key, result)
                 self._write_resolve_request_cache(
                     session_context=session_context,
@@ -2153,15 +2184,22 @@ class ContextToolsExecutor:
                 matched_task_ids: list[str] = []
                 matched_tasks: list[dict[str, Any]] = []
                 operations: list[dict[str, Any]] = []
+                total_child_task_count = 0
+                excluded_completed_count = 0
+                already_target_status_count = 0
+                eligible_task_count = 0
 
                 for task in tasks:
                     task_id = str(task.get('id') or '').strip()
                     if not task_id or task_id in seen_task_ids:
                         continue
                     seen_task_ids.add(task_id)
+                    total_child_task_count += 1
                     current_status = self._normalize_task_status_input(task.get('status'))
                     if not include_completed and self._is_done_status(current_status):
+                        excluded_completed_count += 1
                         continue
+                    eligible_task_count += 1
                     matched_task_ids.append(task_id)
                     matched_tasks.append(
                         {
@@ -2173,6 +2211,7 @@ class ContextToolsExecutor:
                         }
                     )
                     if current_status == target_status:
+                        already_target_status_count += 1
                         continue
                     operations.append(
                         {
@@ -2192,6 +2231,10 @@ class ContextToolsExecutor:
                 result['tasks'] = matched_tasks
                 result['matched_task_count'] = len(matched_task_ids)
                 result['updated_task_count'] = len(operations)
+                result['total_child_task_count'] = total_child_task_count
+                result['excluded_completed_count'] = excluded_completed_count
+                result['already_target_status_count'] = already_target_status_count
+                result['eligible_task_count'] = eligible_task_count
                 log_event(
                     self._logger,
                     'tool_call_result',
@@ -3055,6 +3098,234 @@ class ContextToolsExecutor:
         lowered = value.strip().lower()
         lowered = re.sub(r'[^a-z0-9\s]+', ' ', lowered)
         return ' '.join(lowered.split())
+
+    def _build_resolve_unique_subgraph(
+        self,
+        *,
+        roadmap_id: str,
+        selected: dict[str, Any] | None,
+        session_context: dict[str, Any],
+        auth_header: str | None,
+        trace_id: str | None,
+        child_limit: int,
+    ) -> dict[str, Any] | None:
+        if not isinstance(selected, dict):
+            return None
+        node_payload = self._compact_subgraph_node_payload(
+            selected,
+            default_type=None,
+            include_status=False,
+        )
+        if node_payload is None:
+            return None
+
+        node_id = str(node_payload.get('id') or '').strip()
+        node_type = str(node_payload.get('type') or '').strip().lower()
+        if node_type not in {'epic', 'feature', 'task'}:
+            return None
+
+        subgraph: dict[str, Any] = {'node': node_payload}
+        parent_payload = self._resolve_subgraph_parent(
+            roadmap_id=roadmap_id,
+            selected=selected,
+            node_type=node_type,
+            session_context=session_context,
+            auth_header=auth_header,
+            trace_id=trace_id,
+        )
+        if isinstance(parent_payload, dict):
+            subgraph['parent'] = parent_payload
+
+        children_payload = self._resolve_subgraph_children(
+            roadmap_id=roadmap_id,
+            node_id=node_id,
+            node_type=node_type,
+            child_limit=child_limit,
+            session_context=session_context,
+            auth_header=auth_header,
+            trace_id=trace_id,
+        )
+        if children_payload is not None:
+            subgraph['children'] = children_payload
+        return subgraph
+
+    def _resolve_subgraph_parent(
+        self,
+        *,
+        roadmap_id: str,
+        selected: dict[str, Any],
+        node_type: str,
+        session_context: dict[str, Any],
+        auth_header: str | None,
+        trace_id: str | None,
+    ) -> dict[str, Any] | None:
+        if node_type == 'epic':
+            return None
+
+        expected_parent_type = 'epic' if node_type == 'feature' else 'feature'
+        parent_id = str(selected.get('parent_id') or '').strip()
+        parent_title = str(selected.get('parent_title') or '').strip()
+        context_node_details = getattr(self._nest_client, 'context_node_details', None)
+        has_context_node_details = callable(context_node_details)
+
+        if not parent_id:
+            if not has_context_node_details:
+                return None
+            detail_result = self._run_context_call(
+                session_context,
+                context_node_details(
+                    roadmap_id=roadmap_id,
+                    node_id=str(selected.get('id') or ''),
+                    auth_header=auth_header,
+                    trace_id=trace_id,
+                ),
+            )
+            if isinstance(detail_result, dict) and not isinstance(detail_result.get('error'), dict):
+                parent_id = (
+                    str(detail_result.get('parent_id') or '').strip()
+                    or str(detail_result.get('feature_id') or '').strip()
+                    or str(detail_result.get('epic_id') or '').strip()
+                )
+                if not parent_title:
+                    parent_title = str(detail_result.get('parent_title') or '').strip()
+
+        if not parent_id:
+            return None
+
+        parent_type = expected_parent_type
+        if not parent_title:
+            if not has_context_node_details:
+                return {
+                    'id': parent_id,
+                    'type': parent_type,
+                    'title': parent_title,
+                }
+            parent_result = self._run_context_call(
+                session_context,
+                context_node_details(
+                    roadmap_id=roadmap_id,
+                    node_id=parent_id,
+                    auth_header=auth_header,
+                    trace_id=trace_id,
+                ),
+            )
+            if isinstance(parent_result, dict) and not isinstance(parent_result.get('error'), dict):
+                parent_title = str(parent_result.get('title') or '').strip()
+                resolved_parent_type = str(parent_result.get('type') or '').strip().lower()
+                if resolved_parent_type in {'epic', 'feature'}:
+                    parent_type = resolved_parent_type
+
+        parent_payload = {
+            'id': parent_id,
+            'type': parent_type,
+            'title': parent_title,
+        }
+        return parent_payload
+
+    def _resolve_subgraph_children(
+        self,
+        *,
+        roadmap_id: str,
+        node_id: str,
+        node_type: str,
+        child_limit: int,
+        session_context: dict[str, Any],
+        auth_header: str | None,
+        trace_id: str | None,
+    ) -> list[dict[str, Any]] | None:
+        normalized_limit = max(1, min(int(child_limit), 20))
+        if node_type == 'task':
+            return None
+
+        if node_type == 'epic':
+            context_features = getattr(self._nest_client, 'context_features', None)
+            if not callable(context_features):
+                return []
+            feature_result = self._run_context_call(
+                session_context,
+                context_features(
+                    roadmap_id=roadmap_id,
+                    epic_id=node_id,
+                    limit=normalized_limit,
+                    auth_header=auth_header,
+                    trace_id=trace_id,
+                ),
+            )
+            if isinstance(feature_result.get('error'), dict):
+                return []
+            features = self._filtered_features(
+                features=self._children_from_result(feature_result),
+                status_filter=None,
+                limit=normalized_limit,
+            )
+            children: list[dict[str, Any]] = []
+            for feature in features:
+                compact = self._compact_subgraph_node_payload(
+                    feature,
+                    default_type='feature',
+                    include_status=True,
+                )
+                if compact is None:
+                    continue
+                children.append(compact)
+            return children
+
+        context_children = getattr(self._nest_client, 'context_children', None)
+        if not callable(context_children):
+            return []
+        child_result = self._run_context_call(
+            session_context,
+            context_children(
+                roadmap_id=roadmap_id,
+                node_id=node_id,
+                limit=normalized_limit,
+                auth_header=auth_header,
+                trace_id=trace_id,
+            ),
+        )
+        if isinstance(child_result.get('error'), dict):
+            return []
+        tasks = self._filtered_tasks(
+            tasks=self._children_from_result(child_result),
+            status_filter=None,
+            limit=normalized_limit,
+        )
+        children = []
+        for task in tasks:
+            compact = self._compact_subgraph_node_payload(
+                task,
+                default_type='task',
+                include_status=True,
+            )
+            if compact is None:
+                continue
+            children.append(compact)
+        return children
+
+    def _compact_subgraph_node_payload(
+        self,
+        payload: dict[str, Any],
+        *,
+        default_type: str | None,
+        include_status: bool,
+    ) -> dict[str, Any] | None:
+        node_id = str(payload.get('id') or '').strip()
+        if not node_id:
+            return None
+        node_type_raw = str(payload.get('type') or '').strip().lower()
+        node_type = node_type_raw or (str(default_type or '').strip().lower())
+        if node_type not in {'epic', 'feature', 'task'}:
+            return None
+        compact: dict[str, Any] = {
+            'id': node_id,
+            'type': node_type,
+            'title': str(payload.get('title') or '').strip(),
+        }
+        if include_status:
+            status = self._normalized_status_filter(payload.get('status'))
+            if status:
+                compact['status'] = status
+        return compact
 
     def _build_resolve_request_cache_key(
         self,

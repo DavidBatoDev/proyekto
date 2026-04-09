@@ -361,6 +361,10 @@ class ContextToolIntentTests(unittest.TestCase):
         self.assertEqual(result.get('parent_type'), 'feature')
         self.assertEqual(result.get('matched_task_count'), 2)
         self.assertEqual(result.get('updated_task_count'), 1)
+        self.assertEqual(result.get('total_child_task_count'), 2)
+        self.assertEqual(result.get('eligible_task_count'), 2)
+        self.assertEqual(result.get('already_target_status_count'), 1)
+        self.assertEqual(result.get('excluded_completed_count'), 0)
 
     def test_bulk_update_tasks_by_parent_epic_updates_nested_tasks(self) -> None:
         result = self.executor.execute(
@@ -401,6 +405,10 @@ class ContextToolIntentTests(unittest.TestCase):
         assert isinstance(operations, list)
         self.assertEqual([op.get('node_id') for op in operations], ['t1'])
         self.assertEqual(result.get('matched_task_count'), 1)
+        self.assertEqual(result.get('total_child_task_count'), 2)
+        self.assertEqual(result.get('eligible_task_count'), 1)
+        self.assertEqual(result.get('excluded_completed_count'), 1)
+        self.assertEqual(result.get('already_target_status_count'), 0)
 
     def test_bulk_update_tasks_by_parent_include_completed_true_updates_done(self) -> None:
         result = self.executor.execute(
@@ -419,6 +427,10 @@ class ContextToolIntentTests(unittest.TestCase):
         assert isinstance(operations, list)
         self.assertEqual([op.get('node_id') for op in operations], ['t1', 't2'])
         self.assertEqual(result.get('matched_task_count'), 2)
+        self.assertEqual(result.get('total_child_task_count'), 2)
+        self.assertEqual(result.get('eligible_task_count'), 2)
+        self.assertEqual(result.get('excluded_completed_count'), 0)
+        self.assertEqual(result.get('already_target_status_count'), 0)
 
     def test_bulk_update_tasks_by_parent_rejects_invalid_parent_type(self) -> None:
         result = self.executor.execute(
@@ -629,6 +641,206 @@ class ContextToolIntentTests(unittest.TestCase):
         self.assertIsNone(result.get('selected'))
         self.assertTrue(bool(result.get('type_relaxed')))
         self.assertEqual(observed_node_types, ['epic', None])
+
+    def test_resolve_node_reference_unique_feature_returns_one_hop_subgraph(self) -> None:
+        async def _context_search(
+            roadmap_id: str,
+            query: str,
+            node_type: str | None,
+            limit: int | None,
+            auth_header: str | None,
+            trace_id: str | None = None,
+        ) -> dict:
+            return {
+                'matches': [
+                    {
+                        'id': 'f1',
+                        'type': 'feature',
+                        'title': 'Authentication System',
+                        'parent_id': 'e1',
+                        'parent_title': 'User Management',
+                        'score': 0.99,
+                    }
+                ]
+            }
+
+        async def _context_children(
+            roadmap_id: str,
+            node_id: str,
+            limit: int | None,
+            auth_header: str | None,
+            trace_id: str | None = None,
+        ) -> dict:
+            self.assertEqual(node_id, 'f1')
+            return {
+                'children': [
+                    {'id': 't1', 'type': 'task', 'title': 'Login API', 'status': 'todo'},
+                    {'id': 't2', 'type': 'task', 'title': 'JWT Validation', 'status': 'in_progress'},
+                ]
+            }
+
+        executor = ContextToolsExecutor(
+            settings=get_settings().model_copy(
+                update={'agent_resolve_parallel_variants_enabled': False}
+            ),
+            logger=logging.getLogger('context-tools-intent-tests-resolve-subgraph-feature'),
+            nest_client=SimpleNamespace(
+                context_search=_context_search,
+                context_children=_context_children,
+                context_node_details=lambda **_kwargs: {'id': 'unused'},
+                context_features=lambda **_kwargs: {'children': []},
+            ),
+            run_async_context_call=self._run_async,
+        )
+        result = executor.execute(
+            'resolve_node_reference',
+            {
+                'roadmap_id': 'r1',
+                'label': 'Authentication System',
+                'auto_correct': False,
+                'fuzzy': False,
+                'limit': 5,
+            },
+            self.session_context,
+        )
+
+        self.assertEqual(result.get('status'), 'unique')
+        node = result.get('node')
+        self.assertIsInstance(node, dict)
+        assert isinstance(node, dict)
+        self.assertEqual(node.get('id'), 'f1')
+        self.assertEqual(node.get('type'), 'feature')
+        parent = result.get('parent')
+        self.assertIsInstance(parent, dict)
+        assert isinstance(parent, dict)
+        self.assertEqual(parent.get('id'), 'e1')
+        self.assertEqual(parent.get('type'), 'epic')
+        self.assertEqual(parent.get('title'), 'User Management')
+        children = result.get('children')
+        self.assertIsInstance(children, list)
+        assert isinstance(children, list)
+        self.assertEqual([item.get('id') for item in children], ['t1', 't2'])
+        self.assertEqual([item.get('status') for item in children], ['todo', 'in_progress'])
+
+        resolved_subgraph = result.get('resolved_subgraph')
+        self.assertIsInstance(resolved_subgraph, dict)
+        assert isinstance(resolved_subgraph, dict)
+        self.assertEqual((resolved_subgraph.get('node') or {}).get('id'), 'f1')
+
+    def test_resolve_node_reference_unique_task_returns_parent_without_children(self) -> None:
+        async def _context_search(
+            roadmap_id: str,
+            query: str,
+            node_type: str | None,
+            limit: int | None,
+            auth_header: str | None,
+            trace_id: str | None = None,
+        ) -> dict:
+            return {
+                'matches': [
+                    {
+                        'id': 't1',
+                        'type': 'task',
+                        'title': 'Login API',
+                        'parent_id': 'f1',
+                        'parent_title': 'Authentication System',
+                        'score': 0.99,
+                    }
+                ]
+            }
+
+        executor = ContextToolsExecutor(
+            settings=get_settings().model_copy(
+                update={'agent_resolve_parallel_variants_enabled': False}
+            ),
+            logger=logging.getLogger('context-tools-intent-tests-resolve-subgraph-task'),
+            nest_client=SimpleNamespace(
+                context_search=_context_search,
+                context_children=lambda **_kwargs: {'children': []},
+                context_node_details=lambda **_kwargs: {'id': 'unused'},
+                context_features=lambda **_kwargs: {'children': []},
+            ),
+            run_async_context_call=self._run_async,
+        )
+        result = executor.execute(
+            'resolve_node_reference',
+            {
+                'roadmap_id': 'r1',
+                'label': 'Login API',
+                'auto_correct': False,
+                'fuzzy': False,
+                'limit': 5,
+            },
+            self.session_context,
+        )
+
+        self.assertEqual(result.get('status'), 'unique')
+        parent = result.get('parent')
+        self.assertIsInstance(parent, dict)
+        assert isinstance(parent, dict)
+        self.assertEqual(parent.get('id'), 'f1')
+        self.assertEqual(parent.get('type'), 'feature')
+        self.assertNotIn('children', result)
+
+    def test_resolve_node_reference_ambiguous_does_not_enrich_subgraph(self) -> None:
+        call_counts = {'children': 0, 'features': 0, 'details': 0}
+
+        async def _context_search(
+            roadmap_id: str,
+            query: str,
+            node_type: str | None,
+            limit: int | None,
+            auth_header: str | None,
+            trace_id: str | None = None,
+        ) -> dict:
+            return {
+                'matches': [
+                    {'id': 'f1', 'type': 'feature', 'title': 'Authentication System', 'score': 0.89},
+                    {'id': 'f2', 'type': 'feature', 'title': 'Authentication Services', 'score': 0.86},
+                ]
+            }
+
+        async def _context_children(**_kwargs) -> dict:
+            call_counts['children'] += 1
+            return {'children': []}
+
+        async def _context_features(**_kwargs) -> dict:
+            call_counts['features'] += 1
+            return {'children': []}
+
+        async def _context_node_details(**_kwargs) -> dict:
+            call_counts['details'] += 1
+            return {}
+
+        executor = ContextToolsExecutor(
+            settings=get_settings().model_copy(
+                update={'agent_resolve_parallel_variants_enabled': False}
+            ),
+            logger=logging.getLogger('context-tools-intent-tests-resolve-subgraph-ambiguous'),
+            nest_client=SimpleNamespace(
+                context_search=_context_search,
+                context_children=_context_children,
+                context_features=_context_features,
+                context_node_details=_context_node_details,
+            ),
+            run_async_context_call=self._run_async,
+        )
+        result = executor.execute(
+            'resolve_node_reference',
+            {
+                'roadmap_id': 'r1',
+                'label': 'Authentication',
+                'auto_correct': False,
+                'fuzzy': False,
+                'limit': 5,
+            },
+            self.session_context,
+        )
+
+        self.assertEqual(result.get('status'), 'ambiguous')
+        self.assertNotIn('resolved_subgraph', result)
+        self.assertNotIn('children', result)
+        self.assertEqual(call_counts, {'children': 0, 'features': 0, 'details': 0})
 
     def test_get_tasks_by_parent_for_feature_filters_by_status(self) -> None:
         result = self.executor.execute(

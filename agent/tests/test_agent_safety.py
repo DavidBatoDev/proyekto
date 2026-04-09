@@ -3969,6 +3969,26 @@ class ConfigCompatibilityTests(unittest.TestCase):
                 os.environ['AGENT_MAX_TOTAL_LLM_CALLS_PER_MESSAGE'] = previous_value
             reload_settings()
 
+    def test_strict_mutation_authority_setting_reads_from_env(self) -> None:
+        previous_value = os.environ.get('AGENT_STRICT_MUTATION_AUTHORITY_ENABLED')
+
+        try:
+            os.environ['AGENT_STRICT_MUTATION_AUTHORITY_ENABLED'] = 'true'
+            reload_settings()
+            settings = get_settings()
+            self.assertTrue(settings.agent_strict_mutation_authority_enabled)
+
+            os.environ['AGENT_STRICT_MUTATION_AUTHORITY_ENABLED'] = 'false'
+            reload_settings()
+            settings = get_settings()
+            self.assertFalse(settings.agent_strict_mutation_authority_enabled)
+        finally:
+            if previous_value is None:
+                os.environ.pop('AGENT_STRICT_MUTATION_AUTHORITY_ENABLED', None)
+            else:
+                os.environ['AGENT_STRICT_MUTATION_AUTHORITY_ENABLED'] = previous_value
+            reload_settings()
+
 
 class SessionRouteSafetyTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
@@ -6838,6 +6858,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
             '4848e4ec-fabf-4002-a703-714e938d6c04',
         )
         self.assertEqual(helper_calls[0].get('status'), 'done')
+        self.assertTrue(bool(helper_calls[0].get('include_completed')))
         self.assertEqual(result.get('response_mode'), 'edit_plan')
         self.assertEqual(result.get('parse_mode'), 'deterministic_react_tool_closure')
         planned_ops = result.get('planned_operations') or []
@@ -6846,6 +6867,90 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(planned_ops[0].status, 'done')
         phase_metrics = session_context.get('_phase_metrics') or {}
         self.assertEqual(phase_metrics.get('planner_invalid_payload_enum_op'), 1)
+
+    def test_bulk_task_noop_uses_deterministic_message_without_duplicate_helper_call(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={'agent_edit_planner_max_attempts': 1}
+        )
+        helper_calls: list[dict[str, Any]] = []
+
+        def fake_execute(name: str, args: dict, _ctx: dict):
+            if name == 'bulk_update_tasks_by_parent':
+                helper_calls.append(dict(args))
+                return {
+                    'operations': [],
+                    'target_status': 'done',
+                    'total_child_task_count': 2,
+                    'eligible_task_count': 2,
+                    'already_target_status_count': 2,
+                    'excluded_completed_count': 0,
+                    'matched_task_count': 2,
+                    'updated_task_count': 0,
+                }
+            return {'error': {'code': 'UNKNOWN'}}
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                    ):
+                        tool_executor(
+                            'bulk_update_tasks_by_parent',
+                            {
+                                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                                'parent_type': 'feature',
+                                'parent_id': '60bcab3f-3989-448d-9c84-3261cf38685b',
+                                'status': 'done',
+                            },
+                        )
+                        return (
+                            'I found tasks under this feature, but none need changes.',
+                            [],
+                        )
+
+                return ProviderCallOutcome(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
+        planner._provider_orchestrator = _FakeOrchestrator()
+
+        result = planner._plan_operations(
+            {
+                'user_message': 'mark all tasks in Authentication System as done',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-bulk-task-noop-no-dup-helper-call',
+                    'deictic_parent_hint': {
+                        'node_type': 'feature',
+                        'node_id': '60bcab3f-3989-448d-9c84-3261cf38685b',
+                    },
+                },
+            }
+        )
+
+        self.assertEqual(len(helper_calls), 1)
+        self.assertTrue(bool(helper_calls[0].get('include_completed')))
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'deterministic_bulk_parent_status_noop')
+        self.assertEqual(result.get('stop_reason'), 'no_changes_needed')
+        self.assertFalse(bool(result.get('needs_more_info')))
+        assistant_message = str(result.get('assistant_message') or '')
+        self.assertIn('already set to "done"', assistant_message)
 
     def test_plan_operations_logs_explicit_planning_tool_boundary(self) -> None:
         planner = self._planner()
