@@ -16,6 +16,7 @@ from app.core.config import Settings
 from app.core.logging_utils import log_event, summarize_tool_result
 from app.core.orchestration.edits.edit_resolver import resolve_candidates
 from app.core.tools.registry import EXECUTABLE_TOOL_NAMES
+from app.core.uuid_utils import is_uuid_like
 
 
 TASK_STATUS_VALUES = ('todo', 'in_progress', 'in_review', 'done', 'blocked')
@@ -2880,12 +2881,7 @@ class ContextToolsExecutor:
         metrics['context_tools_http_call_ms'] = current_http_total + float(elapsed_ms)
 
     def _is_uuid(self, value: str) -> bool:
-        return bool(
-            re.fullmatch(
-                r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
-                value,
-            )
-        )
+        return is_uuid_like(value)
 
     def _invalid_argument_result(
         self,

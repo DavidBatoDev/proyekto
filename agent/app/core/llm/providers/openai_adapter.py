@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import re
 from typing import Any, Callable
 
 from pydantic import BaseModel
@@ -27,6 +29,9 @@ try:
     from langchain_openai import ChatOpenAI
 except Exception:  # pragma: no cover
     ChatOpenAI = None  # type: ignore[assignment]
+
+
+logger = logging.getLogger(__name__)
 
 
 class _IntentClassification(BaseModel):
@@ -160,10 +165,25 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                 try:
                     assistant_message, operations = parse_plan_tool_args(args)
                 except ValueError as exc:
+                    error_message = str(exc)
+                    offending_op = _extract_offending_operation_value(args=args, error_message=error_message)
+                    if offending_op:
+                        logger.warning(
+                            'Invalid plan payload for %s: offending_op=%s detail=%s',
+                            PLANNING_TOOL_NAME,
+                            offending_op,
+                            error_message,
+                        )
+                    else:
+                        logger.warning(
+                            'Invalid plan payload for %s: detail=%s',
+                            PLANNING_TOOL_NAME,
+                            error_message,
+                        )
                     raise ProviderAdapterError(
                         provider=self.provider_name,
                         code='invalid_operation_payload',
-                        message=str(exc),
+                        message=error_message,
                         tokens_input=usage_totals['tokens_input'],
                         tokens_output=usage_totals['tokens_output'],
                         tokens_total=usage_totals['tokens_total'],
@@ -412,4 +432,29 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                     'tokens_total': total_tokens,
                 }
         return None
+
+
+def _extract_offending_operation_value(*, args: dict[str, Any], error_message: str) -> str:
+    detail = str(error_message or '')
+    index_match = re.search(r'index\s+(\d+)', detail)
+    if index_match is None:
+        return ''
+    try:
+        index = int(index_match.group(1))
+    except (TypeError, ValueError):
+        return ''
+
+    operations = args.get('operations')
+    if not isinstance(operations, list) or index < 0 or index >= len(operations):
+        return ''
+    item = operations[index]
+    if not isinstance(item, dict):
+        return ''
+    op_value = item.get('op')
+    if not isinstance(op_value, str):
+        return ''
+    sanitized = ''.join(ch for ch in op_value.strip() if 31 < ord(ch) < 127)
+    if not sanitized:
+        return ''
+    return sanitized[:48]
 

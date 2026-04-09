@@ -4,11 +4,12 @@ import json
 import re
 from typing import Any
 
-from app.core.contracts.operations import RoadmapOperation
+from app.core.contracts.operations import OperationType, RoadmapOperation
 from app.core.llm.contracts.clarifier_contract import build_clarifier_contract
 from app.core.llm.react.react_executor import map_provider_error_to_stop_reason
 from app.core.llm.providers import ProviderAdapterError
 from app.core.logging_utils import log_event
+from app.core.uuid_utils import normalize_uuid
 
 
 def summarize_react_tool_observations(
@@ -254,14 +255,7 @@ def summarize_react_tool_observation(
 
 
 def is_uuid(value: Any) -> bool:
-    if not isinstance(value, str):
-        return False
-    return bool(
-        re.fullmatch(
-            r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
-            value.strip(),
-        )
-    )
+    return normalize_uuid(value) is not None
 
 
 def coerce_parent_hint_for_operations(
@@ -275,9 +269,12 @@ def coerce_parent_hint_for_operations(
     if isinstance(deictic_parent_hint, dict):
         hint_node_id = str(deictic_parent_hint.get('node_id') or '').strip()
         hint_node_type = str(deictic_parent_hint.get('node_type') or '').strip().lower()
-    if not is_uuid(hint_node_id):
+    normalized_hint_node_id = normalize_uuid(hint_node_id)
+    if normalized_hint_node_id is None:
         hint_node_id = ''
         hint_node_type = ''
+    else:
+        hint_node_id = normalized_hint_node_id
 
     corrected_operations: list[RoadmapOperation] = []
     parent_hint_applied = False
@@ -295,8 +292,14 @@ def coerce_parent_hint_for_operations(
             corrected_operations.append(operation)
             continue
 
-        if is_uuid(operation.parent_id):
-            corrected_operations.append(operation)
+        normalized_parent_id = normalize_uuid(operation.parent_id)
+        if normalized_parent_id is not None:
+            if operation.parent_id == normalized_parent_id:
+                corrected_operations.append(operation)
+            else:
+                corrected_operation = operation.model_copy(deep=True)
+                corrected_operation.parent_id = normalized_parent_id
+                corrected_operations.append(corrected_operation)
             continue
 
         if hint_node_id and (hint_node_type == required_parent_type):
@@ -429,11 +432,8 @@ def maybe_synthesize_react_closure_operations(
                 ):
                     continue
 
-            node_id = str(selected_payload.get('id') or '').strip()
-            if not re.fullmatch(
-                r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
-                node_id,
-            ):
+            node_id = normalize_uuid(selected_payload.get('id'))
+            if node_id is None:
                 continue
 
             return [
@@ -453,8 +453,8 @@ def maybe_synthesize_react_closure_operations(
 
     parent_type_hint = infer_explicit_parent_type_hint(user_message)
     parent_type = parent_type_hint or resolved_parent.get('node_type')
-    parent_id = str(resolved_parent.get('node_id') or '').strip()
-    if parent_type not in {'epic', 'feature'} or not is_uuid(parent_id):
+    parent_id = normalize_uuid(resolved_parent.get('node_id')) or ''
+    if parent_type not in {'epic', 'feature'} or not parent_id:
         return None
 
     roadmap_id = str(
@@ -547,6 +547,8 @@ def extract_latest_unique_parent_resolution(
         result = observation.get('result')
         if not isinstance(args, dict) or not isinstance(result, dict):
             continue
+        if bool(result.get('type_relaxed')):
+            continue
         if str(result.get('status') or '').strip().lower() != 'unique':
             continue
 
@@ -562,9 +564,9 @@ def extract_latest_unique_parent_resolution(
         if not isinstance(selected, dict):
             continue
 
-        node_id = str(selected.get('id') or '').strip()
+        node_id = normalize_uuid(selected.get('id'))
         node_type = str(selected.get('type') or '').strip().lower()
-        if node_type not in {'epic', 'feature'} or not is_uuid(node_id):
+        if node_type not in {'epic', 'feature'} or node_id is None:
             continue
 
         roadmap_id = str(args.get('roadmap_id') or '').strip()
@@ -609,6 +611,15 @@ def normalize_label_for_matching(value: str) -> str:
     return ' '.join(normalized.split())
 
 
+def is_invalid_operation_enum_payload(error_message: str | None) -> bool:
+    detail = str(error_message or '').strip().lower()
+    if not detail:
+        return False
+    has_op_loc = "('op',)" in detail or '"op"' in detail
+    has_enum_hint = "'type': 'enum'" in detail or 'input should be' in detail
+    return has_op_loc and has_enum_hint
+
+
 def augment_repair_planner_prompt(
     *,
     planner_prompt: str,
@@ -624,11 +635,20 @@ def augment_repair_planner_prompt(
         )
     elif error_code == 'invalid_operation_payload':
         detail = str(error_message or '').strip()
+        enum_payload_failure = is_invalid_operation_enum_payload(detail)
         detail_suffix = f' Validation detail: {detail}' if detail else ''
+        allowed_ops = ', '.join(item.value for item in OperationType)
+        enum_guardrail = (
+            ' Helper tool names are never valid operation op values. '
+            f'Allowed operation op values: {allowed_ops}.'
+            if enum_payload_failure
+            else ''
+        )
         guidance = (
             '\n\nIMPORTANT REPAIR: Your previous tool-call payload failed schema validation. '
             'Retry with a valid plan_roadmap_operations payload using only supported operation fields. '
             'Use existing resolved IDs and avoid repeating discovery tools unless IDs are still missing.'
+            f'{enum_guardrail}'
             f'{detail_suffix}'
         )
     else:

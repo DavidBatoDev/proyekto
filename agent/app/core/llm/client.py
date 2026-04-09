@@ -378,6 +378,10 @@ class LLMPlanner:
             error_message=error_message,
         )
 
+    @staticmethod
+    def _is_invalid_operation_enum_payload(error_message: str | None) -> bool:
+        return planner_react_helpers.is_invalid_operation_enum_payload(error_message)
+
     def _augment_missing_tool_call_retry_prompt(
         self,
         *,

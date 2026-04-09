@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from app.core.contracts.operations import RoadmapOperation
 from app.core.llm.client import PlanningResult
+from app.core.uuid_utils import normalize_uuid
 
 _ORDER_INSENSITIVE_SIGNATURE_FIELDS = {'tags'}
 
@@ -92,11 +93,43 @@ def validate_operation_contract(
     for index, operation in enumerate(operations):
         issues = operation.semantic_contract_issues(is_uuid=is_uuid)
         if issues:
+            reason = issues[0]
+            issue_detail = _extract_uuid_issue_detail(operation, reason)
             return {
                 'index': index,
-                'reason': issues[0],
+                'reason': reason,
+                'op': operation.op.value,
+                'node_type': operation.node_type.value if operation.node_type is not None else None,
+                'issue_detail': issue_detail,
+                'operation': operation.model_dump(exclude_none=True),
             }
     return None
+
+
+def _extract_uuid_issue_detail(operation: RoadmapOperation, reason: str) -> dict[str, Any] | None:
+    id_field: str | None = None
+    if reason == 'move_node.new_parent_id_invalid_uuid':
+        id_field = 'new_parent_id'
+    elif reason.endswith('node_id_invalid_uuid'):
+        id_field = 'node_id'
+    elif reason.endswith('parent_id_invalid_uuid'):
+        id_field = 'parent_id'
+    if id_field is None:
+        return None
+
+    raw_value = getattr(operation, id_field, None)
+    normalized_value = normalize_uuid(raw_value)
+    if isinstance(raw_value, str):
+        value_preview = raw_value.strip()[:120]
+    elif raw_value is None:
+        value_preview = None
+    else:
+        value_preview = str(raw_value)[:120]
+    return {
+        'id_field': id_field,
+        'id_value_preview': value_preview,
+        'id_value_normalized': normalized_value,
+    }
 
 
 def operation_validation_guidance(reason: str | None) -> str:

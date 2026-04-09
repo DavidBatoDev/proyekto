@@ -96,6 +96,7 @@ from app.core.orchestration.context.recent_targets_manager import (
     record_recent_targets_from_operations as record_recent_targets_from_operations_helper,
     record_recent_targets_from_preview as record_recent_targets_from_preview_helper,
 )
+from app.core.uuid_utils import is_uuid_like
 from app.core.orchestration.edits.retry_autostage_handler import (
     attempt_retry_autostage as attempt_retry_autostage_helper,
     is_high_confidence_match as is_high_confidence_match_helper,
@@ -216,7 +217,7 @@ class AgentService:
         return read_operation_title(operation)
 
     def _is_uuid(self, value: str | None) -> bool:
-        return bool(isinstance(value, str) and self._uuid_pattern.fullmatch(value.strip()))
+        return is_uuid_like(value)
 
     def _apply_operation_contract_guard(
         self,

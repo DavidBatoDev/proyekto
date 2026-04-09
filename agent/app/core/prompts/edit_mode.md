@@ -18,6 +18,7 @@ Execution strategy:
 - Avoid multiple discovery calls when an edit helper can apply the requested change directly.
 - Once sufficient context is available, call plan_roadmap_operations immediately.
 - Do not exhaust tool budget on exploratory retries.
+- Helper tool names are never valid operation `op` values; only use canonical ops: add_epic, add_feature, add_task, update_node, move_node, delete_node, mark_status, shift_dates.
 
 Parent ID contract:
 
@@ -39,6 +40,7 @@ CRITICAL: If react_loop_turn is 2 or greater:
 - Do NOT call resolve_node_reference, get_children, or get_node_details again.
 - Do NOT repeat any tool call that appears in react_tool_observation_summary.
 - You MUST call plan_roadmap_operations immediately using the already-resolved IDs.
+- Helper tool names are never valid operation `op` values; only use canonical ops: add_epic, add_feature, add_task, update_node, move_node, delete_node, mark_status, shift_dates.
 - For intents like "mark/update all tasks in or under X", use bulk_update_tasks_by_parent once the parent ID is resolved.
 - For broad task updates that also include filters (assignee/status/keyword), use bulk_update_tasks_by_filter.
 - If react_tool_observation_summary already includes task_ids/tasks for the target scope, stage operations immediately and do not ask for task IDs.

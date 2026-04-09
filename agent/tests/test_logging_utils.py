@@ -91,6 +91,20 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
         )
         logging_utils.log_event(
             self.logger,
+            'llm_planned_operation',
+            settings=self.settings_pretty,
+            trace_id=trace_id,
+            provider_used='openai',
+            operation_index=0,
+            operation={
+                'op': 'mark_status',
+                'node_type': 'task',
+                'node_id': '123e4567-e89b-12d3-a456-426614174000',
+                'status': 'in_review',
+            },
+        )
+        logging_utils.log_event(
+            self.logger,
             'message_completed',
             settings=self.settings_pretty,
             trace_id=trace_id,
@@ -139,6 +153,8 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
         self.assertIn('ROUTING', output)
         self.assertIn('TOOL CALL', output)
         self.assertIn('get_tasks_assigned_to_me', output)
+        self.assertIn('LLM OPERATIONS', output)
+        self.assertIn('mark_status', output)
         self.assertIn('RESPONSE', output)
         self.assertIn('ASSISTANT', output)
         self.assertIn('lane        deterministic_fastpath', output)

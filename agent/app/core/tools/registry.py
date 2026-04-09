@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.core.contracts.operations import OperationType, RoadmapOperation
+from app.core.uuid_utils import normalize_uuid
 
 TASK_STATUS_VALUES = ['todo', 'in_progress', 'in_review', 'done', 'blocked']
 TASK_STATUS_FILTER_VALUES = [*TASK_STATUS_VALUES, 'all']
@@ -627,8 +628,12 @@ def parse_plan_tool_args(raw_args: Any) -> tuple[str, list[RoadmapOperation]]:
         try:
             operations.append(RoadmapOperation.model_validate(normalized))
         except ValidationError as exc:
+            op_value = ''
+            if isinstance(normalized, dict):
+                op_value = _sanitize_op_value(normalized.get('op'))
+            op_suffix = f' (op={op_value})' if op_value else ''
             raise ValueError(
-                f'Invalid operation payload at index {index}: {exc.errors(include_url=False)}'
+                f'Invalid operation payload at index {index}{op_suffix}: {exc.errors(include_url=False)}'
             ) from exc
     assistant_message = str(args.get('assistant_message', 'Prepared roadmap operations.'))
     return assistant_message, operations
@@ -639,6 +644,8 @@ def _normalize_operation_payload(item: Any) -> dict[str, Any]:
         return item
 
     payload = dict(item)
+    payload = _normalize_single_item_helper_alias(payload)
+    payload = _normalize_uuid_fields(payload)
     op = payload.get('op')
     if op in {'add_epic', 'add_feature', 'add_task'}:
         data = payload.get('data')
@@ -687,4 +694,159 @@ def _normalize_operation_payload(item: Any) -> dict[str, Any]:
 
     if patch:
         payload['patch'] = patch
+    return payload
+
+
+def _normalize_uuid_fields(payload: dict[str, Any]) -> dict[str, Any]:
+    for field_name in ('node_id', 'parent_id', 'new_parent_id'):
+        normalized = normalize_uuid(payload.get(field_name))
+        if normalized is not None:
+            payload[field_name] = normalized
+    return payload
+
+
+def _sanitize_op_value(value: Any) -> str:
+    if not isinstance(value, str):
+        return ''
+    sanitized = ''.join(ch for ch in value.strip() if 31 < ord(ch) < 127)
+    if not sanitized:
+        return ''
+    return sanitized[:48]
+
+
+def _normalize_single_item_helper_alias(payload: dict[str, Any]) -> dict[str, Any]:
+    op = str(payload.get('op') or '').strip()
+    if not op:
+        return payload
+
+    def _str_arg(*keys: str) -> str:
+        for key in keys:
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return ''
+
+    if op == 'update_task_status':
+        task_id = _str_arg('task_id', 'node_id')
+        status = _str_arg('status')
+        if task_id and status:
+            payload['op'] = 'mark_status'
+            payload['node_type'] = 'task'
+            payload['node_id'] = task_id
+            payload['status'] = status
+            payload.pop('task_id', None)
+        return payload
+
+    if op == 'update_feature_status':
+        feature_id = _str_arg('feature_id', 'node_id')
+        status = _str_arg('status')
+        if feature_id and status:
+            payload['op'] = 'mark_status'
+            payload['node_type'] = 'feature'
+            payload['node_id'] = feature_id
+            payload['status'] = status
+            payload.pop('feature_id', None)
+        return payload
+
+    if op == 'update_epic_status':
+        epic_id = _str_arg('epic_id', 'node_id')
+        status = _str_arg('status')
+        if epic_id and status:
+            payload['op'] = 'mark_status'
+            payload['node_type'] = 'epic'
+            payload['node_id'] = epic_id
+            payload['status'] = status
+            payload.pop('epic_id', None)
+        return payload
+
+    if op == 'update_task_priority':
+        task_id = _str_arg('task_id', 'node_id')
+        priority = _str_arg('priority')
+        if task_id and priority:
+            payload['op'] = 'update_node'
+            payload['node_type'] = 'task'
+            payload['node_id'] = task_id
+            payload['patch'] = {'priority': priority}
+            payload.pop('task_id', None)
+            payload.pop('priority', None)
+        return payload
+
+    if op == 'update_task_assignee':
+        task_id = _str_arg('task_id', 'node_id')
+        assignee_id = _str_arg('assignee_id')
+        if task_id and assignee_id:
+            payload['op'] = 'update_node'
+            payload['node_type'] = 'task'
+            payload['node_id'] = task_id
+            payload['patch'] = {'assignee_id': assignee_id}
+            payload.pop('task_id', None)
+            payload.pop('assignee_id', None)
+        return payload
+
+    if op == 'update_titles':
+        node_type = _str_arg('node_type')
+        node_id = _str_arg('node_id', 'task_id', 'feature_id', 'epic_id')
+        title = _str_arg('title')
+        if node_type in {'task', 'feature', 'epic'} and node_id and title:
+            payload['op'] = 'update_node'
+            payload['node_type'] = node_type
+            payload['node_id'] = node_id
+            payload['patch'] = {'title': title}
+            payload.pop('title', None)
+            payload.pop('task_id', None)
+            payload.pop('feature_id', None)
+            payload.pop('epic_id', None)
+        return payload
+
+    if op == 'delete_task':
+        task_id = _str_arg('task_id', 'node_id')
+        if task_id:
+            payload['op'] = 'delete_node'
+            payload['node_type'] = 'task'
+            payload['node_id'] = task_id
+            payload.pop('task_id', None)
+        return payload
+
+    if op == 'delete_feature':
+        feature_id = _str_arg('feature_id', 'node_id')
+        if feature_id:
+            payload['op'] = 'delete_node'
+            payload['node_type'] = 'feature'
+            payload['node_id'] = feature_id
+            payload.pop('feature_id', None)
+        return payload
+
+    if op == 'delete_epic':
+        epic_id = _str_arg('epic_id', 'node_id')
+        if epic_id:
+            payload['op'] = 'delete_node'
+            payload['node_type'] = 'epic'
+            payload['node_id'] = epic_id
+            payload.pop('epic_id', None)
+        return payload
+
+    if op == 'move_task_to_feature':
+        task_id = _str_arg('task_id', 'node_id')
+        feature_id = _str_arg('feature_id', 'new_parent_id')
+        if task_id and feature_id:
+            payload['op'] = 'move_node'
+            payload['node_type'] = 'task'
+            payload['node_id'] = task_id
+            payload['new_parent_id'] = feature_id
+            payload.pop('task_id', None)
+            payload.pop('feature_id', None)
+        return payload
+
+    if op == 'move_feature_to_epic':
+        feature_id = _str_arg('feature_id', 'node_id')
+        epic_id = _str_arg('epic_id', 'new_parent_id')
+        if feature_id and epic_id:
+            payload['op'] = 'move_node'
+            payload['node_type'] = 'feature'
+            payload['node_id'] = feature_id
+            payload['new_parent_id'] = epic_id
+            payload.pop('feature_id', None)
+            payload.pop('epic_id', None)
+        return payload
+
     return payload

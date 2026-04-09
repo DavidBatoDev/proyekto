@@ -29,6 +29,7 @@ from app.core.contracts.sessions import (
 )
 from app.core.llm.client import PlanningResult
 from app.core.llm.client import LLMPlanner
+from app.core.llm.planning import planner_operation_flow
 from app.core.llm.providers import ProviderAdapterError
 from app.core.llm.providers.orchestrator import ProviderCallOutcome
 from app.core.orchestration.agent_service import AgentService, MessagePlanningOutcome
@@ -6652,6 +6653,405 @@ class PlannerContextSafetyTests(unittest.TestCase):
         )
         self.assertEqual(result.get('response_mode'), 'chat')
         self.assertEqual(result.get('parse_mode'), 'openai_tool_calling_clarifier')
+
+    def test_plan_operations_invalid_enum_payload_retry_forces_planning_only_tools(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={'agent_edit_planner_max_attempts': 2}
+        )
+        call_count = {'value': 0}
+        captured_prompts: list[str] = []
+        captured_tool_names: list[list[str]] = []
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                call_count['value'] += 1
+                if call_count['value'] == 1:
+                    raise ProviderAdapterError(
+                        provider='openai',
+                        code='invalid_operation_payload',
+                        message=(
+                            'Invalid operation payload at index 0 (op=bulk_update_tasks_by_parent): '
+                            "[{'type': 'enum', 'loc': ('op',), 'msg': \"Input should be 'add_epic'\"}]"
+                        ),
+                    )
+
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                    ):
+                        captured_prompts.append(planner_prompt)
+                        captured_tool_names.append(
+                            [
+                                str(tool.get('function', {}).get('name') or '')
+                                for tool in tools
+                                if isinstance(tool, dict)
+                            ]
+                        )
+                        return ('Need one detail.', [])
+
+                return ProviderCallOutcome(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+
+        result = planner._plan_operations(
+            {
+                'user_message': 'Mark all tasks in Authentication System as done',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-invalid-enum-planning-only-retry',
+                },
+            }
+        )
+
+        self.assertEqual(call_count['value'], 2)
+        self.assertEqual(captured_tool_names, [['plan_roadmap_operations']])
+        self.assertEqual(len(captured_prompts), 1)
+        self.assertIn('Allowed operation op values:', captured_prompts[0])
+        self.assertIn('Helper tool names are never valid operation op values.', captured_prompts[0])
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'openai_tool_calling_clarifier')
+
+    def test_invalid_payload_first_attempt_can_synthesize_bulk_parent_closure(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={'agent_edit_planner_max_attempts': 2}
+        )
+        call_count = {'value': 0}
+        helper_calls: list[dict[str, Any]] = []
+        session_context = {
+            'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+            'trace_id': 'trace-invalid-payload-first-attempt-synth',
+        }
+
+        def fake_execute(name: str, args: dict, _ctx: dict):
+            if name == 'resolve_node_reference':
+                return {
+                    'status': 'unique',
+                    'type_relaxed': False,
+                    'resolve_source': 'typed',
+                    'selected': {
+                        'id': '4848e4ec-fabf-4002-a703-714e938d6c04',
+                        'type': 'feature',
+                        'title': 'Authentication System',
+                        'confidence': 0.99,
+                    },
+                    'matches': [
+                        {
+                            'id': '4848e4ec-fabf-4002-a703-714e938d6c04',
+                            'type': 'feature',
+                            'title': 'Authentication System',
+                            'confidence': 0.99,
+                        }
+                    ],
+                }
+            if name == 'bulk_update_tasks_by_parent':
+                helper_calls.append(dict(args))
+                return {
+                    'operations': [
+                        {
+                            'op': 'mark_status',
+                            'node_type': 'task',
+                            'node_id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                            'status': 'done',
+                        }
+                    ],
+                    'matched_task_count': 1,
+                    'updated_task_count': 1,
+                }
+            return {'error': {'code': 'UNKNOWN'}}
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                call_count['value'] += 1
+
+                class _AdapterFirstAttempt:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                    ):
+                        tool_executor(
+                            'resolve_node_reference',
+                            {
+                                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                                'label': 'Autenthication System',
+                                'fuzzy': True,
+                                'limit': 5,
+                            },
+                        )
+                        raise ProviderAdapterError(
+                            provider='openai',
+                            code='invalid_operation_payload',
+                            message=(
+                                'Invalid operation payload at index 0 (op=bulk_update_tasks_by_parent): '
+                                "[{'type': 'enum', 'loc': ('op',), 'msg': \"Input should be 'add_epic'\"}]"
+                            ),
+                        )
+
+                if call_count['value'] > 1:
+                    raise AssertionError('expected deterministic synthesis before retry')
+
+                return ProviderCallOutcome(
+                    value=operation(_AdapterFirstAttempt()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
+        planner._provider_orchestrator = _FakeOrchestrator()
+
+        result = planner._plan_operations(
+            {
+                'user_message': 'Mark all tasks in the Autenthication System as done',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': session_context,
+            }
+        )
+
+        self.assertEqual(call_count['value'], 1)
+        self.assertEqual(len(helper_calls), 1)
+        self.assertEqual(helper_calls[0].get('parent_type'), 'feature')
+        self.assertEqual(
+            helper_calls[0].get('parent_id'),
+            '4848e4ec-fabf-4002-a703-714e938d6c04',
+        )
+        self.assertEqual(helper_calls[0].get('status'), 'done')
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+        self.assertEqual(result.get('parse_mode'), 'deterministic_react_tool_closure')
+        planned_ops = result.get('planned_operations') or []
+        self.assertEqual(len(planned_ops), 1)
+        self.assertEqual(planned_ops[0].op.value, 'mark_status')
+        self.assertEqual(planned_ops[0].status, 'done')
+        phase_metrics = session_context.get('_phase_metrics') or {}
+        self.assertEqual(phase_metrics.get('planner_invalid_payload_enum_op'), 1)
+
+    def test_plan_operations_logs_explicit_planning_tool_boundary(self) -> None:
+        planner = self._planner()
+        captured_planning_tool_events: list[tuple[str, dict[str, Any]]] = []
+
+        def _capture_log_event(_logger, event, **kwargs):
+            if kwargs.get('tool_name') == 'plan_roadmap_operations':
+                captured_planning_tool_events.append((event, kwargs))
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                    ):
+                        return (
+                            'Prepared operations.',
+                            [
+                                {
+                                    'op': 'mark_status',
+                                    'node_type': 'task',
+                                    'node_id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                                    'status': 'in_review',
+                                }
+                            ],
+                        )
+
+                return ProviderCallOutcome(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        original_log_event = planner_operation_flow.log_event
+        planner_operation_flow.log_event = _capture_log_event  # type: ignore[assignment]
+
+        try:
+            result = planner._plan_operations(
+                {
+                    'user_message': 'Mark task as in review',
+                    'existing_operations': [],
+                    'system_prompt': 'system',
+                    'session_context': {
+                        'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                        'trace_id': 'trace-planning-tool-boundary',
+                    },
+                }
+            )
+        finally:
+            planner_operation_flow.log_event = original_log_event  # type: ignore[assignment]
+
+        planning_events = [name for name, _ in captured_planning_tool_events]
+        self.assertIn('tool_call_requested', planning_events)
+        self.assertIn('tool_call_result', planning_events)
+        requested = [item for item in captured_planning_tool_events if item[0] == 'tool_call_requested']
+        self.assertTrue(requested)
+        self.assertEqual(requested[0][1].get('tool_args', {}).get('operations_count'), 1)
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+
+    def test_bulk_task_intent_retries_when_plan_targets_parent_status(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={'agent_edit_planner_max_attempts': 2}
+        )
+        call_count = {'value': 0}
+        captured_prompts: list[str] = []
+        captured_tool_names: list[list[str]] = []
+
+        def fake_execute(name: str, args: dict, _ctx: dict):
+            if name == 'resolve_node_reference':
+                return {
+                    'status': 'unique',
+                    'type_relaxed': False,
+                    'selected': {
+                        'id': '60bcab3f-3989-448d-9c84-3261cf38685b',
+                        'type': 'feature',
+                        'title': 'Authentication System',
+                    },
+                    'matches': [
+                        {
+                            'id': '60bcab3f-3989-448d-9c84-3261cf38685b',
+                            'type': 'feature',
+                            'title': 'Authentication System',
+                        }
+                    ],
+                }
+            return {'error': {'code': 'UNKNOWN'}}
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                call_count['value'] += 1
+                if call_count['value'] == 1:
+                    class _AdapterFirstAttempt:
+                        def plan_operations_with_tools(
+                            self,
+                            *,
+                            system_prompt,
+                            planner_prompt,
+                            history_messages,
+                            tools,
+                            tool_executor,
+                            max_tool_turns,
+                        ):
+                            tool_executor(
+                                'resolve_node_reference',
+                                {
+                                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                                    'label': 'Autenthication System',
+                                    'allowed_node_types': ['feature', 'epic'],
+                                    'fuzzy': True,
+                                    'auto_correct': True,
+                                    'limit': 5,
+                                },
+                            )
+                            return (
+                                'Prepared an operation.',
+                                [
+                                    {
+                                        'op': 'mark_status',
+                                        'node_type': 'feature',
+                                        'node_id': '60bcab3f-3989-448d-9c84-3261cf38685b',
+                                        'status': 'in_review',
+                                    }
+                                ],
+                            )
+
+                    return ProviderCallOutcome(
+                        value=operation(_AdapterFirstAttempt()),
+                        provider_used='openai',
+                        fallback_used=False,
+                        provider_error_code=None,
+                    )
+
+                class _AdapterSecondAttempt:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                    ):
+                        captured_prompts.append(planner_prompt)
+                        captured_tool_names.append(
+                            [
+                                str(tool.get('function', {}).get('name') or '')
+                                for tool in tools
+                                if isinstance(tool, dict)
+                            ]
+                        )
+                        return (
+                            'Prepared task operations.',
+                            [
+                                {
+                                    'op': 'mark_status',
+                                    'node_type': 'task',
+                                    'node_id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                                    'status': 'in_review',
+                                }
+                            ],
+                        )
+
+                return ProviderCallOutcome(
+                    value=operation(_AdapterSecondAttempt()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
+        planner._provider_orchestrator = _FakeOrchestrator()
+
+        result = planner._plan_operations(
+            {
+                'user_message': 'mark all tasks in my Autenthication System as in review',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-bulk-task-parent-status-retry',
+                },
+            }
+        )
+
+        self.assertEqual(call_count['value'], 2)
+        self.assertEqual(len(captured_prompts), 1)
+        self.assertIn('BULK TASK STATUS CONTRACT REPAIR:', captured_prompts[0])
+        self.assertTrue(captured_tool_names)
+        self.assertIn('bulk_update_tasks_by_parent', captured_tool_names[0])
+        self.assertIn('plan_roadmap_operations', captured_tool_names[0])
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+        planned_ops = result.get('planned_operations') or []
+        self.assertEqual(len(planned_ops), 1)
+        self.assertEqual(planned_ops[0].node_type.value, 'task')
+        self.assertEqual(planned_ops[0].op.value, 'mark_status')
 
     def test_plan_operations_missing_tool_call_retry_adds_ordered_todo_delete_policy(self) -> None:
         planner = self._planner()

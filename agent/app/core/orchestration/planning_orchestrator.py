@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 from time import perf_counter
 from typing import Any, Callable
 
@@ -114,6 +115,18 @@ def plan_message(
         invalid_operation_detected = True
         invalid_operation_reason = operation_validation_error.get('reason')
         invalid_operation_index = operation_validation_error.get('index')
+        log_event(
+            self._logger,
+            'operation_contract_validation_failed',
+            settings=self._settings,
+            level=logging.WARNING,
+            trace_id=trace_id,
+            session_id=session.session_id,
+            roadmap_id=session.roadmap_id,
+            route_lane=route_lane,
+            parse_mode=planning.parse_mode,
+            validation_error=operation_validation_error,
+        )
 
     record_context_tool_phase_metrics(
         phase_timings=phase_timings,

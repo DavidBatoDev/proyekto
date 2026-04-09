@@ -63,6 +63,7 @@ class _LifecycleTrace:
     actor: dict[str, Any] = field(default_factory=dict)
     routing: dict[str, Any] = field(default_factory=dict)
     tools: list[dict[str, Any]] = field(default_factory=list)
+    llm_operations: list[dict[str, Any]] = field(default_factory=list)
     response: dict[str, Any] = field(default_factory=dict)
     assistant: dict[str, Any] = field(default_factory=dict)
 
@@ -296,6 +297,18 @@ def _apply_lifecycle_payload(trace: _LifecycleTrace, payload: dict[str, Any]) ->
         if payload.get('resolution_id') is not None:
             target['resolution_id'] = payload.get('resolution_id')
         return
+    if event == 'llm_planned_operation':
+        trace.llm_operations.append(
+            {
+                'operation_index': payload.get('operation_index'),
+                'operation': payload.get('operation'),
+                'provider_used': payload.get('provider_used'),
+            }
+        )
+        return
+    if event == 'operation_contract_validation_failed':
+        trace.response['operation_validation_error'] = payload.get('validation_error')
+        return
     if event in {'provider_attempt', 'provider_success', 'provider_failure'}:
         trace.response['provider_event'] = event
         trace.response['provider'] = payload.get('provider')
@@ -386,6 +399,8 @@ def _build_lifecycle_block(trace: _LifecycleTrace) -> str:
         'TOOL CALL',
     ]
     lines.extend(_render_tool_calls(trace.tools))
+    lines.extend(['', 'LLM OPERATIONS'])
+    lines.extend(_render_llm_operations(trace.llm_operations))
     lines.extend(
         [
             '',
@@ -404,6 +419,7 @@ def _build_lifecycle_block(trace: _LifecycleTrace) -> str:
             f'  retry_calls {trace.response.get("retry_tool_calls_used")}',
             f'  retry_dedupe {_yes_no(trace.response.get("retry_duplicate_operation_deduped"))}',
             f'  retry_auto  {_yes_no(trace.response.get("retry_autostage_applied"))}',
+            f'  validation  {trace.response.get("operation_validation_error")}',
             f'  tokens      in={trace.response.get("tokens_input")} out={trace.response.get("tokens_output")} total={trace.response.get("tokens_total")}',
             '',
             'ASSISTANT',
@@ -450,6 +466,22 @@ def _render_tool_calls(tools: list[dict[str, Any]]) -> list[str]:
                 rendered.append(f'       - {key}: {result_summary.get(key)}')
         if tool.get('tool_error_code'):
             rendered.append(f'     - tool_error_code: {tool.get("tool_error_code")}')
+    return rendered
+
+
+def _render_llm_operations(operations: list[dict[str, Any]]) -> list[str]:
+    if not operations:
+        return ['  none']
+    rendered: list[str] = []
+    for item in operations:
+        operation_index = item.get('operation_index')
+        operation_payload = item.get('operation')
+        rendered.append(f'  {operation_index}:')
+        if isinstance(operation_payload, dict):
+            for key in sorted(operation_payload.keys()):
+                rendered.append(f'     - {key}: {operation_payload.get(key)}')
+        else:
+            rendered.append(f'     - payload: {operation_payload}')
     return rendered
 
 

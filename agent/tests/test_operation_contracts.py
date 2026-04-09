@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import unittest
 
 from app.core.contracts.operations import RoadmapOperation
@@ -8,19 +7,13 @@ from app.core.orchestration.shared.operation_contracts import (
     operation_validation_guidance,
     validate_operation_contract,
 )
+from app.core.uuid_utils import is_uuid_like
 
 
 class OperationContractsTests(unittest.TestCase):
     @staticmethod
     def _is_uuid(value: str | None) -> bool:
-        if value is None:
-            return False
-        return bool(
-            re.fullmatch(
-                r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
-                value,
-            )
-        )
+        return is_uuid_like(value)
 
     def test_move_node_allows_reorder_without_new_parent(self) -> None:
         operations = [
@@ -129,6 +122,45 @@ class OperationContractsTests(unittest.TestCase):
             node_type='task',
             node_id='123e4567-e89b-12d3-a456-426614174000',
             position=1,
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertEqual(issues, [])
+
+    def test_roadmap_operation_semantic_hook_accepts_uppercase_uuid(self) -> None:
+        operation = RoadmapOperation(
+            op='update_node',
+            node_type='task',
+            node_id='123E4567-E89B-12D3-A456-426614174000',
+            patch={'title': 'Updated'},
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertEqual(issues, [])
+
+    def test_roadmap_operation_semantic_hook_accepts_braced_uuid(self) -> None:
+        operation = RoadmapOperation(
+            op='delete_node',
+            node_type='task',
+            node_id='{123e4567-e89b-12d3-a456-426614174000}',
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertEqual(issues, [])
+
+    def test_roadmap_operation_semantic_hook_accepts_urn_uuid(self) -> None:
+        operation = RoadmapOperation(
+            op='mark_status',
+            node_type='task',
+            node_id='urn:uuid:123e4567-e89b-12d3-a456-426614174000',
+            status='in_review',
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertEqual(issues, [])
+
+    def test_roadmap_operation_semantic_hook_accepts_hyphenless_uuid(self) -> None:
+        operation = RoadmapOperation(
+            op='mark_status',
+            node_type='task',
+            node_id='123e4567e89b12d3a456426614174000',
+            status='done',
         )
         issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
         self.assertEqual(issues, [])

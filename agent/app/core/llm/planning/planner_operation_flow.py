@@ -14,6 +14,7 @@ from app.core.tools.registry import (
     get_edit_mode_tools,
     get_operation_tools,
     get_planning_tool,
+    PLANNING_TOOL_NAME,
     parse_plan_tool_args,
 )
 
@@ -110,6 +111,59 @@ def _select_tools_by_name(
     return selected
 
 
+def _operation_payloads(operations: list[RoadmapOperation]) -> list[dict[str, Any]]:
+    return [
+        operation.model_dump(mode='json', exclude_none=True)
+        for operation in operations
+    ]
+
+
+def _has_bulk_task_status_semantic_mismatch(
+    *,
+    user_message: str,
+    operations: list[RoadmapOperation],
+) -> bool:
+    if not _is_parent_scoped_bulk_status_intent(user_message):
+        return False
+    mark_status_operations = [
+        operation
+        for operation in operations
+        if operation.op.value == 'mark_status'
+    ]
+    if not mark_status_operations:
+        return True
+    for operation in mark_status_operations:
+        node_type = operation.node_type.value if operation.node_type is not None else ''
+        if node_type != 'task':
+            return True
+    return False
+
+
+def _augment_bulk_task_status_contract_retry_prompt(
+    *,
+    planner_prompt: str,
+    operations: list[RoadmapOperation],
+) -> str:
+    marker = 'BULK TASK STATUS CONTRACT REPAIR:'
+    if marker in planner_prompt:
+        return planner_prompt
+    payload = json.dumps(
+        _operation_payloads(operations)[:5],
+        ensure_ascii=True,
+        separators=(',', ':'),
+    )
+    return (
+        f'{planner_prompt}\n\n'
+        'BULK TASK STATUS CONTRACT REPAIR:\n'
+        'User asked to update status for all tasks under a parent scope.\n'
+        'Do not mark feature or epic status directly for this intent.\n'
+        'Call bulk_update_tasks_by_parent (or bulk_update_tasks_by_filter when explicit filters are requested), '
+        'then call plan_roadmap_operations with task-level mark_status operations only.\n\n'
+        f'Invalid operations from previous attempt:\n{payload}'
+    )
+
+
+
 def plan_operations(
     planner: Any,
     state: dict[str, Any],
@@ -164,6 +218,11 @@ def plan_operations(
         and _is_bulk_task_scope_update_intent(user_message)
     )
     explicit_parent_type_hint = _explicit_parent_type_hint(user_message)
+    operation_op_guardrail = (
+        'Helper tool names are never valid operation op values. '
+        'Only use operation op values: add_epic, add_feature, add_task, '
+        'update_node, move_node, delete_node, mark_status, shift_dates.'
+    )
 
     def _serialize_tool_args(value: dict[str, Any]) -> str:
         try:
@@ -176,6 +235,26 @@ def plan_operations(
         if not isinstance(metrics, dict):
             return
         metrics['resolve_dedup_hits'] = int(metrics.get('resolve_dedup_hits') or 0) + 1
+
+    def _record_invalid_payload_metric(metric_label: str) -> None:
+        metrics = session_context.setdefault('_phase_metrics', {})
+        if not isinstance(metrics, dict):
+            return
+        if metric_label == 'enum_op':
+            key = 'planner_invalid_payload_enum_op'
+        elif metric_label == 'missing_required':
+            key = 'planner_invalid_payload_missing_required'
+        else:
+            key = 'planner_invalid_payload_other'
+        metrics[key] = int(metrics.get(key) or 0) + 1
+
+    def _classify_invalid_payload(error_message: str | None) -> str:
+        if planner._is_invalid_operation_enum_payload(error_message):
+            return 'enum_op'
+        detail = str(error_message or '').strip().lower()
+        if "'type': 'missing'" in detail or 'field required' in detail:
+            return 'missing_required'
+        return 'other'
 
     def _capturing_tool_executor(name: str, args: dict[str, Any]) -> dict[str, Any]:
         effective_args = dict(args) if isinstance(args, dict) else {}
@@ -346,6 +425,7 @@ def plan_operations(
             'Only stage operations that are valid with available IDs and parent constraints.\n'
             'If required IDs are missing, call plan_roadmap_operations with an empty operations list and place a concise structured plan in assistant_message.\n'
             'Do not call resolve_node_reference, get_children, or other discovery tools in this mode.\n\n'
+            f'{operation_op_guardrail}\n\n'
             'Current staged operations:\n'
             f'{staged_operations_payload}\n\n'
             'Roadmap ID:\n'
@@ -370,6 +450,7 @@ def plan_operations(
             'Do not call discovery/read tools in this turn.\n'
             f'{helper_call_guidance}\n'
             'Avoid low-level task-by-task discovery when parent scope is already available.\n\n'
+            f'{operation_op_guardrail}\n\n'
             'Resolved context summary:\n'
             f'{json.dumps(effective_tool_summary[:10], ensure_ascii=True, separators=(",", ":"))}\n\n'
             'Current staged operations:\n'
@@ -393,6 +474,7 @@ def plan_operations(
             'If task_ids or task summaries are already present in prior observations, stage operations immediately.\n'
             'If you still cannot produce safe operations, call plan_roadmap_operations with an empty '
             'operations list and place the clarifying question in assistant_message.\n\n'
+            f'{operation_op_guardrail}\n\n'
             'Resolved node IDs:\n'
             f'{json.dumps(resolved_node_ids[:20], ensure_ascii=True, separators=(",", ":"))}\n\n'
             'Prior tool observation summary:\n'
@@ -411,6 +493,7 @@ def plan_operations(
             'When ready, call plan_roadmap_operations exactly once.\n'
             'Prefer the smallest safe operation set (typically update_node).\n'
             'Do not call commit or discard tools.\n'
+            f'{operation_op_guardrail}\n'
             'Current staged operations:\n'
             f'{staged_operations_payload}\n\n'
             'Roadmap ID:\n'
@@ -424,6 +507,7 @@ def plan_operations(
             'Resolve named targets to node IDs with resolve_node_reference before asking for IDs.\n'
             'Use context tools when needed to resolve node IDs and hierarchy before drafting operations.\n'
             'Use intent-level helper tools for common actions (create_*, move_*, reorder_*, bulk_*).\n'
+            f'{operation_op_guardrail}\n'
             'For "all tasks under a feature/epic" status updates, prefer bulk_update_tasks_by_parent.\n'
             'For broad task updates with filters, prefer bulk_update_tasks_by_filter.\n'
             'When ready, call plan_roadmap_operations exactly once with assistant_message and operations.\n'
@@ -518,6 +602,27 @@ def plan_operations(
             )
         except ProviderAdapterError as exc:
             last_provider_error_code = exc.code
+            if exc.code == 'invalid_operation_payload':
+                _record_invalid_payload_metric(_classify_invalid_payload(exc.message))
+                if attempt == 0:
+                    synthesized_operations = planner._maybe_synthesize_react_closure_operations(
+                        user_message=user_message,
+                        tool_observations=tool_observations,
+                        session_context=session_context,
+                    )
+                    if synthesized_operations:
+                        return _finalize_state(
+                            planner._build_synthesized_react_closure_state(
+                                operations=synthesized_operations,
+                                schema_invalid_attempts=schema_invalid_attempts,
+                                repair_attempted=repair_attempted,
+                                draft_action='continue',
+                                tool_plan=[],
+                                tokens_input=exc.tokens_input,
+                                tokens_output=exc.tokens_output,
+                                tokens_total=exc.tokens_total,
+                            )
+                        )
             if exc.code == 'max_tool_turns_exceeded':
                 provider_used = (
                     'openai'
@@ -561,6 +666,10 @@ def plan_operations(
                     used_calls=llm_calls_used,
                 )
             if exc.code in {'invalid_operation_payload', 'missing_tool_call'} and attempt + 1 < max_attempts:
+                enum_op_payload = (
+                    exc.code == 'invalid_operation_payload'
+                    and planner._is_invalid_operation_enum_payload(exc.message)
+                )
                 schema_invalid_attempts += 1
                 repair_attempted = True
                 planner_prompt = planner._augment_repair_planner_prompt(
@@ -568,7 +677,7 @@ def plan_operations(
                     error_code=exc.code,
                     error_message=exc.message,
                 )
-                if exc.code == 'missing_tool_call':
+                if exc.code == 'missing_tool_call' or enum_op_payload:
                     # Retry in planning-only mode to avoid rediscovery churn.
                     tool_definitions = get_operation_tools()
                     planner_prompt = planner._augment_missing_tool_call_retry_prompt(
@@ -621,6 +730,20 @@ def plan_operations(
         assistant_message = (
             assistant_message if isinstance(assistant_message, str) else str(assistant_message or '')
         )
+        planning_tool_args = {
+            'assistant_message': assistant_message.strip()[:200],
+            'operations_count': len(raw_operations) if isinstance(raw_operations, list) else 0,
+        }
+        log_event(
+            planner._logger,
+            'tool_call_requested',
+            settings=planner._settings,
+            trace_id=trace_id,
+            tool_name=PLANNING_TOOL_NAME,
+            tool_args=planning_tool_args,
+            arg_keys=sorted(planning_tool_args.keys()),
+            roadmap_id=roadmap_id_value,
+        )
         if raw_operations is None:
             operations = []
         elif isinstance(raw_operations, list):
@@ -632,17 +755,57 @@ def plan_operations(
                     }
                 )
             except Exception:
+                log_event(
+                    planner._logger,
+                    'tool_call_result',
+                    settings=planner._settings,
+                    trace_id=trace_id,
+                    tool_name=PLANNING_TOOL_NAME,
+                    tool_error_code='invalid_operation_payload',
+                    result_summary={
+                        'result_type': 'dict',
+                        'error_code': 'invalid_operation_payload',
+                        'operations_count': planning_tool_args.get('operations_count'),
+                    },
+                )
                 if attempt + 1 < max_attempts:
                     schema_invalid_attempts += 1
                     repair_attempted = True
                     continue
                 break
         else:
+            log_event(
+                planner._logger,
+                'tool_call_result',
+                settings=planner._settings,
+                trace_id=trace_id,
+                tool_name=PLANNING_TOOL_NAME,
+                tool_error_code='invalid_operation_payload',
+                result_summary={
+                    'result_type': 'dict',
+                    'error_code': 'invalid_operation_payload',
+                    'operations_count': 0,
+                },
+            )
             if attempt + 1 < max_attempts:
                 schema_invalid_attempts += 1
                 repair_attempted = True
                 continue
             break
+
+        log_event(
+            planner._logger,
+            'tool_call_result',
+            settings=planner._settings,
+            trace_id=trace_id,
+            tool_name=PLANNING_TOOL_NAME,
+            result_summary={
+                'result_type': 'dict',
+                'operations_count': len(operations),
+                'operation_types': [operation.op.value for operation in operations],
+                'assistant_message_present': bool(assistant_message.strip()),
+            },
+        )
 
         if operations:
             (
@@ -715,6 +878,81 @@ def plan_operations(
                     }
                 )
 
+            if _has_bulk_task_status_semantic_mismatch(
+                user_message=user_message,
+                operations=operations,
+            ):
+                log_event(
+                    planner._logger,
+                    'bulk_task_scope_operation_mismatch',
+                    settings=planner._settings,
+                    trace_id=trace_id,
+                    operation_payloads=_operation_payloads(operations),
+                )
+                if attempt + 1 < max_attempts:
+                    schema_invalid_attempts += 1
+                    repair_attempted = True
+                    planner_prompt = _augment_bulk_task_status_contract_retry_prompt(
+                        planner_prompt=planner_prompt,
+                        operations=operations,
+                    )
+                    helper_tools = get_edit_helper_tools()
+                    helper_names = (
+                        {'bulk_update_tasks_by_parent', 'bulk_update_tasks_by_filter'}
+                        if _is_parent_scoped_bulk_filter_update_intent(user_message)
+                        else {'bulk_update_tasks_by_parent'}
+                    )
+                    tool_definitions = [
+                        *_select_tools_by_name(helper_tools, helper_names),
+                        get_planning_tool(),
+                    ]
+                    edit_turns = max(1, min(edit_turns, 2))
+                    continue
+                synthesized_operations = planner._maybe_synthesize_react_closure_operations(
+                    user_message=user_message,
+                    tool_observations=tool_observations,
+                    session_context=session_context,
+                )
+                if synthesized_operations:
+                    operations = synthesized_operations
+                else:
+                    clarifier_message, clarifier_options = build_clarifier_contract(
+                        reason='bulk_task_scope_requires_task_targets',
+                        question=(
+                            'I could not safely stage this update because the plan targeted a feature '
+                            'instead of child tasks. Please confirm the exact parent feature or epic.'
+                        ),
+                        options=['Use the matched parent', 'Provide exact parent', 'Cancel'],
+                    )
+                    return _finalize_state(
+                        {
+                            'assistant_message': clarifier_message,
+                            'planned_operations': [],
+                            'response_mode': 'chat',
+                            'preview_recommended': False,
+                            'parse_mode': 'deterministic_bulk_task_scope_mismatch_clarifier',
+                            'provider_used': 'rule_based',
+                            'fallback_used': True,
+                            'provider_error_code': 'bulk_task_scope_operation_mismatch',
+                            'tokens_input': result.tokens_input,
+                            'tokens_output': result.tokens_output,
+                            'tokens_total': result.tokens_total,
+                            'pending_context_resolution': None,
+                            'clear_pending_context_resolution': False,
+                            'clarifier_action': 'ask_clarifier',
+                            'clarifier_reason': 'bulk_task_scope_operation_mismatch',
+                            'clarifier_options': clarifier_options,
+                            'clarifier_schema_retries': schema_invalid_attempts,
+                            'planner_schema_invalid_attempts': schema_invalid_attempts,
+                            'planner_repair_attempted': repair_attempted,
+                            'draft_action': 'continue',
+                            'tool_plan': [],
+                            'needs_more_info': True,
+                            'stop_reason': 'awaiting_user_input',
+                        }
+                    )
+
+            operation_payloads = _operation_payloads(operations)
             log_event(
                 planner._logger,
                 'plan_generated',
@@ -724,6 +962,7 @@ def plan_operations(
                 fallback_used=result.fallback_used,
                 operations_count=len(operations),
                 operation_types=[op.op.value for op in operations],
+                operation_payloads=operation_payloads,
                 parent_hint_applied=parent_hint_applied,
                 planner_prompt_bytes=planner_prompt_bytes,
                 history_messages_count=history_messages_count,
@@ -731,6 +970,16 @@ def plan_operations(
                 tokens_output=result.tokens_output,
                 tokens_total=result.tokens_total,
             )
+            for operation_index, operation_payload in enumerate(operation_payloads):
+                log_event(
+                    planner._logger,
+                    'llm_planned_operation',
+                    settings=planner._settings,
+                    trace_id=trace_id,
+                    provider_used=result.provider_used,
+                    operation_index=operation_index,
+                    operation=operation_payload,
+                )
             return _finalize_state(
                 {
                     'assistant_message': (
