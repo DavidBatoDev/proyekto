@@ -1,10 +1,80 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Callable
 
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import AgentSession
 from app.core.llm.client import LLMPlanner, PlanningResult
+
+_STAGED_CHANGE_QUERY_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r'\bwhat\s+(?:would|will)\s+(?:you\s+)?change\b', re.IGNORECASE),
+    re.compile(r'\bwhat\s+changes?\b', re.IGNORECASE),
+    re.compile(r'\btell\s+me\s+what\s+(?:would|will)\s+(?:you\s+)?change\b', re.IGNORECASE),
+    re.compile(r'\bshow\s+(?:me\s+)?(?:the\s+)?staged\s+changes?\b', re.IGNORECASE),
+    re.compile(r'\bwhat\s+is\s+staged\b', re.IGNORECASE),
+)
+
+
+def _is_staged_change_query(query_message: str) -> bool:
+    normalized = ' '.join(str(query_message or '').strip().split())
+    if not normalized:
+        return False
+    for pattern in _STAGED_CHANGE_QUERY_PATTERNS:
+        if pattern.search(normalized):
+            return True
+    return False
+
+
+def _pluralize(value: int, singular: str, plural: str) -> str:
+    return singular if int(value) == 1 else plural
+
+
+def _build_deterministic_staged_change_summary(
+    staged_operations: list[RoadmapOperation],
+) -> str:
+    if not staged_operations:
+        return 'There are no staged operations to summarize.'
+
+    mark_status_ops = [
+        operation
+        for operation in staged_operations
+        if operation.op.value == 'mark_status'
+    ]
+    if mark_status_ops and len(mark_status_ops) == len(staged_operations):
+        status_counts: dict[str, int] = {}
+        for operation in mark_status_ops:
+            status_value = str(operation.status or '').strip().replace('_', ' ')
+            if not status_value:
+                status_value = 'the requested status'
+            status_counts[status_value] = status_counts.get(status_value, 0) + 1
+
+        status_parts = [
+            f'{count} {_pluralize(count, "item", "items")} to "{status}"'
+            for status, count in sorted(status_counts.items())
+        ]
+        status_summary = ', '.join(status_parts)
+        total_updates = len(mark_status_ops)
+        return (
+            'Based on the currently staged operations, '
+            f'I would apply {total_updates} status {_pluralize(total_updates, "change", "changes")}: '
+            f'{status_summary}.'
+        )
+
+    op_counts: dict[str, int] = {}
+    for operation in staged_operations:
+        op_name = str(operation.op.value or '').strip() or 'unknown'
+        op_counts[op_name] = op_counts.get(op_name, 0) + 1
+    op_summary = ', '.join(
+        f'{count} {op_name}'
+        for op_name, count in sorted(op_counts.items())
+    )
+    total_ops = len(staged_operations)
+    return (
+        'Based on the currently staged operations, '
+        f'I would apply {total_ops} {_pluralize(total_ops, "operation", "operations")}: '
+        f'{op_summary}.'
+    )
 
 
 def run_mixed_query_followup(
@@ -21,6 +91,8 @@ def run_mixed_query_followup(
 ) -> tuple[str | None, str | None]:
     if not staged_operations:
         return None, 'mixed_query_no_staged_operations'
+    if _is_staged_change_query(query_message):
+        return _build_deterministic_staged_change_summary(staged_operations), None
     followup_trace_id = f'{trace_id}:mixed_query_followup' if trace_id else None
     try:
         query_session_context = build_session_context(

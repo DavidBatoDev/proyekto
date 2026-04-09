@@ -74,19 +74,10 @@ def dispatch_pre_planning_phase(
         )
 
     simple_edit_detected = preview_intent == 'roadmap_edit'
-    mixed_query_followup_message = self._extract_mixed_query_followup_message(
-        user_message=user_message,
-        preview_intent=preview_intent,
-    )
-    mixed_edit_primary_message = self._extract_mixed_edit_primary_message(
-        user_message=user_message,
-        query_message=mixed_query_followup_message,
-    )
-    planning_user_message = mixed_edit_primary_message or user_message
-    if mixed_query_followup_message is not None:
-        phase_timings['mixed_query_detected'] = 1
-    if mixed_edit_primary_message is not None:
-        phase_timings['mixed_query_edit_clause_used'] = 1
+    # Mixed edit/query follow-up orchestration is intentionally disabled.
+    # Let the planner handle the full user message in one pass.
+    mixed_query_followup_message = None
+    planning_user_message = user_message
 
     actor_fetch_attempted = False
     actor_fetch_skipped_reason: str | None = None

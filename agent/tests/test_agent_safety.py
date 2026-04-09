@@ -256,26 +256,101 @@ class AgentSafetyTests(unittest.TestCase):
 
         self.assertEqual(outcome.response_mode, 'edit_plan')
         self.assertEqual(len(session.operations), 1)
-        self.assertTrue(outcome.parse_mode.endswith('+mixed_query_followup'))
+        self.assertEqual(outcome.parse_mode, 'openai_tool_calling')
         self.assertIn('Prepared delete operations.', outcome.assistant_message)
-        self.assertIn(
-            'Draft-view answer after staging these edits:',
-            outcome.assistant_message,
-        )
-        self.assertIn('There will be 14 total tasks remaining.', outcome.assistant_message)
-        self.assertEqual(len(planner.plan_inputs), 2)
+        self.assertNotIn('Draft-view answer after staging these edits:', outcome.assistant_message)
+        self.assertNotIn('There will be 14 total tasks remaining.', outcome.assistant_message)
+        self.assertEqual(len(planner.plan_inputs), 1)
         self.assertEqual(
             planner.plan_inputs[0],
-            'Delete top 2 todo tasks under API Security feature',
-        )
-        self.assertEqual(
-            planner.plan_inputs[1],
-            'tell me how many total tasks remain in this roadmap',
+            (
+                'Delete top 2 todo tasks under API Security feature and '
+                'tell me how many total tasks remain in this roadmap'
+            ),
         )
         self.assertEqual(len(nest_client.preview_calls), 0)
         self.assertEqual(len(nest_client.discard_calls), 0)
         self.assertFalse(outcome.actor_fetch_attempted)
         self.assertEqual(nest_client.actor_calls, 0)
+
+    def test_plan_message_mixed_query_what_would_change_uses_deterministic_followup(self) -> None:
+        class _MixedPlanner:
+            def __init__(self) -> None:
+                self.plan_inputs: list[str] = []
+
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                self.plan_inputs.append(user_message)
+                return PlanningResult(
+                    assistant_message='Prepared status updates.',
+                    operations=[
+                        RoadmapOperation(
+                            op='mark_status',
+                            node_type='task',
+                            node_id='decf459b-c0d2-46b0-89ad-2c224d247c0b',
+                            status='in_review',
+                        ),
+                        RoadmapOperation(
+                            op='mark_status',
+                            node_type='task',
+                            node_id='5bc7047c-0b9e-4b07-bd86-b7b3145d3151',
+                            status='in_review',
+                        ),
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        planner = _MixedPlanner()
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_hybrid_react_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = planner
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        service._run_async_call = lambda value: value
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        outcome = service.plan_message(
+            session=session,
+            user_message=(
+                'Mark all tasks in the Authentication System as in review and '
+                'tell me what would change'
+            ),
+            replace=False,
+            auth_header=None,
+            trace_id='trace-mixed-query-deterministic-what-would-change',
+        )
+
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(outcome.parse_mode, 'openai_tool_calling')
+        self.assertEqual(len(planner.plan_inputs), 1)
+        self.assertIn('Prepared status updates.', outcome.assistant_message)
+        self.assertNotIn('Draft-view answer after staging these edits:', outcome.assistant_message)
+        self.assertNotIn('Options:', outcome.assistant_message)
 
     def test_plan_message_mixed_actor_query_fetches_actor_context(self) -> None:
         class _MixedPlanner:
@@ -5138,7 +5213,9 @@ async def _async_runtime_result(value):
 class PlannerContextSafetyTests(unittest.TestCase):
     def _planner(self) -> LLMPlanner:
         planner = object.__new__(LLMPlanner)
-        planner._settings = get_settings()
+        planner._settings = get_settings().model_copy(
+            update={'agent_strict_mutation_authority_enabled': False}
+        )
         planner._logger = logging.getLogger('planner-context-safety-tests')
         planner._nest_client = SimpleNamespace()
         planner._run_async_context_call = lambda value: value

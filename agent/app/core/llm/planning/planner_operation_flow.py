@@ -5,7 +5,7 @@ import json
 import re
 from typing import Any
 
-from app.core.contracts.operations import RoadmapOperation
+from app.core.contracts.operations import NodeType, RoadmapOperation
 from app.core.llm.contracts.clarifier_contract import build_clarifier_contract
 from app.core.llm.providers import ProviderAdapterError
 from app.core.logging_utils import log_event
@@ -139,6 +139,59 @@ def _has_bulk_task_status_semantic_mismatch(
     return False
 
 
+def _normalize_task_status_value(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = ' '.join(value.strip().lower().split())
+    if not normalized:
+        return None
+    normalized = normalized.replace('-', ' ').replace('_', ' ')
+    alias_map = {
+        'to do': 'todo',
+        'todo': 'todo',
+        'in progress': 'in_progress',
+        'in review': 'in_review',
+        'done': 'done',
+        'blocked': 'blocked',
+    }
+    if normalized in alias_map:
+        return alias_map[normalized]
+    candidate = normalized.replace(' ', '_')
+    if candidate in {'todo', 'in_progress', 'in_review', 'done', 'blocked'}:
+        return candidate
+    return None
+
+
+def _coerce_parent_scoped_bulk_task_status_operations(
+    *,
+    user_message: str,
+    operations: list[RoadmapOperation],
+) -> list[RoadmapOperation]:
+    if not _is_parent_scoped_bulk_status_intent(user_message):
+        return operations
+
+    coerced_operations: list[RoadmapOperation] = []
+    for operation in operations:
+        if operation.op.value != 'mark_status':
+            coerced_operations.append(operation)
+            continue
+
+        coerced_operation = operation
+        if coerced_operation.node_type is None:
+            coerced_operation = coerced_operation.model_copy(deep=True)
+            coerced_operation.node_type = NodeType.TASK
+
+        if coerced_operation.node_type == NodeType.TASK:
+            normalized_status = _normalize_task_status_value(coerced_operation.status)
+            if normalized_status is not None and normalized_status != coerced_operation.status:
+                if coerced_operation is operation:
+                    coerced_operation = coerced_operation.model_copy(deep=True)
+                coerced_operation.status = normalized_status
+
+        coerced_operations.append(coerced_operation)
+    return coerced_operations
+
+
 def _augment_bulk_task_status_contract_retry_prompt(
     *,
     planner_prompt: str,
@@ -159,7 +212,9 @@ def _augment_bulk_task_status_contract_retry_prompt(
         'Do not mark feature or epic status directly for this intent.\n'
         'Call bulk_update_tasks_by_parent with include_completed=true '
         '(or bulk_update_tasks_by_filter when explicit filters are requested), '
-        'then call plan_roadmap_operations with task-level mark_status operations only.\n\n'
+        'then call plan_roadmap_operations with task-level mark_status operations only.\n'
+        'Each mark_status operation must include node_type="task" and a canonical '
+        'task status value (todo, in_progress, in_review, done, blocked).\n\n'
         f'Invalid operations from previous attempt:\n{payload}'
     )
 
@@ -911,6 +966,10 @@ def plan_operations(
                         'assistant_message': assistant_message or 'Prepared roadmap edit operations.',
                         'operations': raw_operations,
                     }
+                )
+                operations = _coerce_parent_scoped_bulk_task_status_operations(
+                    user_message=user_message,
+                    operations=operations,
                 )
             except Exception:
                 log_event(

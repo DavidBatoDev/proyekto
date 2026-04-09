@@ -718,6 +718,75 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         )
         self.assertEqual(result.get('response_mode'), 'edit_plan')
 
+    def test_bulk_task_status_coerces_missing_node_type_and_status_alias(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+
+        class _RepairOrchestrator:
+            def call(self, operation, trace_context=None):  # noqa: ANN001
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                        planner_profile=None,
+                    ):
+                        return (
+                            'Prepared operation.',
+                            [
+                                {
+                                    'op': 'mark_status',
+                                    'node_id': 'decf459b-c0d2-46b0-89ad-2c224d247c0b',
+                                    'status': 'in review',
+                                },
+                                {
+                                    'op': 'mark_status',
+                                    'node_id': '5bc7047c-0b9e-4b07-bd86-b7b3145d3151',
+                                    'status': 'in review',
+                                },
+                            ],
+                        )
+
+                return SimpleNamespace(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=1,
+                    tokens_output=1,
+                    tokens_total=2,
+                )
+
+        planner._provider_orchestrator = _RepairOrchestrator()
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Mark all tasks in Authentication System as in review',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-bulk-task-missing-node-type-repair',
+                },
+            },
+        )
+
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+        planned_operations = result.get('planned_operations')
+        self.assertIsInstance(planned_operations, list)
+        assert isinstance(planned_operations, list)
+        self.assertEqual(len(planned_operations), 2)
+        self.assertTrue(
+            all(getattr(op.node_type, 'value', '') == 'task' for op in planned_operations)
+        )
+        self.assertTrue(all(op.status == 'in_review' for op in planned_operations))
+
     def test_strict_mutation_authority_skips_synthesis_for_empty_plan_without_provider_error(self) -> None:
         captured: dict[str, object] = {}
         planner = _FakePlanner(captured)
