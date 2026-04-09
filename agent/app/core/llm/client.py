@@ -117,6 +117,7 @@ class LLMPlanner:
     def __init__(self) -> None:
         self._logger = logging.getLogger(__name__)
         self._settings = get_settings()
+        self._edit_clarifier_payload_model = _EditClarifierPayload
         self._prompt_repository = PromptRepository()
         self._provider_orchestrator = ProviderOrchestrator(self._settings)
         self._nest_client = NestRoadmapClient()
@@ -432,9 +433,13 @@ class LLMPlanner:
         return planner_react_helpers.build_edit_clarifier_prompt(user_message=user_message)
 
     def _parse_edit_clarifier_payload(self, raw: str) -> _EditClarifierPayload:
+        payload_model = getattr(self, '_edit_clarifier_payload_model', None)
+        if payload_model is None:
+            payload_model = _EditClarifierPayload
+            self._edit_clarifier_payload_model = payload_model
         return planner_react_helpers.parse_edit_clarifier_payload(
             raw,
-            payload_model=self._edit_clarifier_payload_model,
+            payload_model=payload_model,
         )
 
     def _format_edit_clarifier_message(self, payload: _EditClarifierPayload) -> tuple[str, list[str]]:

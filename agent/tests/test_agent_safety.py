@@ -6182,6 +6182,58 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(result.get('stop_reason'), 'awaiting_user_input')
         self.assertIn('Options:', str(result.get('assistant_message')))
 
+    def test_plan_operations_missing_tool_call_exhausted_uses_clarifier_without_attribute_error(self) -> None:
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={
+                'agent_edit_planner_max_attempts': 1,
+                'agent_react_repair_retries': 0,
+            }
+        )
+        call_count = {'value': 0}
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                call_count['value'] += 1
+                phase = str((trace_context or {}).get('phase') or '')
+                if phase == 'edit_plan':
+                    raise ProviderAdapterError(
+                        provider='openai',
+                        code='missing_tool_call',
+                        message='OpenAI did not return any tool call while planning operations.',
+                    )
+                return ProviderCallOutcome(
+                    value=(
+                        '{"action":"ask_clarifier","reason":"need_target",'
+                        '"question":"Should I create the epic first?",'
+                        '"options":["Create epic first","Cancel"]}'
+                    ),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+
+        result = planner._plan_operations(
+            {
+                'user_message': 'Add new epic called "Agile" and inside that add feature called "Jira"',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-missing-tool-call-exhausted-clarifier',
+                },
+            }
+        )
+
+        self.assertEqual(call_count['value'], 2)
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'openai_edit_clarifier')
+        self.assertEqual(result.get('provider_error_code'), 'missing_tool_call')
+        self.assertEqual(result.get('clarifier_action'), 'ask_clarifier')
+        self.assertIn('Should I create the epic first?', str(result.get('assistant_message')))
+
     def test_plan_operations_invalid_clarifier_schema_retries_then_neutral(self) -> None:
         planner = self._planner()
         call_count = {'value': 0}

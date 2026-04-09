@@ -828,10 +828,17 @@ def build_edit_clarifier_state(
             )
 
         try:
-            parsed = parse_edit_clarifier_payload(
-                result.value,
-                payload_model=planner._edit_clarifier_payload_model,
-            )
+            parse_payload = getattr(planner, '_parse_edit_clarifier_payload', None)
+            if callable(parse_payload):
+                parsed = parse_payload(result.value)
+            else:
+                payload_model = getattr(planner, '_edit_clarifier_payload_model', None)
+                if payload_model is None:
+                    raise ValueError('invalid_clarifier_schema')
+                parsed = parse_edit_clarifier_payload(
+                    result.value,
+                    payload_model=payload_model,
+                )
             assistant_message, clarifier_options = format_edit_clarifier_message(parsed)
             log_event(
                 planner._logger,
