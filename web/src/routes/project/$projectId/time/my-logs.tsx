@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp } from "lucide-react";
@@ -27,6 +27,7 @@ import {
   useTimeRouteData,
 } from "@/components/project/time/useTimeRouteData";
 import { useToast } from "@/hooks/useToast";
+import { useRoadmapStore } from "@/stores/roadmapStore";
 import {
   clearLogRollbackKey,
   clearRecordKey,
@@ -46,6 +47,7 @@ export const Route = createFileRoute("/project/$projectId/time/my-logs")({
 
 function TimeMyLogsPage() {
   const { projectId } = Route.useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const toast = useToast();
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -105,6 +107,17 @@ function TimeMyLogsPage() {
   const taskTitleById = useMemo(() => {
     const map = new Map<string, string>();
     for (const task of projectTasks) map.set(task.id, task.title);
+    return map;
+  }, [projectTasks]);
+
+  const taskRoadmapById = useMemo(() => {
+    const map = new Map<string, { roadmapId: string; featureId: string }>();
+    for (const task of projectTasks) {
+      map.set(task.id, {
+        roadmapId: task.roadmap_id,
+        featureId: task.feature_id,
+      });
+    }
     return map;
   }, [projectTasks]);
 
@@ -218,6 +231,44 @@ function TimeMyLogsPage() {
     [myLogs],
   );
 
+  const isMemberLockedLog = useCallback(
+    (log: TaskTimeLog | null | undefined) =>
+      Boolean(log && (log.status === "approved" || log.status === "rejected")),
+    [],
+  );
+
+  const canOpenTaskInRoadmap = useCallback(
+    (taskId: string) => {
+      const entry = taskRoadmapById.get(taskId);
+      return Boolean(entry?.featureId && entry?.roadmapId);
+    },
+    [taskRoadmapById],
+  );
+
+  const openTaskInRoadmap = useCallback(
+    (log: TaskTimeLog) => {
+      const entry = taskRoadmapById.get(log.task_id);
+      if (!entry?.featureId || !entry?.roadmapId) {
+        setError("This task is not linked to an accessible roadmap.");
+        toast.error("This task is not linked to an accessible roadmap.");
+        return;
+      }
+
+      const roadmapStore = useRoadmapStore.getState();
+      roadmapStore.setCanvasViewMode("roadmap");
+      roadmapStore.navigateToNode(entry.featureId, { taskId: log.task_id });
+      setError(null);
+      void navigate({
+        to: "/project/$projectId/roadmap/$roadmapId",
+        params: {
+          projectId,
+          roadmapId: entry.roadmapId,
+        },
+      });
+    },
+    [navigate, projectId, taskRoadmapById, toast],
+  );
+
   const formatRateDate = (value?: string | null) => {
     if (!value) return "-";
     const parsed = new Date(value);
@@ -292,6 +343,10 @@ function TimeMyLogsPage() {
       setError("Stop the running timer before editing logs.");
       return;
     }
+    if (isMemberLockedLog(log)) {
+      setError("Approved and rejected logs are read-only.");
+      return;
+    }
     setEditingLogId(log.id);
     setEditStartedAt(toLocalDateTimeInput(log.started_at));
     setEditEndedAt(toLocalDateTimeInput(log.ended_at));
@@ -305,6 +360,14 @@ function TimeMyLogsPage() {
 
   const enqueueTaskChange = useCallback(
     (logId: string, nextTaskId: string) => {
+      const currentLog = findLogById(getCachedLogs(), logId);
+      if (!currentLog) return;
+      if (isMemberLockedLog(currentLog)) {
+        setError("Approved and rejected logs are read-only.");
+        toast.error("Approved and rejected logs are read-only.");
+        return;
+      }
+
       const runtime = {
         getLog: (id: string) => findLogById(getCachedLogs(), id),
         isActive: (id: string) => Boolean(activeLogTaskSyncByIdRef.current[id]),
@@ -393,7 +456,14 @@ function TimeMyLogsPage() {
           void invalidateMyLogs();
         });
     },
-    [getCachedLogs, invalidateMyLogs, setCachedLogs, taskTitleById, toast],
+    [
+      getCachedLogs,
+      invalidateMyLogs,
+      isMemberLockedLog,
+      setCachedLogs,
+      taskTitleById,
+      toast,
+    ],
   );
 
   const saveEditedLog = async () => {
@@ -414,6 +484,11 @@ function TimeMyLogsPage() {
 
     const rollbackLog = findLogById(getCachedLogs(), logId);
     if (!rollbackLog) return;
+    if (isMemberLockedLog(rollbackLog)) {
+      closeEditLogModal();
+      setError("Approved and rejected logs are read-only.");
+      return;
+    }
 
     closeEditLogModal();
     setError(null);
@@ -485,6 +560,11 @@ function TimeMyLogsPage() {
 
     const removal = removeLogById(getCachedLogs(), logId);
     if (!removal) return;
+    if (isMemberLockedLog(removal.removedLog)) {
+      setError("Approved and rejected logs are read-only.");
+      toast.error("Approved and rejected logs are read-only.");
+      return;
+    }
 
     setError(null);
     setLogPending(logId, true);
@@ -506,8 +586,13 @@ function TimeMyLogsPage() {
   };
 
   const requestDeleteLog = useCallback((logId: string) => {
+    const log = findLogById(getCachedLogs(), logId);
+    if (isMemberLockedLog(log)) {
+      setError("Approved and rejected logs are read-only.");
+      return;
+    }
     setDeleteLogId(logId);
-  }, []);
+  }, [getCachedLogs, isMemberLockedLog]);
 
   const closeDeleteLogModal = useCallback(() => {
     if (deleteLogId && pendingLogByIdRef.current[deleteLogId]) return;
@@ -569,10 +654,14 @@ function TimeMyLogsPage() {
   };
 
   const openTaskPickerModal = useCallback((log: TaskTimeLog) => {
+    if (isMemberLockedLog(log)) {
+      setError("Approved and rejected logs are read-only.");
+      return;
+    }
     setTaskPickerLogId(log.id);
     setTaskPickerTaskId(log.task_id);
     setIsTaskPickerModalOpen(true);
-  }, []);
+  }, [isMemberLockedLog]);
 
   const closeTaskPickerModal = useCallback(() => {
     setIsTaskPickerModalOpen(false);
@@ -587,6 +676,11 @@ function TimeMyLogsPage() {
       closeTaskPickerModal();
       return;
     }
+    if (isMemberLockedLog(currentLog)) {
+      closeTaskPickerModal();
+      setError("Approved and rejected logs are read-only.");
+      return;
+    }
     if (currentLog.task_id === taskPickerTaskId) {
       closeTaskPickerModal();
       return;
@@ -599,6 +693,7 @@ function TimeMyLogsPage() {
     closeTaskPickerModal,
     enqueueTaskChange,
     getCachedLogs,
+    isMemberLockedLog,
     taskPickerLogId,
     taskPickerTaskId,
   ]);
@@ -669,6 +764,8 @@ function TimeMyLogsPage() {
                     onStopLog={stopLog}
                     onDeleteLog={requestDeleteLog}
                     onEditLog={beginEditLog}
+                    onOpenTaskInRoadmap={openTaskInRoadmap}
+                    canOpenTaskInRoadmap={canOpenTaskInRoadmap}
                     onOpenAddLog={() => setIsAddLogModalOpen(true)}
                   />
                 </div>

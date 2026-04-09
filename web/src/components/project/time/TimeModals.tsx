@@ -887,11 +887,11 @@ export function AddLogModal({
 
   return (
     <div
-      className="fixed inset-0 z-168 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
+      className="fixed inset-0 z-168 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white shadow-2xl overflow-hidden"
+        className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">

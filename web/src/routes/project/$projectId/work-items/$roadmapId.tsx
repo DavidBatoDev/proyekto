@@ -1,5 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import {
+  useEffect,
+  useState,
+  useMemo,
+  useCallback,
+  useRef,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   ListChecks,
@@ -104,6 +112,21 @@ const TASK_STATUS_OPTIONS: TaskStatus[] = [
   "blocked",
 ];
 
+const EPIC_STATUS_OPTIONS = Object.keys(EPIC_STATUS_MAP) as EpicStatus[];
+const FEATURE_STATUS_OPTIONS = Object.keys(FEATURE_STATUS_MAP) as FeatureStatus[];
+
+type ScopedStatusFilter =
+  | ""
+  | `epic:${EpicStatus}`
+  | `feature:${FeatureStatus}`
+  | `task:${TaskStatus}`;
+
+type StatusFilterState =
+  | { scope: "all" }
+  | { scope: "epic"; status: EpicStatus }
+  | { scope: "feature"; status: FeatureStatus }
+  | { scope: "task"; status: TaskStatus };
+
 const matchesTaskAssigneeFilter = (
   task: RoadmapTask,
   assigneeFilter: "all" | "me" | string,
@@ -150,13 +173,128 @@ const getTaskCheckboxStyle = (status: TaskStatus) => {
   }
 };
 
-const PRIORITY_DOT: Record<string, string> = {
-  critical: "bg-red-500",
-  high: "bg-orange-400",
-  medium: "bg-yellow-400",
-  low: "bg-blue-400",
-  nice_to_have: "bg-gray-300",
+const EPIC_PRIORITY_META: Record<EpicPriority, { label: string; cls: string }> = {
+  critical: {
+    label: "Critical",
+    cls: "border border-red-200 bg-red-100 text-red-700",
+  },
+  high: {
+    label: "High",
+    cls: "border border-amber-200 bg-amber-100 text-amber-700",
+  },
+  medium: {
+    label: "Medium",
+    cls: "border border-blue-200 bg-blue-100 text-blue-700",
+  },
+  low: {
+    label: "Low",
+    cls: "border border-emerald-200 bg-emerald-100 text-emerald-700",
+  },
+  nice_to_have: {
+    label: "Nice to Have",
+    cls: "border border-slate-200 bg-slate-100 text-slate-600",
+  },
 };
+
+function parseScopedStatusFilter(filter: ScopedStatusFilter): StatusFilterState {
+  if (!filter) return { scope: "all" };
+
+  const [scopeRaw, statusRaw] = filter.split(":");
+  if (scopeRaw === "epic" && EPIC_STATUS_OPTIONS.includes(statusRaw as EpicStatus)) {
+    return { scope: "epic", status: statusRaw as EpicStatus };
+  }
+  if (
+    scopeRaw === "feature" &&
+    FEATURE_STATUS_OPTIONS.includes(statusRaw as FeatureStatus)
+  ) {
+    return { scope: "feature", status: statusRaw as FeatureStatus };
+  }
+  if (scopeRaw === "task" && TASK_STATUS_OPTIONS.includes(statusRaw as TaskStatus)) {
+    return { scope: "task", status: statusRaw as TaskStatus };
+  }
+
+  return { scope: "all" };
+}
+
+function HoverHint({
+  hint,
+  children,
+  className,
+  as = "span",
+  onClick,
+}: {
+  hint: string;
+  children: ReactNode;
+  className?: string;
+  as?: "div" | "span";
+  onClick?: (event: ReactMouseEvent<HTMLElement>) => void;
+}) {
+  const triggerRef = useRef<HTMLElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  const updatePosition = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const safeLeft = Math.min(window.innerWidth - 12, Math.max(12, rect.left + rect.width / 2));
+    setPosition({
+      top: rect.top - 8,
+      left: safeLeft,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+
+    updatePosition();
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [open, updatePosition]);
+
+  const Tag = as;
+
+  return (
+    <>
+      <Tag
+        ref={(node) => {
+          triggerRef.current = node as HTMLElement | null;
+        }}
+        className={className}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onClick={onClick}
+      >
+        {children}
+      </Tag>
+      {open
+        ? createPortal(
+            <span
+              role="tooltip"
+              className="pointer-events-none fixed z-90 -translate-x-1/2 -translate-y-full rounded-md bg-slate-900 px-2 py-1 text-[10px] font-medium text-white shadow-lg whitespace-nowrap"
+              style={{ top: position.top, left: position.left }}
+            >
+              {hint}
+            </span>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
 
 function StatusBadge({
   status,
@@ -509,11 +647,15 @@ function TaskRow({
     };
   }, [isCheckboxMenuOpen, checkboxButtonRef, checkboxMenuRef]);
 
+  const taskAssigneeLabel =
+    task.assignee?.display_name ?? task.assignee?.email ?? "Assignee";
+
   return (
-    <div
+    <HoverHint
+      as="div"
+      hint="View task details"
       className={`group relative flex items-center cursor-pointer hover:bg-blue-50/40 active:bg-blue-50/60 transition-colors ${!isLast ? "border-b border-slate-100" : ""}`}
       onClick={() => onOpen(task)}
-      title="View task details"
     >
       {/* feature-level indent */}
       <div className={`${COL.indent} flex items-stretch justify-center`}>
@@ -534,29 +676,33 @@ function TaskRow({
       <div
         className={`${COL.name} py-2.5 pr-4 flex items-center gap-2 min-w-0`}
       >
-        <button
-          ref={checkboxButtonRef}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleComplete(task);
-          }}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setCheckboxMenuPosition({ top: e.clientY, left: e.clientX });
-            setIsCheckboxMenuOpen(true);
-          }}
-          className={`shrink-0 w-4.5 h-4.5 rounded border-2 flex items-center justify-center transition-all ${checkboxStyle.box}`}
-          title={isDone ? "Mark as incomplete" : "Mark as complete"}
+        <HoverHint
+          hint={isDone ? "Mark as incomplete" : "Mark as complete"}
+          className="inline-flex"
         >
-          {checkboxStyle.mark === "check" ? (
-            <Check className="w-5 h-5 text-white" />
-          ) : (
-            <span className="text-[11px] leading-none font-bold">
-              {checkboxStyle.mark}
-            </span>
-          )}
-        </button>
+          <button
+            ref={checkboxButtonRef}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleComplete(task);
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setCheckboxMenuPosition({ top: e.clientY, left: e.clientX });
+              setIsCheckboxMenuOpen(true);
+            }}
+            className={`shrink-0 w-4.5 h-4.5 rounded border-2 flex items-center justify-center transition-all ${checkboxStyle.box}`}
+          >
+            {checkboxStyle.mark === "check" ? (
+              <Check className="w-5 h-5 text-white" />
+            ) : (
+              <span className="text-[11px] leading-none font-bold">
+                {checkboxStyle.mark}
+              </span>
+            )}
+          </button>
+        </HoverHint>
         {isCheckboxMenuOpen &&
           createPortal(
             <div
@@ -596,10 +742,12 @@ function TaskRow({
       {/* Assignee */}
       <div className={`${COL.assignee} flex items-center justify-center`}>
         {task.assignee ? (
-          <Avatar
-            name={task.assignee.display_name ?? task.assignee.email}
-            avatarUrl={task.assignee.avatar_url}
-          />
+          <HoverHint hint={taskAssigneeLabel} className="inline-flex">
+            <Avatar
+              name={task.assignee.display_name ?? task.assignee.email}
+              avatarUrl={task.assignee.avatar_url}
+            />
+          </HoverHint>
         ) : (
           <span className="w-6 h-6 rounded-full border-2 border-dashed border-slate-200 flex items-center justify-center">
             <span className="text-slate-300 text-[8px]">+</span>
@@ -638,7 +786,7 @@ function TaskRow({
           </span>
         )}
       </div>
-    </div>
+    </HoverHint>
   );
 }
 
@@ -663,7 +811,7 @@ function FeatureRow({
   onToggleExpand: () => void;
   isLast: boolean;
   search: string;
-  statusFilter: string;
+  statusFilter: StatusFilterState;
   assigneeFilter: "all" | "me" | string;
   currentUserId?: string;
   onOpenFeature: (f: RoadmapFeature) => void;
@@ -680,9 +828,11 @@ function FeatureRow({
       allTasks.filter((t) => {
         if (!matchesTaskAssigneeFilter(t, assigneeFilter, currentUserId))
           return false;
+        if (statusFilter.scope === "task" && t.status !== statusFilter.status) {
+          return false;
+        }
         if (search && !t.title.toLowerCase().includes(search.toLowerCase()))
           return false;
-        if (statusFilter && t.status !== statusFilter) return false;
         return true;
       }),
     [allTasks, assigneeFilter, currentUserId, search, statusFilter],
@@ -709,10 +859,11 @@ function FeatureRow({
   return (
     <>
       {/* Feature row */}
-      <div
+      <HoverHint
+        as="div"
+        hint="Edit feature"
         className={`group relative flex items-center cursor-pointer bg-slate-100/60 hover:bg-slate-100/70 active:bg-slate-100 transition-colors ${!isLast || isExpanded ? "border-b border-slate-100" : ""}`}
         onClick={() => onOpenFeature(feature)}
-        title="Edit feature"
       >
         {/* feature indent */}
         <div className={`${COL.indent} flex items-stretch justify-center`}>
@@ -766,16 +917,16 @@ function FeatureRow({
           {featureAssignees.length > 0 ? (
             <div className="flex items-center">
               {featureAssignees.slice(0, 4).map((assignee, index) => (
-                <div
+                <HoverHint
                   key={assignee.id}
+                  hint={assignee.display_name ?? assignee.email ?? "Assignee"}
                   className={index > 0 ? "-ml-1.5" : ""}
-                  title={assignee.display_name ?? assignee.email ?? "Assignee"}
                 >
                   <Avatar
                     name={assignee.display_name ?? assignee.email}
                     avatarUrl={assignee.avatar_url}
                   />
-                </div>
+                </HoverHint>
               ))}
               {featureAssignees.length > 4 && (
                 <span className="-ml-1.5 w-6 h-6 rounded-full bg-slate-100 border border-white flex items-center justify-center text-[9px] font-semibold text-slate-500">
@@ -810,7 +961,7 @@ function FeatureRow({
             <span className="text-[10px] text-slate-300">—</span>
           )}
         </div>
-      </div>
+      </HoverHint>
 
       {/* Task children */}
       {isExpanded &&
@@ -855,7 +1006,7 @@ function EpicCard({
   isExpanded: boolean;
   onToggleExpand: () => void;
   search: string;
-  statusFilter: string;
+  statusFilter: StatusFilterState;
   assigneeFilter: "all" | "me" | string;
   currentUserId?: string;
   expandedFeatures: Set<string>;
@@ -876,13 +1027,28 @@ function EpicCard({
           const scopedTasks = (f.tasks ?? []).filter((t) =>
             matchesTaskAssigneeFilter(t, assigneeFilter, currentUserId),
           );
+          const scopedTasksMatchingStatus =
+            statusFilter.scope === "task"
+              ? scopedTasks.filter((task) => task.status === statusFilter.status)
+              : scopedTasks;
 
           if (assigneeFilter !== "all" && scopedTasks.length === 0)
             return false;
-          if (statusFilter && f.status !== statusFilter) return false;
+          if (
+            statusFilter.scope === "feature" &&
+            f.status !== statusFilter.status
+          ) {
+            return false;
+          }
+          if (
+            statusFilter.scope === "task" &&
+            scopedTasksMatchingStatus.length === 0
+          ) {
+            return false;
+          }
           if (search) {
             const fMatch = f.title.toLowerCase().includes(search.toLowerCase());
-            const tMatch = scopedTasks.some((t) =>
+            const tMatch = scopedTasksMatchingStatus.some((t) =>
               t.title.toLowerCase().includes(search.toLowerCase()),
             );
             return fMatch || tMatch;
@@ -899,7 +1065,7 @@ function EpicCard({
   );
   const progress = calculateEpicProgressFromFeatures(features);
   const epicColor = epic.color ?? "#ff9933";
-  const dotCls = PRIORITY_DOT[epic.priority] ?? "bg-gray-300";
+  const priorityMeta = EPIC_PRIORITY_META[epic.priority] ?? EPIC_PRIORITY_META.medium;
 
   return (
     <div
@@ -907,10 +1073,11 @@ function EpicCard({
       style={{ borderLeft: `3px solid ${epicColor}` }}
     >
       {/* ── Epic header row ── */}
-      <div
+      <HoverHint
+        as="div"
+        hint="Edit epic"
         className="group flex items-center cursor-pointer bg-slate-100 hover:bg-slate-200 active:bg-slate-200 transition-colors border-b border-slate-100"
         onClick={() => onOpenEpic(epic)}
-        title="Edit epic"
       >
         {/* Chevron — stops propagation */}
         <div
@@ -940,10 +1107,11 @@ function EpicCard({
         {/* Name */}
         <div className={`${COL.name} py-3 pr-4`}>
           <div className="flex items-center gap-2">
-            <div
-              className={`w-2 h-2 rounded-full shrink-0 ${dotCls}`}
-              title={`Priority: ${epic.priority}`}
-            />
+            <span
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide shrink-0 ${priorityMeta.cls}`}
+            >
+              {priorityMeta.label}
+            </span>
             <span className="text-base font-bold text-slate-900 truncate group-hover:text-gray-950">
               {epic.title}
             </span>
@@ -983,7 +1151,7 @@ function EpicCard({
             <span className="text-[10px] text-slate-300">No tasks</span>
           )}
         </div>
-      </div>
+      </HoverHint>
 
       {/* ── Feature children ── */}
       {isExpanded &&
@@ -1035,10 +1203,13 @@ function WorkItemsViewPage() {
 
   // Filters
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ScopedStatusFilter>("");
   const [assigneeFilter, setAssigneeFilter] = useState<"all" | "me" | string>(
     "me",
   );
+  const [isStatusFilterMenuOpen, setIsStatusFilterMenuOpen] = useState(false);
+  const statusFilterButtonRef = useRef<HTMLButtonElement | null>(null);
+  const statusFilterMenuRef = useRef<HTMLDivElement | null>(null);
   const [isAssigneeFilterMenuOpen, setIsAssigneeFilterMenuOpen] =
     useState(false);
   const assigneeFilterButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1160,6 +1331,44 @@ function WorkItemsViewPage() {
     roadmapFullQuery.error,
     roadmapFullQuery.isPending,
   ]);
+
+  const statusFilterState = useMemo(
+    () => parseScopedStatusFilter(statusFilter),
+    [statusFilter],
+  );
+
+  const statusFilterLabel = useMemo(() => {
+    if (statusFilterState.scope === "all") return "All statuses";
+    if (statusFilterState.scope === "epic") {
+      return `Epic: ${EPIC_STATUS_MAP[statusFilterState.status].label}`;
+    }
+    if (statusFilterState.scope === "feature") {
+      return `Feature: ${FEATURE_STATUS_MAP[statusFilterState.status].label}`;
+    }
+    return `Task: ${TASK_STATUS_MAP[statusFilterState.status].label}`;
+  }, [statusFilterState]);
+
+  useEffect(() => {
+    if (!isStatusFilterMenuOpen) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      const isInButton = statusFilterButtonRef.current?.contains(target);
+      const isInMenu = statusFilterMenuRef.current?.contains(target);
+      if (!isInButton && !isInMenu) setIsStatusFilterMenuOpen(false);
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsStatusFilterMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isStatusFilterMenuOpen]);
 
   useEffect(() => {
     if (!isAssigneeFilterMenuOpen) return;
@@ -1577,41 +1786,60 @@ function WorkItemsViewPage() {
   }, []);
 
   const filteredEpics = useMemo(() => {
-    if (!search && !statusFilter && assigneeFilter === "all") return epics;
+    if (!search && statusFilterState.scope === "all" && assigneeFilter === "all") {
+      return epics;
+    }
 
+    const normalizedSearch = search.trim().toLowerCase();
     const currentUserId = user?.id;
 
     return epics.filter((epic) => {
       const allFeatures = epic.features ?? [];
+      const featuresWithScopedTasks = allFeatures.map((feature) => ({
+        feature,
+        scopedTasks: (feature.tasks ?? []).filter((task) =>
+          matchesTaskAssigneeFilter(task, assigneeFilter, currentUserId),
+        ),
+      }));
+
       const hasAssignedTask =
         assigneeFilter === "all"
           ? true
-          : allFeatures.some((feature) =>
-              (feature.tasks ?? []).some((task) => {
-                return matchesTaskAssigneeFilter(
-                  task,
-                  assigneeFilter,
-                  currentUserId,
-                );
-              }),
+          : featuresWithScopedTasks.some(
+              ({ scopedTasks }) => scopedTasks.length > 0,
             );
 
       if (!hasAssignedTask) return false;
 
-      const epicMatch = epic.title.toLowerCase().includes(search.toLowerCase());
-      const featureMatch = allFeatures.some(
-        (f) =>
-          f.title.toLowerCase().includes(search.toLowerCase()) ||
-          (f.tasks ?? []).some((t) => {
-            if (!matchesTaskAssigneeFilter(t, assigneeFilter, currentUserId))
-              return false;
-            return t.title.toLowerCase().includes(search.toLowerCase());
-          }),
+      if (normalizedSearch) {
+        const epicMatch = epic.title.toLowerCase().includes(normalizedSearch);
+        const featureMatch = featuresWithScopedTasks.some(
+          ({ feature, scopedTasks }) =>
+            feature.title.toLowerCase().includes(normalizedSearch) ||
+            scopedTasks.some((task) =>
+              task.title.toLowerCase().includes(normalizedSearch),
+            ),
+        );
+        if (!epicMatch && !featureMatch) return false;
+      }
+
+      if (statusFilterState.scope === "all") return true;
+      if (statusFilterState.scope === "epic") {
+        return epic.status === statusFilterState.status;
+      }
+      if (statusFilterState.scope === "feature") {
+        return featuresWithScopedTasks.some(({ feature, scopedTasks }) => {
+          if (feature.status !== statusFilterState.status) return false;
+          if (assigneeFilter === "all") return true;
+          return scopedTasks.length > 0;
+        });
+      }
+
+      return featuresWithScopedTasks.some(({ scopedTasks }) =>
+        scopedTasks.some((task) => task.status === statusFilterState.status),
       );
-      const statusMatch = !statusFilter || epic.status === statusFilter;
-      return (epicMatch || featureMatch) && statusMatch;
     });
-  }, [assigneeFilter, epics, search, statusFilter, user?.id]);
+  }, [assigneeFilter, epics, search, statusFilterState, user?.id]);
 
   const assigneeFilterOptions = useMemo(() => {
     const unique = new globalThis.Map<string, ProjectMember>();
@@ -1820,27 +2048,116 @@ function WorkItemsViewPage() {
                 />
               </div>
 
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="h-10 cursor-pointer rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30"
-              >
-                <option value="">All statuses</option>
-                <optgroup label="Epic">
-                  {Object.entries(EPIC_STATUS_MAP).map(([k, v]) => (
-                    <option key={`epic-${k}`} value={k}>
-                      {v.label}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Feature">
-                  {Object.entries(FEATURE_STATUS_MAP).map(([k, v]) => (
-                    <option key={`feat-${k}`} value={k}>
-                      {v.label}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
+              <div className="relative">
+                <button
+                  ref={statusFilterButtonRef}
+                  type="button"
+                  onClick={() => setIsStatusFilterMenuOpen((prev) => !prev)}
+                  className="min-w-[150px] flex h-10 cursor-pointer items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 transition-colors hover:bg-slate-100"
+                >
+                  <span className="truncate">{statusFilterLabel}</span>
+                  <ChevronDown
+                    className={`w-4 h-4 text-slate-500 shrink-0 transition-transform ${
+                      isStatusFilterMenuOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {isStatusFilterMenuOpen && (
+                  <div
+                    ref={statusFilterMenuRef}
+                    className="absolute left-0 mt-1 w-60 rounded-lg border border-slate-200 bg-white shadow-lg z-40 py-1"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStatusFilter("");
+                        setIsStatusFilterMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 ${
+                        statusFilterState.scope === "all" ? "bg-slate-100 font-medium" : ""
+                      }`}
+                    >
+                      All statuses
+                    </button>
+
+                    <div className="mt-1 border-t border-slate-100 pt-1">
+                      <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                        Epic
+                      </p>
+                      {EPIC_STATUS_OPTIONS.map((statusKey) => {
+                        const value = `epic:${statusKey}` as ScopedStatusFilter;
+                        const selected = statusFilter === value;
+                        return (
+                          <button
+                            key={`status-epic-${statusKey}`}
+                            type="button"
+                            onClick={() => {
+                              setStatusFilter(value);
+                              setIsStatusFilterMenuOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 ${
+                              selected ? "bg-slate-100 font-medium" : ""
+                            }`}
+                          >
+                            {EPIC_STATUS_MAP[statusKey].label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-1 border-t border-slate-100 pt-1">
+                      <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                        Feature
+                      </p>
+                      {FEATURE_STATUS_OPTIONS.map((statusKey) => {
+                        const value = `feature:${statusKey}` as ScopedStatusFilter;
+                        const selected = statusFilter === value;
+                        return (
+                          <button
+                            key={`status-feature-${statusKey}`}
+                            type="button"
+                            onClick={() => {
+                              setStatusFilter(value);
+                              setIsStatusFilterMenuOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 ${
+                              selected ? "bg-slate-100 font-medium" : ""
+                            }`}
+                          >
+                            {FEATURE_STATUS_MAP[statusKey].label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-1 border-t border-slate-100 pt-1">
+                      <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                        Task
+                      </p>
+                      {TASK_STATUS_OPTIONS.map((statusKey) => {
+                        const value = `task:${statusKey}` as ScopedStatusFilter;
+                        const selected = statusFilter === value;
+                        return (
+                          <button
+                            key={`status-task-${statusKey}`}
+                            type="button"
+                            onClick={() => {
+                              setStatusFilter(value);
+                              setIsStatusFilterMenuOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 ${
+                              selected ? "bg-slate-100 font-medium" : ""
+                            }`}
+                          >
+                            {TASK_STATUS_MAP[statusKey].label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <div className="relative">
                 <button
@@ -2073,7 +2390,7 @@ function WorkItemsViewPage() {
                 isExpanded={expandedEpics.has(epic.id)}
                 onToggleExpand={() => toggleEpic(epic.id)}
                 search={search}
-                statusFilter={statusFilter}
+                statusFilter={statusFilterState}
                 assigneeFilter={assigneeFilter}
                 currentUserId={user?.id}
                 expandedFeatures={expandedFeatures}

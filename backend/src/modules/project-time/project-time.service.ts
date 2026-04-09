@@ -31,6 +31,8 @@ export const PROJECT_TIME_REPOSITORY = Symbol('PROJECT_TIME_REPOSITORY');
 export class ProjectTimeService {
   private static readonly RATE_REQUIRED_MESSAGE =
     'You are not enabled for time tracking in this project. Ask a manager to add your time rate.';
+  private static readonly OWN_LOG_LOCKED_MESSAGE =
+    'Approved and rejected logs cannot be edited by members.';
 
   constructor(
     @Inject(PROJECT_TIME_REPOSITORY)
@@ -78,6 +80,12 @@ export class ProjectTimeService {
     const existing = await this.repo.findById(logId);
     if (!existing) throw new NotFoundException('Time log not found');
     return existing;
+  }
+
+  private assertOwnLogEditable(existing: TaskTimeLogRecord): void {
+    if (existing.status === 'approved' || existing.status === 'rejected') {
+      throw new ForbiddenException(ProjectTimeService.OWN_LOG_LOCKED_MESSAGE);
+    }
   }
 
   private normalizePaging(query: TimeLogsQueryDto): {
@@ -374,6 +382,7 @@ export class ProjectTimeService {
         userId,
         'time.edit_own',
       );
+      this.assertOwnLogEditable(existing);
     } else {
       await this.projectsService.assertProjectPermission(
         existing.project_id,
@@ -434,6 +443,7 @@ export class ProjectTimeService {
         userId,
         'time.edit_own',
       );
+      this.assertOwnLogEditable(existing);
     } else {
       await this.projectsService.assertProjectPermission(
         existing.project_id,

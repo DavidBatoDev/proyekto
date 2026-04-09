@@ -3,6 +3,8 @@ export type TimeLogSource = 'timer' | 'manual';
 export type ProjectTaskOption = {
   id: string;
   title: string;
+  feature_id: string;
+  roadmap_id: string;
   feature_title?: string;
   epic_title?: string;
   feature_position?: number;

@@ -24,6 +24,7 @@ import {
   useTimeRouteData,
 } from "@/components/project/time/useTimeRouteData";
 import { useToast } from "@/hooks/useToast";
+import { useRoadmapStore } from "@/stores/roadmapStore";
 import {
   clearLogRollbackKey,
   clearRecordKey,
@@ -56,13 +57,14 @@ function TimeTeamMemberLogsPage() {
     loadingPermissions,
     loadingMembers,
     rates,
+    projectTasks,
     teamMembers,
     queryErrorMessage,
     showMyLogsTabSkeleton,
     shouldShowAccessDenied,
   } = useTimeRouteData(projectId, {
     includeOwnRate: false,
-    includeTasks: false,
+    includeTasks: true,
     includeRates: true,
     includeTeamMembers: true,
   });
@@ -120,6 +122,17 @@ function TimeTeamMemberLogsPage() {
     if (!targetMemberUserId) return null;
     return rates.find((rate) => rate.member_user_id === targetMemberUserId) ?? null;
   }, [rates, projectMemberId, targetMemberUserId]);
+
+  const taskRoadmapById = useMemo(() => {
+    const map = new Map<string, { roadmapId: string; featureId: string }>();
+    for (const task of projectTasks) {
+      map.set(task.id, {
+        roadmapId: task.roadmap_id,
+        featureId: task.feature_id,
+      });
+    }
+    return map;
+  }, [projectTasks]);
 
   const targetDisplayName =
     targetRate?.member?.display_name ||
@@ -181,6 +194,38 @@ function TimeTeamMemberLogsPage() {
 
   const logs = teamLogsQuery.data ?? [];
   const loadingLogs = teamLogsQuery.isPending;
+
+  const canOpenTaskInRoadmap = useCallback(
+    (taskId: string) => {
+      const entry = taskRoadmapById.get(taskId);
+      return Boolean(entry?.featureId && entry?.roadmapId);
+    },
+    [taskRoadmapById],
+  );
+
+  const openTaskInRoadmap = useCallback(
+    (log: TaskTimeLog) => {
+      const entry = taskRoadmapById.get(log.task_id);
+      if (!entry?.featureId || !entry?.roadmapId) {
+        setError("This task is not linked to an accessible roadmap.");
+        toast.error("This task is not linked to an accessible roadmap.");
+        return;
+      }
+
+      const roadmapStore = useRoadmapStore.getState();
+      roadmapStore.setCanvasViewMode("roadmap");
+      roadmapStore.navigateToNode(entry.featureId, { taskId: log.task_id });
+      setError(null);
+      void navigate({
+        to: "/project/$projectId/roadmap/$roadmapId",
+        params: {
+          projectId,
+          roadmapId: entry.roadmapId,
+        },
+      });
+    },
+    [navigate, projectId, taskRoadmapById, toast],
+  );
 
   const invalidateTeamLogs = () => {
     if (!targetMemberUserId) return Promise.resolve();
@@ -672,6 +717,8 @@ function TimeTeamMemberLogsPage() {
               onToggleSelectAll={toggleSelectAll}
               onEditLog={beginEditLog}
               onReviewLog={reviewLog}
+              onOpenTaskInRoadmap={openTaskInRoadmap}
+              canOpenTaskInRoadmap={canOpenTaskInRoadmap}
             />
             <p className="mt-2 text-[11px] text-slate-500">
               Running timers are visible for monitoring. Approve/reject is available
