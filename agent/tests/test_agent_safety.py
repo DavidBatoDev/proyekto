@@ -5380,6 +5380,22 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(state.get('intent_type'), 'roadmap_query')
         self.assertTrue(bool(state.get('is_roadmap_question')))
 
+    def test_classify_intent_promotes_question_style_edit_to_roadmap_edit(self) -> None:
+        planner = self._planner()
+        state = planner._classify_intent(
+            {
+                'user_message': 'Can you make all tasks in Agent Module done?',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-question-style-edit-promotion',
+                },
+            }
+        )
+        self.assertEqual(state.get('intent_type'), 'roadmap_edit')
+        self.assertFalse(bool(state.get('is_roadmap_question')))
+        self.assertEqual(state.get('parse_mode'), 'heuristic_question_style_edit_override')
+        self.assertTrue(bool(state.get('question_style_edit_promoted')))
+
     def test_compose_dynamic_system_prompt_routes_roadmap_query_mode(self) -> None:
         planner = self._planner()
         state = planner._compose_dynamic_system_prompt(
@@ -5396,6 +5412,44 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(state.get('response_mode'), 'chat')
         self.assertEqual(state.get('tool_mode'), 'context_answer')
         self.assertTrue(str(state.get('system_prompt') or '').startswith('query:'))
+
+    def test_compose_dynamic_system_prompt_guards_informational_operation_question(self) -> None:
+        planner = self._planner()
+        state = planner._compose_dynamic_system_prompt(
+            {
+                'intent_type': 'roadmap_edit',
+                'user_message': 'How do we mark all tasks done?',
+                'existing_operations': [],
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-edit-informational-guard',
+                },
+            }
+        )
+
+        self.assertEqual(state.get('response_mode'), 'chat')
+        self.assertEqual(state.get('tool_mode'), 'none')
+        self.assertTrue(str(state.get('system_prompt') or '').startswith('edit:'))
+        self.assertTrue(bool(state.get('edit_to_clarifier_guarded')))
+
+    def test_generate_chat_reply_returns_clarifier_for_guarded_edit_question(self) -> None:
+        planner = self._planner()
+        state = planner._generate_chat_reply(
+            {
+                'intent_type': 'roadmap_edit',
+                'edit_to_clarifier_guarded': True,
+                'user_message': 'How do we mark all tasks done?',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-edit-clarifier-guard-chat',
+                },
+            }
+        )
+
+        self.assertEqual(state.get('response_mode'), 'chat')
+        self.assertEqual(state.get('parse_mode'), 'deterministic_edit_clarifier_guard')
+        self.assertEqual(state.get('clarifier_action'), 'ask_clarifier')
+        self.assertEqual(len(state.get('planned_operations') or []), 0)
 
     def test_compose_dynamic_system_prompt_routes_roadmap_plan_mode(self) -> None:
         planner = self._planner()

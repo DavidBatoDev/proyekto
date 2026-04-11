@@ -24,6 +24,36 @@ class PlannerIntentClassifierTests(unittest.TestCase):
         )
         self.assertEqual(intent, 'roadmap_edit')
 
+    def test_question_style_edit_request_detector_matches_action_question(self) -> None:
+        self.assertTrue(
+            planner_intent_classifier.is_question_style_edit_request(
+                'Can you make all tasks in Agent Module done?'
+            )
+        )
+
+    def test_question_style_edit_request_detector_rejects_info_question(self) -> None:
+        self.assertFalse(
+            planner_intent_classifier.is_question_style_edit_request(
+                'How do we mark tasks done?'
+            )
+        )
+
+    def test_informational_operation_question_detector_matches_how_to(self) -> None:
+        self.assertTrue(
+            planner_intent_classifier.is_informational_operation_question(
+                'How do we mark tasks done?'
+            )
+        )
+
+    def test_is_roadmap_question_false_for_question_style_edit_request(self) -> None:
+        self.assertFalse(
+            planner_intent_classifier.is_roadmap_question(
+                intent_type='general_question',
+                user_message='Can you make all tasks in Agent Module done?',
+                session_context={'roadmap_id': 'abc'},
+            )
+        )
+
     def test_is_simple_edit_planner_request_matches_rename(self) -> None:
         self.assertTrue(planner_intent_classifier.is_simple_edit_planner_request('rename feature to "Auth"'))
         self.assertFalse(planner_intent_classifier.is_simple_edit_planner_request('add a new epic'))

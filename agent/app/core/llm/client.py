@@ -639,6 +639,12 @@ class LLMPlanner:
             session_context=session_context,
         )
 
+    def _is_question_style_edit_request(self, user_message: str) -> bool:
+        return planner_intent_classifier.is_question_style_edit_request(user_message)
+
+    def _is_informational_operation_question(self, user_message: str) -> bool:
+        return planner_intent_classifier.is_informational_operation_question(user_message)
+
     def _rule_based_chat_response(self, user_message: str, intent_type: IntentType) -> str:
         return planner_rule_fallback.rule_based_chat_response(user_message, intent_type)
 

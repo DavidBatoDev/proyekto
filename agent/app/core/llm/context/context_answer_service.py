@@ -135,6 +135,7 @@ class ContextAnswerService:
             'Use get_tasks_by_parent for scoped task listings; when scope is an epic, pass parent_type="epic".\n'
             'When users ask for all tasks in a scope, include completed tasks unless they asked for open-only.\n'
             'Use get_blocked_items when users ask what is blocked.\n'
+            'If a question appears to request a mutation action, ask one concise clarifier to confirm edit intent instead of drafting operations here.\n'
             'Do not plan edit operations in this mode.\n\n'
             f'Roadmap ID: {session_context.get("roadmap_id")}\n'
             f'User question: {user_message}'

@@ -6,6 +6,19 @@ from typing import Any
 from app.core.contracts.sessions import IntentType
 
 
+_HEURISTIC_ACTION_VERB_PATTERN = (
+    r'(?:add|create|move|delete|remove|update|updated|mark|shift|link|unlink|'
+    r'rename|retitle|change|changed|assign|assigned|reassign|reassigned|unassign|'
+    r'unassigned)'
+)
+
+_QUESTION_STYLE_ACTION_VERB_PATTERN = (
+    r'(?:add|create|move|delete|remove|update|updated|mark|shift|link|unlink|'
+    r'rename|retitle|change|changed|assign|assigned|reassign|reassigned|unassign|'
+    r'unassigned|set|make|complete|close)'
+)
+
+
 def heuristic_intent(user_message: str) -> IntentType:
     text = user_message.strip().lower()
     if not text:
@@ -21,7 +34,7 @@ def heuristic_intent(user_message: str) -> IntentType:
     if looks_like_roadmap_plan_request(text):
         return 'roadmap_plan'
     if re.search(
-        r'\b(add|create|move|delete|remove|update|updated|mark|shift|link|unlink|rename|retitle|change|changed|assign|assigned|reassign|reassigned|unassign|unassigned)\b',
+        rf'\b{_HEURISTIC_ACTION_VERB_PATTERN}\b',
         text,
     ):
         return 'roadmap_edit'
@@ -92,6 +105,8 @@ def is_roadmap_question(
         return False
     if intent_type == 'roadmap_query':
         return True
+    if is_question_style_edit_request(user_message):
+        return False
     lowered = user_message.strip().lower()
     roadmap_keywords = (
         'roadmap',
@@ -109,3 +124,41 @@ def is_roadmap_question(
     if any(keyword in lowered for keyword in roadmap_keywords):
         return True
     return intent_type in {'general_question', 'question', 'unclear'}
+
+
+def is_question_style_edit_request(user_message: str) -> bool:
+    normalized = ' '.join(str(user_message or '').strip().lower().split())
+    if not normalized:
+        return False
+    if not normalized.endswith('?'):
+        return False
+    if not re.search(rf'\b{_QUESTION_STYLE_ACTION_VERB_PATTERN}\b', normalized):
+        return False
+    return bool(
+        re.search(
+            rf'^(?:can|could|would|will)\s+you\b.*\b{_QUESTION_STYLE_ACTION_VERB_PATTERN}\b',
+            normalized,
+        )
+    )
+
+
+def is_informational_operation_question(user_message: str) -> bool:
+    normalized = ' '.join(str(user_message or '').strip().lower().split())
+    if not normalized:
+        return False
+    if not normalized.endswith('?'):
+        return False
+    if not re.search(rf'\b{_QUESTION_STYLE_ACTION_VERB_PATTERN}\b', normalized):
+        return False
+    return bool(
+        re.search(
+            r'^(?:how\s+(?:do|can)\s+(?:i|we|you)'
+            r'|what\s+(?:is|are|does|do)'
+            r'|why\b'
+            r'|when\b'
+            r'|where\b'
+            r'|should\s+we\b'
+            r'|can\s+we\b)',
+            normalized,
+        )
+    )

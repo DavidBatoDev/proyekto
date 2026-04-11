@@ -124,15 +124,27 @@ def classify_intent(
             'force_edit_continuation_reason': force_reason,
         }
     heuristic_intent = planner._heuristic_intent(user_message)
+    question_style_edit_promoted = False
     is_roadmap_question = planner._is_roadmap_question(
         intent_type=heuristic_intent,
         user_message=user_message,
         session_context=session_context,
     )
     routed_intent = heuristic_intent
+    if (
+        heuristic_intent in {'general_question', 'question', 'unclear'}
+        and planner._is_question_style_edit_request(user_message)
+    ):
+        routed_intent = 'roadmap_edit'
+        question_style_edit_promoted = True
+        is_roadmap_question = False
     if heuristic_intent in {'general_question', 'question', 'unclear'} and is_roadmap_question:
         routed_intent = 'roadmap_query'
-    parse_mode = 'heuristic_prerouter'
+    parse_mode = (
+        'heuristic_question_style_edit_override'
+        if question_style_edit_promoted
+        else 'heuristic_prerouter'
+    )
     log_event(
         planner._logger,
         'intent_classified',
@@ -141,6 +153,7 @@ def classify_intent(
         intent_type=routed_intent,
         is_roadmap_question=is_roadmap_question,
         parse_mode=parse_mode,
+        question_style_edit_promoted=question_style_edit_promoted,
     )
     return {
         'intent_type': routed_intent,
@@ -149,6 +162,7 @@ def classify_intent(
         'fallback_used': False,
         'provider_error_code': None,
         'is_roadmap_question': is_roadmap_question,
+        'question_style_edit_promoted': question_style_edit_promoted,
     }
 
 
@@ -166,9 +180,20 @@ def compose_dynamic_system_prompt(
     has_edit_continuation_context = bool(state.get('force_edit_continuation')) or bool(
         state.get('existing_operations')
     )
+    edit_to_clarifier_guarded = False
+    if (
+        intent_type == 'roadmap_edit'
+        and planner._is_informational_operation_question(state.get('user_message', ''))
+        and not has_edit_continuation_context
+    ):
+        edit_to_clarifier_guarded = True
 
     if intent_type == 'confirm_action' and not has_edit_continuation_context:
         mode = 'chat'
+        response_mode = 'chat'
+        tool_mode = 'none'
+    elif edit_to_clarifier_guarded:
+        mode = 'edit'
         response_mode = 'chat'
         tool_mode = 'none'
     elif intent_type in {'roadmap_edit', 'confirm_action'}:
@@ -227,12 +252,15 @@ def compose_dynamic_system_prompt(
         intent_type=intent_type,
         tool_mode=tool_mode,
         response_mode=response_mode,
+        question_style_edit_promoted=bool(state.get('question_style_edit_promoted')),
+        edit_to_clarifier_guarded=edit_to_clarifier_guarded,
     )
     return {
         'system_prompt': system_prompt,
         'response_mode': response_mode,
         'tool_mode': tool_mode,
         'trace_id': trace_id,
+        'edit_to_clarifier_guarded': edit_to_clarifier_guarded,
     }
 
 
@@ -249,6 +277,31 @@ def generate_chat_reply(
     planner: Any,
     state: dict[str, Any],
 ) -> dict[str, Any]:
+    if state.get('intent_type') == 'roadmap_edit' and state.get('edit_to_clarifier_guarded'):
+        return {
+            'assistant_message': (
+                'I can help with that edit. Do you want me to apply this as a roadmap change now? '
+                'If yes, tell me the exact target and desired result in one sentence '
+                '(for example: "Mark all tasks in Agent Module as done").'
+            ),
+            'planned_operations': [],
+            'response_mode': 'chat',
+            'preview_recommended': False,
+            'parse_mode': 'deterministic_edit_clarifier_guard',
+            'provider_used': 'rule_based',
+            'fallback_used': True,
+            'provider_error_code': None,
+            'needs_more_info': True,
+            'stop_reason': 'awaiting_user_input',
+            'clarifier_action': 'ask_clarifier',
+            'clarifier_reason': 'informational_operation_question',
+            'clarifier_options': [
+                'Apply as roadmap edit',
+                'Answer as explanation only',
+                'Cancel',
+            ],
+        }
+
     user_message = state.get('user_message', '')
     system_prompt = state.get('system_prompt', '')
     session_context = state.get('session_context', {})

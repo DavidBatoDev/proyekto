@@ -924,6 +924,7 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             return {'ok': True, 'name': name, 'args': args}
 
         service, _cache, _provider, _build_key = self._service(execute_tool)
+        service._settings.max_discovery_tool_calls = 4
         service._provider_orchestrator.call = self._orchestrator_call_with_fake_adapter(  # type: ignore[assignment]
             tool_sequence=[
                 ('get_roadmap_summary', {'roadmap_id': 'r1'}),

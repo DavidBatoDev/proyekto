@@ -64,7 +64,27 @@ class PromptRepositoryTests(unittest.TestCase):
         plan_prompt = repository.build_system_prompt('plan', prompt_context)
 
         self.assertIn('You are in roadmap query mode.', query_prompt)
+        self.assertIn('If the user asks to perform an action', query_prompt)
         self.assertIn('You are in roadmap planning mode.', plan_prompt)
+
+    def test_build_system_prompt_edit_mode_includes_question_style_guidance(self) -> None:
+        repository = PromptRepository()
+        prompt_context = {
+            'roadmap_id': 'roadmap-1',
+            'intent_type': 'roadmap_edit',
+        }
+
+        edit_prompt = repository.build_system_prompt('edit', prompt_context)
+
+        self.assertIn('question form', edit_prompt)
+        self.assertIn('ask one focused clarifier before staging', edit_prompt)
+
+    def test_intent_classifier_prompt_includes_roadmap_query_and_question_style_rules(self) -> None:
+        repository = PromptRepository()
+        prompt = repository.intent_classifier_prompt()
+
+        self.assertIn('roadmap_query', prompt)
+        self.assertIn('Question-style action requests', prompt)
 
 
 if __name__ == '__main__':
