@@ -15,15 +15,7 @@ def build_clarifier_contract(
     normalized_question = _extract_question_text(question)
     option_entries = _build_option_entries(reason=reason, options=options, max_items=max_items)
     rendered_options = [f'[{option_id}] {label}' for option_id, label in option_entries]
-    if not rendered_options:
-        return normalized_question, []
-
-    numbered_lines = [
-        f'{index}. {label}'
-        for index, (_, label) in enumerate(option_entries, start=1)
-    ]
-    message = f'{normalized_question}\n\nOptions:\n' + '\n'.join(numbered_lines)
-    return message, rendered_options
+    return normalized_question, rendered_options
 
 
 def _build_option_entries(

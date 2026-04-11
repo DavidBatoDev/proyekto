@@ -65,6 +65,7 @@ class PromptRepositoryTests(unittest.TestCase):
 
         self.assertIn('You are in roadmap query mode.', query_prompt)
         self.assertIn('If the user asks to perform an action', query_prompt)
+        self.assertIn('misspelled item title', query_prompt)
         self.assertIn('You are in roadmap planning mode.', plan_prompt)
 
     def test_build_system_prompt_edit_mode_includes_question_style_guidance(self) -> None:
@@ -78,6 +79,19 @@ class PromptRepositoryTests(unittest.TestCase):
 
         self.assertIn('question form', edit_prompt)
         self.assertIn('ask one focused clarifier before staging', edit_prompt)
+        self.assertIn('typo-tolerant resolution', edit_prompt)
+        self.assertIn("preserve the user's requested new title", edit_prompt)
+
+    def test_build_system_prompt_base_includes_typo_recovery_guidance(self) -> None:
+        repository = PromptRepository()
+        prompt_context = {
+            'roadmap_id': 'roadmap-1',
+            'intent_type': 'roadmap_edit',
+        }
+
+        edit_prompt = repository.build_system_prompt('edit', prompt_context)
+
+        self.assertIn('Treat obvious user typos in roadmap item titles as valid, recoverable input', edit_prompt)
 
     def test_intent_classifier_prompt_includes_roadmap_query_and_question_style_rules(self) -> None:
         repository = PromptRepository()

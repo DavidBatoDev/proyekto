@@ -3049,8 +3049,8 @@ class AgentSafetyTests(unittest.TestCase):
 
         self.assertEqual(outcome.response_mode, 'chat')
         self.assertEqual(outcome.provider_error_code, 'retry_multiple_matches')
-        self.assertIn('Options:', outcome.assistant_message)
-        self.assertRegex(outcome.assistant_message, r'1\. epic "App Foundation"')
+        self.assertNotIn('Options:', outcome.assistant_message)
+        self.assertIn('I found multiple matches for "App Foundation".', outcome.assistant_message)
         self.assertNotIn('dad5697a-8962-4f80-8bc3-8a964edd8e56', outcome.assistant_message)
 
     def test_set_pending_context_normalizes_intent_family_alias(self) -> None:
@@ -6313,7 +6313,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(result.get('tool_plan'), [])
         self.assertTrue(bool(result.get('needs_more_info')))
         self.assertEqual(result.get('stop_reason'), 'awaiting_user_input')
-        self.assertIn('Options:', str(result.get('assistant_message')))
+        self.assertNotIn('Options:', str(result.get('assistant_message')))
 
     def test_plan_operations_missing_tool_call_exhausted_uses_clarifier_without_attribute_error(self) -> None:
         planner = self._planner()
