@@ -563,7 +563,8 @@ def get_planning_tool() -> dict[str, Any]:
             'description': (
                 'Generate safe roadmap edit operations. Never rewrite full JSON and never mutate unrelated fields. '
                 'For add_epic/add_feature/add_task, include data.title. '
-                'For add_feature/add_task, include a valid parent_id.'
+                'For add_feature/add_task, include a valid parent_id or parent_ref. '
+                'For transactional creation chains, use temp_id on created nodes and *_ref fields to point to those temp IDs.'
             ),
             'parameters': {
                 'type': 'object',
@@ -585,8 +586,12 @@ def get_planning_tool() -> dict[str, Any]:
                                     'enum': ['roadmap', 'epic', 'feature', 'task'],
                                 },
                                 'node_id': {'type': 'string'},
+                                'node_ref': {'type': 'string'},
                                 'parent_id': {'type': 'string'},
+                                'parent_ref': {'type': 'string'},
                                 'new_parent_id': {'type': 'string'},
+                                'new_parent_ref': {'type': 'string'},
+                                'temp_id': {'type': 'string'},
                                 'position': {'type': 'integer', 'minimum': 0},
                                 'patch': {'type': 'object'},
                                 'status': {'type': 'string'},
@@ -625,6 +630,7 @@ def parse_plan_tool_args(raw_args: Any) -> tuple[str, list[RoadmapOperation]]:
     operations: list[RoadmapOperation] = []
     for index, item in enumerate(raw_operations):
         normalized = _normalize_operation_payload(item)
+        _validate_operation_identity_payload(normalized, index=index)
         try:
             operations.append(RoadmapOperation.model_validate(normalized))
         except ValidationError as exc:
@@ -703,6 +709,52 @@ def _normalize_uuid_fields(payload: dict[str, Any]) -> dict[str, Any]:
         if normalized is not None:
             payload[field_name] = normalized
     return payload
+
+
+def _is_non_empty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _validate_operation_identity_payload(payload: Any, *, index: int) -> None:
+    if not isinstance(payload, dict):
+        raise ValueError(f'Invalid operation payload at index {index}: operation must be an object.')
+
+    op = str(payload.get('op') or '').strip()
+    if not op:
+        raise ValueError(f'Invalid operation payload at index {index}: missing op value.')
+
+    data = payload.get('data') if isinstance(payload.get('data'), dict) else {}
+    data_id = data.get('id') if isinstance(data, dict) else None
+    temp_id = payload.get('temp_id')
+
+    def _raise(reason: str) -> None:
+        raise ValueError(f'Invalid operation payload at index {index} (op={op}): {reason}')
+
+    if op in {'add_epic', 'add_feature', 'add_task'}:
+        if _is_non_empty_string(data_id) and _is_non_empty_string(temp_id):
+            _raise('creation identity conflict: provide either data.id or temp_id, not both.')
+
+    if op in {'add_feature', 'add_task'}:
+        parent_id = payload.get('parent_id')
+        parent_ref = payload.get('parent_ref')
+        if _is_non_empty_string(parent_id) and _is_non_empty_string(parent_ref):
+            _raise('parent target conflict: provide either parent_id or parent_ref, not both.')
+        if not _is_non_empty_string(parent_id) and not _is_non_empty_string(parent_ref):
+            _raise('parent target missing: add_feature/add_task require parent_id or parent_ref.')
+
+    if op in {'update_node', 'delete_node', 'move_node', 'mark_status', 'shift_dates'}:
+        node_id = payload.get('node_id')
+        node_ref = payload.get('node_ref')
+        if _is_non_empty_string(node_id) and _is_non_empty_string(node_ref):
+            _raise('target conflict: provide either node_id or node_ref, not both.')
+        if not _is_non_empty_string(node_id) and not _is_non_empty_string(node_ref):
+            _raise('target missing: operation requires node_id or node_ref.')
+
+    if op == 'move_node':
+        new_parent_id = payload.get('new_parent_id')
+        new_parent_ref = payload.get('new_parent_ref')
+        if _is_non_empty_string(new_parent_id) and _is_non_empty_string(new_parent_ref):
+            _raise('move destination conflict: provide either new_parent_id or new_parent_ref, not both.')
 
 
 def _sanitize_op_value(value: Any) -> str:

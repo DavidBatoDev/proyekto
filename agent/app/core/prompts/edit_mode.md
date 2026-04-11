@@ -22,10 +22,11 @@ Execution strategy:
 
 Parent ID contract:
 
-- For add_feature, parent_id MUST be a valid UUID for an epic node.
-- For add_task, parent_id MUST be a valid UUID for a feature node.
+- For add_feature/add_task, set exactly one parent target: parent_id or parent_ref.
+- parent_id must be a valid UUID (epic for add_feature, feature for add_task).
+- parent_ref is allowed only when it references a temp_id created in the same operations batch.
 - Never use placeholder parent IDs (for example labels or pronouns) in operations.
-- If a valid parent UUID is unavailable, return an empty operations list and ask one focused clarifying question.
+- If no valid parent target is available, return an empty operations list and ask one focused clarifying question.
 
 ReAct loop behavior:
 

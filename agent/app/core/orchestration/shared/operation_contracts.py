@@ -146,6 +146,15 @@ def operation_validation_guidance(reason: str | None) -> str:
         'add_task.data.title_missing': (
             'The new task title is missing. Include the task title and parent feature.'
         ),
+        'add_epic.temp_id_invalid_ref': (
+            'The epic temporary reference is invalid. Use a temp ID like tmp_epic_1, epic_temp_1, t_epic_1, or temp-epic-1.'
+        ),
+        'add_feature.temp_id_invalid_ref': (
+            'The feature temporary reference is invalid. Use a temp ID like tmp_feature_1, feature_temp_1, t_feature_1, or temp-feature-1.'
+        ),
+        'add_task.temp_id_invalid_ref': (
+            'The task temporary reference is invalid. Use a temp ID like tmp_task_1, task_temp_1, t_task_1, or temp-task-1.'
+        ),
         'add_feature.parent_id_invalid_uuid': (
             'The feature parent reference is invalid. Specify the exact parent epic.'
         ),
@@ -175,9 +184,21 @@ def operation_validation_guidance(reason: str | None) -> str:
         return (
             'The parent reference is invalid. Please specify the exact parent epic or feature.'
         )
+    if reason.endswith('parent_ref_invalid_ref'):
+        return (
+            'The parent temporary reference is invalid. Use a parent_ref that points to a valid temp ID in this batch.'
+        )
+    if reason.endswith('node_ref_invalid_ref'):
+        return (
+            'The target temporary reference is invalid. Use a node_ref that points to a valid temp ID in this batch.'
+        )
     if reason == 'move_node.new_parent_id_invalid_uuid':
         return (
             'The move destination is invalid. Please specify the exact destination epic or feature.'
+        )
+    if reason == 'move_node.new_parent_ref_invalid_ref':
+        return (
+            'The move destination temporary reference is invalid. Use a new_parent_ref that points to a valid temp ID in this batch.'
         )
     return 'Please provide the exact target details and try again.'
 

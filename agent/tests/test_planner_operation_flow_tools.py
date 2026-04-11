@@ -4,6 +4,7 @@ import logging
 import unittest
 from types import SimpleNamespace
 
+from app.core.contracts.operations import RoadmapOperation
 from app.core.llm.providers import ProviderAdapterError
 from app.core.llm.planning.planner_operation_flow import plan_operations
 
@@ -502,6 +503,72 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         self.assertEqual(observed_args[0].get('allowed_node_types'), ['feature', 'epic'])
         self.assertEqual(result.get('response_mode'), 'edit_plan')
 
+    def test_provider_roadmap_operation_objects_do_not_trigger_invalid_payload(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+
+        class _ObjectOperationsOrchestrator:
+            def call(self, operation, trace_context=None):  # noqa: ANN001
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                        planner_profile=None,
+                    ):
+                        return (
+                            'Prepared operation.',
+                            [
+                                RoadmapOperation(
+                                    op='mark_status',
+                                    node_type='task',
+                                    node_id='b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                                    status='in_review',
+                                )
+                            ],
+                        )
+
+                value = operation(_Adapter())
+                return SimpleNamespace(
+                    value=value,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=1,
+                    tokens_output=1,
+                    tokens_total=2,
+                )
+
+        planner._provider_orchestrator = _ObjectOperationsOrchestrator()
+
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Mark all tasks in the Database Schema Setup as todo',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-roadmap-operation-objects',
+                },
+            },
+        )
+
+        planned_operations = result.get('planned_operations')
+        self.assertIsInstance(planned_operations, list)
+        assert isinstance(planned_operations, list)
+        self.assertEqual(len(planned_operations), 1)
+        self.assertEqual(planned_operations[0].op.value, 'mark_status')
+        self.assertEqual(planned_operations[0].node_type.value, 'task')
+        self.assertEqual(planned_operations[0].status, 'in_review')
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+
     def test_bulk_scope_resolve_keeps_explicit_parent_type(self) -> None:
         captured: dict[str, object] = {}
         planner = _FakePlanner(captured)
@@ -850,6 +917,73 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         self.assertEqual(synth_calls['count'], 0)
         self.assertEqual(result.get('response_mode'), 'chat')
         self.assertEqual(result.get('parse_mode'), 'openai_tool_calling_clarifier')
+
+    def test_compound_epic_feature_missing_tool_call_uses_parent_first_clarifier(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+        planner._settings.agent_react_max_attempts = 1
+        planner._settings.agent_react_repair_retries = 0
+
+        class _MissingToolCallOrchestrator:
+            def call(self, operation, trace_context=None):  # noqa: ANN001
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                        planner_profile=None,
+                    ):
+                        tool_executor(
+                            'create_epic',
+                            {
+                                'title': 'Agile',
+                                'status': 'not_started',
+                                'description': '',
+                            },
+                        )
+                        raise ProviderAdapterError(
+                            provider='openai',
+                            code='missing_tool_call',
+                            message='OpenAI did not return any tool call while planning operations.',
+                        )
+
+                return SimpleNamespace(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=1,
+                    tokens_output=1,
+                    tokens_total=2,
+                )
+
+        planner._provider_orchestrator = _MissingToolCallOrchestrator()
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Add new epic called "Agile" and inside that add feature called "Jira"',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-compound-parent-first-clarifier',
+                },
+            },
+        )
+
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'deterministic_compound_create_parent_first_clarifier')
+        self.assertEqual(result.get('provider_error_code'), 'missing_tool_call')
+        self.assertEqual(result.get('clarifier_action'), 'propose_safe_default')
+        self.assertIn('two steps', str(result.get('assistant_message')))
+        self.assertIn('Agile', str(result.get('assistant_message')))
+        self.assertIn('Jira', str(result.get('assistant_message')))
 
     def test_strict_mutation_authority_allows_synthesis_for_missing_tool_call_fallback(self) -> None:
         captured: dict[str, object] = {}

@@ -48,12 +48,28 @@ export class RoadmapAiOperationDto {
   node_id?: string;
 
   @IsOptional()
+  @IsString()
+  node_ref?: string;
+
+  @IsOptional()
   @IsUUID()
   parent_id?: string;
 
   @IsOptional()
+  @IsString()
+  parent_ref?: string;
+
+  @IsOptional()
   @IsUUID()
   new_parent_id?: string;
+
+  @IsOptional()
+  @IsString()
+  new_parent_ref?: string;
+
+  @IsOptional()
+  @IsString()
+  temp_id?: string;
 
   @IsOptional()
   @IsInt()
@@ -230,6 +246,25 @@ export class RoadmapAiChangeTimelineEntryDto {
   @ValidateNested()
   @Type(() => SemanticDiffDto)
   semantic_diff: SemanticDiffDto;
+
+  @IsOptional()
+  @IsObject()
+  temp_id_mapping?: Record<string, string>;
+}
+
+export class RoadmapAiOperationResolutionDto {
+  @IsInt()
+  @Min(0)
+  operation_index: number;
+
+  @IsString()
+  temp_id: string;
+
+  @IsUUID()
+  assigned_id: string;
+
+  @IsEnum(['epic', 'feature', 'task'])
+  node_type: Exclude<RoadmapNodeType, 'roadmap'>;
 }
 
 export class RoadmapAiPreviewResponseDto {
@@ -257,6 +292,12 @@ export class RoadmapAiPreviewResponseDto {
 
   @IsObject()
   candidate_snapshot: Record<string, unknown>;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapAiOperationResolutionDto)
+  operation_results?: RoadmapAiOperationResolutionDto[];
 }
 
 export class RoadmapAiCommitResponseDto {
@@ -283,6 +324,12 @@ export class RoadmapAiCommitResponseDto {
 
   @IsObject()
   roadmap: Record<string, unknown>;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapAiOperationResolutionDto)
+  operation_results?: RoadmapAiOperationResolutionDto[];
 }
 
 export class RoadmapAiRollbackResponseDto {

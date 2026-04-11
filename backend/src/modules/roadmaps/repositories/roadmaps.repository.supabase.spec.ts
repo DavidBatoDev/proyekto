@@ -26,6 +26,7 @@ describe('RoadmapsRepositorySupabase searchContextCandidates', () => {
         ilikeCalls.push({ column, pattern });
         return queryBuilder;
       }),
+      order: jest.fn().mockReturnThis(),
       limit: jest.fn().mockResolvedValue({ data: [], error: null }),
     };
 

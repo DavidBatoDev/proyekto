@@ -1076,7 +1076,9 @@ describe('RoadmapAiService operation semantics parity', () => {
       applyOperations: (
         state: Record<string, unknown>,
         operations: any[],
-      ) => any[];
+      ) => {
+        issues: any[];
+      };
     };
 
     const state = {
@@ -1106,23 +1108,25 @@ describe('RoadmapAiService operation semantics parity', () => {
       ],
     };
 
-    const invalidIssues = service.applyOperations(state as any, [
+    const invalidResult = service.applyOperations(state as any, [
       {
         op: 'mark_status',
         node_id: '1beecdd2-f057-4c41-bf6d-8bb9e5e4b2b1',
         status: 'not_real',
       },
     ]);
+    const invalidIssues = invalidResult.issues;
     expect(invalidIssues.length).toBeGreaterThan(0);
     expect(invalidIssues[0].code).toBe('INVALID_ENUM');
 
-    const validIssues = service.applyOperations(state as any, [
+    const validResult = service.applyOperations(state as any, [
       {
         op: 'mark_status',
         node_id: '1beecdd2-f057-4c41-bf6d-8bb9e5e4b2b1',
         status: 'done',
       },
     ]);
+    const validIssues = validResult.issues;
     expect(validIssues).toEqual([]);
     expect(
       (
@@ -1131,5 +1135,93 @@ describe('RoadmapAiService operation semantics parity', () => {
         }
       ).status,
     ).toBe('done');
+  });
+
+  it('supports chained add operations via temp references', () => {
+    const service = createService() as unknown as {
+      applyOperations: (
+        state: Record<string, unknown>,
+        operations: any[],
+      ) => {
+        issues: Array<{ code: string }>;
+        operationResults: Array<{
+          operation_index: number;
+          temp_id: string;
+          assigned_id: string;
+          node_type: 'epic' | 'feature' | 'task';
+        }>;
+      };
+    };
+
+    const state: any = {
+      id: '55e431e2-e416-468c-a973-94d97280e97d',
+      name: 'Roadmap',
+      status: 'active',
+      roadmap_epics: [],
+    };
+
+    const result = service.applyOperations(state as any, [
+      {
+        op: 'add_epic',
+        temp_id: 'epic_agile',
+        data: { title: 'Agile' },
+      },
+      {
+        op: 'add_feature',
+        parent_ref: 'epic_agile',
+        temp_id: 'feature_jira',
+        data: { title: 'Jira' },
+      },
+      {
+        op: 'add_task',
+        parent_ref: 'feature_jira',
+        temp_id: 'task_workflow',
+        data: { title: 'Set up sprint workflow' },
+      },
+    ]);
+
+    expect(result.issues).toHaveLength(0);
+    expect(state.roadmap_epics).toHaveLength(1);
+    expect(state.roadmap_epics[0].title).toBe('Agile');
+    expect(state.roadmap_epics[0].roadmap_features).toHaveLength(1);
+    expect(state.roadmap_epics[0].roadmap_features[0].title).toBe('Jira');
+    expect(
+      state.roadmap_epics[0].roadmap_features[0].roadmap_tasks,
+    ).toHaveLength(1);
+
+    expect(result.operationResults).toHaveLength(3);
+    expect(result.operationResults[0].temp_id).toBe('epic_agile');
+    expect(result.operationResults[1].temp_id).toBe('feature_jira');
+    expect(result.operationResults[2].temp_id).toBe('task_workflow');
+  });
+
+  it('rejects unresolved parent_ref in add_feature', () => {
+    const service = createService() as unknown as {
+      applyOperations: (
+        state: Record<string, unknown>,
+        operations: any[],
+      ) => {
+        issues: Array<{ code: string }>;
+      };
+    };
+
+    const state: any = {
+      id: '55e431e2-e416-468c-a973-94d97280e97d',
+      name: 'Roadmap',
+      status: 'active',
+      roadmap_epics: [],
+    };
+
+    const result = service.applyOperations(state as any, [
+      {
+        op: 'add_feature',
+        parent_ref: 'missing_epic',
+        data: { title: 'Jira' },
+      },
+    ]);
+
+    expect(result.issues.length).toBeGreaterThan(0);
+    expect(result.issues[0].code).toBe('BROKEN_RELATIONSHIP');
+    expect(state.roadmap_epics).toHaveLength(0);
   });
 });

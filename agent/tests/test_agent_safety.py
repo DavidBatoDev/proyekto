@@ -3988,6 +3988,82 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(outcome.invalid_operation_reason, 'update_node.node_id_invalid_uuid')
         self.assertEqual(outcome.invalid_operation_index, 0)
 
+    def test_plan_message_allows_alias_prefixed_temp_refs(self) -> None:
+        class _FakePlanner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_edit', False)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message='Prepared create chain.',
+                    operations=[
+                        RoadmapOperation(
+                            op='add_epic',
+                            temp_id='temp-epic-agent-module',
+                            data={'title': 'Agent Module'},
+                        ),
+                        RoadmapOperation(
+                            op='add_feature',
+                            temp_id='temp-feature-system-architecture',
+                            parent_ref='temp-epic-agent-module',
+                            data={'title': 'System Architecture'},
+                        ),
+                        RoadmapOperation(
+                            op='add_task',
+                            temp_id='temp-task-system-architecture-1',
+                            parent_ref='temp-feature-system-architecture',
+                            data={'title': 'System Architecture Task 1'},
+                        ),
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(
+                    SimpleNamespace(role=role, content=content)
+                )
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings()
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _FakePlanner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        service._run_async_call = lambda value: value
+
+        session = AgentSession(roadmap_id='roadmap-1')
+        outcome = service.plan_message(
+            session=session,
+            user_message='Create epic Agent Module with feature and task',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-alias-temp-refs',
+        )
+
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(outcome.parse_mode, 'openai_tool_calling')
+        self.assertFalse(outcome.invalid_operation_detected)
+        self.assertEqual(outcome.provider_error_code, None)
+        self.assertEqual(len(outcome.operations), 3)
+        self.assertEqual(len(session.operations), 3)
+
 
 class ConfigCompatibilityTests(unittest.TestCase):
     def test_react_prefixed_planner_aliases_override_legacy_names(self) -> None:
@@ -6217,7 +6293,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
 
         result = planner._plan_operations(
             {
-                'user_message': 'Add new epic called "Agile" and inside that add feature called "Jira"',
+                'user_message': 'Rename the feature "Database Schema Setup" to "Database Foundations"',
                 'existing_operations': [],
                 'system_prompt': 'system',
                 'session_context': {
@@ -7535,6 +7611,151 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(
             planned_ops[0].parent_id,
             'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+        )
+
+    def test_plan_operations_parent_ref_chain_does_not_trigger_parent_uuid_clarifier(self) -> None:
+        planner = self._planner()
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                return ProviderCallOutcome(
+                    value=(
+                        'Prepared create operations.',
+                        [
+                            {
+                                'op': 'add_epic',
+                                'temp_id': 'tmp_epic_1',
+                                'data': {'title': 'Identity Platform'},
+                            },
+                            {
+                                'op': 'add_feature',
+                                'temp_id': 'tmp_feature_1',
+                                'parent_ref': 'tmp_epic_1',
+                                'data': {'title': 'Authentication'},
+                            },
+                            {
+                                'op': 'add_feature',
+                                'temp_id': 'tmp_feature_2',
+                                'parent_ref': 'tmp_epic_1',
+                                'data': {'title': 'Authorization'},
+                            },
+                        ],
+                    ),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        result = planner._plan_operations(
+            {
+                'user_message': 'Create Identity Platform epic with Authentication and Authorization features',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-parent-ref-chain',
+                },
+            }
+        )
+
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+        self.assertEqual(result.get('stop_reason'), 'ready_to_stage')
+        self.assertEqual(result.get('provider_error_code'), None)
+        planned_ops = result.get('planned_operations') or []
+        self.assertEqual(len(planned_ops), 3)
+        self.assertEqual(
+            [operation.op.value for operation in planned_ops],
+            ['add_epic', 'add_feature', 'add_feature'],
+        )
+        self.assertEqual(planned_ops[1].parent_ref, 'tmp_epic_1')
+        self.assertEqual(planned_ops[2].parent_ref, 'tmp_epic_1')
+
+    def test_plan_operations_auto_generates_tasks_per_feature_for_hierarchical_create(self) -> None:
+        planner = self._planner()
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                return ProviderCallOutcome(
+                    value=(
+                        'Prepared create operations.',
+                        [
+                            {
+                                'op': 'add_epic',
+                                'temp_id': 'tmp_epic_1',
+                                'data': {'title': 'Identity Platform'},
+                            },
+                            {
+                                'op': 'add_feature',
+                                'parent_ref': 'tmp_epic_1',
+                                'data': {'title': 'Authentication'},
+                            },
+                            {
+                                'op': 'add_feature',
+                                'parent_ref': 'tmp_epic_1',
+                                'data': {'title': 'Authorization'},
+                            },
+                        ],
+                    ),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        result = planner._plan_operations(
+            {
+                'user_message': (
+                    'Create epic Identity Platform with features Authentication and '
+                    'Authorization and tree tasks each'
+                ),
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-hierarchical-create-completion',
+                },
+            }
+        )
+
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+        self.assertEqual(result.get('stop_reason'), 'ready_to_stage')
+        planned_ops = result.get('planned_operations') or []
+        self.assertEqual(len(planned_ops), 9)
+
+        epic_ops = [operation for operation in planned_ops if operation.op.value == 'add_epic']
+        feature_ops = [operation for operation in planned_ops if operation.op.value == 'add_feature']
+        task_ops = [operation for operation in planned_ops if operation.op.value == 'add_task']
+        self.assertEqual(len(epic_ops), 1)
+        self.assertEqual(len(feature_ops), 2)
+        self.assertEqual(len(task_ops), 6)
+
+        feature_temp_ids = [str(operation.temp_id or '') for operation in feature_ops]
+        self.assertEqual(feature_temp_ids, ['tmp_feature_1', 'tmp_feature_2'])
+        self.assertEqual(
+            sum(1 for operation in task_ops if operation.parent_ref == 'tmp_feature_1'),
+            3,
+        )
+        self.assertEqual(
+            sum(1 for operation in task_ops if operation.parent_ref == 'tmp_feature_2'),
+            3,
+        )
+
+        task_titles = {
+            str((operation.data or {}).get('title') or '')
+            for operation in task_ops
+            if isinstance(operation.data, dict)
+        }
+        self.assertSetEqual(
+            task_titles,
+            {
+                'Authentication Task 1',
+                'Authentication Task 2',
+                'Authentication Task 3',
+                'Authorization Task 1',
+                'Authorization Task 2',
+                'Authorization Task 3',
+            },
         )
 
     def test_plan_operations_invalid_parent_without_hint_returns_clarifier(self) -> None:

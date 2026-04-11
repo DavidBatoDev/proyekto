@@ -92,7 +92,7 @@ class Settings(BaseSettings):
     )
     # Keep disabled by default to preserve hybrid behavior; enable for strict planner authority.
     agent_strict_mutation_authority_enabled: bool = Field(
-        default=True,
+        default=False,
         alias='AGENT_STRICT_MUTATION_AUTHORITY_ENABLED',
     )
     agent_strict_preview_fingerprint: bool = Field(

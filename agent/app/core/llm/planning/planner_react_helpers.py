@@ -292,6 +292,10 @@ def coerce_parent_hint_for_operations(
             corrected_operations.append(operation)
             continue
 
+        if isinstance(operation.parent_ref, str) and operation.parent_ref.strip():
+            corrected_operations.append(operation)
+            continue
+
         normalized_parent_id = normalize_uuid(operation.parent_id)
         if normalized_parent_id is not None:
             if operation.parent_id == normalized_parent_id:
@@ -316,6 +320,7 @@ def coerce_parent_hint_for_operations(
                 'operation': op_name,
                 'required_parent_type': required_parent_type,
                 'parent_id': operation.parent_id,
+                'parent_ref': operation.parent_ref,
             }
         )
 
@@ -341,10 +346,11 @@ def augment_parent_uuid_retry_prompt(
     return (
         f'{planner_prompt}\n\n'
         'PARENT UUID CONTRACT REPAIR:\n'
-        'One or more add_feature/add_task operations used a parent_id that is not a valid UUID.\n'
+        'One or more add_feature/add_task operations are missing a valid parent target.\n'
         'Retry by calling plan_roadmap_operations exactly once and ensure every add_feature/add_task '
-        'operation has a valid UUID parent_id.\n'
-        'If parent UUID is still unknown, return empty operations and ask one focused clarifier.\n\n'
+        'operation has either a valid UUID parent_id or a parent_ref that references a temp_id '
+        'created in the same operations batch.\n'
+        'If parent target is still unknown, return empty operations and ask one focused clarifier.\n\n'
         f'Parent UUID violations:\n{violation_payload}\n\n'
         f'Deictic parent hint (if available):\n{hint_payload}'
     )

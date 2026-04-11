@@ -104,6 +104,10 @@ class OperationContractsTests(unittest.TestCase):
             'between -3650 and 3650',
             operation_validation_guidance('shift_dates.delta_days_out_of_range').lower(),
         )
+        self.assertIn(
+            'temporary reference',
+            operation_validation_guidance('add_epic.temp_id_invalid_ref').lower(),
+        )
 
     def test_roadmap_operation_semantic_hook_reports_expected_issues(self) -> None:
         operation = RoadmapOperation(
@@ -164,6 +168,135 @@ class OperationContractsTests(unittest.TestCase):
         )
         issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
         self.assertEqual(issues, [])
+
+    def test_add_feature_accepts_parent_ref_target(self) -> None:
+        operation = RoadmapOperation(
+            op='add_feature',
+            parent_ref='tmp_epic_1',
+            temp_id='tmp_feature_1',
+            data={'title': 'Authentication'},
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertEqual(issues, [])
+
+    def test_add_epic_accepts_epic_prefix_temp_id(self) -> None:
+        operation = RoadmapOperation(
+            op='add_epic',
+            temp_id='epic_temp_1',
+            data={'title': 'Platform'},
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertEqual(issues, [])
+
+    def test_add_epic_accepts_t_prefix_temp_id(self) -> None:
+        operation = RoadmapOperation(
+            op='add_epic',
+            temp_id='t_epic_agent_module',
+            data={'title': 'Agent Module'},
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertEqual(issues, [])
+
+    def test_add_epic_accepts_temp_dash_prefix_temp_id(self) -> None:
+        operation = RoadmapOperation(
+            op='add_epic',
+            temp_id='temp-epic-agent-module',
+            data={'title': 'Agent Module'},
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertEqual(issues, [])
+
+    def test_add_feature_accepts_feature_prefix_temp_id(self) -> None:
+        operation = RoadmapOperation(
+            op='add_feature',
+            parent_ref='epic_temp_1',
+            temp_id='feature_temp_1',
+            data={'title': 'Authentication'},
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertEqual(issues, [])
+
+    def test_add_feature_accepts_t_prefix_refs(self) -> None:
+        operation = RoadmapOperation(
+            op='add_feature',
+            parent_ref='t_epic_agent_module',
+            temp_id='t_feature_system_arch',
+            data={'title': 'System Architecture'},
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertEqual(issues, [])
+
+    def test_add_feature_accepts_temp_dash_prefix_refs(self) -> None:
+        operation = RoadmapOperation(
+            op='add_feature',
+            parent_ref='temp-epic-agent-module',
+            temp_id='temp-feature-system-architecture',
+            data={'title': 'System Architecture'},
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertEqual(issues, [])
+
+    def test_add_task_accepts_task_prefix_temp_id(self) -> None:
+        operation = RoadmapOperation(
+            op='add_task',
+            parent_ref='feature_temp_1',
+            temp_id='task_temp_1',
+            data={'title': 'Implement login flow'},
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertEqual(issues, [])
+
+    def test_add_epic_rejects_malformed_temp_id(self) -> None:
+        operation = RoadmapOperation(
+            op='add_epic',
+            temp_id='temp:epic:1',
+            data={'title': 'Platform'},
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertIn('add_epic.temp_id_invalid_ref', issues)
+
+    def test_add_feature_rejects_parent_target_conflict(self) -> None:
+        operation = RoadmapOperation(
+            op='add_feature',
+            parent_id='123e4567-e89b-12d3-a456-426614174000',
+            parent_ref='tmp_epic_1',
+            data={'title': 'Authentication'},
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertIn('add_feature.parent_target_conflict', issues)
+
+    def test_add_epic_rejects_temp_identity_conflict(self) -> None:
+        operation = RoadmapOperation(
+            op='add_epic',
+            temp_id='tmp_epic_1',
+            data={
+                'id': '123e4567-e89b-12d3-a456-426614174000',
+                'title': 'Platform',
+            },
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertIn('add_epic.identity_conflict', issues)
+
+    def test_update_node_accepts_node_ref_target(self) -> None:
+        operation = RoadmapOperation(
+            op='update_node',
+            node_type='task',
+            node_ref='tmp_task_1',
+            patch={'title': 'Updated'},
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertEqual(issues, [])
+
+    def test_move_node_rejects_new_parent_target_conflict(self) -> None:
+        operation = RoadmapOperation(
+            op='move_node',
+            node_type='task',
+            node_id='123e4567-e89b-12d3-a456-426614174000',
+            new_parent_id='123e4567-e89b-12d3-a456-426614174111',
+            new_parent_ref='tmp_feature_2',
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertIn('move_node.new_parent_target_conflict', issues)
 
 
 if __name__ == '__main__':

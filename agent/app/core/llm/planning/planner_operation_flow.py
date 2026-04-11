@@ -17,6 +17,7 @@ from app.core.tools.registry import (
     PLANNING_TOOL_NAME,
     parse_plan_tool_args,
 )
+from app.core.uuid_utils import normalize_uuid
 
 
 def _is_bulk_task_scope_update_intent(user_message: str) -> bool:
@@ -192,6 +193,179 @@ def _coerce_parent_scoped_bulk_task_status_operations(
     return coerced_operations
 
 
+def _extract_tasks_per_feature_count(user_message: str) -> int | None:
+    normalized = ' '.join(str(user_message or '').strip().lower().split())
+    if not normalized or 'task' not in normalized or 'feature' not in normalized:
+        return None
+    if 'each' not in normalized and 'per feature' not in normalized:
+        return None
+
+    digit_match = re.search(
+        r'\b(\d+)\s+tasks?\s+(?:each|per\s+feature)\b',
+        normalized,
+    )
+    if digit_match is not None:
+        parsed_count = int(digit_match.group(1))
+        return parsed_count if parsed_count > 0 else None
+
+    word_to_number = {
+        'one': 1,
+        'two': 2,
+        'three': 3,
+        'tree': 3,
+        'four': 4,
+        'five': 5,
+        'six': 6,
+        'seven': 7,
+        'eight': 8,
+        'nine': 9,
+        'ten': 10,
+    }
+    word_match = re.search(
+        r'\b(one|two|three|tree|four|five|six|seven|eight|nine|ten)\s+tasks?\s+(?:each|per\s+feature)\b',
+        normalized,
+    )
+    if word_match is None:
+        return None
+
+    return word_to_number.get(word_match.group(1))
+
+
+def _reserve_temp_id(seed: str, used_temp_ids: set[str]) -> str:
+    candidate = seed
+    suffix = 1
+    while candidate in used_temp_ids:
+        suffix += 1
+        candidate = f'{seed}_{suffix}'
+    used_temp_ids.add(candidate)
+    return candidate
+
+
+def _maybe_complete_hierarchical_create_operations(
+    *,
+    user_message: str,
+    operations: list[RoadmapOperation],
+) -> list[RoadmapOperation]:
+    task_count_per_feature = _extract_tasks_per_feature_count(user_message)
+    if task_count_per_feature is None:
+        return operations
+
+    normalized_message = ' '.join(str(user_message or '').strip().lower().split())
+    if not re.search(r'\b(add|create)\b', normalized_message):
+        return operations
+
+    if not operations:
+        return operations
+
+    allowed_ops = {'add_epic', 'add_feature', 'add_task'}
+    operation_names = [operation.op.value for operation in operations]
+    if any(op_name not in allowed_ops for op_name in operation_names):
+        return operations
+
+    epic_indexes = [index for index, op_name in enumerate(operation_names) if op_name == 'add_epic']
+    feature_indexes = [
+        index for index, op_name in enumerate(operation_names) if op_name == 'add_feature'
+    ]
+    if len(epic_indexes) != 1 or not feature_indexes:
+        return operations
+
+    completed_operations = [operation.model_copy(deep=True) for operation in operations]
+    changed = False
+
+    used_temp_ids = {
+        str(operation.temp_id).strip()
+        for operation in completed_operations
+        if isinstance(operation.temp_id, str) and operation.temp_id.strip()
+    }
+
+    epic_operation = completed_operations[epic_indexes[0]]
+    epic_temp_id = str(epic_operation.temp_id or '').strip()
+    if not epic_temp_id:
+        epic_temp_id = _reserve_temp_id('tmp_epic_1', used_temp_ids)
+        epic_operation.temp_id = epic_temp_id
+        changed = True
+
+    feature_temp_ids: list[str] = []
+    feature_titles_by_temp_id: dict[str, str] = {}
+
+    for feature_order, feature_index in enumerate(feature_indexes, start=1):
+        feature_operation = completed_operations[feature_index]
+        feature_temp_id = str(feature_operation.temp_id or '').strip()
+        if not feature_temp_id:
+            feature_temp_id = _reserve_temp_id(f'tmp_feature_{feature_order}', used_temp_ids)
+            feature_operation.temp_id = feature_temp_id
+            changed = True
+
+        feature_parent_ref = str(feature_operation.parent_ref or '').strip()
+        normalized_feature_parent_id = normalize_uuid(feature_operation.parent_id)
+        if (
+            normalized_feature_parent_id is not None
+            and feature_operation.parent_id != normalized_feature_parent_id
+        ):
+            feature_operation.parent_id = normalized_feature_parent_id
+            changed = True
+        if not feature_parent_ref and normalized_feature_parent_id is None:
+            feature_operation.parent_ref = epic_temp_id
+            feature_operation.parent_id = None
+            changed = True
+
+        feature_temp_ids.append(feature_temp_id)
+        feature_title = ''
+        if isinstance(feature_operation.data, dict):
+            feature_title = str(feature_operation.data.get('title') or '').strip()
+        if not feature_title:
+            feature_title = f'Feature {feature_order}'
+        feature_titles_by_temp_id[feature_temp_id] = feature_title
+
+    existing_task_counts = {feature_temp_id: 0 for feature_temp_id in feature_temp_ids}
+    existing_task_titles = {feature_temp_id: set() for feature_temp_id in feature_temp_ids}
+    for operation in completed_operations:
+        if operation.op.value != 'add_task':
+            continue
+        parent_ref = str(operation.parent_ref or '').strip()
+        if parent_ref not in existing_task_counts:
+            return operations
+        existing_task_counts[parent_ref] += 1
+        if isinstance(operation.data, dict):
+            task_title = str(operation.data.get('title') or '').strip()
+            if task_title:
+                existing_task_titles[parent_ref].add(task_title.lower())
+
+    generated_tasks: list[RoadmapOperation] = []
+    for feature_order, feature_temp_id in enumerate(feature_temp_ids, start=1):
+        current_count = existing_task_counts.get(feature_temp_id, 0)
+        if current_count >= task_count_per_feature:
+            continue
+        feature_title = feature_titles_by_temp_id.get(feature_temp_id, f'Feature {feature_order}')
+        used_titles = existing_task_titles.setdefault(feature_temp_id, set())
+        for task_number in range(current_count + 1, task_count_per_feature + 1):
+            task_title = f'{feature_title} Task {task_number}'
+            title_suffix = task_number
+            while task_title.lower() in used_titles:
+                title_suffix += 1
+                task_title = f'{feature_title} Task {title_suffix}'
+            used_titles.add(task_title.lower())
+            generated_tasks.append(
+                RoadmapOperation(
+                    op='add_task',
+                    parent_ref=feature_temp_id,
+                    temp_id=_reserve_temp_id(
+                        f'tmp_task_{feature_order}_{task_number}',
+                        used_temp_ids,
+                    ),
+                    data={'title': task_title},
+                )
+            )
+
+    if generated_tasks:
+        changed = True
+
+    if not changed:
+        return operations
+
+    return [*completed_operations, *generated_tasks]
+
+
 def _augment_bulk_task_status_contract_retry_prompt(
     *,
     planner_prompt: str,
@@ -230,6 +404,96 @@ def _safe_int(value: Any) -> int:
         except ValueError:
             return 0
     return 0
+
+
+def _clean_compound_title_fragment(value: str) -> str:
+    cleaned = str(value or '').strip().strip('"\'`')
+    cleaned = re.sub(r'[.?!,;:]+$', '', cleaned)
+    return ' '.join(cleaned.split())
+
+
+def _extract_compound_epic_feature_titles(user_message: str) -> tuple[str, str] | None:
+    normalized = ' '.join(str(user_message or '').strip().split())
+    if not normalized:
+        return None
+    if not re.search(r'\b(?:add|create)\b', normalized, re.IGNORECASE):
+        return None
+
+    epic_match = re.search(
+        r'(?i)\b(?:add|create)\s+(?:a\s+|an\s+)?(?:new\s+)?epic\b(?:\s+(?:called|named|titled)\s+)?(?:"([^"]+)"|\'([^\']+)\'|([^,.!?;]+))',
+        normalized,
+    )
+    feature_match = re.search(
+        r'(?i)\b(?:add|create)\s+(?:a\s+|an\s+)?(?:new\s+)?feature\b(?:\s+(?:called|named|titled)\s+)?(?:"([^"]+)"|\'([^\']+)\'|([^,.!?;]+))',
+        normalized,
+    )
+    if epic_match is None or feature_match is None:
+        return None
+
+    has_parent_link_phrase = bool(
+        re.search(r'(?i)\b(?:inside|under|within|in)\s+(?:that|it|the\s+epic\b)', normalized)
+    )
+    if not has_parent_link_phrase:
+        return None
+
+    epic_title = _clean_compound_title_fragment(
+        epic_match.group(1) or epic_match.group(2) or epic_match.group(3) or ''
+    )
+    feature_title = _clean_compound_title_fragment(
+        feature_match.group(1) or feature_match.group(2) or feature_match.group(3) or ''
+    )
+    if not epic_title or not feature_title:
+        return None
+
+    return epic_title, feature_title
+
+
+def _build_parent_first_compound_create_clarifier_state(
+    *,
+    epic_title: str,
+    feature_title: str,
+    provider_error_code: str,
+    llm_calls_used: int,
+) -> dict[str, Any]:
+    assistant_message, clarifier_options = build_clarifier_contract(
+        reason='compound_create_parent_first',
+        question=(
+            f'I can stage this safely in two steps. First I will draft epic "{epic_title}". '
+            f'After that epic is applied, I can add feature "{feature_title}" inside it. '
+            'Should I stage step 1 now?'
+        ),
+        options=[
+            f'Stage epic "{epic_title}" now',
+            'Change epic title',
+            'Cancel',
+        ],
+    )
+    return {
+        'assistant_message': assistant_message,
+        'planned_operations': [],
+        'response_mode': 'chat',
+        'preview_recommended': False,
+        'parse_mode': 'deterministic_compound_create_parent_first_clarifier',
+        'provider_used': 'rule_based',
+        'fallback_used': False,
+        'provider_error_code': provider_error_code,
+        'tokens_input': None,
+        'tokens_output': None,
+        'tokens_total': None,
+        'pending_context_resolution': None,
+        'clear_pending_context_resolution': False,
+        'clarifier_action': 'propose_safe_default',
+        'clarifier_reason': 'compound_create_parent_first',
+        'clarifier_options': clarifier_options,
+        'clarifier_schema_retries': 0,
+        'planner_schema_invalid_attempts': 0,
+        'planner_repair_attempted': False,
+        'draft_action': 'continue',
+        'tool_plan': [],
+        'needs_more_info': True,
+        'stop_reason': 'insufficient_context',
+        'llm_calls_used': max(int(llm_calls_used or 0), 0),
+    }
 
 
 def _latest_bulk_parent_helper_result(
@@ -913,6 +1177,18 @@ def plan_operations(
                 exc.code,
                 exc.message,
             )
+            compound_create_titles = _extract_compound_epic_feature_titles(user_message)
+            if exc.code == 'missing_tool_call' and compound_create_titles is not None:
+                epic_title, feature_title = compound_create_titles
+                return _finalize_state(
+                    _build_parent_first_compound_create_clarifier_state(
+                        epic_title=epic_title,
+                        feature_title=feature_title,
+                        provider_error_code=exc.code,
+                        llm_calls_used=llm_calls_used,
+                    ),
+                    used_calls=llm_calls_used,
+                )
             synthesized_state = _try_synthesize_react_closure_state(
                 reason='provider_react_exception_fallback',
                 provider_error_code=exc.code,
@@ -961,13 +1237,25 @@ def plan_operations(
             operations = []
         elif isinstance(raw_operations, list):
             try:
+                normalized_raw_operations: list[Any] = []
+                for item in raw_operations:
+                    if isinstance(item, RoadmapOperation):
+                        normalized_raw_operations.append(
+                            item.model_dump(mode='json', exclude_none=True)
+                        )
+                    else:
+                        normalized_raw_operations.append(item)
                 _, operations = parse_plan_tool_args(
                     {
                         'assistant_message': assistant_message or 'Prepared roadmap edit operations.',
-                        'operations': raw_operations,
+                        'operations': normalized_raw_operations,
                     }
                 )
                 operations = _coerce_parent_scoped_bulk_task_status_operations(
+                    user_message=user_message,
+                    operations=operations,
+                )
+                operations = _maybe_complete_hierarchical_create_operations(
                     user_message=user_message,
                     operations=operations,
                 )

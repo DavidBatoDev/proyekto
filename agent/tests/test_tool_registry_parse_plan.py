@@ -132,6 +132,96 @@ class ToolRegistryParsePlanTests(unittest.TestCase):
                 }
             )
 
+    def test_parse_add_feature_accepts_parent_ref(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'create feature',
+                'operations': [
+                    {
+                        'op': 'add_feature',
+                        'parent_ref': 'tmp_epic_1',
+                        'temp_id': 'tmp_feature_1',
+                        'data': {'title': 'Authentication'},
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].parent_ref, 'tmp_epic_1')
+        self.assertEqual(operations[0].temp_id, 'tmp_feature_1')
+
+    def test_parse_update_node_accepts_node_ref(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'update temp node',
+                'operations': [
+                    {
+                        'op': 'update_node',
+                        'node_type': 'feature',
+                        'node_ref': 'tmp_feature_1',
+                        'patch': {'title': 'Auth V2'},
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].node_ref, 'tmp_feature_1')
+        self.assertEqual(operations[0].patch, {'title': 'Auth V2'})
+
+    def test_parse_add_feature_rejects_parent_id_parent_ref_conflict(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            parse_plan_tool_args(
+                {
+                    'assistant_message': 'create feature',
+                    'operations': [
+                        {
+                            'op': 'add_feature',
+                            'parent_id': '123e4567-e89b-12d3-a456-426614174000',
+                            'parent_ref': 'tmp_epic_1',
+                            'data': {'title': 'Authentication'},
+                        }
+                    ],
+                }
+            )
+        self.assertIn('parent target conflict', str(ctx.exception))
+
+    def test_parse_add_epic_rejects_data_id_temp_id_conflict(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            parse_plan_tool_args(
+                {
+                    'assistant_message': 'create epic',
+                    'operations': [
+                        {
+                            'op': 'add_epic',
+                            'temp_id': 'tmp_epic_1',
+                            'data': {
+                                'id': '123e4567-e89b-12d3-a456-426614174000',
+                                'title': 'Platform',
+                            },
+                        }
+                    ],
+                }
+            )
+        self.assertIn('creation identity conflict', str(ctx.exception))
+
+    def test_parse_move_node_rejects_new_parent_id_ref_conflict(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            parse_plan_tool_args(
+                {
+                    'assistant_message': 'move node',
+                    'operations': [
+                        {
+                            'op': 'move_node',
+                            'node_type': 'task',
+                            'node_id': '123e4567-e89b-12d3-a456-426614174000',
+                            'new_parent_id': '123e4567-e89b-12d3-a456-426614174111',
+                            'new_parent_ref': 'tmp_feature_2',
+                        }
+                    ],
+                }
+            )
+        self.assertIn('move destination conflict', str(ctx.exception))
+
 
 if __name__ == '__main__':
     unittest.main()

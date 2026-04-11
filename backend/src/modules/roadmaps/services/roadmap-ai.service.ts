@@ -45,6 +45,7 @@ import type {
   RoadmapAiDiscardDto,
   RoadmapAiDiscardResponseDto,
   RoadmapAiOperationDto,
+  RoadmapAiOperationResolutionDto,
   RoadmapAiPreviewDto,
   RoadmapAiPreviewResponseDto,
   RoadmapAiRollbackDto,
@@ -104,6 +105,13 @@ type PreviewRecord = {
   candidate: FullRoadmapState;
   semanticDiff: SemanticDiffDto;
   validationIssues: RoadmapValidationIssueDto[];
+  operationResults: RoadmapAiOperationResolutionDto[];
+};
+
+type ApplyOperationsResult = {
+  issues: RoadmapValidationIssueDto[];
+  tempIdMap: Map<string, string>;
+  operationResults: RoadmapAiOperationResolutionDto[];
 };
 
 type ChangeTimelineEntryRecord = {
@@ -114,6 +122,7 @@ type ChangeTimelineEntryRecord = {
   operations: RoadmapAiOperationDto[];
   operationsCount: number;
   semanticDiff: SemanticDiffDto;
+  tempIdMapping?: Record<string, string>;
   stateBefore: FullRoadmapState;
   stateAfter: FullRoadmapState;
   revisionTokenBefore: string;
@@ -248,7 +257,8 @@ export class RoadmapAiService {
       full as unknown as Record<string, unknown>,
     );
     const candidate = this.clone(base);
-    const operationIssues = this.applyOperations(candidate, dto.operations);
+    const applyResult = this.applyOperations(candidate, dto.operations);
+    const operationIssues = applyResult.issues;
     if (dto.revision_token && dto.revision_token !== currentRevisionToken) {
       throw new ConflictException({
         message: 'Revision token does not match current roadmap revision',
@@ -274,6 +284,7 @@ export class RoadmapAiService {
       candidate,
       semanticDiff,
       validationIssues,
+      operationResults: applyResult.operationResults,
     };
     const previewStoreSetStartedAt = Date.now();
     await this.previewStore.setPreview(
@@ -317,6 +328,7 @@ export class RoadmapAiService {
       semantic_diff: semanticDiff,
       validation_issues: validationIssues,
       candidate_snapshot: candidate as unknown as Record<string, unknown>,
+      operation_results: applyResult.operationResults,
     };
   }
 
@@ -366,6 +378,7 @@ export class RoadmapAiService {
         string,
         unknown
       >,
+      operation_results: preview.operationResults,
     };
   }
 
@@ -1126,7 +1139,8 @@ export class RoadmapAiService {
       full as Record<string, unknown>,
     );
     const candidate = this.clone(base);
-    const operationIssues = this.applyOperations(candidate, operations);
+    const applyResult = this.applyOperations(candidate, operations);
+    const operationIssues = applyResult.issues;
     const validationIssues = [
       ...operationIssues,
       ...this.validateState(candidate),
@@ -1202,6 +1216,11 @@ export class RoadmapAiService {
     );
     const committedAt = new Date().toISOString();
     const changeId = randomUUID();
+    const tempIdMapping: Record<string, string> = {};
+    for (const result of applyResult.operationResults) {
+      tempIdMapping[result.temp_id] = result.assigned_id;
+    }
+
     const timeline = await this.appendChangeToTimeline({
       roadmapId,
       userId,
@@ -1216,6 +1235,7 @@ export class RoadmapAiService {
         stateAfter: this.normalizeFullRoadmapState(
           persisted as Record<string, unknown>,
         ),
+        tempIdMapping,
         revisionTokenBefore: currentRevisionToken,
         revisionTokenAfter,
       },
@@ -1245,6 +1265,7 @@ export class RoadmapAiService {
       candidate_snapshot: persisted as Record<string, unknown>,
       timeline,
       roadmap: persisted as Record<string, unknown>,
+      operation_results: applyResult.operationResults,
     };
   }
 
@@ -1499,6 +1520,7 @@ export class RoadmapAiService {
       status: entry.status,
       operations_count: entry.operationsCount,
       semantic_diff: entry.semanticDiff,
+      temp_id_mapping: entry.tempIdMapping,
     };
   }
 
@@ -1693,51 +1715,185 @@ export class RoadmapAiService {
     ];
   }
 
+  private resolveOperationIdentity(params: {
+    idValue?: string;
+    refValue?: string;
+    idPath: string;
+    refPath: string;
+    required: boolean;
+    missingMessage?: string;
+    unresolvedRefMessage: string;
+    issues: RoadmapValidationIssueDto[];
+    tempIdMap: Map<string, string>;
+  }): string | undefined {
+    const hasId =
+      typeof params.idValue === 'string' && params.idValue.trim().length > 0;
+    const hasRef =
+      typeof params.refValue === 'string' && params.refValue.trim().length > 0;
+
+    if (hasId && hasRef) {
+      params.issues.push(
+        this.issue(
+          'INVALID_TYPE',
+          'error',
+          params.idPath,
+          `Provide only one of ${params.idPath.split('/').pop()} or ${params.refPath.split('/').pop()}`,
+        ),
+      );
+      return undefined;
+    }
+
+    if (hasId) {
+      return params.idValue;
+    }
+
+    if (hasRef) {
+      const normalizedRef = params.refValue?.trim() ?? '';
+      const resolved = params.tempIdMap.get(normalizedRef);
+      if (!resolved) {
+        params.issues.push(
+          this.issue(
+            'BROKEN_RELATIONSHIP',
+            'error',
+            params.refPath,
+            params.unresolvedRefMessage,
+          ),
+        );
+      }
+      return resolved;
+    }
+
+    if (params.required) {
+      params.issues.push(
+        this.issue(
+          'MISSING_REQUIRED_FIELD',
+          'error',
+          params.idPath,
+          params.missingMessage ??
+            `${params.idPath.split('/').pop()} is required`,
+        ),
+      );
+    }
+    return undefined;
+  }
+
+  private registerCreateOperationResolution(
+    operation: RoadmapAiOperationDto,
+    operationIndex: number,
+    nodeType: Exclude<RoadmapNodeType, 'roadmap'>,
+    assignedId: string,
+    path: string,
+    issues: RoadmapValidationIssueDto[],
+    tempIdMap: Map<string, string>,
+    operationResults: RoadmapAiOperationResolutionDto[],
+  ): boolean {
+    const tempId =
+      typeof operation.temp_id === 'string' ? operation.temp_id.trim() : '';
+    if (!tempId) {
+      return true;
+    }
+
+    const existing = tempIdMap.get(tempId);
+    if (existing) {
+      issues.push(
+        this.issue(
+          'DUPLICATE_ID',
+          'error',
+          `${path}/temp_id`,
+          `temp_id "${tempId}" was already assigned in this operation batch`,
+        ),
+      );
+      return false;
+    }
+
+    tempIdMap.set(tempId, assignedId);
+    operationResults.push({
+      operation_index: operationIndex,
+      temp_id: tempId,
+      assigned_id: assignedId,
+      node_type: nodeType,
+    });
+    return true;
+  }
+
   private applyOperations(
     state: FullRoadmapState,
     operations: RoadmapAiOperationDto[],
-  ): RoadmapValidationIssueDto[] {
+  ): ApplyOperationsResult {
     const issues: RoadmapValidationIssueDto[] = [];
+    const tempIdMap = new Map<string, string>();
+    const operationResults: RoadmapAiOperationResolutionDto[] = [];
 
     operations.forEach((operation, index) => {
       const opPath = `/operations/${index}`;
       switch (operation.op) {
         case 'add_epic':
-          this.applyAddEpic(state, operation, opPath, issues);
+          this.applyAddEpic(
+            state,
+            operation,
+            index,
+            opPath,
+            issues,
+            tempIdMap,
+            operationResults,
+          );
           break;
         case 'add_feature':
-          this.applyAddFeature(state, operation, opPath, issues);
+          this.applyAddFeature(
+            state,
+            operation,
+            index,
+            opPath,
+            issues,
+            tempIdMap,
+            operationResults,
+          );
           break;
         case 'add_task':
-          this.applyAddTask(state, operation, opPath, issues);
+          this.applyAddTask(
+            state,
+            operation,
+            index,
+            opPath,
+            issues,
+            tempIdMap,
+            operationResults,
+          );
           break;
         case 'update_node':
-          this.applyUpdateNode(state, operation, opPath, issues);
+          this.applyUpdateNode(state, operation, opPath, issues, tempIdMap);
           break;
         case 'move_node':
-          this.applyMoveNode(state, operation, opPath, issues);
+          this.applyMoveNode(state, operation, opPath, issues, tempIdMap);
           break;
         case 'delete_node':
-          this.applyDeleteNode(state, operation, opPath, issues);
+          this.applyDeleteNode(state, operation, opPath, issues, tempIdMap);
           break;
         case 'mark_status':
-          this.applyMarkStatus(state, operation, opPath, issues);
+          this.applyMarkStatus(state, operation, opPath, issues, tempIdMap);
           break;
         case 'shift_dates':
-          this.applyShiftDates(state, operation, opPath, issues);
+          this.applyShiftDates(state, operation, opPath, issues, tempIdMap);
           break;
       }
     });
 
     this.reindexPositions(state);
-    return issues;
+    return {
+      issues,
+      tempIdMap,
+      operationResults,
+    };
   }
 
   private applyAddEpic(
     state: FullRoadmapState,
     operation: RoadmapAiOperationDto,
+    index: number,
     path: string,
     issues: RoadmapValidationIssueDto[],
+    tempIdMap: Map<string, string>,
+    operationResults: RoadmapAiOperationResolutionDto[],
   ) {
     const title = this.readString(operation.data, 'title');
     if (!title) {
@@ -1752,8 +1908,24 @@ export class RoadmapAiService {
       return;
     }
 
+    const assignedId = this.readUuid(operation.data, 'id') ?? randomUUID();
+    if (
+      !this.registerCreateOperationResolution(
+        operation,
+        index,
+        'epic',
+        assignedId,
+        path,
+        issues,
+        tempIdMap,
+        operationResults,
+      )
+    ) {
+      return;
+    }
+
     const epic: FullRoadmapEpicDto = {
-      id: this.readUuid(operation.data, 'id') ?? randomUUID(),
+      id: assignedId,
       title,
       description: this.readString(operation.data, 'description'),
       status: this.readString(operation.data, 'status') ?? 'backlog',
@@ -1788,19 +1960,24 @@ export class RoadmapAiService {
   private applyAddFeature(
     state: FullRoadmapState,
     operation: RoadmapAiOperationDto,
+    index: number,
     path: string,
     issues: RoadmapValidationIssueDto[],
+    tempIdMap: Map<string, string>,
+    operationResults: RoadmapAiOperationResolutionDto[],
   ) {
-    const parentId = operation.parent_id;
+    const parentId = this.resolveOperationIdentity({
+      idValue: operation.parent_id,
+      refValue: operation.parent_ref,
+      idPath: `${path}/parent_id`,
+      refPath: `${path}/parent_ref`,
+      required: true,
+      missingMessage: 'parent_id or parent_ref is required for add_feature',
+      unresolvedRefMessage: 'add_feature requires an existing epic parent',
+      issues,
+      tempIdMap,
+    });
     if (!parentId) {
-      issues.push(
-        this.issue(
-          'MISSING_REQUIRED_FIELD',
-          'error',
-          `${path}/parent_id`,
-          'parent_id is required for add_feature',
-        ),
-      );
       return;
     }
 
@@ -1830,8 +2007,24 @@ export class RoadmapAiService {
       return;
     }
 
+    const assignedId = this.readUuid(operation.data, 'id') ?? randomUUID();
+    if (
+      !this.registerCreateOperationResolution(
+        operation,
+        index,
+        'feature',
+        assignedId,
+        path,
+        issues,
+        tempIdMap,
+        operationResults,
+      )
+    ) {
+      return;
+    }
+
     const feature: FullRoadmapFeatureDto = {
-      id: this.readUuid(operation.data, 'id') ?? randomUUID(),
+      id: assignedId,
       title,
       description: this.readString(operation.data, 'description'),
       status: this.readString(operation.data, 'status') ?? 'not_started',
@@ -1865,19 +2058,24 @@ export class RoadmapAiService {
   private applyAddTask(
     state: FullRoadmapState,
     operation: RoadmapAiOperationDto,
+    index: number,
     path: string,
     issues: RoadmapValidationIssueDto[],
+    tempIdMap: Map<string, string>,
+    operationResults: RoadmapAiOperationResolutionDto[],
   ) {
-    const parentId = operation.parent_id;
+    const parentId = this.resolveOperationIdentity({
+      idValue: operation.parent_id,
+      refValue: operation.parent_ref,
+      idPath: `${path}/parent_id`,
+      refPath: `${path}/parent_ref`,
+      required: true,
+      missingMessage: 'parent_id or parent_ref is required for add_task',
+      unresolvedRefMessage: 'add_task requires an existing feature parent',
+      issues,
+      tempIdMap,
+    });
     if (!parentId) {
-      issues.push(
-        this.issue(
-          'MISSING_REQUIRED_FIELD',
-          'error',
-          `${path}/parent_id`,
-          'parent_id is required for add_task',
-        ),
-      );
       return;
     }
 
@@ -1907,8 +2105,24 @@ export class RoadmapAiService {
       return;
     }
 
+    const assignedId = this.readUuid(operation.data, 'id') ?? randomUUID();
+    if (
+      !this.registerCreateOperationResolution(
+        operation,
+        index,
+        'task',
+        assignedId,
+        path,
+        issues,
+        tempIdMap,
+        operationResults,
+      )
+    ) {
+      return;
+    }
+
     const task: FullRoadmapTaskDto = {
-      id: this.readUuid(operation.data, 'id') ?? randomUUID(),
+      id: assignedId,
       title,
       description: this.readString(operation.data, 'description'),
       status: this.readString(operation.data, 'status') ?? 'todo',
@@ -1942,16 +2156,20 @@ export class RoadmapAiService {
     operation: RoadmapAiOperationDto,
     path: string,
     issues: RoadmapValidationIssueDto[],
+    tempIdMap: Map<string, string>,
   ) {
-    if (!operation.node_id) {
-      issues.push(
-        this.issue(
-          'MISSING_REQUIRED_FIELD',
-          'error',
-          `${path}/node_id`,
-          'node_id is required for update_node',
-        ),
-      );
+    const nodeId = this.resolveOperationIdentity({
+      idValue: operation.node_id,
+      refValue: operation.node_ref,
+      idPath: `${path}/node_id`,
+      refPath: `${path}/node_ref`,
+      required: true,
+      missingMessage: 'node_id or node_ref is required for update_node',
+      unresolvedRefMessage: 'Target node was not found',
+      issues,
+      tempIdMap,
+    });
+    if (!nodeId) {
       return;
     }
     if (!operation.patch || typeof operation.patch !== 'object') {
@@ -1966,7 +2184,7 @@ export class RoadmapAiService {
       return;
     }
 
-    const locator = this.findNodeById(state, operation.node_id);
+    const locator = this.findNodeById(state, nodeId);
     if (!locator) {
       issues.push(
         this.issue(
@@ -1989,7 +2207,7 @@ export class RoadmapAiService {
             'error',
             `${path}/patch/${key}`,
             `Field "${key}" is not allowed for update_node`,
-            { type: locator.type, id: operation.node_id },
+            { type: locator.type, id: nodeId },
           ),
         );
         return;
@@ -2007,20 +2225,24 @@ export class RoadmapAiService {
     operation: RoadmapAiOperationDto,
     path: string,
     issues: RoadmapValidationIssueDto[],
+    tempIdMap: Map<string, string>,
   ) {
-    if (!operation.node_id) {
-      issues.push(
-        this.issue(
-          'MISSING_REQUIRED_FIELD',
-          'error',
-          `${path}/node_id`,
-          'node_id is required for move_node',
-        ),
-      );
+    const nodeId = this.resolveOperationIdentity({
+      idValue: operation.node_id,
+      refValue: operation.node_ref,
+      idPath: `${path}/node_id`,
+      refPath: `${path}/node_ref`,
+      required: true,
+      missingMessage: 'node_id or node_ref is required for move_node',
+      unresolvedRefMessage: 'Target node was not found',
+      issues,
+      tempIdMap,
+    });
+    if (!nodeId) {
       return;
     }
 
-    const locator = this.findNodeById(state, operation.node_id);
+    const locator = this.findNodeById(state, nodeId);
     if (!locator || locator.type === 'roadmap') {
       issues.push(
         this.issue(
@@ -2045,7 +2267,25 @@ export class RoadmapAiService {
     }
 
     if (locator.type === 'feature') {
-      const targetEpicId = operation.new_parent_id ?? locator.epic.id;
+      const resolvedNewParentId = this.resolveOperationIdentity({
+        idValue: operation.new_parent_id,
+        refValue: operation.new_parent_ref,
+        idPath: `${path}/new_parent_id`,
+        refPath: `${path}/new_parent_ref`,
+        required: false,
+        unresolvedRefMessage:
+          'Feature move requires an existing epic destination',
+        issues,
+        tempIdMap,
+      });
+      if (
+        !resolvedNewParentId &&
+        (operation.new_parent_id || operation.new_parent_ref)
+      ) {
+        return;
+      }
+
+      const targetEpicId = resolvedNewParentId ?? locator.epic.id;
       if (!targetEpicId) {
         issues.push(
           this.issue(
@@ -2081,7 +2321,25 @@ export class RoadmapAiService {
       return;
     }
 
-    const targetFeatureId = operation.new_parent_id ?? locator.feature.id;
+    const resolvedNewParentId = this.resolveOperationIdentity({
+      idValue: operation.new_parent_id,
+      refValue: operation.new_parent_ref,
+      idPath: `${path}/new_parent_id`,
+      refPath: `${path}/new_parent_ref`,
+      required: false,
+      unresolvedRefMessage:
+        'Task move requires an existing feature destination',
+      issues,
+      tempIdMap,
+    });
+    if (
+      !resolvedNewParentId &&
+      (operation.new_parent_id || operation.new_parent_ref)
+    ) {
+      return;
+    }
+
+    const targetFeatureId = resolvedNewParentId ?? locator.feature.id;
     if (!targetFeatureId) {
       issues.push(
         this.issue(
@@ -2122,20 +2380,24 @@ export class RoadmapAiService {
     operation: RoadmapAiOperationDto,
     path: string,
     issues: RoadmapValidationIssueDto[],
+    tempIdMap: Map<string, string>,
   ) {
-    if (!operation.node_id) {
-      issues.push(
-        this.issue(
-          'MISSING_REQUIRED_FIELD',
-          'error',
-          `${path}/node_id`,
-          'node_id is required for delete_node',
-        ),
-      );
+    const nodeId = this.resolveOperationIdentity({
+      idValue: operation.node_id,
+      refValue: operation.node_ref,
+      idPath: `${path}/node_id`,
+      refPath: `${path}/node_ref`,
+      required: true,
+      missingMessage: 'node_id or node_ref is required for delete_node',
+      unresolvedRefMessage: 'Target node was not found',
+      issues,
+      tempIdMap,
+    });
+    if (!nodeId) {
       return;
     }
 
-    const locator = this.findNodeById(state, operation.node_id);
+    const locator = this.findNodeById(state, nodeId);
     if (!locator || locator.type === 'roadmap') {
       issues.push(
         this.issue(
@@ -2166,16 +2428,20 @@ export class RoadmapAiService {
     operation: RoadmapAiOperationDto,
     path: string,
     issues: RoadmapValidationIssueDto[],
+    tempIdMap: Map<string, string>,
   ) {
-    if (!operation.node_id) {
-      issues.push(
-        this.issue(
-          'MISSING_REQUIRED_FIELD',
-          'error',
-          `${path}/node_id`,
-          'node_id is required for mark_status',
-        ),
-      );
+    const nodeId = this.resolveOperationIdentity({
+      idValue: operation.node_id,
+      refValue: operation.node_ref,
+      idPath: `${path}/node_id`,
+      refPath: `${path}/node_ref`,
+      required: true,
+      missingMessage: 'node_id or node_ref is required for mark_status',
+      unresolvedRefMessage: 'Target node was not found',
+      issues,
+      tempIdMap,
+    });
+    if (!nodeId) {
       return;
     }
     if (!operation.status) {
@@ -2190,7 +2456,7 @@ export class RoadmapAiService {
       return;
     }
 
-    const locator = this.findNodeById(state, operation.node_id);
+    const locator = this.findNodeById(state, nodeId);
     if (!locator) {
       issues.push(
         this.issue(
@@ -2225,6 +2491,7 @@ export class RoadmapAiService {
     operation: RoadmapAiOperationDto,
     path: string,
     issues: RoadmapValidationIssueDto[],
+    tempIdMap: Map<string, string>,
   ) {
     if (operation.delta_days === undefined) {
       issues.push(
@@ -2237,19 +2504,22 @@ export class RoadmapAiService {
       );
       return;
     }
-    if (!operation.node_id) {
-      issues.push(
-        this.issue(
-          'MISSING_REQUIRED_FIELD',
-          'error',
-          `${path}/node_id`,
-          'node_id is required for shift_dates',
-        ),
-      );
+    const nodeId = this.resolveOperationIdentity({
+      idValue: operation.node_id,
+      refValue: operation.node_ref,
+      idPath: `${path}/node_id`,
+      refPath: `${path}/node_ref`,
+      required: true,
+      missingMessage: 'node_id or node_ref is required for shift_dates',
+      unresolvedRefMessage: 'Target node was not found',
+      issues,
+      tempIdMap,
+    });
+    if (!nodeId) {
       return;
     }
 
-    const locator = this.findNodeById(state, operation.node_id);
+    const locator = this.findNodeById(state, nodeId);
     if (!locator) {
       issues.push(
         this.issue(
