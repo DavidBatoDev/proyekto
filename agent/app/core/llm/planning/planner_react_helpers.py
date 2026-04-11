@@ -655,6 +655,11 @@ def augment_repair_planner_prompt(
             '\n\nIMPORTANT REPAIR: Your previous tool-call payload failed schema validation. '
             'Retry with a valid plan_roadmap_operations payload using only supported operation fields. '
             'Use existing resolved IDs and avoid repeating discovery tools unless IDs are still missing.'
+            ' For assignment updates, use patch.assignee_id (never assignee). '
+            'For unassign actions, set patch.assignee_id to null (never "unassign" as a string). '
+            'For broad assignment requests, prefer bulk_assign_tasks or bulk_update_tasks_by_filter '
+            'and include assignee_id. '
+            'When assigning to "me", use actor_context.actor_id from runtime context.'
             f'{enum_guardrail}'
             f'{detail_suffix}'
         )

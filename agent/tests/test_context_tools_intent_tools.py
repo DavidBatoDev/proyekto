@@ -523,6 +523,40 @@ class ContextToolIntentTests(unittest.TestCase):
         self.assertEqual(error.get('code'), 'INVALID_ARGUMENT')
         self.assertEqual(error.get('arg_name'), 'status')
 
+    def test_update_task_assignee_accepts_unassign_token(self) -> None:
+        result = self.executor.execute(
+            'update_task_assignee',
+            {
+                'roadmap_id': 'r1',
+                'task_id': 't1',
+                'assignee_id': 'unassign',
+            },
+            self.session_context,
+        )
+        operations = result.get('operations')
+        self.assertIsInstance(operations, list)
+        assert isinstance(operations, list)
+        self.assertEqual(len(operations), 1)
+        self.assertEqual((operations[0].get('patch') or {}).get('assignee_id'), None)
+
+    def test_bulk_assign_tasks_accepts_null_for_unassign(self) -> None:
+        result = self.executor.execute(
+            'bulk_assign_tasks',
+            {
+                'roadmap_id': 'r1',
+                'task_ids': ['t1', 't2'],
+                'assignee_id': None,
+            },
+            self.session_context,
+        )
+        operations = result.get('operations')
+        self.assertIsInstance(operations, list)
+        assert isinstance(operations, list)
+        self.assertEqual(len(operations), 2)
+        self.assertTrue(
+            all((op.get('patch') or {}).get('assignee_id') is None for op in operations)
+        )
+
     def test_get_tasks_by_status_filters_tasks(self) -> None:
         result = self.executor.execute(
             'get_tasks_by_status',

@@ -95,10 +95,45 @@ class OperationContractsTests(unittest.TestCase):
         )
         self.assertIsNone(validation_error)
 
+    def test_update_node_requires_effective_mutation_payload(self) -> None:
+        operations = [
+            RoadmapOperation(
+                op='update_node',
+                node_type='task',
+                node_id='123e4567-e89b-12d3-a456-426614174000',
+            )
+        ]
+        validation_error = validate_operation_contract(
+            operations,
+            is_uuid=self._is_uuid,
+        )
+        self.assertIsNotNone(validation_error)
+        assert validation_error is not None
+        self.assertEqual(validation_error.get('reason'), 'update_node.mutation_missing')
+
+    def test_update_node_allows_assignee_clear_with_null_patch_value(self) -> None:
+        operations = [
+            RoadmapOperation(
+                op='update_node',
+                node_type='task',
+                node_id='123e4567-e89b-12d3-a456-426614174000',
+                patch={'assignee_id': None},
+            )
+        ]
+        validation_error = validate_operation_contract(
+            operations,
+            is_uuid=self._is_uuid,
+        )
+        self.assertIsNone(validation_error)
+
     def test_operation_validation_guidance_for_new_reasons(self) -> None:
         self.assertIn(
             'missing a status value',
             operation_validation_guidance('mark_status.status_missing').lower(),
+        )
+        self.assertIn(
+            'include patch fields',
+            operation_validation_guidance('update_node.mutation_missing').lower(),
         )
         self.assertIn(
             'between -3650 and 3650',

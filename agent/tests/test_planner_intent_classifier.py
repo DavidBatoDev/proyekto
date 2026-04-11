@@ -18,6 +18,12 @@ class PlannerIntentClassifierTests(unittest.TestCase):
         intent = planner_intent_classifier.heuristic_intent('rename the task to "Migrate Payments"')
         self.assertEqual(intent, 'roadmap_edit')
 
+    def test_heuristic_intent_classifies_past_tense_assignment_as_edit(self) -> None:
+        intent = planner_intent_classifier.heuristic_intent(
+            'Assigned all tasks to me inside the Agent Module'
+        )
+        self.assertEqual(intent, 'roadmap_edit')
+
     def test_is_simple_edit_planner_request_matches_rename(self) -> None:
         self.assertTrue(planner_intent_classifier.is_simple_edit_planner_request('rename feature to "Auth"'))
         self.assertFalse(planner_intent_classifier.is_simple_edit_planner_request('add a new epic'))

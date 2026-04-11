@@ -42,6 +42,20 @@ def is_actor_context_required_message(user_message: str) -> bool:
         if deterministic_intent.pending_kind == 'my_tasks':
             return True
 
+    # Any explicit first-person or direct "user" mention should resolve actor context
+    # so planner operations can map pronouns like "me" to concrete actor_id values.
+    broad_actor_reference_patterns = (
+        r'\bme\b',
+        r'\bmy\b',
+        r'\bmine\b',
+        r'\bmyself\b',
+        r"\bi\b",
+        r"\bi(?:'|\u2019)(?:m|ve|d|ll)\b",
+        r'\buser(?:\'s)?\b',
+    )
+    if any(re.search(pattern, lowered) for pattern in broad_actor_reference_patterns):
+        return True
+
     actor_required_patterns = (
         r'\bmy(?:\s+\w+){0,2}\s+tasks?\b',
         r'\bassigned\s+to\s+me\b',

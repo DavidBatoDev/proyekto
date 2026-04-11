@@ -161,6 +161,9 @@ def operation_validation_guidance(reason: str | None) -> str:
         'add_task.parent_id_invalid_uuid': (
             'The task parent reference is invalid. Specify the exact parent feature.'
         ),
+        'update_node.mutation_missing': (
+            'The update operation is missing changes. Include patch fields to modify (for example title, priority, or assignee_id; use assignee_id=null to unassign).'
+        ),
         'mark_status.status_missing': (
             'The status update is missing a status value. Specify the exact status to apply.'
         ),

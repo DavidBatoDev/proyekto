@@ -26,6 +26,7 @@ from app.api.routes.sessions_support.artifact_builder import (
 )
 from app.api.routes.sessions_support.common import (
     extract_upstream_error_code as extract_upstream_error_code_helper,
+    extract_upstream_error_details as extract_upstream_error_details_helper,
     sanitize_session_metadata as sanitize_session_metadata_helper,
     serialized_payload_bytes as serialized_payload_bytes_helper,
     utcnow as utcnow_helper,
@@ -98,6 +99,11 @@ def _serialized_payload_bytes(payload: dict) -> int:
 
 def _extract_upstream_error_code(detail: object) -> str | None:
     return extract_upstream_error_code_helper(detail)
+
+
+def _extract_upstream_error_details(detail: object) -> dict:
+    details = extract_upstream_error_details_helper(detail)
+    return details if isinstance(details, dict) else {}
 
 
 def _resolve_draft_snapshot(
@@ -265,6 +271,7 @@ async def _run_auto_commit_in_background(
         trace_id=trace_id,
         execute_auto_commit_fn=_execute_auto_commit,
         extract_upstream_error_code=_extract_upstream_error_code,
+        extract_upstream_error_details=_extract_upstream_error_details,
         logger=logger,
         settings=settings,
         log_event_fn=log_event,
@@ -303,6 +310,7 @@ async def send_message(
         schedule_auto_commit_task=_schedule_auto_commit_task,
         run_auto_commit_in_background=_run_auto_commit_in_background,
         extract_upstream_error_code=_extract_upstream_error_code,
+        extract_upstream_error_details=_extract_upstream_error_details,
         settings=settings,
         logger=logger,
         log_event_fn=log_event,

@@ -26,6 +26,15 @@ FEATURE_STATUS_SET = set(FEATURE_STATUS_VALUES)
 EPIC_PRIORITY_VALUES = ('critical', 'nice_to_have', 'low', 'medium', 'high')
 EPIC_PRIORITY_SET = set(EPIC_PRIORITY_VALUES)
 RELAXED_RESOLVE_UNIQUE_MIN_CONFIDENCE = 0.8
+UNASSIGN_ASSIGNEE_TOKENS = {
+    'unassign',
+    'unassigned',
+    'none',
+    'null',
+    'no assignee',
+    'remove assignee',
+    'clear assignee',
+}
 
 
 class ContextToolsExecutor:
@@ -1804,12 +1813,24 @@ class ContextToolsExecutor:
 
             if tool_name == 'update_task_assignee':
                 task_id = str(args.get('task_id') or '').strip()
-                assignee_id = str(args.get('assignee_id') or '').strip()
-                if not task_id or not assignee_id:
+                has_assignee_id = 'assignee_id' in args
+                is_valid_assignee, assignee_id = self._normalize_assignee_update_input(
+                    args.get('assignee_id')
+                )
+                if not task_id or not has_assignee_id:
                     return self._invalid_argument_result(
                         arg_name='task_id/assignee_id',
                         arg_value=args,
                         message='task_id and assignee_id are required for update_task_assignee.',
+                    )
+                if not is_valid_assignee:
+                    return self._invalid_argument_result(
+                        arg_name='assignee_id',
+                        arg_value=args.get('assignee_id'),
+                        message=(
+                            'assignee_id must be a non-empty string or null '
+                            '(use null/unassign/unassigned/none/null to clear assignment).'
+                        ),
                     )
                 result = self._build_operation_result(
                     tool_name=tool_name,
@@ -2561,12 +2582,24 @@ class ContextToolsExecutor:
 
             if tool_name == 'bulk_assign_tasks':
                 task_ids = self._string_list(args.get('task_ids'))
-                assignee_id = str(args.get('assignee_id') or '').strip()
-                if not task_ids or not assignee_id:
+                has_assignee_id = 'assignee_id' in args
+                is_valid_assignee, assignee_id = self._normalize_assignee_update_input(
+                    args.get('assignee_id')
+                )
+                if not task_ids or not has_assignee_id:
                     return self._invalid_argument_result(
                         arg_name='task_ids/assignee_id',
                         arg_value=args,
                         message='task_ids and assignee_id are required for bulk_assign_tasks.',
+                    )
+                if not is_valid_assignee:
+                    return self._invalid_argument_result(
+                        arg_name='assignee_id',
+                        arg_value=args.get('assignee_id'),
+                        message=(
+                            'assignee_id must be a non-empty string or null '
+                            '(use null/unassign/unassigned/none/null to clear assignment).'
+                        ),
                     )
                 operations = [
                     {
@@ -2983,6 +3016,19 @@ class ContextToolsExecutor:
         normalized = re.sub(r'[\"\'`]+', ' ', normalized)
         normalized = re.sub(r'\s+', ' ', normalized).strip()
         return normalized
+
+    def _normalize_assignee_update_input(self, value: Any) -> tuple[bool, str | None]:
+        if value is None:
+            return True, None
+        if not isinstance(value, str):
+            return False, None
+        normalized = value.strip()
+        if not normalized:
+            return False, None
+        canonical = ' '.join(re.sub(r'[^a-z0-9]+', ' ', normalized.lower()).split())
+        if canonical in UNASSIGN_ASSIGNEE_TOKENS:
+            return True, None
+        return True, normalized
 
     def _query_variants(self, label: str) -> list[str]:
         base = self._normalize_query_text(label)

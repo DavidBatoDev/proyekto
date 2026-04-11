@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     )
     openai_max_tokens: int | None = Field(default=None, alias='OPENAI_MAX_TOKENS')
     openai_planner_max_tokens: int | None = Field(
-        default=None,
+        default=1200,
         alias='OPENAI_PLANNER_MAX_TOKENS',
     )
     openai_simple_edit_max_tokens: int | None = Field(
@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     max_edit_history_messages: int = Field(default=4, alias='MAX_EDIT_HISTORY_MESSAGES')
     max_edit_tool_turns: int = Field(default=4, alias='MAX_EDIT_TOOL_TURNS')
     max_context_tool_turns: int = Field(default=4, alias='MAX_CONTEXT_TOOL_TURNS')
-    max_discovery_tool_calls: int = Field(default=4, alias='MAX_DISCOVERY_TOOL_CALLS')
+    max_discovery_tool_calls: int = Field(default=6, alias='MAX_DISCOVERY_TOOL_CALLS')
     max_repeated_tool_calls_per_signature: int = Field(
         default=2,
         alias='MAX_REPEATED_TOOL_CALLS_PER_SIGNATURE',
@@ -81,6 +81,14 @@ class Settings(BaseSettings):
     agent_llm_first_mode_enabled: bool = Field(
         default=True,
         alias='AGENT_LLM_FIRST_MODE_ENABLED',
+    )
+    agent_edit_assignee_autofix_enabled: bool = Field(
+        default=True,
+        alias='AGENT_EDIT_ASSIGNEE_AUTOFIX_ENABLED',
+    )
+    agent_edit_actionable_failure_clarifier_enabled: bool = Field(
+        default=False,
+        alias='AGENT_EDIT_ACTIONABLE_FAILURE_CLARIFIER_ENABLED',
     )
     agent_draft_graph_enabled: bool = Field(
         default=False,

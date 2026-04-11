@@ -21,7 +21,7 @@ def heuristic_intent(user_message: str) -> IntentType:
     if looks_like_roadmap_plan_request(text):
         return 'roadmap_plan'
     if re.search(
-        r'\b(add|create|move|delete|remove|update|mark|shift|link|unlink|rename|retitle|change|assign|reassign|unassign)\b',
+        r'\b(add|create|move|delete|remove|update|updated|mark|shift|link|unlink|rename|retitle|change|changed|assign|assigned|reassign|reassigned|unassign|unassigned)\b',
         text,
     ):
         return 'roadmap_edit'

@@ -79,6 +79,7 @@ async def send_message_flow(
     schedule_auto_commit_task: Callable[[Any], Any],
     run_auto_commit_in_background: Callable[..., Awaitable[None]],
     extract_upstream_error_code: Callable[[object], str | None],
+    extract_upstream_error_details: Callable[[object], dict[str, Any]] | None,
     settings: Any,
     logger: Any,
     log_event_fn: Callable[..., None],
@@ -113,6 +114,10 @@ async def send_message_flow(
     error_code: int | None = None
     auto_commit_ms: int | None = None
     auto_commit_error_code: str | None = None
+    auto_commit_error_name: str | None = None
+    auto_commit_error_message: str | None = None
+    auto_commit_error_status_code: int | None = None
+    auto_commit_invalid_operation: dict[str, Any] | None = None
     auto_commit_error_retryable: bool | None = None
     auto_commit_error_upstream_status: int | None = None
     auto_commit_async_enqueued = False
@@ -218,7 +223,34 @@ async def send_message_flow(
     except HTTPException as exc:
         error_code = exc.status_code
         if outcome is not None and outcome.response_mode == 'edit_plan':
+            details = (
+                extract_upstream_error_details(exc.detail)
+                if callable(extract_upstream_error_details)
+                else {}
+            )
             auto_commit_error_code = extract_upstream_error_code(exc.detail)
+            if not auto_commit_error_code and isinstance(details.get('code'), str):
+                auto_commit_error_code = str(details.get('code')).strip() or None
+            auto_commit_error_name = (
+                str(details.get('error')).strip()
+                if isinstance(details.get('error'), str) and str(details.get('error')).strip()
+                else None
+            )
+            auto_commit_error_message = (
+                str(details.get('message')).strip()
+                if isinstance(details.get('message'), str) and str(details.get('message')).strip()
+                else None
+            )
+            auto_commit_error_status_code = (
+                int(details.get('status_code'))
+                if isinstance(details.get('status_code'), int)
+                else None
+            )
+            auto_commit_invalid_operation = (
+                details.get('invalid_operation')
+                if isinstance(details.get('invalid_operation'), dict)
+                else None
+            )
             auto_commit_error_retryable = exc.status_code >= 500 or exc.status_code in {408, 429}
             auto_commit_error_upstream_status = exc.status_code
         raise
@@ -320,6 +352,10 @@ async def send_message_flow(
             auto_commit_async_enabled=settings.agent_async_auto_commit_enabled,
             auto_commit_async_enqueued=auto_commit_async_enqueued,
             auto_commit_error_code=auto_commit_error_code,
+            auto_commit_error_name=auto_commit_error_name,
+            auto_commit_error_message=auto_commit_error_message,
+            auto_commit_error_status_code=auto_commit_error_status_code,
+            auto_commit_invalid_operation=auto_commit_invalid_operation,
             auto_commit_error_retryable=auto_commit_error_retryable,
             auto_commit_error_upstream_status=auto_commit_error_upstream_status,
             pending_edit_context_present=(

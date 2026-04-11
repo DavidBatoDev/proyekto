@@ -1255,6 +1255,56 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
         self.assertEqual(observed['max_tool_turns'], 4)
         self.assertEqual(response.get('route_lane'), 'discovery_lane')
 
+    def test_question_prompt_prefers_tasks_by_parent_for_scoped_listings(self) -> None:
+        def execute_tool(_name: str, _args: dict, _context: dict):
+            return {'ok': True}
+
+        service, _cache, _provider, _build_key = self._service(execute_tool)
+        observed = {'question_prompt': ''}
+
+        def call(operation, trace_context=None):  # noqa: ANN001
+            class _Adapter:
+                def answer_with_tools(
+                    self,
+                    *,
+                    system_prompt,
+                    question_prompt,
+                    history_messages,
+                    tools,
+                    tool_executor,
+                    max_tool_turns,
+                ):
+                    observed['question_prompt'] = question_prompt
+                    return 'resolved'
+
+            value = operation(_Adapter())
+            return SimpleNamespace(
+                value=value,
+                provider_used='openai',
+                fallback_used=False,
+                provider_error_code=None,
+                tokens_input=1,
+                tokens_output=1,
+                tokens_total=2,
+            )
+
+        service._provider_orchestrator.call = call  # type: ignore[assignment]
+        service.generate(
+            user_message='Show all tasks under Agent Module',
+            system_prompt='system',
+            session_context={
+                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                'trace_id': 'trace-prompt-guidance',
+            },
+            history_messages=[],
+            intent_type='question',
+        )
+
+        prompt = observed['question_prompt']
+        self.assertIn('Use get_tasks_by_parent for scoped task listings', prompt)
+        self.assertIn('parent_type="epic"', prompt)
+        self.assertIn('include completed tasks', prompt)
+
 
 if __name__ == '__main__':
     unittest.main()

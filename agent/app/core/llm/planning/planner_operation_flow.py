@@ -18,7 +18,7 @@ from app.core.tools.registry import (
     PLANNING_TOOL_NAME,
     parse_plan_tool_args,
 )
-from app.core.uuid_utils import normalize_uuid
+from app.core.uuid_utils import is_uuid_like, normalize_uuid
 
 
 def _is_bulk_task_scope_update_intent(user_message: str) -> bool:
@@ -118,6 +118,27 @@ def _operation_payloads(operations: list[RoadmapOperation]) -> list[dict[str, An
         operation.model_dump(mode='json', exclude_none=True)
         for operation in operations
     ]
+
+
+def _first_semantic_contract_error(
+    operations: list[RoadmapOperation],
+) -> dict[str, Any] | None:
+    for index, operation in enumerate(operations):
+        issues = operation.semantic_contract_issues(is_uuid=is_uuid_like)
+        if not issues:
+            continue
+        return {
+            'index': index,
+            'reason': issues[0],
+            'op': operation.op.value,
+            'node_type': (
+                operation.node_type.value
+                if operation.node_type is not None
+                else None
+            ),
+            'operation': operation.model_dump(exclude_none=True),
+        }
+    return None
 
 
 def _has_bulk_task_status_semantic_mismatch(
@@ -394,6 +415,37 @@ def _augment_bulk_task_status_contract_retry_prompt(
     )
 
 
+def _augment_semantic_contract_retry_prompt(
+    *,
+    planner_prompt: str,
+    validation_error: dict[str, Any],
+) -> str:
+    marker = 'SEMANTIC OPERATION CONTRACT REPAIR:'
+    if marker in planner_prompt:
+        return planner_prompt
+
+    reason = str(validation_error.get('reason') or '').strip()
+    guidance = (
+        'Each update_node operation must include an actual mutation payload. '
+        'Use a non-empty patch object (for example patch.title, patch.priority, or patch.assignee_id). '
+        'For unassign actions, set patch.assignee_id to null.'
+        if reason == 'update_node.mutation_missing'
+        else 'Fix the invalid operation shape and produce only semantically valid operations.'
+    )
+    payload = json.dumps(
+        validation_error,
+        ensure_ascii=True,
+        separators=(',', ':'),
+    )
+    return (
+        f'{planner_prompt}\n\n'
+        'SEMANTIC OPERATION CONTRACT REPAIR:\n'
+        f'Reason: {reason or "invalid_operation_contract"}.\n'
+        f'{guidance}\n\n'
+        f'Invalid operation snapshot from previous attempt:\n{payload}'
+    )
+
+
 def _safe_int(value: Any) -> int:
     if isinstance(value, bool):
         return int(value)
@@ -647,13 +699,26 @@ def plan_operations(
             False,
         )
     )
+    actionable_failure_clarifier_enabled = bool(
+        getattr(
+            planner._settings,
+            'agent_edit_actionable_failure_clarifier_enabled',
+            False,
+        )
+    )
+    actor_context_for_planner = (
+        session_context.get('actor_context')
+        if isinstance(session_context.get('actor_context'), dict)
+        else None
+    )
     schema_invalid_attempts = 0
     repair_attempted = False
     explicit_parent_type_hint = _explicit_parent_type_hint(user_message)
     operation_op_guardrail = (
         'Helper tool names are never valid operation op values. '
         'Only use operation op values: add_epic, add_feature, add_task, '
-        'update_node, move_node, delete_node, mark_status, shift_dates.'
+        'update_node, move_node, delete_node, mark_status, shift_dates. '
+        'For assignment changes, use update_node.patch.assignee_id; for unassign, set patch.assignee_id to null.'
     )
 
     def _serialize_tool_args(value: dict[str, Any]) -> str:
@@ -770,6 +835,123 @@ def plan_operations(
                 'needs_more_info': True,
                 'stop_reason': 'provider_outage',
             }
+        )
+
+    def _is_assignee_contract_failure(error_message: str | None) -> bool:
+        detail = str(error_message or '').strip().lower()
+        if not detail:
+            return False
+        if "('assignee',)" in detail and 'extra' in detail and ('forbidden' in detail or 'not permitted' in detail):
+            return True
+        return (
+            'assignee' in detail
+            and 'extra' in detail
+            and ('forbidden' in detail or 'not permitted' in detail)
+        )
+
+    def _build_actionable_planner_failure_state(
+        *,
+        provider_error_code: str | None,
+        provider_error_message: str | None,
+        tokens_input: int | None = None,
+        tokens_output: int | None = None,
+        tokens_total: int | None = None,
+    ) -> dict[str, Any]:
+        normalized_code = str(provider_error_code or '').strip().lower()
+        clarifier_reason = 'planner_contract_failure'
+        question = (
+            'I resolved context but could not produce a valid operation plan this turn. '
+            'Should I retry now, or narrow to one target first?'
+        )
+        options = ['Retry now', 'Narrow to one target', 'Cancel']
+
+        if normalized_code == 'missing_tool_call':
+            clarifier_reason = 'planner_missing_tool_call'
+            question = (
+                'I resolved context but did not receive a valid plan tool call. '
+                'Should I retry now, or narrow to one epic/feature first?'
+            )
+            options = ['Retry now', 'Narrow to one epic/feature', 'Cancel']
+        elif normalized_code == 'invalid_operation_payload':
+            if _is_assignee_contract_failure(provider_error_message):
+                clarifier_reason = 'planner_invalid_assignee_shape'
+                question = (
+                    'I found the target scope, but assignment payload shape was invalid for "assign to me". '
+                    'Should I retry and assign using your actor identity?'
+                )
+                options = ['Retry assign to me', 'Narrow to one target', 'Cancel']
+            else:
+                clarifier_reason = 'planner_invalid_operation_payload'
+                question = (
+                    'I found the target scope, but the generated operation payload was invalid. '
+                    'Should I retry now, or narrow to one target first?'
+                )
+                options = ['Retry now', 'Narrow to one target', 'Cancel']
+
+        assistant_message, clarifier_options = build_clarifier_contract(
+            reason=clarifier_reason,
+            question=question,
+            options=options,
+        )
+        return _finalize_state(
+            {
+                'assistant_message': assistant_message,
+                'planned_operations': [],
+                'response_mode': 'chat',
+                'preview_recommended': False,
+                'parse_mode': 'llm_first_planner_contract_failure',
+                'provider_used': 'rule_based',
+                'fallback_used': False,
+                'provider_error_code': provider_error_code,
+                'tokens_input': tokens_input,
+                'tokens_output': tokens_output,
+                'tokens_total': tokens_total,
+                'pending_context_resolution': None,
+                'clear_pending_context_resolution': False,
+                'clarifier_action': 'ask_clarifier',
+                'clarifier_reason': clarifier_reason,
+                'clarifier_options': clarifier_options,
+                'clarifier_schema_retries': schema_invalid_attempts,
+                'planner_schema_invalid_attempts': schema_invalid_attempts,
+                'planner_repair_attempted': repair_attempted,
+                'draft_action': 'continue',
+                'tool_plan': [],
+                'needs_more_info': True,
+                'stop_reason': 'awaiting_user_input',
+            }
+        )
+
+    def _build_llm_first_failure_state(
+        *,
+        provider_error_code: str | None,
+        provider_error_message: str | None,
+        tokens_input: int | None = None,
+        tokens_output: int | None = None,
+        tokens_total: int | None = None,
+    ) -> tuple[dict[str, Any], str]:
+        normalized_code = str(provider_error_code or '').strip().lower()
+        if (
+            actionable_failure_clarifier_enabled
+            and normalized_code in {'missing_tool_call', 'invalid_operation_payload'}
+        ):
+            return (
+                _build_actionable_planner_failure_state(
+                    provider_error_code=provider_error_code,
+                    provider_error_message=provider_error_message,
+                    tokens_input=tokens_input,
+                    tokens_output=tokens_output,
+                    tokens_total=tokens_total,
+                ),
+                'planner_contract_failure',
+            )
+        return (
+            _build_outage_edit_state(
+                provider_error_code=provider_error_code,
+                tokens_input=tokens_input,
+                tokens_output=tokens_output,
+                tokens_total=tokens_total,
+            ),
+            'provider_outage',
         )
 
     def _is_strict_synthesis_fallback_allowed(
@@ -1113,28 +1295,30 @@ def plan_operations(
     history_messages_count = len(history_messages)
 
     def _invoke_plan_with_tools(adapter: Any) -> tuple[str, list[RoadmapOperation]]:
+        base_kwargs: dict[str, Any] = {
+            'system_prompt': system_prompt,
+            'planner_prompt': planner_prompt,
+            'history_messages': history_messages,
+            'tools': tool_definitions,
+            'tool_executor': _capturing_tool_executor,
+            'max_tool_turns': edit_turns,
+        }
         if planner_profile:
+            base_kwargs['planner_profile'] = planner_profile
+        if actor_context_for_planner is not None:
+            base_kwargs['actor_context'] = actor_context_for_planner
+
+        try:
+            return adapter.plan_operations_with_tools(**base_kwargs)
+        except TypeError:
+            # Backward compatibility for test doubles and legacy adapters.
+            fallback_kwargs = dict(base_kwargs)
+            fallback_kwargs.pop('actor_context', None)
             try:
-                return adapter.plan_operations_with_tools(
-                    system_prompt=system_prompt,
-                    planner_prompt=planner_prompt,
-                    history_messages=history_messages,
-                    tools=tool_definitions,
-                    tool_executor=_capturing_tool_executor,
-                    max_tool_turns=edit_turns,
-                    planner_profile=planner_profile,
-                )
+                return adapter.plan_operations_with_tools(**fallback_kwargs)
             except TypeError:
-                # Backward compatibility for test doubles and legacy adapters
-                pass
-        return adapter.plan_operations_with_tools(
-            system_prompt=system_prompt,
-            planner_prompt=planner_prompt,
-            history_messages=history_messages,
-            tools=tool_definitions,
-            tool_executor=_capturing_tool_executor,
-            max_tool_turns=edit_turns,
-        )
+                fallback_kwargs.pop('planner_profile', None)
+                return adapter.plan_operations_with_tools(**fallback_kwargs)
 
     for attempt in range(max_attempts):
         if attempt > 0:
@@ -1234,21 +1418,32 @@ def plan_operations(
                 exc.message,
             )
             if llm_first_mode_enabled:
-                log_event(
-                    planner._logger,
-                    'edit_outage_clarifier_returned',
-                    settings=planner._settings,
-                    trace_id=trace_id,
+                failure_state, clarifier_classification = _build_llm_first_failure_state(
                     provider_error_code=exc.code,
-                    llm_first_mode_enabled=True,
-                    outage_clarifier_returned=True,
-                )
-                return _build_outage_edit_state(
-                    provider_error_code=exc.code,
+                    provider_error_message=exc.message,
                     tokens_input=exc.tokens_input,
                     tokens_output=exc.tokens_output,
                     tokens_total=exc.tokens_total,
                 )
+                event_name = (
+                    'edit_outage_clarifier_returned'
+                    if clarifier_classification == 'provider_outage'
+                    else 'edit_actionable_failure_clarifier_returned'
+                )
+                log_event(
+                    planner._logger,
+                    event_name,
+                    settings=planner._settings,
+                    trace_id=trace_id,
+                    provider_error_code=exc.code,
+                    llm_first_mode_enabled=True,
+                    outage_clarifier_returned=(clarifier_classification == 'provider_outage'),
+                    planner_contract_failure_returned=(
+                        clarifier_classification == 'planner_contract_failure'
+                    ),
+                    clarifier_classification=clarifier_classification,
+                )
+                return failure_state
             compound_create_titles = _extract_compound_epic_feature_titles(user_message)
             if exc.code == 'missing_tool_call' and compound_create_titles is not None:
                 epic_title, feature_title = compound_create_titles
@@ -1468,6 +1663,85 @@ def plan_operations(
                     }
                 )
 
+
+            semantic_validation_error = _first_semantic_contract_error(operations)
+            if semantic_validation_error is not None:
+                log_event(
+                    planner._logger,
+                    'semantic_operation_contract_violation',
+                    settings=planner._settings,
+                    trace_id=trace_id,
+                    validation_error=semantic_validation_error,
+                    operation_payloads=_operation_payloads(operations),
+                )
+                if attempt + 1 < max_attempts:
+                    schema_invalid_attempts += 1
+                    repair_attempted = True
+                    planner_prompt = _augment_semantic_contract_retry_prompt(
+                        planner_prompt=planner_prompt,
+                        validation_error=semantic_validation_error,
+                    )
+                    continue
+
+                reason = str(semantic_validation_error.get('reason') or '').strip()
+                if reason == 'update_node.mutation_missing':
+                    question = (
+                        'I could not safely stage this edit because one or more update operations '
+                        'did not include any actual changes. Please confirm the exact fields to change '
+                        '(for unassign, use assignee_id=null).'
+                    )
+                else:
+                    question = (
+                        'I could not safely stage this edit because the generated operations were '
+                        'semantically invalid. Please confirm the exact target and change.'
+                    )
+
+                if llm_first_mode_enabled:
+                    clarifier_state = planner._build_edit_clarifier_state(
+                        user_message=question,
+                        system_prompt=system_prompt,
+                        history_messages=history_messages,
+                        trace_id=trace_id,
+                        provider_error_code='invalid_operation_contract',
+                        llm_calls_used_base=llm_calls_used,
+                    )
+                    return _finalize_state(
+                        clarifier_state,
+                        used_calls=clarifier_state.get('llm_calls_used'),
+                    )
+
+                clarifier_message, clarifier_options = build_clarifier_contract(
+                    reason='invalid_operation_contract',
+                    question=question,
+                    options=['Retry with valid changes', 'Refine target', 'Cancel'],
+                )
+                return _finalize_state(
+                    {
+                        'assistant_message': clarifier_message,
+                        'planned_operations': [],
+                        'response_mode': 'chat',
+                        'preview_recommended': False,
+                        'parse_mode': 'deterministic_invalid_operation_contract_clarifier',
+                        'provider_used': 'rule_based',
+                        'fallback_used': True,
+                        'provider_error_code': 'invalid_operation_contract',
+                        'tokens_input': result.tokens_input,
+                        'tokens_output': result.tokens_output,
+                        'tokens_total': result.tokens_total,
+                        'pending_context_resolution': None,
+                        'clear_pending_context_resolution': False,
+                        'clarifier_action': 'ask_clarifier',
+                        'clarifier_reason': 'invalid_operation_contract',
+                        'clarifier_options': clarifier_options,
+                        'clarifier_schema_retries': schema_invalid_attempts,
+                        'planner_schema_invalid_attempts': schema_invalid_attempts,
+                        'planner_repair_attempted': repair_attempted,
+                        'draft_action': 'continue',
+                        'tool_plan': [],
+                        'needs_more_info': True,
+                        'stop_reason': 'awaiting_user_input',
+                    }
+                )
             if _has_bulk_task_status_semantic_mismatch(
                 user_message=user_message,
                 operations=operations,

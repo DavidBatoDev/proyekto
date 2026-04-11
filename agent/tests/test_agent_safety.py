@@ -3756,9 +3756,9 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(outcome.route_lane, 'llm_edit_plan')
         self.assertEqual(outcome.parse_mode, 'openai_tool_calling')
         self.assertFalse(outcome.llm_skipped_for_simple_edit)
-        self.assertFalse(outcome.actor_fetch_attempted)
-        self.assertEqual(outcome.actor_fetch_skipped_reason, 'simple_edit_turn')
-        self.assertEqual(fake_client.actor_calls, 0)
+        self.assertTrue(outcome.actor_fetch_attempted)
+        self.assertIsNone(outcome.actor_fetch_skipped_reason)
+        self.assertEqual(fake_client.actor_calls, 1)
         self.assertEqual(len(outcome.operations), 1)
 
     def test_validate_operation_contract_blocks_add_epic_without_title(self) -> None:
@@ -6873,6 +6873,14 @@ class PlannerContextSafetyTests(unittest.TestCase):
         )
         self.assertIn(
             'Use existing resolved IDs and avoid repeating discovery tools unless IDs are still missing.',
+            captured_prompts[0],
+        )
+        self.assertIn(
+            'For assignment updates, use patch.assignee_id (never assignee).',
+            captured_prompts[0],
+        )
+        self.assertIn(
+            'When assigning to "me", use actor_context.actor_id from runtime context.',
             captured_prompts[0],
         )
         self.assertIn(

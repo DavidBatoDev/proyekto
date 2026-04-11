@@ -99,6 +99,40 @@ class ToolRegistryParsePlanTests(unittest.TestCase):
         self.assertEqual(operations[0].node_id, '123e4567-e89b-12d3-a456-426614174000')
         self.assertEqual(operations[0].status, 'done')
 
+    def test_parse_update_task_assignee_alias_normalizes_unassign_token(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'unassign task',
+                'operations': [
+                    {
+                        'op': 'update_task_assignee',
+                        'task_id': '123e4567-e89b-12d3-a456-426614174000',
+                        'assignee_id': 'unassign',
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].op.value, 'update_node')
+        self.assertEqual((operations[0].patch or {}).get('assignee_id'), None)
+
+    def test_parse_update_node_patch_normalizes_assignee_null_token(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'clear assignee',
+                'operations': [
+                    {
+                        'op': 'update_node',
+                        'node_type': 'task',
+                        'node_id': '123e4567-e89b-12d3-a456-426614174000',
+                        'patch': {'assignee_id': 'null'},
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual((operations[0].patch or {}).get('assignee_id'), None)
+
     def test_parse_plan_normalizes_uuid_variants(self) -> None:
         _, operations = parse_plan_tool_args(
             {

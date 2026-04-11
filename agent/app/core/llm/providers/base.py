@@ -77,6 +77,7 @@ class LLMProviderAdapter(ABC):
         tool_executor: Callable[[str, dict[str, Any]], dict[str, Any]],
         max_tool_turns: int,
         planner_profile: str | None = None,
+        actor_context: dict[str, Any] | None = None,
     ) -> tuple[str, list[RoadmapOperation]]:
         raise NotImplementedError
 

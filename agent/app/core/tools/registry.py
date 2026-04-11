@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from pydantic import ValidationError
@@ -72,6 +73,30 @@ EDIT_HELPER_TOOL_NAMES = {
 }
 
 EXECUTABLE_TOOL_NAMES = CONTEXT_TOOL_NAMES | EDIT_HELPER_TOOL_NAMES
+
+_UNASSIGN_ASSIGNEE_TOKENS = {
+    'unassign',
+    'unassigned',
+    'none',
+    'null',
+    'no assignee',
+    'remove assignee',
+    'clear assignee',
+}
+
+
+def _normalize_assignee_value(value: Any) -> tuple[bool, str | None]:
+    if value is None:
+        return True, None
+    if not isinstance(value, str):
+        return False, None
+    normalized = value.strip()
+    if not normalized:
+        return False, None
+    canonical = ' '.join(re.sub(r'[^a-z0-9]+', ' ', normalized.lower()).split())
+    if canonical in _UNASSIGN_ASSIGNEE_TOKENS:
+        return True, None
+    return True, normalized
 
 
 def _function_tool(
@@ -350,11 +375,16 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
         ),
         _function_tool(
             name='update_task_assignee',
-            description='Draft an assignee update for a single task.',
+            description='Draft an assignee update for a single task. Use assignee_id=null to unassign.',
             required=['task_id', 'assignee_id'],
             properties={
                 'task_id': {'type': 'string'},
-                'assignee_id': {'type': 'string'},
+                'assignee_id': {
+                    'anyOf': [
+                        {'type': 'string'},
+                        {'type': 'null'},
+                    ]
+                },
             },
         ),
         _function_tool(
@@ -509,11 +539,16 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
         ),
         _function_tool(
             name='bulk_assign_tasks',
-            description='Draft assignee updates for multiple tasks.',
+            description='Draft assignee updates for multiple tasks. Use assignee_id=null to unassign.',
             required=['task_ids', 'assignee_id'],
             properties={
                 'task_ids': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1},
-                'assignee_id': {'type': 'string'},
+                'assignee_id': {
+                    'anyOf': [
+                        {'type': 'string'},
+                        {'type': 'null'},
+                    ]
+                },
             },
         ),
         _function_tool(
@@ -698,6 +733,13 @@ def _normalize_operation_payload(item: Any) -> dict[str, Any]:
         if key in payload and key not in patch:
             patch[key] = payload.pop(key)
 
+    if 'assignee_id' in patch:
+        is_valid_assignee, normalized_assignee = _normalize_assignee_value(
+            patch.get('assignee_id')
+        )
+        if is_valid_assignee:
+            patch['assignee_id'] = normalized_assignee
+
     if patch:
         payload['patch'] = patch
     return payload
@@ -825,8 +867,9 @@ def _normalize_single_item_helper_alias(payload: dict[str, Any]) -> dict[str, An
 
     if op == 'update_task_assignee':
         task_id = _str_arg('task_id', 'node_id')
-        assignee_id = _str_arg('assignee_id')
-        if task_id and assignee_id:
+        has_assignee_id = 'assignee_id' in payload
+        is_valid_assignee, assignee_id = _normalize_assignee_value(payload.get('assignee_id'))
+        if task_id and has_assignee_id and is_valid_assignee:
             payload['op'] = 'update_node'
             payload['node_type'] = 'task'
             payload['node_id'] = task_id

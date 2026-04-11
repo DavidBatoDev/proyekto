@@ -11,6 +11,7 @@ from app.core.config import Settings
 from app.core.contracts.operations import RoadmapOperation
 from app.core.llm.react.react_executor import BoundedToolLoopOutcome, run_bounded_tool_loop
 from app.core.contracts.sessions import IntentType
+from app.core.logging_utils import log_event
 from app.core.llm.providers.base import LLMProviderAdapter, ProviderAdapterError
 from app.core.tools.registry import PLANNING_TOOL_NAME, parse_plan_tool_args
 
@@ -123,9 +124,11 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
         tool_executor: Callable[[str, dict[str, Any]], dict[str, Any]],
         max_tool_turns: int,
         planner_profile: str | None = None,
+        actor_context: dict[str, Any] | None = None,
     ) -> tuple[str, list[RoadmapOperation]]:
         try:
             self._last_usage = None
+            actor_id = _extract_actor_id(actor_context)
             if ToolMessage is None:
                 raise ProviderAdapterError(
                     provider=self.provider_name,
@@ -166,6 +169,59 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                     assistant_message, operations = parse_plan_tool_args(args)
                 except ValueError as exc:
                     error_message = str(exc)
+                    autofix_attempted = False
+                    autofix_applied = False
+                    autofix_failure_reason: str | None = None
+                    assignee_autofix_enabled = bool(
+                        getattr(
+                            self._settings,
+                            'agent_edit_assignee_autofix_enabled',
+                            False,
+                        )
+                    )
+                    if assignee_autofix_enabled:
+                        autofix_attempted = True
+                        rewritten_args, autofix_failure_reason = _rewrite_assignee_payload_to_actor_id(
+                            args=args,
+                            error_message=error_message,
+                            actor_id=actor_id,
+                        )
+                        if rewritten_args is not None:
+                            try:
+                                assistant_message, operations = parse_plan_tool_args(rewritten_args)
+                            except ValueError as autofix_exc:
+                                autofix_failure_reason = 'autofix_reparse_failed'
+                                error_message = str(autofix_exc)
+                            else:
+                                autofix_applied = True
+                                log_event(
+                                    logger,
+                                    'planner_assignee_autofix',
+                                    settings=self._settings,
+                                    provider=self.provider_name,
+                                    autofix_attempted=True,
+                                    autofix_applied=True,
+                                    autofix_failure_reason=None,
+                                    actor_present=bool(actor_id),
+                                )
+                                if not assistant_message.strip():
+                                    assistant_message = 'Prepared roadmap operations.'
+                                return BoundedToolLoopOutcome(
+                                    value=(assistant_message, operations),
+                                    usage_totals=usage_totals,
+                                )
+                    if not assignee_autofix_enabled and autofix_failure_reason is None:
+                        autofix_failure_reason = 'feature_disabled'
+                    log_event(
+                        logger,
+                        'planner_assignee_autofix',
+                        settings=self._settings,
+                        provider=self.provider_name,
+                        autofix_attempted=autofix_attempted,
+                        autofix_applied=autofix_applied,
+                        autofix_failure_reason=autofix_failure_reason,
+                        actor_present=bool(actor_id),
+                    )
                     offending_op = _extract_offending_operation_value(args=args, error_message=error_message)
                     if offending_op:
                         logger.warning(
@@ -458,3 +514,82 @@ def _extract_offending_operation_value(*, args: dict[str, Any], error_message: s
         return ''
     return sanitized[:48]
 
+
+def _extract_actor_id(actor_context: dict[str, Any] | None) -> str:
+    if not isinstance(actor_context, dict):
+        return ''
+    actor_id = actor_context.get('actor_id')
+    if not isinstance(actor_id, str):
+        return ''
+    return actor_id.strip()
+
+
+def _rewrite_assignee_payload_to_actor_id(
+    *,
+    args: dict[str, Any],
+    error_message: str,
+    actor_id: str,
+) -> tuple[dict[str, Any] | None, str | None]:
+    if not _is_assignee_validation_failure(error_message):
+        return None, 'not_assignee_validation_failure'
+    normalized_actor_id = str(actor_id or '').strip()
+    if not normalized_actor_id:
+        return None, 'actor_context_missing'
+
+    raw_operations = args.get('operations')
+    if not isinstance(raw_operations, list):
+        return None, 'operations_not_list'
+
+    rewritten_operations: list[Any] = []
+    rewrites_applied = 0
+    for operation in raw_operations:
+        if not isinstance(operation, dict):
+            rewritten_operations.append(operation)
+            continue
+        rewritten = dict(operation)
+        op_name = str(rewritten.get('op') or '').strip().lower()
+        assignee_value = rewritten.get('assignee')
+        if op_name == 'update_node' and _is_first_person_token(assignee_value):
+            patch = rewritten.get('patch')
+            patch_dict = dict(patch) if isinstance(patch, dict) else {}
+            patch_dict['assignee_id'] = normalized_actor_id
+            rewritten['patch'] = patch_dict
+            rewritten.pop('assignee', None)
+            rewrites_applied += 1
+        rewritten_operations.append(rewritten)
+
+    if rewrites_applied <= 0:
+        return None, 'no_conservative_rewrite_match'
+
+    rewritten_args = dict(args)
+    rewritten_args['operations'] = rewritten_operations
+    return rewritten_args, None
+
+
+def _is_assignee_validation_failure(error_message: str | None) -> bool:
+    detail = str(error_message or '').strip().lower()
+    if not detail:
+        return False
+    if "('assignee',)" in detail and 'extra' in detail and ('forbidden' in detail or 'not permitted' in detail):
+        return True
+    return bool(
+        'assignee' in detail
+        and 'extra' in detail
+        and ('forbidden' in detail or 'not permitted' in detail)
+    )
+
+
+def _is_first_person_token(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    normalized = ' '.join(
+        re.sub(r'[^a-z0-9]+', ' ', value.lower()).split()
+    )
+    return normalized in {
+        'me',
+        'myself',
+        'self',
+        'current user',
+        'the current user',
+        'i',
+    }

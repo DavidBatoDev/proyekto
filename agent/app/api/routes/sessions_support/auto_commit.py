@@ -8,9 +8,11 @@ from typing import Any, Awaitable, Callable
 
 from fastapi.exceptions import HTTPException
 
+from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import AgentSession, AppliedDraftCommit, RoadmapCommitArtifact
 from app.core.orchestration.agent_service import AgentService
 from app.core.session_store import SessionStore
+from app.core.uuid_utils import is_uuid_like
 
 
 @dataclass
@@ -22,6 +24,57 @@ class AutoCommitExecutionResult:
     active_draft_version: int | None
     artifact: RoadmapCommitArtifact | None
     inline_commit_size_bytes: int | None
+
+
+def _sanitize_invalid_operation_snapshot(
+    *,
+    index: int,
+    operation: RoadmapOperation,
+    reason: str,
+) -> dict[str, Any]:
+    patch = operation.patch if isinstance(operation.patch, dict) else None
+    payload = operation.model_dump(exclude_none=True)
+    return {
+        'index': index,
+        'reason': reason,
+        'op': operation.op.value,
+        'node_type': operation.node_type.value if operation.node_type is not None else None,
+        'node_id': operation.node_id,
+        'node_ref': operation.node_ref,
+        'patch_keys': sorted(patch.keys())[:20] if isinstance(patch, dict) else [],
+        'operation': {
+            key: payload.get(key)
+            for key in (
+                'op',
+                'node_type',
+                'node_id',
+                'node_ref',
+                'parent_id',
+                'parent_ref',
+                'new_parent_id',
+                'new_parent_ref',
+                'temp_id',
+                'status',
+                'delta_days',
+            )
+            if key in payload
+        },
+    }
+
+
+def _first_invalid_operation_snapshot(draft_operations: list[Any]) -> dict[str, Any] | None:
+    for index, operation in enumerate(draft_operations):
+        if not isinstance(operation, RoadmapOperation):
+            continue
+        issues = operation.semantic_contract_issues(is_uuid=is_uuid_like)
+        if not issues:
+            continue
+        return _sanitize_invalid_operation_snapshot(
+            index=index,
+            operation=operation,
+            reason=issues[0],
+        )
+    return None
 
 
 def schedule_auto_commit_task(
@@ -57,19 +110,37 @@ async def execute_auto_commit(
     )
 
     commit_started = perf_counter()
-    commit_result = await nest_client.commit(
-        roadmap_id=session.roadmap_id,
-        payload={
-            'base_revision': session.base_revision,
-            'revision_token': session.revision_token,
-            'operations': [
-                operation.model_dump(exclude_none=True)
-                for operation in draft_operations
-            ],
-        },
-        auth_header=auth_header,
-        trace_id=trace_id,
-    )
+    commit_payload = {
+        'base_revision': session.base_revision,
+        'revision_token': session.revision_token,
+        'operations': [
+            operation.model_dump(exclude_none=True)
+            for operation in draft_operations
+        ],
+    }
+    try:
+        commit_result = await nest_client.commit(
+            roadmap_id=session.roadmap_id,
+            payload=commit_payload,
+            auth_header=auth_header,
+            trace_id=trace_id,
+        )
+    except HTTPException as exc:
+        if exc.status_code == 400:
+            invalid_snapshot = _first_invalid_operation_snapshot(draft_operations)
+            if invalid_snapshot is not None:
+                enriched_detail: dict[str, Any]
+                if isinstance(exc.detail, dict):
+                    enriched_detail = dict(exc.detail)
+                else:
+                    enriched_detail = {'detail': exc.detail}
+                enriched_detail['_auto_commit_invalid_operation'] = invalid_snapshot
+                raise HTTPException(
+                    status_code=exc.status_code,
+                    detail=enriched_detail,
+                    headers=getattr(exc, 'headers', None),
+                ) from exc
+        raise
     auto_commit_ms = int((perf_counter() - commit_started) * 1000)
 
     change_id_raw = commit_result.get('change_id')
@@ -182,6 +253,7 @@ async def run_auto_commit_in_background(
     trace_id: str | None,
     execute_auto_commit_fn: Callable[..., Awaitable[AutoCommitExecutionResult]],
     extract_upstream_error_code: Callable[[object], str | None],
+    extract_upstream_error_details: Callable[[object], dict[str, Any]] | None = None,
     logger: logging.Logger,
     settings: Any,
     log_event_fn: Callable[..., None],
@@ -211,6 +283,19 @@ async def run_auto_commit_in_background(
             elapsed_ms=int((perf_counter() - started_at) * 1000),
         )
     except HTTPException as exc:
+        upstream_error_details = (
+            extract_upstream_error_details(exc.detail)
+            if callable(extract_upstream_error_details)
+            else {}
+        )
+        upstream_error_code = extract_upstream_error_code(exc.detail)
+        if not isinstance(upstream_error_code, str) or not upstream_error_code.strip():
+            candidate_code = upstream_error_details.get('code')
+            upstream_error_code = (
+                candidate_code.strip()
+                if isinstance(candidate_code, str) and candidate_code.strip()
+                else None
+            )
         log_event_fn(
             logger,
             'auto_commit_async_failed',
@@ -218,7 +303,27 @@ async def run_auto_commit_in_background(
             trace_id=trace_id,
             session_id=session.session_id,
             roadmap_id=session.roadmap_id,
-            auto_commit_error_code=extract_upstream_error_code(exc.detail),
+            auto_commit_error_code=upstream_error_code,
+            auto_commit_error_name=(
+                upstream_error_details.get('error')
+                if isinstance(upstream_error_details.get('error'), str)
+                else None
+            ),
+            auto_commit_error_message=(
+                upstream_error_details.get('message')
+                if isinstance(upstream_error_details.get('message'), str)
+                else None
+            ),
+            auto_commit_error_status_code=(
+                upstream_error_details.get('status_code')
+                if isinstance(upstream_error_details.get('status_code'), int)
+                else None
+            ),
+            auto_commit_invalid_operation=(
+                upstream_error_details.get('invalid_operation')
+                if isinstance(upstream_error_details.get('invalid_operation'), dict)
+                else None
+            ),
             auto_commit_error_retryable=(
                 exc.status_code >= 500 or exc.status_code in {408, 429}
             ),

@@ -67,6 +67,7 @@ class _FakePlanner:
             agent_react_max_attempts=1,
             agent_react_repair_retries=0,
             agent_llm_first_mode_enabled=False,
+            agent_edit_actionable_failure_clarifier_enabled=False,
             agent_simple_edit_planner_profile_enabled=False,
             agent_strict_mutation_authority_enabled=False,
             agent_log_include_content=False,
@@ -103,6 +104,9 @@ class _FakePlanner:
         error_message=None,
     ):  # noqa: ANN001
         return planner_prompt
+
+    def _is_invalid_operation_enum_payload(self, error_message):  # noqa: ANN001
+        return False
 
     def _augment_missing_tool_call_retry_prompt(self, planner_prompt, user_message, tool_observations):  # noqa: ANN001
         return planner_prompt
@@ -253,6 +257,66 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         self.assertNotIn('get_roadmap_overview', tool_names)
         self.assertNotIn('resolve_node_reference', tool_names)
         self.assertEqual(result.get('response_mode'), 'edit_plan')
+
+    def test_actor_context_is_forwarded_to_planner_adapter(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+
+        class _ActorCaptureOrchestrator:
+            def call(self, operation, trace_context=None):  # noqa: ANN001
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                        planner_profile=None,
+                        actor_context=None,
+                    ):
+                        captured['actor_context'] = actor_context
+                        return ('Prepared operation.', [])
+
+                return SimpleNamespace(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=1,
+                    tokens_output=1,
+                    tokens_total=2,
+                )
+
+        planner._provider_orchestrator = _ActorCaptureOrchestrator()
+
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Assign all tasks to me inside Agent Module',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-forward-actor-context',
+                    'actor_context': {
+                        'actor_id': '09f2e875-bd56-4f95-9bde-d6bbca2fa4e3',
+                        'display_name': 'Test User',
+                    },
+                },
+            },
+        )
+
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertIsInstance(captured.get('actor_context'), dict)
+        assert isinstance(captured.get('actor_context'), dict)
+        self.assertEqual(
+            captured['actor_context'].get('actor_id'),
+            '09f2e875-bd56-4f95-9bde-d6bbca2fa4e3',
+        )
 
     def test_bulk_move_intent_does_not_force_helper_only_allowlist(self) -> None:
         captured: dict[str, object] = {}
@@ -1266,6 +1330,268 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         self.assertEqual(synth_calls['count'], 0)
         self.assertEqual(result.get('response_mode'), 'chat')
         self.assertEqual(result.get('parse_mode'), 'llm_first_edit_outage')
+
+    def test_llm_first_missing_tool_call_returns_actionable_clarifier_when_flag_enabled(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+        planner._settings.agent_llm_first_mode_enabled = True
+        planner._settings.agent_edit_actionable_failure_clarifier_enabled = True
+        planner._settings.agent_react_max_attempts = 1
+        planner._settings.agent_react_repair_retries = 0
+
+        class _MissingToolCallOrchestrator:
+            def call(self, operation, trace_context=None):  # noqa: ANN001
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                        planner_profile=None,
+                    ):
+                        raise ProviderAdapterError(
+                            provider='openai',
+                            code='missing_tool_call',
+                            message='OpenAI did not return any tool call while planning operations.',
+                        )
+
+                return SimpleNamespace(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=1,
+                    tokens_output=1,
+                    tokens_total=2,
+                )
+
+        planner._provider_orchestrator = _MissingToolCallOrchestrator()
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Assign all tasks to me inside Agent Module',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-llm-first-actionable-missing-tool',
+                },
+            },
+        )
+
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'llm_first_planner_contract_failure')
+        self.assertEqual(result.get('stop_reason'), 'awaiting_user_input')
+        self.assertEqual(result.get('clarifier_reason'), 'planner_missing_tool_call')
+        self.assertEqual(result.get('provider_error_code'), 'missing_tool_call')
+
+    def test_llm_first_invalid_assignee_payload_returns_actionable_clarifier_when_flag_enabled(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+        planner._settings.agent_llm_first_mode_enabled = True
+        planner._settings.agent_edit_actionable_failure_clarifier_enabled = True
+        planner._settings.agent_react_max_attempts = 1
+        planner._settings.agent_react_repair_retries = 0
+
+        class _InvalidPayloadOrchestrator:
+            def call(self, operation, trace_context=None):  # noqa: ANN001
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                        planner_profile=None,
+                    ):
+                        raise ProviderAdapterError(
+                            provider='openai',
+                            code='invalid_operation_payload',
+                            message=(
+                                'Invalid operation payload at index 0 (op=update_node): '
+                                "[{'type': 'extra_forbidden', 'loc': ('assignee',), "
+                                "'msg': 'Extra inputs are not permitted', 'input': 'me'}]"
+                            ),
+                        )
+
+                return SimpleNamespace(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=1,
+                    tokens_output=1,
+                    tokens_total=2,
+                )
+
+        planner._provider_orchestrator = _InvalidPayloadOrchestrator()
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Assign all tasks to me inside Agent Module',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-llm-first-actionable-invalid-assignee',
+                },
+            },
+        )
+
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'llm_first_planner_contract_failure')
+        self.assertEqual(result.get('stop_reason'), 'awaiting_user_input')
+        self.assertEqual(result.get('clarifier_reason'), 'planner_invalid_assignee_shape')
+        self.assertEqual(result.get('provider_error_code'), 'invalid_operation_payload')
+
+    def test_semantic_invalid_update_node_payload_retries_before_staging(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+        planner._settings.agent_react_max_attempts = 2
+        planner._settings.agent_react_repair_retries = 1
+        observed_prompts: list[str] = []
+        call_counter = {'count': 0}
+
+        class _SemanticRetryOrchestrator:
+            def call(self, operation, trace_context=None):  # noqa: ANN001
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                        planner_profile=None,
+                    ):
+                        call_counter['count'] += 1
+                        observed_prompts.append(str(planner_prompt))
+                        if call_counter['count'] == 1:
+                            return (
+                                'Prepared operation.',
+                                [
+                                    {
+                                        'op': 'update_node',
+                                        'node_type': 'task',
+                                        'node_id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                                    }
+                                ],
+                            )
+                        return (
+                            'Prepared operation.',
+                            [
+                                {
+                                    'op': 'update_node',
+                                    'node_type': 'task',
+                                    'node_id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                                    'patch': {'assignee_id': None},
+                                }
+                            ],
+                        )
+
+                return SimpleNamespace(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=1,
+                    tokens_output=1,
+                    tokens_total=2,
+                )
+
+        planner._provider_orchestrator = _SemanticRetryOrchestrator()
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'unassign all my tasks',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-semantic-contract-retry',
+                },
+            },
+        )
+
+        self.assertEqual(call_counter['count'], 2)
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+        planned_operations = result.get('planned_operations')
+        self.assertIsInstance(planned_operations, list)
+        assert isinstance(planned_operations, list)
+        self.assertEqual(len(planned_operations), 1)
+        self.assertEqual((planned_operations[0].patch or {}).get('assignee_id'), None)
+        self.assertGreaterEqual(len(observed_prompts), 2)
+        self.assertIn('SEMANTIC OPERATION CONTRACT REPAIR:', observed_prompts[1])
+
+    def test_llm_first_provider_timeout_still_uses_outage_clarifier_when_flag_enabled(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+        planner._settings.agent_llm_first_mode_enabled = True
+        planner._settings.agent_edit_actionable_failure_clarifier_enabled = True
+        planner._settings.agent_react_max_attempts = 1
+        planner._settings.agent_react_repair_retries = 0
+
+        class _TimeoutOrchestrator:
+            def call(self, operation, trace_context=None):  # noqa: ANN001
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                        planner_profile=None,
+                    ):
+                        raise ProviderAdapterError(
+                            provider='openai',
+                            code='timeout',
+                            message='request timed out',
+                        )
+
+                return SimpleNamespace(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=1,
+                    tokens_output=1,
+                    tokens_total=2,
+                )
+
+        planner._provider_orchestrator = _TimeoutOrchestrator()
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Assign all tasks to me inside Agent Module',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-llm-first-timeout-outage',
+                },
+            },
+        )
+
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'llm_first_edit_outage')
+        self.assertEqual(result.get('stop_reason'), 'provider_outage')
+        self.assertIn('Temporary AI provider issue', str(result.get('assistant_message')))
 
 
 if __name__ == '__main__':

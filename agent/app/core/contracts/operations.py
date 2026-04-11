@@ -115,6 +115,9 @@ class RoadmapOperation(BaseModel):
                 else:
                     issues.append(f'{op_name}.node_ref_invalid_ref')
 
+        if op_name == 'update_node' and not self._has_update_mutation_payload():
+            issues.append('update_node.mutation_missing')
+
         if op_name == 'move_node':
             if _has_identity_conflict(self.new_parent_id, self.new_parent_ref):
                 issues.append('move_node.new_parent_target_conflict')
@@ -157,6 +160,19 @@ class RoadmapOperation(BaseModel):
             if normalized:
                 return normalized
         return None
+
+    def _has_update_mutation_payload(self) -> bool:
+        if isinstance(self.patch, dict) and bool(self.patch):
+            return True
+        if isinstance(self.data, dict) and bool(self.data):
+            return True
+        if isinstance(self.status, str) and bool(self.status.strip()):
+            return True
+        if isinstance(self.scope, dict) and bool(self.scope):
+            return True
+        if self.delta_days is not None:
+            return True
+        return False
 
 
 class ValidationIssue(BaseModel):
