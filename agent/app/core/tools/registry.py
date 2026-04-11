@@ -532,6 +532,12 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
                     'properties': {
                         'status': {'type': 'string', 'enum': TASK_STATUS_VALUES},
                         'priority': {'type': 'string'},
+                        'assignee_id': {
+                            'anyOf': [
+                                {'type': 'string'},
+                                {'type': 'null'},
+                            ]
+                        },
                     },
                 },
                 'limit': {'type': 'integer', 'minimum': 1, 'maximum': 2000},

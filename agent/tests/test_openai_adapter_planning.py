@@ -1,7 +1,12 @@
 import unittest
+from unittest.mock import patch
 
+from app.core.config import get_settings
 from app.core.tools.registry import parse_plan_tool_args
-from app.core.llm.providers.openai_adapter import _rewrite_assignee_payload_to_actor_id
+from app.core.llm.providers.openai_adapter import (
+    OpenAILangChainAdapter,
+    _rewrite_assignee_payload_to_actor_id,
+)
 
 
 _ASSIGNEE_SHAPE_ERROR = (
@@ -90,6 +95,139 @@ class OpenAIAdapterPlanningAutofixTests(unittest.TestCase):
 
         self.assertIsNone(rewritten_args)
         self.assertEqual(reason, 'not_assignee_validation_failure')
+
+    def test_bind_tools_for_planning_uses_required_tool_choice_when_supported(self) -> None:
+        settings = get_settings().model_copy(
+            update={
+                'openai_planner_max_tokens': 1200,
+                'openai_planner_retry_max_tokens': 1600,
+            }
+        )
+        adapter = OpenAILangChainAdapter(settings)
+
+        class _Model:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def bind_tools(self, tools, tool_choice=None):  # noqa: ANN001
+                self.calls.append(
+                    {
+                        'tools': tools,
+                        'tool_choice': tool_choice,
+                    }
+                )
+                return self
+
+        model = _Model()
+        tool_definitions = [{'type': 'function', 'function': {'name': 'plan_roadmap_operations'}}]
+        bound = adapter._bind_tools_for_planning(model, tool_definitions)
+
+        self.assertIs(bound, model)
+        self.assertEqual(len(model.calls), 1)
+        self.assertEqual(model.calls[0].get('tool_choice'), 'required')
+
+    def test_bind_tools_for_planning_falls_back_when_tool_choice_unsupported(self) -> None:
+        settings = get_settings().model_copy(
+            update={
+                'openai_planner_max_tokens': 1200,
+                'openai_planner_retry_max_tokens': 1600,
+            }
+        )
+        adapter = OpenAILangChainAdapter(settings)
+
+        class _Model:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def bind_tools(self, tools, tool_choice=None):  # noqa: ANN001
+                if tool_choice is not None:
+                    raise TypeError('tool_choice is not supported')
+                self.calls.append(
+                    {
+                        'tools': tools,
+                        'tool_choice': tool_choice,
+                    }
+                )
+                return self
+
+        model = _Model()
+        tool_definitions = [{'type': 'function', 'function': {'name': 'plan_roadmap_operations'}}]
+        bound = adapter._bind_tools_for_planning(model, tool_definitions)
+
+        self.assertIs(bound, model)
+        self.assertEqual(len(model.calls), 1)
+        self.assertIsNone(model.calls[0].get('tool_choice'))
+
+    def test_planner_max_tokens_uses_retry_profile_override(self) -> None:
+        settings = get_settings().model_copy(
+            update={
+                'openai_planner_max_tokens': 1200,
+                'openai_planner_retry_max_tokens': 1600,
+            }
+        )
+        adapter = OpenAILangChainAdapter(settings)
+
+        self.assertEqual(adapter._planner_max_tokens_for_profile('repair_retry'), 1600)
+        self.assertEqual(adapter._planner_max_tokens_for_profile('simple_edit'), settings.openai_simple_edit_max_tokens)
+        self.assertEqual(adapter._planner_max_tokens_for_profile(None), 1200)
+
+    def test_bind_tools_for_planning_logs_required_binding_mode(self) -> None:
+        settings = get_settings().model_copy(
+            update={
+                'openai_planner_max_tokens': 1200,
+                'openai_planner_retry_max_tokens': 1600,
+            }
+        )
+        adapter = OpenAILangChainAdapter(settings)
+
+        class _Model:
+            def bind_tools(self, tools, tool_choice=None):  # noqa: ANN001
+                return self
+
+        with patch('app.core.llm.providers.openai_adapter.log_event') as mocked_log_event:
+            adapter._bind_tools_for_planning(
+                _Model(),
+                [{'type': 'function', 'function': {'name': 'plan_roadmap_operations'}}],
+                planner_profile='repair_retry',
+            )
+
+        self.assertTrue(mocked_log_event.called)
+        call_args = mocked_log_event.call_args.kwargs
+        self.assertEqual(call_args.get('provider'), 'openai')
+        self.assertEqual(call_args.get('planner_profile'), 'repair_retry')
+        self.assertEqual(call_args.get('tool_choice_mode'), 'required')
+        self.assertTrue(call_args.get('tool_choice_supported'))
+        self.assertEqual(call_args.get('tools_count'), 1)
+
+    def test_bind_tools_for_planning_logs_fallback_binding_mode(self) -> None:
+        settings = get_settings().model_copy(
+            update={
+                'openai_planner_max_tokens': 1200,
+                'openai_planner_retry_max_tokens': 1600,
+            }
+        )
+        adapter = OpenAILangChainAdapter(settings)
+
+        class _Model:
+            def bind_tools(self, tools, tool_choice=None):  # noqa: ANN001
+                if tool_choice is not None:
+                    raise TypeError('tool_choice is not supported')
+                return self
+
+        with patch('app.core.llm.providers.openai_adapter.log_event') as mocked_log_event:
+            adapter._bind_tools_for_planning(
+                _Model(),
+                [{'type': 'function', 'function': {'name': 'plan_roadmap_operations'}}],
+                planner_profile='repair_retry',
+            )
+
+        self.assertTrue(mocked_log_event.called)
+        call_args = mocked_log_event.call_args.kwargs
+        self.assertEqual(call_args.get('provider'), 'openai')
+        self.assertEqual(call_args.get('planner_profile'), 'repair_retry')
+        self.assertEqual(call_args.get('tool_choice_mode'), 'fallback_legacy')
+        self.assertFalse(call_args.get('tool_choice_supported'))
+        self.assertEqual(call_args.get('tools_count'), 1)
 
 
 if __name__ == '__main__':

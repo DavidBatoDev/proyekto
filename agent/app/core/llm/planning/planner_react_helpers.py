@@ -451,6 +451,28 @@ def maybe_synthesize_react_closure_operations(
                 )
             ]
 
+    for observation in reversed(tool_observations):
+        if str(observation.get('tool_name') or '').strip() != 'bulk_update_tasks_by_filter':
+            continue
+        helper_result = observation.get('result')
+        if not isinstance(helper_result, dict):
+            continue
+        if isinstance(helper_result.get('error'), dict):
+            continue
+        raw_operations = helper_result.get('operations')
+        if not isinstance(raw_operations, list) or not raw_operations:
+            continue
+        synthesized_operations: list[RoadmapOperation] = []
+        for item in raw_operations:
+            if not isinstance(item, dict):
+                continue
+            try:
+                synthesized_operations.append(RoadmapOperation.model_validate(item))
+            except Exception:
+                continue
+        if synthesized_operations:
+            return synthesized_operations
+
     bulk_status = extract_bulk_parent_status_target(user_message)
     if bulk_status is None:
         return None
@@ -678,17 +700,34 @@ def augment_missing_tool_call_retry_prompt(
     user_message: str,
     tool_observations: list[dict[str, Any]],
 ) -> str:
-    if not tool_observations:
-        return planner_prompt
-
     updated_prompt = planner_prompt
+    retry_mode_marker = 'RETRY EXECUTION MODE:'
+    if retry_mode_marker not in updated_prompt:
+        updated_prompt += (
+            '\n\nRETRY EXECUTION MODE:\n'
+            'Previous attempt ended without a final planning tool call.\n'
+            'You MUST call plan_roadmap_operations exactly once in this retry.\n'
+            'If context is still insufficient, call plan_roadmap_operations with an empty operations list\n'
+            'and put the clarifying question in assistant_message.'
+        )
+
     summary_marker = 'RETRY TOOL OBSERVATION SUMMARY:'
     if summary_marker not in updated_prompt:
-        retry_summary = summarize_react_tool_observations(planner, tool_observations)
-        if retry_summary:
+        if tool_observations:
+            retry_summary = summarize_react_tool_observations(planner, tool_observations)
+            summary_payload = (
+                json.dumps(retry_summary[:10], ensure_ascii=True, separators=(",", ":"))
+                if retry_summary
+                else 'No summarized observations available from prior attempts.'
+            )
             updated_prompt += (
                 '\n\nRETRY TOOL OBSERVATION SUMMARY:\n'
-                f'{json.dumps(retry_summary[:10], ensure_ascii=True, separators=(",", ":"))}'
+                f'{summary_payload}'
+            )
+        else:
+            updated_prompt += (
+                '\n\nRETRY TOOL OBSERVATION SUMMARY:\n'
+                'No prior tool observations were captured in earlier attempts.'
             )
 
     requested_count = extract_todo_delete_count(user_message)

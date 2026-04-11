@@ -26,7 +26,9 @@ def _is_bulk_task_scope_update_intent(user_message: str) -> bool:
     if not normalized or 'task' not in normalized:
         return False
     has_bulk_scope = bool(re.search(r'\b(all|every)\b', normalized))
-    has_update_verb = bool(re.search(r'\b(mark|update|set|move|change)\b', normalized))
+    has_update_verb = bool(
+        re.search(r'\b(mark|update|set|move|change|assign|unassign)\b', normalized)
+    )
     return has_bulk_scope and has_update_verb
 
 
@@ -43,13 +45,20 @@ def _explicit_parent_type_hint(user_message: str) -> str | None:
     return None
 
 
+def _has_parent_scope_phrase(normalized_message: str) -> bool:
+    return bool(
+        re.search(r'\b(under|within|inside|for)\b', normalized_message)
+        or re.search(r'\bin\b(?!\s+(review|progress)\b)', normalized_message)
+    )
+
+
 def _is_parent_scoped_bulk_status_intent(user_message: str) -> bool:
     normalized = ' '.join(str(user_message or '').lower().split())
     if not normalized or 'task' not in normalized:
         return False
     has_bulk_scope = bool(re.search(r'\b(all|every)\b', normalized))
     has_status_update_verb = bool(re.search(r'\b(mark|update|set|change)\b', normalized))
-    has_parent_scope = bool(re.search(r'\b(in|under|within|inside|for)\b', normalized))
+    has_parent_scope = _has_parent_scope_phrase(normalized)
     has_filter_hint = bool(
         re.search(r'\b(assignee|assigned|owner|priority|keyword|title|name|contains)\b', normalized)
     )
@@ -61,12 +70,48 @@ def _is_parent_scoped_bulk_filter_update_intent(user_message: str) -> bool:
     if not normalized or 'task' not in normalized:
         return False
     has_bulk_scope = bool(re.search(r'\b(all|every)\b', normalized))
-    has_update_verb = bool(re.search(r'\b(mark|update|set|change)\b', normalized))
-    has_parent_scope = bool(re.search(r'\b(in|under|within|inside|for)\b', normalized))
+    has_update_verb = bool(re.search(r'\b(mark|update|set|change|assign|unassign)\b', normalized))
+    has_parent_scope = _has_parent_scope_phrase(normalized)
     has_filter_hint = bool(
-        re.search(r'\b(assignee|assigned|owner|priority|keyword|title|name|contains)\b', normalized)
+        re.search(r'\b(assignee|assigned|owner|priority|status|keyword|title|name|contains)\b', normalized)
     )
     return has_bulk_scope and has_update_verb and has_parent_scope and has_filter_hint
+
+
+def _is_global_bulk_filter_update_intent(user_message: str) -> bool:
+    normalized = ' '.join(str(user_message or '').lower().split())
+    if not normalized or 'task' not in normalized:
+        return False
+    has_bulk_scope = bool(re.search(r'\b(all|every)\b', normalized))
+    has_update_verb = bool(re.search(r'\b(mark|update|set|change|assign|unassign)\b', normalized))
+    has_parent_scope = _has_parent_scope_phrase(normalized)
+    if has_parent_scope:
+        return False
+    has_named_filter_hint = bool(
+        re.search(r'\b(assignee|assigned|owner|priority|status|keyword|title|name|contains)\b', normalized)
+    )
+    has_status_task_filter_hint = bool(
+        re.search(
+            r'\b["\']?(todo|in[\s_-]*progress|in[\s_-]*review|done|blocked|completed)["\']?\s+tasks?\b',
+            normalized,
+        )
+        or re.search(
+            r'\btasks?\s+(?:that|which)\s+are\s+["\']?(todo|in[\s_-]*progress|in[\s_-]*review|done|blocked|completed)["\']?\b',
+            normalized,
+        )
+    )
+    return has_bulk_scope and has_update_verb and (has_named_filter_hint or has_status_task_filter_hint)
+
+
+def _is_assign_me_bulk_update_intent(user_message: str) -> bool:
+    normalized = ' '.join(str(user_message or '').lower().split())
+    if not normalized or 'task' not in normalized:
+        return False
+    return bool(
+        re.search(r'\bassign\s+me\s+to\b', normalized)
+        or re.search(r'\bassign\s+(all|every)\b.*\bto\s+me\b', normalized)
+        or re.search(r'\bset\s+assignee\s+to\s+me\b', normalized)
+    )
 
 
 def _has_resolved_parent_context(
@@ -97,6 +142,25 @@ def _has_resolved_parent_context(
             match_type = str(match.get('type') or '').strip().lower()
             match_id = str(match.get('id') or '').strip()
             if match_type in {'epic', 'feature'} and match_id:
+                return True
+    return False
+
+
+def _has_bulk_helper_operations(tool_observations: list[dict[str, Any]]) -> bool:
+    for observation in reversed(tool_observations):
+        if not isinstance(observation, dict):
+            continue
+        tool_name = str(observation.get('tool_name') or '').strip()
+        if tool_name not in {'bulk_update_tasks_by_filter', 'bulk_update_tasks_by_parent'}:
+            continue
+        result = observation.get('result')
+        if not isinstance(result, dict) or isinstance(result.get('error'), dict):
+            continue
+        operations = result.get('operations')
+        if not isinstance(operations, list) or not operations:
+            continue
+        for item in operations:
+            if isinstance(item, dict) and str(item.get('op') or '').strip():
                 return True
     return False
 
@@ -711,6 +775,15 @@ def plan_operations(
         if isinstance(session_context.get('actor_context'), dict)
         else None
     )
+    actor_id_for_planner = (
+        str((actor_context_for_planner or {}).get('actor_id') or '').strip()
+        if isinstance(actor_context_for_planner, dict)
+        else ''
+    )
+    bulk_assign_me_update_intent = (
+        intent_type == 'roadmap_edit'
+        and _is_assign_me_bulk_update_intent(user_message)
+    )
     schema_invalid_attempts = 0
     repair_attempted = False
     explicit_parent_type_hint = _explicit_parent_type_hint(user_message)
@@ -763,6 +836,12 @@ def plan_operations(
             effective_args.pop('node_type', None)
         if name == 'bulk_update_tasks_by_parent' and force_include_completed_for_bulk_status:
             effective_args['include_completed'] = True
+        if name == 'bulk_update_tasks_by_filter' and bulk_assign_me_update_intent and actor_id_for_planner:
+            update_payload = effective_args.get('update')
+            if isinstance(update_payload, dict) and 'assignee_id' not in update_payload:
+                coerced_update = dict(update_payload)
+                coerced_update['assignee_id'] = actor_id_for_planner
+                effective_args['update'] = coerced_update
 
         cache_key: tuple[str, str] | None = None
         if name in dedupe_tool_names and isinstance(effective_args, dict):
@@ -867,11 +946,18 @@ def plan_operations(
 
         if normalized_code == 'missing_tool_call':
             clarifier_reason = 'planner_missing_tool_call'
-            question = (
-                'I resolved context but did not receive a valid plan tool call. '
-                'Should I retry now, or narrow to one epic/feature first?'
-            )
-            options = ['Retry now', 'Narrow to one epic/feature', 'Cancel']
+            if _is_global_bulk_filter_update_intent(user_message):
+                question = (
+                    'I resolved context but did not receive a valid plan tool call. '
+                    'Should I retry now, or narrow to one filter first?'
+                )
+                options = ['Retry now', 'Narrow to one filter', 'Cancel']
+            else:
+                question = (
+                    'I resolved context but did not receive a valid plan tool call. '
+                    'Should I retry now, or narrow to one epic/feature first?'
+                )
+                options = ['Retry now', 'Narrow to one epic/feature', 'Cancel']
         elif normalized_code == 'invalid_operation_payload':
             if _is_assignee_contract_failure(provider_error_message):
                 clarifier_reason = 'planner_invalid_assignee_shape'
@@ -973,17 +1059,35 @@ def plan_operations(
         tokens_output: int | None = None,
         tokens_total: int | None = None,
     ) -> dict[str, Any] | None:
+        normalized_error_code = str(provider_error_code or '').strip().lower()
         if llm_first_mode_enabled:
-            log_event(
-                planner._logger,
-                'deterministic_path_skipped',
-                settings=planner._settings,
-                trace_id=trace_id,
-                llm_first_mode_enabled=True,
-                deterministic_path_skipped=True,
-                reason=f'llm_first_mode:{reason}',
+            llm_first_bulk_helper_fallback_allowed = (
+                normalized_error_code == 'missing_tool_call'
+                and _has_bulk_helper_operations(tool_observations)
             )
-            return None
+            if llm_first_bulk_helper_fallback_allowed:
+                log_event(
+                    planner._logger,
+                    'deterministic_path_allowed',
+                    settings=planner._settings,
+                    trace_id=trace_id,
+                    llm_first_mode_enabled=True,
+                    deterministic_path_allowed=True,
+                    reason=f'llm_first_bulk_helper:{reason}',
+                    provider_error_code=provider_error_code,
+                    tool_observation_count=len(tool_observations),
+                )
+            else:
+                log_event(
+                    planner._logger,
+                    'deterministic_path_skipped',
+                    settings=planner._settings,
+                    trace_id=trace_id,
+                    llm_first_mode_enabled=True,
+                    deterministic_path_skipped=True,
+                    reason=f'llm_first_mode:{reason}',
+                )
+                return None
         if not _is_strict_synthesis_fallback_allowed(provider_error_code=provider_error_code):
             if strict_mutation_authority_enabled:
                 log_event(
@@ -1107,9 +1211,15 @@ def plan_operations(
         bulk_scope_parent_guard
         and _is_parent_scoped_bulk_filter_update_intent(user_message)
     )
+    global_bulk_filter_guard = (
+        bulk_scope_update_intent
+        and _is_global_bulk_filter_update_intent(user_message)
+        and react_loop_turn <= 1
+    )
     helper_guarded_bulk_scope_intent = (
         strict_parent_bulk_status_guard
         or parent_scoped_bulk_filter_guard
+        or global_bulk_filter_guard
     )
     simple_edit_profile_enabled = bool(
         planner._settings.agent_simple_edit_planner_profile_enabled
@@ -1129,12 +1239,17 @@ def plan_operations(
                 *_select_tools_by_name(helper_tools, {'bulk_update_tasks_by_parent'}),
                 get_planning_tool(),
             ]
-        else:
+        elif parent_scoped_bulk_filter_guard:
             tool_definitions = [
                 *_select_tools_by_name(
                     helper_tools,
                     {'bulk_update_tasks_by_parent', 'bulk_update_tasks_by_filter'},
                 ),
+                get_planning_tool(),
+            ]
+        else:
+            tool_definitions = [
+                *_select_tools_by_name(helper_tools, {'bulk_update_tasks_by_filter'}),
                 get_planning_tool(),
             ]
         edit_turns = max(1, min(edit_turns, 2))
@@ -1168,15 +1283,25 @@ def plan_operations(
             else (
                 'Call one helper first (bulk_update_tasks_by_parent or '
                 'bulk_update_tasks_by_filter), then call plan_roadmap_operations exactly once.'
+                if parent_scoped_bulk_filter_guard
+                else (
+                    'Call bulk_update_tasks_by_filter first with explicit filter criteria, '
+                    'then call plan_roadmap_operations exactly once.'
+                )
             )
         )
+        context_lane_header = (
+            'You are in edit planning mode for a global bulk task update with explicit filters.\n'
+            if global_bulk_filter_guard
+            else 'You are in edit planning mode with resolved parent context for a bulk task update.\n'
+        )
         planner_prompt = (
-            'You are in edit planning mode with resolved parent context for a bulk task update.\n'
+            f'{context_lane_header}'
             f'ReAct loop turn: {react_loop_turn}.\n'
             f'Max tool calls this turn: {edit_turns}.\n'
             'Do not call discovery/read tools in this turn.\n'
             f'{helper_call_guidance}\n'
-            'Avoid low-level task-by-task discovery when parent scope is already available.\n\n'
+            'Avoid low-level task-by-task discovery when helper filters can define the target set.\n\n'
             f'{operation_op_guardrail}\n\n'
             'Resolved context summary:\n'
             f'{json.dumps(effective_tool_summary[:10], ensure_ascii=True, separators=(",", ":"))}\n\n'
@@ -1303,8 +1428,9 @@ def plan_operations(
             'tool_executor': _capturing_tool_executor,
             'max_tool_turns': edit_turns,
         }
-        if planner_profile:
-            base_kwargs['planner_profile'] = planner_profile
+        current_planner_profile = str(planner_profile or '').strip()
+        if current_planner_profile:
+            base_kwargs['planner_profile'] = current_planner_profile
         if actor_context_for_planner is not None:
             base_kwargs['actor_context'] = actor_context_for_planner
 
@@ -1391,6 +1517,20 @@ def plan_operations(
                     },
                     used_calls=llm_calls_used,
                 )
+            if (
+                exc.code == 'missing_tool_call'
+                and attempt + 1 < max_attempts
+                and llm_first_mode_enabled
+            ):
+                synthesized_state = _try_synthesize_react_closure_state(
+                    reason='provider_missing_tool_call_pre_retry',
+                    provider_error_code=exc.code,
+                    tokens_input=exc.tokens_input,
+                    tokens_output=exc.tokens_output,
+                    tokens_total=exc.tokens_total,
+                )
+                if synthesized_state is not None:
+                    return synthesized_state
             if exc.code in {'invalid_operation_payload', 'missing_tool_call'} and attempt + 1 < max_attempts:
                 enum_op_payload = (
                     exc.code == 'invalid_operation_payload'
@@ -1406,11 +1546,14 @@ def plan_operations(
                 if exc.code == 'missing_tool_call' or enum_op_payload:
                     # Retry in planning-only mode to avoid rediscovery churn.
                     tool_definitions = get_operation_tools()
+                    if exc.code == 'missing_tool_call':
+                        planner_profile = 'repair_retry'
                     planner_prompt = planner._augment_missing_tool_call_retry_prompt(
                         planner_prompt=planner_prompt,
                         user_message=user_message,
                         tool_observations=tool_observations,
                     )
+                planner_prompt_bytes = len(planner_prompt.encode('utf-8'))
                 continue
             planner._logger.warning(
                 'Provider operation planning failed in react mode, using edit clarifier lane. code=%s message=%s',
@@ -1418,6 +1561,15 @@ def plan_operations(
                 exc.message,
             )
             if llm_first_mode_enabled:
+                synthesized_state = _try_synthesize_react_closure_state(
+                    reason='provider_react_exception_fallback',
+                    provider_error_code=exc.code,
+                    tokens_input=exc.tokens_input,
+                    tokens_output=exc.tokens_output,
+                    tokens_total=exc.tokens_total,
+                )
+                if synthesized_state is not None:
+                    return synthesized_state
                 failure_state, clarifier_classification = _build_llm_first_failure_state(
                     provider_error_code=exc.code,
                     provider_error_message=exc.message,

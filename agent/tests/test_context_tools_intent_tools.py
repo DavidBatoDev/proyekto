@@ -247,6 +247,18 @@ class ContextToolIntentTests(unittest.TestCase):
             task_status_enum,
             ['todo', 'in_progress', 'in_review', 'done', 'blocked', 'all'],
         )
+        bulk_filter_tool = next(
+            tool for tool in get_edit_mode_tools()
+            if str(tool.get('function', {}).get('name') or '') == 'bulk_update_tasks_by_filter'
+        )
+        update_props = (
+            bulk_filter_tool.get('function', {})
+            .get('parameters', {})
+            .get('properties', {})
+            .get('update', {})
+            .get('properties', {})
+        )
+        self.assertIn('assignee_id', update_props)
         self.assertIn('create_epic', edit_tool_names)
         self.assertIn('bulk_update_task_status', edit_tool_names)
         self.assertIn('bulk_update_tasks_by_parent', edit_tool_names)
@@ -490,6 +502,132 @@ class ContextToolIntentTests(unittest.TestCase):
         self.assertEqual(operations[0].get('node_id'), 't1')
         self.assertEqual((operations[0].get('patch') or {}).get('priority'), 'high')
         self.assertFalse((result.get('filters') or {}).get('include_completed'))
+
+    def test_bulk_update_tasks_by_filter_done_status_includes_completed_even_when_false(self) -> None:
+        result = self.executor.execute(
+            'bulk_update_tasks_by_filter',
+            {
+                'roadmap_id': 'r1',
+                'filters': {
+                    'status': 'done',
+                    'include_completed': False,
+                },
+                'update': {'status': 'todo'},
+            },
+            self.session_context,
+        )
+        operations = result.get('operations')
+        self.assertIsInstance(operations, list)
+        assert isinstance(operations, list)
+        self.assertEqual([op.get('node_id') for op in operations], ['t2', 't3'])
+        self.assertTrue(all(op.get('op') == 'mark_status' for op in operations))
+        self.assertTrue((result.get('filters') or {}).get('include_completed'))
+
+    def test_bulk_update_tasks_by_filter_supports_combined_status_and_assignee_update(self) -> None:
+        result = self.executor.execute(
+            'bulk_update_tasks_by_filter',
+            {
+                'roadmap_id': 'r1',
+                'filters': {
+                    'status': 'done',
+                    'include_completed': False,
+                },
+                'update': {
+                    'status': 'todo',
+                    'assignee_id': 'u1',
+                },
+            },
+            self.session_context,
+        )
+        operations = result.get('operations')
+        self.assertIsInstance(operations, list)
+        assert isinstance(operations, list)
+        self.assertEqual(len(operations), 3)
+        mark_status_ops = [op for op in operations if op.get('op') == 'mark_status']
+        assign_ops = [
+            op
+            for op in operations
+            if op.get('op') == 'update_node'
+            and isinstance(op.get('patch'), dict)
+            and op.get('patch', {}).get('assignee_id') == 'u1'
+        ]
+        self.assertEqual([op.get('node_id') for op in mark_status_ops], ['t2', 't3'])
+        self.assertEqual(len(assign_ops), 1)
+        self.assertEqual(assign_ops[0].get('node_id'), 't3')
+        update_payload = result.get('update')
+        self.assertIsInstance(update_payload, dict)
+        assert isinstance(update_payload, dict)
+        self.assertEqual(update_payload.get('assignee_id'), 'u1')
+
+    def test_bulk_update_tasks_by_filter_uses_backend_filtered_tasks_endpoint(self) -> None:
+        call_counts = {'summary': 0, 'tasks_filtered': 0}
+
+        async def _context_summary(**_kwargs) -> dict:
+            call_counts['summary'] += 1
+            return {
+                'roadmap_id': 'r1',
+                'epics': [],
+            }
+
+        async def _context_tasks_filtered(**_kwargs) -> dict:
+            call_counts['tasks_filtered'] += 1
+            return {
+                'tasks': [
+                    {
+                        'id': 'tm1',
+                        'type': 'task',
+                        'title': 'My done task',
+                        'status': 'done',
+                        'assignee_id': 'u1',
+                    }
+                ]
+            }
+
+        executor = ContextToolsExecutor(
+            settings=get_settings().model_copy(update={'agent_resolve_cache_ttl_seconds': 30}),
+            logger=logging.getLogger('context-tools-intent-tests-fast-path'),
+            nest_client=SimpleNamespace(
+                context_summary=_context_summary,
+                context_features=lambda **_kwargs: {'children': []},
+                context_children=lambda **_kwargs: {'children': []},
+                context_node_details=lambda **_kwargs: {'type': 'task'},
+                context_search=lambda **_kwargs: {'matches': []},
+                context_children_from_resolution=lambda **_kwargs: {'children': []},
+                context_tasks_assigned_to_me=lambda **_kwargs: {'tasks': []},
+                context_tasks_filtered=_context_tasks_filtered,
+            ),
+            run_async_context_call=self._run_async,
+        )
+        session_context = {
+            'roadmap_id': 'r1',
+            'trace_id': 'trace-context-tools-fast-path',
+            'actor_context': {'actor_id': 'u1'},
+        }
+
+        result = executor.execute(
+            'bulk_update_tasks_by_filter',
+            {
+                'roadmap_id': 'r1',
+                'filters': {
+                    'assignee_id': 'u1',
+                    'status': 'done',
+                    'include_completed': False,
+                },
+                'update': {'priority': 'high'},
+                'limit': 100,
+            },
+            session_context,
+        )
+
+        operations = result.get('operations')
+        self.assertIsInstance(operations, list)
+        assert isinstance(operations, list)
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].get('op'), 'update_node')
+        self.assertEqual(operations[0].get('node_id'), 'tm1')
+        self.assertEqual((operations[0].get('patch') or {}).get('priority'), 'high')
+        self.assertEqual(call_counts['tasks_filtered'], 1)
+        self.assertEqual(call_counts['summary'], 0)
 
     def test_bulk_update_tasks_by_filter_rejects_empty_update_object(self) -> None:
         result = self.executor.execute(

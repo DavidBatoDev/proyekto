@@ -258,6 +258,161 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         self.assertNotIn('resolve_node_reference', tool_names)
         self.assertEqual(result.get('response_mode'), 'edit_plan')
 
+    def test_global_bulk_filter_update_uses_filter_helper_only(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Assign all tasks assigned to me that are done to in review',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-global-bulk-filter-guard',
+                },
+            },
+        )
+
+        tool_names = captured.get('tool_names')
+        self.assertIsInstance(tool_names, list)
+        assert isinstance(tool_names, list)
+        self.assertNotIn('bulk_update_tasks_by_parent', tool_names)
+        self.assertIn('bulk_update_tasks_by_filter', tool_names)
+        self.assertIn('plan_roadmap_operations', tool_names)
+        self.assertNotIn('get_roadmap_overview', tool_names)
+        self.assertNotIn('resolve_node_reference', tool_names)
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+
+    def test_global_bulk_filter_update_with_quoted_status_and_followup_clause_uses_filter_helper_only(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Assign me to all tasks that are "done" after that mark them as todo',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-global-bulk-filter-quoted-status',
+                },
+            },
+        )
+
+        tool_names = captured.get('tool_names')
+        self.assertIsInstance(tool_names, list)
+        assert isinstance(tool_names, list)
+        self.assertNotIn('bulk_update_tasks_by_parent', tool_names)
+        self.assertIn('bulk_update_tasks_by_filter', tool_names)
+        self.assertIn('plan_roadmap_operations', tool_names)
+        self.assertNotIn('get_roadmap_overview', tool_names)
+        self.assertNotIn('get_tasks_by_status', tool_names)
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+
+    def test_global_bulk_filter_assign_me_injects_actor_assignee_into_helper_update(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+        observed_filter_updates: list[dict[str, object]] = []
+
+        def fake_execute(name, args, session_context):  # noqa: ANN001
+            if name == 'bulk_update_tasks_by_filter':
+                observed_filter_updates.append(dict(args))
+                return {
+                    'operations': [
+                        {
+                            'op': 'mark_status',
+                            'node_type': 'task',
+                            'node_id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                            'status': 'todo',
+                        },
+                        {
+                            'op': 'update_node',
+                            'node_type': 'task',
+                            'node_id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                            'patch': {'assignee_id': 'u1'},
+                        },
+                    ],
+                    'matched_task_count': 1,
+                    'updated_task_count': 2,
+                }
+            return {'tool': name, 'args': dict(args), 'ok': True}
+
+        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
+
+        class _AssignMeFilterOrchestrator:
+            def call(self, operation, trace_context=None):  # noqa: ANN001
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                        planner_profile=None,
+                    ):
+                        tool_executor(
+                            'bulk_update_tasks_by_filter',
+                            {
+                                'roadmap_id': 'r1',
+                                'filters': {'status': 'done', 'include_completed': True},
+                                'update': {'status': 'todo'},
+                                'limit': 2000,
+                            },
+                        )
+                        return (
+                            'Prepared operation.',
+                            [
+                                {
+                                    'op': 'mark_status',
+                                    'node_type': 'task',
+                                    'node_id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                                    'status': 'todo',
+                                }
+                            ],
+                        )
+
+                return SimpleNamespace(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=1,
+                    tokens_output=1,
+                    tokens_total=2,
+                )
+
+        planner._provider_orchestrator = _AssignMeFilterOrchestrator()
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Assign me to all tasks that are done after that mark them as todo',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-global-bulk-filter-assign-me-injection',
+                    'actor_context': {'actor_id': 'u1'},
+                },
+            },
+        )
+
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+        self.assertEqual(len(observed_filter_updates), 1)
+        update_payload = observed_filter_updates[0].get('update')
+        self.assertIsInstance(update_payload, dict)
+        assert isinstance(update_payload, dict)
+        self.assertEqual(update_payload.get('status'), 'todo')
+        self.assertEqual(update_payload.get('assignee_id'), 'u1')
+
     def test_actor_context_is_forwarded_to_planner_adapter(self) -> None:
         captured: dict[str, object] = {}
         planner = _FakePlanner(captured)
@@ -726,6 +881,7 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         planner._settings.agent_react_max_attempts = 2
         planner._settings.agent_react_repair_retries = 1
         observed_args: list[dict[str, object]] = []
+        observed_profiles: list[str | None] = []
         call_count = {'value': 0}
 
         def fake_execute(name, args, session_context):  # noqa: ANN001
@@ -759,6 +915,7 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
                             max_tool_turns,
                             planner_profile=None,
                         ):
+                            observed_profiles.append(planner_profile)
                             tool_executor(
                                 'resolve_node_reference',
                                 {
@@ -796,6 +953,7 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
                         max_tool_turns,
                         planner_profile=None,
                     ):
+                        observed_profiles.append(planner_profile)
                         tool_executor(
                             'resolve_node_reference',
                             {
@@ -843,6 +1001,7 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         )
 
         self.assertEqual(call_count['value'], 2)
+        self.assertEqual(observed_profiles, [None, 'repair_retry'])
         self.assertEqual(len(observed_args), 2)
         self.assertTrue(all('node_type' not in args for args in observed_args))
         self.assertTrue(
@@ -1389,6 +1548,219 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         self.assertEqual(result.get('stop_reason'), 'awaiting_user_input')
         self.assertEqual(result.get('clarifier_reason'), 'planner_missing_tool_call')
         self.assertEqual(result.get('provider_error_code'), 'missing_tool_call')
+
+    def test_llm_first_global_bulk_filter_missing_tool_call_uses_filter_narrow_option(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+        planner._settings.agent_llm_first_mode_enabled = True
+        planner._settings.agent_edit_actionable_failure_clarifier_enabled = True
+        planner._settings.agent_react_max_attempts = 1
+        planner._settings.agent_react_repair_retries = 0
+
+        class _MissingToolCallOrchestrator:
+            def call(self, operation, trace_context=None):  # noqa: ANN001
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                        planner_profile=None,
+                    ):
+                        raise ProviderAdapterError(
+                            provider='openai',
+                            code='missing_tool_call',
+                            message='OpenAI did not return any tool call while planning operations.',
+                        )
+
+                return SimpleNamespace(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=1,
+                    tokens_output=1,
+                    tokens_total=2,
+                )
+
+        planner._provider_orchestrator = _MissingToolCallOrchestrator()
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Assign me to all tasks that are done',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-llm-first-actionable-missing-tool-global-filter',
+                },
+            },
+        )
+
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'llm_first_planner_contract_failure')
+        self.assertEqual(result.get('stop_reason'), 'awaiting_user_input')
+        self.assertEqual(result.get('clarifier_reason'), 'planner_missing_tool_call')
+        self.assertEqual(result.get('provider_error_code'), 'missing_tool_call')
+        clarifier_options = result.get('clarifier_options')
+        self.assertIsInstance(clarifier_options, list)
+        assert isinstance(clarifier_options, list)
+        self.assertTrue(
+            any('Narrow to one filter' in str(option) for option in clarifier_options)
+        )
+
+    def test_llm_first_missing_tool_call_with_bulk_filter_helper_synthesizes(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+        planner._settings.agent_llm_first_mode_enabled = True
+        planner._settings.agent_edit_actionable_failure_clarifier_enabled = True
+        planner._settings.agent_react_max_attempts = 2
+        planner._settings.agent_react_repair_retries = 1
+        call_count = {'value': 0}
+
+        def fake_execute(name, args, session_context):  # noqa: ANN001
+            if name == 'bulk_update_tasks_by_filter':
+                return {
+                    'operations': [
+                        {
+                            'op': 'mark_status',
+                            'node_type': 'task',
+                            'node_id': 'b026e967-54c3-4f11-9c49-b95a680aa2a7',
+                            'status': 'todo',
+                        }
+                    ],
+                    'matched_task_count': 1,
+                    'updated_task_count': 1,
+                    'task_ids': ['b026e967-54c3-4f11-9c49-b95a680aa2a7'],
+                }
+            return {'tool': name, 'args': dict(args), 'ok': True}
+
+        def fake_synthesize(  # noqa: ANN001
+            user_message,
+            tool_observations,
+            session_context=None,
+            force_include_completed=None,
+        ):
+            for observation in reversed(tool_observations):
+                if str(observation.get('tool_name') or '').strip() != 'bulk_update_tasks_by_filter':
+                    continue
+                helper_result = observation.get('result')
+                if not isinstance(helper_result, dict):
+                    continue
+                raw_operations = helper_result.get('operations')
+                if not isinstance(raw_operations, list) or not raw_operations:
+                    continue
+                synthesized: list[RoadmapOperation] = []
+                for item in raw_operations:
+                    if not isinstance(item, dict):
+                        continue
+                    try:
+                        synthesized.append(RoadmapOperation.model_validate(item))
+                    except Exception:
+                        continue
+                if synthesized:
+                    return synthesized
+            return None
+
+        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
+        planner._maybe_synthesize_react_closure_operations = fake_synthesize  # type: ignore[method-assign]
+
+        class _MissingToolCallWithHelperOrchestrator:
+            def call(self, operation, trace_context=None):  # noqa: ANN001
+                call_count['value'] += 1
+                if call_count['value'] == 1:
+                    class _AdapterFirst:
+                        def plan_operations_with_tools(
+                            self,
+                            *,
+                            system_prompt,
+                            planner_prompt,
+                            history_messages,
+                            tools,
+                            tool_executor,
+                            max_tool_turns,
+                            planner_profile=None,
+                        ):
+                            tool_executor(
+                                'bulk_update_tasks_by_filter',
+                                {
+                                    'roadmap_id': 'r1',
+                                    'filters': {'status': 'done', 'include_completed': True},
+                                    'update': {'status': 'todo'},
+                                    'limit': 2000,
+                                },
+                            )
+                            raise ProviderAdapterError(
+                                provider='openai',
+                                code='missing_tool_call',
+                                message='OpenAI did not return any tool call while planning operations.',
+                            )
+
+                    return SimpleNamespace(
+                        value=operation(_AdapterFirst()),
+                        provider_used='openai',
+                        fallback_used=False,
+                        provider_error_code=None,
+                        tokens_input=1,
+                        tokens_output=1,
+                        tokens_total=2,
+                    )
+
+                class _AdapterSecond:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                        planner_profile=None,
+                    ):
+                        raise ProviderAdapterError(
+                            provider='openai',
+                            code='missing_tool_call',
+                            message='OpenAI did not return any tool call while planning operations.',
+                        )
+
+                return SimpleNamespace(
+                    value=operation(_AdapterSecond()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=1,
+                    tokens_output=1,
+                    tokens_total=2,
+                )
+
+        planner._provider_orchestrator = _MissingToolCallWithHelperOrchestrator()
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Assign me to all tasks that are done after that mark them as todo',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-llm-first-bulk-filter-synth',
+                },
+            },
+        )
+
+        self.assertEqual(call_count['value'], 1)
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+        self.assertEqual(result.get('parse_mode'), 'synth')
+        planned_operations = result.get('planned_operations') or []
+        self.assertEqual(len(planned_operations), 1)
+        self.assertEqual(planned_operations[0].op.value, 'mark_status')
+        self.assertEqual(planned_operations[0].status, 'todo')
 
     def test_llm_first_invalid_assignee_payload_returns_actionable_clarifier_when_flag_enabled(self) -> None:
         captured: dict[str, object] = {}

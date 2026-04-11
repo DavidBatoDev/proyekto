@@ -35,6 +35,8 @@ import type {
   RoadmapAiContextPreviewSelectorQueryDto,
   RoadmapAiContextTasksAssignedQueryDto,
   RoadmapAiContextTasksAssignedResponseDto,
+  RoadmapAiContextTasksFilterQueryDto,
+  RoadmapAiContextTasksFilteredResponseDto,
   RoadmapAiContextFeaturesQueryDto,
   RoadmapAiContextNodeResponseDto,
   RoadmapAiContextResolutionChildrenQueryDto,
@@ -830,6 +832,143 @@ export class RoadmapAiService {
       roadmapId,
       method: 'GET',
       path: '/roadmaps/:id/ai/context/tasks-assigned-to-me',
+      authzMs,
+      totalHandlerMs: Date.now() - handlerStartedAt,
+      previewId: contextState.previewId,
+    });
+    return { tasks };
+  }
+
+  async getContextTasksFiltered(
+    roadmapId: string,
+    query: RoadmapAiContextTasksFilterQueryDto,
+    userId: string,
+    traceId?: string,
+  ): Promise<RoadmapAiContextTasksFilteredResponseDto> {
+    const handlerStartedAt = Date.now();
+    const authzStartedAt = Date.now();
+    await this.assertCanEditRoadmap(roadmapId, userId);
+    const authzMs = Date.now() - authzStartedAt;
+    const contextState = await this.resolveContextStateSelection(
+      roadmapId,
+      userId,
+      query.preview_id,
+    );
+    const state = contextState.state;
+
+    const normalizedStatusFilter =
+      typeof query.status === 'string' && query.status.trim().length > 0
+        ? query.status.trim().toLowerCase()
+        : 'all';
+
+    const parentType =
+      typeof query.parent_type === 'string' &&
+      query.parent_type.trim().length > 0
+        ? query.parent_type.trim().toLowerCase()
+        : undefined;
+    const parentId =
+      typeof query.parent_id === 'string' && query.parent_id.trim().length > 0
+        ? query.parent_id.trim()
+        : undefined;
+
+    if (parentType && !parentId) {
+      throw this.contextBadRequest(
+        'INVALID_ARGUMENT',
+        'parent_id is required when parent_type is provided.',
+      );
+    }
+
+    const assigneeId =
+      typeof query.assignee_id === 'string' &&
+      query.assignee_id.trim().length > 0
+        ? query.assignee_id.trim()
+        : undefined;
+    const keyword =
+      typeof query.keyword === 'string' && query.keyword.trim().length > 0
+        ? query.keyword.trim().toLowerCase()
+        : '';
+    const includeCompletedRaw = query.include_completed === 'true';
+    const includeCompleted =
+      includeCompletedRaw ||
+      ['done', 'completed', 'archived'].includes(normalizedStatusFilter);
+    const limit = Math.min(Math.max(query.limit ?? 500, 1), 2000);
+
+    const tasks: RoadmapAiContextTasksFilteredResponseDto['tasks'] = [];
+    for (const epic of state.roadmap_epics ?? []) {
+      if (tasks.length >= limit) break;
+      const epicId = epic.id;
+      const epicTitle = epic.title ?? 'Untitled epic';
+      for (const feature of epic.roadmap_features ?? []) {
+        if (tasks.length >= limit) break;
+        const featureId = feature.id;
+        const featureTitle = feature.title ?? 'Untitled feature';
+        for (const task of feature.roadmap_tasks ?? []) {
+          if (tasks.length >= limit) break;
+          if (!task.id) continue;
+
+          const taskStatus =
+            typeof task.status === 'string'
+              ? task.status.trim().toLowerCase()
+              : '';
+          const isOpen = this.isOpenTaskStatus(task.status);
+          if (!includeCompleted && !isOpen) continue;
+
+          if (normalizedStatusFilter === 'open' && !isOpen) continue;
+          if (
+            normalizedStatusFilter !== 'open' &&
+            normalizedStatusFilter !== 'all' &&
+            taskStatus !== normalizedStatusFilter
+          ) {
+            continue;
+          }
+
+          if (parentId) {
+            if (parentType === 'epic' && epicId !== parentId) continue;
+            if (parentType === 'feature' && featureId !== parentId) continue;
+            if (!parentType && parentId !== epicId && parentId !== featureId) {
+              continue;
+            }
+          }
+
+          const taskAssigneeId =
+            typeof task.assignee_id === 'string' &&
+            task.assignee_id.trim().length > 0
+              ? task.assignee_id.trim()
+              : undefined;
+          if (assigneeId && taskAssigneeId !== assigneeId) continue;
+
+          if (keyword) {
+            const searchableText = [task.title, featureTitle, epicTitle]
+              .filter(
+                (part) => typeof part === 'string' && part.trim().length > 0,
+              )
+              .join(' ')
+              .toLowerCase();
+            if (!searchableText.includes(keyword)) continue;
+          }
+
+          tasks.push({
+            id: task.id,
+            type: 'task',
+            title: task.title ?? 'Untitled task',
+            status: task.status,
+            priority: task.priority,
+            assignee_id: taskAssigneeId,
+            feature_id: featureId,
+            feature_title: featureTitle,
+            epic_id: epicId,
+            epic_title: epicTitle,
+          });
+        }
+      }
+    }
+
+    this.logRoadmapAiHandlerTiming({
+      event: 'roadmap_ai_context_tasks_filtered_timing',
+      traceId,
+      roadmapId,
+      method: 'GET',
+      path: '/roadmaps/:id/ai/context/tasks',
       authzMs,
       totalHandlerMs: Date.now() - handlerStartedAt,
       previewId: contextState.previewId,

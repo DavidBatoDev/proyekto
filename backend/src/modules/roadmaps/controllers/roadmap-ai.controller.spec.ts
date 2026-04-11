@@ -11,6 +11,10 @@ describe('RoadmapAiController trace forwarding', () => {
   const resolutionChildrenQuery = { choice: 1, limit: 10 } as any;
   const featuresQuery = { epic_id: 'epic-1', limit: 10 } as any;
   const tasksQuery = { status: 'open', limit: 10 } as any;
+  const filteredTasksQuery = {
+    status: 'done',
+    include_completed: 'false',
+  } as any;
 
   const roadmapAiService = {
     preview: jest.fn(),
@@ -23,6 +27,7 @@ describe('RoadmapAiController trace forwarding', () => {
     getContextChildrenFromResolution: jest.fn(),
     getContextFeatures: jest.fn(),
     getContextTasksAssignedToMe: jest.fn(),
+    getContextTasksFiltered: jest.fn(),
     commit: jest.fn(),
     discard: jest.fn(),
     rollback: jest.fn(),
@@ -132,6 +137,19 @@ describe('RoadmapAiController trace forwarding', () => {
     expect(roadmapAiService.getContextTasksAssignedToMe).toHaveBeenCalledWith(
       roadmapId,
       tasksQuery,
+      user.id,
+      traceId,
+    );
+
+    controller.getContextTasksFiltered(
+      roadmapId,
+      filteredTasksQuery,
+      user,
+      traceId,
+    );
+    expect(roadmapAiService.getContextTasksFiltered).toHaveBeenCalledWith(
+      roadmapId,
+      filteredTasksQuery,
       user.id,
       traceId,
     );

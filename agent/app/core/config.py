@@ -35,6 +35,10 @@ class Settings(BaseSettings):
         default=1200,
         alias='OPENAI_PLANNER_MAX_TOKENS',
     )
+    openai_planner_retry_max_tokens: int | None = Field(
+        default=2000,
+        alias='OPENAI_PLANNER_RETRY_MAX_TOKENS',
+    )
     openai_simple_edit_max_tokens: int | None = Field(
         default=320,
         alias='OPENAI_SIMPLE_EDIT_MAX_TOKENS',
@@ -172,6 +176,17 @@ class Settings(BaseSettings):
     @field_validator('openai_planner_max_tokens')
     @classmethod
     def normalize_openai_planner_max_tokens(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if value < 64:
+            return 64
+        if value > 4096:
+            return 4096
+        return value
+
+    @field_validator('openai_planner_retry_max_tokens')
+    @classmethod
+    def normalize_openai_planner_retry_max_tokens(cls, value: int | None) -> int | None:
         if value is None:
             return None
         if value < 64:

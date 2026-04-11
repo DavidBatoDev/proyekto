@@ -2329,12 +2329,35 @@ class ContextToolsExecutor:
                     if isinstance(update_priority_raw, str) and update_priority_raw.strip()
                     else ''
                 )
+                has_update_assignee = 'assignee_id' in update_raw
+                is_valid_update_assignee, update_assignee_id = self._normalize_assignee_update_input(
+                    update_raw.get('assignee_id') if has_update_assignee else None
+                )
+                if has_update_assignee and not is_valid_update_assignee:
+                    result = self._invalid_argument_result(
+                        arg_name='update.assignee_id',
+                        arg_value=update_raw.get('assignee_id'),
+                        message=(
+                            'update.assignee_id must be a non-empty string or null '
+                            '(use null/unassign/unassigned/none/null to clear assignment).'
+                        ),
+                    )
+                    log_event(
+                        self._logger,
+                        'tool_call_result',
+                        settings=self._settings,
+                        level=logging.WARNING,
+                        trace_id=trace_id,
+                        tool_name=tool_name,
+                        result_summary=summarize_tool_result(result),
+                    )
+                    return result
 
-                if update_status is None and not update_priority:
+                if update_status is None and not update_priority and not has_update_assignee:
                     result = self._invalid_argument_result(
                         arg_name='update',
                         arg_value=update_raw,
-                        message='update must include at least one of: status, priority.',
+                        message='update must include at least one of: status, priority, assignee_id.',
                     )
                     log_event(
                         self._logger,
@@ -2405,37 +2428,95 @@ class ContextToolsExecutor:
                         return result
                 keyword = str(filters_raw.get('keyword') or '').strip().lower()
                 include_completed = bool(filters_raw.get('include_completed', False))
+                effective_include_completed = include_completed or bool(
+                    status_filter is not None and self._is_done_status(status_filter)
+                )
 
                 limit_raw = args.get('limit')
                 limit = int(limit_raw) if isinstance(limit_raw, int) else 500
                 limit = max(1, min(limit, 2000))
-
-                task_result = self._collect_tasks_for_roadmap(
-                    roadmap_id=roadmap_id,
-                    status_filter='all',
-                    limit=2000,
-                    session_context=session_context,
-                    auth_header=auth_value,
-                    trace_id=trace_id,
-                    context_selector=context_selector,
-                )
-                if isinstance(task_result.get('error'), dict):
-                    result = task_result
-                    log_event(
-                        self._logger,
-                        'tool_call_result',
-                        settings=self._settings,
-                        level=logging.WARNING,
-                        trace_id=trace_id,
-                        tool_name=tool_name,
-                        result_summary=summarize_tool_result(result),
+                tasks: list[dict[str, Any]] = []
+                filtered_endpoint_loaded = False
+                context_tasks_filtered = getattr(self._nest_client, 'context_tasks_filtered', None)
+                if callable(context_tasks_filtered):
+                    filtered_result = self._run_context_call(
+                        session_context,
+                        context_tasks_filtered(
+                            roadmap_id=roadmap_id,
+                            status=status_filter,
+                            parent_id=parent_id or None,
+                            parent_type=parent_type or None,
+                            assignee_id=assignee_id or None,
+                            keyword=keyword or None,
+                            include_completed=include_completed,
+                            limit=limit,
+                            preview_id=context_selector,
+                            auth_header=auth_value,
+                            trace_id=trace_id,
+                        ),
                     )
-                    return result
+                    if not isinstance(filtered_result.get('error'), dict):
+                        tasks_raw = filtered_result.get('tasks')
+                        tasks = (
+                            [item for item in tasks_raw if isinstance(item, dict)]
+                            if isinstance(tasks_raw, list)
+                            else []
+                        )
+                        filtered_endpoint_loaded = True
+                    else:
+                        error_payload = filtered_result.get('error')
+                        error_code = str((error_payload or {}).get('code') or '').strip()
+                        error_message = str((error_payload or {}).get('message') or '').strip().lower()
+                        missing_route = (
+                            error_code == 'NODE_NOT_FOUND'
+                            and 'cannot get' in error_message
+                        )
+                        if not missing_route:
+                            result = filtered_result
+                            log_event(
+                                self._logger,
+                                'tool_call_result',
+                                settings=self._settings,
+                                level=logging.WARNING,
+                                trace_id=trace_id,
+                                tool_name=tool_name,
+                                result_summary=summarize_tool_result(result),
+                            )
+                            return result
 
-                tasks_raw = task_result.get('tasks')
-                tasks = [item for item in tasks_raw if isinstance(item, dict)] if isinstance(tasks_raw, list) else []
+                if not filtered_endpoint_loaded:
+                    collect_status_filter = (
+                        status_filter
+                        if status_filter not in {None, 'all'}
+                        else 'all'
+                    )
+                    collect_limit = min(2000, max(limit, 200))
+                    task_result = self._collect_tasks_for_roadmap(
+                        roadmap_id=roadmap_id,
+                        status_filter=collect_status_filter,
+                        limit=collect_limit,
+                        session_context=session_context,
+                        auth_header=auth_value,
+                        trace_id=trace_id,
+                        context_selector=context_selector,
+                    )
+                    if isinstance(task_result.get('error'), dict):
+                        result = task_result
+                        log_event(
+                            self._logger,
+                            'tool_call_result',
+                            settings=self._settings,
+                            level=logging.WARNING,
+                            trace_id=trace_id,
+                            tool_name=tool_name,
+                            result_summary=summarize_tool_result(result),
+                        )
+                        return result
 
-                if assignee_id:
+                    tasks_raw = task_result.get('tasks')
+                    tasks = [item for item in tasks_raw if isinstance(item, dict)] if isinstance(tasks_raw, list) else []
+
+                if (assignee_id or has_update_assignee) and not filtered_endpoint_loaded:
                     task_ids_for_detail: list[str] = []
                     for task in tasks:
                         task_id = str(task.get('id') or '').strip()
@@ -2487,7 +2568,7 @@ class ContextToolsExecutor:
                         continue
 
                     task_status = self._normalized_status_filter(task.get('status'))
-                    if not include_completed and self._is_done_status(task_status):
+                    if not effective_include_completed and self._is_done_status(task_status):
                         continue
                     if status_filter is not None and not self._matches_status_filter(task_status, status_filter):
                         continue
@@ -2553,6 +2634,18 @@ class ContextToolsExecutor:
                             }
                         )
 
+                    if has_update_assignee:
+                        current_assignee = str(task.get('assignee_id') or '').strip() or None
+                        if current_assignee != update_assignee_id:
+                            operations.append(
+                                {
+                                    'op': 'update_node',
+                                    'node_type': 'task',
+                                    'node_id': task_id,
+                                    'patch': {'assignee_id': update_assignee_id},
+                                }
+                            )
+
                 result = self._build_operation_result(tool_name=tool_name, operations=operations)
                 result['filters'] = {
                     'parent_id': parent_id or None,
@@ -2560,11 +2653,12 @@ class ContextToolsExecutor:
                     'assignee_id': assignee_id or None,
                     'status': status_filter,
                     'keyword': keyword or None,
-                    'include_completed': include_completed,
+                    'include_completed': effective_include_completed,
                 }
                 result['update'] = {
                     'status': update_status,
                     'priority': update_priority or None,
+                    'assignee_id': update_assignee_id if has_update_assignee else None,
                 }
                 result['task_ids'] = matched_task_ids
                 result['tasks'] = matched_tasks
@@ -3736,12 +3830,13 @@ class ContextToolsExecutor:
         trace_id: str | None,
     ) -> dict[str, Any]:
         normalized_limit = max(1, min(int(limit), 2000))
+        feature_limit = max(10, min(100, normalized_limit))
         features_result = self._run_context_call(
             session_context,
             self._nest_client.context_features(
                 roadmap_id=roadmap_id,
                 epic_id=epic_id,
-                limit=100,
+                limit=feature_limit,
                 auth_header=auth_header,
                 trace_id=trace_id,
             ),
@@ -3761,44 +3856,50 @@ class ContextToolsExecutor:
                 'status': self._normalized_status_filter(feature.get('status')) or 'unknown',
             }
 
-        task_coroutines = [
-            self._nest_client.context_children(
-                roadmap_id=roadmap_id,
-                node_id=feature_id,
-                limit=100,
-                auth_header=auth_header,
-                trace_id=trace_id,
-            )
-            for feature_id in feature_ids
-        ]
-        task_results = self._run_context_calls_parallel(session_context, task_coroutines)
-
         tasks: list[dict[str, Any]] = []
-        for feature_id, task_result in zip(feature_ids, task_results):
-            children = self._children_from_result(task_result)
-            feature_meta = feature_meta_by_id.get(feature_id, {})
-            for task in children:
-                node_type = str(task.get('type') or '').strip().lower()
-                if node_type and node_type != 'task':
-                    continue
-                status = self._normalized_status_filter(task.get('status'))
-                if not self._matches_status_filter(status, status_filter):
-                    continue
-                payload = {
-                    'id': task.get('id'),
-                    'type': 'task',
-                    'title': task.get('title'),
-                    'status': status or 'unknown',
-                    'feature_id': feature_id,
-                    'feature_title': feature_meta.get('title'),
-                    'feature_status': feature_meta.get('status'),
-                    'epic_id': epic_id,
-                }
-                tasks.append(payload)
-                if len(tasks) >= normalized_limit:
-                    break
+        batch_size = 8
+        for batch_start in range(0, len(feature_ids), batch_size):
             if len(tasks) >= normalized_limit:
                 break
+            batch_feature_ids = feature_ids[batch_start:batch_start + batch_size]
+            remaining_capacity = max(1, normalized_limit - len(tasks))
+            child_limit = max(1, min(100, remaining_capacity))
+            task_coroutines = [
+                self._nest_client.context_children(
+                    roadmap_id=roadmap_id,
+                    node_id=feature_id,
+                    limit=child_limit,
+                    auth_header=auth_header,
+                    trace_id=trace_id,
+                )
+                for feature_id in batch_feature_ids
+            ]
+            task_results = self._run_context_calls_parallel(session_context, task_coroutines)
+            for feature_id, task_result in zip(batch_feature_ids, task_results):
+                children = self._children_from_result(task_result)
+                feature_meta = feature_meta_by_id.get(feature_id, {})
+                for task in children:
+                    node_type = str(task.get('type') or '').strip().lower()
+                    if node_type and node_type != 'task':
+                        continue
+                    status = self._normalized_status_filter(task.get('status'))
+                    if not self._matches_status_filter(status, status_filter):
+                        continue
+                    payload = {
+                        'id': task.get('id'),
+                        'type': 'task',
+                        'title': task.get('title'),
+                        'status': status or 'unknown',
+                        'feature_id': feature_id,
+                        'feature_title': feature_meta.get('title'),
+                        'feature_status': feature_meta.get('status'),
+                        'epic_id': epic_id,
+                    }
+                    tasks.append(payload)
+                    if len(tasks) >= normalized_limit:
+                        break
+                if len(tasks) >= normalized_limit:
+                    break
 
         return {
             'roadmap_id': roadmap_id,

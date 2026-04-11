@@ -641,3 +641,96 @@ export class RoadmapAiContextTasksAssignedResponseDto {
   @Type(() => RoadmapAiContextAssignedTaskDto)
   tasks: RoadmapAiContextAssignedTaskDto[];
 }
+
+export class RoadmapAiContextTasksFilterQueryDto extends RoadmapAiContextPreviewSelectorQueryDto {
+  @IsOptional()
+  @IsEnum([
+    'open',
+    'all',
+    'todo',
+    'in_progress',
+    'in_review',
+    'done',
+    'blocked',
+  ])
+  status?:
+    | 'open'
+    | 'all'
+    | 'todo'
+    | 'in_progress'
+    | 'in_review'
+    | 'done'
+    | 'blocked';
+
+  @IsOptional()
+  @IsEnum(['epic', 'feature'])
+  parent_type?: 'epic' | 'feature';
+
+  @IsOptional()
+  @IsUUID()
+  parent_id?: string;
+
+  @IsOptional()
+  @IsUUID()
+  assignee_id?: string;
+
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+
+  @IsOptional()
+  @IsEnum(['true', 'false'])
+  include_completed?: 'true' | 'false';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number;
+}
+
+export class RoadmapAiContextFilteredTaskDto {
+  @IsUUID()
+  id: string;
+
+  @IsEnum(['task'])
+  type: 'task';
+
+  @IsString()
+  title: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsOptional()
+  @IsString()
+  priority?: string;
+
+  @IsOptional()
+  @IsUUID()
+  assignee_id?: string;
+
+  @IsOptional()
+  @IsUUID()
+  feature_id?: string;
+
+  @IsOptional()
+  @IsString()
+  feature_title?: string;
+
+  @IsOptional()
+  @IsUUID()
+  epic_id?: string;
+
+  @IsOptional()
+  @IsString()
+  epic_title?: string;
+}
+
+export class RoadmapAiContextTasksFilteredResponseDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapAiContextFilteredTaskDto)
+  tasks: RoadmapAiContextFilteredTaskDto[];
+}

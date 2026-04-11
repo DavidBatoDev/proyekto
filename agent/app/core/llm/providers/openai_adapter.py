@@ -135,7 +135,11 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                     code='tooling_not_supported',
                     message='ToolMessage is unavailable in this runtime; tool loop cannot execute.',
                 )
-            tool_model = self._planner_chat_model(planner_profile=planner_profile).bind_tools(tools)
+            tool_model = self._bind_tools_for_planning(
+                self._planner_chat_model(planner_profile=planner_profile),
+                tools,
+                planner_profile=planner_profile,
+            )
             initial_messages: list[Any] = [
                 SystemMessage(content=system_prompt),
                 *history_messages,
@@ -373,11 +377,53 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
 
     def _planner_max_tokens_for_profile(self, planner_profile: str | None) -> int | None:
         normalized_profile = str(planner_profile or '').strip().lower()
+        if normalized_profile == 'repair_retry':
+            profile_tokens = self._settings.openai_planner_retry_max_tokens
+            if profile_tokens is not None:
+                return profile_tokens
+            return self._settings.openai_planner_max_tokens
         if normalized_profile == 'simple_edit':
             profile_tokens = self._settings.openai_simple_edit_max_tokens
             if profile_tokens is not None:
                 return profile_tokens
         return self._settings.openai_planner_max_tokens
+
+    def _bind_tools_for_planning(
+        self,
+        model: Any,
+        tools: list[dict[str, Any]],
+        *,
+        planner_profile: str | None = None,
+    ) -> Any:
+        normalized_profile = str(planner_profile or '').strip() or 'default'
+        try:
+            bound_model = model.bind_tools(tools, tool_choice='required')
+            log_event(
+                logger,
+                'planner_tool_choice_binding',
+                settings=self._settings,
+                provider=self.provider_name,
+                planner_profile=normalized_profile,
+                tool_choice_requested='required',
+                tool_choice_mode='required',
+                tool_choice_supported=True,
+                tools_count=len(tools),
+            )
+            return bound_model
+        except TypeError:
+            # Backward compatibility for runtimes that do not support tool_choice.
+            log_event(
+                logger,
+                'planner_tool_choice_binding',
+                settings=self._settings,
+                provider=self.provider_name,
+                planner_profile=normalized_profile,
+                tool_choice_requested='required',
+                tool_choice_mode='fallback_legacy',
+                tool_choice_supported=False,
+                tools_count=len(tools),
+            )
+            return model.bind_tools(tools)
 
     def _base_model_kwargs(self, *, max_tokens: int | None) -> dict[str, Any]:
         model_kwargs: dict[str, Any] = {

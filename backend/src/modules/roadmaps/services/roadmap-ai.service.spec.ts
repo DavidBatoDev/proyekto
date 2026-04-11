@@ -283,6 +283,28 @@ describe('RoadmapAiService actor + assignee context', () => {
     ]);
   });
 
+  it('returns done tasks for filtered context query even when include_completed=false', async () => {
+    const { service } = createServiceWithMocks();
+    const result = await service.getContextTasksFiltered(
+      ROADMAP_ID,
+      {
+        status: 'done',
+        include_completed: 'false',
+        limit: 50,
+      },
+      USER_ID,
+    );
+
+    expect(result.tasks).toHaveLength(1);
+    expect(result.tasks[0]).toMatchObject({
+      title: 'Close legacy auth ticket',
+      status: 'done',
+      assignee_id: USER_ID,
+      feature_title: 'Authentication System',
+      epic_title: 'Platform Foundation',
+    });
+  });
+
   it('uses preview snapshot context for summary and assigned tasks when preview_id is provided', async () => {
     const { service, roadmapsRepo, previewStore } = createServiceWithMocks();
     const previewId = '123e4567-e89b-12d3-a456-426614174000';
@@ -447,6 +469,12 @@ describe('RoadmapAiService context timing logs', () => {
       USER_ID,
       traceId,
     );
+    await service.getContextTasksFiltered(
+      ROADMAP_ID,
+      { status: 'done', include_completed: 'false', limit: 10 } as any,
+      USER_ID,
+      traceId,
+    );
 
     const events = timingSpy.mock.calls.map((call) => (call[0] as any)?.event);
     expect(events).toContain('roadmap_ai_context_summary_timing');
@@ -456,6 +484,7 @@ describe('RoadmapAiService context timing logs', () => {
     expect(events).toContain('roadmap_ai_context_resolution_children_timing');
     expect(events).toContain('roadmap_ai_context_features_timing');
     expect(events).toContain('roadmap_ai_context_tasks_assigned_timing');
+    expect(events).toContain('roadmap_ai_context_tasks_filtered_timing');
   });
 
   it('includes status in context node children responses', async () => {

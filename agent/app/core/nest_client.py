@@ -195,6 +195,46 @@ class NestRoadmapClient:
             trace_id=trace_id,
         )
 
+    async def context_tasks_filtered(
+        self,
+        roadmap_id: str,
+        status: str | None,
+        parent_id: str | None,
+        parent_type: str | None,
+        assignee_id: str | None,
+        keyword: str | None,
+        include_completed: bool | None,
+        limit: int | None,
+        preview_id: str | None,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        query_parts: list[str] = []
+        if preview_id:
+            query_parts.append(f"preview_id={quote_plus(preview_id)}")
+        if status:
+            query_parts.append(f"status={quote_plus(status)}")
+        if parent_id:
+            query_parts.append(f"parent_id={quote_plus(parent_id)}")
+        if parent_type:
+            query_parts.append(f"parent_type={quote_plus(parent_type)}")
+        if assignee_id:
+            query_parts.append(f"assignee_id={quote_plus(assignee_id)}")
+        if keyword:
+            query_parts.append(f"keyword={quote_plus(keyword)}")
+        if include_completed is not None:
+            query_parts.append(
+                f"include_completed={'true' if include_completed else 'false'}"
+            )
+        if limit is not None:
+            query_parts.append(f"limit={limit}")
+        query_string = f"?{'&'.join(query_parts)}" if query_parts else ''
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/context/tasks{query_string}",
+            auth_header,
+            trace_id=trace_id,
+        )
+
     async def context_node_details(
         self,
         roadmap_id: str,
