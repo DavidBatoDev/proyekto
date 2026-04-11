@@ -230,7 +230,7 @@ def apply_operation_contract_guard(
                 f'{guidance}'
             ),
             operations=[],
-            parse_mode='deterministic_invalid_operation_blocked',
+            parse_mode='invalid_operation_contract_handoff',
             intent_type=planning.intent_type,
             response_mode='chat',
             preview_recommended=False,

@@ -8,6 +8,100 @@ from app.core.contracts.operations import RoadmapOperation
 from app.core.llm.client import LLMPlanner, PlanningResult
 
 
+def _planning_result_from_state(
+    planning_state: dict[str, Any],
+    *,
+    fallback_provider_error_code: str | None = None,
+) -> PlanningResult:
+    raw_operations = planning_state.get('planned_operations')
+    operations = (
+        [item for item in raw_operations if isinstance(item, RoadmapOperation)]
+        if isinstance(raw_operations, list)
+        else []
+    )
+    return PlanningResult(
+        assistant_message=str(
+            planning_state.get('assistant_message')
+            or 'I need one clarification before continuing this edit.'
+        ),
+        operations=operations,
+        parse_mode=str(planning_state.get('parse_mode') or 'neutral_edit_clarifier'),
+        intent_type=str(planning_state.get('intent_type') or 'roadmap_edit'),
+        response_mode=str(planning_state.get('response_mode') or 'chat'),
+        preview_recommended=bool(planning_state.get('preview_recommended', False)),
+        provider_used=str(planning_state.get('provider_used') or 'rule_based'),
+        fallback_used=bool(planning_state.get('fallback_used', False)),
+        provider_error_code=(
+            planning_state.get('provider_error_code')
+            or fallback_provider_error_code
+        ),
+        tokens_input=planning_state.get('tokens_input'),
+        tokens_output=planning_state.get('tokens_output'),
+        tokens_total=planning_state.get('tokens_total'),
+        route_lane=planning_state.get('route_lane'),
+        clarifier_action=planning_state.get('clarifier_action'),
+        clarifier_reason=planning_state.get('clarifier_reason'),
+        clarifier_options=planning_state.get('clarifier_options'),
+        clarifier_schema_retries=planning_state.get('clarifier_schema_retries'),
+        planner_schema_invalid_attempts=planning_state.get('planner_schema_invalid_attempts'),
+        planner_repair_attempted=planning_state.get('planner_repair_attempted'),
+        draft_action=planning_state.get('draft_action'),
+        tool_plan=planning_state.get('tool_plan'),
+        needs_more_info=planning_state.get('needs_more_info'),
+        stop_reason=planning_state.get('stop_reason'),
+        llm_calls_used=planning_state.get('llm_calls_used'),
+        react_tool_observation_summary=planning_state.get('react_tool_observation_summary'),
+    )
+
+
+def _build_llm_clarifier_or_fallback(
+    *,
+    planner: LLMPlanner,
+    user_message: str,
+    trace_id: str | None,
+    provider_error_code: str,
+    llm_calls_used_base: int,
+) -> PlanningResult:
+    clarifier_builder = getattr(planner, '_build_edit_clarifier_state', None)
+    if callable(clarifier_builder):
+        try:
+            clarifier_state = clarifier_builder(
+                user_message=user_message,
+                system_prompt='',
+                history_messages=[],
+                trace_id=trace_id,
+                provider_error_code=provider_error_code,
+                llm_calls_used_base=llm_calls_used_base,
+            )
+            return _planning_result_from_state(
+                clarifier_state,
+                fallback_provider_error_code=provider_error_code,
+            )
+        except Exception:
+            pass
+
+    return PlanningResult(
+        assistant_message=(
+            'I need one more clarification before I can safely continue this edit. '
+            'Please provide the exact target details.'
+        ),
+        operations=[],
+        parse_mode='neutral_edit_clarifier',
+        intent_type='roadmap_edit',
+        response_mode='chat',
+        preview_recommended=False,
+        provider_used='rule_based',
+        fallback_used=False,
+        provider_error_code=provider_error_code,
+        clarifier_action='ask_clarifier',
+        clarifier_reason=provider_error_code,
+        clarifier_options=['Provide target details', 'Provide the exact name', 'Cancel'],
+        needs_more_info=True,
+        stop_reason='awaiting_user_input',
+        llm_calls_used=max(int(llm_calls_used_base), 0),
+    )
+
+
 def _collect_resolved_node_ids(tool_observation_summary: Any) -> list[str]:
     if not isinstance(tool_observation_summary, list):
         return []
@@ -91,26 +185,19 @@ def run_edit_react_planning_loop(
         loop_turns += 1
         if remaining_llm_calls <= 0:
             termination_reason = 'llm_call_budget_exhausted'
-            planning = PlanningResult(
-                assistant_message=(
-                    'I wasn\'t able to finalize this edit in time. '
-                    'Please provide one precise target detail so I can continue.'
-                ),
-                operations=[],
-                parse_mode='deterministic_react_budget_guard',
-                intent_type='roadmap_edit',
-                response_mode='chat',
-                preview_recommended=False,
-                provider_used='rule_based',
-                fallback_used=True,
+            used_calls = llm_call_budget - remaining_llm_calls
+            planning = _build_llm_clarifier_or_fallback(
+                planner=planner,
+                user_message=user_message,
+                trace_id=observation_context.get('trace_id'),
                 provider_error_code='llm_call_budget_exhausted',
+                llm_calls_used_base=used_calls,
+            )
+            planning = replace(
+                planning,
                 route_lane=route_lane,
-                clarifier_action='ask_clarifier',
-                clarifier_reason='llm_call_budget_exhausted',
-                clarifier_options=['Provide target details', 'Provide the exact name', 'Cancel'],
                 needs_more_info=True,
                 stop_reason='tool_budget_exhausted',
-                llm_calls_used=0,
             )
             break
         observation_context['_react_loop_turn'] = turn_index + 1
@@ -235,23 +322,17 @@ def run_edit_react_planning_loop(
         termination_reason = 'replanned_after_observation'
 
     if planning is None:
-        planning = PlanningResult(
-            assistant_message=(
-                'I could not complete planning in this turn. Please restate the exact change '
-                'you want to apply.'
-            ),
-            operations=[],
-            parse_mode='deterministic_react_planner_empty',
-            intent_type='roadmap_edit',
-            response_mode='chat',
-            preview_recommended=False,
-            provider_used='rule_based',
-            fallback_used=True,
+        used_calls = llm_call_budget - remaining_llm_calls
+        planning = _build_llm_clarifier_or_fallback(
+            planner=planner,
+            user_message=user_message,
+            trace_id=observation_context.get('trace_id'),
             provider_error_code='planner_empty_result',
+            llm_calls_used_base=used_calls,
+        )
+        planning = replace(
+            planning,
             route_lane=route_lane,
-            clarifier_action='ask_clarifier',
-            clarifier_reason='planner_empty_result',
-            clarifier_options=['Provide target details', 'Provide the exact name', 'Cancel'],
             stop_reason='insufficient_context',
         )
 

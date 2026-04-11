@@ -60,7 +60,7 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
             trace_id=trace_id,
             intent_type='question',
             is_roadmap_question=True,
-            parse_mode='deterministic_context_my_tasks',
+            parse_mode='context_my_tasks',
         )
         logging_utils.log_event(
             self.logger,
@@ -164,7 +164,7 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
         self.assertIn('retry_auto  yes', output)
         self.assertIn('EVENT: MESSAGE_COMPLETED', output)
 
-    def test_lifecycle_title_prefers_deterministic_parse_mode(self) -> None:
+    def test_lifecycle_title_prefers_context_parse_mode(self) -> None:
         trace_id = 'trace-overview-title'
         logging_utils.log_event(
             self.logger,
@@ -185,10 +185,10 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
         )
         logging_utils.log_event(
             self.logger,
-            'deterministic_context_overview',
+            'context_overview',
             settings=self.settings_pretty,
             trace_id=trace_id,
-            parse_mode='deterministic_context_overview',
+            parse_mode='context_overview',
         )
         logging_utils.log_event(
             self.logger,
@@ -198,7 +198,7 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
             session_id='session-overview',
             roadmap_id='roadmap-overview',
             intent_type='unclear',
-            parse_mode='deterministic_context_overview',
+            parse_mode='context_overview',
             provider_used='rule_based',
         )
         output = self.stream.getvalue()

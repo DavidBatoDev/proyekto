@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import string
+from typing import Any
 
 from app.core.contracts.sessions import IntentType
 
@@ -42,11 +43,37 @@ _MIXED_EDIT_VERB_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_DELEGATE_TRIGGER_PATTERN = re.compile(
+    r"(?:you\s+decide|your\s+call|up\s+to\s+you|you\s+choose|decide\s+for\s+me|"
+    r"pick\s+(?:the\s+)?best(?:\s+one)?(?:\s+for\s+me)?|pick\s+one\s+for\s+me|choose\s+for\s+me|"
+    r"whatever\s+you\s+think|surprise\s+me)"
+    r"(?:\s+(?:please|now))?",
+    re.IGNORECASE,
+)
+
+_SIDE_QUERY_FOLLOWUP_PATTERN = re.compile(
+    r'\b(?:how many|what|which|who|where|when|why|how|status|summary|summarize|overview|tell me|show me|list|count)\b',
+    re.IGNORECASE,
+)
+
+_SLOT_VALUE_COMMAND_PATTERN = re.compile(
+    r'\b(?:cancel|stop|abort|retry|again|confirm|proceed|go ahead|yes|no)\b',
+    re.IGNORECASE,
+)
+
+_SLOT_VALUE_EDIT_PATTERN = re.compile(
+    r'^(?:rename|retitle|change|update|delete|move|set|assign|unassign|reassign)\b',
+    re.IGNORECASE,
+)
+
+_SLOT_VALUE_RENAME_PATTERN = re.compile(
+    r'\b(?:rename|retitle)\b.+\b(?:to|as)\b',
+    re.IGNORECASE,
+)
+
 
 def detect_edit_continuation_trigger(user_message: str) -> str | None:
-    normalized = user_message.strip().lower()
-    normalized = re.sub(r'[.!?,;:]+', ' ', normalized).strip()
-    normalized = re.sub(r'\s+', ' ', normalized)
+    normalized = _normalize_followup_text(user_message)
     if re.fullmatch(
         r'(?:a|option a|no need|no extra details|no additional details|nothing else)',
         normalized,
@@ -76,12 +103,95 @@ def detect_edit_continuation_trigger(user_message: str) -> str | None:
         normalized,
     ):
         return 'retry'
+    if _DELEGATE_TRIGGER_PATTERN.fullmatch(normalized):
+        return 'delegate'
     if re.search(
         r'\b(i meant|instead|inside|under|in that|it should|changed my mind|change my mind)\b',
         normalized,
     ):
         return 'correction'
     return None
+
+
+def detect_pending_edit_followup_kind(
+    *,
+    user_message: str,
+    pending_context: Any,
+) -> str | None:
+    trigger = detect_edit_continuation_trigger(user_message)
+    if trigger is not None:
+        return trigger
+
+    if looks_like_side_query_followup(user_message):
+        return 'side_query'
+
+    if _context_awaits_rename_title(pending_context):
+        slot_value = extract_pending_followup_slot_value(user_message)
+        if slot_value is not None:
+            return 'slot_value'
+    return None
+
+
+def looks_like_side_query_followup(user_message: str) -> bool:
+    normalized = _normalize_followup_text(user_message)
+    if not normalized:
+        return False
+    if normalized.endswith('?') and _SIDE_QUERY_FOLLOWUP_PATTERN.search(normalized):
+        return True
+    if _SIDE_QUERY_FOLLOWUP_PATTERN.search(normalized) and not _MIXED_EDIT_VERB_PATTERN.search(normalized):
+        return True
+    return False
+
+
+def extract_pending_followup_slot_value(user_message: str) -> str | None:
+    normalized = ' '.join(str(user_message or '').strip().split())
+    if not normalized:
+        return None
+    if looks_like_side_query_followup(normalized):
+        return None
+    lowered = normalized.lower()
+    if lowered.endswith('?'):
+        return None
+    if _DELEGATE_TRIGGER_PATTERN.fullmatch(lowered):
+        return None
+    if _SLOT_VALUE_COMMAND_PATTERN.fullmatch(lowered):
+        return None
+    if _SLOT_VALUE_EDIT_PATTERN.match(lowered) or _SLOT_VALUE_RENAME_PATTERN.search(lowered):
+        return None
+    cleaned = strip_quotes_and_punctuation(normalized)
+    if not cleaned:
+        return None
+    if len(cleaned) < 3 or len(cleaned) > 120:
+        return None
+    return cleaned
+
+
+def _context_awaits_rename_title(pending_context: Any) -> bool:
+    if pending_context is None:
+        return False
+    intent_family = str(getattr(pending_context, 'intent_family', '') or '').strip().lower()
+    if intent_family != 'rename_node':
+        return False
+    awaiting_field = str(getattr(pending_context, 'awaiting_field', '') or '').strip().lower()
+    if awaiting_field == 'rename_title':
+        return True
+    if awaiting_field:
+        return False
+    hints = getattr(pending_context, 'resolver_hints', None)
+    if isinstance(hints, dict):
+        hinted_field = str(hints.get('awaiting_field') or '').strip().lower()
+        if hinted_field == 'rename_title':
+            return True
+        if hinted_field:
+            return False
+    return True
+
+
+def _normalize_followup_text(user_message: str) -> str:
+    normalized = user_message.strip().lower()
+    normalized = re.sub(r'[.!?,;:]+', ' ', normalized).strip()
+    normalized = re.sub(r'\s+', ' ', normalized)
+    return normalized
 
 
 def extract_mixed_query_followup_message(

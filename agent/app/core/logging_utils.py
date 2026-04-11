@@ -237,7 +237,7 @@ def _apply_lifecycle_payload(trace: _LifecycleTrace, payload: dict[str, Any]) ->
     event = str(payload.get('event') or '')
     if payload.get('parse_mode') is not None:
         trace.routing['parse_mode'] = payload.get('parse_mode')
-    elif event.startswith('deterministic_context_'):
+    elif event.startswith('context_'):
         trace.routing['parse_mode'] = event
     trace.session_id = _text_or_none(payload.get('session_id')) or trace.session_id
     trace.roadmap_id = _text_or_none(payload.get('roadmap_id')) or trace.roadmap_id
@@ -505,8 +505,8 @@ def _title_from_parse_mode(parse_mode: str) -> str | None:
         return 'ROADMAP OVERVIEW'
     if parse_mode.endswith('_context_tools'):
         return 'CONTEXT TOOLS'
-    if parse_mode.startswith('deterministic_context_'):
-        label = parse_mode.removeprefix('deterministic_context_')
+    if parse_mode.startswith('context_'):
+        label = parse_mode.removeprefix('context_')
         return label.replace('_', ' ').upper()
     return None
 

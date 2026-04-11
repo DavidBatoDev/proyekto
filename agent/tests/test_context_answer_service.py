@@ -947,7 +947,7 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
                 intent_type='question',
             )
 
-        self.assertEqual(response.get('parse_mode'), 'deterministic_context_budget_exhausted')
+        self.assertEqual(response.get('parse_mode'), 'context_budget_exhausted')
         self.assertTrue(response.get('clarifier_returned'))
         self.assertEqual(response.get('discovery_calls_used'), 4)
         self.assertEqual(response.get('discovery_stop_reason'), 'budget_exhausted')
@@ -986,7 +986,7 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             intent_type='question',
         )
 
-        self.assertEqual(response.get('parse_mode'), 'deterministic_context_repeat_limit_exhausted')
+        self.assertEqual(response.get('parse_mode'), 'context_repeat_limit_exhausted')
         self.assertEqual(response.get('discovery_stop_reason'), 'repeat_limit_exhausted')
         self.assertTrue(response.get('clarifier_returned'))
         self.assertEqual(execution_count['count'], 2)
@@ -1020,7 +1020,7 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             intent_type='question',
         )
 
-        self.assertEqual(response.get('parse_mode'), 'deterministic_context_budget_exhausted')
+        self.assertEqual(response.get('parse_mode'), 'context_budget_exhausted')
         self.assertEqual(response.get('provider_error_code'), 'max_tool_turns_exceeded')
         self.assertEqual(response.get('discovery_stop_reason'), 'tool_budget_exhausted')
         self.assertTrue(response.get('clarifier_returned'))

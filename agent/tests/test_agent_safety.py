@@ -270,8 +270,8 @@ class AgentSafetyTests(unittest.TestCase):
         )
         self.assertEqual(len(nest_client.preview_calls), 0)
         self.assertEqual(len(nest_client.discard_calls), 0)
-        self.assertFalse(outcome.actor_fetch_attempted)
-        self.assertEqual(nest_client.actor_calls, 0)
+        self.assertTrue(outcome.actor_fetch_attempted)
+        self.assertEqual(nest_client.actor_calls, 1)
 
     def test_plan_message_mixed_query_what_would_change_uses_deterministic_followup(self) -> None:
         class _MixedPlanner:
@@ -363,7 +363,7 @@ class AgentSafetyTests(unittest.TestCase):
                     return PlanningResult(
                         assistant_message='Tasks assigned to Alice (all):\n- Implement login API',
                         operations=[],
-                        parse_mode='deterministic_context_my_tasks',
+                        parse_mode='context_my_tasks',
                         intent_type='roadmap_query',
                         response_mode='chat',
                         preview_recommended=False,
@@ -471,6 +471,12 @@ class AgentSafetyTests(unittest.TestCase):
             'never mind this',
             'abort now',
         ]
+        delegate_cases = [
+            'You decide',
+            'your call',
+            'pick best one for me',
+            'up to you please',
+        ]
 
         for message in confirm_cases:
             self.assertEqual(
@@ -484,6 +490,12 @@ class AgentSafetyTests(unittest.TestCase):
                 service._detect_edit_continuation_trigger(message),
                 'cancel',
                 msg=f'Expected cancel trigger for: {message}',
+            )
+        for message in delegate_cases:
+            self.assertEqual(
+                service._detect_edit_continuation_trigger(message),
+                'delegate',
+                msg=f'Expected delegate trigger for: {message}',
             )
 
     def test_plan_message_short_option_a_with_pending_context_forces_edit_continuation(self) -> None:
@@ -576,11 +588,29 @@ class AgentSafetyTests(unittest.TestCase):
 
     def test_plan_message_confirm_with_staged_operations_bypasses_context_answer(self) -> None:
         class _Planner:
+            def __init__(self) -> None:
+                self.plan_calls = 0
+
             def preview_intent_classification(self, user_message, session_context=None):
                 return ('unclear', True)
 
             def plan(self, user_message, existing_operations, session_context=None):
-                raise AssertionError('Planner should not run for staged confirm continuation')
+                self.plan_calls += 1
+                return PlanningResult(
+                    assistant_message='Confirmed. Your staged edit operations are ready to apply.',
+                    operations=[],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    draft_action='continue',
+                    tool_plan=[],
+                    needs_more_info=False,
+                    stop_reason='ready_to_stage',
+                )
 
         class _FakeStore:
             def append_message(self, session, role, content):
@@ -592,13 +622,14 @@ class AgentSafetyTests(unittest.TestCase):
             def get(self, _session_id):
                 return None
 
+        planner = _Planner()
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
             update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
-        service._planner = _Planner()
+        service._planner = planner
         service._nest_client = _FakeNestClient({'matches': []})
         service._actor_refresh_failures_key = 'actor_context_refresh_failures'
         service._uuid_pattern = re.compile(
@@ -625,13 +656,14 @@ class AgentSafetyTests(unittest.TestCase):
         )
 
         self.assertEqual(outcome.edit_continuation_trigger, 'confirm')
-        self.assertEqual(outcome.parse_mode, 'deterministic_staged_edit_confirm')
+        self.assertEqual(outcome.parse_mode, 'openai_tool_calling')
         self.assertEqual(outcome.response_mode, 'edit_plan')
         self.assertEqual(outcome.route_lane, 'llm_edit_plan')
         self.assertFalse(outcome.edit_guard_intervened)
-        self.assertTrue(outcome.llm_skipped_for_simple_edit)
+        self.assertFalse(outcome.llm_skipped_for_simple_edit)
         self.assertEqual(len(session.operations), 1)
         self.assertEqual(session.staged_operations_version, 1)
+        self.assertEqual(planner.plan_calls, 1)
 
     def test_plan_message_repeated_equivalent_operation_is_deduped(self) -> None:
         class _Planner:
@@ -1141,11 +1173,30 @@ class AgentSafetyTests(unittest.TestCase):
 
     def test_plan_message_deictic_ambiguity_returns_clarifier(self) -> None:
         class _Planner:
+            def __init__(self) -> None:
+                self.plan_calls = 0
+
             def preview_intent_classification(self, user_message, session_context=None):
                 raise AssertionError('Intent classification should be bypassed for forced deictic continuation')
 
             def plan(self, user_message, existing_operations, session_context=None):
-                raise AssertionError('Planner should not run when deictic target is ambiguous')
+                self.plan_calls += 1
+                return PlanningResult(
+                    assistant_message='Which epic should I use as the parent?',
+                    operations=[],
+                    parse_mode='openai_edit_clarifier',
+                    intent_type='roadmap_edit',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code='deictic_target_ambiguous',
+                    clarifier_action='ask_clarifier',
+                    clarifier_reason='deictic_target_ambiguous',
+                    clarifier_options=['Use Platform Foundation', 'Use Roadmap Core', 'Cancel'],
+                    needs_more_info=True,
+                    stop_reason='insufficient_context',
+                )
 
         class _FakeStore:
             def append_message(self, session, role, content):
@@ -1163,7 +1214,8 @@ class AgentSafetyTests(unittest.TestCase):
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
-        service._planner = _Planner()
+        planner = _Planner()
+        service._planner = planner
         service._nest_client = _FakeNestClient({'matches': []})
         service._actor_refresh_failures_key = 'actor_context_refresh_failures'
         service._uuid_pattern = re.compile(
@@ -1199,9 +1251,10 @@ class AgentSafetyTests(unittest.TestCase):
             trace_id='trace-deictic-ambiguous',
         )
 
+        self.assertEqual(planner.plan_calls, 1)
         self.assertEqual(outcome.response_mode, 'chat')
         self.assertEqual(outcome.route_lane, 'llm_edit_plan')
-        self.assertEqual(outcome.parse_mode, 'deterministic_deictic_target_ambiguous')
+        self.assertEqual(outcome.parse_mode, 'openai_edit_clarifier')
         self.assertEqual(outcome.edit_continuation_trigger, 'correction')
         self.assertEqual(len(outcome.operations), 0)
         self.assertEqual(len(session.operations), 0)
@@ -1305,11 +1358,27 @@ class AgentSafetyTests(unittest.TestCase):
 
     def test_plan_message_pending_confirm_stages_draft_operations(self) -> None:
         class _Planner:
+            def __init__(self) -> None:
+                self.plan_calls = 0
+
             def preview_intent_classification(self, user_message, session_context=None):
                 return ('unclear', True)
 
             def plan(self, user_message, existing_operations, session_context=None):
-                raise AssertionError('Planner should not run for draft-ready pending confirm')
+                self.plan_calls += 1
+                return PlanningResult(
+                    assistant_message='Confirmed. I prepared the pending edit operations.',
+                    operations=[
+                        RoadmapOperation(op='add_epic', data={'title': 'AI Module'})
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
 
         class _FakeStore:
             def append_message(self, session, role, content):
@@ -1321,13 +1390,14 @@ class AgentSafetyTests(unittest.TestCase):
             def get(self, _session_id):
                 return None
 
+        planner = _Planner()
         service = object.__new__(AgentService)
         service._settings = get_settings().model_copy(
             update={'agent_hybrid_react_enabled': True}
         )
         service._logger = logging.getLogger('agent-safety-tests')
         service._store = _FakeStore()
-        service._planner = _Planner()
+        service._planner = planner
         service._nest_client = _FakeNestClient({'matches': []})
         service._actor_refresh_failures_key = 'actor_context_refresh_failures'
         service._uuid_pattern = re.compile(
@@ -1357,7 +1427,7 @@ class AgentSafetyTests(unittest.TestCase):
             trace_id='trace-pending-confirm',
         )
 
-        self.assertEqual(outcome.parse_mode, 'deterministic_pending_edit_confirm')
+        self.assertEqual(outcome.parse_mode, 'openai_tool_calling')
         self.assertEqual(outcome.response_mode, 'edit_plan')
         self.assertEqual(outcome.edit_continuation_trigger, 'confirm')
         self.assertEqual(outcome.route_lane, 'llm_edit_plan')
@@ -1366,7 +1436,8 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertIsNone(session.metadata.pending_edit_context)
         self.assertEqual(session.staged_operations_version, 1)
         self.assertFalse(outcome.edit_guard_intervened)
-        self.assertTrue(outcome.llm_skipped_for_simple_edit)
+        self.assertFalse(outcome.llm_skipped_for_simple_edit)
+        self.assertEqual(planner.plan_calls, 1)
 
     def test_plan_message_pending_context_without_continuation_does_not_force_edit(self) -> None:
         class _Planner:
@@ -1437,7 +1508,7 @@ class AgentSafetyTests(unittest.TestCase):
         )
 
         self.assertEqual(planner.preview_calls, 1)
-        self.assertEqual(outcome.edit_continuation_trigger, None)
+        self.assertEqual(outcome.edit_continuation_trigger, 'side_query')
         self.assertEqual(outcome.response_mode, 'chat')
         self.assertEqual(outcome.route_lane, 'chat')
         self.assertEqual(outcome.parse_mode, 'openai_chat')
@@ -1510,7 +1581,7 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(outcome.response_mode, 'chat')
         self.assertEqual(
             outcome.parse_mode,
-            'deterministic_pending_edit_confirm_handoff',
+            'pending_edit_confirm_handoff',
         )
         self.assertEqual(
             outcome.provider_error_code,
@@ -1662,7 +1733,7 @@ class AgentSafetyTests(unittest.TestCase):
         )
 
         self.assertEqual(outcome.response_mode, 'chat')
-        self.assertEqual(outcome.parse_mode, 'deterministic_planner_stop_reason_handoff')
+        self.assertEqual(outcome.parse_mode, 'planner_stop_reason_handoff')
         self.assertEqual(outcome.provider_error_code, 'planner_stop_reason_conflict')
         self.assertEqual(len(outcome.operations), 0)
         self.assertEqual(len(session.operations), 0)
@@ -1729,7 +1800,7 @@ class AgentSafetyTests(unittest.TestCase):
         )
 
         self.assertEqual(outcome.response_mode, 'chat')
-        self.assertEqual(outcome.parse_mode, 'deterministic_rename_shape_handoff')
+        self.assertEqual(outcome.parse_mode, 'rename_shape_handoff')
         self.assertEqual(outcome.provider_error_code, 'rename_shape_guard_blocked')
         self.assertEqual(len(outcome.operations), 0)
         self.assertEqual(len(session.operations), 0)
@@ -1806,7 +1877,7 @@ class AgentSafetyTests(unittest.TestCase):
         )
 
         self.assertEqual(outcome.response_mode, 'edit_plan')
-        self.assertEqual(outcome.parse_mode, 'deterministic_rename_shape_recovered')
+        self.assertEqual(outcome.parse_mode, 'rename_shape_recovered')
         self.assertEqual(outcome.provider_error_code, None)
         self.assertEqual(len(outcome.operations), 1)
         self.assertEqual(outcome.operations[0].op.value, 'update_node')
@@ -2204,7 +2275,7 @@ class AgentSafetyTests(unittest.TestCase):
 
         self.assertEqual(planner_calls['count'], 2)
         self.assertEqual(outcome.response_mode, 'chat')
-        self.assertEqual(outcome.parse_mode, 'deterministic_planner_stop_reason_handoff')
+        self.assertEqual(outcome.parse_mode, 'planner_stop_reason_handoff')
         self.assertEqual(outcome.provider_error_code, 'planner_stop_reason_conflict')
         self.assertEqual(outcome.react_terminal_action, 'clarify')
         self.assertEqual(outcome.react_loop_turns, 2)
@@ -2582,6 +2653,519 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(service._detect_edit_continuation_trigger('retry please'), 'retry')
         self.assertEqual(service._detect_edit_continuation_trigger('again'), 'retry')
 
+    def test_plan_message_pending_delegate_autostages_rename(self) -> None:
+        class _Planner:
+            def __init__(self) -> None:
+                self.plan_calls = 0
+
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('question', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                self.plan_calls += 1
+                return PlanningResult(
+                    assistant_message='Prepared delegated rename operation.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Agent Runtime'},
+                        )
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        class _DelegateNestClient:
+            def context_search(self, **kwargs):
+                query = str(kwargs.get('query') or '').strip().lower()
+                if 'agent' in query or 'module' in query:
+                    return {
+                        'matches': [
+                            {
+                                'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                                'type': 'epic',
+                                'title': 'Agent Module',
+                                'confidence': 0.99,
+                            }
+                        ]
+                    }
+                return {'matches': []}
+
+        planner = _Planner()
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_hybrid_react_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = planner
+        service._nest_client = _DelegateNestClient()
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        service._run_async_call = lambda value: value
+
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                actor_context=ActorContext(
+                    actor_id='actor-1',
+                    roadmap_role='editor',
+                ),
+                pending_edit_context=PendingEditContext(
+                    intent_family='rename_node',
+                    draft_operations=[],
+                    required_fields=[],
+                    resolved_references=PendingEditResolvedReferences(),
+                    confirmation_mode='awaiting_clarification',
+                    source_user_message='Rename my Agent Module to something better',
+                    default_title=None,
+                    awaiting_field='rename_title',
+                    target_hint='Agent Module',
+                    resolver_hints={
+                        'intent_version': 1,
+                        'hint_intent_version': 1,
+                        'hint_staged_operations_version': 0,
+                        'retry_autostage_eligible': True,
+                        'rename_from_label': 'Agent Module',
+                        'expected_node_type': 'epic',
+                    },
+                ),
+            ),
+        )
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='You decide',
+            replace=False,
+            auth_header='Bearer token',
+            trace_id='trace-pending-delegate-rename',
+        )
+
+        self.assertEqual(outcome.edit_continuation_trigger, 'delegate')
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(outcome.parse_mode, 'openai_tool_calling')
+        self.assertEqual(len(session.operations), 1)
+        self.assertEqual(session.operations[0].op.value, 'update_node')
+        self.assertEqual(session.operations[0].patch, {'title': 'Agent Runtime'})
+        self.assertEqual(outcome.phase_timings.get('pending_followup_kind'), 'delegate')
+        self.assertEqual(outcome.phase_timings.get('pending_followup_auto_apply_attempted'), 0)
+        self.assertEqual(outcome.phase_timings.get('pending_followup_auto_apply_outcome'), 'routed_to_llm')
+        self.assertEqual(planner.plan_calls, 1)
+
+    def test_plan_message_pending_slot_value_autostages_rename(self) -> None:
+        class _Planner:
+            def __init__(self) -> None:
+                self.plan_calls = 0
+
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('question', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                self.plan_calls += 1
+                return PlanningResult(
+                    assistant_message='Prepared slot-value rename operation.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Autonomous Orchestration'},
+                        )
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        class _SlotNestClient:
+            def context_search(self, **kwargs):
+                return {
+                    'matches': [
+                        {
+                            'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            'type': 'epic',
+                            'title': 'Agent Module',
+                            'confidence': 0.99,
+                        }
+                    ]
+                }
+
+        planner = _Planner()
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_hybrid_react_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = planner
+        service._nest_client = _SlotNestClient()
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        service._run_async_call = lambda value: value
+
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                pending_edit_context=PendingEditContext(
+                    intent_family='rename_node',
+                    draft_operations=[],
+                    required_fields=[],
+                    resolved_references=PendingEditResolvedReferences(),
+                    confirmation_mode='awaiting_clarification',
+                    source_user_message='Rename my Agent Module to something better',
+                    default_title=None,
+                    awaiting_field='rename_title',
+                    target_hint='Agent Module',
+                    resolver_hints={
+                        'intent_version': 1,
+                        'hint_intent_version': 1,
+                        'hint_staged_operations_version': 0,
+                        'rename_from_label': 'Agent Module',
+                    },
+                )
+            ),
+        )
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='Autonomous Orchestration',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-pending-slot-rename',
+        )
+
+        self.assertEqual(outcome.edit_continuation_trigger, 'slot_value')
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(outcome.parse_mode, 'openai_tool_calling')
+        self.assertEqual(len(session.operations), 1)
+        self.assertEqual(session.operations[0].patch, {'title': 'Autonomous Orchestration'})
+        self.assertEqual(planner.plan_calls, 1)
+
+    def test_plan_message_pending_delegate_fails_closed_on_ambiguous_target(self) -> None:
+        class _Planner:
+            def __init__(self) -> None:
+                self.plan_calls = 0
+
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('question', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                self.plan_calls += 1
+                return PlanningResult(
+                    assistant_message='I found multiple matches. Please tell me the exact current label.',
+                    operations=[],
+                    parse_mode='openai_tool_calling_clarifier',
+                    intent_type='roadmap_edit',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code='insufficient_context',
+                    clarifier_action='ask_clarifier',
+                    clarifier_reason='insufficient_context',
+                    clarifier_options=['Provide exact label', 'Refine target', 'Cancel'],
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        class _AmbiguousNestClient:
+            def context_search(self, **kwargs):
+                return {
+                    'matches': [
+                        {
+                            'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            'type': 'epic',
+                            'title': 'Agent Module',
+                            'confidence': 0.95,
+                        },
+                        {
+                            'id': 'ab65697a-8962-4f80-8bc3-8a964edd8e57',
+                            'type': 'epic',
+                            'title': 'Agent Modules',
+                            'confidence': 0.93,
+                        },
+                    ]
+                }
+
+        planner = _Planner()
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_hybrid_react_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = planner
+        service._nest_client = _AmbiguousNestClient()
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        service._run_async_call = lambda value: value
+
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                actor_context=ActorContext(actor_id='actor-1', roadmap_role='editor'),
+                pending_edit_context=PendingEditContext(
+                    intent_family='rename_node',
+                    draft_operations=[],
+                    required_fields=[],
+                    resolved_references=PendingEditResolvedReferences(),
+                    confirmation_mode='awaiting_clarification',
+                    source_user_message='Rename my Agent Module to something better',
+                    default_title=None,
+                    awaiting_field='rename_title',
+                    target_hint='Agent Module',
+                    resolver_hints={'rename_from_label': 'Agent Module'},
+                )
+            ),
+        )
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='You decide',
+            replace=False,
+            auth_header='Bearer token',
+            trace_id='trace-pending-delegate-ambiguous',
+        )
+
+        self.assertEqual(outcome.edit_continuation_trigger, 'delegate')
+        self.assertEqual(outcome.response_mode, 'chat')
+        self.assertEqual(outcome.provider_error_code, 'insufficient_context')
+        self.assertEqual(len(session.operations), 0)
+        self.assertIsNotNone(session.metadata.pending_edit_context)
+        self.assertEqual(planner.plan_calls, 1)
+
+    def test_plan_message_pending_delegate_blocks_without_editor_role(self) -> None:
+        class _Planner:
+            def __init__(self) -> None:
+                self.plan_calls = 0
+
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('question', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                self.plan_calls += 1
+                return PlanningResult(
+                    assistant_message='Please provide the exact new title before I continue.',
+                    operations=[],
+                    parse_mode='openai_tool_calling_clarifier',
+                    intent_type='roadmap_edit',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code='insufficient_context',
+                    clarifier_action='ask_clarifier',
+                    clarifier_reason='insufficient_context',
+                    clarifier_options=['Provide exact title', 'Provide exact target', 'Cancel'],
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        planner = _Planner()
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_hybrid_react_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = planner
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        service._run_async_call = lambda value: value
+
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            metadata=SessionMetadata(
+                pending_edit_context=PendingEditContext(
+                    intent_family='rename_node',
+                    draft_operations=[],
+                    required_fields=[],
+                    resolved_references=PendingEditResolvedReferences(),
+                    confirmation_mode='awaiting_clarification',
+                    source_user_message='Rename my Agent Module to something better',
+                    default_title=None,
+                    awaiting_field='rename_title',
+                    target_hint='Agent Module',
+                    resolver_hints={'rename_from_label': 'Agent Module'},
+                )
+            ),
+        )
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='You decide',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-pending-delegate-role-blocked',
+        )
+
+        self.assertEqual(outcome.edit_continuation_trigger, 'delegate')
+        self.assertEqual(outcome.response_mode, 'chat')
+        self.assertEqual(outcome.provider_error_code, 'insufficient_context')
+        self.assertEqual(len(session.operations), 0)
+        self.assertEqual(planner.plan_calls, 1)
+
+    def test_plan_message_pending_delegate_duplicate_does_not_restage_operation(self) -> None:
+        class _Planner:
+            def __init__(self) -> None:
+                self.plan_calls = 0
+
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('question', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                self.plan_calls += 1
+                return PlanningResult(
+                    assistant_message='Prepared delegated rename operation.',
+                    operations=[
+                        RoadmapOperation(
+                            op='update_node',
+                            node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            patch={'title': 'Agent Runtime'},
+                        )
+                    ],
+                    parse_mode='openai_tool_calling',
+                    intent_type='roadmap_edit',
+                    response_mode='edit_plan',
+                    preview_recommended=True,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        class _DelegateNestClient:
+            def context_search(self, **kwargs):
+                return {
+                    'matches': [
+                        {
+                            'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                            'type': 'epic',
+                            'title': 'Agent Module',
+                            'confidence': 0.99,
+                        }
+                    ]
+                }
+
+        planner = _Planner()
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_hybrid_react_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = planner
+        service._nest_client = _DelegateNestClient()
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        service._run_async_call = lambda value: value
+
+        session = AgentSession(
+            roadmap_id='roadmap-1',
+            operations=[
+                RoadmapOperation(
+                    op='update_node',
+                    node_id='dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                    patch={'title': 'Agent Runtime'},
+                )
+            ],
+            metadata=SessionMetadata(
+                actor_context=ActorContext(actor_id='actor-1', roadmap_role='editor'),
+                pending_edit_context=PendingEditContext(
+                    intent_family='rename_node',
+                    draft_operations=[],
+                    required_fields=[],
+                    resolved_references=PendingEditResolvedReferences(),
+                    confirmation_mode='awaiting_clarification',
+                    source_user_message='Rename my Agent Module to something better',
+                    default_title=None,
+                    awaiting_field='rename_title',
+                    target_hint='Agent Module',
+                    resolver_hints={'rename_from_label': 'Agent Module'},
+                )
+            ),
+        )
+        session.staged_operations_version = 1
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='You decide',
+            replace=False,
+            auth_header='Bearer token',
+            trace_id='trace-pending-delegate-duplicate',
+        )
+
+        self.assertEqual(outcome.edit_continuation_trigger, 'delegate')
+        self.assertEqual(outcome.response_mode, 'edit_plan')
+        self.assertEqual(outcome.provider_error_code, None)
+        self.assertEqual(len(session.operations), 1)
+        self.assertEqual(planner.plan_calls, 1)
+
     def test_plan_message_retry_non_rename_persists_signal_and_falls_back_to_planner(self) -> None:
         planner_calls = {'count': 0}
 
@@ -2664,11 +3248,8 @@ class AgentSafetyTests(unittest.TestCase):
         pending_context = session.metadata.pending_edit_context
         self.assertIsNotNone(pending_context)
         assert pending_context is not None
-        self.assertEqual(
-            pending_context.last_retry_blocked_reason,
-            'retry_autostage_unsupported_intent_family',
-        )
-        self.assertEqual(pending_context.last_retry_blocked_intent_family, 'create_task')
+        self.assertIsNone(pending_context.last_retry_blocked_reason)
+        self.assertIsNone(pending_context.last_retry_blocked_intent_family)
         self.assertEqual(outcome.response_mode, 'chat')
 
     def test_plan_message_pending_retry_autostages_single_rename_match(self) -> None:
@@ -2763,18 +3344,12 @@ class AgentSafetyTests(unittest.TestCase):
         )
 
         self.assertEqual(outcome.edit_continuation_trigger, 'retry')
-        self.assertEqual(outcome.response_mode, 'edit_plan')
-        self.assertEqual(outcome.parse_mode, 'deterministic_retry_autostage')
-        self.assertEqual(len(session.operations), 1)
-        op = session.operations[0]
-        self.assertEqual(op.op.value, 'update_node')
-        self.assertEqual(op.node_id, 'dad5697a-8962-4f80-8bc3-8a964edd8e56')
-        self.assertEqual(op.patch, {'title': 'Platform Foundation'})
+        self.assertEqual(outcome.response_mode, 'chat')
+        self.assertEqual(outcome.parse_mode, 'openai_tool_calling_clarifier')
+        self.assertEqual(len(session.operations), 0)
         self.assertIsNone(outcome.provider_error_code)
-        self.assertTrue(outcome.retry_autostage_applied)
-        self.assertIsNotNone(outcome.retry_tool_calls_used)
-        self.assertGreaterEqual(outcome.retry_tool_calls_used or 0, 1)
-        self.assertLessEqual(outcome.retry_tool_calls_used or 0, 3)
+        self.assertFalse(outcome.retry_autostage_applied)
+        self.assertIsNone(outcome.retry_tool_calls_used)
 
     def test_plan_message_retry_blocks_on_staged_version_mismatch(self) -> None:
         class _Planner:
@@ -2861,7 +3436,8 @@ class AgentSafetyTests(unittest.TestCase):
 
         self.assertEqual(outcome.edit_continuation_trigger, 'retry')
         self.assertEqual(outcome.response_mode, 'chat')
-        self.assertEqual(outcome.provider_error_code, 'retry_stale_hints_blocked')
+        self.assertIsNone(outcome.provider_error_code)
+        self.assertEqual(outcome.parse_mode, 'openai_tool_calling_clarifier')
         self.assertEqual(len(session.operations), 0)
 
     def test_plan_message_retry_blocks_when_staged_version_hint_missing(self) -> None:
@@ -2948,7 +3524,8 @@ class AgentSafetyTests(unittest.TestCase):
 
         self.assertEqual(outcome.edit_continuation_trigger, 'retry')
         self.assertEqual(outcome.response_mode, 'chat')
-        self.assertEqual(outcome.provider_error_code, 'retry_stale_hints_blocked')
+        self.assertIsNone(outcome.provider_error_code)
+        self.assertEqual(outcome.parse_mode, 'openai_tool_calling_clarifier')
         self.assertEqual(len(session.operations), 0)
 
     def test_plan_message_retry_ambiguous_returns_numbered_id_choices(self) -> None:
@@ -3048,10 +3625,10 @@ class AgentSafetyTests(unittest.TestCase):
         )
 
         self.assertEqual(outcome.response_mode, 'chat')
-        self.assertEqual(outcome.provider_error_code, 'retry_multiple_matches')
-        self.assertNotIn('Options:', outcome.assistant_message)
-        self.assertIn('I found multiple matches for "App Foundation".', outcome.assistant_message)
-        self.assertNotIn('dad5697a-8962-4f80-8bc3-8a964edd8e56', outcome.assistant_message)
+        self.assertIsNone(outcome.provider_error_code)
+        self.assertEqual(outcome.parse_mode, 'openai_tool_calling_clarifier')
+        self.assertEqual(outcome.assistant_message, 'fallback clarifier')
+        self.assertEqual(len(session.operations), 0)
 
     def test_set_pending_context_normalizes_intent_family_alias(self) -> None:
         service = self._service({'matches': []})
@@ -3152,20 +3729,6 @@ class AgentSafetyTests(unittest.TestCase):
         assert hints is not None
         self.assertNotIn('expected_node_type', hints)
         self.assertTrue(bool(hints.get('retry_autostage_eligible')))
-
-    def test_rename_autostage_gate_blocks_type_mismatch(self) -> None:
-        service = self._service({'matches': []})
-        allowed = service._passes_rename_autostage_gate(
-            candidate={
-                'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                'type': 'epic',
-                'title': 'App Foundation',
-                'confidence': 0.99,
-            },
-            from_label='App Foundation',
-            expected_node_type='feature',
-        )
-        self.assertFalse(allowed)
 
     def test_plan_message_revise_action_replaces_and_increments_staged_version(self) -> None:
         class _Planner:
@@ -3605,7 +4168,7 @@ class AgentSafetyTests(unittest.TestCase):
             pending_edit_context_present=True,
         )
 
-        self.assertEqual(guarded.parse_mode, 'deterministic_context_answer_handoff')
+        self.assertEqual(guarded.parse_mode, 'context_answer_handoff')
         self.assertEqual(guarded.intent_type, 'roadmap_edit')
         self.assertEqual(
             guarded.provider_error_code,
@@ -3982,7 +4545,7 @@ class AgentSafetyTests(unittest.TestCase):
         )
 
         self.assertEqual(outcome.response_mode, 'chat')
-        self.assertEqual(outcome.parse_mode, 'deterministic_invalid_operation_blocked')
+        self.assertEqual(outcome.parse_mode, 'invalid_operation_contract_handoff')
         self.assertEqual(len(session.operations), 0)
         self.assertTrue(outcome.invalid_operation_detected)
         self.assertEqual(outcome.invalid_operation_reason, 'update_node.node_id_invalid_uuid')
@@ -5288,6 +5851,27 @@ async def _async_runtime_result(value):
 
 class PlannerContextSafetyTests(unittest.TestCase):
     def _planner(self) -> LLMPlanner:
+        class _ProviderOrchestrator:
+            def call(self, operation, *, trace_context=None):
+                phase = str((trace_context or {}).get('phase') or '')
+
+                def _generate_chat_reply(**_kwargs):
+                    if phase == 'edit_clarifier':
+                        return (
+                            '{"action":"ask_clarifier","reason":"insufficient_context",'
+                            '"question":"Which exact change should I apply?",'
+                            '"options":["Create epic","Rename node","Cancel"]}'
+                        )
+                    return 'Stub chat reply'
+
+                adapter = SimpleNamespace(generate_chat_reply=_generate_chat_reply)
+                return ProviderCallOutcome(
+                    value=operation(adapter),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
         planner = object.__new__(LLMPlanner)
         planner._settings = get_settings().model_copy(
             update={
@@ -5301,6 +5885,11 @@ class PlannerContextSafetyTests(unittest.TestCase):
         planner._prompt_repository = SimpleNamespace(
             build_system_prompt=lambda mode, context: f'{mode}:{context}'
         )
+        planner._provider_orchestrator = _ProviderOrchestrator()
+        planner._build_history_messages = (
+            lambda _session_context, max_messages=None: []
+        )
+        planner._rule_based_chat_response = lambda _user_message, _intent_type: 'rule-based fallback'
         return planner
 
     def test_classify_intent_honors_forced_edit_continuation_override(self) -> None:
@@ -5427,10 +6016,10 @@ class PlannerContextSafetyTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(state.get('response_mode'), 'chat')
-        self.assertEqual(state.get('tool_mode'), 'none')
+        self.assertEqual(state.get('response_mode'), 'edit_plan')
+        self.assertEqual(state.get('tool_mode'), 'edit_plan')
         self.assertTrue(str(state.get('system_prompt') or '').startswith('edit:'))
-        self.assertTrue(bool(state.get('edit_to_clarifier_guarded')))
+        self.assertFalse(bool(state.get('edit_to_clarifier_guarded')))
 
     def test_generate_chat_reply_returns_clarifier_for_guarded_edit_question(self) -> None:
         planner = self._planner()
@@ -5447,8 +6036,8 @@ class PlannerContextSafetyTests(unittest.TestCase):
         )
 
         self.assertEqual(state.get('response_mode'), 'chat')
-        self.assertEqual(state.get('parse_mode'), 'deterministic_edit_clarifier_guard')
-        self.assertEqual(state.get('clarifier_action'), 'ask_clarifier')
+        self.assertEqual(state.get('parse_mode'), 'openai_chat')
+        self.assertEqual(state.get('assistant_message'), 'Stub chat reply')
         self.assertEqual(len(state.get('planned_operations') or []), 0)
 
     def test_compose_dynamic_system_prompt_routes_roadmap_plan_mode(self) -> None:
@@ -5721,167 +6310,6 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertIn('error', result)
         self.assertEqual(result['error']['code'], 'INVALID_UUID')
 
-    def test_deterministic_features_fast_path_composes_response(self) -> None:
-        planner = self._planner()
-
-        def fake_execute(name: str, args: dict, _ctx: dict):
-            if name == 'resolve_node_reference':
-                return {
-                    'status': 'unique',
-                    'selected': {
-                        'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                        'title': 'Platform Foundation',
-                    },
-                }
-            if name == 'get_features_by_epic':
-                return {
-                    'children': [
-                        {'id': '1', 'type': 'feature', 'title': 'Authentication'},
-                        {'id': '2', 'type': 'feature', 'title': 'Billing'},
-                    ]
-                }
-            return {'error': {'code': 'UNKNOWN'}}
-
-        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
-        outcome = planner._try_deterministic_features_answer(
-            user_message='What are the features of Platform Foundation?',
-            session_context={'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'},
-            trace_id='trace-fast',
-        )
-        self.assertIsNotNone(outcome)
-        assert outcome is not None
-        self.assertIn('Features under "Platform Foundation"', outcome.answer)
-        self.assertIn('- Authentication', outcome.answer)
-        self.assertTrue(outcome.clear_pending_context_resolution)
-
-    def test_deterministic_features_ambiguity_sets_pending_resolution(self) -> None:
-        planner = self._planner()
-
-        def fake_execute(name: str, _args: dict, _ctx: dict):
-            if name == 'resolve_node_reference':
-                return {
-                    'status': 'ambiguous',
-                    'resolution_id': 'res-123',
-                    'matches': [
-                        {'id': '1', 'type': 'epic', 'title': 'Platform Foundation'},
-                        {'id': '2', 'type': 'epic', 'title': 'Platform Foundation Core'},
-                    ],
-                }
-            return {'error': {'code': 'UNKNOWN'}}
-
-        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
-        outcome = planner._try_deterministic_features_answer(
-            user_message='What are the features of the epic Platform Foundation?',
-            session_context={'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'},
-            trace_id='trace-ambiguous',
-        )
-        self.assertIsNotNone(outcome)
-        assert outcome is not None
-        self.assertIn('Please choose one', outcome.answer)
-        self.assertIsNotNone(outcome.pending_context_resolution)
-        assert outcome.pending_context_resolution is not None
-        self.assertEqual(outcome.pending_context_resolution.get('resolution_id'), 'res-123')
-        self.assertFalse(outcome.clear_pending_context_resolution)
-
-    def test_pending_resolution_selection_short_circuits_provider(self) -> None:
-        planner = self._planner()
-        observed_choice = {'value': None}
-
-        def fake_execute(name: str, args: dict, _ctx: dict):
-            if name == 'get_children_from_resolution':
-                observed_choice['value'] = args.get('choice')
-                if args.get('choice') == 1:
-                    return {
-                        'children': [
-                            {'id': 'f1', 'type': 'feature', 'title': 'Authentication'},
-                            {'id': 'f2', 'type': 'feature', 'title': 'Billing'},
-                        ]
-                    }
-            return {'error': {'code': 'INVALID_ARGUMENT'}}
-
-        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
-        outcome = planner._try_pending_context_selection(
-            user_message='1',
-            session_context={
-                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                'pending_context_resolution': {
-                    'kind': 'features_of_epic',
-                    'resolution_id': 'res-123',
-                    'label': 'Platform Foundation',
-                    'node_type': 'epic',
-                    'option_choices': [1, 2],
-                },
-            },
-            trace_id='trace-select',
-        )
-        self.assertIsNotNone(outcome)
-        assert outcome is not None
-        self.assertEqual(observed_choice['value'], 1)
-        self.assertIn('Features under "Platform Foundation"', outcome.answer)
-        self.assertTrue(outcome.clear_pending_context_resolution)
-
-    def test_pending_selection_uses_backend_choice_mapping(self) -> None:
-        planner = self._planner()
-        observed_choice = {'value': None}
-
-        def fake_execute(name: str, args: dict, _ctx: dict):
-            if name == 'get_children_from_resolution':
-                observed_choice['value'] = args.get('choice')
-                return {'children': [{'id': 'f1', 'type': 'feature', 'title': 'Authentication'}]}
-            return {'error': {'code': 'INVALID_ARGUMENT'}}
-
-        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
-        outcome = planner._try_pending_context_selection(
-            user_message='1',
-            session_context={
-                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                'pending_context_resolution': {
-                    'kind': 'features_of_epic',
-                    'resolution_id': 'res-123',
-                    'label': 'Platform Foundation',
-                    'node_type': 'epic',
-                    'option_choices': [3, 4],
-                },
-            },
-            trace_id='trace-select-mapped',
-        )
-        self.assertIsNotNone(outcome)
-        self.assertEqual(observed_choice['value'], 3)
-
-    def test_deterministic_tasks_fast_path_composes_response(self) -> None:
-        planner = self._planner()
-
-        def fake_execute(name: str, args: dict, _ctx: dict):
-            if name == 'resolve_node_reference':
-                self.assertEqual(args.get('node_type'), 'feature')
-                return {
-                    'status': 'unique',
-                    'selected': {
-                        'id': '60bcab3f-3989-448d-9c84-3261cf38685b',
-                        'title': 'Authentication System',
-                    },
-                }
-            if name == 'get_children':
-                return {
-                    'children': [
-                        {'id': 't1', 'type': 'task', 'title': 'Design auth DB schema'},
-                        {'id': 't2', 'type': 'task', 'title': 'Implement login API'},
-                    ]
-                }
-            return {'error': {'code': 'UNKNOWN'}}
-
-        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
-        outcome = planner._try_deterministic_tasks_answer(
-            user_message='What are the tasks for the Authentication System?',
-            session_context={'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'},
-            trace_id='trace-tasks',
-        )
-        self.assertIsNotNone(outcome)
-        assert outcome is not None
-        self.assertIn('Tasks under "Authentication System"', outcome.answer)
-        self.assertIn('- Design auth DB schema', outcome.answer)
-        self.assertTrue(outcome.clear_pending_context_resolution)
-
     def test_context_answer_non_my_tasks_uses_llm_lane(self) -> None:
         planner = self._planner()
         cache = {}
@@ -5923,315 +6351,6 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(result.get('provider_used'), 'openai')
         self.assertEqual(result.get('parse_mode'), 'openai_context_tools')
         self.assertEqual(result.get('route_lane'), 'discovery_lane')
-
-    def test_pending_resolution_selection_supports_tasks_kind(self) -> None:
-        planner = self._planner()
-
-        def fake_execute(name: str, args: dict, _ctx: dict):
-            if name == 'get_children_from_resolution':
-                self.assertEqual(args.get('choice'), 1)
-                return {
-                    'children': [
-                        {'id': 't1', 'type': 'task', 'title': 'Design auth DB schema'},
-                    ]
-                }
-            return {'error': {'code': 'INVALID_ARGUMENT'}}
-
-        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
-        outcome = planner._try_pending_context_selection(
-            user_message='option 1',
-            session_context={
-                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                'pending_context_resolution': {
-                    'kind': 'tasks_of_feature',
-                    'resolution_id': 'res-task-123',
-                    'label': 'Authentication System',
-                    'node_type': 'feature',
-                },
-            },
-            trace_id='trace-task-select',
-        )
-        self.assertIsNotNone(outcome)
-        assert outcome is not None
-        self.assertIn('Tasks under "Authentication System"', outcome.answer)
-        self.assertTrue(outcome.clear_pending_context_resolution)
-
-    def test_my_tasks_missing_actor_clears_pending_context_resolution(self) -> None:
-        planner = self._planner()
-
-        def fake_execute(_name: str, _args: dict, _ctx: dict):
-            return {'error': {'code': 'UNKNOWN'}}
-
-        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
-        intent = planner._get_deterministic_context_intent('my_tasks')
-        self.assertIsNotNone(intent)
-        assert intent is not None
-        outcome = planner._try_deterministic_list_answer(
-            intent=intent,
-            label='',
-            include_ids=False,
-            user_message='What tasks are assigned to me?',
-            session_context={
-                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                'pending_context_resolution': {
-                    'kind': 'features_of_epic',
-                    'resolution_id': 'res-old',
-                    'label': 'Old label',
-                    'node_type': 'epic',
-                },
-            },
-            trace_id='trace-my-tasks-missing-actor',
-        )
-        self.assertIsNotNone(outcome)
-        assert outcome is not None
-        self.assertTrue(outcome.clear_pending_context_resolution)
-
-    def test_deterministic_epics_fast_path_without_ids(self) -> None:
-        planner = self._planner()
-
-        def fake_execute(name: str, _args: dict, _ctx: dict):
-            if name == 'get_roadmap_summary':
-                return {
-                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                    'epics': [
-                        {
-                            'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                            'title': 'Platform Foundation',
-                            'status': 'in_progress',
-                            'feature_count': 2,
-                        },
-                    ],
-                }
-            return {'error': {'code': 'UNKNOWN'}}
-
-        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
-        intent = planner._get_deterministic_context_intent('epics_in_roadmap')
-        self.assertIsNotNone(intent)
-        assert intent is not None
-        outcome = planner._try_deterministic_list_answer(
-            intent=intent,
-            label='',
-            include_ids=False,
-            session_context={'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'},
-            trace_id='trace-epics',
-        )
-        self.assertIsNotNone(outcome)
-        assert outcome is not None
-        self.assertIn('This roadmap has 1 epic', outcome.answer)
-        self.assertIn('Platform Foundation', outcome.answer)
-        self.assertNotIn('id:', outcome.answer.lower())
-        self.assertTrue(outcome.clear_pending_context_resolution)
-
-    def test_deterministic_epics_fast_path_with_ids(self) -> None:
-        planner = self._planner()
-
-        def fake_execute(name: str, _args: dict, _ctx: dict):
-            if name == 'get_roadmap_summary':
-                return {
-                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                    'epics': [
-                        {
-                            'id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
-                            'title': 'Platform Foundation',
-                            'status': 'in_progress',
-                            'feature_count': 2,
-                        },
-                    ],
-                }
-            return {'error': {'code': 'UNKNOWN'}}
-
-        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
-        intent = planner._get_deterministic_context_intent('epics_in_roadmap')
-        self.assertIsNotNone(intent)
-        assert intent is not None
-        outcome = planner._try_deterministic_list_answer(
-            intent=intent,
-            label='',
-            include_ids=True,
-            session_context={'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'},
-            trace_id='trace-epics-ids',
-        )
-        self.assertIsNotNone(outcome)
-        assert outcome is not None
-        self.assertIn('id: dad5697a-8962-4f80-8bc3-8a964edd8e56', outcome.answer.lower())
-
-    def test_deterministic_epics_matcher_and_summary_failure_fallback(self) -> None:
-        planner = self._planner()
-        match = planner._match_deterministic_context_intent('Tell me all the epics in this roadmap')
-        self.assertIsNotNone(match)
-        assert match is not None
-        intent, label = match
-        self.assertEqual(intent.parse_mode, 'deterministic_context_epics')
-        self.assertEqual(label, '')
-
-        def fake_execute(_name: str, _args: dict, _ctx: dict):
-            return {'error': {'code': 'CONTEXT_TOOL_FAILED'}}
-
-        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
-        outcome = planner._try_deterministic_list_answer(
-            intent=intent,
-            label='',
-            include_ids=False,
-            session_context={'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'},
-            trace_id='trace-epics-fallback',
-        )
-        self.assertIsNone(outcome)
-
-    def test_global_overview_matcher_detects_compound_roadmap_query(self) -> None:
-        planner = self._planner()
-        match = planner._match_global_overview_intent(
-            'Tell me all the epics, features and tasks of this roadmap'
-        )
-        self.assertIsNotNone(match)
-        assert match is not None
-        intent, label = match
-        self.assertEqual(intent.parse_mode, 'deterministic_context_overview')
-        self.assertEqual(label, '')
-
-    def test_generic_label_redirects_to_overview_without_resolver(self) -> None:
-        planner = self._planner()
-        called_tools: list[str] = []
-
-        def fake_execute(name: str, _args: dict, _ctx: dict):
-            called_tools.append(name)
-            if name == 'get_roadmap_summary':
-                return {
-                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                    'epics': [],
-                }
-            return {'children': []}
-
-        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
-        intent = planner._get_deterministic_context_intent('tasks_of_feature')
-        self.assertIsNotNone(intent)
-        assert intent is not None
-        outcome = planner._try_deterministic_list_answer(
-            intent=intent,
-            label='this roadmap',
-            include_ids=False,
-            session_context={'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'},
-            trace_id='trace-generic-label',
-        )
-        self.assertIsNotNone(outcome)
-        self.assertIn('get_roadmap_summary', called_tools)
-        self.assertNotIn('resolve_node_reference', called_tools)
-
-    def test_overview_call_budget_truncates_output(self) -> None:
-        planner = self._planner()
-
-        def fake_execute(name: str, args: dict, _ctx: dict):
-            if name == 'get_roadmap_summary':
-                return {
-                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                    'epics': [
-                        {'id': 'e1', 'title': 'Epic A', 'status': 'todo', 'feature_count': 3},
-                        {'id': 'e2', 'title': 'Epic B', 'status': 'todo', 'feature_count': 3},
-                        {'id': 'e3', 'title': 'Epic C', 'status': 'todo', 'feature_count': 3},
-                        {'id': 'e4', 'title': 'Epic D', 'status': 'todo', 'feature_count': 3},
-                    ],
-                }
-            if name == 'get_features_by_epic':
-                return {
-                    'children': [
-                        {'id': f"{args['epic_id']}-f1", 'type': 'feature', 'title': 'Feature 1'},
-                        {'id': f"{args['epic_id']}-f2", 'type': 'feature', 'title': 'Feature 2'},
-                        {'id': f"{args['epic_id']}-f3", 'type': 'feature', 'title': 'Feature 3'},
-                    ]
-                }
-            if name == 'get_children':
-                return {
-                    'children': [
-                        {'id': 't1', 'type': 'task', 'title': 'Task 1'},
-                        {'id': 't2', 'type': 'task', 'title': 'Task 2'},
-                        {'id': 't3', 'type': 'task', 'title': 'Task 3'},
-                        {'id': 't4', 'type': 'task', 'title': 'Task 4'},
-                        {'id': 't5', 'type': 'task', 'title': 'Task 5'},
-                        {'id': 't6', 'type': 'task', 'title': 'Task 6'},
-                    ]
-                }
-            return {'error': {'code': 'UNKNOWN'}}
-
-        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
-        intent = planner._get_deterministic_context_intent('roadmap_overview')
-        self.assertIsNotNone(intent)
-        assert intent is not None
-        outcome = planner._try_deterministic_list_answer(
-            intent=intent,
-            label='',
-            include_ids=False,
-            session_context={'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'},
-            trace_id='trace-overview-budget',
-        )
-        self.assertIsNotNone(outcome)
-        assert outcome is not None
-        self.assertIn('Results were truncated for performance', outcome.answer)
-
-    def test_global_overview_query_bypasses_pending_selection(self) -> None:
-        planner = self._planner()
-
-        def fake_execute(name: str, _args: dict, _ctx: dict):
-            if name == 'get_roadmap_summary':
-                return {
-                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                    'epics': [{'id': 'e1', 'title': 'Epic A', 'status': 'todo', 'feature_count': 0}],
-                }
-            if name == 'get_features_by_epic':
-                return {'children': []}
-            if name == 'get_children':
-                return {'children': []}
-            if name == 'get_children_from_resolution':
-                return {'error': {'code': 'SHOULD_NOT_BE_CALLED'}}
-            return {'error': {'code': 'UNKNOWN'}}
-
-        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
-        overview_match = planner._match_global_overview_intent('I meant this overall roadmap')
-        self.assertIsNotNone(overview_match)
-        assert overview_match is not None
-        intent, label = overview_match
-        outcome = planner._try_deterministic_list_answer(
-            intent=intent,
-            label=label,
-            include_ids=False,
-            session_context={
-                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                'pending_context_resolution': {
-                    'kind': 'tasks_of_feature',
-                    'resolution_id': 'res-task-123',
-                    'label': 'Authentication System',
-                    'node_type': 'feature',
-                },
-            },
-            trace_id='trace-overview-pending',
-        )
-        self.assertIsNotNone(outcome)
-        assert outcome is not None
-        self.assertTrue(outcome.clear_pending_context_resolution)
-
-    def test_overview_tool_error_returns_none_for_provider_fallback(self) -> None:
-        planner = self._planner()
-
-        def fake_execute(name: str, _args: dict, _ctx: dict):
-            if name == 'get_roadmap_summary':
-                return {
-                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
-                    'epics': [{'id': 'e1', 'title': 'Epic A', 'status': 'todo', 'feature_count': 1}],
-                }
-            if name == 'get_features_by_epic':
-                return {'error': {'code': 'CONTEXT_TOOL_FAILED'}}
-            return {'children': []}
-
-        planner._execute_context_tool = fake_execute  # type: ignore[method-assign]
-        intent = planner._get_deterministic_context_intent('roadmap_overview')
-        self.assertIsNotNone(intent)
-        assert intent is not None
-        outcome = planner._try_deterministic_list_answer(
-            intent=intent,
-            label='',
-            include_ids=False,
-            session_context={'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d'},
-            trace_id='trace-overview-fallback',
-        )
-        self.assertIsNone(outcome)
 
     def test_plan_operations_respects_remaining_llm_call_budget(self) -> None:
         planner = self._planner()

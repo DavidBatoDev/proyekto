@@ -151,11 +151,11 @@ def is_mixed_query_followup_clarifier(planning: PlanningResult) -> bool:
     parse_mode = str(planning.parse_mode or '').strip().lower()
     provider_error_code = str(planning.provider_error_code or '').strip().lower()
     if parse_mode in {
-        'deterministic_context_my_tasks_low_confidence',
-        'deterministic_context_my_tasks_provider_error',
-        'deterministic_context_my_tasks_invalid_payload',
-        'deterministic_context_budget_exhausted',
-        'deterministic_context_repeat_limit_exhausted',
+        'context_my_tasks_low_confidence',
+        'context_my_tasks_provider_error',
+        'context_my_tasks_invalid_payload',
+        'context_budget_exhausted',
+        'context_repeat_limit_exhausted',
     }:
         return True
     if provider_error_code in {

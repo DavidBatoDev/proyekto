@@ -123,6 +123,10 @@ class PendingEditContext(BaseModel):
     )
     source_user_message: str
     default_title: str | None = None
+    awaiting_field: Literal['rename_title', 'target_label', 'parent', 'title'] | None = None
+    target_hint: str | None = None
+    last_clarifier_reason: str | None = None
+    last_followup_kind: str | None = None
     resolver_hints: dict[str, Any] | None = None
     last_planner_stop_reason: str | None = None
     last_planner_needs_more_info: bool | None = None

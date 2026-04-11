@@ -7,7 +7,6 @@ from typing import Any, Callable
 from fastapi import HTTPException
 
 from app.core.contracts.sessions import ActorContext, AgentSession, IntentType
-from app.core.llm.context.deterministic_intents import match_deterministic_context_intent
 from app.core.logging_utils import log_event
 
 
@@ -35,12 +34,6 @@ def is_actor_context_required_message(user_message: str) -> bool:
     lowered = user_message.lower()
     if not lowered.strip():
         return False
-
-    deterministic_match = match_deterministic_context_intent(user_message)
-    if deterministic_match is not None:
-        deterministic_intent, _ = deterministic_match
-        if deterministic_intent.pending_kind == 'my_tasks':
-            return True
 
     # Any explicit first-person or direct "user" mention should resolve actor context
     # so planner operations can map pronouns like "me" to concrete actor_id values.

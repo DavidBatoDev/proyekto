@@ -13,9 +13,6 @@ from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import IntentType, ProviderUsed, ResponseMode
 from app.core.llm.context.context_answer_service import ContextAnswerService
 from app.core.llm.context.context_tools_executor import ContextToolsExecutor
-from app.core.llm.context.deterministic_context import ContextResolutionOutcome
-from app.core.llm.context.deterministic_context_adapter import DeterministicContextAdapter
-from app.core.llm.context.deterministic_intents import DeterministicContextIntent
 from app.core.llm.planning import planner_execution_flow
 from app.core.llm.planning import planner_history_utils
 from app.core.llm.planning import planner_intent_classifier
@@ -127,11 +124,6 @@ class LLMPlanner:
             logger=self._logger,
             nest_client=self._nest_client,
             run_async_context_call=self._run_async_context_call,
-        )
-        self._deterministic_context_adapter = DeterministicContextAdapter(
-            settings=self._settings,
-            logger=self._logger,
-            execute_context_tool=self._execute_context_tool,
         )
         self._context_answer_service = ContextAnswerService(
             settings=self._settings,
@@ -483,99 +475,6 @@ class LLMPlanner:
             )
             self._context_tools_executor = executor
         return executor
-
-    def _get_deterministic_context_adapter(self) -> DeterministicContextAdapter:
-        adapter = getattr(self, '_deterministic_context_adapter', None)
-        if adapter is None:
-            adapter = DeterministicContextAdapter(
-                settings=self._settings,
-                logger=self._logger,
-                execute_context_tool=self._execute_context_tool,
-            )
-            self._deterministic_context_adapter = adapter
-        return adapter
-
-    def _try_pending_context_selection(
-        self,
-        *,
-        user_message: str,
-        session_context: dict[str, Any],
-        trace_id: str | None,
-    ) -> ContextResolutionOutcome | None:
-        return self._get_deterministic_context_adapter().try_pending_context_selection(
-            user_message=user_message,
-            session_context=session_context,
-            trace_id=trace_id,
-        )
-
-    def _try_deterministic_features_answer(
-        self,
-        *,
-        user_message: str,
-        session_context: dict[str, Any],
-        trace_id: str | None,
-    ) -> ContextResolutionOutcome | None:
-        return self._get_deterministic_context_adapter().try_deterministic_features_answer(
-            user_message=user_message,
-            session_context=session_context,
-            trace_id=trace_id,
-        )
-
-    def _try_deterministic_tasks_answer(
-        self,
-        *,
-        user_message: str,
-        session_context: dict[str, Any],
-        trace_id: str | None,
-    ) -> ContextResolutionOutcome | None:
-        return self._get_deterministic_context_adapter().try_deterministic_tasks_answer(
-            user_message=user_message,
-            session_context=session_context,
-            trace_id=trace_id,
-        )
-
-    def _match_deterministic_context_intent(
-        self,
-        user_message: str,
-    ) -> tuple[DeterministicContextIntent, str] | None:
-        return self._get_deterministic_context_adapter().match_deterministic_context_intent(user_message)
-
-    def _get_deterministic_context_intent(
-        self,
-        pending_kind: str,
-    ) -> DeterministicContextIntent | None:
-        return self._get_deterministic_context_adapter().get_deterministic_context_intent(pending_kind)
-
-    def _match_global_overview_intent(
-        self,
-        user_message: str,
-    ) -> tuple[DeterministicContextIntent, str] | None:
-        return self._get_deterministic_context_adapter().match_global_overview_intent(user_message)
-
-    def _try_deterministic_list_answer(
-        self,
-        *,
-        intent: DeterministicContextIntent,
-        label: str,
-        include_ids: bool,
-        user_message: str | None = None,
-        session_context: dict[str, Any],
-        trace_id: str | None,
-    ) -> ContextResolutionOutcome | None:
-        return self._get_deterministic_context_adapter().try_deterministic_list_answer(
-            intent=intent,
-            label=label,
-            include_ids=include_ids,
-            user_message=user_message,
-            session_context=session_context,
-            trace_id=trace_id,
-        )
-
-    def _normalize_context_label(self, label: str) -> str:
-        return self._get_deterministic_context_adapter().normalize_context_label(label)
-
-    def _should_include_ids(self, user_message: str) -> bool:
-        return self._get_deterministic_context_adapter().should_include_ids(user_message)
 
     def _persist_session_state(self, _state: PlannerState) -> PlannerState:
         return {}

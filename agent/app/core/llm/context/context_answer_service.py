@@ -13,16 +13,6 @@ from app.core.logging_utils import log_event
 from app.core.llm.react.react_executor import map_provider_error_to_stop_reason
 from app.core.response_cache import ContextAnswerCache
 from app.core.tools.registry import get_context_tools
-
-from .deterministic_context import (
-    ContextResolutionOutcome,
-    is_rich_my_tasks_request,
-    try_deterministic_list_answer,
-)
-from .deterministic_intents import (
-    DeterministicContextIntent,
-    match_deterministic_context_intent,
-)
 from app.core.llm.providers import ProviderAdapterError, ProviderOrchestrator
 
 ToolExecutor = Callable[[str, dict[str, Any], dict[str, Any]], dict[str, Any]]
@@ -71,19 +61,6 @@ class ContextAnswerService:
         trace_id = session_context.get('trace_id')
         llm_first_mode_enabled = bool(self._settings.agent_llm_first_mode_enabled)
         context_tools = get_context_tools()
-        deterministic_match = match_deterministic_context_intent(user_message)
-        if deterministic_match is not None:
-            log_event(
-                self._logger,
-                'deterministic_path_skipped',
-                settings=self._settings,
-                trace_id=trace_id,
-                roadmap_id=session_context.get('roadmap_id'),
-                deterministic_path_skipped=True,
-                llm_first_mode_enabled=llm_first_mode_enabled,
-                reason='llm_first_context_always',
-                matched_capability=deterministic_match[0].pending_kind,
-            )
         cache_key = self._build_context_cache_key(
             roadmap_id=str(session_context.get('roadmap_id') or ''),
             user_message=user_message,
@@ -199,9 +176,9 @@ class ContextAnswerService:
                 'discovery_repeat_limit_exhausted',
             }:
                 parse_mode = (
-                    'deterministic_context_repeat_limit_exhausted'
+                    'context_repeat_limit_exhausted'
                     if exc.code == 'discovery_repeat_limit_exhausted'
-                    else 'deterministic_context_budget_exhausted'
+                    else 'context_budget_exhausted'
                 )
                 return {
                     'assistant_message': exc.message,
@@ -250,7 +227,7 @@ class ContextAnswerService:
                     'planned_operations': [],
                     'response_mode': 'chat',
                     'preview_recommended': False,
-                    'parse_mode': 'deterministic_context_budget_exhausted',
+                    'parse_mode': 'context_budget_exhausted',
                     'provider_used': 'rule_based',
                     'fallback_used': False,
                     'provider_error_code': exc.code,
@@ -312,149 +289,6 @@ class ContextAnswerService:
                     clarifier_prompt=outage_message,
                 ),
             }
-
-    def _maybe_synthesize_my_tasks_response(
-        self,
-        *,
-        intent: DeterministicContextIntent,
-        deterministic_outcome: ContextResolutionOutcome,
-        user_message: str,
-        system_prompt: str,
-        session_context: dict[str, Any],
-    ) -> dict[str, Any] | None:
-        if intent.pending_kind != 'my_tasks':
-            return None
-
-        trace_id = session_context.get('trace_id')
-        telemetry = dict(deterministic_outcome.telemetry or {})
-        should_synthesize = bool(
-            deterministic_outcome.synthesis_payload
-            and is_rich_my_tasks_request(user_message)
-        )
-        synthesis_attempted = False
-        synthesis_used = False
-        synthesis_fallback = False
-        provider_error_code: str | None = None
-        provider_used: str = 'rule_based'
-        fallback_used = False
-        parse_mode = intent.parse_mode
-        answer = deterministic_outcome.answer
-        tokens_input: int | None = None
-        tokens_output: int | None = None
-        tokens_total: int | None = None
-
-        if should_synthesize:
-            synthesis_attempted = True
-            synthesis_result = self._synthesize_my_tasks_answer(
-                system_prompt=system_prompt,
-                user_message=user_message,
-                deterministic_payload=deterministic_outcome.synthesis_payload or {},
-                trace_id=trace_id,
-            )
-            if synthesis_result is not None:
-                synthesis_used = True
-                answer = str(synthesis_result.value or '').strip() or answer
-                parse_mode = f'{intent.parse_mode}_synthesized'
-                provider_used = synthesis_result.provider_used
-                fallback_used = synthesis_result.fallback_used
-                provider_error_code = synthesis_result.provider_error_code
-                tokens_input = synthesis_result.tokens_input
-                tokens_output = synthesis_result.tokens_output
-                tokens_total = synthesis_result.tokens_total
-            else:
-                synthesis_fallback = True
-
-        log_event(
-            self._logger,
-            'my_tasks_synthesis_state',
-            settings=self._settings,
-            trace_id=trace_id,
-            parse_mode=intent.parse_mode,
-            my_tasks_synthesis_attempted=synthesis_attempted,
-            my_tasks_synthesis_used=synthesis_used,
-            my_tasks_synthesis_fallback=synthesis_fallback,
-            actor_present=telemetry.get('actor_present'),
-            roadmap_role=telemetry.get('roadmap_role'),
-            actor_context_source=telemetry.get('actor_context_source'),
-            task_count=telemetry.get('task_count'),
-            status_filter=telemetry.get('status_filter'),
-            status_scope_source=telemetry.get('status_scope_source'),
-        )
-
-        return {
-            'assistant_message': answer,
-            'planned_operations': [],
-            'response_mode': 'chat',
-            'preview_recommended': False,
-            'parse_mode': parse_mode,
-            'provider_used': provider_used,
-            'fallback_used': fallback_used,
-            'provider_error_code': provider_error_code,
-            'pending_context_resolution': deterministic_outcome.pending_context_resolution,
-            'clear_pending_context_resolution': deterministic_outcome.clear_pending_context_resolution,
-            'tokens_input': tokens_input,
-            'tokens_output': tokens_output,
-            'tokens_total': tokens_total,
-            'route_lane': 'deterministic_fastpath',
-            'discovery_calls_used': 0,
-            'discovery_repeat_hits': 0,
-            'discovery_stop_reason': 'resolved',
-            'clarifier_returned': False,
-            'discovery_contract': self._build_discovery_contract(
-                capability='my_tasks',
-                resolved_targets=[],
-                status_scope=str(deterministic_outcome.synthesis_payload.get('status_filter') or '')
-                if isinstance(deterministic_outcome.synthesis_payload, dict)
-                else None,
-                needs_clarification=False,
-                clarifier_prompt=None,
-            ),
-        }
-
-    def _synthesize_my_tasks_answer(
-        self,
-        *,
-        system_prompt: str,
-        user_message: str,
-        deterministic_payload: dict[str, Any],
-        trace_id: str | None,
-    ) -> Any | None:
-        synthesis_system_prompt = (
-            f'{system_prompt}\n\n'
-            'You are formatting a deterministic, pre-authorized task list.\n'
-            'Rules:\n'
-            '- Do not infer identity, permissions, or missing tasks.\n'
-            '- Do not call tools.\n'
-            '- Do not mention internal system details.\n'
-            '- Keep output concise and faithful to provided task data.'
-        )
-        synthesis_user_prompt = (
-            'Rewrite the deterministic task result to match the user request style.\n'
-            f'User request: {user_message}\n'
-            f'Deterministic task payload: {json.dumps(deterministic_payload, ensure_ascii=True)}'
-        )
-        try:
-            return self._provider_orchestrator.call(
-                lambda adapter: adapter.generate_chat_reply(
-                    system_prompt=synthesis_system_prompt,
-                    user_message=synthesis_user_prompt,
-                    history_messages=[],
-                ),
-                trace_context={'trace_id': trace_id, 'phase': 'my_tasks_synthesis'},
-            )
-        except ProviderAdapterError as exc:
-            self._logger.warning(
-                'My-tasks synthesis failed, using deterministic response. code=%s message=%s',
-                exc.code,
-                exc.message,
-            )
-            return None
-        except Exception as exc:  # pragma: no cover
-            self._logger.warning(
-                'My-tasks synthesis failed with unexpected error, using deterministic response. error=%s',
-                exc,
-            )
-            return None
 
     def _build_discovery_guard(
         self,
@@ -549,12 +383,9 @@ class ContextAnswerService:
 
         detected_capabilities: set[str] = set()
         for clause in clauses:
-            deterministic_clause_match = match_deterministic_context_intent(clause)
-            if deterministic_clause_match is not None:
-                detected_capabilities.add(deterministic_clause_match[0].pending_kind)
-                continue
-            if ContextAnswerService._looks_like_roadmap_meta_clause(clause):
-                detected_capabilities.add('roadmap_meta')
+            clause_capability = ContextAnswerService._detect_clause_capability(clause)
+            if clause_capability is not None:
+                detected_capabilities.add(clause_capability)
 
         if not detected_capabilities:
             return False
@@ -598,6 +429,20 @@ class ContextAnswerService:
         )
 
     @staticmethod
+    def _detect_clause_capability(clause: str) -> str | None:
+        if ContextAnswerService._looks_like_roadmap_meta_clause(clause):
+            return 'roadmap_meta'
+        if re.search(r'\b(?:my\s+(?:open\s+|pending\s+)?tasks?|assigned\s+to\s+me|for\s+me)\b', clause):
+            return 'my_tasks'
+        if re.search(r'\bfeatures?\s+(?:of|under|in)\b', clause):
+            return 'features_of_epic'
+        if re.search(r'\btasks?\s+(?:of|under|in)\b', clause):
+            return 'tasks_of_feature'
+        if re.search(r'\b(?:list|show|what\s+are)\s+(?:all\s+)?epics?\b', clause):
+            return 'roadmap_epics'
+        return None
+
+    @staticmethod
     def _tool_signature(tool_name: str, args: dict[str, Any]) -> str:
         normalized_args = json.dumps(
             args,
@@ -624,126 +469,6 @@ class ContextAnswerService:
             'needs_clarification': needs_clarification,
             'clarifier_prompt': clarifier_prompt,
         }
-
-    def _try_deterministic_list_answer(
-        self,
-        *,
-        intent: DeterministicContextIntent,
-        label: str,
-        include_ids: bool,
-        user_message: str | None,
-        status_scope_override: str | None,
-        status_scope_source: str,
-        session_context: dict[str, Any],
-        trace_id: str | None,
-    ) -> ContextResolutionOutcome | None:
-        return try_deterministic_list_answer(
-            intent=intent,
-            label=label,
-            include_ids=include_ids,
-            user_message=user_message,
-            status_scope_override=status_scope_override,
-            status_scope_source=status_scope_source,
-            session_context=session_context,
-            trace_id=trace_id,
-            logger=self._logger,
-            settings=self._settings,
-            execute_context_tool=self._execute_context_tool,
-        )
-
-    def _discover_my_tasks_scope(
-        self,
-        *,
-        user_message: str,
-        system_prompt: str,
-        session_context: dict[str, Any],
-        trace_id: str | None,
-    ) -> dict[str, Any]:
-        clarifier_template_id = 'my_tasks_scope_clarifier_v1'
-        stop_reason = 'low_confidence'
-        provider_error_code: str | None = None
-        clarifier_prompt = (
-            'Should I show only open tasks, or all tasks including completed ones?'
-        )
-        try:
-            result = self._provider_orchestrator.call(
-                lambda adapter: adapter.generate_chat_reply(
-                    system_prompt=(
-                        f'{system_prompt}\n\n'
-                        'Classify my-tasks status scope only.\n'
-                        'Return strict JSON with keys: status_scope, confidence, clarifier_prompt.\n'
-                        'status_scope must be "open" or "all".\n'
-                        'If uncertain, return confidence "low" and a focused clarifier question.'
-                    ),
-                    user_message=user_message,
-                    history_messages=[],
-                ),
-                trace_context={'trace_id': trace_id, 'phase': 'my_tasks_discovery'},
-            )
-            payload_raw = str(result.value or '').strip()
-            try:
-                payload = json.loads(payload_raw)
-            except json.JSONDecodeError:
-                stop_reason = 'invalid_payload'
-                payload = None
-            if not isinstance(payload, dict):
-                stop_reason = 'invalid_payload'
-                payload = None
-            if payload is None:
-                raise ValueError('invalid_payload')
-            status_scope = payload.get('status_scope')
-            confidence = str(payload.get('confidence') or '').lower().strip()
-            if status_scope in {'open', 'all'} and confidence in {'high', 'medium'}:
-                return {
-                    'status_scope': status_scope,
-                    'needs_clarification': False,
-                    'clarifier_prompt': None,
-                    'stop_reason': 'resolved',
-                    'discovery_calls_used': 1,
-                    'discovery_repeat_hits': 0,
-                }
-            if confidence == 'low':
-                stop_reason = 'low_confidence'
-            else:
-                stop_reason = 'invalid_payload'
-        except ProviderAdapterError as exc:
-            stop_reason = 'provider_error'
-            provider_error_code = exc.code
-        except Exception:
-            if stop_reason != 'invalid_payload':
-                stop_reason = 'provider_error'
-
-        log_event(
-            self._logger,
-            'context_discovery_stopped',
-            settings=self._settings,
-            trace_id=trace_id,
-            discovery_calls_used=1,
-            discovery_repeat_hits=0,
-            discovery_stop_reason=stop_reason,
-            clarifier_returned=True,
-            clarifier_template_id=clarifier_template_id,
-            provider_error_code=provider_error_code,
-        )
-        return {
-            'status_scope': None,
-            'needs_clarification': True,
-            'clarifier_prompt': clarifier_prompt,
-            'stop_reason': stop_reason,
-            'discovery_calls_used': 1,
-            'discovery_repeat_hits': 0,
-            'provider_error_code': provider_error_code,
-        }
-
-    @staticmethod
-    def _my_tasks_discovery_parse_mode(stop_reason: str) -> str:
-        if stop_reason == 'low_confidence':
-            return 'deterministic_context_my_tasks_low_confidence'
-        if stop_reason == 'provider_error':
-            return 'deterministic_context_my_tasks_provider_error'
-        if stop_reason == 'invalid_payload':
-            return 'deterministic_context_my_tasks_invalid_payload'
-        return 'deterministic_context_budget_exhausted'
 
     def _build_cached_response(self, cached_value: dict[str, Any] | str) -> dict[str, Any]:
         if isinstance(cached_value, str):

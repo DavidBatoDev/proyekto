@@ -104,6 +104,10 @@ class DraftGraphVersioningContractTests(unittest.TestCase):
                     'resolved_references': {},
                     'confirmation_mode': 'awaiting_clarification',
                     'source_user_message': 'Rename my App Foundation Platform Foundation',
+                    'awaiting_field': 'rename_title',
+                    'target_hint': 'App Foundation',
+                    'last_clarifier_reason': 'insufficient_context',
+                    'last_followup_kind': 'side_query',
                     'preview_validation_errors': [
                         {
                             'code': 'MISSING_REQUIRED_FIELD',
@@ -152,6 +156,14 @@ class DraftGraphVersioningContractTests(unittest.TestCase):
         self.assertEqual(
             restored.metadata.pending_edit_context.last_planner_stop_reason,
             'staging_validation_failed',
+        )
+        self.assertEqual(
+            restored.metadata.pending_edit_context.awaiting_field,
+            'rename_title',
+        )
+        self.assertEqual(
+            restored.metadata.pending_edit_context.target_hint,
+            'App Foundation',
         )
 
     def test_draft_graph_migration_preserves_legacy_staged_state(self) -> None:

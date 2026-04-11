@@ -28,7 +28,7 @@ def apply_context_answer_output_guard(
             'Please state the exact change in one line (or say "cancel").'
         ),
         operations=[],
-        parse_mode='deterministic_context_answer_handoff',
+        parse_mode='context_answer_handoff',
         intent_type='roadmap_edit' if pending_edit_context_present else planning.intent_type,
         response_mode='chat',
         preview_recommended=False,
@@ -153,7 +153,7 @@ def enforce_hybrid_react_terminal_guard(
                 'I need one more confirmation before staging edits because draft intent metadata '
                 'was incomplete. Please restate whether this should continue, revise, or start a new draft.'
             ),
-            parse_mode='deterministic_planner_schema_handoff',
+            parse_mode='planner_schema_handoff',
             provider_error_code='planner_schema_missing_draft_action',
             clarifier_reason='planner_schema_missing_draft_action',
             clarifier_options=['Continue current draft', 'Revise current draft', 'Start new draft'],
@@ -167,7 +167,7 @@ def enforce_hybrid_react_terminal_guard(
                 'I could not safely stage edits yet because required context is still missing. '
                 'Please answer the clarification so I can continue.'
             ),
-            parse_mode='deterministic_planner_needs_more_info_handoff',
+            parse_mode='planner_needs_more_info_handoff',
             provider_error_code='planner_needs_more_info_conflict',
             clarifier_reason='planner_needs_more_info_conflict',
             clarifier_options=['Provide target details', 'Provide the exact name', 'Cancel'],
@@ -181,7 +181,7 @@ def enforce_hybrid_react_terminal_guard(
                 'I still need one clarification before I can safely stage edits. '
                 'Please provide the missing target details and I will continue.'
             ),
-            parse_mode='deterministic_planner_stop_reason_handoff',
+            parse_mode='planner_stop_reason_handoff',
             provider_error_code='planner_stop_reason_conflict',
             clarifier_reason='planner_stop_reason_conflict',
             clarifier_options=['Provide target details', 'Provide the exact name', 'Cancel'],
@@ -197,7 +197,7 @@ def enforce_hybrid_react_terminal_guard(
                 'I need one more clarification before I can safely stage these edits. '
                 'Please confirm the exact target details.'
             ),
-            parse_mode='deterministic_react_terminal_handoff',
+            parse_mode='react_terminal_handoff',
             provider_error_code='planner_terminal_state_conflict',
             clarifier_reason='planner_terminal_state_conflict',
             clarifier_options=['Provide target details', 'Provide the exact name', 'Cancel'],
@@ -218,7 +218,7 @@ def enforce_hybrid_react_terminal_guard(
             return replace(
                 planning,
                 operations=recovered_operations,
-                parse_mode='deterministic_rename_shape_recovered',
+                parse_mode='rename_shape_recovered',
                 provider_error_code=None,
                 preview_recommended=True,
                 needs_more_info=False,
@@ -231,7 +231,7 @@ def enforce_hybrid_react_terminal_guard(
                 'I understood this as a rename request, but I could not derive a safe rename '
                 'operation yet. Please provide the exact current label and the new title.'
             ),
-            parse_mode='deterministic_rename_shape_handoff',
+            parse_mode='rename_shape_handoff',
             provider_error_code='rename_shape_guard_blocked',
             clarifier_reason='rename_shape_guard_blocked',
             clarifier_options=['Provide current label', 'Provide new title', 'Cancel'],
@@ -267,6 +267,7 @@ def run_edit_react_loop(
     user_message: str,
     apply_context_answer_output_guard: Callable[..., PlanningResult],
     looks_like_found_node_without_operations: Callable[[str], bool],
+    build_react_guard_handoff: Callable[..., PlanningResult],
     enforce_hybrid_react_terminal_guard: Callable[..., PlanningResult | None],
     apply_operation_contract_guard: Callable[..., tuple[PlanningResult, dict[str, Any] | None]],
     normalize_planning_clarifier_contract: Callable[[PlanningResult], PlanningResult],
@@ -284,27 +285,20 @@ def run_edit_react_loop(
         and edit_continuation_trigger == 'confirm'
         and planning.response_mode != 'edit_plan'
     ):
-        planning = PlanningResult(
+        planning = build_react_guard_handoff(
+            planning=planning,
+            route_lane=route_lane,
             assistant_message=(
                 'I still have your pending edit draft, but I could not stage it from that '
                 'confirmation alone. Please provide the exact change in one line '
                 '(or say "cancel").'
             ),
-            operations=[],
-            parse_mode='deterministic_pending_edit_confirm_handoff',
-            intent_type='roadmap_edit',
-            response_mode='chat',
-            preview_recommended=False,
-            provider_used='rule_based',
-            fallback_used=False,
+            parse_mode='pending_edit_confirm_handoff',
             provider_error_code='pending_edit_confirm_requires_edit_plan',
-            tokens_input=planning.tokens_input,
-            tokens_output=planning.tokens_output,
-            tokens_total=planning.tokens_total,
-            route_lane=route_lane,
-            clarifier_action='ask_clarifier',
             clarifier_reason='pending_edit_confirm_requires_edit_plan',
             clarifier_options=['Proceed with edit planning', 'Change target details', 'Cancel'],
+            needs_more_info=True,
+            stop_reason='awaiting_user_input',
         )
         edit_guard_intervened = True
     if (
@@ -314,26 +308,19 @@ def run_edit_react_loop(
         and not planning.operations
         and looks_like_found_node_without_operations(planning.assistant_message)
     ):
-        planning = PlanningResult(
+        planning = build_react_guard_handoff(
+            planning=planning,
+            route_lane=route_lane,
             assistant_message=(
                 'I found likely matches, but I still need one explicit selection '
                 'to stage a safe edit operation. Please confirm which item you mean (or say "cancel").'
             ),
-            operations=[],
-            parse_mode='deterministic_edit_narrative_handoff',
-            intent_type='roadmap_edit',
-            response_mode='chat',
-            preview_recommended=False,
-            provider_used='rule_based',
-            fallback_used=False,
+            parse_mode='edit_narrative_handoff',
             provider_error_code='edit_narrative_without_operations',
-            tokens_input=planning.tokens_input,
-            tokens_output=planning.tokens_output,
-            tokens_total=planning.tokens_total,
-            route_lane=route_lane,
-            clarifier_action='ask_clarifier',
             clarifier_reason='edit_narrative_without_operations',
             clarifier_options=['Use the matched item', 'Refine the search', 'Cancel'],
+            needs_more_info=True,
+            stop_reason='awaiting_user_input',
         )
         edit_guard_intervened = True
     hybrid_guard_handoff = enforce_hybrid_react_terminal_guard(

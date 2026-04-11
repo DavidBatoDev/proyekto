@@ -6,6 +6,7 @@ from typing import Any
 
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import AgentSession, IntentType
+from app.core.logging_utils import log_event
 
 
 @dataclass
@@ -35,19 +36,35 @@ def dispatch_pre_planning_phase(
 ) -> PrePlanningDispatchResult:
     self = service
 
-    pending_edit_context_present = session.metadata.pending_edit_context is not None
-    edit_continuation_trigger = self._detect_edit_continuation_trigger(user_message)
+    pending_context = session.metadata.pending_edit_context
+    pending_edit_context_present = pending_context is not None
+    if pending_context is not None:
+        edit_continuation_trigger = self._detect_pending_edit_followup_kind(
+            user_message=user_message,
+            pending_context=pending_context,
+        )
+    else:
+        edit_continuation_trigger = self._detect_edit_continuation_trigger(user_message)
     has_staged_operations = bool(staged_operations)
     deictic_reference_present = self._looks_like_deictic_parent_reference(user_message)
     recent_targets_available = bool(self._get_recent_resolved_targets(session))
+    force_continuation_triggers = {
+        'confirm',
+        'cancel',
+        'correction',
+        'retry',
+        'delegate',
+        'slot_value',
+    }
+    staged_continuation_triggers = {'confirm', 'cancel', 'correction', 'retry'}
     pending_continuation_requested = pending_edit_context_present and (
-        edit_continuation_trigger in {'confirm', 'cancel', 'correction', 'retry'}
+        edit_continuation_trigger in force_continuation_triggers
     )
     staged_operation_continuation = (
-        edit_continuation_trigger is not None and has_staged_operations
+        edit_continuation_trigger in staged_continuation_triggers and has_staged_operations
     )
     recent_target_continuation = (
-        edit_continuation_trigger is not None
+        edit_continuation_trigger in staged_continuation_triggers
         and deictic_reference_present
         and recent_targets_available
     )
@@ -58,6 +75,18 @@ def dispatch_pre_planning_phase(
     )
     if recent_target_continuation:
         phase_timings['deictic_recent_target_continuation'] = 1
+    if pending_context is not None and edit_continuation_trigger:
+        phase_timings['pending_followup_kind'] = edit_continuation_trigger
+        log_event(
+            self._logger,
+            'pending_followup_classified',
+            settings=self._settings,
+            trace_id=trace_id,
+            roadmap_id=session.roadmap_id,
+            followup_kind=edit_continuation_trigger,
+            pending_intent_family=pending_context.intent_family,
+            pending_confirmation_mode=pending_context.confirmation_mode,
+        )
 
     session_context = self._build_session_context(session, auth_header, trace_id)
     if should_force_edit_preview:
@@ -108,6 +137,8 @@ def dispatch_pre_planning_phase(
             )
 
     session_context = self._build_session_context(session, auth_header, trace_id)
+    if pending_context is not None and edit_continuation_trigger:
+        session_context['pending_followup_kind'] = edit_continuation_trigger
     if should_force_edit_preview:
         session_context['force_edit_continuation'] = True
         session_context['force_edit_continuation_reason'] = (

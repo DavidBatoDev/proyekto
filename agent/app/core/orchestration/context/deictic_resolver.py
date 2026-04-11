@@ -142,7 +142,7 @@ def build_deictic_ambiguity_planning(
     return PlanningResult(
         assistant_message=message,
         operations=[],
-        parse_mode='deterministic_deictic_target_ambiguous',
+        parse_mode='deictic_target_ambiguous',
         intent_type='roadmap_edit',
         response_mode='chat',
         preview_recommended=False,

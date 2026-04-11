@@ -35,6 +35,7 @@ def set_pending_edit_context(
     logger: logging.Logger,
     settings: Any,
     normalize_intent_family: Callable[[str | None], str],
+    reason: str | None = None,
 ) -> None:
     if context is not None:
         context.intent_family = normalize_intent_family(context.intent_family)
@@ -46,6 +47,7 @@ def set_pending_edit_context(
         trace_id=trace_id,
         roadmap_id=session.roadmap_id,
         pending_edit_context_event=event,
+        pending_edit_context_reason=reason,
         pending_edit_context_present=context is not None,
         intent_family=(context.intent_family if context is not None else None),
         confirmation_mode=(context.confirmation_mode if context is not None else None),
@@ -162,6 +164,7 @@ def sync_pending_edit_context(
             existing_context.resolver_hints
         )
         existing_context.resolver_hints = invalidated_hints
+        existing_context.last_followup_kind = 'correction'
         existing_context.updated_at = utcnow()
         set_pending_edit_context(
             session=session,
@@ -171,6 +174,7 @@ def sync_pending_edit_context(
             logger=logger,
             settings=settings,
             normalize_intent_family=normalize_intent_family,
+            reason='correction_trigger',
         )
 
     if edit_continuation_trigger == 'cancel':
@@ -183,6 +187,7 @@ def sync_pending_edit_context(
                 logger=logger,
                 settings=settings,
                 normalize_intent_family=normalize_intent_family,
+                reason='cancel_trigger',
             )
         return
 
@@ -193,6 +198,7 @@ def sync_pending_edit_context(
             existing_context.resolver_hints
         )
         existing_context.last_guard_reason = planning.provider_error_code
+        existing_context.last_followup_kind = edit_continuation_trigger
         existing_context.updated_at = utcnow()
         set_pending_edit_context(
             session=session,
@@ -202,10 +208,24 @@ def sync_pending_edit_context(
             logger=logger,
             settings=settings,
             normalize_intent_family=normalize_intent_family,
+            reason='edit_guard_intervened',
         )
         return
 
     if planning.intent_type != 'roadmap_edit':
+        if existing_context is not None and edit_continuation_trigger == 'side_query':
+            existing_context.last_followup_kind = 'side_query'
+            existing_context.updated_at = utcnow()
+            set_pending_edit_context(
+                session=session,
+                context=existing_context,
+                event='updated',
+                trace_id=trace_id,
+                logger=logger,
+                settings=settings,
+                normalize_intent_family=normalize_intent_family,
+                reason='side_query_followup',
+            )
         return
     if planning.response_mode == 'edit_plan' and planning.operations:
         if session.metadata.pending_edit_context is not None:
@@ -217,6 +237,7 @@ def sync_pending_edit_context(
                 logger=logger,
                 settings=settings,
                 normalize_intent_family=normalize_intent_family,
+                reason='edit_plan_staged',
             )
         return
 
@@ -257,6 +278,11 @@ def sync_pending_edit_context(
     rename_intent = extract_rename_intent(user_message)
     if rename_intent is not None:
         intent_family = 'rename_node'
+    elif intent_family == 'rename_node' and existing_hints.get('rename_from_label'):
+        rename_from_label = str(existing_hints.get('rename_from_label') or '').strip()
+        rename_to_title = str(existing_hints.get('rename_to_title') or '').strip()
+        if rename_from_label and rename_to_title:
+            rename_intent = (rename_from_label, rename_to_title)
 
     if clarifier_action == 'propose_safe_default':
         if create_intent is not None and create_intent.node_type == 'epic' and default_title:
@@ -275,6 +301,46 @@ def sync_pending_edit_context(
         if not default_title and create_intent is not None:
             required_fields.append('title')
 
+    awaiting_field: str | None = existing.awaiting_field if existing is not None else None
+    target_hint = (
+        str(existing.target_hint).strip()
+        if existing is not None and isinstance(existing.target_hint, str)
+        else ''
+    )
+    if rename_intent is not None:
+        target_hint = rename_intent[0].strip()
+    if not target_hint and isinstance(existing_hints.get('rename_from_label'), str):
+        target_hint = str(existing_hints.get('rename_from_label') or '').strip()
+    if intent_family == 'rename_node':
+        clarifier_reason = str(planning.clarifier_reason or '').strip().lower()
+        if clarifier_reason in {
+            'pending_rename_target_ambiguous',
+            'retry_multiple_matches',
+            'deictic_parent_ambiguous',
+        }:
+            awaiting_field = 'target_label'
+        else:
+            awaiting_field = 'rename_title'
+    elif required_fields:
+        if 'parent' in required_fields:
+            awaiting_field = 'parent'
+        elif 'title' in required_fields:
+            awaiting_field = 'title'
+
+    resolver_hints = build_resolver_hints(
+        existing_hints=existing_hints,
+        user_message=user_message,
+        planning=planning,
+        edit_continuation_trigger=edit_continuation_trigger,
+        intent_family=intent_family,
+        staged_operations_version=staged_operations_version,
+        rename_intent=rename_intent,
+        invalidate_retry_hints=invalidate_retry_hints,
+    )
+    if resolver_hints is not None and awaiting_field:
+        resolver_hints['awaiting_field'] = awaiting_field
+    if resolver_hints is not None and target_hint:
+        resolver_hints['target_hint'] = target_hint
     context = PendingEditContext(
         intent_family=intent_family,
         draft_operations=draft_operations,
@@ -283,16 +349,14 @@ def sync_pending_edit_context(
         confirmation_mode=confirmation_mode,  # type: ignore[arg-type]
         source_user_message=user_message,
         default_title=default_title,
-        resolver_hints=build_resolver_hints(
-            existing_hints=existing_hints,
-            user_message=user_message,
-            planning=planning,
-            edit_continuation_trigger=edit_continuation_trigger,
-            intent_family=intent_family,
-            staged_operations_version=staged_operations_version,
-            rename_intent=rename_intent,
-            invalidate_retry_hints=invalidate_retry_hints,
+        awaiting_field=awaiting_field,  # type: ignore[arg-type]
+        target_hint=target_hint or None,
+        last_clarifier_reason=(
+            planning.clarifier_reason
+            or (existing.last_clarifier_reason if existing is not None else None)
         ),
+        last_followup_kind=edit_continuation_trigger,
+        resolver_hints=resolver_hints,
         last_planner_stop_reason=planning.stop_reason,
         last_planner_needs_more_info=planning.needs_more_info,
         last_planner_draft_action=planning.draft_action,
@@ -315,4 +379,5 @@ def sync_pending_edit_context(
         logger=logger,
         settings=settings,
         normalize_intent_family=normalize_intent_family,
+        reason=planning.clarifier_reason or clarifier_action,
     )

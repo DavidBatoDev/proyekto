@@ -181,19 +181,9 @@ def compose_dynamic_system_prompt(
         state.get('existing_operations')
     )
     edit_to_clarifier_guarded = False
-    if (
-        intent_type == 'roadmap_edit'
-        and planner._is_informational_operation_question(state.get('user_message', ''))
-        and not has_edit_continuation_context
-    ):
-        edit_to_clarifier_guarded = True
 
     if intent_type == 'confirm_action' and not has_edit_continuation_context:
         mode = 'chat'
-        response_mode = 'chat'
-        tool_mode = 'none'
-    elif edit_to_clarifier_guarded:
-        mode = 'edit'
         response_mode = 'chat'
         tool_mode = 'none'
     elif intent_type in {'roadmap_edit', 'confirm_action'}:
@@ -277,31 +267,6 @@ def generate_chat_reply(
     planner: Any,
     state: dict[str, Any],
 ) -> dict[str, Any]:
-    if state.get('intent_type') == 'roadmap_edit' and state.get('edit_to_clarifier_guarded'):
-        return {
-            'assistant_message': (
-                'I can help with that edit. Do you want me to apply this as a roadmap change now? '
-                'If yes, tell me the exact target and desired result in one sentence '
-                '(for example: "Mark all tasks in Agent Module as done").'
-            ),
-            'planned_operations': [],
-            'response_mode': 'chat',
-            'preview_recommended': False,
-            'parse_mode': 'deterministic_edit_clarifier_guard',
-            'provider_used': 'rule_based',
-            'fallback_used': True,
-            'provider_error_code': None,
-            'needs_more_info': True,
-            'stop_reason': 'awaiting_user_input',
-            'clarifier_action': 'ask_clarifier',
-            'clarifier_reason': 'informational_operation_question',
-            'clarifier_options': [
-                'Apply as roadmap edit',
-                'Answer as explanation only',
-                'Cancel',
-            ],
-        }
-
     user_message = state.get('user_message', '')
     system_prompt = state.get('system_prompt', '')
     session_context = state.get('session_context', {})
