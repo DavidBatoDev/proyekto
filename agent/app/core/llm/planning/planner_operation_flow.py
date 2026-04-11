@@ -7,6 +7,7 @@ from typing import Any
 
 from app.core.contracts.operations import NodeType, RoadmapOperation
 from app.core.llm.contracts.clarifier_contract import build_clarifier_contract
+from app.core.llm.outage import build_outage_clarifier_message
 from app.core.llm.providers import ProviderAdapterError
 from app.core.logging_utils import log_event
 from app.core.tools.registry import (
@@ -639,6 +640,15 @@ def plan_operations(
             )
         )
     )
+    llm_first_mode_enabled = bool(
+        getattr(
+            planner._settings,
+            'agent_llm_first_mode_enabled',
+            False,
+        )
+    )
+    schema_invalid_attempts = 0
+    repair_attempted = False
     explicit_parent_type_hint = _explicit_parent_type_hint(user_message)
     operation_op_guardrail = (
         'Helper tool names are never valid operation op values. '
@@ -727,6 +737,41 @@ def plan_operations(
         next_state['llm_calls_used'] = max(int(effective_used or 0), 0)
         return next_state
 
+    def _build_outage_edit_state(
+        *,
+        provider_error_code: str | None,
+        tokens_input: int | None = None,
+        tokens_output: int | None = None,
+        tokens_total: int | None = None,
+    ) -> dict[str, Any]:
+        return _finalize_state(
+            {
+                'assistant_message': build_outage_clarifier_message(),
+                'planned_operations': [],
+                'response_mode': 'chat',
+                'preview_recommended': False,
+                'parse_mode': 'llm_first_edit_outage',
+                'provider_used': 'rule_based',
+                'fallback_used': False,
+                'provider_error_code': provider_error_code,
+                'tokens_input': tokens_input,
+                'tokens_output': tokens_output,
+                'tokens_total': tokens_total,
+                'pending_context_resolution': None,
+                'clear_pending_context_resolution': False,
+                'clarifier_action': 'ask_clarifier',
+                'clarifier_reason': 'provider_outage',
+                'clarifier_options': ['Retry', 'Narrow to one target', 'Cancel'],
+                'clarifier_schema_retries': schema_invalid_attempts,
+                'planner_schema_invalid_attempts': schema_invalid_attempts,
+                'planner_repair_attempted': repair_attempted,
+                'draft_action': 'continue',
+                'tool_plan': [],
+                'needs_more_info': True,
+                'stop_reason': 'provider_outage',
+            }
+        )
+
     def _is_strict_synthesis_fallback_allowed(
         *,
         provider_error_code: str | None,
@@ -746,6 +791,17 @@ def plan_operations(
         tokens_output: int | None = None,
         tokens_total: int | None = None,
     ) -> dict[str, Any] | None:
+        if llm_first_mode_enabled:
+            log_event(
+                planner._logger,
+                'deterministic_path_skipped',
+                settings=planner._settings,
+                trace_id=trace_id,
+                llm_first_mode_enabled=True,
+                deterministic_path_skipped=True,
+                reason=f'llm_first_mode:{reason}',
+            )
+            return None
         if not _is_strict_synthesis_fallback_allowed(provider_error_code=provider_error_code):
             if strict_mutation_authority_enabled:
                 log_event(
@@ -1177,6 +1233,22 @@ def plan_operations(
                 exc.code,
                 exc.message,
             )
+            if llm_first_mode_enabled:
+                log_event(
+                    planner._logger,
+                    'edit_outage_clarifier_returned',
+                    settings=planner._settings,
+                    trace_id=trace_id,
+                    provider_error_code=exc.code,
+                    llm_first_mode_enabled=True,
+                    outage_clarifier_returned=True,
+                )
+                return _build_outage_edit_state(
+                    provider_error_code=exc.code,
+                    tokens_input=exc.tokens_input,
+                    tokens_output=exc.tokens_output,
+                    tokens_total=exc.tokens_total,
+                )
             compound_create_titles = _extract_compound_epic_feature_titles(user_message)
             if exc.code == 'missing_tool_call' and compound_create_titles is not None:
                 epic_title, feature_title = compound_create_titles
@@ -1355,6 +1427,19 @@ def plan_operations(
                     question=question,
                     options=['Provide parent name', 'Provide the exact name', 'Cancel'],
                 )
+                if llm_first_mode_enabled:
+                    clarifier_state = planner._build_edit_clarifier_state(
+                        user_message=question,
+                        system_prompt=system_prompt,
+                        history_messages=history_messages,
+                        trace_id=trace_id,
+                        provider_error_code='invalid_parent_uuid_unresolved',
+                        llm_calls_used_base=llm_calls_used,
+                    )
+                    return _finalize_state(
+                        clarifier_state,
+                        used_calls=clarifier_state.get('llm_calls_used'),
+                    )
                 return _finalize_state(
                     {
                         'assistant_message': clarifier_message,
@@ -1427,6 +1512,22 @@ def plan_operations(
                     else:
                         return synthesized_state
                 else:
+                    if llm_first_mode_enabled:
+                        clarifier_state = planner._build_edit_clarifier_state(
+                            user_message=(
+                                'I could not safely stage this update because the plan targeted a '
+                                'feature instead of child tasks.'
+                            ),
+                            system_prompt=system_prompt,
+                            history_messages=history_messages,
+                            trace_id=trace_id,
+                            provider_error_code='bulk_task_scope_operation_mismatch',
+                            llm_calls_used_base=llm_calls_used,
+                        )
+                        return _finalize_state(
+                            clarifier_state,
+                            used_calls=clarifier_state.get('llm_calls_used'),
+                        )
                     clarifier_message, clarifier_options = build_clarifier_contract(
                         reason='bulk_task_scope_requires_task_targets',
                         question=(
@@ -1523,7 +1624,7 @@ def plan_operations(
                 }
             )
 
-        if _is_parent_scoped_bulk_status_intent(user_message):
+        if _is_parent_scoped_bulk_status_intent(user_message) and not llm_first_mode_enabled:
             latest_bulk_result = _latest_bulk_parent_helper_result(tool_observations)
             if latest_bulk_result is not None:
                 synthesized_from_observation = _synthesize_bulk_parent_operations_from_result(
@@ -1640,9 +1741,15 @@ def plan_operations(
         return synthesized_state
 
     return _finalize_state(
-        planner._neutral_edit_clarifier_state(
-            provider_error_code=last_provider_error_code or 'invalid_planner_schema',
-            schema_retries=schema_invalid_attempts,
-            llm_calls_used=llm_calls_used,
+        (
+            _build_outage_edit_state(
+                provider_error_code=last_provider_error_code or 'invalid_planner_schema',
+            )
+            if llm_first_mode_enabled
+            else planner._neutral_edit_clarifier_state(
+                provider_error_code=last_provider_error_code or 'invalid_planner_schema',
+                schema_retries=schema_invalid_attempts,
+                llm_calls_used=llm_calls_used,
+            )
         )
     )

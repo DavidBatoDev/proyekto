@@ -5290,7 +5290,10 @@ class PlannerContextSafetyTests(unittest.TestCase):
     def _planner(self) -> LLMPlanner:
         planner = object.__new__(LLMPlanner)
         planner._settings = get_settings().model_copy(
-            update={'agent_strict_mutation_authority_enabled': False}
+            update={
+                'agent_strict_mutation_authority_enabled': False,
+                'agent_llm_first_mode_enabled': False,
+            }
         )
         planner._logger = logging.getLogger('planner-context-safety-tests')
         planner._nest_client = SimpleNamespace()

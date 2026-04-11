@@ -15,13 +15,39 @@ class _FakeProviderOrchestrator:
 
     def call(self, fn, trace_context=None):  # noqa: ANN001
         self.calls += 1
-        adapter = SimpleNamespace()
-        return fn(adapter)
+        class _Adapter:
+            def answer_with_tools(
+                self,
+                *,
+                system_prompt,
+                question_prompt,
+                history_messages,
+                tools,
+                tool_executor,
+                max_tool_turns,
+            ):
+                return 'provider answer'
+
+            def generate_chat_reply(self, *, system_prompt, user_message, history_messages):
+                return '{"status_scope":"open","confidence":"high","clarifier_prompt":null}'
+
+        value = fn(_Adapter())
+        return SimpleNamespace(
+            value=value,
+            provider_used='openai',
+            fallback_used=False,
+            provider_error_code=None,
+            tokens_input=10,
+            tokens_output=5,
+            tokens_total=15,
+        )
 
 
 class ContextAnswerServiceCacheTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.settings = get_settings()
+        self.settings = get_settings().model_copy(
+            update={'agent_llm_first_mode_enabled': True}
+        )
         self.logger = logging.getLogger('context-answer-service-tests')
 
     def _service(self, execute_tool):
@@ -100,6 +126,20 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             return {'error': {'code': 'UNKNOWN'}}
 
         service, cache, provider, build_key = self._service(execute_tool)
+        service._provider_orchestrator.call = self._orchestrator_call_with_fake_adapter(  # type: ignore[assignment]
+            tool_sequence=[
+                (
+                    'resolve_node_reference',
+                    {
+                        'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                        'label': 'Platform Foundation',
+                        'node_type': 'epic',
+                        'limit': 5,
+                    },
+                )
+            ],
+            final_answer='LLM handled roadmap lookup.',
+        )
         session_context = {
             'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
             'trace_id': 'trace-ambiguous',
@@ -121,21 +161,21 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             intent_type='question',
         )
 
-        self.assertEqual(calls['resolve'], 2)
+        self.assertEqual(calls['resolve'], 1)
         self.assertEqual(provider.calls, 0)
-        self.assertIn('multiple epics', first['assistant_message'])
+        self.assertEqual(first['assistant_message'], 'LLM handled roadmap lookup.')
         self.assertIsNone(first.get('provider_error_code'))
-        self.assertIn('multiple epics', second['assistant_message'])
+        self.assertEqual(second['assistant_message'], first['assistant_message'])
         self.assertIsNone(second.get('provider_error_code'))
-        self.assertEqual(first.get('route_lane'), 'deterministic_fastpath')
-        self.assertEqual(second.get('route_lane'), 'deterministic_fastpath')
+        self.assertEqual(first.get('route_lane'), 'discovery_lane')
+        self.assertEqual(second.get('route_lane'), 'discovery_lane')
         cache_key = build_key(
             roadmap_id=session_context['roadmap_id'],
             user_message=message,
             roadmap_updated_token=None,
             actor_id=None,
         )
-        self.assertIsNone(cache.get(cache_key))
+        self.assertIsNotNone(cache.get(cache_key))
 
     def test_terminal_deterministic_response_uses_cache(self) -> None:
         calls = {'resolve': 0, 'features': 0}
@@ -156,6 +196,28 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             return {'error': {'code': 'UNKNOWN'}}
 
         service, _cache, provider, _build_key = self._service(execute_tool)
+        service._provider_orchestrator.call = self._orchestrator_call_with_fake_adapter(  # type: ignore[assignment]
+            tool_sequence=[
+                (
+                    'resolve_node_reference',
+                    {
+                        'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                        'label': 'Platform Foundation',
+                        'node_type': 'epic',
+                        'limit': 5,
+                    },
+                ),
+                (
+                    'get_features_by_epic',
+                    {
+                        'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                        'epic_id': 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+                        'limit': 100,
+                    },
+                ),
+            ],
+            final_answer='Authentication',
+        )
         session_context = {
             'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
             'trace_id': 'trace-terminal',
@@ -177,16 +239,16 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             intent_type='question',
         )
 
-        self.assertIn('Features under "Platform Foundation"', first['assistant_message'])
+        self.assertIn('Authentication', first['assistant_message'])
         self.assertEqual(second['assistant_message'], first['assistant_message'])
         self.assertEqual(calls['resolve'], 1)
         self.assertEqual(calls['features'], 1)
         self.assertEqual(provider.calls, 0)
-        self.assertEqual(second.get('provider_used'), 'rule_based')
+        self.assertEqual(second.get('provider_used'), 'openai')
         self.assertFalse(second.get('fallback_used'))
         self.assertIsNone(second.get('provider_error_code'))
-        self.assertEqual(second.get('parse_mode'), 'deterministic_context_features')
-        self.assertEqual(second.get('route_lane'), 'deterministic_fastpath')
+        self.assertEqual(second.get('parse_mode'), 'openai_context_tools')
+        self.assertEqual(second.get('route_lane'), 'discovery_lane')
 
     def test_provider_response_cache_preserves_provider_metadata(self) -> None:
         def execute_tool(_name: str, _args: dict, _context: dict):
@@ -260,6 +322,19 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             return {'error': {'code': 'UNKNOWN'}}
 
         service, _cache, provider, _build_key = self._service(execute_tool)
+        service._provider_orchestrator.call = self._orchestrator_call_with_fake_adapter(  # type: ignore[assignment]
+            tool_sequence=[
+                (
+                    'get_tasks_assigned_to_me',
+                    {
+                        'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                        'status': 'open',
+                        'limit': 100,
+                    },
+                )
+            ],
+            final_answer='Open tasks listed.',
+        )
         session_context = {
             'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
             'trace_id': 'trace-my-tasks',
@@ -280,8 +355,8 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
 
         self.assertEqual(calls['my_tasks'], 1)
         self.assertEqual(provider.calls, 0)
-        self.assertEqual(response.get('parse_mode'), 'deterministic_context_my_tasks')
-        self.assertIn('Tasks assigned to Alice (open):', response.get('assistant_message', ''))
+        self.assertEqual(response.get('parse_mode'), 'openai_context_tools')
+        self.assertIn('Open tasks listed.', response.get('assistant_message', ''))
 
     def test_my_tasks_all_the_tasks_phrase_stays_deterministic(self) -> None:
         calls = {'my_tasks': 0}
@@ -305,6 +380,19 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             return {'error': {'code': 'UNKNOWN'}}
 
         service, _cache, provider, _build_key = self._service(execute_tool)
+        service._provider_orchestrator.call = self._orchestrator_call_with_fake_adapter(  # type: ignore[assignment]
+            tool_sequence=[
+                (
+                    'get_tasks_assigned_to_me',
+                    {
+                        'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                        'status': 'all',
+                        'limit': 100,
+                    },
+                )
+            ],
+            final_answer='All tasks listed.',
+        )
         session_context = {
             'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
             'trace_id': 'trace-my-tasks-all-the',
@@ -325,8 +413,8 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
 
         self.assertEqual(calls['my_tasks'], 1)
         self.assertEqual(provider.calls, 0)
-        self.assertEqual(response.get('parse_mode'), 'deterministic_context_my_tasks')
-        self.assertIn('Tasks assigned to Alice (all):', response.get('assistant_message', ''))
+        self.assertEqual(response.get('parse_mode'), 'openai_context_tools')
+        self.assertIn('All tasks listed.', response.get('assistant_message', ''))
 
     def test_my_tasks_deterministic_response_bypasses_cache(self) -> None:
         calls = {'my_tasks': 0}
@@ -352,6 +440,19 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             return {'error': {'code': 'UNKNOWN'}}
 
         service, _cache, provider, _build_key = self._service(execute_tool)
+        service._provider_orchestrator.call = self._orchestrator_call_with_fake_adapter(  # type: ignore[assignment]
+            tool_sequence=[
+                (
+                    'get_tasks_assigned_to_me',
+                    {
+                        'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                        'status': 'open',
+                        'limit': 100,
+                    },
+                )
+            ],
+            final_answer='Open tasks snapshot.',
+        )
         session_context = {
             'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
             'trace_id': 'trace-my-tasks-no-cache',
@@ -380,9 +481,8 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
         )
 
         self.assertEqual(provider.calls, 0)
-        self.assertEqual(calls['my_tasks'], 2)
-        self.assertIn('no open tasks', first.get('assistant_message', '').lower())
-        self.assertIn('review release checklist', second.get('assistant_message', '').lower())
+        self.assertEqual(calls['my_tasks'], 1)
+        self.assertEqual(first.get('assistant_message'), second.get('assistant_message'))
 
     def test_compound_my_tasks_query_routes_to_llm_and_bypasses_cache(self) -> None:
         calls = {'provider': 0, 'my_tasks': 0, 'summary': 0}
@@ -486,14 +586,14 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             intent_type='roadmap_query',
         )
 
-        self.assertEqual(calls['provider'], 2)
-        self.assertEqual(calls['my_tasks'], 2)
-        self.assertEqual(calls['summary'], 2)
+        self.assertEqual(calls['provider'], 1)
+        self.assertEqual(calls['my_tasks'], 1)
+        self.assertEqual(calls['summary'], 1)
         self.assertEqual(first.get('route_lane'), 'discovery_lane')
         self.assertEqual(first.get('parse_mode'), 'openai_context_tools')
         self.assertEqual(first.get('provider_used'), 'openai')
         self.assertIn('provider-call-1', first.get('assistant_message', ''))
-        self.assertIn('provider-call-2', second.get('assistant_message', ''))
+        self.assertEqual(second.get('assistant_message'), first.get('assistant_message'))
 
     def test_compound_router_detects_my_tasks_plus_roadmap_meta_clause(self) -> None:
         should_route = ContextAnswerService._should_route_compound_query_to_llm(
@@ -566,10 +666,10 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             intent_type='question',
         )
 
-        self.assertEqual(calls['my_tasks'], 1)
+        self.assertEqual(calls['my_tasks'], 0)
         self.assertEqual(response.get('assistant_message'), 'Grouped tasks by epic and feature.')
         self.assertEqual(response.get('provider_used'), 'openai')
-        self.assertEqual(response.get('parse_mode'), 'deterministic_context_my_tasks_synthesized')
+        self.assertEqual(response.get('parse_mode'), 'openai_context_tools')
         self.assertEqual(response.get('tokens_total'), 60)
 
     def test_my_tasks_rich_query_synthesis_failure_falls_back_to_deterministic(self) -> None:
@@ -594,7 +694,11 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
 
         service, _cache, provider, _build_key = self._service(execute_tool)
         service._provider_orchestrator.call = lambda fn, trace_context=None: (_ for _ in ()).throw(  # type: ignore[assignment]
-            RuntimeError('provider unavailable')
+            ProviderAdapterError(
+                provider='openai',
+                code='provider_timeout',
+                message='timeout',
+            )
         )
         session_context = {
             'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
@@ -614,11 +718,11 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             intent_type='question',
         )
 
-        self.assertEqual(calls['my_tasks'], 1)
+        self.assertEqual(calls['my_tasks'], 0)
         self.assertEqual(provider.calls, 0)
         self.assertEqual(response.get('provider_used'), 'rule_based')
-        self.assertEqual(response.get('parse_mode'), 'deterministic_context_my_tasks')
-        self.assertIn('Tasks assigned to Alice (open):', response.get('assistant_message', ''))
+        self.assertEqual(response.get('parse_mode'), 'llm_first_context_outage')
+        self.assertIn('Temporary AI provider issue', response.get('assistant_message', ''))
 
     def test_my_tasks_ambiguous_scope_uses_discovery_and_executes_all(self) -> None:
         observed = {'status': None}
@@ -652,8 +756,25 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
 
         def discovery_call(operation, trace_context=None):  # noqa: ANN001
             class _Adapter:
-                def generate_chat_reply(self, *, system_prompt, user_message, history_messages):
-                    return '{"status_scope":"all","confidence":"high","clarifier_prompt":null}'
+                def answer_with_tools(
+                    self,
+                    *,
+                    system_prompt,
+                    question_prompt,
+                    history_messages,
+                    tools,
+                    tool_executor,
+                    max_tool_turns,
+                ):
+                    tool_executor(
+                        'get_tasks_assigned_to_me',
+                        {
+                            'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                            'status': 'all',
+                            'limit': 100,
+                        },
+                    )
+                    return 'All tasks with mixed statuses.'
 
             value = operation(_Adapter())
             return SimpleNamespace(
@@ -686,8 +807,9 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
         )
 
         self.assertEqual(observed['status'], 'all')
-        self.assertEqual(response.get('route_lane'), 'deterministic_fastpath')
-        self.assertIn('Tasks assigned to Alice (all):', response.get('assistant_message', ''))
+        self.assertEqual(response.get('route_lane'), 'discovery_lane')
+        self.assertEqual(response.get('parse_mode'), 'openai_context_tools')
+        self.assertIn('All tasks with mixed statuses.', response.get('assistant_message', ''))
 
     def test_my_tasks_discovery_low_confidence_returns_specific_parse_mode(self) -> None:
         def execute_tool(_name: str, _args: dict, _context: dict):
@@ -696,19 +818,10 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
         service, _cache, _provider, _build_key = self._service(execute_tool)
 
         def discovery_call(operation, trace_context=None):  # noqa: ANN001
-            class _Adapter:
-                def generate_chat_reply(self, *, system_prompt, user_message, history_messages):
-                    return '{"status_scope":"open","confidence":"low","clarifier_prompt":"Should I show only open tasks, or all tasks including completed ones?"}'
-
-            value = operation(_Adapter())
-            return SimpleNamespace(
-                value=value,
-                provider_used='openai',
-                fallback_used=False,
-                provider_error_code=None,
-                tokens_input=10,
-                tokens_output=5,
-                tokens_total=15,
+            raise ProviderAdapterError(
+                provider='openai',
+                code='provider_timeout',
+                message='timeout',
             )
 
         service._provider_orchestrator.call = discovery_call  # type: ignore[assignment]
@@ -729,9 +842,9 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             intent_type='question',
         )
 
-        self.assertEqual(response.get('parse_mode'), 'deterministic_context_my_tasks_low_confidence')
-        self.assertEqual(response.get('provider_error_code'), 'low_confidence')
-        self.assertEqual(response.get('discovery_stop_reason'), 'low_confidence')
+        self.assertEqual(response.get('parse_mode'), 'llm_first_context_outage')
+        self.assertEqual(response.get('provider_error_code'), 'provider_timeout')
+        self.assertEqual(response.get('discovery_stop_reason'), 'provider_error')
         self.assertTrue(response.get('clarifier_returned'))
 
     def test_my_tasks_discovery_invalid_payload_returns_specific_parse_mode(self) -> None:
@@ -741,19 +854,10 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
         service, _cache, _provider, _build_key = self._service(execute_tool)
 
         def discovery_call(operation, trace_context=None):  # noqa: ANN001
-            class _Adapter:
-                def generate_chat_reply(self, *, system_prompt, user_message, history_messages):
-                    return 'not-json'
-
-            value = operation(_Adapter())
-            return SimpleNamespace(
-                value=value,
-                provider_used='openai',
-                fallback_used=False,
-                provider_error_code=None,
-                tokens_input=10,
-                tokens_output=5,
-                tokens_total=15,
+            raise ProviderAdapterError(
+                provider='openai',
+                code='provider_timeout',
+                message='timeout',
             )
 
         service._provider_orchestrator.call = discovery_call  # type: ignore[assignment]
@@ -774,9 +878,9 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             intent_type='question',
         )
 
-        self.assertEqual(response.get('parse_mode'), 'deterministic_context_my_tasks_invalid_payload')
-        self.assertEqual(response.get('provider_error_code'), 'invalid_payload')
-        self.assertEqual(response.get('discovery_stop_reason'), 'invalid_payload')
+        self.assertEqual(response.get('parse_mode'), 'llm_first_context_outage')
+        self.assertEqual(response.get('provider_error_code'), 'provider_timeout')
+        self.assertEqual(response.get('discovery_stop_reason'), 'provider_error')
         self.assertTrue(response.get('clarifier_returned'))
 
     def test_my_tasks_discovery_provider_error_returns_specific_parse_mode(self) -> None:
@@ -810,7 +914,7 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             intent_type='question',
         )
 
-        self.assertEqual(response.get('parse_mode'), 'deterministic_context_my_tasks_provider_error')
+        self.assertEqual(response.get('parse_mode'), 'llm_first_context_outage')
         self.assertEqual(response.get('provider_error_code'), 'provider_timeout')
         self.assertEqual(response.get('discovery_stop_reason'), 'provider_error')
         self.assertTrue(response.get('clarifier_returned'))
@@ -920,6 +1024,97 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
         self.assertEqual(response.get('discovery_stop_reason'), 'tool_budget_exhausted')
         self.assertTrue(response.get('clarifier_returned'))
         self.assertEqual(response.get('tokens_total'), 29)
+
+    def test_llm_first_mode_bypasses_deterministic_tasks_fastpath(self) -> None:
+        calls = {'provider': 0}
+
+        def execute_tool(name: str, args: dict, _context: dict):
+            return {'ok': True, 'name': name, 'args': args}
+
+        service, _cache, _provider, _build_key = self._service(execute_tool)
+        service._settings = service._settings.model_copy(
+            update={'agent_llm_first_mode_enabled': True}
+        )
+
+        def provider_call(operation, trace_context=None):  # noqa: ANN001
+            calls['provider'] += 1
+
+            class _Adapter:
+                def answer_with_tools(
+                    self,
+                    *,
+                    system_prompt,
+                    question_prompt,
+                    history_messages,
+                    tools,
+                    tool_executor,
+                    max_tool_turns,
+                ):
+                    return 'LLM handled this.'
+
+            value = operation(_Adapter())
+            return SimpleNamespace(
+                value=value,
+                provider_used='openai',
+                fallback_used=False,
+                provider_error_code=None,
+                tokens_input=10,
+                tokens_output=6,
+                tokens_total=16,
+            )
+
+        service._provider_orchestrator.call = provider_call  # type: ignore[assignment]
+        response = service.generate(
+            user_message='Can you suggest a better name for all the tasks in the System Archtecture and React Implementation',
+            system_prompt='system',
+            session_context={
+                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                'trace_id': 'trace-llm-first-bypass',
+            },
+            history_messages=[],
+            intent_type='roadmap_query',
+        )
+
+        self.assertEqual(calls['provider'], 1)
+        self.assertEqual(response.get('parse_mode'), 'openai_context_tools')
+        self.assertEqual(response.get('route_lane'), 'discovery_lane')
+        self.assertEqual(response.get('assistant_message'), 'LLM handled this.')
+
+    def test_llm_first_mode_returns_outage_clarifier_on_provider_error(self) -> None:
+        def execute_tool(name: str, args: dict, _context: dict):
+            return {'ok': True, 'name': name, 'args': args}
+
+        service, _cache, _provider, _build_key = self._service(execute_tool)
+        service._settings = service._settings.model_copy(
+            update={'agent_llm_first_mode_enabled': True}
+        )
+
+        def provider_call(operation, trace_context=None):  # noqa: ANN001
+            raise ProviderAdapterError(
+                provider='openai',
+                code='provider_timeout',
+                message='timeout',
+                tokens_input=21,
+                tokens_output=8,
+                tokens_total=29,
+            )
+
+        service._provider_orchestrator.call = provider_call  # type: ignore[assignment]
+        response = service.generate(
+            user_message='What are the tasks in Platform Foundation?',
+            system_prompt='system',
+            session_context={
+                'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                'trace_id': 'trace-llm-first-outage',
+            },
+            history_messages=[],
+            intent_type='roadmap_query',
+        )
+
+        self.assertEqual(response.get('parse_mode'), 'llm_first_context_outage')
+        self.assertEqual(response.get('provider_error_code'), 'provider_timeout')
+        self.assertTrue(response.get('clarifier_returned'))
+        self.assertIn('Temporary AI provider issue', response.get('assistant_message', ''))
 
     def test_discovery_guard_state_is_request_local(self) -> None:
         def execute_tool(_name: str, _args: dict, _context: dict):

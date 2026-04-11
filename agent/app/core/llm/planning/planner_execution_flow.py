@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.llm.context.context_answer_service import ContextAnswerService
+from app.core.llm.outage import build_outage_clarifier_message
 from app.core.llm.providers import ProviderAdapterError
 from app.core.llm.react.react_executor import map_provider_error_to_stop_reason
 from app.core.logging_utils import log_event
@@ -257,6 +258,7 @@ def generate_chat_reply(
         user_message,
         state.get('intent_type', 'unclear'),
     )
+    llm_first_mode_enabled = bool(planner._settings.agent_llm_first_mode_enabled)
 
     try:
         result = planner._provider_orchestrator.call(
@@ -286,6 +288,20 @@ def generate_chat_reply(
             exc.code,
             exc.message,
         )
+        if llm_first_mode_enabled:
+            return {
+                'assistant_message': build_outage_clarifier_message(),
+                'planned_operations': [],
+                'response_mode': 'chat',
+                'preview_recommended': False,
+                'parse_mode': 'llm_first_chat_outage',
+                'provider_used': 'rule_based',
+                'fallback_used': False,
+                'provider_error_code': exc.code,
+                'tokens_input': exc.tokens_input,
+                'tokens_output': exc.tokens_output,
+                'tokens_total': exc.tokens_total,
+            }
         return {
             'assistant_message': fallback_response,
             'planned_operations': [],

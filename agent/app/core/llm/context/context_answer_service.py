@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from app.core.config import Settings
 from app.core.contracts.sessions import IntentType
+from app.core.llm.outage import build_outage_clarifier_message
 from app.core.logging_utils import log_event
 from app.core.llm.react.react_executor import map_provider_error_to_stop_reason
 from app.core.response_cache import ContextAnswerCache
@@ -15,14 +16,12 @@ from app.core.tools.registry import get_context_tools
 
 from .deterministic_context import (
     ContextResolutionOutcome,
-    assess_my_tasks_status_confidence,
     is_rich_my_tasks_request,
     try_deterministic_list_answer,
 )
 from .deterministic_intents import (
     DeterministicContextIntent,
     match_deterministic_context_intent,
-    should_include_ids,
 )
 from app.core.llm.providers import ProviderAdapterError, ProviderOrchestrator
 
@@ -70,27 +69,21 @@ class ContextAnswerService:
         intent_type: IntentType,
     ) -> dict[str, Any]:
         trace_id = session_context.get('trace_id')
+        llm_first_mode_enabled = bool(self._settings.agent_llm_first_mode_enabled)
         context_tools = get_context_tools()
-        fallback_response = self._chat_fallback_builder(user_message, intent_type)
         deterministic_match = match_deterministic_context_intent(user_message)
-        skip_cache_for_my_tasks = bool(
-            deterministic_match is not None
-            and deterministic_match[0].pending_kind == 'my_tasks'
-        )
-        if deterministic_match is not None and self._should_route_compound_query_to_llm(
-            user_message=user_message,
-            matched_pending_kind=deterministic_match[0].pending_kind,
-        ):
+        if deterministic_match is not None:
             log_event(
                 self._logger,
-                'deterministic_fastpath_bypass',
+                'deterministic_path_skipped',
                 settings=self._settings,
                 trace_id=trace_id,
                 roadmap_id=session_context.get('roadmap_id'),
-                reason='compound_query',
+                deterministic_path_skipped=True,
+                llm_first_mode_enabled=llm_first_mode_enabled,
+                reason='llm_first_context_always',
                 matched_capability=deterministic_match[0].pending_kind,
             )
-            deterministic_match = None
         cache_key = self._build_context_cache_key(
             roadmap_id=str(session_context.get('roadmap_id') or ''),
             user_message=user_message,
@@ -104,142 +97,25 @@ class ContextAnswerService:
                 else None
             ),
         )
-        if not skip_cache_for_my_tasks:
-            cached_answer = self._context_answer_cache.get(cache_key)
-            if cached_answer:
-                log_event(
-                    self._logger,
-                    'cache_hit',
-                    settings=self._settings,
-                    trace_id=trace_id,
-                    cache_scope='context_answer',
-                    roadmap_id=session_context.get('roadmap_id'),
-                )
-                return self._build_cached_response(cached_answer)
+        cached_answer = self._context_answer_cache.get(cache_key)
+        if cached_answer:
             log_event(
                 self._logger,
-                'cache_miss',
+                'cache_hit',
                 settings=self._settings,
                 trace_id=trace_id,
                 cache_scope='context_answer',
                 roadmap_id=session_context.get('roadmap_id'),
             )
-        else:
-            log_event(
-                self._logger,
-                'cache_bypass',
-                settings=self._settings,
-                trace_id=trace_id,
-                cache_scope='context_answer',
-                roadmap_id=session_context.get('roadmap_id'),
-                reason='my_tasks',
-            )
-        if deterministic_match is not None:
-            intent, label = deterministic_match
-            status_scope_override: str | None = None
-            status_scope_source = 'deterministic'
-            if intent.pending_kind == 'my_tasks':
-                inferred_scope, confident = assess_my_tasks_status_confidence(user_message)
-                if confident and inferred_scope is not None:
-                    status_scope_override = inferred_scope
-                else:
-                    discovery_response = self._discover_my_tasks_scope(
-                        user_message=user_message,
-                        system_prompt=system_prompt,
-                        session_context=session_context,
-                        trace_id=trace_id,
-                    )
-                    if discovery_response.get('needs_clarification'):
-                        stop_reason = str(
-                            discovery_response.get('stop_reason') or 'low_confidence'
-                        )
-                        parse_mode = self._my_tasks_discovery_parse_mode(stop_reason)
-                        provider_error_code = (
-                            str(discovery_response.get('provider_error_code'))
-                            if discovery_response.get('provider_error_code')
-                            else stop_reason
-                        )
-                        return {
-                            'assistant_message': discovery_response['clarifier_prompt'],
-                            'planned_operations': [],
-                            'response_mode': 'chat',
-                            'preview_recommended': False,
-                            'parse_mode': parse_mode,
-                            'provider_used': 'rule_based',
-                            'fallback_used': False,
-                            'provider_error_code': provider_error_code,
-                            'route_lane': 'discovery_lane',
-                            'discovery_calls_used': discovery_response.get('discovery_calls_used', 0),
-                            'discovery_repeat_hits': discovery_response.get('discovery_repeat_hits', 0),
-                            'discovery_stop_reason': stop_reason,
-                            'clarifier_returned': True,
-                            'discovery_contract': self._build_discovery_contract(
-                                capability='my_tasks',
-                                resolved_targets=[],
-                                status_scope=None,
-                                needs_clarification=True,
-                                clarifier_prompt=discovery_response.get('clarifier_prompt'),
-                            ),
-                        }
-                    discovered_scope = discovery_response.get('status_scope')
-                    if isinstance(discovered_scope, str) and discovered_scope in {'open', 'all'}:
-                        status_scope_override = discovered_scope
-                        status_scope_source = 'discovery'
-
-            deterministic_outcome = self._try_deterministic_list_answer(
-                intent=intent,
-                label=label,
-                include_ids=should_include_ids(user_message),
-                user_message=user_message,
-                status_scope_override=status_scope_override,
-                status_scope_source=status_scope_source,
-                session_context=session_context,
-                trace_id=trace_id,
-            )
-            if deterministic_outcome is not None:
-                if intent.pending_kind == 'my_tasks':
-                    my_tasks_response = self._maybe_synthesize_my_tasks_response(
-                        intent=intent,
-                        deterministic_outcome=deterministic_outcome,
-                        user_message=user_message,
-                        system_prompt=system_prompt,
-                        session_context=session_context,
-                    )
-                    if my_tasks_response is not None:
-                        if not skip_cache_for_my_tasks:
-                            self._cache_response_if_safe(cache_key, my_tasks_response)
-                        return my_tasks_response
-                response = {
-                    'assistant_message': deterministic_outcome.answer,
-                    'planned_operations': [],
-                    'response_mode': 'chat',
-                    'preview_recommended': False,
-                    'parse_mode': intent.parse_mode,
-                    'provider_used': 'rule_based',
-                    'fallback_used': False,
-                    'provider_error_code': None,
-                    'pending_context_resolution': deterministic_outcome.pending_context_resolution,
-                    'clear_pending_context_resolution': deterministic_outcome.clear_pending_context_resolution,
-                    'route_lane': 'deterministic_fastpath',
-                    'discovery_calls_used': 0,
-                    'discovery_repeat_hits': 0,
-                    'discovery_stop_reason': 'resolved',
-                    'clarifier_returned': False,
-                    'discovery_contract': self._build_discovery_contract(
-                        capability=intent.pending_kind,
-                        resolved_targets=[],
-                        status_scope=(
-                            status_scope_override
-                            if intent.pending_kind == 'my_tasks'
-                            else None
-                        ),
-                        needs_clarification=False,
-                        clarifier_prompt=None,
-                    ),
-                }
-                if not skip_cache_for_my_tasks:
-                    self._cache_response_if_safe(cache_key, response)
-                return response
+            return self._build_cached_response(cached_answer)
+        log_event(
+            self._logger,
+            'cache_miss',
+            settings=self._settings,
+            trace_id=trace_id,
+            cache_scope='context_answer',
+            roadmap_id=session_context.get('roadmap_id'),
+        )
 
         # Discovery lane is fixed-budget: provider loop turns should not exceed
         # the configured discovery call budget.
@@ -285,6 +161,8 @@ class ContextAnswerService:
                 discovery_repeat_hits=discovery_state.repeat_hits,
                 discovery_stop_reason='resolved',
                 clarifier_returned=False,
+                llm_first_mode_enabled=llm_first_mode_enabled,
+                outage_clarifier_returned=False,
             )
             response = {
                 'assistant_message': result.value,
@@ -311,8 +189,7 @@ class ContextAnswerService:
                     clarifier_prompt=None,
                 ),
             }
-            if not skip_cache_for_my_tasks:
-                self._context_answer_cache.set(cache_key, self._cache_payload(response))
+            self._context_answer_cache.set(cache_key, self._cache_payload(response))
             return response
         except ProviderAdapterError as exc:
             if exc.code in {
@@ -363,6 +240,8 @@ class ContextAnswerService:
                     clarifier_returned=True,
                     clarifier_template_id='context_clarifier_budget_v1',
                     provider_error_code=exc.code,
+                    llm_first_mode_enabled=llm_first_mode_enabled,
+                    outage_clarifier_returned=False,
                 )
                 return {
                     'assistant_message': clarifier,
@@ -390,7 +269,7 @@ class ContextAnswerService:
                     ),
                 }
             self._logger.warning(
-                'Provider context answer failed, using chat fallback. code=%s message=%s',
+                'Provider context answer failed, returning outage clarifier. code=%s message=%s',
                 exc.code,
                 exc.message,
             )
@@ -403,13 +282,15 @@ class ContextAnswerService:
                 discovery_repeat_hits=discovery_state.repeat_hits,
                 discovery_stop_reason='tool_error',
                 clarifier_returned=False,
+                llm_first_mode_enabled=llm_first_mode_enabled,
             )
+            outage_message = build_outage_clarifier_message()
             return {
-                'assistant_message': fallback_response,
+                'assistant_message': outage_message,
                 'planned_operations': [],
                 'response_mode': 'chat',
                 'preview_recommended': False,
-                'parse_mode': 'rule_based_context_chat',
+                'parse_mode': 'llm_first_context_outage',
                 'provider_used': 'rule_based',
                 'fallback_used': False,
                 'provider_error_code': exc.code,
@@ -419,14 +300,14 @@ class ContextAnswerService:
                 'route_lane': 'discovery_lane',
                 'discovery_calls_used': discovery_state.calls_used,
                 'discovery_repeat_hits': discovery_state.repeat_hits,
-                'discovery_stop_reason': 'tool_error',
-                'clarifier_returned': False,
+                'discovery_stop_reason': 'provider_error',
+                'clarifier_returned': True,
                 'discovery_contract': self._build_discovery_contract(
                     capability='context_answer',
                     resolved_targets=[],
                     status_scope=None,
-                    needs_clarification=False,
-                    clarifier_prompt=None,
+                    needs_clarification=True,
+                    clarifier_prompt=outage_message,
                 ),
             }
 
@@ -873,7 +754,7 @@ class ContextAnswerService:
                 'provider_used': 'rule_based',
                 'fallback_used': False,
                 'provider_error_code': None,
-                'route_lane': 'deterministic_fastpath',
+                'route_lane': 'discovery_lane',
                 'discovery_calls_used': 0,
                 'discovery_repeat_hits': 0,
                 'discovery_stop_reason': 'resolved',
@@ -903,7 +784,7 @@ class ContextAnswerService:
             'tokens_input': cached_value.get('tokens_input'),
             'tokens_output': cached_value.get('tokens_output'),
             'tokens_total': cached_value.get('tokens_total'),
-            'route_lane': str(cached_value.get('route_lane') or 'deterministic_fastpath'),
+            'route_lane': str(cached_value.get('route_lane') or 'discovery_lane'),
             'discovery_calls_used': int(cached_value.get('discovery_calls_used') or 0),
             'discovery_repeat_hits': int(cached_value.get('discovery_repeat_hits') or 0),
             'discovery_stop_reason': cached_value.get('discovery_stop_reason'),

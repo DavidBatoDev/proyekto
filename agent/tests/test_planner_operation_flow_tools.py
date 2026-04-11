@@ -66,6 +66,7 @@ class _FakePlanner:
             max_edit_tool_turns=4,
             agent_react_max_attempts=1,
             agent_react_repair_retries=0,
+            agent_llm_first_mode_enabled=False,
             agent_simple_edit_planner_profile_enabled=False,
             agent_strict_mutation_authority_enabled=False,
             agent_log_include_content=False,
@@ -1140,6 +1141,131 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
             result.get('parse_mode'),
             'deterministic_bulk_task_scope_mismatch_clarifier',
         )
+
+    def test_llm_first_mode_skips_deterministic_parent_first_clarifier(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+        planner._settings.agent_llm_first_mode_enabled = True
+        planner._settings.agent_react_max_attempts = 1
+        planner._settings.agent_react_repair_retries = 0
+
+        class _MissingToolCallOrchestrator:
+            def call(self, operation, trace_context=None):  # noqa: ANN001
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                        planner_profile=None,
+                    ):
+                        raise ProviderAdapterError(
+                            provider='openai',
+                            code='missing_tool_call',
+                            message='OpenAI did not return any tool call while planning operations.',
+                        )
+
+                return SimpleNamespace(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=1,
+                    tokens_output=1,
+                    tokens_total=2,
+                )
+
+        planner._provider_orchestrator = _MissingToolCallOrchestrator()
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Add new epic called "Agile" and inside that add feature called "Jira"',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-llm-first-parent-first-skip',
+                },
+            },
+        )
+
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'llm_first_edit_outage')
+        self.assertEqual(result.get('provider_error_code'), 'missing_tool_call')
+        self.assertIn('Temporary AI provider issue', str(result.get('assistant_message')))
+
+    def test_llm_first_mode_skips_deterministic_synthesized_closure(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+        planner._settings.agent_llm_first_mode_enabled = True
+        synth_calls = {'count': 0}
+
+        def fake_synthesize(**kwargs):  # noqa: ANN003
+            synth_calls['count'] += 1
+            return [
+                {
+                    'op': 'mark_status',
+                    'node_type': 'task',
+                    'node_id': '8f58ac65-2f95-4571-b8c1-cc9fd80e95db',
+                    'status': 'in_review',
+                }
+            ]
+
+        planner._maybe_synthesize_react_closure_operations = fake_synthesize  # type: ignore[method-assign]
+
+        class _MissingToolCallOrchestrator:
+            def call(self, operation, trace_context=None):  # noqa: ANN001
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                        planner_profile=None,
+                    ):
+                        raise ProviderAdapterError(
+                            provider='openai',
+                            code='missing_tool_call',
+                            message='OpenAI did not return any tool call while planning operations.',
+                        )
+
+                return SimpleNamespace(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=1,
+                    tokens_output=1,
+                    tokens_total=2,
+                )
+
+        planner._provider_orchestrator = _MissingToolCallOrchestrator()
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'Mark all tasks in Authentication System as in review',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-llm-first-no-synth',
+                },
+            },
+        )
+
+        self.assertEqual(synth_calls['count'], 0)
+        self.assertEqual(result.get('response_mode'), 'chat')
+        self.assertEqual(result.get('parse_mode'), 'llm_first_edit_outage')
 
 
 if __name__ == '__main__':

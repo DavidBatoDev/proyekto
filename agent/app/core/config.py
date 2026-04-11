@@ -78,6 +78,10 @@ class Settings(BaseSettings):
         default=True,
         alias='AGENT_HYBRID_REACT_ENABLED',
     )
+    agent_llm_first_mode_enabled: bool = Field(
+        default=True,
+        alias='AGENT_LLM_FIRST_MODE_ENABLED',
+    )
     agent_draft_graph_enabled: bool = Field(
         default=False,
         alias='AGENT_DRAFT_GRAPH_ENABLED',
