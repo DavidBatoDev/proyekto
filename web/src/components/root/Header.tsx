@@ -18,10 +18,11 @@ export const Header = () => {
   const [activeHash, setActiveHash] = useState(getInitialHash);
 
   const navItems = [
-    { label: "Templates", href: "#templates" },
+    { label: "Use It Your Way", href: "#use-it-your-way" },
     { label: "How It Works", href: "#how-it-works" },
-    { label: "Product Experience", href: "#product-experience" },
-    { label: "Your Roadmap", href: "#your-roadmap" },
+    { label: "Why Proyekto", href: "#why-proyekto" },
+    { label: "Templates", href: "#templates" },
+    { label: "Features", href: "#features" },
   ];
 
   useEffect(() => {

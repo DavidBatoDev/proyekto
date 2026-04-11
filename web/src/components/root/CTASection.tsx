@@ -11,10 +11,10 @@ export const CTASection = () => {
 
         <TrendingUp className="mx-auto mb-4 h-12 w-12 text-amber-300" />
         <h2 className="mx-auto max-w-3xl text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
-          Stop guessing. Start building.
+          Ready to get started?
         </h2>
         <p className="mx-auto mt-4 max-w-2xl text-sm text-slate-300 sm:text-base">
-          Turn ideas into an execution-ready roadmap, align expert talent, and deliver faster with confidence.
+          Create your project plan in minutes and start moving forward.
         </p>
 
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
@@ -23,16 +23,16 @@ export const CTASection = () => {
             search={{ redirect: window.location.pathname }}
           >
             <Button variant="contained" colorScheme="primary" size="lg" className="rounded-xl bg-white text-slate-900 hover:bg-slate-100">
-              Start Your Project
+              Create Your Project Plan
             </Button>
           </Link>
 
-          <button
-            type="button"
+          <a
+            href="#templates"
             className="inline-flex items-center justify-center rounded-xl border border-slate-500 px-6 py-3 text-lg font-semibold text-white transition-all hover:border-white hover:bg-white hover:text-slate-900"
           >
-            Browse Templates
-          </button>
+            Explore Templates
+          </a>
         </div>
       </div>
     </section>

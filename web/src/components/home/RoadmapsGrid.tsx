@@ -210,14 +210,12 @@ export function RoadmapsGrid() {
 							{persona === "freelancer" ? "ACTIVE WORKSPACES" : "MY ROADMAPS"}
 						</h2>
 					</div>
-					{persona !== "freelancer" ? (
-						<button
-							type="button"
-							className="text-[20px] font-semibold text-[#333438] hover:text-[var(--secondary)]"
-						>
-							{"View All \u2192"}
-						</button>
-					) : null}
+					<button
+						type="button"
+						className="text-[20px] font-semibold text-[#333438] hover:text-[var(--secondary)]"
+					>
+						{"View All \u2192"}
+					</button>
 				</div>
 				<p className="text-xs text-[#61636c] mt-1">
 					{persona === "freelancer"

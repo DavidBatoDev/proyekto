@@ -10,9 +10,9 @@ export function Hero() {
   // Design configuration mapping
   const content = {
     client: {
-      title: "Turn your project vision into an execution roadmap.",
+      title: "Turn your project idea into action — easily",
       description:
-        "Post your vision, get matched with a consultant, and unlock a structured roadmap your team can execute.",
+        "Start planning your project step-by-step and invite your team. No complex setups, no guesswork — just clarity from the get-go.",
       buttonText: "Post Project Vision",
       buttonLink: "/project-posting",
       dataTutorial: "post-project-btn",
@@ -37,9 +37,9 @@ export function Hero() {
       artSrc: "/svgs/art/consultant-art.svg",
     },
     admin: {
-      title: "Turn your project vision into an execution roadmap.",
+      title: "Turn your project idea into action — easily",
       description:
-        "Post your vision, get matched with a consultant, and unlock a structured roadmap your team can execute.",
+        "Start planning your project step-by-step and invite your team. No complex setups, no guesswork — just clarity from the get-go.",
       buttonText: "Post Project Vision",
       buttonLink: "/project-posting",
       dataTutorial: "post-project-btn",
@@ -121,7 +121,7 @@ export function Hero() {
           <h1
             className="text-[#333438] text-[28px] leading-8 font-semibold mb-1 whitespace-nowrap"
           >
-            {currentContent.title}
+          
           </h1>
           <p className="text-[#61636c] text-[14px] leading-5">
             {currentContent.description}

@@ -8,7 +8,7 @@ export const RootFooter = () => {
           <div>
             <img src={Logo} alt="Proyekto" className="mb-4 h-10" />
             <p className="text-sm text-slate-600">
-              The roadmap operating system for teams that want strategic clarity and faster execution.
+              Turn your ideas into action, with Proyekto.
             </p>
           </div>
 

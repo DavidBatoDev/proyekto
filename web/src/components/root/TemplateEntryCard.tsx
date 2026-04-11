@@ -30,8 +30,8 @@ export function TemplateEntryCard({ template, index }: Props) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-30px" }}
       transition={{ duration: 0.26, delay: index * 0.04 }}
-      whileHover={{ y: -6 }}
-      className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_12px_26px_rgba(15,23,42,0.06)] transition-all duration-300 hover:border-slate-300 hover:shadow-[0_18px_36px_rgba(15,23,42,0.13)]"
+      whileHover={{ y: -10, scale: 1.035 }}
+      className="group relative z-0 transform-gpu rounded-2xl border border-transparent bg-white p-4 shadow-[0_12px_26px_rgba(15,23,42,0.06)] transition-all duration-300 hover:z-20 hover:shadow-[0_24px_50px_rgba(37,99,235,0.22)]"
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
@@ -69,10 +69,10 @@ export function TemplateEntryCard({ template, index }: Props) {
           Milestone Preview
         </p>
 
-        <div className="mt-2 grid max-h-0 grid-cols-1 gap-1.5 opacity-0 transition-all duration-300 group-hover:max-h-36 group-hover:opacity-100">
+        <div className="mt-2 grid max-h-0 grid-cols-1 gap-1.5 opacity-0 transition-all duration-300 ease-out group-hover:max-h-40 group-hover:opacity-100">
           {template.milestones.map((milestone) => (
             <div
-              key={milestone}
+              key={`${template.id}-${milestone}`}
               className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
             >
               {milestone}
