@@ -10,6 +10,41 @@ export interface RoadmapAiChatAttachment {
   type?: string;
 }
 
+export type RoadmapAiActivityStepStatus = "running" | "success" | "error";
+export type RoadmapAiActivityDetailMode = "verbose" | "structured";
+export type RoadmapAiActivityPresentationMode =
+  | "curated"
+  | "friendly_minimal";
+
+export interface RoadmapAiActivityStepTitleList {
+  items: string[];
+  shownCount: number;
+  totalCount: number;
+  hasMore: boolean;
+}
+
+export interface RoadmapAiActivityStep {
+  seq: number;
+  ts: string;
+  event: string;
+  title: string;
+  status: RoadmapAiActivityStepStatus;
+  summary: string;
+  details?: Record<string, unknown>;
+  titleList?: RoadmapAiActivityStepTitleList;
+}
+
+export interface RoadmapAiActivityTimeline {
+  traceId: string;
+  startedAt?: string;
+  completedAt?: string;
+  elapsedMs?: number;
+  done: boolean;
+  detailMode: RoadmapAiActivityDetailMode;
+  presentationMode?: RoadmapAiActivityPresentationMode;
+  steps: RoadmapAiActivityStep[];
+}
+
 export interface RoadmapAiChatMessage {
   id: string;
   role: RoadmapAiChatRole;
@@ -28,6 +63,7 @@ export interface RoadmapAiChatMessage {
   responseMode?: "chat" | "edit_plan";
   artifacts?: RoadmapArtifactPreview[];
   attachments?: RoadmapAiChatAttachment[];
+  activityTimeline?: RoadmapAiActivityTimeline;
 }
 
 interface RoadmapAiAssistantPersistedState {

@@ -36,6 +36,9 @@ import roadmapAgentService, {
   type AgentMessageResponse,
   type AgentCommitPayload,
   type AgentRoadmapCommitArtifact,
+  type AgentTraceEvent,
+  type AgentTraceEventsResponse,
+  RoadmapAgentServiceError,
   isAgentTimeoutError,
 } from "@/services/roadmap-agent.service";
 import {
@@ -43,8 +46,19 @@ import {
   normalizeArtifactCandidateSnapshot,
 } from "@/services/roadmap-artifact-adapter";
 import { useToast } from "@/hooks/useToast";
+import { RoadmapAiActivityTimelineView } from "./RoadmapAiActivityTimeline";
+import {
+  buildCuratedToolRequestedMessage,
+  buildCuratedToolResultMessage,
+  buildFriendlyMinimalToolLabel,
+  extractTraceToolName,
+} from "./roadmapAiToolMessaging";
 import {
   useRoadmapAiAssistantSession,
+  type RoadmapAiActivityTimeline,
+  type RoadmapAiActivityStep,
+  type RoadmapAiActivityDetailMode,
+  type RoadmapAiActivityPresentationMode,
   type RoadmapAiChatAttachment,
   type RoadmapAiChatMessage,
 } from "./useRoadmapAiAssistantSession";
@@ -413,6 +427,526 @@ const noopUpdateFeature = (_feature: RoadmapFeature) => {};
 const noopDeleteFeature = (_featureId: string) => {};
 const noopUpdateTask = (_task: RoadmapTask) => {};
 
+const TRACE_POLL_INTERVAL_MS = 400;
+const TRACE_POLL_LIMIT = 50;
+const TRACE_POLL_TIMEOUT_MS = 90_000;
+const TRACE_NOT_READY_GRACE_MS = 10_000;
+const PROGRESS_DETAIL_MODE: RoadmapAiActivityDetailMode = "structured";
+const DEFAULT_PROGRESS_PRESENTATION_MODE: RoadmapAiActivityPresentationMode =
+  "curated";
+
+export const parseProgressPresentationMode = (
+  value: unknown,
+): RoadmapAiActivityPresentationMode => {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, "_");
+  if (normalized === "friendly_minimal") return "friendly_minimal";
+  if (normalized === "curated") return "curated";
+  return DEFAULT_PROGRESS_PRESENTATION_MODE;
+};
+
+export const PROGRESS_PRESENTATION_MODE = parseProgressPresentationMode(
+  import.meta.env.VITE_AI_PROGRESS_PRESENTATION_MODE,
+);
+
+interface PollLoopState {
+  traceId: string;
+  sessionId: string;
+  afterSeq: number;
+  startedAtMs: number;
+  cancelled: boolean;
+  timerId: number | null;
+  pollingFailed: boolean;
+}
+
+const SHARED_HIDDEN_ACTIVITY_EVENTS = new Set<string>([
+  "message_received",
+  "actor_context_loaded",
+  "session_staged_state",
+  "message_completed",
+  "provider_success",
+]);
+
+const FRIENDLY_MINIMAL_EXTRA_HIDDEN_ACTIVITY_EVENTS = new Set<string>([
+  "intent_classified",
+  "route_selected",
+  "provider_attempt",
+]);
+
+const toRecord = (
+  value: unknown,
+): Record<string, unknown> | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+};
+
+const toStringValue = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+};
+
+const parseCountFromUnknown = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.floor(value));
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, Math.floor(parsed));
+    }
+  }
+  return null;
+};
+
+const parseCountFromText = (text: string, key: string): number | null => {
+  const escapedKey = key.replace("_", "[_\\s]");
+  const match = text.match(new RegExp(`${escapedKey}\\s*[:=]\\s*(\\d+)`, "i"));
+  if (!match?.[1]) return null;
+  return Number.parseInt(match[1], 10);
+};
+
+const isActivityEventHidden = (
+  event: string,
+  presentationMode: RoadmapAiActivityPresentationMode,
+): boolean => {
+  if (SHARED_HIDDEN_ACTIVITY_EVENTS.has(event)) return true;
+  if (presentationMode === "friendly_minimal") {
+    return FRIENDLY_MINIMAL_EXTRA_HIDDEN_ACTIVITY_EVENTS.has(event);
+  }
+  return false;
+};
+
+const extractResultCounts = (step: {
+  summary: string;
+  details?: Record<string, unknown>;
+}): {
+  tasksCount: number | null;
+  matchesCount: number | null;
+  operationsCount: number | null;
+  childrenCount: number | null;
+} => {
+  const resultSummary = toRecord(step.details?.result_summary);
+  const tasksCount =
+    parseCountFromUnknown(resultSummary?.tasks_count) ??
+    parseCountFromText(step.summary, "tasks_count");
+  const matchesCount =
+    parseCountFromUnknown(resultSummary?.matches_count) ??
+    parseCountFromText(step.summary, "matches_count");
+  const operationsCount =
+    parseCountFromUnknown(resultSummary?.operations_count) ??
+    parseCountFromText(step.summary, "operations_count");
+  const childrenCount =
+    parseCountFromUnknown(resultSummary?.children_count) ??
+    parseCountFromText(step.summary, "children_count");
+
+  return {
+    tasksCount,
+    matchesCount,
+    operationsCount,
+    childrenCount,
+  };
+};
+
+const buildFriendlyResultSummary = (counts: {
+  tasksCount: number | null;
+  matchesCount: number | null;
+  operationsCount: number | null;
+  childrenCount: number | null;
+}): string => {
+  const parts: string[] = [];
+  if (counts.tasksCount != null) {
+    parts.push(`Processed ${counts.tasksCount} tasks`);
+  }
+  if (counts.matchesCount != null) {
+    parts.push(`Found ${counts.matchesCount} matches`);
+  }
+  if (counts.operationsCount != null) {
+    parts.push(`Prepared ${counts.operationsCount} changes`);
+  }
+  if (counts.childrenCount != null) {
+    parts.push(`Found ${counts.childrenCount} related items`);
+  }
+  if (parts.length === 0) {
+    return "Completed this step.";
+  }
+  return `${parts.join(". ")}.`;
+};
+
+type RawActivityStep = {
+  seq: number;
+  ts: string;
+  event: string;
+  title: string;
+  status: "running" | "success" | "error";
+  summary: string;
+  details?: Record<string, unknown>;
+  titleList?: RoadmapAiActivityStep["titleList"];
+};
+
+const getIntentSummary = (rawStep: RawActivityStep): string => {
+  const details = toRecord(rawStep.details);
+  const intentType =
+    typeof details?.intent_type === "string"
+      ? details.intent_type.trim().toLowerCase()
+      : "";
+  if (intentType === "roadmap_edit") {
+    return "I understood this as a roadmap edit request and started preparing concrete changes.";
+  }
+  if (intentType === "roadmap_query") {
+    return "I understood this as a roadmap question and started gathering the right context.";
+  }
+  return "I am interpreting your request so I can choose the right execution path.";
+};
+
+const getRouteSummary = (rawStep: RawActivityStep): string => {
+  const details = toRecord(rawStep.details);
+  const responseMode =
+    typeof details?.response_mode === "string"
+      ? details.response_mode.trim().toLowerCase()
+      : "";
+  if (responseMode === "edit_plan") {
+    return "I selected the edit workflow so I can prepare a safe set of roadmap changes.";
+  }
+  if (responseMode === "chat") {
+    return "I selected a direct response path and am preparing the answer.";
+  }
+  return "I selected the best available path to handle your request safely.";
+};
+
+const getProviderAttemptSummary = (rawStep: RawActivityStep): string => {
+  const details = toRecord(rawStep.details);
+  const phase =
+    typeof details?.phase === "string"
+      ? details.phase.trim().toLowerCase()
+      : "";
+  if (phase === "edit_plan") {
+    return "I am planning the roadmap updates now and validating each step before execution.";
+  }
+  if (phase === "chat") {
+    return "I am composing the response and checking it against your request context.";
+  }
+  return "I am working through the next planning step for your request.";
+};
+
+const normalizeActivityStep = (
+  rawStep: RawActivityStep,
+  presentationMode: RoadmapAiActivityPresentationMode =
+    PROGRESS_PRESENTATION_MODE,
+): RoadmapAiActivityStep | null => {
+  const normalizedEvent = String(rawStep.event || "").trim().toLowerCase();
+  if (!normalizedEvent) return null;
+  if (isActivityEventHidden(normalizedEvent, presentationMode)) {
+    return null;
+  }
+  const baseStep = {
+    seq: rawStep.seq,
+    ts: rawStep.ts,
+    event: normalizedEvent,
+    status: rawStep.status,
+    details: rawStep.details,
+    titleList: rawStep.titleList,
+  } as const;
+
+  if (normalizedEvent === "intent_classified") {
+    return {
+      ...baseStep,
+      title: "Understanding your request",
+      summary: getIntentSummary(rawStep),
+    };
+  }
+
+  if (normalizedEvent === "route_selected") {
+    return {
+      ...baseStep,
+      title: "Choosing an approach",
+      summary: getRouteSummary(rawStep),
+    };
+  }
+
+  if (normalizedEvent === "provider_attempt") {
+    return {
+      ...baseStep,
+      status: "running",
+      title: "Planning the next steps",
+      summary: getProviderAttemptSummary(rawStep),
+    };
+  }
+
+  if (normalizedEvent === "provider_failure") {
+    return {
+      ...baseStep,
+      status: "error",
+      title:
+        presentationMode === "curated"
+          ? "Recovering from a temporary issue"
+          : "Temporary processing issue",
+      summary:
+        presentationMode === "curated"
+          ? "I hit a temporary issue while planning, then switched to a safer recovery path to keep your request moving."
+          : "We hit a temporary issue while handling your request.",
+    };
+  }
+
+  if (normalizedEvent === "tool_call_requested") {
+    const toolName = extractTraceToolName(rawStep);
+    if (presentationMode === "curated") {
+      const toolMessage = buildCuratedToolRequestedMessage(toolName, rawStep);
+      return {
+        ...baseStep,
+        title: toolMessage.title,
+        summary: toolMessage.summary,
+      };
+    }
+    const label = buildFriendlyMinimalToolLabel(toolName);
+    return {
+      ...baseStep,
+      title: label.requested,
+      summary: "Working on this step now.",
+    };
+  }
+
+  if (normalizedEvent === "tool_call_result") {
+    const toolName = extractTraceToolName(rawStep);
+    if (rawStep.status === "error") {
+      const label = buildFriendlyMinimalToolLabel(toolName);
+      return {
+        ...baseStep,
+        status: "error",
+        title: label.requested,
+        summary: "A step failed; retrying.",
+      };
+    }
+    if (presentationMode === "curated") {
+      const toolMessage = buildCuratedToolResultMessage(toolName, rawStep);
+      return {
+        ...baseStep,
+        title: toolMessage.title,
+        summary: toolMessage.summary,
+        titleList: toolMessage.titleList,
+      };
+    }
+    const label = buildFriendlyMinimalToolLabel(toolName);
+    return {
+      ...baseStep,
+      title: label.completed,
+      summary: buildFriendlyResultSummary(extractResultCounts(rawStep)),
+    };
+  }
+
+  if (normalizedEvent === "plan_generated") {
+    const operationsCount =
+      parseCountFromUnknown(rawStep.details?.operations_count) ??
+      parseCountFromText(rawStep.summary, "operations_count");
+    return {
+      ...baseStep,
+      title:
+        presentationMode === "curated"
+          ? "Finalizing your change plan"
+          : "Preparing your roadmap changes",
+      summary:
+        presentationMode === "curated"
+          ? operationsCount != null
+            ? `I prepared ${operationsCount} roadmap changes and validated the plan before applying.`
+            : "I finalized your roadmap change plan and prepared it for application."
+          : operationsCount != null
+            ? `Prepared ${operationsCount} changes.`
+            : "Prepared your roadmap changes.",
+    };
+  }
+
+  if (normalizedEvent === "auto_commit_async_completed") {
+    return {
+      ...baseStep,
+      status: "success",
+      title: "Applied your changes",
+      summary:
+        presentationMode === "curated"
+          ? "I applied your roadmap changes successfully and completed this run."
+          : "Your roadmap changes were applied successfully.",
+    };
+  }
+
+  if (normalizedEvent === "auto_commit_async_failed") {
+    const details = toRecord(rawStep.details);
+    const autoCommitErrorMessage = toStringValue(
+      details?.auto_commit_error_message,
+    );
+    const invalidOperation = toRecord(details?.auto_commit_invalid_operation);
+    const invalidReason = toStringValue(invalidOperation?.reason);
+    const hasStatusValidationIssue =
+      (autoCommitErrorMessage ?? "").toLowerCase().includes("validation error") &&
+      (invalidReason === "mark_status.status_invalid" ||
+        autoCommitErrorMessage
+          ?.toLowerCase()
+          .includes("status"));
+    return {
+      ...baseStep,
+      status: "error",
+      title: "Could not apply changes automatically",
+      summary:
+        presentationMode === "curated"
+          ? hasStatusValidationIssue
+            ? "Your change plan is ready, but one or more updates used an invalid status value. Use one of: todo, in progress, in review, done, or blocked."
+            : "Your change plan is ready, but automatic apply did not finish. You can still review and apply it manually."
+          : "Your changes are ready, but auto-apply did not complete.",
+    };
+  }
+
+  return null;
+};
+
+export const mergeTimelineSteps = (
+  existingSteps: RoadmapAiActivityStep[],
+  incomingEvents: AgentTraceEvent[],
+  presentationMode: RoadmapAiActivityPresentationMode =
+    PROGRESS_PRESENTATION_MODE,
+): RoadmapAiActivityStep[] => {
+  const deduped = new Map<number, RoadmapAiActivityStep>();
+  for (const step of existingSteps) {
+    const normalized = normalizeActivityStep({
+      seq: step.seq,
+      ts: step.ts,
+      event: step.event,
+      title: step.title,
+      status: step.status,
+      summary: step.summary,
+      details: step.details,
+      titleList: step.titleList,
+    }, presentationMode);
+    if (normalized) {
+      deduped.set(normalized.seq, normalized);
+    }
+  }
+  for (const event of incomingEvents) {
+    const normalized = normalizeActivityStep({
+      seq: event.seq,
+      ts: event.ts,
+      event: event.event,
+      title: event.title,
+      status: event.status,
+      summary: event.summary,
+      details: event.details,
+    }, presentationMode);
+    if (normalized) {
+      deduped.set(normalized.seq, normalized);
+    }
+  }
+  return [...deduped.values()].sort((a, b) => a.seq - b.seq);
+};
+
+export const toTimelineFromTraceResponse = (
+  detailMode: RoadmapAiActivityDetailMode,
+  traceId: string,
+  response: AgentTraceEventsResponse,
+  previousTimeline?: RoadmapAiActivityTimeline | null,
+  presentationMode: RoadmapAiActivityPresentationMode =
+    PROGRESS_PRESENTATION_MODE,
+): RoadmapAiActivityTimeline => ({
+  traceId,
+  startedAt: response.started_at || previousTimeline?.startedAt,
+  completedAt: response.completed_at || previousTimeline?.completedAt,
+  elapsedMs:
+    typeof response.elapsed_ms === "number"
+      ? response.elapsed_ms
+      : previousTimeline?.elapsedMs,
+  done: response.done,
+  detailMode,
+  presentationMode,
+  steps: mergeTimelineSteps(
+    previousTimeline?.steps ?? [],
+    response.events,
+    presentationMode,
+  ),
+});
+
+export const normalizeTimelineForDisplay = (
+  timeline?: RoadmapAiActivityTimeline | null,
+  presentationMode: RoadmapAiActivityPresentationMode =
+    PROGRESS_PRESENTATION_MODE,
+): RoadmapAiActivityTimeline | null => {
+  if (!timeline) return null;
+  const normalizedSteps = timeline.steps
+    .map((step) =>
+      normalizeActivityStep({
+        seq: step.seq,
+        ts: step.ts,
+        event: step.event,
+        title: step.title,
+        status: step.status,
+        summary: step.summary,
+        details: step.details,
+        titleList: step.titleList,
+      }, presentationMode),
+    )
+    .filter((step): step is RoadmapAiActivityStep => step != null);
+  return {
+    ...timeline,
+    detailMode: PROGRESS_DETAIL_MODE,
+    presentationMode,
+    steps: normalizedSteps,
+  };
+};
+
+const computeElapsedMs = (
+  startedAt?: string,
+  completedAt?: string,
+): number | undefined => {
+  if (!startedAt || !completedAt) return undefined;
+  const startedMs = Date.parse(startedAt);
+  const completedMs = Date.parse(completedAt);
+  if (!Number.isFinite(startedMs) || !Number.isFinite(completedMs)) {
+    return undefined;
+  }
+  return Math.max(0, Math.round(completedMs - startedMs));
+};
+
+export const ensureTimelineCompleted = (
+  timeline: RoadmapAiActivityTimeline,
+  completedAtIso = new Date().toISOString(),
+): RoadmapAiActivityTimeline => {
+  const completedAt = timeline.completedAt || completedAtIso;
+  return {
+    ...timeline,
+    done: true,
+    completedAt,
+    elapsedMs:
+      typeof timeline.elapsedMs === "number"
+        ? timeline.elapsedMs
+        : computeElapsedMs(timeline.startedAt, completedAt),
+  };
+};
+
+export const getDefaultTimelineExpanded = (
+  timelineDone: boolean,
+  explicitValue?: boolean,
+): boolean => {
+  if (typeof explicitValue === "boolean") {
+    return explicitValue;
+  }
+  return !timelineDone;
+};
+
+export const shouldRenderThinkingFallback = (
+  isSending: boolean,
+  hasLiveActivity: boolean,
+  tracePollingFailed: boolean,
+): boolean => isSending && (!hasLiveActivity || tracePollingFailed);
+
+const isTraceNotReadyError = (error: unknown): boolean => {
+  if (error instanceof RoadmapAgentServiceError) {
+    return error.statusCode === 404;
+  }
+  if (error instanceof Error) {
+    return /trace_events_not_found|404/i.test(error.message);
+  }
+  return false;
+};
+
 export function RoadmapAiAssistantPanel({
   roadmapId,
   baseRevision,
@@ -433,9 +967,20 @@ export function RoadmapAiAssistantPanel({
   );
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [liveActivity, setLiveActivity] =
+    useState<RoadmapAiActivityTimeline | null>(null);
+  const [liveActivityExpanded, setLiveActivityExpanded] = useState(true);
+  const [liveActivityHostMessageId, setLiveActivityHostMessageId] = useState<
+    string | null
+  >(null);
+  const [tracePollingFailed, setTracePollingFailed] = useState(false);
+  const [activityExpandedByMessageId, setActivityExpandedByMessageId] =
+    useState<Record<string, boolean>>({});
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const pollLoopRef = useRef<PollLoopState | null>(null);
+  const liveActivityRef = useRef<RoadmapAiActivityTimeline | null>(null);
 
   const roadmapFromStore = useRoadmapStore((state) => state.roadmap);
   const openArtifactTab = useRoadmapStore((state) => state.openArtifactTab);
@@ -450,7 +995,7 @@ export function RoadmapAiAssistantPanel({
       behavior: "smooth",
       block: "end",
     });
-  }, [messages.length, isSending]);
+  }, [messages.length, isSending, liveActivity?.steps.length]);
 
   useEffect(() => {
     if (!composerRef.current) return;
@@ -458,6 +1003,22 @@ export function RoadmapAiAssistantPanel({
     const nextHeight = Math.min(composerRef.current.scrollHeight, 160);
     composerRef.current.style.height = `${nextHeight}px`;
   }, [input]);
+
+  useEffect(() => {
+    liveActivityRef.current = liveActivity;
+  }, [liveActivity]);
+
+  useEffect(() => {
+    return () => {
+      const currentLoop = pollLoopRef.current;
+      if (currentLoop?.timerId != null) {
+        window.clearTimeout(currentLoop.timerId);
+      }
+      if (currentLoop) {
+        currentLoop.cancelled = true;
+      }
+    };
+  }, []);
 
   const ensureSession = async (): Promise<string> => {
     if (sessionId) return sessionId;
@@ -499,6 +1060,198 @@ export function RoadmapAiAssistantPanel({
     return hydrated;
   };
 
+  const progressDetailMode: RoadmapAiActivityDetailMode = PROGRESS_DETAIL_MODE;
+  const progressPresentationMode: RoadmapAiActivityPresentationMode =
+    PROGRESS_PRESENTATION_MODE;
+
+  const stopActivePollLoop = () => {
+    const loop = pollLoopRef.current;
+    if (!loop) return;
+    loop.cancelled = true;
+    if (loop.timerId != null) {
+      window.clearTimeout(loop.timerId);
+    }
+    pollLoopRef.current = null;
+  };
+
+  const pollTraceEvents = async (loop: PollLoopState): Promise<void> => {
+    if (loop.cancelled) return;
+    if (Date.now() - loop.startedAtMs > TRACE_POLL_TIMEOUT_MS) {
+      loop.pollingFailed = true;
+      setTracePollingFailed(true);
+      return;
+    }
+
+    try {
+      const response = await roadmapAgentService.getTraceEvents(
+        loop.sessionId,
+        loop.traceId,
+        {
+          afterSeq: loop.afterSeq,
+          limit: TRACE_POLL_LIMIT,
+          detail: progressDetailMode,
+        },
+      );
+      if (loop.cancelled) return;
+      loop.afterSeq = Math.max(loop.afterSeq, response.next_seq);
+      setLiveActivity((prev) =>
+        toTimelineFromTraceResponse(
+          progressDetailMode,
+          loop.traceId,
+          response,
+          prev,
+          progressPresentationMode,
+        ),
+      );
+      if (response.done) {
+        return;
+      }
+      loop.timerId = window.setTimeout(() => {
+        void pollTraceEvents(loop);
+      }, TRACE_POLL_INTERVAL_MS);
+    } catch (error) {
+      if (loop.cancelled) return;
+      const elapsedSinceStartMs = Date.now() - loop.startedAtMs;
+      if (
+        isTraceNotReadyError(error) &&
+        elapsedSinceStartMs < TRACE_NOT_READY_GRACE_MS
+      ) {
+        loop.timerId = window.setTimeout(() => {
+          void pollTraceEvents(loop);
+        }, TRACE_POLL_INTERVAL_MS);
+        return;
+      }
+      loop.pollingFailed = true;
+      setTracePollingFailed(true);
+      console.warn("[RoadmapAiAssistantPanel] trace_poll_failed", {
+        session_id: loop.sessionId,
+        trace_id: loop.traceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
+  const startTracePolling = (activeSessionId: string, traceId: string) => {
+    stopActivePollLoop();
+    const startedAt = new Date().toISOString();
+    const loop: PollLoopState = {
+      traceId,
+      sessionId: activeSessionId,
+      afterSeq: 0,
+      startedAtMs: Date.now(),
+      cancelled: false,
+      timerId: null,
+      pollingFailed: false,
+    };
+    pollLoopRef.current = loop;
+    setTracePollingFailed(false);
+    setLiveActivityExpanded(true);
+    setLiveActivityHostMessageId(null);
+    setLiveActivity({
+      traceId,
+      startedAt,
+      done: false,
+      detailMode: progressDetailMode,
+      presentationMode: progressPresentationMode,
+      steps: [],
+    });
+    void pollTraceEvents(loop);
+  };
+
+  const finalizeTraceTimeline = (assistantMessageId: string, traceId: string) => {
+    const loop = pollLoopRef.current;
+    if (!loop || loop.traceId !== traceId) {
+      const existingTimeline = liveActivityRef.current;
+      if (existingTimeline && existingTimeline.traceId === traceId) {
+        const completedTimeline = ensureTimelineCompleted(existingTimeline);
+        updateMessage(assistantMessageId, (message) => ({
+          ...message,
+          activityTimeline: completedTimeline,
+        }));
+        setActivityExpandedByMessageId((prev) => ({
+          ...prev,
+          [assistantMessageId]: false,
+        }));
+      }
+      setLiveActivity(null);
+      setLiveActivityExpanded(false);
+      setLiveActivityHostMessageId(null);
+      return;
+    }
+
+    const finish = async () => {
+      const deadline = Date.now() + 12_000;
+      while (!loop.cancelled && Date.now() < deadline) {
+        if (loop.pollingFailed) break;
+        try {
+          const response = await roadmapAgentService.getTraceEvents(
+            loop.sessionId,
+            loop.traceId,
+            {
+              afterSeq: loop.afterSeq,
+              limit: TRACE_POLL_LIMIT,
+              detail: progressDetailMode,
+            },
+          );
+          if (loop.cancelled) return;
+          loop.afterSeq = Math.max(loop.afterSeq, response.next_seq);
+          setLiveActivity((prev) =>
+            toTimelineFromTraceResponse(
+              progressDetailMode,
+              loop.traceId,
+              response,
+              prev,
+              progressPresentationMode,
+            ),
+          );
+          if (response.done) break;
+        } catch (error) {
+          if (
+            isTraceNotReadyError(error) &&
+            Date.now() - loop.startedAtMs < TRACE_NOT_READY_GRACE_MS
+          ) {
+            await new Promise<void>((resolve) => {
+              window.setTimeout(resolve, TRACE_POLL_INTERVAL_MS);
+            });
+            continue;
+          }
+          loop.pollingFailed = true;
+          setTracePollingFailed(true);
+          break;
+        }
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, TRACE_POLL_INTERVAL_MS);
+        });
+      }
+
+      if (loop.timerId != null) {
+        window.clearTimeout(loop.timerId);
+      }
+      loop.cancelled = true;
+      if (pollLoopRef.current === loop) {
+        pollLoopRef.current = null;
+      }
+
+      const timeline = liveActivityRef.current;
+      if (timeline && timeline.traceId === traceId && timeline.steps.length > 0) {
+        const completedTimeline = ensureTimelineCompleted(timeline);
+        updateMessage(assistantMessageId, (message) => ({
+          ...message,
+          activityTimeline: completedTimeline,
+        }));
+        setActivityExpandedByMessageId((prev) => ({
+          ...prev,
+          [assistantMessageId]: false,
+        }));
+      }
+      setLiveActivity(null);
+      setLiveActivityExpanded(false);
+      setLiveActivityHostMessageId(null);
+    };
+
+    void finish();
+  };
+
   const handleSend = async () => {
     const trimmedMessage = input.trim();
     if ((!trimmedMessage && attachments.length === 0) || isSending) return;
@@ -535,14 +1288,38 @@ export function RoadmapAiAssistantPanel({
     });
 
     setIsSending(true);
+    setTracePollingFailed(false);
     let activeSessionId: string | null = null;
+    let traceId: string | null = null;
+    let assistantId: string | null = null;
     try {
       activeSessionId = await ensureSession();
-      const response = await roadmapAgentService.sendMessage(activeSessionId, {
-        message: agentMessage,
+      traceId = crypto.randomUUID();
+      startTracePolling(activeSessionId, traceId);
+
+      const response = await roadmapAgentService.sendMessage(
+        activeSessionId,
+        {
+          message: agentMessage,
+        },
+        {
+          traceId,
+        },
+      );
+      const effectiveTraceId = response.debug_trace_id || traceId;
+      if (effectiveTraceId !== traceId) {
+        traceId = effectiveTraceId;
+        startTracePolling(activeSessionId, effectiveTraceId);
+      }
+
+      setLiveActivity((prev) => {
+        if (!prev) return prev;
+        if (prev.traceId !== traceId) return prev;
+        return ensureTimelineCompleted(prev);
       });
 
-      const assistantId = crypto.randomUUID();
+      assistantId = crypto.randomUUID();
+      setLiveActivityHostMessageId(assistantId);
       appendMessage({
         ...buildAssistantMessage(
           response.assistant_message || "I analyzed your request.",
@@ -600,6 +1377,7 @@ export function RoadmapAiAssistantPanel({
           session_id: activeSessionId,
           roadmap_id: roadmapId,
           error: readableError,
+          trace_id: traceId,
         });
       }
       appendMessage(
@@ -610,8 +1388,15 @@ export function RoadmapAiAssistantPanel({
           "agent_error",
         ),
       );
+      stopActivePollLoop();
+      setLiveActivity(null);
+      setLiveActivityExpanded(false);
+      setLiveActivityHostMessageId(null);
     } finally {
       setIsSending(false);
+      if (assistantId && traceId) {
+        finalizeTraceTimeline(assistantId, traceId);
+      }
     }
   };
 
@@ -784,6 +1569,30 @@ export function RoadmapAiAssistantPanel({
     setPreviewArtifactId((prev) => (prev === artifactId ? null : artifactId));
   };
 
+  const isMessageActivityExpanded = (
+    messageId: string,
+    timeline: RoadmapAiActivityTimeline,
+  ): boolean => {
+    return getDefaultTimelineExpanded(
+      timeline.done,
+      activityExpandedByMessageId[messageId],
+    );
+  };
+
+  const toggleMessageActivity = (
+    messageId: string,
+    timeline: RoadmapAiActivityTimeline,
+  ) => {
+    setActivityExpandedByMessageId((prev) => {
+      const current =
+        typeof prev[messageId] === "boolean" ? prev[messageId] : !timeline.done;
+      return {
+        ...prev,
+        [messageId]: !current,
+      };
+    });
+  };
+
   const handleComposerKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>,
   ) => {
@@ -816,6 +1625,16 @@ export function RoadmapAiAssistantPanel({
     setAttachments((prev) => prev.filter((entry) => entry.id !== attachmentId));
   };
 
+  const displayLiveTimeline = normalizeTimelineForDisplay(
+    liveActivity,
+    progressPresentationMode,
+  );
+  const isLiveTimelineAnchoredInMessage = Boolean(
+    displayLiveTimeline &&
+      liveActivityHostMessageId &&
+      messages.some((message) => message.id === liveActivityHostMessageId),
+  );
+
   if (!isVisible) {
     return null;
   }
@@ -839,6 +1658,18 @@ export function RoadmapAiAssistantPanel({
         ) : (
           messages.map((message) => {
             const artifacts = message.artifacts ?? [];
+            const persistedActivityTimeline = normalizeTimelineForDisplay(
+              message.activityTimeline,
+              progressPresentationMode,
+            );
+            const isLiveTimelineHostMessage =
+              message.role === "assistant" &&
+              Boolean(displayLiveTimeline) &&
+              message.id === liveActivityHostMessageId;
+            const activityTimeline =
+              isLiveTimelineHostMessage && displayLiveTimeline
+                ? displayLiveTimeline
+                : persistedActivityTimeline;
             return (
               <article
                 key={message.id}
@@ -872,6 +1703,25 @@ export function RoadmapAiAssistantPanel({
                     </span>
                   </div>
                 )}
+                {message.role === "assistant" && activityTimeline && (
+                  <div className="mb-2">
+                    <RoadmapAiActivityTimelineView
+                      timeline={activityTimeline}
+                      expanded={
+                        isLiveTimelineHostMessage && !activityTimeline.done
+                          ? true
+                          : isMessageActivityExpanded(message.id, activityTimeline)
+                      }
+                      onToggle={() => {
+                        if (isLiveTimelineHostMessage && !activityTimeline.done) {
+                          return;
+                        }
+                        toggleMessageActivity(message.id, activityTimeline);
+                      }}
+                    />
+                  </div>
+                )}
+
                 {message.content ? (
                   <div className="text-xs text-gray-800 leading-relaxed">
                     <ReactMarkdown
@@ -1098,11 +1948,28 @@ export function RoadmapAiAssistantPanel({
           })
         )}
 
-        {isSending && (
+        {displayLiveTimeline &&
+        !tracePollingFailed &&
+        !isLiveTimelineAnchoredInMessage ? (
+          <div className="mr-4">
+            <RoadmapAiActivityTimelineView
+              timeline={displayLiveTimeline}
+              expanded={displayLiveTimeline.done ? liveActivityExpanded : true}
+              onToggle={() => {
+                if (!displayLiveTimeline.done) return;
+                setLiveActivityExpanded((prev) => !prev);
+              }}
+            />
+          </div>
+        ) : shouldRenderThinkingFallback(
+            isSending,
+            Boolean(liveActivity),
+            tracePollingFailed,
+          ) ? (
           <div className="rounded-xl px-3 py-2.5 border border-gray-200 bg-white mr-4 text-xs text-gray-600">
             Thinking...
           </div>
-        )}
+        ) : null}
 
         <div ref={messagesEndRef} />
       </div>
