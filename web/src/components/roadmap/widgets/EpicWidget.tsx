@@ -1,10 +1,13 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState, type DragEvent } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { motion } from "framer-motion";
 import { Edit2, Trash2, Plus, ExternalLink, Calendar } from "lucide-react";
 import type { RoadmapEpic } from "@/types/roadmap";
 import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
 import { calculateEpicProgressFromFeatures } from "../shared/featureProgress";
+
+type ToolbarItemType = "epic" | "feature" | "task";
+const TOOLBAR_DRAG_MIME = "application/x-roadmap-toolbar-item";
 
 export interface EpicWidgetData extends Record<string, unknown> {
   epic: RoadmapEpic;
@@ -14,6 +17,7 @@ export interface EpicWidgetData extends Record<string, unknown> {
   onAddFeature?: (epicId: string) => void;
   onNavigateToTab?: (tabId: string) => void;
   pulseToken?: number;
+  toolbarDraggingType?: ToolbarItemType | null;
   performanceMode?: RoadmapPerformanceMode;
 }
 
@@ -28,12 +32,15 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
     onAddFeature,
     onNavigateToTab,
     pulseToken,
+    toolbarDraggingType = null,
     performanceMode = "normal",
   } = data;
   const isReducedMotion = performanceMode === "reducedMotion";
   const descriptionRef = useRef<HTMLDivElement>(null);
   const [hasOverflow, setHasOverflow] = useState(false);
   const [isPulsing, setIsPulsing] = useState(false);
+  const [isAddFeatureDropActive, setIsAddFeatureDropActive] = useState(false);
+  const [isAddEpicDropActive, setIsAddEpicDropActive] = useState(false);
   const computedProgress = calculateEpicProgressFromFeatures(epic.features);
   const taskCount = (epic.features ?? []).reduce(
     (count, feature) => count + (feature.tasks?.length ?? 0),
@@ -62,10 +69,27 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
     };
   }, [isReducedMotion, pulseToken]);
 
+  const getToolbarItemType = (
+    event: Pick<DragEvent<HTMLElement>, "dataTransfer">,
+  ): ToolbarItemType | null => {
+    const raw = event.dataTransfer.getData(TOOLBAR_DRAG_MIME);
+    if (raw === "epic" || raw === "feature" || raw === "task") {
+      return raw;
+    }
+    return null;
+  };
+
+  const isGlobalFeatureDropHighlight = toolbarDraggingType === "feature";
+  const isGlobalEpicDropHighlight = toolbarDraggingType === "epic";
+
   return (
     <motion.div
-      className={`group relative bg-white border-2 border-gray-300 rounded-4xl shadow-md hover:shadow-lg transition-shadow w-[500px] max-h-[420px] flex flex-col cursor-pointer ${
+      className={`group relative bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-[420px] flex flex-col cursor-pointer ${
         isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
+      } ${
+        isGlobalFeatureDropHighlight
+          ? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
+          : "border-gray-300"
       }`}
       onClick={() => onEdit?.(epic)}
       initial={
@@ -106,7 +130,36 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
             e.stopPropagation();
             onAddFeature(epic.id);
           }}
-          className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center hover:bg-primary/90 transition-all duration-200 ease-out shadow-md z-10 opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100 cursor-pointer"
+          onDragEnter={(event) => {
+            if (getToolbarItemType(event) !== "feature") return;
+            event.preventDefault();
+            setIsAddFeatureDropActive(true);
+          }}
+          onDragOver={(event) => {
+            if (getToolbarItemType(event) !== "feature") return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            setIsAddFeatureDropActive(true);
+          }}
+          onDragLeave={() => {
+            setIsAddFeatureDropActive(false);
+          }}
+          onDrop={(event) => {
+            setIsAddFeatureDropActive(false);
+            if (getToolbarItemType(event) !== "feature") return;
+            event.preventDefault();
+            event.stopPropagation();
+            onAddFeature(epic.id);
+          }}
+          className={`absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-8 bg-emerald-500 text-white rounded-full flex items-center justify-center hover:bg-emerald-400 transition-all duration-200 ease-out shadow-lg z-10 cursor-pointer ${
+            toolbarDraggingType === "feature"
+              ? `opacity-100 scale-100 ring-2 ${
+                  isAddFeatureDropActive
+                    ? "ring-emerald-400 shadow-[0_0_0_1px_rgba(16,185,129,0.35),0_10px_22px_rgba(16,185,129,0.35)]"
+                    : "ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.24),0_8px_18px_rgba(16,185,129,0.28)]"
+                }`
+              : "opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100"
+          }`}
           title="Add Feature"
         >
           <Plus className="w-4 h-4" />
@@ -120,7 +173,36 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
             e.stopPropagation();
             onAddEpicBelow(epic.id);
           }}
-          className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center hover:bg-primary/90 transition-all duration-200 ease-out shadow-md z-10 opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100 cursor-pointer"
+          onDragEnter={(event) => {
+            if (getToolbarItemType(event) !== "epic") return;
+            event.preventDefault();
+            setIsAddEpicDropActive(true);
+          }}
+          onDragOver={(event) => {
+            if (getToolbarItemType(event) !== "epic") return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            setIsAddEpicDropActive(true);
+          }}
+          onDragLeave={() => {
+            setIsAddEpicDropActive(false);
+          }}
+          onDrop={(event) => {
+            setIsAddEpicDropActive(false);
+            if (getToolbarItemType(event) !== "epic") return;
+            event.preventDefault();
+            event.stopPropagation();
+            onAddEpicBelow(epic.id);
+          }}
+          className={`absolute -bottom-4 left-1/2 -translate-x-1/2 w-8 h-8 bg-emerald-500 text-white rounded-full flex items-center justify-center hover:bg-emerald-400 transition-all duration-200 ease-out shadow-lg z-10 cursor-pointer ${
+            isGlobalEpicDropHighlight
+              ? `opacity-100 scale-100 ring-2 ${
+                  isAddEpicDropActive
+                    ? "ring-emerald-400 shadow-[0_0_0_1px_rgba(16,185,129,0.35),0_10px_22px_rgba(16,185,129,0.35)]"
+                    : "ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.26),0_8px_18px_rgba(16,185,129,0.3)]"
+                }`
+              : "opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100"
+          }`}
           title="Add Epic Below"
         >
           <Plus className="w-4 h-4" />

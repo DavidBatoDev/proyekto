@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { motion } from "framer-motion";
 import {
@@ -19,6 +19,9 @@ import {
   getCompletedTaskCount,
 } from "../shared/featureProgress";
 
+type ToolbarItemType = "epic" | "feature" | "task";
+const TOOLBAR_DRAG_MIME = "application/x-roadmap-toolbar-item";
+
 export interface FeatureWidgetData extends Record<string, unknown> {
   feature: RoadmapFeature;
   showTaskCount?: boolean; // If true, show task count; if false, show full tasks
@@ -31,6 +34,7 @@ export interface FeatureWidgetData extends Record<string, unknown> {
   pulseTaskId?: string | null;
   pulseTaskToken?: number;
   pulseToken?: number;
+  toolbarDraggingType?: ToolbarItemType | null;
   performanceMode?: RoadmapPerformanceMode;
 }
 
@@ -49,6 +53,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     pulseTaskId,
     pulseTaskToken,
     pulseToken,
+    toolbarDraggingType = null,
     performanceMode = "normal",
   } = data;
   const isReducedMotion = performanceMode === "reducedMotion";
@@ -59,6 +64,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   const descriptionRef = useRef<HTMLDivElement>(null);
   const [hasOverflow, setHasOverflow] = useState(false);
   const [isPulsing, setIsPulsing] = useState(false);
+  const [isAddTaskDropActive, setIsAddTaskDropActive] = useState(false);
 
   const getStatusColor = (status: RoadmapFeature["status"]) => {
     switch (status) {
@@ -126,6 +132,17 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     };
   }, [isReducedMotion, pulseToken]);
 
+  const getToolbarItemType = (
+    event: Pick<DragEvent<HTMLElement>, "dataTransfer">,
+  ): ToolbarItemType | null => {
+    const raw = event.dataTransfer.getData(TOOLBAR_DRAG_MIME);
+    if (raw === "epic" || raw === "feature" || raw === "task") {
+      return raw;
+    }
+    return null;
+  };
+  const isGlobalTaskDropHighlight = toolbarDraggingType === "task";
+
   const renderAssigneeAvatar = (
     assignee: NonNullable<RoadmapTask["assignee"]>,
   ) => {
@@ -157,8 +174,12 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   return (
     <>
       <motion.div
-        className={`relative group bg-white border-2 border-amber-300 rounded-4xl shadow-md hover:shadow-lg transition-all w-[500px] max-h-80 flex flex-col cursor-pointer hover:border-amber-400 ${
+        className={`relative group bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-80 flex flex-col cursor-pointer ${
           isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
+        } ${
+          isGlobalTaskDropHighlight
+            ? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
+            : "border-amber-300 hover:border-amber-400"
         }`}
         onClick={() => onClick?.(feature)}
         initial={
@@ -195,7 +216,36 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
               event.stopPropagation();
               onAddTask(feature.id);
             }}
-            className="absolute top-1/2 -translate-y-1/2 -right-3.5 w-7 h-7 rounded-full bg-emerald-500 text-white shadow-md flex items-center justify-center hover:bg-emerald-400 transition-colors opacity-0 group-hover:opacity-100"
+            onDragEnter={(event) => {
+              if (getToolbarItemType(event) !== "task") return;
+              event.preventDefault();
+              setIsAddTaskDropActive(true);
+            }}
+            onDragOver={(event) => {
+              if (getToolbarItemType(event) !== "task") return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              setIsAddTaskDropActive(true);
+            }}
+            onDragLeave={() => {
+              setIsAddTaskDropActive(false);
+            }}
+            onDrop={(event) => {
+              setIsAddTaskDropActive(false);
+              if (getToolbarItemType(event) !== "task") return;
+              event.preventDefault();
+              event.stopPropagation();
+              onAddTask(feature.id);
+            }}
+            className={`absolute top-1/2 -translate-y-1/2 -right-4 w-8 h-8 rounded-full bg-emerald-500 text-white shadow-lg flex items-center justify-center hover:bg-emerald-400 transition-all duration-200 ease-out z-10 cursor-pointer ${
+              toolbarDraggingType === "task"
+                ? `opacity-100 scale-100 ring-2 ${
+                    isAddTaskDropActive
+                      ? "ring-emerald-400 shadow-[0_0_0_1px_rgba(16,185,129,0.35),0_10px_22px_rgba(16,185,129,0.35)]"
+                      : "ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.24),0_8px_18px_rgba(16,185,129,0.28)]"
+                  }`
+                : "opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100"
+            }`}
             title="Add task"
           >
             <Plus className="w-4 h-4" />

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type DragEvent,
+} from "react";
 import {
   ReactFlow,
   Controls,
@@ -9,6 +15,7 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { GripHorizontal, Layers3, ListTodo } from "lucide-react";
 import { EpicWidget, type EpicWidgetData } from "../../widgets/EpicWidget";
 import {
   FeatureWidget,
@@ -58,6 +65,8 @@ type StructuralFeatureNodeData = {
 };
 
 type StructuralNodeData = StructuralEpicNodeData | StructuralFeatureNodeData;
+type ToolbarItemType = "epic" | "feature" | "task";
+const TOOLBAR_DRAG_MIME = "application/x-roadmap-toolbar-item";
 
 const getEdgeColor = (status: RoadmapFeature["status"]) => {
   switch (status) {
@@ -271,6 +280,8 @@ export const RoadmapView = ({
   const MAX_ZOOM = 1.0;
   const MIN_ZOOM = minZoom;
   const isReducedMotion = performanceMode === "reducedMotion";
+  const [toolbarDraggingType, setToolbarDraggingType] =
+    useState<ToolbarItemType | null>(null);
 
   const nodeTypes: NodeTypes = useMemo(
     () => ({
@@ -399,6 +410,7 @@ export const RoadmapView = ({
                 pulseNodeFocus?.nodeId === epic.id
                   ? pulseNodeFocus.token
                   : undefined,
+              toolbarDraggingType,
               performanceMode,
             } satisfies EpicWidgetData,
           };
@@ -428,6 +440,7 @@ export const RoadmapView = ({
               pulseNodeFocus?.nodeId === feature.id
                 ? pulseNodeFocus.token
                 : undefined,
+            toolbarDraggingType,
             performanceMode,
           } satisfies FeatureWidgetData,
         };
@@ -449,6 +462,7 @@ export const RoadmapView = ({
       performanceMode,
       pulseNodeFocus,
       pulseTaskFocus,
+      toolbarDraggingType,
     ],
   );
 
@@ -542,11 +556,64 @@ export const RoadmapView = ({
     // Handle edge changes if needed
   }, []);
 
+  const lastEpicId = useMemo(() => {
+    if (!epics.length) return null;
+    return [...epics].sort((a, b) => a.position - b.position)[epics.length - 1]
+      ?.id;
+  }, [epics]);
+
+  const getToolbarItemFromTransfer = useCallback(
+    (event: { dataTransfer: DataTransfer | null }): ToolbarItemType | null => {
+      const raw = event.dataTransfer?.getData(TOOLBAR_DRAG_MIME);
+      if (raw === "epic" || raw === "feature" || raw === "task") {
+        return raw;
+      }
+      return null;
+    },
+    [],
+  );
+
+  const handleToolbarDragStart = useCallback(
+    (itemType: ToolbarItemType, event: DragEvent<HTMLElement>) => {
+      event.dataTransfer.setData(TOOLBAR_DRAG_MIME, itemType);
+      event.dataTransfer.effectAllowed = "move";
+      setToolbarDraggingType(itemType);
+    },
+    [],
+  );
+
+  const handleToolbarDragEnd = useCallback(() => {
+    setToolbarDraggingType(null);
+  }, []);
+
+  const handleCanvasDragOver = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      const itemType = getToolbarItemFromTransfer(event);
+      if (itemType !== "epic") return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    },
+    [getToolbarItemFromTransfer],
+  );
+
+  const handleCanvasDrop = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      const itemType = getToolbarItemFromTransfer(event);
+      setToolbarDraggingType(null);
+      if (itemType !== "epic" || !lastEpicId) return;
+      event.preventDefault();
+      onAddEpicBelow?.(lastEpicId);
+    },
+    [getToolbarItemFromTransfer, lastEpicId, onAddEpicBelow],
+  );
+
   return (
     <div
       className={`w-full h-full bg-[#F5F5F5] relative ${
         isPanningCanvas ? "cursor-grabbing" : "cursor-grab"
       }`}
+      onDragOver={handleCanvasDragOver}
+      onDrop={handleCanvasDrop}
     >
       <ReactFlow
         nodes={nodes}
@@ -608,6 +675,59 @@ export const RoadmapView = ({
       </ReactFlow>
       <div className="absolute bottom-4 right-4 bg-white/90 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-700 shadow-sm">
         Zoom {Math.round(zoom * 100)}%
+      </div>
+      <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-2xl border border-gray-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur">
+        <div className="flex items-center gap-2">
+          <div className="mr-1 inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-gray-500">
+            <GripHorizontal className="h-3 w-3" />
+            Drag To Add
+          </div>
+          <button
+            type="button"
+            draggable
+            onDragStart={(event) => handleToolbarDragStart("epic", event)}
+            onDragEnd={handleToolbarDragEnd}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all duration-200 ${
+              toolbarDraggingType === "epic"
+                ? "border-emerald-500 bg-emerald-50 text-emerald-700 shadow-[0_0_0_3px_rgba(34,197,94,0.2)]"
+                : "border-gray-200 bg-white text-gray-700 hover:border-emerald-300 hover:bg-emerald-50/70 hover:text-emerald-700 hover:shadow-sm"
+            }`}
+            title="Drop on an epic card or canvas to add a new epic"
+          >
+            <Layers3 className="h-3.5 w-3.5" />
+            Epic
+          </button>
+          <button
+            type="button"
+            draggable
+            onDragStart={(event) => handleToolbarDragStart("feature", event)}
+            onDragEnd={handleToolbarDragEnd}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all duration-200 ${
+              toolbarDraggingType === "feature"
+                ? "border-emerald-500 bg-emerald-50 text-emerald-700 shadow-[0_0_0_3px_rgba(34,197,94,0.2)]"
+                : "border-gray-200 bg-white text-gray-700 hover:border-emerald-300 hover:bg-emerald-50/70 hover:text-emerald-700 hover:shadow-sm"
+            }`}
+            title="Drop on an epic card to add a feature"
+          >
+            <Layers3 className="h-3.5 w-3.5" />
+            Feature
+          </button>
+          <button
+            type="button"
+            draggable
+            onDragStart={(event) => handleToolbarDragStart("task", event)}
+            onDragEnd={handleToolbarDragEnd}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all duration-200 ${
+              toolbarDraggingType === "task"
+                ? "border-emerald-500 bg-emerald-50 text-emerald-700 shadow-[0_0_0_3px_rgba(34,197,94,0.2)]"
+                : "border-gray-200 bg-white text-gray-700 hover:border-emerald-300 hover:bg-emerald-50/70 hover:text-emerald-700 hover:shadow-sm"
+            }`}
+            title="Drop on a feature card to add a task"
+          >
+            <ListTodo className="h-3.5 w-3.5" />
+            Task
+          </button>
+        </div>
       </div>
     </div>
   );
