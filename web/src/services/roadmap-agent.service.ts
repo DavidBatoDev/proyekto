@@ -96,6 +96,10 @@ export interface AgentMessageRequest {
   replace_operations?: boolean;
 }
 
+export interface AgentSendMessageOptions {
+  traceId?: string;
+}
+
 export interface AgentMessageResponse {
   session_id: string;
   assistant_message: string;
@@ -118,6 +122,38 @@ export interface AgentMessageResponse {
   fallback_used?: boolean;
   provider_error_code?: string | null;
   debug_trace_id?: string | null;
+}
+
+export type AgentTraceEventStatus = "running" | "success" | "error";
+
+export interface AgentTraceEvent {
+  seq: number;
+  ts: string;
+  event: string;
+  title: string;
+  status: AgentTraceEventStatus;
+  summary: string;
+  details?: Record<string, unknown>;
+}
+
+export type AgentTraceDetailMode = "verbose" | "structured";
+
+export interface AgentTraceEventsResponse {
+  trace_id: string;
+  session_id?: string | null;
+  roadmap_id?: string | null;
+  events: AgentTraceEvent[];
+  next_seq: number;
+  done: boolean;
+  started_at?: string | null;
+  completed_at?: string | null;
+  elapsed_ms?: number | null;
+}
+
+export interface AgentTraceEventsRequest {
+  afterSeq?: number;
+  limit?: number;
+  detail?: AgentTraceDetailMode;
 }
 
 export interface AgentDiscardRequest {
@@ -276,15 +312,45 @@ export const roadmapAgentService = {
   async sendMessage(
     sessionId: string,
     payload: AgentMessageRequest,
+    options?: AgentSendMessageOptions,
   ): Promise<AgentMessageResponse> {
     try {
       const response = await agentApiClient.post<AgentMessageResponse>(
         `/agent/sessions/${sessionId}/messages`,
         payload,
+        options?.traceId
+          ? {
+              headers: {
+                "X-Trace-Id": options.traceId,
+              },
+            }
+          : undefined,
       );
       return response.data;
     } catch (error) {
       throwAgentError(error, "Send AI message");
+    }
+  },
+
+  async getTraceEvents(
+    sessionId: string,
+    traceId: string,
+    options: AgentTraceEventsRequest = {},
+  ): Promise<AgentTraceEventsResponse> {
+    try {
+      const response = await agentApiClient.get<AgentTraceEventsResponse>(
+        `/agent/sessions/${sessionId}/traces/${traceId}/events`,
+        {
+          params: {
+            after_seq: options.afterSeq ?? 0,
+            limit: options.limit ?? 50,
+            detail: options.detail ?? "verbose",
+          },
+        },
+      );
+      return response.data;
+    } catch (error) {
+      throwAgentError(error, "Get AI trace events");
     }
   },
 
