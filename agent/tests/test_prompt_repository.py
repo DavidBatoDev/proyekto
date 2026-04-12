@@ -68,6 +68,20 @@ class PromptRepositoryTests(unittest.TestCase):
         self.assertIn('misspelled item title', query_prompt)
         self.assertIn('You are in roadmap planning mode.', plan_prompt)
 
+    def test_build_system_prompt_chat_mode_includes_edit_intent_clarifier_guidance(self) -> None:
+        repository = PromptRepository()
+        prompt_context = {
+            'roadmap_id': 'roadmap-1',
+            'intent_type': 'general_question',
+        }
+
+        chat_prompt = repository.build_system_prompt('chat', prompt_context)
+
+        self.assertIn('You are in chat mode.', chat_prompt)
+        self.assertIn('ask a concise clarification to confirm whether they want an edit action', chat_prompt)
+        self.assertIn('misspelled item title', chat_prompt)
+        self.assertIn('After the user confirms they want edits', chat_prompt)
+
     def test_build_system_prompt_edit_mode_includes_question_style_guidance(self) -> None:
         repository = PromptRepository()
         prompt_context = {
