@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+﻿import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, Calendar, Clock, Inbox, User } from "lucide-react";
 import { useEffect, useMemo } from "react";
@@ -59,15 +59,15 @@ const ROLE_CONFIG: Record<
 > = {
 	client: {
 		label: "Client",
-		badgeClass: "bg-blue-100 text-blue-700 border-blue-200",
+		badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
 	},
 	consultant: {
 		label: "Consultant",
-		badgeClass: "bg-violet-100 text-violet-700 border-violet-200",
+		badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
 	},
 	freelancer: {
 		label: "Freelancer",
-		badgeClass: "bg-emerald-100 text-emerald-700 border-emerald-200",
+		badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
 	},
 };
 
@@ -279,23 +279,20 @@ export function ProjectsGrid() {
 		<div
 			id="my-project-visions"
 			data-tutorial="projects-grid"
-			className="scroll-mt-6"
+			className="app-slide-up scroll-mt-6"
 		>
-			<div className="flex items-center justify-between mb-4">
+			<div className="mb-4 flex items-center justify-between">
 				<div className="flex items-center gap-2">
-					<div
-						className="w-[18px] h-[18px] rounded-full"
-						style={{ backgroundColor: "var(--secondary)" }}
-					/>
-					<h2 className="text-[20px] font-semibold text-[#333438]">
+					<div className="h-[18px] w-[18px] rounded-full bg-slate-900" />
+					<h2 className="text-[20px] font-semibold tracking-tight text-slate-900">
 						MY PROJECT VISIONS
 					</h2>
 				</div>
 				<button
 					type="button"
-					className="text-[20px] font-semibold text-[#333438] hover:text-[var(--secondary)]"
+					className="text-base font-semibold text-slate-700 transition-colors hover:text-slate-900"
 				>
-					View All →
+					View All -&gt;
 				</button>
 			</div>
 
@@ -351,7 +348,9 @@ function ProjectsSection({
 	return (
 		<section>
 			<div className="mb-3">
-				<h3 className="text-[16px] font-semibold text-[#333438]">{title}</h3>
+				<h3 className="text-[17px] font-semibold tracking-tight text-slate-900">
+					{title}
+				</h3>
 			</div>
 			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 				{isLoading ? (
@@ -431,7 +430,7 @@ function InviteCard({
 		<button
 			type="button"
 			onClick={() => openProjectInviteModal(invite.id)}
-			className="group bg-linear-to-b from-amber-50 to-white rounded-xl shadow-sm p-4 h-[385px] flex flex-col border border-amber-200 transition-all hover:border-amber-300 hover:shadow-xl text-left"
+			className="group flex h-[385px] flex-col rounded-2xl border border-amber-200 bg-linear-to-b from-amber-50 to-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-lg"
 		>
 			<div className="flex-1 space-y-6">
 				<div>
@@ -444,12 +443,12 @@ function InviteCard({
 							Pending Invite
 						</span>
 					</div>
-					<h3 className="text-[18px] font-bold text-[#333438] mb-2 line-clamp-2">
+					<h3 className="mb-2 line-clamp-2 text-[18px] font-semibold tracking-tight text-slate-900">
 						{invite.project?.title || "Project invitation"}
 					</h3>
-					<p className="text-[13px] text-[#61636c] mb-1">
+					<p className="mb-1 text-[13px] text-slate-600">
 						Invited by{" "}
-						<span className="font-semibold text-[#333438]">
+						<span className="font-semibold text-slate-900">
 							{invite.inviter?.display_name || "Team lead"}
 						</span>
 					</p>
@@ -465,12 +464,12 @@ function InviteCard({
 					<p className="text-[12px] font-semibold uppercase tracking-wide text-amber-700">
 						Next Step
 					</p>
-					<p className="text-[13px] text-[#333438] mt-1">
+					<p className="mt-1 text-[13px] text-slate-900">
 						Review this invitation and choose to join or decline.
 					</p>
 				</div>
 
-				<div className="flex items-center gap-2 text-[12px] text-[#61636c]">
+				<div className="flex items-center gap-2 text-[12px] text-slate-600">
 					<Inbox className="h-4 w-4 text-amber-700" />
 					<span>Sent {formatInviteSentLabel(invite.created_at)}</span>
 				</div>
@@ -497,13 +496,13 @@ function ProjectsEmptyState({
 }) {
 	return (
 		<div
-			className={`rounded-xl border border-gray-200 bg-white px-6 py-10 text-center ${className ?? ""}`}
+			className={`rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center shadow-sm ${className ?? ""}`}
 		>
-			<div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#ff9933]/10">
-				<Calendar className="h-8 w-8 text-[#ff9933]" />
+			<div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-100">
+				<Calendar className="h-6 w-6 text-slate-600" />
 			</div>
-			<h4 className="mb-2 text-lg font-semibold text-gray-900">{title}</h4>
-			<p className="mx-auto max-w-md text-sm text-[#61636c]">{description}</p>
+			<h4 className="mb-2 text-lg font-semibold text-slate-900">{title}</h4>
+			<p className="mx-auto max-w-md text-sm text-slate-600">{description}</p>
 		</div>
 	);
 }
@@ -541,7 +540,7 @@ function ProjectCard({
 
 	return (
 		<div
-			className="group bg-linear-to-b from-white from-98% to-transparent rounded-xl shadow-sm p-4 h-[385px] flex flex-col border border-gray-200 transition-all hover:border-[var(--secondary)] hover:shadow-xl"
+			className="group flex h-[385px] flex-col rounded-2xl border border-slate-200 bg-linear-to-b from-white from-95% to-transparent p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg"
 			style={{
 				backgroundImage: `linear-gradient(to bottom, white 98%, ${statusColor}20)`,
 			}}
@@ -549,10 +548,10 @@ function ProjectCard({
 			<div className="flex-1 space-y-6">
 				<div>
 					<div className="flex items-center gap-2 mb-2">
-						<span className="text-[16px] font-semibold text-[#61636c]">
+						<span className="text-[16px] font-semibold text-slate-500">
 							#{number}
 						</span>
-						<div className="w-px h-[25px] bg-[#92969f]" />
+						<div className="h-[25px] w-px bg-slate-300" />
 						<div className="flex items-center gap-2">
 							{!isDraft ? (
 								<div
@@ -570,9 +569,11 @@ function ProjectCard({
 						</div>
 					</div>
 
-					<h3 className="text-[16px] font-bold text-[#333438] mb-1">{title}</h3>
+					<h3 className="mb-1 text-[16px] font-semibold tracking-tight text-slate-900">
+						{title}
+					</h3>
 					<div className="flex items-center gap-2 mb-1">
-						<span className="text-[14px] font-semibold text-[#61636c]">
+						<span className="text-[14px] font-semibold text-slate-600">
 							Role:
 						</span>
 						<span
@@ -582,19 +583,19 @@ function ProjectCard({
 						</span>
 					</div>
 					<p className="text-[14px]">
-						<span className="font-semibold text-[#61636c]">Client:</span>
-						<span className="text-[#61636c]"> {client}</span>
+						<span className="font-semibold text-slate-600">Client:</span>
+						<span className="text-slate-600"> {client}</span>
 					</p>
 				</div>
 
 				<div>
-					<div className="flex items-center justify-between text-[12px] text-[#92969f] mb-2">
+					<div className="mb-2 flex items-center justify-between text-[12px] text-slate-500">
 						<span>Progress</span>
 						<span>
 							{progress === null ? "Not tracked yet" : `${progress}%`}
 						</span>
 					</div>
-					<div className="w-full h-2 bg-[#e3e5e8] rounded-full overflow-hidden">
+					<div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
 						<div
 							className="h-full rounded-full transition-all"
 							style={{
@@ -606,32 +607,32 @@ function ProjectCard({
 				</div>
 
 				<div className="flex gap-2">
-					<Clock className="w-[18px] h-[18px] text-[#92969f] shrink-0 mt-0.5" />
+					<Clock className="mt-0.5 h-[18px] w-[18px] shrink-0 text-slate-500" />
 					<div className="space-y-2">
 						<div>
-							<p className="text-[14px] font-semibold text-[#61636c]">
+							<p className="text-[14px] font-semibold text-slate-600">
 								NEXT UP
 							</p>
-							<p className="text-[14px] text-[#333438]">• {nextUp}</p>
+							<p className="text-[14px] text-slate-900">• {nextUp}</p>
 						</div>
 						{dueDate && (
-							<div className="bg-[#f6f7f8] border border-[#e3e5e8] rounded-[5px] px-2 py-0.5 inline-flex items-center gap-1">
-								<Calendar className="w-[18px] h-[18px] text-[#61636c]" />
-								<span className="text-[12px] text-[#61636c]">{dueDate}</span>
+							<div className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5">
+								<Calendar className="h-[18px] w-[18px] text-slate-600" />
+								<span className="text-[12px] text-slate-600">{dueDate}</span>
 							</div>
 						)}
 					</div>
 				</div>
 			</div>
 
-			<div className="pt-4 border-t border-[#e3e5e8]">
+			<div className="border-t border-slate-200 pt-4">
 				<div className="flex flex-col items-end gap-1">
 					<Link
 						to="/project/$projectId/overview"
 						params={{ projectId }}
-						className="text-[14px] font-semibold text-[#333438] uppercase transition-colors whitespace-nowrap group-hover:text-[var(--secondary)]"
+						className="whitespace-nowrap text-[14px] font-semibold uppercase text-slate-700 transition-colors group-hover:text-slate-900"
 					>
-						VIEW PROJECT →
+						VIEW PROJECT -&gt;
 					</Link>
 				</div>
 			</div>

@@ -399,20 +399,20 @@ function TimeTeamLogsIndexPage() {
       errorMessage={error || queryErrorMessage}
     >
       {shouldShowAccessDenied ? (
-        <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center">
-          <p className="text-sm text-gray-700 font-semibold">
+        <div className="app-surface-card rounded-2xl border-dashed p-12 text-center">
+          <p className="text-sm font-semibold text-slate-800">
             You do not have permission to access Time tracking.
           </p>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="mt-1 text-sm text-slate-500">
             Ask a manager to enable Time View permission.
           </p>
         </div>
       ) : !canViewTeamLogs ? (
-        <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center">
-          <p className="text-sm text-gray-700 font-semibold">
+        <div className="app-surface-card rounded-2xl border-dashed p-12 text-center">
+          <p className="text-sm font-semibold text-slate-800">
             You do not have permission to access team logs.
           </p>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="mt-1 text-sm text-slate-500">
             Ask a manager for Team Logs or Approve permission.
           </p>
         </div>
@@ -496,3 +496,4 @@ function TimeTeamLogsIndexPage() {
     </TimeRouteFrame>
   );
 }
+

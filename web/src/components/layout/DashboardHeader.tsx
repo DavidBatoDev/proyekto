@@ -1,629 +1,432 @@
-import { type MouseEvent, useState } from "react";
-import { Link } from "@tanstack/react-router";
-import {
-  Badge,
-  Box,
-  Divider,
-  IconButton,
-  InputBase,
-  Menu,
-  MenuItem,
-  Stack,
-  Typography,
-} from "@mui/material";
+import { Badge, Divider, Menu, MenuItem } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button } from "../../ui/button";
-import Logo from "/prodigylogos/light/logovector.svg";
-import { useAuthStore, useIsLoading } from "@/stores/authStore";
-import UserMenu from "./UserMenu";
-import { MessageCircle, Bell, Search, ChevronDown } from "lucide-react";
-import { notificationsService } from "@/services/notifications.service";
-import { useNotificationsRealtime } from "@/hooks/useNotificationsRealtime";
+import { Link } from "@tanstack/react-router";
+import { Bell, ChevronDown, MessageCircle, Search } from "lucide-react";
+import { type MouseEvent, useState } from "react";
 import { openProjectInviteModal } from "@/components/invites/projectInviteModalEvents";
+import { useNotificationsRealtime } from "@/hooks/useNotificationsRealtime";
+import { notificationsService } from "@/services/notifications.service";
+import { useAuthStore, useIsLoading } from "@/stores/authStore";
+import { Button } from "@/ui/button";
+import Logo from "/prodigylogos/light/logovector.svg";
+import UserMenu from "./UserMenu";
+
+type HeaderMenuItem = {
+	label: string;
+	href: string;
+	divider?: boolean;
+};
+
+type HeaderMenuConfig = {
+	label: string;
+	items: HeaderMenuItem[];
+};
 
 const DashboardHeader = () => {
-  const { isAuthenticated, profile } = useAuthStore();
-  const isAuthLoading = useIsLoading();
-  const isLoading = isAuthLoading || (isAuthenticated && !profile);
-  const [consultantsMenuOpen, setConsultantsMenuOpen] = useState(false);
-  const [notificationAnchor, setNotificationAnchor] =
-    useState<HTMLElement | null>(null);
-  const queryClient = useQueryClient();
+	const { isAuthenticated, profile } = useAuthStore();
+	const isAuthLoading = useIsLoading();
+	const isLoading = isAuthLoading || (isAuthenticated && !profile);
+	const [consultantsMenuOpen, setConsultantsMenuOpen] = useState(false);
+	const [notificationAnchor, setNotificationAnchor] =
+		useState<HTMLElement | null>(null);
+	const queryClient = useQueryClient();
 
-  useNotificationsRealtime(profile?.id);
+	useNotificationsRealtime(profile?.id);
 
-  const unreadCountQuery = useQuery({
-    queryKey: ["notifications", "unread-count"],
-    queryFn: () => notificationsService.unreadCount(),
-    enabled: isAuthenticated,
-  });
+	const unreadCountQuery = useQuery({
+		queryKey: ["notifications", "unread-count"],
+		queryFn: () => notificationsService.unreadCount(),
+		enabled: isAuthenticated,
+	});
 
-  const recentNotificationsQuery = useQuery({
-    queryKey: ["notifications", "recent"],
-    queryFn: () => notificationsService.list({ limit: 5 }),
-    enabled: isAuthenticated,
-  });
+	const recentNotificationsQuery = useQuery({
+		queryKey: ["notifications", "recent"],
+		queryFn: () => notificationsService.list({ limit: 5 }),
+		enabled: isAuthenticated,
+	});
 
-  const markReadMutation = useMutation({
-    mutationFn: (id: string) => notificationsService.markRead(id, true),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    },
-  });
+	const markReadMutation = useMutation({
+		mutationFn: (id: string) => notificationsService.markRead(id, true),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+		},
+	});
 
-  const markAllReadMutation = useMutation({
-    mutationFn: () => notificationsService.markAllRead(),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    },
-  });
+	const markAllReadMutation = useMutation({
+		mutationFn: () => notificationsService.markAllRead(),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+		},
+	});
 
-  const unreadCount = unreadCountQuery.data ?? 0;
-  const recentNotifications = recentNotificationsQuery.data || [];
+	const unreadCount = unreadCountQuery.data ?? 0;
+	const recentNotifications = recentNotificationsQuery.data || [];
 
-  const openNotifications = (event: MouseEvent<HTMLElement>) => {
-    setNotificationAnchor(event.currentTarget);
-  };
+	const openNotifications = (event: MouseEvent<HTMLElement>) => {
+		setNotificationAnchor(event.currentTarget);
+	};
 
-  const closeNotifications = () => {
-    setNotificationAnchor(null);
-  };
+	const closeNotifications = () => {
+		setNotificationAnchor(null);
+	};
 
-  const handleNotificationClick = (
-    id: string,
-    linkUrl?: string | null,
-    typeName?: string,
-    inviteId?: string | null,
-  ) => {
-    if (!id) return;
-    closeNotifications();
+	const handleNotificationClick = (
+		id: string,
+		linkUrl?: string | null,
+		typeName?: string,
+		inviteId?: string | null,
+	) => {
+		if (!id) return;
+		closeNotifications();
 
-    if (typeName === "project_invite_received" && inviteId) {
-      openProjectInviteModal(inviteId);
-      markReadMutation.mutate(id);
-      return;
-    }
+		if (typeName === "project_invite_received" && inviteId) {
+			openProjectInviteModal(inviteId);
+			markReadMutation.mutate(id);
+			return;
+		}
 
-    markReadMutation.mutate(id);
+		markReadMutation.mutate(id);
 
-    if (linkUrl) {
-      window.location.href = linkUrl;
-    }
-  };
+		if (linkUrl) {
+			window.location.href = linkUrl;
+		}
+	};
 
-  const navItems = [
-    { label: "Home", to: "/dashboard" },
-    { label: "Projects", to: "/dashboard", hash: "my-project-visions" },
-    {
-      label: "Market place",
-      to: profile?.is_consultant_verified
-        ? "/consultant/marketplace"
-        : "/consultant/browse",
-    },
-    ...(profile?.is_consultant_verified
-      ? [{ label: "Templates", to: "/consultant/templates" }]
-      : []),
-  ];
+	const navItems = [
+		{ label: "Home", to: "/dashboard" },
+		{ label: "Projects", to: "/dashboard", hash: "my-project-visions" },
+		{
+			label: "Market place",
+			to: profile?.is_consultant_verified
+				? "/consultant/marketplace"
+				: "/consultant/browse",
+		},
+		...(profile?.is_consultant_verified
+			? [{ label: "Templates", to: "/consultant/templates" }]
+			: []),
+	];
 
-  const getPersonaMenu = () => {
-    const persona = profile?.active_persona || "client";
-    const isConsultantVerified = profile?.is_consultant_verified;
+	const getPersonaMenu = (): HeaderMenuConfig => {
+		const persona = profile?.active_persona || "client";
+		const isConsultantVerified = profile?.is_consultant_verified;
 
-    // Shared CTA — only shown when not yet a verified consultant
-    const applyItem = !isConsultantVerified
-      ? [
-          {
-            label: "Apply as Consultant",
-            href: "/consultant/apply",
-            divider: true,
-          },
-        ]
-      : [];
+		// Shared CTA - only shown when not yet a verified consultant
+		const applyItem: HeaderMenuItem[] = !isConsultantVerified
+			? [
+					{
+						label: "Apply as Consultant",
+						href: "/consultant/apply",
+						divider: true,
+					},
+				]
+			: [];
 
-    switch (persona) {
-      case "freelancer":
-        return {
-          label: "Mentorship",
-          items: [
-            profile?.is_public
-              ? { label: "You're Live", href: "/consultant/marketplace" }
-              : {
-                  label: "Get Hired (I Want to Work)",
-                  href: "/freelancer/go-live",
-                },
-            { label: "My Invites", href: "/freelancer/invites" },
-            { label: "Find a Mentor", href: "/mentors" },
-            { label: "My Applications", href: "/applications" },
-            { label: "Saved Mentors", href: "/saved-mentors" },
-            ...applyItem,
-          ],
-        };
-      case "consultant":
-        return {
-          label: "My Clients",
-          items: [
-            {
-              label: "Private Freelancer Marketplace",
-              href: "/consultant/marketplace",
-            },
-            {
-              label: "Template Roadmaps",
-              href: "/consultant/templates",
-            },
-            { label: "Browse Opportunities", href: "/projects" },
-            { label: "My Clients", href: "/clients" },
-            { label: "Active Contracts", href: "/contracts" },
-          ],
-        };
-      case "client":
-      default:
-        return {
-          label: "My Consultants",
-          items: [
-            { label: "Post a Project", href: "/project-posting" },
-            {
-              label: "Browse Professional Consultants",
-              href: "/consultant/browse",
-            },
-            { label: "My Consultant Pool", href: "/consultant-pool" },
-            { label: "Direct Contacts", href: "/direct-contacts" },
-            ...applyItem,
-          ],
-        };
-    }
-  };
+		switch (persona) {
+			case "freelancer":
+				return {
+					label: "Mentorship",
+					items: [
+						profile?.is_public
+							? { label: "You're Live", href: "/consultant/marketplace" }
+							: {
+									label: "Get Hired (I Want to Work)",
+									href: "/freelancer/go-live",
+								},
+						{ label: "My Invites", href: "/freelancer/invites" },
+						{ label: "Find a Mentor", href: "/mentors" },
+						{ label: "My Applications", href: "/applications" },
+						{ label: "Saved Mentors", href: "/saved-mentors" },
+						...applyItem,
+					],
+				};
+			case "consultant":
+				return {
+					label: "My Clients",
+					items: [
+						{
+							label: "Private Freelancer Marketplace",
+							href: "/consultant/marketplace",
+						},
+						{
+							label: "Template Roadmaps",
+							href: "/consultant/templates",
+						},
+						{ label: "Browse Opportunities", href: "/projects" },
+						{ label: "My Clients", href: "/clients" },
+						{ label: "Active Contracts", href: "/contracts" },
+					],
+				};
+			default:
+				return {
+					label: "My Consultants",
+					items: [
+						{ label: "Post a Project", href: "/project-posting" },
+						{
+							label: "Browse Professional Consultants",
+							href: "/consultant/browse",
+						},
+						{ label: "My Consultant Pool", href: "/consultant-pool" },
+						{ label: "Direct Contacts", href: "/direct-contacts" },
+						...applyItem,
+					],
+				};
+		}
+	};
 
-  const menuConfig = getPersonaMenu();
+	const menuConfig = getPersonaMenu();
 
-  return (
-    <div className="w-full h-full flex items-center justify-between px-6 shrink-0 z-10">
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          width: "100%",
-          gap: { xs: 2, md: 3 },
-        }}
-      >
-        {/* Left Side: Logo + Navigation */}
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: { xs: 2, md: 3, lg: 4 },
-          }}
-        >
-          {/* Logo */}
-          <Box sx={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
-            <Link
-              to="/"
-              className="cursor-pointer flex items-center shrink-0 border-r border-gray-200 pr-4"
-            >
-              <img src={Logo} alt="Prodigy Logo" style={{ height: "24px" }} />
-            </Link>
-          </Box>
+	return (
+		<div className="z-10 flex h-full w-full items-center justify-between px-4 sm:px-6">
+			<div className="flex min-w-0 items-center gap-3 sm:gap-4">
+				<Link
+					to="/dashboard"
+					className="flex shrink-0 items-center border-r border-slate-200 pr-3 sm:pr-4"
+				>
+					<img src={Logo} alt="Prodigy Logo" className="h-6 w-auto" />
+				</Link>
 
-          {/* Navigation Items */}
-          <Stack
-            direction="row"
-            spacing={{ xs: 1.5, md: 2, lg: 3 }}
-            sx={{
-              alignItems: "center",
-            }}
-          >
-            {navItems.map((item) => (
-              <Link
-                key={item.label}
-                to={item.to}
-                hash={item.hash}
-                style={{ textDecoration: "none" }}
-              >
-                <Typography
-                  component="span"
-                  sx={{
-                    color: "#2F302F",
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                    fontSize: { xs: "0.8rem", md: "0.85rem" },
-                    fontWeight: 600,
-                    "&:hover": {
-                      color: "var(--primary)",
-                    },
-                  }}
-                >
-                  {item.label}
-                </Typography>
-              </Link>
-            ))}
+				<nav className="hidden items-center gap-2 lg:flex">
+					{navItems.map((item) => (
+						<Link
+							key={item.label}
+							to={item.to}
+							hash={item.hash}
+							className="rounded-md px-2 py-1 text-[14px] font-semibold text-slate-800 transition-colors hover:bg-slate-100 hover:text-slate-900"
+						>
+							{item.label}
+						</Link>
+					))}
 
-            {/* My Consultants Dropdown */}
-            <Box
-              sx={{ position: "relative" }}
-              onMouseEnter={() => setConsultantsMenuOpen(true)}
-              onMouseLeave={() => setConsultantsMenuOpen(false)}
-            >
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 0.5,
-                  cursor: "pointer",
-                }}
-              >
-                <Typography
-                  component="span"
-                  sx={{
-                    color: "#2F302F",
-                    whiteSpace: "nowrap",
-                    fontSize: { xs: "0.8rem", md: "0.85rem" },
-                    fontWeight: 600,
-                    "&:hover": {
-                      color: "var(--primary)",
-                    },
-                  }}
-                >
-                  {menuConfig.label}
-                </Typography>
-                <ChevronDown
-                  size={16}
-                  color="#2F302F"
-                  style={{
-                    transition: "transform 0.2s ease",
-                    transform: consultantsMenuOpen
-                      ? "rotate(180deg)"
-                      : "rotate(0deg)",
-                  }}
-                />
-              </Box>
+					<div className="relative">
+						<button
+							type="button"
+							onMouseEnter={() => setConsultantsMenuOpen(true)}
+							onMouseLeave={() => setConsultantsMenuOpen(false)}
+							className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[14px] font-semibold text-slate-800 transition-colors hover:bg-slate-100 hover:text-slate-900"
+						>
+							{menuConfig.label}
+							<ChevronDown
+								size={16}
+								className={`text-slate-700 transition-transform ${
+									consultantsMenuOpen ? "rotate-180" : "rotate-0"
+								}`}
+							/>
+						</button>
 
-              {/* Dropdown Menu */}
-              {consultantsMenuOpen && (
-                <Box
-                  sx={{
-                    position: "absolute",
-                    top: "100%",
-                    left: 0,
-                    pt: 1, // Padding top acts as a transparent bridge
-                    zIndex: 10004,
-                  }}
-                >
-                  <Box
-                    sx={{
-                      bgcolor: "white",
-                      borderRadius: "8px",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                      minWidth: "250px",
-                      py: 1,
-                    }}
-                  >
-                    {menuConfig.items.map((item) => (
-                      <Box key={item.label}>
-                        {/* Divider before special items */}
-                        {(item as any).divider && (
-                          <Box
-                            sx={{ my: 1, borderTop: "1px solid #eee", mx: 2 }}
-                          />
-                        )}
-                        <Link to={item.href} style={{ textDecoration: "none" }}>
-                          <Box
-                            sx={{
-                              px: 3,
-                              py: 1.5,
-                              cursor: "pointer",
-                              "&:hover": {
-                                bgcolor: "#f5f5f5",
-                              },
-                            }}
-                          >
-                            <Typography
-                              sx={{
-                                color: "#2F302F",
-                                fontSize: "0.95rem",
-                                fontWeight: 500,
-                              }}
-                            >
-                              {item.label}
-                            </Typography>
-                          </Box>
-                        </Link>
-                      </Box>
-                    ))}
-                  </Box>
-                </Box>
-              )}
-            </Box>
-          </Stack>
-        </Box>
+						{consultantsMenuOpen && (
+							<div
+								className="absolute left-0 top-full z-[10004] pt-2"
+								role="menu"
+								aria-label={`${menuConfig.label} menu`}
+								onMouseEnter={() => setConsultantsMenuOpen(true)}
+								onMouseLeave={() => setConsultantsMenuOpen(false)}
+							>
+								<div className="min-w-[250px] rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_14px_32px_rgba(15,23,42,0.14)]">
+									{menuConfig.items.map((item) => (
+										<div key={item.label}>
+											{item.divider && (
+												<div className="mx-2 my-1 border-t border-slate-200" />
+											)}
+											<Link
+												to={item.href}
+												className="block rounded-lg px-3 py-2 text-[14px] font-medium text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-900"
+											>
+												{item.label}
+											</Link>
+										</div>
+									))}
+								</div>
+							</div>
+						)}
+					</div>
+				</nav>
+			</div>
 
-        {/* Right Side: Search + Icons + Auth */}
-        <Stack
-          direction="row"
-          spacing={2}
-          sx={{ flexShrink: 0, alignItems: "center" }}
-        >
-          {isLoading ? (
-            // Skeleton Loader
-            <Stack direction="row" spacing={2} alignItems="center">
-              {/* Search Skeleton */}
-              <Box
-                sx={{
-                  width: { xs: "150px", md: "250px" },
-                  height: "32px",
-                  bgcolor: "rgba(0,0,0,0.05)",
-                  borderRadius: "16px",
-                }}
-                className="animate-pulse"
-              />
-              {/* Icons Skeleton */}
-              <Box
-                sx={{
-                  width: 32,
-                  height: 32,
-                  bgcolor: "rgba(0,0,0,0.05)",
-                  borderRadius: "50%",
-                }}
-                className="animate-pulse"
-              />
-              <Box
-                sx={{
-                  width: 32,
-                  height: 32,
-                  bgcolor: "rgba(0,0,0,0.05)",
-                  borderRadius: "50%",
-                }}
-                className="animate-pulse"
-              />
-              {/* Avatar Skeleton */}
-              <Box
-                sx={{
-                  width: 32,
-                  height: 32,
-                  bgcolor: "rgba(0,0,0,0.05)",
-                  borderRadius: "50%",
-                }}
-                className="animate-pulse"
-              />
-            </Stack>
-          ) : isAuthenticated ? (
-            <>
-              {/* Search Bar */}
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  backgroundColor: "#F5F5F5",
-                  borderRadius: "16px",
-                  px: 1.5,
-                  py: 0.5,
-                  minWidth: { xs: "150px", md: "250px" },
-                  transition: "all 0.3s ease",
-                  "&:hover": {
-                    backgroundColor: "#EBEBEB",
-                  },
-                  "&:focus-within": {
-                    backgroundColor: "#FFFFFF",
-                    boxShadow: "0 0 0 2px var(--primary)",
-                  },
-                }}
-              >
-                <Search
-                  size={18}
-                  style={{ color: "#666", marginRight: "6px" }}
-                />
-                <InputBase
-                  placeholder="Search..."
-                  sx={{
-                    flex: 1,
-                    fontSize: "0.85rem",
-                    color: "#2F302F",
-                    "& input::placeholder": {
-                      color: "#999",
-                      opacity: 1,
-                    },
-                  }}
-                />
-              </Box>
+			<div className="flex shrink-0 items-center gap-2 sm:gap-3">
+				{isLoading ? (
+					<div className="flex items-center gap-2 sm:gap-3">
+						<div className="hidden h-9 w-52 animate-pulse rounded-2xl bg-slate-200 md:block" />
+						<div className="h-9 w-9 animate-pulse rounded-full bg-slate-200" />
+						<div className="h-9 w-9 animate-pulse rounded-full bg-slate-200" />
+						<div className="h-9 w-9 animate-pulse rounded-full bg-slate-200" />
+					</div>
+				) : isAuthenticated ? (
+					<>
+						<div className="hidden min-w-[220px] items-center rounded-2xl border border-slate-200 bg-slate-100/80 px-3 py-1.5 transition-all duration-200 hover:bg-slate-100 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-200 md:flex lg:min-w-[300px]">
+							<Search size={17} className="mr-2 shrink-0 text-slate-500" />
+							<input
+								type="text"
+								placeholder="Search..."
+								className="min-w-0 flex-1 border-none bg-transparent text-[0.85rem] text-slate-800 placeholder-slate-400 focus:outline-none"
+							/>
+						</div>
 
-              {/* Message Icon */}
-              <IconButton
-                sx={{
-                  color: "#2F302F",
-                  "&:hover": {
-                    backgroundColor: "rgba(0, 0, 0, 0.04)",
-                  },
-                }}
-                aria-label="Messages"
-              >
-                <MessageCircle size={20} />
-              </IconButton>
+						<button
+							type="button"
+							className="flex items-center justify-center rounded-full p-2 text-slate-700 transition-colors hover:bg-slate-100"
+							aria-label="Messages"
+						>
+							<MessageCircle size={20} />
+						</button>
 
-              {/* Notification Icon */}
-              <IconButton
-                sx={{
-                  color: "#2F302F",
-                  "&:hover": {
-                    backgroundColor: "rgba(0, 0, 0, 0.04)",
-                  },
-                }}
-                aria-label="Notifications"
-                onClick={openNotifications}
-              >
-                <Badge
-                  badgeContent={unreadCount > 99 ? "99+" : unreadCount}
-                  color="error"
-                >
-                  <Bell size={20} />
-                </Badge>
-              </IconButton>
+						<button
+							type="button"
+							className="flex items-center justify-center rounded-full p-2 text-slate-700 transition-colors hover:bg-slate-100"
+							aria-label="Notifications"
+							onClick={openNotifications}
+						>
+							<Badge
+								badgeContent={unreadCount > 99 ? "99+" : unreadCount}
+								color="error"
+							>
+								<Bell size={20} />
+							</Badge>
+						</button>
 
-              <Menu
-                anchorEl={notificationAnchor}
-                open={Boolean(notificationAnchor)}
-                onClose={closeNotifications}
-                disableScrollLock
-                PaperProps={{
-                  sx: {
-                    width: 360,
-                    maxWidth: "90vw",
-                    borderRadius: "12px",
-                    mt: 1,
-                  },
-                }}
-              >
-                <Box className="px-4 py-3 flex items-center justify-between">
-                  <Typography sx={{ fontSize: "0.95rem", fontWeight: 700 }}>
-                    Notifications
-                  </Typography>
-                  <button
-                    type="button"
-                    onClick={() => markAllReadMutation.mutate()}
-                    className="text-xs text-[#ff9933] hover:underline disabled:opacity-60"
-                    disabled={
-                      markAllReadMutation.isPending || unreadCount === 0
-                    }
-                  >
-                    Mark all read
-                  </button>
-                </Box>
-                <Divider />
+						<Menu
+							anchorEl={notificationAnchor}
+							open={Boolean(notificationAnchor)}
+							onClose={closeNotifications}
+							disableScrollLock
+							PaperProps={{
+								sx: {
+									width: 360,
+									maxWidth: "90vw",
+									borderRadius: "12px",
+									mt: 1,
+									border: "1px solid #e2e8f0",
+									boxShadow: "0 18px 40px rgba(15, 23, 42, 0.12)",
+								},
+							}}
+						>
+							<div className="flex items-center justify-between px-4 py-3">
+								<p className="text-[0.95rem] font-bold text-slate-900">
+									Notifications
+								</p>
+								<button
+									type="button"
+									onClick={() => markAllReadMutation.mutate()}
+									className="text-xs font-semibold text-[#ff9933] transition-opacity hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+									disabled={markAllReadMutation.isPending || unreadCount === 0}
+								>
+									Mark all read
+								</button>
+							</div>
+							<Divider />
 
-                {recentNotifications.length === 0 ? (
-                  <Box className="px-4 py-8 text-center text-sm text-gray-500">
-                    No notifications yet.
-                  </Box>
-                ) : (
-                  recentNotifications.map((notification) => {
-                    const typeName = notification.type?.name;
-                    const title =
-                      typeName === "project_invite_received"
-                        ? "New project invite"
-                        : typeName === "project_invite_responded"
-                          ? "Invite response"
-                          : typeName === "marketplace_profile_live"
-                            ? "Profile is live"
-                            : "Notification";
+							{recentNotifications.length === 0 ? (
+								<div className="px-4 py-8 text-center text-sm text-slate-500">
+									No notifications yet.
+								</div>
+							) : (
+								recentNotifications.map((notification) => {
+									const typeName = notification.type?.name;
+									const title =
+										typeName === "project_invite_received"
+											? "New project invite"
+											: typeName === "project_invite_responded"
+												? "Invite response"
+												: typeName === "marketplace_profile_live"
+													? "Profile is live"
+													: "Notification";
 
-                    const messageValue = notification.content?.message;
-                    const statusValue = notification.content?.status;
-                    const inviteIdValue = notification.content?.invite_id;
-                    const message =
-                      typeof messageValue === "string" && messageValue.trim()
-                        ? messageValue
-                        : typeof statusValue === "string"
-                          ? `Invite was ${statusValue}.`
-                          : "You have a new update.";
+									const messageValue = notification.content?.message;
+									const statusValue = notification.content?.status;
+									const inviteIdValue = notification.content?.invite_id;
+									const message =
+										typeof messageValue === "string" && messageValue.trim()
+											? messageValue
+											: typeof statusValue === "string"
+												? `Invite was ${statusValue}.`
+												: "You have a new update.";
 
-                    return (
-                      <MenuItem
-                        key={notification.id}
-                        onClick={() =>
-                          handleNotificationClick(
-                            notification.id,
-                            notification.link_url,
-                            typeName,
-                            typeof inviteIdValue === "string"
-                              ? inviteIdValue
-                              : null,
-                          )
-                        }
-                        sx={{
-                          display: "flex",
-                          alignItems: "flex-start",
-                          whiteSpace: "normal",
-                          backgroundColor: notification.is_read
-                            ? "transparent"
-                            : "#fff8f3",
-                          borderBottom: "1px solid #f8fafc",
-                          py: 1.5,
-                          px: 2,
-                        }}
-                      >
-                        <Box sx={{ flex: 1, pr: 2 }}>
-                          <Typography
-                            sx={{
-                              fontSize: "0.85rem",
-                              fontWeight: notification.is_read ? 500 : 700,
-                              color: notification.is_read
-                                ? "#475569"
-                                : "#0f172a",
-                            }}
-                          >
-                            {title}
-                          </Typography>
-                          <Typography
-                            sx={{
-                              fontSize: "0.8rem",
-                              color: notification.is_read
-                                ? "#64748b"
-                                : "#334155",
-                              mt: 0.25,
-                              fontWeight: notification.is_read ? 400 : 500,
-                            }}
-                          >
-                            {message}
-                          </Typography>
-                          <Typography
-                            sx={{
-                              fontSize: "0.75rem",
-                              color: "#94a3b8",
-                              mt: 0.5,
-                            }}
-                          >
-                            {new Date(notification.created_at).toLocaleString()}
-                          </Typography>
-                        </Box>
-                        {!notification.is_read && (
-                          <Box
-                            sx={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: "50%",
-                              bgcolor: "#ff9933",
-                              mt: 1,
-                              flexShrink: 0,
-                              boxShadow: "0 0 8px rgba(255, 153, 51, 0.5)",
-                            }}
-                          />
-                        )}
-                      </MenuItem>
-                    );
-                  })
-                )}
+									return (
+										<MenuItem
+											key={notification.id}
+											onClick={() =>
+												handleNotificationClick(
+													notification.id,
+													notification.link_url,
+													typeName,
+													typeof inviteIdValue === "string"
+														? inviteIdValue
+														: null,
+												)
+											}
+											sx={{
+												display: "flex",
+												alignItems: "flex-start",
+												whiteSpace: "normal",
+												backgroundColor: notification.is_read
+													? "transparent"
+													: "#fff8f3",
+												borderBottom: "1px solid #f8fafc",
+												py: 1.5,
+												px: 2,
+											}}
+										>
+											<div className="flex-1 pr-2">
+												<p
+													className={`text-[0.85rem] ${
+														notification.is_read
+															? "font-medium text-slate-600"
+															: "font-bold text-slate-900"
+													}`}
+												>
+													{title}
+												</p>
+												<p
+													className={`mt-0.5 text-[0.8rem] ${
+														notification.is_read
+															? "font-normal text-slate-500"
+															: "font-medium text-slate-700"
+													}`}
+												>
+													{message}
+												</p>
+												<p className="mt-1 text-[0.75rem] text-slate-400">
+													{new Date(notification.created_at).toLocaleString()}
+												</p>
+											</div>
+											{!notification.is_read && (
+												<span className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full bg-[#ff9933] shadow-[0_0_10px_rgba(255,153,51,0.55)]" />
+											)}
+										</MenuItem>
+									);
+								})
+							)}
 
-                <Divider />
-                <Box className="px-4 py-2">
-                  <Link
-                    to="/notifications"
-                    className="text-sm text-[#ff9933] hover:underline"
-                    onClick={closeNotifications}
-                  >
-                    View all notifications
-                  </Link>
-                </Box>
-              </Menu>
+							<Divider />
+							<div className="px-4 py-2">
+								<Link
+									to="/notifications"
+									className="text-sm font-medium text-[#ff9933] hover:underline"
+									onClick={closeNotifications}
+								>
+									View all notifications
+								</Link>
+							</div>
+						</Menu>
 
-              {/* User Menu */}
-              <UserMenu />
-            </>
-          ) : (
-            <>
-              <Link to="/auth/login">
-                <Button variant="outlined" colorScheme="primary">
-                  Login
-                </Button>
-              </Link>
-              <Link to="/auth/signup">
-                <Button variant="contained" colorScheme="primary">
-                  Sign Up
-                </Button>
-              </Link>
-            </>
-          )}
-        </Stack>
-      </Box>
-    </div>
-  );
+						<UserMenu />
+					</>
+				) : (
+					<>
+						<Link to="/auth/login">
+							<Button variant="outlined" colorScheme="primary">
+								Login
+							</Button>
+						</Link>
+						<Link to="/auth/signup">
+							<Button variant="contained" colorScheme="primary">
+								Sign Up
+							</Button>
+						</Link>
+					</>
+				)}
+			</div>
+		</div>
+	);
 };
 
 export default DashboardHeader;

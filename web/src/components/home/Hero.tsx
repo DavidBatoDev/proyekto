@@ -1,18 +1,24 @@
-import { ArrowRight } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
+
+const personaLabel: Record<string, string> = {
+  client: "Client Workspace",
+  consultant: "Consultant Workspace",
+  freelancer: "Freelancer Workspace",
+  admin: "Admin Workspace",
+};
 
 export function Hero() {
   const { profile } = useAuthStore();
   const persona = profile?.active_persona || "client";
   const isLoading = !profile;
 
-  // Design configuration mapping
   const content = {
     client: {
-      title: "Turn your project idea into action — easily",
+      title: "Turn your project vision into an execution roadmap.",
       description:
-        "Start planning your project step-by-step and invite your team. No complex setups, no guesswork — just clarity from the get-go.",
+        "Post your vision, get matched with a consultant, and unlock a structured roadmap your team can execute.",
       buttonText: "Post Project Vision",
       buttonLink: "/project-posting",
       dataTutorial: "post-project-btn",
@@ -37,9 +43,9 @@ export function Hero() {
       artSrc: "/svgs/art/consultant-art.svg",
     },
     admin: {
-      title: "Turn your project idea into action — easily",
+      title: "Turn your project vision into an execution roadmap.",
       description:
-        "Start planning your project step-by-step and invite your team. No complex setups, no guesswork — just clarity from the get-go.",
+        "Post your vision, get matched with a consultant, and unlock a structured roadmap your team can execute.",
       buttonText: "Post Project Vision",
       buttonLink: "/project-posting",
       dataTutorial: "post-project-btn",
@@ -52,21 +58,13 @@ export function Hero() {
 
   if (isLoading) {
     return (
-      <div className="relative bg-[#f6f7f8] rounded-xl overflow-hidden animate-pulse h-40">
-        <div className="relative z-10 flex items-center h-full px-8 py-4">
-          {/* Skeleton Container */}
-          <div className="max-w-[540px] w-full">
-            {/* Title Skeleton */}
-            <div className="bg-gray-200 rounded-md w-3/4 h-6 mb-2" />
-
-            {/* Description Skeleton */}
-            <div className="space-y-2 mb-4">
-              <div className="h-4 bg-gray-200 rounded-md w-full" />
-              <div className="h-4 bg-gray-200 rounded-md w-2/3" />
-            </div>
-
-            {/* Button Skeleton */}
-            <div className="h-10 bg-gray-200 rounded-md w-48" />
+      <div className="app-surface-card relative h-56 overflow-hidden animate-pulse">
+        <div className="flex h-full items-center px-8 py-5">
+          <div className="w-full max-w-2xl space-y-3">
+            <div className="h-4 w-40 rounded-full bg-slate-200" />
+            <div className="h-8 w-3/4 rounded-md bg-slate-200" />
+            <div className="h-4 w-2/3 rounded-md bg-slate-200" />
+            <div className="h-11 w-44 rounded-xl bg-slate-200" />
           </div>
         </div>
       </div>
@@ -74,77 +72,39 @@ export function Hero() {
   }
 
   return (
-    <div
-      className="relative rounded-xl overflow-hidden transition-colors duration-500 h-40"
-      data-theme={persona}
-      style={{ backgroundColor: "var(--primary-light)" }}
-    >
-      {/* Right SVG Art */}
+    <section className="app-surface-card-strong app-slide-up relative overflow-hidden">
+      <div className="pointer-events-none absolute -left-14 -top-16 h-64 w-64 rounded-full bg-cyan-200/40 blur-3xl" />
+      <div className="pointer-events-none absolute right-8 top-0 h-64 w-64 rounded-full bg-amber-200/30 blur-3xl" />
       <img
         src={currentContent.artSrc}
-        alt="decoration"
-        className="absolute right-0 top-0 h-full object-cover w-[200px] opacity-55 -scale-x-100"
+        alt=""
+        className="pointer-events-none absolute -right-4 bottom-0 h-[92%] w-52 object-contain opacity-35"
       />
 
-      <div className="absolute inset-0 opacity-100">
-        <div className="absolute top-[-30px] left-[-120px] w-[620px] h-[180px]">
-          {/* Decorative circles */}
-          <div
-            className="absolute w-[174px] h-[145px] rounded-full blur-3xl opacity-90 transition-colors duration-500"
-            style={{
-              top: "0px",
-              left: "101px",
-              backgroundColor: "var(--primary)",
-            }}
-          />
-          <div
-            className="absolute w-[174px] h-[145px] rounded-full blur-3xl opacity-40 transition-colors duration-500"
-            style={{
-              top: "207px",
-              left: "145px",
-              backgroundColor: "var(--secondary-light)",
-            }}
-          />
-          <div
-            className="absolute w-[174px] h-[145px] rounded-full blur-3xl opacity-40 transition-colors duration-500"
-            style={{
-              top: "-31px",
-              right: "0px",
-              backgroundColor: "var(--primary-dark)",
-            }}
-          />
-        </div>
-      </div>
+      <div className="relative z-10 flex min-h-56 items-center px-6 py-6 sm:px-8">
+        <div className="max-w-3xl">
+          <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/85 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">
+            <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+            {personaLabel[persona] || "Workspace"}
+          </span>
 
-      <div className="relative z-10 h-full px-8 py-4 flex items-center">
-        <div className="max-w-[calc(100%-220px)]">
-          <h1
-            className="text-[#333438] text-[28px] leading-8 font-semibold mb-1 whitespace-nowrap"
-          >
-          
+          <h1 className="mt-4 text-2xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-3xl">
+            {currentContent.title}
           </h1>
-          <p className="text-[#61636c] text-[14px] leading-5">
+          <p className="mt-2 max-w-2xl text-sm text-slate-600 sm:text-[15px]">
             {currentContent.description}
           </p>
+
           <Link
             to={currentContent.buttonLink}
             data-tutorial={currentContent.dataTutorial}
-            className="text-white px-6 py-2 rounded flex items-center gap-2 transition-all w-fit shadow-sm mt-3"
-            style={{
-              backgroundColor: "var(--secondary)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--secondary-dark)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--secondary)";
-            }}
+            className="app-cta mt-5 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold"
           >
             {currentContent.buttonText}
-            <ArrowRight className="w-5 h-5" />
+            <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
       </div>
-    </div>
+    </section>
   );
 }

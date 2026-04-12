@@ -36,32 +36,32 @@ function TeamSettingsPage() {
 
   return (
     <ProjectSettingsLayout projectId={projectId}>
-      <section className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-        <header className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+      <section className="app-surface-card-strong overflow-hidden rounded-2xl">
+        <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-5 py-4">
           <div>
-            <h2 className="text-[15px] font-semibold text-gray-900">
+            <h2 className="text-[15px] font-semibold text-slate-900">
               Team Settings
             </h2>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="mt-1 text-xs text-slate-500">
               Members and positions for this project.
             </p>
           </div>
           <Link
             to="/project/$projectId/team"
             params={{ projectId }}
-            className="px-3 py-1.5 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100"
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
           >
             Open full team management
           </Link>
         </header>
 
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-slate-100">
           {isLoading ? (
-            <div className="px-5 py-6 text-sm text-gray-500">
+            <div className="px-5 py-6 text-sm text-slate-500">
               Loading members...
             </div>
           ) : members.length === 0 ? (
-            <div className="px-5 py-6 text-sm text-gray-500">
+            <div className="px-5 py-6 text-sm text-slate-500">
               No members found.
             </div>
           ) : (
@@ -77,17 +77,17 @@ function TeamSettingsPage() {
               return (
                 <div
                   key={member.id}
-                  className="px-5 py-3.5 flex items-center justify-between gap-3"
+                  className="flex items-center justify-between gap-3 px-5 py-3.5"
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
+                    <p className="truncate text-sm font-medium text-slate-900">
                       {displayName}
                     </p>
-                    <p className="text-xs text-gray-500 truncate">
+                    <p className="truncate text-xs text-slate-500">
                       {member.user?.email || "No email"}
                     </p>
                   </div>
-                  <span className="shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
+                  <span className="inline-flex shrink-0 items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
                     {member.position?.trim() || "Member"}
                   </span>
                 </div>

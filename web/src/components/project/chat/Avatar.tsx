@@ -29,7 +29,7 @@ export function ChatAvatar({
 
   return (
     <div
-      className={`${sizeClass} rounded-full bg-orange-100 text-orange-600 font-semibold flex items-center justify-center shrink-0`}
+      className={`${sizeClass} flex shrink-0 items-center justify-center rounded-full bg-slate-100 font-semibold text-slate-700`}
     >
       {initials || "?"}
     </div>

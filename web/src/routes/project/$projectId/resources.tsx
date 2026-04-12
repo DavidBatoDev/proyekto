@@ -77,14 +77,14 @@ function ResourceModal({
   children: React.ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/45 backdrop-blur-sm p-4">
-      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-gray-100 bg-white px-4 py-3">
-          <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+    <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/35 backdrop-blur-sm p-4">
+      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_48px_rgba(15,23,42,0.2)]">
+        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-4 py-3">
+          <h3 className="text-base font-semibold text-slate-900">{title}</h3>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1.5 text-gray-500 transition hover:bg-gray-100"
+            className="rounded-md p-1.5 text-slate-500 transition hover:bg-slate-200"
           >
             <ChevronDown className="h-4 w-4 rotate-90" />
           </button>
@@ -98,7 +98,7 @@ function ResourceModal({
 function ResourcesSkeleton() {
   return (
     <div className="mt-8 space-y-6 animate-pulse">
-      <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <section className="app-surface-card p-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="h-4 w-32 rounded bg-gray-200" />
           <div className="flex gap-2">
@@ -109,18 +109,18 @@ function ResourcesSkeleton() {
       </section>
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {Array.from({ length: 6 }).map((_, index) => (
-          <div key={`resources-skeleton-${index}`} className="min-h-[320px] rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div key={`resources-skeleton-${index}`} className="min-h-[320px] app-surface-card p-4">
             <div className="mb-4 flex items-center justify-between">
               <div className="space-y-2">
                 <div className="h-4 w-32 rounded bg-gray-200" />
-                <div className="h-3 w-20 rounded bg-gray-100" />
+                <div className="h-3 w-20 rounded bg-slate-100" />
               </div>
-              <div className="h-8 w-16 rounded-md bg-gray-100" />
+              <div className="h-8 w-16 rounded-md bg-slate-100" />
             </div>
             <div className="space-y-2">
-              <div className="h-12 rounded-lg bg-gray-100" />
-              <div className="h-12 rounded-lg bg-gray-100" />
-              <div className="h-12 rounded-lg bg-gray-100" />
+              <div className="h-12 rounded-lg bg-slate-100" />
+              <div className="h-12 rounded-lg bg-slate-100" />
+              <div className="h-12 rounded-lg bg-slate-100" />
             </div>
           </div>
         ))}
@@ -431,7 +431,7 @@ function ResourcesPage() {
   const renderFolderCardLinks = (links: ProjectResourceLink[], folderId: string | null) => {
     if (links.length === 0) {
       return (
-        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-center text-xs text-gray-500">
+        <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">
           No links yet
         </div>
       );
@@ -446,15 +446,15 @@ function ResourcesPage() {
           return (
             <div
               key={link.id}
-              className="group/link rounded-lg border border-gray-200 bg-white px-2.5 py-2 transition hover:border-orange-200 hover:shadow-sm"
+              className="group/link rounded-lg border border-slate-200 bg-white px-2.5 py-2 transition hover:border-slate-300 hover:shadow-sm"
             >
               <div className="flex items-start gap-2">
-                <div className="mt-0.5 rounded-md bg-[#ff9933]/10 p-1.5 text-[#ff9933]">
+                <div className="mt-0.5 rounded-md bg-slate-100 p-1.5 text-slate-700">
                   <Link2 className="h-3.5 w-3.5" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-semibold text-gray-900">{link.title}</p>
-                  <p className="truncate text-[11px] text-gray-500">{getHostname(link.url)}</p>
+                  <p className="truncate text-xs font-semibold text-slate-900">{link.title}</p>
+                  <p className="truncate text-[11px] text-slate-500">{getHostname(link.url)}</p>
                 </div>
                 <div className="flex items-center gap-0.5">
                   <button
@@ -466,7 +466,7 @@ function ResourcesPage() {
                       void reorderLinks(folderId, next);
                     }}
                     disabled={!canMoveUp || isBusy}
-                    className="rounded p-1 text-gray-500 hover:bg-gray-100 disabled:opacity-35"
+                    className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-35"
                   >
                     <ChevronUp className="h-3.5 w-3.5" />
                   </button>
@@ -479,7 +479,7 @@ function ResourcesPage() {
                       void reorderLinks(folderId, next);
                     }}
                     disabled={!canMoveDown || isBusy}
-                    className="rounded p-1 text-gray-500 hover:bg-gray-100 disabled:opacity-35"
+                    className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-35"
                   >
                     <ChevronDown className="h-3.5 w-3.5" />
                   </button>
@@ -495,7 +495,7 @@ function ResourcesPage() {
                         folder_id: folderId ?? "",
                       })
                     }
-                    className="rounded p-1 text-gray-500 opacity-0 transition group-hover/link:opacity-100 focus-visible:opacity-100 hover:bg-gray-100"
+                    className="rounded p-1 text-slate-500 opacity-0 transition group-hover/link:opacity-100 focus-visible:opacity-100 hover:bg-slate-100"
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
@@ -512,7 +512,7 @@ function ResourcesPage() {
                     target="_blank"
                     rel="noopener noreferrer"
                     title="Open link"
-                    className="rounded p-1 text-[#b45f06] hover:bg-orange-50 hover:text-[#ff9933]"
+                    className="rounded p-1 text-slate-800 hover:bg-slate-50 hover:text-slate-700"
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
                   </a>
@@ -526,28 +526,28 @@ function ResourcesPage() {
   };
 
   return (
-    <div className="h-full w-full overflow-y-auto bg-[#f6f7f8]">
+    <div className="app-shell-bg h-full w-full overflow-y-auto">
       <div className="w-full px-4 py-6 md:px-8 md:py-8">
-        <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="app-surface-card-strong p-6">
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
             <div>
               <div className="mb-1 flex items-center gap-2">
-                <BookOpen className="h-5 w-5 text-[#ff9933]" />
-                <h1 className="text-2xl font-bold text-gray-900">Resources</h1>
+                <BookOpen className="h-5 w-5 text-slate-700" />
+                <h1 className="text-2xl font-bold text-slate-900">Resources</h1>
               </div>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-slate-600">
                 Organize project links, docs, and references in a clean workspace.
               </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3 md:w-[300px]">
-              <div className="rounded-xl border border-orange-100 bg-white p-3 text-center">
-                <p className="text-lg font-bold text-[#b45f06]">{totalFolders}</p>
-                <p className="text-xs text-gray-500">Folders</p>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
+                <p className="text-lg font-bold text-slate-800">{totalFolders}</p>
+                <p className="text-xs text-slate-500">Folders</p>
               </div>
-              <div className="rounded-xl border border-orange-100 bg-white p-3 text-center">
-                <p className="text-lg font-bold text-[#b45f06]">{totalLinks}</p>
-                <p className="text-xs text-gray-500">Hyperlinks</p>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
+                <p className="text-lg font-bold text-slate-800">{totalLinks}</p>
+                <p className="text-xs text-slate-500">Hyperlinks</p>
               </div>
             </div>
           </div>
@@ -556,7 +556,7 @@ function ResourcesPage() {
             <button
               type="button"
               onClick={() => setFolderForm({ name: "" })}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#ff9933] px-3 py-2 text-sm font-semibold text-white hover:bg-[#ea8b25]"
+              className="app-cta inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-white"
             >
               <Folder className="h-4 w-4" />
               New folder
@@ -566,7 +566,7 @@ function ResourcesPage() {
               onClick={() =>
                 setLinkForm({ title: "", url: "", description: "", folder_id: "" })
               }
-              className="inline-flex items-center gap-1.5 rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold text-[#b45f06] hover:bg-orange-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
             >
               <Plus className="h-4 w-4" />
               Add link
@@ -579,27 +579,27 @@ function ResourcesPage() {
         ) : (
           <div className="mt-8 space-y-6">
             <section className="space-y-4">
-              <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">
+              <div className="flex flex-col gap-3 app-surface-card p-4 md:flex-row md:items-center md:justify-between">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
                   Folders
                 </h2>
                 <div className="flex w-full flex-col gap-2 sm:flex-row md:w-auto">
                   <div className="relative w-full sm:w-72">
-                    <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                    <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                     <input
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="Search folders and links"
-                      className="h-9 w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 text-sm focus:border-[#ff9933] focus:outline-none focus:ring-2 focus:ring-[#ff9933]/25"
+                      className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30"
                     />
                   </div>
                   <div className="relative">
-                    <SlidersHorizontal className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+                    <SlidersHorizontal className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
                     <select
                       value={folderFilter}
                       onChange={(e) => setFolderFilter(e.target.value as FolderFilter)}
-                      className="h-9 w-full appearance-none rounded-lg border border-gray-300 bg-white pl-8 pr-8 text-sm text-gray-700 focus:border-[#ff9933] focus:outline-none focus:ring-2 focus:ring-[#ff9933]/25 sm:w-44"
+                      className="h-9 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-8 pr-8 text-sm text-slate-700 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30 sm:w-44"
                     >
                       <option value="all">All folders</option>
                       <option value="with_links">With links</option>
@@ -610,31 +610,31 @@ function ResourcesPage() {
               </div>
 
               {folderCards.length === 0 && !showUncategorizedCard ? (
-                <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center">
-                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#ff9933]/10 text-[#ff9933]">
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-700">
                     <Folder className="h-6 w-6" />
                   </div>
-                  <p className="text-sm font-semibold text-gray-900">No matching folders</p>
-                  <p className="mt-1 text-sm text-gray-500">
+                  <p className="text-sm font-semibold text-slate-900">No matching folders</p>
+                  <p className="mt-1 text-sm text-slate-500">
                     Try a different search or filter.
                   </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {showUncategorizedCard ? (
-                    <div className="group/folder min-h-[320px] rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-orange-200 hover:shadow-md">
-                      <div className="mb-3 rounded-xl border border-gray-100 bg-[#fcfcfd] px-3 py-2.5">
+                    <div className="group/folder min-h-[320px] app-surface-card p-4 transition hover:border-slate-300 hover:shadow-md">
+                      <div className="mb-3 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5">
                         <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <div className="rounded-md bg-[#ff9933]/12 p-1.5 text-[#d97706]">
+                            <div className="rounded-md bg-slate-100 p-1.5 text-slate-600">
                               <FolderOpen className="h-3.5 w-3.5" />
                             </div>
-                            <h3 className="truncate text-sm font-semibold text-gray-900">
+                            <h3 className="truncate text-sm font-semibold text-slate-900">
                               Uncategorized
                             </h3>
                           </div>
-                          <p className="mt-1 text-[11px] text-gray-500">
+                          <p className="mt-1 text-[11px] text-slate-500">
                             {uncategorizedDisplayedLinks.length} link
                             {uncategorizedDisplayedLinks.length === 1 ? "" : "s"}
                           </p>
@@ -644,7 +644,7 @@ function ResourcesPage() {
                           onClick={() =>
                             setLinkForm({ title: "", url: "", description: "", folder_id: "" })
                           }
-                          className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                          className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
                         >
                           <Plus className="h-3.5 w-3.5" />
                           Link
@@ -661,20 +661,20 @@ function ResourcesPage() {
                   return (
                     <div
                       key={folder.id}
-                      className="group/folder min-h-[320px] rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-orange-200 hover:shadow-md"
+                      className="group/folder min-h-[320px] app-surface-card p-4 transition hover:border-slate-300 hover:shadow-md"
                     >
-                      <div className="mb-3 rounded-xl border border-gray-100 bg-[#fcfcfd] px-3 py-2.5">
+                      <div className="mb-3 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5">
                         <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <div className="rounded-md bg-[#ff9933]/12 p-1.5 text-[#d97706]">
+                            <div className="rounded-md bg-slate-100 p-1.5 text-slate-600">
                               <Folder className="h-3.5 w-3.5" />
                             </div>
-                            <h3 className="truncate text-sm font-semibold text-gray-900">
+                            <h3 className="truncate text-sm font-semibold text-slate-900">
                               {folder.name}
                             </h3>
                           </div>
-                          <p className="mt-1 text-[11px] text-gray-500">
+                          <p className="mt-1 text-[11px] text-slate-500">
                             {displayedLinks.length} link
                             {displayedLinks.length === 1 ? "" : "s"}
                           </p>
@@ -690,7 +690,7 @@ function ResourcesPage() {
                               void reorderFolders(next);
                             }}
                             disabled={!canMoveUp || isBusy}
-                            className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-40"
+                            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-40"
                           >
                             <ChevronUp className="h-4 w-4" />
                           </button>
@@ -703,7 +703,7 @@ function ResourcesPage() {
                               void reorderFolders(next);
                             }}
                             disabled={!canMoveDown || isBusy}
-                            className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-40"
+                            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-40"
                           >
                             <ChevronDown className="h-4 w-4" />
                           </button>
@@ -716,7 +716,7 @@ function ResourcesPage() {
                                 name: folder.name,
                               })
                             }
-                            className="rounded-md p-1.5 text-gray-500 opacity-0 transition group-hover/folder:opacity-100 focus-visible:opacity-100 hover:bg-gray-100"
+                            className="rounded-md p-1.5 text-slate-500 opacity-0 transition group-hover/folder:opacity-100 focus-visible:opacity-100 hover:bg-slate-100"
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
@@ -738,7 +738,7 @@ function ResourcesPage() {
                                 folder_id: folder.id,
                               })
                             }
-                            className="ml-1 inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                            className="ml-1 inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
                           >
                             <Plus className="h-3.5 w-3.5" />
                             Link
@@ -765,7 +765,7 @@ function ResourcesPage() {
         >
           <div className="space-y-4">
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
                 Folder name
               </label>
               <input
@@ -775,7 +775,7 @@ function ResourcesPage() {
                   setFolderForm((prev) => (prev ? { ...prev, name: e.target.value } : prev))
                 }
                 placeholder="Design references"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#ff9933] focus:outline-none focus:ring-2 focus:ring-[#ff9933]/30"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30"
               />
             </div>
 
@@ -783,7 +783,7 @@ function ResourcesPage() {
               <button
                 type="button"
                 onClick={() => setFolderForm(null)}
-                className="rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100"
+                className="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
               >
                 Cancel
               </button>
@@ -791,7 +791,7 @@ function ResourcesPage() {
                 type="button"
                 onClick={() => void onSaveFolder()}
                 disabled={isBusy}
-                className="inline-flex items-center gap-1 rounded-md bg-[#ff9933] px-3 py-2 text-sm font-semibold text-white hover:bg-[#ea8b25] disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-md app-cta px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Save
@@ -807,18 +807,18 @@ function ResourcesPage() {
           onClose={() => setLinkForm(null)}
         >
           <div className="space-y-3">
-            <div className="flex items-center gap-2 rounded-xl border border-orange-100 bg-orange-50 px-3 py-2">
-              <div className="rounded-lg bg-[#ff9933]/15 p-1.5 text-[#b45f06]">
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <div className="rounded-lg bg-slate-100 p-1.5 text-slate-800">
                 <Link2 className="h-4 w-4" />
               </div>
-              <p className="text-xs text-gray-700">
+              <p className="text-xs text-slate-700">
                 Add a quick project reference and organize it in a folder.
               </p>
             </div>
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div>
-                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                   Title
                 </label>
                 <input
@@ -828,12 +828,12 @@ function ResourcesPage() {
                     setLinkForm((prev) => (prev ? { ...prev, title: e.target.value } : prev))
                   }
                   placeholder="API Docs"
-                  className="h-9 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-[#ff9933] focus:outline-none focus:ring-2 focus:ring-[#ff9933]/30"
+                  className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                   Folder
                 </label>
                 <select
@@ -841,7 +841,7 @@ function ResourcesPage() {
                   onChange={(e) =>
                     setLinkForm((prev) => (prev ? { ...prev, folder_id: e.target.value } : prev))
                   }
-                  className="h-9 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-[#ff9933] focus:outline-none focus:ring-2 focus:ring-[#ff9933]/30"
+                  className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30"
                 >
                   <option value="">Uncategorized</option>
                   {folderOptions.map((folder) => (
@@ -854,7 +854,7 @@ function ResourcesPage() {
             </div>
 
             <div>
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                 URL
               </label>
               <input
@@ -864,12 +864,12 @@ function ResourcesPage() {
                   setLinkForm((prev) => (prev ? { ...prev, url: e.target.value } : prev))
                 }
                 placeholder="https://..."
-                className="h-9 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-[#ff9933] focus:outline-none focus:ring-2 focus:ring-[#ff9933]/30"
+                className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                 Description (optional)
               </label>
               <textarea
@@ -881,15 +881,15 @@ function ResourcesPage() {
                   )
                 }
                 placeholder="What this resource is for"
-                className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-[#ff9933] focus:outline-none focus:ring-2 focus:ring-[#ff9933]/30"
+                className="w-full resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30"
               />
             </div>
 
-            <div className="flex items-center justify-end gap-2 border-t border-gray-100 pt-2">
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-2">
               <button
                 type="button"
                 onClick={() => setLinkForm(null)}
-                className="rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100"
+                className="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
               >
                 Cancel
               </button>
@@ -897,7 +897,7 @@ function ResourcesPage() {
                 type="button"
                 onClick={() => void onSaveLink()}
                 disabled={isBusy}
-                className="inline-flex items-center gap-1 rounded-md bg-[#ff9933] px-3 py-2 text-sm font-semibold text-white hover:bg-[#ea8b25] disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-md app-cta px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Save
@@ -909,3 +909,4 @@ function ResourcesPage() {
     </div>
   );
 }
+

@@ -42,9 +42,9 @@ function DashboardPage() {
   }, [profile, startTutorial, isActive]);
 
   return (
-    <div className="min-h-screen bg-[#f6f7f8]">
+    <div className="min-h-screen app-shell-bg">
       <div
-        className={`max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10 pb-8 ${
+        className={`max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10 pb-10 app-slide-up ${
           isFreelancer ? "pt-6" : "pt-[88px]"
         }`}
       >

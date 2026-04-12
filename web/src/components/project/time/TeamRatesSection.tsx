@@ -57,7 +57,7 @@ export function TeamRatesSection({
           <button
             type="button"
             onClick={onOpenAddRate}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md border border-[#ff9933]/30 bg-[#ff9933]/10 text-[#b35f00] hover:bg-[#ff9933]/20"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md border border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200"
           >
             <Plus className="w-3.5 h-3.5" />
             Add Rate
@@ -97,7 +97,7 @@ export function TeamRatesSection({
                   }`}
                 >
                   <div
-                    className="h-14 bg-gradient-to-r from-orange-200 via-amber-200 to-orange-100"
+                    className="h-14 bg-gradient-to-r from-slate-200 via-slate-100 to-slate-50"
                     style={
                       bannerUrl
                         ? {
@@ -130,7 +130,7 @@ export function TeamRatesSection({
                         </p>
                         {isPending && (
                           <Loader2
-                            className="h-3.5 w-3.5 animate-spin text-[#b35f00]"
+                            className="h-3.5 w-3.5 animate-spin text-slate-700"
                             aria-label="Rate pending"
                           />
                         )}
@@ -161,7 +161,7 @@ export function TeamRatesSection({
                       </div>
                       <div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
                         <span className="font-semibold text-gray-500">Hourly Rate</span>
-                        <span className="font-semibold text-[#b35f00] text-right">
+                        <span className="font-semibold text-slate-700 text-right">
                           {Number(rate.hourly_rate).toFixed(2)} {rate.currency}
                         </span>
                       </div>
@@ -173,7 +173,7 @@ export function TeamRatesSection({
                           type="button"
                           onClick={() => onViewLogs(rate)}
                           disabled={isPending}
-                          className="px-2.5 py-1 text-xs font-semibold rounded-md border border-[#ff9933]/30 bg-[#ff9933]/10 text-[#b35f00] hover:bg-[#ff9933]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-2.5 py-1 text-xs font-semibold rounded-md border border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           View Logs
                         </button>
@@ -199,3 +199,4 @@ export function TeamRatesSection({
     </div>
   );
 }
+

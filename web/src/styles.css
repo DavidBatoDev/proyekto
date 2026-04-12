@@ -49,6 +49,26 @@ code {
 :root {
   --background: oklch(1 0 0);
   --background-light: #f6f7f8;
+  --app-bg: #f7f8fb;
+  --app-bg-elevated: #f2f4f8;
+  --app-surface: rgba(255, 255, 255, 0.92);
+  --app-surface-strong: #ffffff;
+  --app-muted-surface: #f8fafd;
+  --app-border: #dbe2ec;
+  --app-border-strong: #c9d4e2;
+  --app-text: #0f172a;
+  --app-text-muted: #56637a;
+  --app-shadow-sm: 0 6px 18px rgba(15, 23, 42, 0.06);
+  --app-shadow-md: 0 16px 36px rgba(15, 23, 42, 0.1);
+  --app-shadow-lg: 0 24px 48px rgba(15, 23, 42, 0.16);
+  --app-accent: #0f172a;
+  --app-accent-soft: rgba(15, 23, 42, 0.08);
+  --app-cta: #ff9933;
+  --app-cta-hover: #ea8b25;
+  --app-duration-fast: 150ms;
+  --app-duration-medium: 240ms;
+  --app-duration-slow: 360ms;
+  --app-ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
   --foreground: oklch(0.141 0.005 285.823);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.141 0.005 285.823);
@@ -316,6 +336,22 @@ code {
   .roadmap-task-row-pulse {
     animation: none;
   }
+
+  .app-motion-safe,
+  .app-motion-safe::before,
+  .app-motion-safe::after {
+    animation: none !important;
+    transition-duration: 0ms !important;
+    transform: none !important;
+  }
+
+  .app-fade-in,
+  .app-slide-up,
+  .app-pop-in {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }
 
 .my-logs-rdg .rdg-header-row .rdg-cell {
@@ -325,4 +361,130 @@ code {
 
 .my-logs-rdg .rdg-viewport {
   overflow-y: hidden;
+}
+
+.app-shell-bg {
+  background:
+    radial-gradient(
+      circle at 4% 2%,
+      rgba(125, 211, 252, 0.2),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 100% 8%,
+      rgba(251, 191, 36, 0.14),
+      transparent 32%
+    ),
+    linear-gradient(180deg, #fbfcff 0%, #f4f6fa 100%);
+}
+
+.app-surface-card {
+  border: 1px solid var(--app-border);
+  background: var(--app-surface);
+  border-radius: 1.25rem;
+  box-shadow: var(--app-shadow-sm);
+  backdrop-filter: blur(10px);
+}
+
+.app-surface-card-strong {
+  border: 1px solid var(--app-border-strong);
+  background: var(--app-surface-strong);
+  border-radius: 1.25rem;
+  box-shadow: var(--app-shadow-md);
+}
+
+.app-section-kicker {
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.app-chip {
+  border: 1px solid var(--app-border);
+  background: var(--app-muted-surface);
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--app-text-muted);
+}
+
+.app-input {
+  border-radius: 0.8rem;
+  border: 1px solid var(--app-border);
+  background: #ffffff;
+  color: var(--app-text);
+  transition:
+    border-color var(--app-duration-fast) var(--app-ease-standard),
+    box-shadow var(--app-duration-fast) var(--app-ease-standard),
+    background-color var(--app-duration-fast) var(--app-ease-standard);
+}
+
+.app-input:focus {
+  outline: none;
+  border-color: rgba(15, 23, 42, 0.3);
+  box-shadow: 0 0 0 4px rgba(15, 23, 42, 0.08);
+}
+
+.app-cta {
+  background: var(--app-cta);
+  color: #fff;
+  transition:
+    transform var(--app-duration-fast) var(--app-ease-standard),
+    background-color var(--app-duration-fast) var(--app-ease-standard),
+    box-shadow var(--app-duration-fast) var(--app-ease-standard);
+}
+
+.app-cta:hover {
+  background: var(--app-cta-hover);
+  box-shadow: 0 10px 20px rgba(234, 139, 37, 0.24);
+  transform: translateY(-1px);
+}
+
+.app-fade-in {
+  animation: app-fade-in var(--app-duration-medium) var(--app-ease-standard)
+    both;
+}
+
+.app-slide-up {
+  animation: app-slide-up var(--app-duration-slow) var(--app-ease-standard)
+    both;
+}
+
+.app-pop-in {
+  animation: app-pop-in var(--app-duration-medium) var(--app-ease-standard)
+    both;
+}
+
+@keyframes app-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes app-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes app-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }

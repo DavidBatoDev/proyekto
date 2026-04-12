@@ -847,7 +847,7 @@ function ChatPage() {
   }, [chatRef, isInitialChatBootLoading, isRoomSwitchLoading]);
 
   return (
-    <>
+    <div className="app-fade-in h-full w-full">
       <ChatShell
       messagesContainerRef={shouldShowCenterSkeleton ? undefined : messagesViewportRef}
       centerShellOverride={
@@ -1024,6 +1024,6 @@ function ChatPage() {
           });
         }}
       />
-    </>
+    </div>
   );
 }

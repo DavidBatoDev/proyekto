@@ -20,7 +20,7 @@ export function ThreadMessageLine({
         isSending ? "opacity-70" : ""
       }`}
     >
-      <p className="text-[15px] leading-relaxed text-gray-900 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+      <p className="text-[15px] leading-relaxed text-slate-900 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
         {message.content}
       </p>
 
@@ -28,7 +28,7 @@ export function ThreadMessageLine({
         <button
           type="button"
           onClick={(event) => onRequestUnsend?.(message, event.shiftKey)}
-          className="absolute -right-1 -top-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 opacity-0 transition-opacity hover:bg-gray-200 hover:text-red-600 group-hover/line:opacity-100"
+          className="absolute -right-1 -top-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 opacity-0 transition-opacity hover:bg-slate-200 hover:text-red-600 group-hover/line:opacity-100"
           aria-label="Unsend message"
           title="Unsend message"
         >
@@ -50,8 +50,8 @@ export function ThreadMessageLine({
               }
               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
                 reaction.reacted_by_me
-                  ? "border-orange-300 bg-orange-100 text-orange-700"
-                  : "border-gray-300 bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  ? "border-slate-400 bg-slate-200 text-slate-800"
+                  : "border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200"
               }`}
             >
               <span>{reaction.emoji}</span>

@@ -55,9 +55,9 @@ function TimeIndexPage() {
   ]);
 
   return (
-    <div className="h-full w-full flex items-center justify-center p-8">
-      <div className="inline-flex items-center gap-2 text-sm text-gray-500">
-        <Loader2 className="w-4 h-4 animate-spin text-[#ff9933]" />
+    <div className="app-shell-bg flex h-full w-full items-center justify-center p-8">
+      <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 shadow-sm">
+        <Loader2 className="h-4 w-4 animate-spin text-slate-700" />
         Loading time page...
       </div>
     </div>

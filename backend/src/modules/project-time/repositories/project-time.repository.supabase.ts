@@ -86,7 +86,7 @@ export class ProjectTimeRepositorySupabase implements ProjectTimeRepository {
 
     const { data: features, error: featureError } = await this.db
       .from('roadmap_features')
-      .select('id, title, epic_id, position')
+      .select('id, roadmap_id, title, epic_id, position')
       .in('roadmap_id', roadmapIds);
     if (featureError) throw new Error(featureError.message);
     const featureIds = (features ?? []).map((item) => item.id as string);
@@ -95,11 +95,16 @@ export class ProjectTimeRepositorySupabase implements ProjectTimeRepository {
     const featureTitleById = new Map<string, string>();
     const featurePositionById = new Map<string, number | undefined>();
     const featureEpicIdById = new Map<string, string | undefined>();
+    const featureRoadmapIdById = new Map<string, string>();
     const epicIds = new Set<string>();
     for (const feature of features ?? []) {
       const featureId = feature.id as string;
+      const roadmapId = feature.roadmap_id as string | null | undefined;
       const featureTitle =
         (feature.title as string | null | undefined) ?? 'Untitled feature';
+      if (roadmapId) {
+        featureRoadmapIdById.set(featureId, roadmapId);
+      }
       featureTitleById.set(featureId, featureTitle);
       featurePositionById.set(
         featureId,
@@ -138,20 +143,26 @@ export class ProjectTimeRepositorySupabase implements ProjectTimeRepository {
       .order('created_at', { ascending: true });
     if (taskError) throw new Error(taskError.message);
 
-    return (tasks ?? []).map((item) => ({
-      id: item.id as string,
-      title: (item.title as string | null | undefined) ?? 'Untitled task',
-      feature_title: featureTitleById.get(item.feature_id as string),
-      feature_position: featurePositionById.get(item.feature_id as string),
-      epic_title: (() => {
-        const epicId = featureEpicIdById.get(item.feature_id as string);
-        return epicId ? epicTitleById.get(epicId) : undefined;
-      })(),
-      epic_position: (() => {
-        const epicId = featureEpicIdById.get(item.feature_id as string);
-        return epicId ? epicPositionById.get(epicId) : undefined;
-      })(),
-    }));
+    const taskOptions: ProjectTaskOption[] = [];
+    for (const item of tasks ?? []) {
+      const featureId = item.feature_id as string;
+      const roadmapId = featureRoadmapIdById.get(featureId);
+      if (!roadmapId) continue;
+
+      const epicId = featureEpicIdById.get(featureId);
+      taskOptions.push({
+        id: item.id as string,
+        title: (item.title as string | null | undefined) ?? 'Untitled task',
+        feature_id: featureId,
+        roadmap_id: roadmapId,
+        feature_title: featureTitleById.get(featureId),
+        feature_position: featurePositionById.get(featureId),
+        epic_title: epicId ? epicTitleById.get(epicId) : undefined,
+        epic_position: epicId ? epicPositionById.get(epicId) : undefined,
+      });
+    }
+
+    return taskOptions;
   }
 
   async listProjectMemberRates(
