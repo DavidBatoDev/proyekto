@@ -125,6 +125,14 @@ export class RoadmapAiCommitDto {
   @IsOptional()
   @IsString()
   revision_token?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  include_roadmap?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  include_timeline?: boolean;
 }
 
 export class RoadmapAiRollbackDto {
@@ -322,8 +330,9 @@ export class RoadmapAiCommitResponseDto {
   @Type(() => RoadmapAiChangeTimelineEntryDto)
   timeline: RoadmapAiChangeTimelineEntryDto[];
 
+  @IsOptional()
   @IsObject()
-  roadmap: Record<string, unknown>;
+  roadmap?: Record<string, unknown>;
 
   @IsOptional()
   @IsArray()

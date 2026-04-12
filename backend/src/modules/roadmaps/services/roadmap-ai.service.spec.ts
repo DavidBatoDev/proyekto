@@ -870,6 +870,31 @@ describe('RoadmapAiService resolve cache invalidation on commit', () => {
     expect(result.timeline).toHaveLength(1);
   });
 
+  it('supports lean commit responses without roadmap reload payload', async () => {
+    const { service, roadmapsRepo } = createCommitService();
+
+    const result = await service.commit(
+      ROADMAP_ID,
+      {
+        revision_token: REVISION_TOKEN,
+        include_roadmap: false,
+        include_timeline: false,
+        operations: [
+          { op: 'add_epic', data: { title: 'Platform Foundation' } },
+        ],
+      } as any,
+      USER_ID,
+    );
+
+    expect(roadmapsRepo.findFull).toHaveBeenCalledTimes(1);
+    expect(roadmapsRepo.findFull).toHaveBeenCalledWith(ROADMAP_ID, USER_ID, {
+      includeTaskAssigneeProfile: false,
+    });
+    expect(result.roadmap).toBeUndefined();
+    expect(result.timeline).toEqual([]);
+    expect(result.candidate_snapshot).toMatchObject({ id: ROADMAP_ID });
+  });
+
   it('keeps commit successful when timeline persistence fails', async () => {
     const { service, previewStore } = createCommitService();
     previewStore.setChangeTimeline.mockRejectedValueOnce(

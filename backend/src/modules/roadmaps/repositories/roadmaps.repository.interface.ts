@@ -11,11 +11,19 @@ export type RoadmapContextSearchCandidateRecord = {
   parent_title?: string;
 };
 
+export type FindFullRoadmapOptions = {
+  includeTaskAssigneeProfile?: boolean;
+};
+
 export interface IRoadmapsRepository {
   findAll(userId: string): Promise<any[]>;
   findByProjectId(projectId: string, userId?: string): Promise<any | null>;
   findById(id: string, userId?: string): Promise<any | null>;
-  findFull(id: string, userId?: string): Promise<any | null>;
+  findFull(
+    id: string,
+    userId?: string,
+    options?: FindFullRoadmapOptions,
+  ): Promise<any | null>;
   findByUser(userId: string): Promise<any[]>;
   searchContextCandidates(
     roadmapId: string,

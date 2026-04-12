@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import {
+  FindFullRoadmapOptions,
   IRoadmapsRepository,
   RoadmapContextSearchCandidateRecord,
   RoadmapContextSearchNodeType,
@@ -203,7 +204,17 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     return data;
   }
 
-  async findFull(id: string, userId?: string): Promise<any | null> {
+  async findFull(
+    id: string,
+    userId?: string,
+    options?: FindFullRoadmapOptions,
+  ): Promise<any | null> {
+    const includeTaskAssigneeProfile =
+      options?.includeTaskAssigneeProfile !== false;
+    const taskSelect = includeTaskAssigneeProfile
+      ? 'tasks:roadmap_tasks(*, assignee:profiles(id, display_name, avatar_url, email, first_name, last_name))'
+      : 'tasks:roadmap_tasks(*)';
+
     const query = this.db
       .from('roadmaps')
       .select(
@@ -211,7 +222,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
         *,
         project:projects(id, title),
         milestones:roadmap_milestones(*),
-        epics:roadmap_epics(*, features:roadmap_features(*, tasks:roadmap_tasks(*, assignee:profiles(id, display_name, avatar_url, email, first_name, last_name))))
+        epics:roadmap_epics(*, features:roadmap_features(*, ${taskSelect}))
       `,
       )
       .eq('id', id);

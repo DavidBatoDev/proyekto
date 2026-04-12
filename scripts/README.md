@@ -64,6 +64,41 @@ The script benchmarks these runtime lookup shapes:
 
 It also emits p50/p95/avg from repeated warm executions to compare before/after index changes.
 
+## Roadmap AI Commit Benchmark
+
+Run from repo root:
+
+```bash
+node scripts/benchmark_roadmap_ai_commit.mjs
+```
+
+This benchmark executes safe no-op `update_node` commits against an existing node and compares latency between:
+
+- `include_roadmap=true` (full response path)
+- `include_roadmap=false` (lean response path)
+
+It reports p50/p95/avg and optional assertions.
+
+### Useful options
+
+- Override iterations and warmup:
+
+```bash
+node scripts/benchmark_roadmap_ai_commit.mjs --iterations=12 --warmup=2
+```
+
+- Add assertions for lean mode and savings:
+
+```bash
+node scripts/benchmark_roadmap_ai_commit.mjs --assert-lean-p95-ms=350 --assert-p95-savings-ms=30
+```
+
+- Benchmark only lean mode:
+
+```bash
+node scripts/benchmark_roadmap_ai_commit.mjs --include-roadmap-modes=false
+```
+
 ### Environment file precedence
 
 The benchmark auto-loads env values in this order:

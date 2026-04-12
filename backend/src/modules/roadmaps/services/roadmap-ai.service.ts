@@ -1235,6 +1235,8 @@ export class RoadmapAiService {
     userId: string,
   ): Promise<RoadmapAiCommitResponseDto> {
     const startedAt = Date.now();
+    const includeRoadmap = dto.include_roadmap !== false;
+    const includeTimeline = dto.include_timeline !== false;
     const operations = Array.isArray(dto.operations) ? dto.operations : [];
     if (operations.length === 0) {
       throw new BadRequestException({
@@ -1249,10 +1251,14 @@ export class RoadmapAiService {
         `roadmap_id=${roadmapId}`,
         `operation_count=${operations.length}`,
         `revision_token_provided=${Boolean(dto.revision_token)}`,
+        `include_roadmap=${includeRoadmap}`,
+        `include_timeline=${includeTimeline}`,
       ].join(' '),
     );
 
+    const authzStartedAt = Date.now();
     const current = await this.assertCanEditRoadmap(roadmapId, userId);
+    const authzMs = Date.now() - authzStartedAt;
     const currentRevisionToken = this.requireRevisionToken(current.updated_at);
     if (dto.revision_token && dto.revision_token !== currentRevisionToken) {
       this.logger.warn(
@@ -1269,11 +1275,18 @@ export class RoadmapAiService {
       });
     }
 
-    const full = await this.roadmapsRepo.findFull(roadmapId, userId);
+    const repoLookupStartedAt = Date.now();
+    const full = includeRoadmap
+      ? await this.roadmapsRepo.findFull(roadmapId, userId)
+      : await this.roadmapsRepo.findFull(roadmapId, userId, {
+          includeTaskAssigneeProfile: false,
+        });
+    const repoLookupMs = Date.now() - repoLookupStartedAt;
     if (!full) {
       throw new NotFoundException('Roadmap not found');
     }
 
+    const semanticDiffApplyStartedAt = Date.now();
     const base = this.normalizeFullRoadmapState(
       full as Record<string, unknown>,
     );
@@ -1286,6 +1299,7 @@ export class RoadmapAiService {
       ...this.validateOptimisticRevision(dto.base_revision),
     ];
     const semanticDiff = this.computeSemanticDiff(base, candidate);
+    const semanticDiffApplyMs = Date.now() - semanticDiffApplyStartedAt;
     const errorIssues = validationIssues.filter(
       (issue) => issue.severity === 'error',
     );
@@ -1322,12 +1336,14 @@ export class RoadmapAiService {
       ].join(' '),
     );
 
+    const upsertStartedAt = Date.now();
     await this.patchRepo.upsertFullRoadmap({
       roadmapId,
       ownerId: current.owner_id,
       fullState: candidate,
       createIfMissing: false,
     });
+    const upsertMs = Date.now() - upsertStartedAt;
 
     this.logger.log(
       [
@@ -1336,20 +1352,41 @@ export class RoadmapAiService {
       ].join(' '),
     );
 
-    const persisted = await this.roadmapsRepo.findFull(roadmapId, userId);
-    if (!persisted) {
-      this.logger.error(
-        [
-          'event=roadmap_ai_commit_persisted_missing',
-          `roadmap_id=${roadmapId}`,
-        ].join(' '),
-      );
-      throw new InternalServerErrorException(
-        'Roadmap not found after successful commit',
-      );
+    let persistedReloadMs = 0;
+    let candidateSnapshotRecord: Record<string, unknown>;
+    let roadmapRecord: Record<string, unknown> | undefined;
+    let stateAfter: FullRoadmapState;
+
+    if (includeRoadmap) {
+      const persistedReloadStartedAt = Date.now();
+      const persisted = await this.roadmapsRepo.findFull(roadmapId, userId);
+      persistedReloadMs = Date.now() - persistedReloadStartedAt;
+      if (!persisted) {
+        this.logger.error(
+          [
+            'event=roadmap_ai_commit_persisted_missing',
+            `roadmap_id=${roadmapId}`,
+          ].join(' '),
+        );
+        throw new InternalServerErrorException(
+          'Roadmap not found after successful commit',
+        );
+      }
+      candidateSnapshotRecord = persisted as Record<string, unknown>;
+      roadmapRecord = persisted as Record<string, unknown>;
+      stateAfter = this.normalizeFullRoadmapState(candidateSnapshotRecord);
+    } else {
+      // Reuse the applied in-memory state to avoid an extra full roadmap reload.
+      candidateSnapshotRecord = this.clone(candidate) as unknown as Record<
+        string,
+        unknown
+      >;
+      stateAfter = this.clone(candidate);
     }
 
+    const revisionTokenLookupStartedAt = Date.now();
     const persistedMeta = await this.roadmapsRepo.findById(roadmapId, userId);
+    const revisionTokenLookupMs = Date.now() - revisionTokenLookupStartedAt;
     const revisionTokenAfter = this.requireRevisionToken(
       persistedMeta?.updated_at ?? currentRevisionToken,
     );
@@ -1360,6 +1397,7 @@ export class RoadmapAiService {
       tempIdMapping[result.temp_id] = result.assigned_id;
     }
 
+    const timelineStartedAt = Date.now();
     const timeline = await this.appendChangeToTimeline({
       roadmapId,
       userId,
@@ -1371,20 +1409,24 @@ export class RoadmapAiService {
         operationsCount: operations.length,
         semanticDiff,
         stateBefore: this.clone(base),
-        stateAfter: this.normalizeFullRoadmapState(
-          persisted as Record<string, unknown>,
-        ),
+        stateAfter,
         tempIdMapping,
         revisionTokenBefore: currentRevisionToken,
         revisionTokenAfter,
       },
       tolerateStoreFailure: true,
+      includeEntriesInResponse: includeTimeline,
     });
+    const timelineMs = Date.now() - timelineStartedAt;
 
+    const resolveCacheInvalidateStartedAt = Date.now();
     await this.invalidateResolveLookupCache(
       roadmapId,
       this.collectResolveLookupNodeTypesFromSemanticDiff(semanticDiff),
     );
+    const resolveCacheInvalidateMs =
+      Date.now() - resolveCacheInvalidateStartedAt;
+    const totalElapsedMs = Date.now() - startedAt;
 
     this.logger.log(
       [
@@ -1392,20 +1434,35 @@ export class RoadmapAiService {
         `roadmap_id=${roadmapId}`,
         `change_id=${changeId}`,
         `revision_token=${revisionTokenAfter}`,
-        `elapsed_ms=${Date.now() - startedAt}`,
+        `elapsed_ms=${totalElapsedMs}`,
+        `authz_ms=${authzMs}`,
+        `repo_lookup_ms=${repoLookupMs}`,
+        `semantic_diff_apply_ms=${semanticDiffApplyMs}`,
+        `upsert_ms=${upsertMs}`,
+        `persisted_reload_ms=${persistedReloadMs}`,
+        `revision_lookup_ms=${revisionTokenLookupMs}`,
+        `timeline_ms=${timelineMs}`,
+        `resolve_cache_invalidate_ms=${resolveCacheInvalidateMs}`,
+        `include_roadmap=${includeRoadmap}`,
+        `include_timeline=${includeTimeline}`,
       ].join(' '),
     );
 
-    return {
+    const response: RoadmapAiCommitResponseDto = {
       change_id: changeId,
       committed_at: committedAt,
       revision_token: revisionTokenAfter,
       semantic_diff: semanticDiff,
-      candidate_snapshot: persisted as Record<string, unknown>,
+      candidate_snapshot: candidateSnapshotRecord,
       timeline,
-      roadmap: persisted as Record<string, unknown>,
       operation_results: applyResult.operationResults,
     };
+
+    if (includeRoadmap) {
+      response.roadmap = roadmapRecord;
+    }
+
+    return response;
   }
 
   private summarizeRoadmapState(state: FullRoadmapState): {
@@ -1617,6 +1674,7 @@ export class RoadmapAiService {
     userId: string;
     entry: ChangeTimelineEntryRecord;
     tolerateStoreFailure: boolean;
+    includeEntriesInResponse?: boolean;
   }): Promise<RoadmapAiChangeTimelineEntryDto[]> {
     try {
       const timelineRecord = await this.getChangeTimeline(
@@ -1631,6 +1689,9 @@ export class RoadmapAiService {
       }
       timelineRecord.updatedAt = params.entry.committedAt;
       await this.persistChangeTimeline(timelineRecord);
+      if (params.includeEntriesInResponse === false) {
+        return [];
+      }
       return timelineRecord.entries.map((entry) =>
         this.toTimelineEntryDto(entry),
       );
