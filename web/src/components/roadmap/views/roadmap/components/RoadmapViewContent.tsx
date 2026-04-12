@@ -32,6 +32,8 @@ import {
   useRoadmapStore,
   type CanvasViewMode,
 } from "@/stores/roadmapStore";
+import { useShallow } from "zustand/react/shallow";
+import type { RoadmapPerformanceMode } from "../models/types";
 
 interface RoadmapViewContentProps {
   roadmapId: string;
@@ -41,6 +43,7 @@ interface RoadmapViewContentProps {
   onDeepLinkNodeConsumed?: (view: RoadmapUrlView) => void;
   onViewChange?: (view: RoadmapUrlView) => void;
   onNodeOpened?: (nodeId: string, view: RoadmapUrlView) => void;
+  onNodeClosed?: (view: RoadmapUrlView) => void;
 }
 
 const CHAT_PANEL_DEFAULT_WIDTH = 380;
@@ -148,30 +151,41 @@ export function RoadmapViewContent({
   onDeepLinkNodeConsumed,
   onViewChange,
   onNodeOpened,
+  onNodeClosed,
 }: RoadmapViewContentProps) {
   const toast = useToast();
   // Roadmap data and actions from store
-  const roadmap = useRoadmapStore((state) => state.roadmap);
-  const isLoadingRoadmap = useRoadmapStore((state) => state.isLoadingRoadmap);
-  const activeEpicId = useRoadmapStore((state) => state.activeEpicId);
-  const applyRoadmapSnapshot = useRoadmapStore(
-    (state) => state.applyRoadmapSnapshot,
+  const {
+    roadmap,
+    isLoadingRoadmap,
+    activeEpicId,
+    applyRoadmapSnapshot,
+    updateRoadmapMetadata,
+    navigateToNode,
+    navigateToEpicTab,
+    navigateToFeatureNode,
+    openEpicEditor,
+    openFeatureEditor,
+    openTaskDetail,
+    canvasViewMode,
+    setCanvasViewMode,
+  } = useRoadmapStore(
+    useShallow((state) => ({
+      roadmap: state.roadmap,
+      isLoadingRoadmap: state.isLoadingRoadmap,
+      activeEpicId: state.activeEpicId,
+      applyRoadmapSnapshot: state.applyRoadmapSnapshot,
+      updateRoadmapMetadata: state.updateRoadmapMetadata,
+      navigateToNode: state.navigateToNode,
+      navigateToEpicTab: state.navigateToEpicTab,
+      navigateToFeatureNode: state.navigateToFeatureNode,
+      openEpicEditor: state.openEpicEditor,
+      openFeatureEditor: state.openFeatureEditorModal,
+      openTaskDetail: state.openTaskDetail,
+      canvasViewMode: state.canvasViewMode,
+      setCanvasViewMode: state.setCanvasViewMode,
+    })),
   );
-  const updateRoadmapMetadata = useRoadmapStore(
-    (state) => state.updateRoadmapMetadata,
-  );
-  const navigateToNode = useRoadmapStore((state) => state.navigateToNode);
-  const navigateToEpicTab = useRoadmapStore((state) => state.navigateToEpicTab);
-  const navigateToFeatureNode = useRoadmapStore(
-    (state) => state.navigateToFeatureNode,
-  );
-  const openEpicEditor = useRoadmapStore((state) => state.openEpicEditor);
-  const openFeatureEditor = useRoadmapStore(
-    (state) => state.openFeatureEditorModal,
-  );
-  const openTaskDetail = useRoadmapStore((state) => state.openTaskDetail);
-  const canvasViewMode = useRoadmapStore((state) => state.canvasViewMode);
-  const setCanvasViewMode = useRoadmapStore((state) => state.setCanvasViewMode);
   const [roadmapError, setRoadmapError] = useState<string | null>(null);
   const [isJsonPanelOpen, setIsJsonPanelOpen] = useState(false);
   const [isSavingRoadmapJson, setIsSavingRoadmapJson] = useState(false);
@@ -271,6 +285,10 @@ export function RoadmapViewContent({
     },
     [canvasViewMode, onNodeOpened],
   );
+
+  const handleNodeClose = useCallback(() => {
+    onNodeClosed?.(toRoadmapUrlView(canvasViewMode));
+  }, [canvasViewMode, onNodeClosed]);
 
   const setSidebarExpanded = useProjectSettingsStore(
     (state) => state.setSidebarExpanded,
@@ -410,8 +428,28 @@ export function RoadmapViewContent({
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   const roadmapJsonValue = useMemo(() => {
-    if (!roadmap) return "{}";
+    if (!isJsonPanelOpen || !roadmap) return "{}";
     return JSON.stringify(buildRoadmapJsonDocument(roadmap), null, 2);
+  }, [isJsonPanelOpen, roadmap]);
+
+  const performanceMode = useMemo<RoadmapPerformanceMode>(() => {
+    if (!roadmap) {
+      return "normal";
+    }
+
+    let nodeCount = 0;
+    let taskCount = 0;
+    for (const epic of roadmap.epics ?? []) {
+      nodeCount += 1;
+      for (const feature of epic.features ?? []) {
+        nodeCount += 1;
+        taskCount += feature.tasks?.length ?? 0;
+      }
+    }
+
+    return nodeCount >= 80 || taskCount >= 300
+      ? "reducedMotion"
+      : "normal";
   }, [roadmap]);
 
   const currentUserRole = roadmap?.currentUserRole;
@@ -581,6 +619,8 @@ export function RoadmapViewContent({
             roadmap={roadmap}
             hideMiniMap={isAiChatPanelOpen}
             onNodeOpen={handleNodeOpen}
+            onNodeClose={handleNodeClose}
+            performanceMode={performanceMode}
           />
         </div>
 

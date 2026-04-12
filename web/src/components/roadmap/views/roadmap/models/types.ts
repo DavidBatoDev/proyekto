@@ -7,6 +7,8 @@ import type {
 	RoadmapTask,
 } from "@/types/roadmap";
 
+export type RoadmapPerformanceMode = "normal" | "reducedMotion";
+
 export interface RoadmapCanvasControllerProps {
 	roadmap?: Roadmap | null;
 	milestones?: RoadmapMilestone[];
@@ -59,6 +61,8 @@ export interface RoadmapCanvasControllerProps {
 	onOpenTaskDetailHandled?: () => void;
 	onActiveEpicChange?: (epicId: string | null) => void;
 	onNodeOpen?: (nodeId: string) => void;
+	onNodeClose?: () => void;
+	performanceMode?: RoadmapPerformanceMode;
 }
 
 export interface RoadmapCanvasProps extends RoadmapCanvasControllerProps {

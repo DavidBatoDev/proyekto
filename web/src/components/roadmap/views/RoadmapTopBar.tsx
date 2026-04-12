@@ -7,6 +7,7 @@ import {
   FileText,
   Boxes,
 } from "lucide-react";
+import { useMemo } from "react";
 import {
   DndContext,
   closestCenter,
@@ -26,6 +27,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { RoadmapEpic } from "@/types/roadmap";
 import { useRoadmapStore } from "@/stores/roadmapStore";
+import { useShallow } from "zustand/react/shallow";
 
 const LEFT_PANEL_WIDTH = 320;
 
@@ -100,32 +102,41 @@ export function RoadmapTopBar({
   onShare,
   onOpenChatPanel,
 }: RoadmapTopBarProps) {
-  const epics = useRoadmapStore((state) => state.epics);
-  const viewMode = useRoadmapStore((state) => state.canvasViewMode);
-  const selectedEpicId = useRoadmapStore((state) => state.canvasSelectedEpicId);
-  const openEpicTabs = useRoadmapStore((state) => state.canvasOpenEpicTabs);
-  const setViewMode = useRoadmapStore((state) => state.setCanvasViewMode);
-  const setSelectedEpicId = useRoadmapStore(
-    (state) => state.setCanvasSelectedEpicId,
+  const {
+    epics,
+    viewMode,
+    selectedEpicId,
+    openEpicTabs,
+    setViewMode,
+    setSelectedEpicId,
+    setOpenEpicTabs,
+    closeCanvasEpicTab,
+    selectedArtifactId,
+    openArtifactTabs,
+    artifactsById,
+    closeCanvasArtifactTab,
+    setSelectedArtifactId,
+  } = useRoadmapStore(
+    useShallow((state) => ({
+      epics: state.epics,
+      viewMode: state.canvasViewMode,
+      selectedEpicId: state.canvasSelectedEpicId,
+      openEpicTabs: state.canvasOpenEpicTabs,
+      setViewMode: state.setCanvasViewMode,
+      setSelectedEpicId: state.setCanvasSelectedEpicId,
+      setOpenEpicTabs: state.setCanvasOpenEpicTabs,
+      closeCanvasEpicTab: state.closeCanvasEpicTab,
+      selectedArtifactId: state.canvasSelectedArtifactId,
+      openArtifactTabs: state.canvasOpenArtifactTabs,
+      artifactsById: state.artifactsById,
+      closeCanvasArtifactTab: state.closeCanvasArtifactTab,
+      setSelectedArtifactId: state.setCanvasSelectedArtifactId,
+    })),
   );
-  const setOpenEpicTabs = useRoadmapStore(
-    (state) => state.setCanvasOpenEpicTabs,
-  );
-  const closeCanvasEpicTab = useRoadmapStore(
-    (state) => state.closeCanvasEpicTab,
-  );
-  const selectedArtifactId = useRoadmapStore(
-    (state) => state.canvasSelectedArtifactId,
-  );
-  const openArtifactTabs = useRoadmapStore(
-    (state) => state.canvasOpenArtifactTabs,
-  );
-  const artifactsById = useRoadmapStore((state) => state.artifactsById);
-  const closeCanvasArtifactTab = useRoadmapStore(
-    (state) => state.closeCanvasArtifactTab,
-  );
-  const setSelectedArtifactId = useRoadmapStore(
-    (state) => state.setCanvasSelectedArtifactId,
+
+  const epicById = useMemo(
+    () => new Map(epics.map((epic) => [epic.id, epic])),
+    [epics],
   );
 
   const sensors = useSensors(
@@ -202,7 +213,7 @@ export function RoadmapTopBar({
               >
                 <div className="flex items-center gap-2">
                   {openEpicTabs.map((epicId) => {
-                    const epic = epics.find((item) => item.id === epicId);
+                    const epic = epicById.get(epicId);
                     if (!epic) return null;
 
                     return (

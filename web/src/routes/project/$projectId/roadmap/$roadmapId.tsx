@@ -115,6 +115,24 @@ function RoadmapViewPage() {
     [navigate, node, nodeId, projectId, roadmapId, view],
   );
 
+  const handleNodeClosed = useCallback(
+    (nextView: RoadmapDetailView) => {
+      const isCanonicalSearch =
+        node === undefined && nodeId === undefined && view === nextView;
+      if (isCanonicalSearch) return;
+
+      void navigate({
+        to: "/project/$projectId/roadmap/$roadmapId",
+        params: { projectId, roadmapId },
+        search: {
+          view: nextView,
+        },
+        replace: true,
+      });
+    },
+    [navigate, node, nodeId, projectId, roadmapId, view],
+  );
+
   return (
     <RoadmapViewContent
       roadmapId={roadmapId}
@@ -124,6 +142,7 @@ function RoadmapViewPage() {
       onDeepLinkNodeConsumed={handleDeepLinkNodeConsumed}
       onViewChange={handleViewChange}
       onNodeOpened={handleNodeOpened}
+      onNodeClosed={handleNodeClosed}
     />
   );
 }

@@ -12,6 +12,7 @@ import {
   Calendar,
 } from "lucide-react";
 import type { RoadmapFeature, RoadmapTask } from "@/types/roadmap";
+import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
 import { TaskListItem } from "./TaskListItem";
 import {
   calculateFeatureProgressFromTasks,
@@ -30,6 +31,7 @@ export interface FeatureWidgetData extends Record<string, unknown> {
   pulseTaskId?: string | null;
   pulseTaskToken?: number;
   pulseToken?: number;
+  performanceMode?: RoadmapPerformanceMode;
 }
 
 type FeatureWidgetNode = Node<FeatureWidgetData>;
@@ -47,7 +49,9 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     pulseTaskId,
     pulseTaskToken,
     pulseToken,
+    performanceMode = "normal",
   } = data;
+  const isReducedMotion = performanceMode === "reducedMotion";
   const safelyUpdateTask = (task: RoadmapTask) => {
     if (!onUpdateTask) return;
     void Promise.resolve(onUpdateTask(task)).catch(() => undefined);
@@ -108,6 +112,10 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   }, [feature.description]);
 
   useEffect(() => {
+    if (isReducedMotion) {
+      setIsPulsing(false);
+      return;
+    }
     if (!pulseToken) return;
     setIsPulsing(true);
     const timeoutId = window.setTimeout(() => {
@@ -116,7 +124,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [pulseToken]);
+  }, [isReducedMotion, pulseToken]);
 
   const renderAssigneeAvatar = (
     assignee: NonNullable<RoadmapTask["assignee"]>,
@@ -150,12 +158,16 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     <>
       <motion.div
         className={`relative group bg-white border-2 border-amber-300 rounded-4xl shadow-md hover:shadow-lg transition-all w-[500px] max-h-80 flex flex-col cursor-pointer hover:border-amber-400 ${
-          isPulsing ? "roadmap-widget-light-pulse" : ""
+          isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
         }`}
         onClick={() => onClick?.(feature)}
-        initial={{ opacity: 0, y: 12, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.25, ease: "easeOut" }}
+        initial={
+          isReducedMotion ? false : { opacity: 0, y: 12, scale: 0.98 }
+        }
+        animate={isReducedMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+        transition={
+          isReducedMotion ? undefined : { duration: 0.25, ease: "easeOut" }
+        }
       >
         {/* Deliverable indicator */}
         {feature.is_deliverable && (

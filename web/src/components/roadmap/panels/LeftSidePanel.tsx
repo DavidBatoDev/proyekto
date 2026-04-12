@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { Message } from "./ChatPanel";
 import { useEpics, useRoadmapStore } from "@/stores/roadmapStore";
+import { useShallow } from "zustand/react/shallow";
 
 export type { Message } from "./ChatPanel";
 
@@ -113,7 +114,12 @@ function ExplorerPanel({
 
   // Subscribe to epics from store
   const epics = useEpics();
-  const { openAddFeatureModal, openAddTaskPanel } = useRoadmapStore();
+  const { openAddFeatureModal, openAddTaskPanel } = useRoadmapStore(
+    useShallow((state) => ({
+      openAddFeatureModal: state.openAddFeatureModal,
+      openAddTaskPanel: state.openAddTaskPanel,
+    })),
+  );
   const [expandedEpics, setExpandedEpics] = useState<Set<string>>(new Set());
   const [expandedFeatures, setExpandedFeatures] = useState<Set<string>>(
     new Set(),
@@ -525,7 +531,7 @@ function ExplorerPanel({
             {sortedEpics.map((epic) => {
               const isEpicExpanded = expandedEpics.has(epic.id);
               const isEpicHighlighted = highlightedEpicId === epic.id;
-              const features = (epic.features || []).sort(
+              const features = [...(epic.features || [])].sort(
                 (a, b) => a.position - b.position,
               );
 
@@ -600,7 +606,7 @@ function ExplorerPanel({
                         const isFeatureExpanded = expandedFeatures.has(
                           feature.id,
                         );
-                        const tasks = (feature.tasks || []).sort(
+                        const tasks = [...(feature.tasks || [])].sort(
                           (a, b) => a.position - b.position,
                         );
 

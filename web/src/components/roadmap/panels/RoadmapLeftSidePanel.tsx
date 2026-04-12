@@ -21,6 +21,7 @@ import type { Message } from "./ChatPanel";
 import { useEpics, useRoadmapStore } from "@/stores/roadmapStore";
 import type { RoadmapEpic, RoadmapFeature } from "@/types/roadmap";
 import { useToast } from "@/hooks/useToast";
+import { useShallow } from "zustand/react/shallow";
 import {
 	getSortedEpics,
 	type ExplorerSearchResult,
@@ -305,7 +306,16 @@ function ExplorerPanel({
 		previewFeatureOrderInEpic,
 		reorderEpicsInRoadmap,
 		previewEpicOrderInRoadmap,
-	} = useRoadmapStore();
+	} = useRoadmapStore(
+		useShallow((state) => ({
+			openAddFeatureModal: state.openAddFeatureModal,
+			openAddTaskPanel: state.openAddTaskPanel,
+			reorderFeaturesInEpic: state.reorderFeaturesInEpic,
+			previewFeatureOrderInEpic: state.previewFeatureOrderInEpic,
+			reorderEpicsInRoadmap: state.reorderEpicsInRoadmap,
+			previewEpicOrderInRoadmap: state.previewEpicOrderInRoadmap,
+		})),
+	);
 	const explorerConfig = ROADMAP_STRUCTURE_EXPLORER_CONFIG.roadmap;
 	const delayedOpenTimeouts = useRef<number[]>([]);
 	const hasInitializedEpicExpansion = useRef(false);
@@ -755,7 +765,7 @@ function ExplorerPanel({
 									strategy={verticalListSortingStrategy}
 								>
 									{sortedEpics.map((epic) => {
-										const features = (epic.features || []).sort(
+										const features = [...(epic.features || [])].sort(
 											(a, b) => a.position - b.position,
 										);
 										const isEpicExpanded =
@@ -877,7 +887,7 @@ function ExplorerPanel({
 																		{features.map((feature) => {
 																			const isFeatureExpanded =
 																				expandedFeatures.has(feature.id);
-																			const tasks = (feature.tasks || []).sort(
+																			const tasks = [...(feature.tasks || [])].sort(
 																				(a, b) => a.position - b.position,
 																			);
 																			const canCollapseFeature =

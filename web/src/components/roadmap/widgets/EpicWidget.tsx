@@ -3,6 +3,7 @@ import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { motion } from "framer-motion";
 import { Edit2, Trash2, Plus, ExternalLink, Calendar } from "lucide-react";
 import type { RoadmapEpic } from "@/types/roadmap";
+import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
 import { calculateEpicProgressFromFeatures } from "../shared/featureProgress";
 
 export interface EpicWidgetData extends Record<string, unknown> {
@@ -13,6 +14,7 @@ export interface EpicWidgetData extends Record<string, unknown> {
   onAddFeature?: (epicId: string) => void;
   onNavigateToTab?: (tabId: string) => void;
   pulseToken?: number;
+  performanceMode?: RoadmapPerformanceMode;
 }
 
 type EpicWidgetNode = Node<EpicWidgetData>;
@@ -26,7 +28,9 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
     onAddFeature,
     onNavigateToTab,
     pulseToken,
+    performanceMode = "normal",
   } = data;
+  const isReducedMotion = performanceMode === "reducedMotion";
   const descriptionRef = useRef<HTMLDivElement>(null);
   const [hasOverflow, setHasOverflow] = useState(false);
   const [isPulsing, setIsPulsing] = useState(false);
@@ -44,6 +48,10 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
   }, [epic.description]);
 
   useEffect(() => {
+    if (isReducedMotion) {
+      setIsPulsing(false);
+      return;
+    }
     if (!pulseToken) return;
     setIsPulsing(true);
     const timeoutId = window.setTimeout(() => {
@@ -52,17 +60,21 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [pulseToken]);
+  }, [isReducedMotion, pulseToken]);
 
   return (
     <motion.div
       className={`group relative bg-white border-2 border-gray-300 rounded-4xl shadow-md hover:shadow-lg transition-shadow w-[500px] max-h-[420px] flex flex-col cursor-pointer ${
-        isPulsing ? "roadmap-widget-light-pulse" : ""
+        isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
       }`}
       onClick={() => onEdit?.(epic)}
-      initial={{ opacity: 0, y: 12, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.25, ease: "easeOut" }}
+      initial={
+        isReducedMotion ? false : { opacity: 0, y: 12, scale: 0.98 }
+      }
+      animate={isReducedMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+      transition={
+        isReducedMotion ? undefined : { duration: 0.25, ease: "easeOut" }
+      }
     >
       {/* Invisible handles for edge connections */}
       <Handle

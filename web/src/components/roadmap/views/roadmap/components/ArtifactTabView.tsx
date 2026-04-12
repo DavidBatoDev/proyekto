@@ -9,11 +9,13 @@ import type {
   RoadmapFeature,
 } from "@/types/roadmap";
 import type { RoadmapArtifactPreview } from "@/types/roadmapArtifact";
+import type { RoadmapPerformanceMode } from "../models/types";
 
 interface ArtifactTabViewProps {
   artifact: RoadmapArtifactPreview;
   onApply: (artifactId: string) => void;
   onDiscard: (artifactId: string) => void;
+  performanceMode?: RoadmapPerformanceMode;
 }
 
 const STATUS_STYLE: Record<
@@ -209,6 +211,7 @@ export function ArtifactTabView({
   artifact,
   onApply,
   onDiscard,
+  performanceMode = "normal",
 }: ArtifactTabViewProps) {
   const [isDiffOpen, setIsDiffOpen] = useState(false);
   const currentRoadmap = useRoadmapStore((state) => state.roadmap);
@@ -243,6 +246,7 @@ export function ArtifactTabView({
         roadmap={displayRoadmap}
         epics={displayRoadmap.epics || []}
         showMiniMap={false}
+        performanceMode={performanceMode}
         onUpdateEpic={noopUpdateEpic}
         onDeleteEpic={noopDeleteEpic}
         onUpdateFeature={noopUpdateFeature}

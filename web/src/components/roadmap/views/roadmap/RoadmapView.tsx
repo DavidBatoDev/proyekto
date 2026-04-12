@@ -20,6 +20,7 @@ import type {
   RoadmapFeature,
   RoadmapTask,
 } from "@/types/roadmap";
+import type { RoadmapPerformanceMode } from "./models/types";
 
 interface RoadmapViewProps {
   roadmap: Roadmap;
@@ -43,11 +44,39 @@ interface RoadmapViewProps {
   focusNodeOffsetX?: number;
   focusTaskId?: string | null;
   onFocusComplete?: () => void;
+  performanceMode?: RoadmapPerformanceMode;
 }
+
+type StructuralEpicNodeData = {
+  kind: "epic";
+  epic: RoadmapEpic;
+};
+
+type StructuralFeatureNodeData = {
+  kind: "feature";
+  feature: RoadmapFeature & { epic_id: string };
+};
+
+type StructuralNodeData = StructuralEpicNodeData | StructuralFeatureNodeData;
+
+const getEdgeColor = (status: RoadmapFeature["status"]) => {
+  switch (status) {
+    case "completed":
+      return "#22c55e";
+    case "in_progress":
+      return "#3b82f6";
+    case "blocked":
+      return "#ef4444";
+    case "in_review":
+      return "#a855f7";
+    default:
+      return "#9ca3af";
+  }
+};
 
 // Custom layout configuration with centered epic positioning among features
 const getLayoutedElements = (
-  nodes: Node[],
+  nodes: Node<StructuralNodeData>[],
   edges: Edge[],
   epics: RoadmapEpic[],
 ) => {
@@ -75,8 +104,8 @@ const getLayoutedElements = (
   const sortedEpics = [...epics].sort((a, b) => a.position - b.position);
   const featureNodeMap = new Map(featureNodes.map((node) => [node.id, node]));
 
-  const positionedEpicNodes: Node[] = [];
-  const positionedFeatureNodes: Node[] = [];
+  const positionedEpicNodes: Node<StructuralNodeData>[] = [];
+  const positionedFeatureNodes: Node<StructuralNodeData>[] = [];
 
   let currentY = 100;
 
@@ -197,12 +226,13 @@ const getLayoutedElements = (
 };
 
 export const RoadmapView = ({
+  roadmap: _roadmap,
   epics,
   showMiniMap = true,
   minZoom = 0.4,
   onUpdateEpic,
   onDeleteEpic,
-  onUpdateFeature,
+  onUpdateFeature: _onUpdateFeature,
   onDeleteFeature,
   onSelectFeature,
   onSelectEpic,
@@ -217,6 +247,7 @@ export const RoadmapView = ({
   focusTaskId,
   onFocusComplete,
   focusNodeOffsetX = 0,
+  performanceMode = "normal",
 }: RoadmapViewProps) => {
   const DEFAULT_ZOOM = 0.67;
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
@@ -231,30 +262,16 @@ export const RoadmapView = ({
     token: number;
   } | null>(null);
   const [reactFlowInstance, setReactFlowInstance] =
-    useState<ReactFlowInstance | null>(null);
+    useState<
+      ReactFlowInstance<Node<EpicWidgetData | FeatureWidgetData>, Edge> | null
+    >(null);
 
   const DEFAULT_VIEWPORT_X = -50;
   const DEFAULT_VIEWPORT_Y = 0;
   const MAX_ZOOM = 1.0;
   const MIN_ZOOM = minZoom;
+  const isReducedMotion = performanceMode === "reducedMotion";
 
-  // Helper function to get edge color based on status
-  const getEdgeColor = (status: RoadmapFeature["status"]) => {
-    switch (status) {
-      case "completed":
-        return "#22c55e"; // green
-      case "in_progress":
-        return "#3b82f6"; // blue
-      case "blocked":
-        return "#ef4444"; // red
-      case "in_review":
-        return "#a855f7"; // purple
-      default:
-        return "#9ca3af"; // gray
-    }
-  };
-
-  // Define custom node types
   const nodeTypes: NodeTypes = useMemo(
     () => ({
       epicWidget: EpicWidget,
@@ -263,8 +280,7 @@ export const RoadmapView = ({
     [],
   );
 
-  // Convert epics and features to nodes and edges
-  const { nodes, edges } = useMemo(() => {
+  const { layoutedNodes, edges, maxTaskCount } = useMemo(() => {
     const orderedEpics = [...epics]
       .sort((a, b) => a.position - b.position)
       .map((epic) => ({
@@ -279,64 +295,44 @@ export const RoadmapView = ({
           })),
       }));
 
-    const epicNodes: Node<EpicWidgetData>[] = orderedEpics.map((epic) => ({
+    let derivedMaxTaskCount = 0;
+    const epicNodes: Node<StructuralNodeData>[] = orderedEpics.map((epic) => ({
       id: epic.id,
       type: "epicWidget",
       data: {
+        kind: "epic",
         epic,
-        onEdit: onSelectEpic
-          ? () => onSelectEpic(epic.id)
-          : (updatedEpic) => onUpdateEpic(updatedEpic),
-        onDelete: onDeleteEpic,
-        onAddEpicBelow,
-        onAddFeature,
-        onNavigateToTab: onNavigateToEpic,
-        pulseToken:
-          pulseNodeFocus?.nodeId === epic.id ? pulseNodeFocus.token : undefined,
       },
-      position: { x: 0, y: 0 }, // Will be set by dagre
+      position: { x: 0, y: 0 },
     }));
 
     const allFeatures = orderedEpics.flatMap((epic) =>
-      (epic.features || []).map((feature) => ({
-        ...feature,
-        epic_id: epic.id,
-      })),
+      (epic.features || []).map((feature) => {
+        const taskCount = feature.tasks?.length || 0;
+        if (taskCount > derivedMaxTaskCount) {
+          derivedMaxTaskCount = taskCount;
+        }
+        return {
+          ...feature,
+          epic_id: epic.id,
+        };
+      }),
     );
 
-    const featureNodes: Node<FeatureWidgetData>[] = allFeatures.map(
+    const featureNodes: Node<StructuralNodeData>[] = allFeatures.map(
       (feature) => ({
         id: feature.id,
         type: "featureWidget",
         data: {
+          kind: "feature",
           feature,
-          showTaskCount: true,
-          onEdit: () => onEditFeature?.(feature.epic_id, feature.id),
-          onDelete: onDeleteFeature,
-          onClick: onSelectFeature,
-          onAddTask,
-          onSelectTask,
-          onUpdateTask,
-          pulseTaskId:
-            pulseTaskFocus?.featureId === feature.id
-              ? pulseTaskFocus.taskId
-              : null,
-          pulseTaskToken:
-            pulseTaskFocus?.featureId === feature.id
-              ? pulseTaskFocus.token
-              : undefined,
-          pulseToken:
-            pulseNodeFocus?.nodeId === feature.id
-              ? pulseNodeFocus.token
-              : undefined,
         },
-        position: { x: 0, y: 0 }, // Will be set by dagre
+        position: { x: 0, y: 0 },
       }),
     );
 
     const allNodes = [...epicNodes, ...featureNodes];
 
-    // Create edges from epic to features
     const featureEdges: Edge[] = allFeatures.map((feature) => ({
       id: `epic-feature-${feature.epic_id}-${feature.id}`,
       source: feature.epic_id,
@@ -350,7 +346,6 @@ export const RoadmapView = ({
       },
     }));
 
-    // Create edges between consecutive epics (based on position)
     const epicEdges: Edge[] = [];
     for (let i = 0; i < orderedEpics.length - 1; i++) {
       epicEdges.push({
@@ -362,40 +357,100 @@ export const RoadmapView = ({
         type: "simplebezier",
         animated: false,
         style: {
-          stroke: "#9ca3af", // gray for epic connections
+          stroke: "#9ca3af",
           strokeWidth: 2,
-          strokeDasharray: "5,5", // dashed line
+          strokeDasharray: "5,5",
         },
       });
     }
 
     const allEdges = [...epicEdges, ...featureEdges];
 
-    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
+    const { nodes: positionedNodes, edges: positionedEdges } = getLayoutedElements(
       allNodes,
       allEdges,
       orderedEpics,
     );
 
     return {
-      nodes: layoutedNodes,
-      edges: layoutedEdges,
+      layoutedNodes: positionedNodes,
+      edges: positionedEdges,
+      maxTaskCount: derivedMaxTaskCount,
     };
-  }, [
-    epics,
-    onUpdateEpic,
-    onDeleteEpic,
-    onUpdateFeature,
-    onDeleteFeature,
-    onSelectFeature,
-    onEditFeature,
-    onNavigateToEpic,
-    onAddTask,
-    onSelectTask,
-    pulseNodeFocus,
-    pulseTaskFocus,
-    getEdgeColor,
-  ]);
+  }, [epics]);
+
+  const nodes = useMemo(
+    (): Node<EpicWidgetData | FeatureWidgetData>[] =>
+      layoutedNodes.map((node) => {
+        if (node.type === "epicWidget") {
+          const epic = (node.data as StructuralEpicNodeData).epic;
+          return {
+            ...node,
+            data: {
+              epic,
+              onEdit: onSelectEpic
+                ? () => onSelectEpic(epic.id)
+                : (updatedEpic) => onUpdateEpic(updatedEpic),
+              onDelete: onDeleteEpic,
+              onAddEpicBelow,
+              onAddFeature,
+              onNavigateToTab: onNavigateToEpic,
+              pulseToken:
+                pulseNodeFocus?.nodeId === epic.id
+                  ? pulseNodeFocus.token
+                  : undefined,
+              performanceMode,
+            } satisfies EpicWidgetData,
+          };
+        }
+
+        const feature = (node.data as StructuralFeatureNodeData).feature;
+        return {
+          ...node,
+          data: {
+            feature,
+            showTaskCount: true,
+            onEdit: () => onEditFeature?.(feature.epic_id, feature.id),
+            onDelete: onDeleteFeature,
+            onClick: onSelectFeature,
+            onAddTask,
+            onSelectTask,
+            onUpdateTask,
+            pulseTaskId:
+              pulseTaskFocus?.featureId === feature.id
+                ? pulseTaskFocus.taskId
+                : null,
+            pulseTaskToken:
+              pulseTaskFocus?.featureId === feature.id
+                ? pulseTaskFocus.token
+                : undefined,
+            pulseToken:
+              pulseNodeFocus?.nodeId === feature.id
+                ? pulseNodeFocus.token
+                : undefined,
+            performanceMode,
+          } satisfies FeatureWidgetData,
+        };
+      }),
+    [
+      layoutedNodes,
+      onAddEpicBelow,
+      onAddFeature,
+      onAddTask,
+      onDeleteEpic,
+      onDeleteFeature,
+      onEditFeature,
+      onNavigateToEpic,
+      onSelectEpic,
+      onSelectFeature,
+      onSelectTask,
+      onUpdateEpic,
+      onUpdateTask,
+      performanceMode,
+      pulseNodeFocus,
+      pulseTaskFocus,
+    ],
+  );
 
   useEffect(() => {
     if (!focusNodeId || !reactFlowInstance) {
@@ -415,7 +470,7 @@ export const RoadmapView = ({
 
     reactFlowInstance.setCenter(centerX, centerY, {
       zoom: 0.8,
-      duration: 600,
+      duration: isReducedMotion ? 0 : 600,
     });
 
     setPulseNodeFocus((previous) => ({
@@ -444,47 +499,40 @@ export const RoadmapView = ({
     focusNodeId,
     focusNodeOffsetX,
     focusTaskId,
+    isReducedMotion,
     onFocusComplete,
     reactFlowInstance,
   ]);
 
   const extraRightPadding = useMemo(() => {
-    const maxTaskCount = epics.reduce((maxCount, epic) => {
-      const epicMax = (epic.features || []).reduce((featureMax, feature) => {
-        const taskCount = feature.tasks?.length || 0;
-        return Math.max(featureMax, taskCount);
-      }, 0);
-      return Math.max(maxCount, epicMax);
-    }, 0);
-
     if (maxTaskCount >= 60) return 2600;
     if (maxTaskCount >= 40) return 2200;
     if (maxTaskCount >= 20) return 1800;
     return 1000;
-  }, [epics]);
+  }, [maxTaskCount]);
 
   const translateExtent = useMemo((): [[number, number], [number, number]] => {
-    if (!nodes.length) {
+    if (!layoutedNodes.length) {
       return [
         [-1000, -400],
         [2400, 800],
       ];
     }
 
-    const xPositions = nodes.map((node) => node.position.x);
-    const yPositions = nodes.map((node) => node.position.y);
+    const xPositions = layoutedNodes.map((node) => node.position.x);
+    const yPositions = layoutedNodes.map((node) => node.position.y);
 
     const NODE_WIDTH = 520;
     const minX = Math.min(...xPositions) - 400;
     const maxX = Math.max(...xPositions) + NODE_WIDTH + extraRightPadding;
-    const minY = Math.min(...yPositions) - 240; // padding above first row
-    const maxY = Math.max(...yPositions) + 720; // padding below tallest group
+    const minY = Math.min(...yPositions) - 240;
+    const maxY = Math.max(...yPositions) + 720;
 
     return [
       [minX, minY],
       [maxX, maxY],
     ];
-  }, [nodes, extraRightPadding]);
+  }, [extraRightPadding, layoutedNodes]);
 
   const onNodesChange = useCallback(() => {
     // Handle node changes if needed (e.g., dragging)
@@ -514,7 +562,7 @@ export const RoadmapView = ({
           setZoom(viewport.zoom);
           setIsPanningCanvas(false);
         }}
-        onInit={(instance: ReactFlowInstance) => {
+        onInit={(instance) => {
           setReactFlowInstance(instance);
           setZoom(instance.getZoom());
         }}

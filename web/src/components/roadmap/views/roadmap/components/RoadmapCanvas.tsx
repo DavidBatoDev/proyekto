@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { Plus } from "lucide-react";
 import { EpicTab } from "./EpicTab";
 import { ArtifactTabView } from "./ArtifactTabView";
@@ -8,6 +9,7 @@ import { RoadmapView } from "../RoadmapView";
 import { useRoadmapCanvasController } from "../hooks/useRoadmapCanvasController";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { useToast } from "@/hooks/useToast";
+import { useShallow } from "zustand/react/shallow";
 
 const RoadmapCanvas = ({
   projectTitle: _projectTitle,
@@ -47,6 +49,8 @@ const RoadmapCanvas = ({
   onOpenTaskDetailHandled: onOpenTaskDetailHandledProp,
   onActiveEpicChange,
   onNodeOpen,
+  onNodeClose,
+  performanceMode = "normal",
 }: RoadmapCanvasProps) => {
   const toast = useToast();
   const controller = useRoadmapCanvasController({
@@ -81,6 +85,7 @@ const RoadmapCanvas = ({
     onOpenTaskDetailHandled: onOpenTaskDetailHandledProp,
     onActiveEpicChange,
     onNodeOpen,
+    onNodeClose,
   });
 
   const {
@@ -88,7 +93,6 @@ const RoadmapCanvas = ({
     milestones,
     epics,
     viewMode,
-    openEpicTabs,
     selectedTaskId,
     sidePanelOpen,
     targetFeatureForTask,
@@ -143,7 +147,6 @@ const RoadmapCanvas = ({
     handleCreateFeature,
     handleUpdateFeatureFromModal,
     handleOpenEditFeatureModal,
-    handleOpenEditEpicModal,
     handleOpenAddFeatureModal,
     handleAddEpicBelow,
     handleConfirmDelete,
@@ -151,14 +154,19 @@ const RoadmapCanvas = ({
     handleTaskUpdate,
     handleTaskDelete,
   } = controller;
-  const selectedArtifactId = useRoadmapStore(
-    (state) => state.canvasSelectedArtifactId,
+  const {
+    selectedArtifactId,
+    artifactsById,
+    applyArtifactSnapshot,
+    discardArtifact,
+  } = useRoadmapStore(
+    useShallow((state) => ({
+      selectedArtifactId: state.canvasSelectedArtifactId,
+      artifactsById: state.artifactsById,
+      applyArtifactSnapshot: state.applyArtifactSnapshot,
+      discardArtifact: state.discardArtifact,
+    })),
   );
-  const artifactsById = useRoadmapStore((state) => state.artifactsById);
-  const applyArtifactSnapshot = useRoadmapStore(
-    (state) => state.applyArtifactSnapshot,
-  );
-  const discardArtifact = useRoadmapStore((state) => state.discardArtifact);
   const selectedArtifact = selectedArtifactId
     ? artifactsById[selectedArtifactId]
     : null;
@@ -167,13 +175,51 @@ const RoadmapCanvas = ({
     return null;
   }
 
-  const handleNavigateToEpicTab = (epicId: string) => {
-    setSelectedEpic(epicId);
-    setViewMode("epic");
-    if (!openEpicTabs.includes(epicId)) {
-      setOpenEpicTabs([...openEpicTabs, epicId]);
-    }
-  };
+  const handleNavigateToEpicTab = useCallback(
+    (epicId: string) => {
+      setSelectedEpic(epicId);
+      setViewMode("epic");
+      setOpenEpicTabs((prevTabs) =>
+        prevTabs.includes(epicId) ? prevTabs : [...prevTabs, epicId],
+      );
+    },
+    [setOpenEpicTabs, setSelectedEpic, setViewMode],
+  );
+
+  const handleSelectFeature = useCallback(
+    (feature: { epic_id: string; id: string }) => {
+      setEditingFeatureEpicId(feature.epic_id);
+      setEditingFeatureId(feature.id);
+      setIsEditFeatureModalOpen(true);
+    },
+    [setEditingFeatureEpicId, setEditingFeatureId, setIsEditFeatureModalOpen],
+  );
+
+  const handleSelectEpic = useCallback(
+    (epicId: string) => {
+      setEditingEpicId(epicId);
+      setIsEditEpicModalOpen(true);
+    },
+    [setEditingEpicId, setIsEditEpicModalOpen],
+  );
+
+  const handleSelectTask = useCallback(
+    (task: { id: string }) => {
+      setSelectedTaskId(task.id);
+      setTargetFeatureForTask(null);
+      setSidePanelOpen(true);
+    },
+    [setSelectedTaskId, setSidePanelOpen, setTargetFeatureForTask],
+  );
+
+  const handleCreateTaskFromFeature = useCallback(
+    (featureId: string) => {
+      setTargetFeatureForTask(featureId);
+      setSelectedTaskId(null);
+      setSidePanelOpen(true);
+    },
+    [setSelectedTaskId, setSidePanelOpen, setTargetFeatureForTask],
+  );
 
   return (
     <div className="relative h-full bg-white flex flex-col">
@@ -209,28 +255,17 @@ const RoadmapCanvas = ({
             roadmap={roadmap}
             epics={epics}
             showMiniMap={!hideMiniMap}
+            performanceMode={performanceMode}
             onUpdateEpic={onUpdateEpic}
             onDeleteEpic={handleDeleteEpic}
             onUpdateFeature={onUpdateFeature}
             onDeleteFeature={handleDeleteFeature}
-            onSelectFeature={(feature) => {
-              handleOpenEditFeatureModal(feature.epic_id, feature.id);
-            }}
-            onSelectEpic={(epicId) => {
-              handleOpenEditEpicModal(epicId);
-            }}
-            onSelectTask={(task) => {
-              setSelectedTaskId(task.id);
-              setTargetFeatureForTask(null);
-              setSidePanelOpen(true);
-            }}
+            onSelectFeature={handleSelectFeature}
+            onSelectEpic={handleSelectEpic}
+            onSelectTask={handleSelectTask}
             onAddEpicBelow={handleAddEpicBelow}
             onAddFeature={handleOpenAddFeatureModal}
-            onAddTask={(featureId) => {
-              setTargetFeatureForTask(featureId);
-              setSelectedTaskId(null);
-              setSidePanelOpen(true);
-            }}
+            onAddTask={handleCreateTaskFromFeature}
             onEditFeature={handleOpenEditFeatureModal}
             onNavigateToEpic={handleNavigateToEpicTab}
             onUpdateTask={onUpdateTask}
@@ -284,6 +319,7 @@ const RoadmapCanvas = ({
         {viewMode === "artifact" && selectedArtifact && (
           <ArtifactTabView
             artifact={selectedArtifact}
+            performanceMode={performanceMode}
             onApply={(artifactId) => {
               const currentStatus = artifactsById[artifactId]?.status;
               applyArtifactSnapshot(artifactId);

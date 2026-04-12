@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "@/hooks/useToast";
 import { type CanvasViewMode, useRoadmapStore } from "@/stores/roadmapStore";
 import type { EpicPriority, FeatureStatus, RoadmapTask } from "@/types/roadmap";
@@ -6,6 +6,35 @@ import type { UseRoadmapCanvasControllerArgs } from "../models/types";
 
 /** @deprecated Use CanvasViewMode from roadmapStore instead */
 export type ViewMode = CanvasViewMode;
+
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  if (!(error instanceof Error) || error.message.trim().length === 0) {
+    return fallback;
+  }
+
+  const message = error.message.toLowerCase();
+
+  if (
+    message.includes("missing permission") ||
+    message.includes("forbidden") ||
+    message.includes("do not have permission")
+  ) {
+    return "You do not have permission to edit this roadmap item.";
+  }
+
+  if (
+    message.includes("not a member of this project") ||
+    message.includes("not part of this project")
+  ) {
+    return "You do not have access to this project.";
+  }
+
+  if (message.includes("not found") || message.includes("no longer exists")) {
+    return "This roadmap item could not be found. It may have been removed.";
+  }
+
+  return fallback;
+};
 
 export function useRoadmapCanvasController({
   roadmap: roadmapProp,
@@ -39,37 +68,9 @@ export function useRoadmapCanvasController({
   onOpenTaskDetailHandled: onOpenTaskDetailHandledProp,
   onActiveEpicChange,
   onNodeOpen,
+  onNodeClose,
 }: UseRoadmapCanvasControllerArgs) {
   const toast = useToast();
-
-  const getErrorMessage = (error: unknown, fallback: string): string => {
-    if (!(error instanceof Error) || error.message.trim().length === 0) {
-      return fallback;
-    }
-
-    const message = error.message.toLowerCase();
-
-    if (
-      message.includes("missing permission") ||
-      message.includes("forbidden") ||
-      message.includes("do not have permission")
-    ) {
-      return "You do not have permission to edit this roadmap item.";
-    }
-
-    if (
-      message.includes("not a member of this project") ||
-      message.includes("not part of this project")
-    ) {
-      return "You do not have access to this project.";
-    }
-
-    if (message.includes("not found") || message.includes("no longer exists")) {
-      return "This roadmap item could not be found. It may have been removed.";
-    }
-
-    return fallback;
-  };
 
   const storeRoadmap = useRoadmapStore((state) => state.roadmap);
   const storeMilestones = useRoadmapStore((state) => state.milestones);
@@ -191,130 +192,184 @@ export function useRoadmapCanvasController({
     onOpenTaskDetailHandledProp ?? storeClearOpenTaskDetail;
   const onActiveEpicChangeResolved = onActiveEpicChange ?? storeSetActiveEpicId;
 
-  const onUpdateEpic = async (...args: Parameters<typeof onUpdateEpicBase>) => {
-    try {
-      toast.success("Epic updated");
-      await onUpdateEpicBase(...args);
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to update epic"));
-      throw error;
-    }
-  };
+  const { epicById, featureById, taskById } = useMemo(() => {
+    const nextEpicById = new Map<string, (typeof epics)[number]>();
+    const nextFeatureById = new Map<
+      string,
+      { feature: NonNullable<(typeof epics)[number]["features"]>[number]; epicId: string }
+    >();
+    const nextTaskById = new Map<
+      string,
+      { task: RoadmapTask; featureId: string; epicId: string }
+    >();
 
-  const onAddEpicWithToast = async (...args: Parameters<typeof onAddEpic>) => {
-    try {
-      toast.success("Epic created");
-      await onAddEpic(...args);
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to create epic"));
-      throw error;
+    for (const epic of epics) {
+      nextEpicById.set(epic.id, epic);
+      for (const feature of epic.features || []) {
+        nextFeatureById.set(feature.id, { feature, epicId: epic.id });
+        for (const task of feature.tasks || []) {
+          nextTaskById.set(task.id, {
+            task,
+            featureId: feature.id,
+            epicId: epic.id,
+          });
+        }
+      }
     }
-  };
 
-  const onUpdateFeature = async (
-    ...args: Parameters<typeof onUpdateFeatureBase>
-  ) => {
-    try {
-      toast.success("Feature updated");
-      await onUpdateFeatureBase(...args);
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to update feature"));
-      throw error;
-    }
-  };
+    return {
+      epicById: nextEpicById,
+      featureById: nextFeatureById,
+      taskById: nextTaskById,
+    };
+  }, [epics]);
 
-  const onAddFeatureWithToast = async (
-    epicId: Parameters<typeof onAddFeature>[0],
-    data: Parameters<typeof onAddFeature>[1],
-  ) => {
-    try {
-      toast.success("Feature created");
-      await onAddFeature(epicId, data);
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to create feature"));
-      throw error;
-    }
-  };
+  const onUpdateEpic = useCallback(
+    async (...args: Parameters<typeof onUpdateEpicBase>) => {
+      try {
+        toast.success("Epic updated");
+        await onUpdateEpicBase(...args);
+      } catch (error) {
+        toast.error(getErrorMessage(error, "Failed to update epic"));
+        throw error;
+      }
+    },
+    [onUpdateEpicBase, toast],
+  );
 
-  const stripTaskStatus = (task: RoadmapTask) => {
+  const onAddEpicWithToast = useCallback(
+    async (...args: Parameters<typeof onAddEpic>) => {
+      try {
+        toast.success("Epic created");
+        await onAddEpic(...args);
+      } catch (error) {
+        toast.error(getErrorMessage(error, "Failed to create epic"));
+        throw error;
+      }
+    },
+    [onAddEpic, toast],
+  );
+
+  const onUpdateFeature = useCallback(
+    async (...args: Parameters<typeof onUpdateFeatureBase>) => {
+      try {
+        toast.success("Feature updated");
+        await onUpdateFeatureBase(...args);
+      } catch (error) {
+        toast.error(getErrorMessage(error, "Failed to update feature"));
+        throw error;
+      }
+    },
+    [onUpdateFeatureBase, toast],
+  );
+
+  const onAddFeatureWithToast = useCallback(
+    async (
+      epicId: Parameters<typeof onAddFeature>[0],
+      data: Parameters<typeof onAddFeature>[1],
+    ) => {
+      try {
+        toast.success("Feature created");
+        await onAddFeature(epicId, data);
+      } catch (error) {
+        toast.error(getErrorMessage(error, "Failed to create feature"));
+        throw error;
+      }
+    },
+    [onAddFeature, toast],
+  );
+
+  const stripTaskStatus = useCallback((task: RoadmapTask) => {
     const nextTask = { ...task };
     delete (nextTask as Partial<RoadmapTask>).status;
     return nextTask;
-  };
+  }, []);
 
-  const isStatusOnlyTaskUpdate = (nextTask: RoadmapTask): boolean => {
-    if (onUpdateTaskProp) return false;
+  const isStatusOnlyTaskUpdate = useCallback(
+    (nextTask: RoadmapTask): boolean => {
+      if (onUpdateTaskProp) return false;
 
-    const currentTask = epics
-      .flatMap((epic) => epic.features || [])
-      .flatMap((feature) => feature.tasks || [])
-      .find((task) => task.id === nextTask.id);
-    if (!currentTask) return false;
-    if (currentTask.status === nextTask.status) return false;
+      const currentTask = taskById.get(nextTask.id)?.task;
+      if (!currentTask) return false;
+      if (currentTask.status === nextTask.status) return false;
 
-    const currentWithoutStatus = stripTaskStatus(currentTask);
-    const nextWithoutStatus = stripTaskStatus(nextTask);
-    return JSON.stringify(currentWithoutStatus) === JSON.stringify(nextWithoutStatus);
-  };
+      const currentWithoutStatus = stripTaskStatus(currentTask);
+      const nextWithoutStatus = stripTaskStatus(nextTask);
+      return (
+        JSON.stringify(currentWithoutStatus) === JSON.stringify(nextWithoutStatus)
+      );
+    },
+    [onUpdateTaskProp, stripTaskStatus, taskById],
+  );
 
-  const onUpdateTask = async (...args: Parameters<typeof onUpdateTaskBase>) => {
-    const [nextTask] = args;
-    if (nextTask && isStatusOnlyTaskUpdate(nextTask)) {
+  const onUpdateTask = useCallback(
+    async (...args: Parameters<typeof onUpdateTaskBase>) => {
+      const [nextTask] = args;
+      if (nextTask && isStatusOnlyTaskUpdate(nextTask)) {
+        try {
+          await storeUpdateTaskStatusIntent(nextTask.id, nextTask.status);
+        } catch (error) {
+          toast.error(getErrorMessage(error, "Failed to update task"));
+          throw error;
+        }
+        return;
+      }
+
       try {
-        await storeUpdateTaskStatusIntent(nextTask.id, nextTask.status);
+        toast.success("Task updated");
+        await onUpdateTaskBase(...args);
       } catch (error) {
         toast.error(getErrorMessage(error, "Failed to update task"));
         throw error;
       }
-      return;
-    }
+    },
+    [
+      isStatusOnlyTaskUpdate,
+      onUpdateTaskBase,
+      storeUpdateTaskStatusIntent,
+      toast,
+    ],
+  );
 
-    try {
-      toast.success("Task updated");
-      await onUpdateTaskBase(...args);
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to update task"));
-      throw error;
-    }
-  };
+  const onAddMilestone = useCallback(
+    async (...args: Parameters<typeof onAddMilestoneBase>) => {
+      try {
+        toast.success("Milestone created");
+        await onAddMilestoneBase(...args);
+      } catch (error) {
+        toast.error(getErrorMessage(error, "Failed to create milestone"));
+        throw error;
+      }
+    },
+    [onAddMilestoneBase, toast],
+  );
 
-  const onAddMilestone = async (
-    ...args: Parameters<typeof onAddMilestoneBase>
-  ) => {
-    try {
-      toast.success("Milestone created");
-      await onAddMilestoneBase(...args);
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to create milestone"));
-      throw error;
-    }
-  };
+  const onUpdateMilestoneWithToast = useCallback(
+    async (...args: Parameters<typeof onUpdateMilestone>) => {
+      try {
+        toast.success("Milestone updated");
+        await onUpdateMilestone(...args);
+      } catch (error) {
+        toast.error(getErrorMessage(error, "Failed to update milestone"));
+        throw error;
+      }
+    },
+    [onUpdateMilestone, toast],
+  );
 
-  const onUpdateMilestoneWithToast = async (
-    ...args: Parameters<typeof onUpdateMilestone>
-  ) => {
-    try {
-      toast.success("Milestone updated");
-      await onUpdateMilestone(...args);
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to update milestone"));
-      throw error;
-    }
-  };
+  const onDeleteMilestoneWithToast = useCallback(
+    async (...args: Parameters<typeof onDeleteMilestone>) => {
+      try {
+        toast.success("Milestone deleted");
+        await onDeleteMilestone(...args);
+      } catch (error) {
+        toast.error(getErrorMessage(error, "Failed to delete milestone"));
+        throw error;
+      }
+    },
+    [onDeleteMilestone, toast],
+  );
 
-  const onDeleteMilestoneWithToast = async (
-    ...args: Parameters<typeof onDeleteMilestone>
-  ) => {
-    try {
-      toast.success("Milestone deleted");
-      await onDeleteMilestone(...args);
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to delete milestone"));
-      throw error;
-    }
-  };
-
-  const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
   const [targetFeatureForTask, setTargetFeatureForTask] = useState<
@@ -347,13 +402,14 @@ export function useRoadmapCanvasController({
   const [isEpicLoading, setIsEpicLoading] = useState(false);
   const [isFeatureLoading, setIsFeatureLoading] = useState(false);
   const [isTaskLoading, setIsTaskLoading] = useState(false);
+  const hasNotifiedOpenNodeRef = useRef(false);
 
   useEffect(() => {
     if (!navigateToEpicId) {
       return;
     }
 
-    const epicExists = epics.some((epic) => epic.id === navigateToEpicId);
+    const epicExists = epicById.has(navigateToEpicId);
     if (!epicExists) {
       onNavigateToEpicHandled?.();
       return;
@@ -368,7 +424,7 @@ export function useRoadmapCanvasController({
     );
     onNavigateToEpicHandled?.();
   }, [
-    epics,
+    epicById,
     navigateToEpicId,
     onNavigateToEpicHandled,
     setOpenEpicTabs,
@@ -381,9 +437,7 @@ export function useRoadmapCanvasController({
       return;
     }
 
-    const targetEpic = epics.find(
-      (epic) => epic.id === navigateToFeature.epicId,
-    );
+    const targetEpic = epicById.get(navigateToFeature.epicId);
     if (!targetEpic) {
       onNavigateToFeatureHandled?.();
       return;
@@ -398,7 +452,7 @@ export function useRoadmapCanvasController({
     );
     setScrollToFeatureId(navigateToFeature.featureId);
   }, [
-    epics,
+    epicById,
     navigateToFeature,
     onNavigateToFeatureHandled,
     setOpenEpicTabs,
@@ -410,169 +464,197 @@ export function useRoadmapCanvasController({
     onActiveEpicChangeResolved(viewMode === "epic" ? selectedEpic : null);
   }, [onActiveEpicChangeResolved, selectedEpic, viewMode]);
 
-  useEffect(() => {
-    if (!isEditEpicModalOpen || !editingEpicId) return;
-    onNodeOpen?.(editingEpicId);
-  }, [editingEpicId, isEditEpicModalOpen, onNodeOpen]);
+  const activeDetailNodeId = useMemo(() => {
+    if (isEditEpicModalOpen && editingEpicId) return editingEpicId;
+    if (isEditFeatureModalOpen && editingFeatureId) return editingFeatureId;
+    if (sidePanelOpen && selectedTaskId) return selectedTaskId;
+    return null;
+  }, [
+    editingEpicId,
+    editingFeatureId,
+    isEditEpicModalOpen,
+    isEditFeatureModalOpen,
+    selectedTaskId,
+    sidePanelOpen,
+  ]);
 
   useEffect(() => {
-    if (!isEditFeatureModalOpen || !editingFeatureId) return;
-    onNodeOpen?.(editingFeatureId);
-  }, [editingFeatureId, isEditFeatureModalOpen, onNodeOpen]);
-
-  useEffect(() => {
-    if (!sidePanelOpen || !selectedTaskId) return;
-    onNodeOpen?.(selectedTaskId);
-  }, [onNodeOpen, selectedTaskId, sidePanelOpen]);
-
-  const handleCloseEpicTab = (epicId: string) => {
-    closeCanvasEpicTab(epicId);
-  };
-
-  const handleCreateEpic = async (data: {
-    title: string;
-    description: string;
-    priority: EpicPriority;
-    tags: string[];
-    start_date?: string;
-    end_date?: string;
-  }) => {
-    let position = epics.length;
-    if (targetEpicForAddBelow) {
-      const targetEpic = epics.find((epic) => epic.id === targetEpicForAddBelow);
-      if (targetEpic) {
-        position = targetEpic.position + 1;
-      }
+    if (activeDetailNodeId) {
+      hasNotifiedOpenNodeRef.current = true;
+      onNodeOpen?.(activeDetailNodeId);
+      return;
     }
 
-    setIsAddEpicModalOpen(false);
-    setTargetEpicForAddBelow(null);
-    setIsEpicLoading(true);
+    if (!hasNotifiedOpenNodeRef.current) {
+      return;
+    }
 
-    void onAddEpicWithToast(undefined, {
-      title: data.title,
-      description: data.description,
-      priority: data.priority,
-      tags: data.tags,
-      status: "backlog",
-      position,
-      start_date: data.start_date,
-      end_date: data.end_date,
-    })
-      .catch(() => undefined)
-      .finally(() => setIsEpicLoading(false));
-  };
+    hasNotifiedOpenNodeRef.current = false;
+    onNodeClose?.();
+  }, [activeDetailNodeId, onNodeClose, onNodeOpen]);
 
-  const handleAddEpicBelow = (epicId: string) => {
+  const handleCloseEpicTab = useCallback(
+    (epicId: string) => {
+      closeCanvasEpicTab(epicId);
+    },
+    [closeCanvasEpicTab],
+  );
+
+  const handleCreateEpic = useCallback(
+    async (data: {
+      title: string;
+      description: string;
+      priority: EpicPriority;
+      tags: string[];
+      start_date?: string;
+      end_date?: string;
+    }) => {
+      let position = epics.length;
+      if (targetEpicForAddBelow) {
+        const targetEpic = epicById.get(targetEpicForAddBelow);
+        if (targetEpic) {
+          position = targetEpic.position + 1;
+        }
+      }
+
+      setIsAddEpicModalOpen(false);
+      setTargetEpicForAddBelow(null);
+      setIsEpicLoading(true);
+
+      void onAddEpicWithToast(undefined, {
+        title: data.title,
+        description: data.description,
+        priority: data.priority,
+        tags: data.tags,
+        status: "backlog",
+        position,
+        start_date: data.start_date,
+        end_date: data.end_date,
+      })
+        .catch(() => undefined)
+        .finally(() => setIsEpicLoading(false));
+    },
+    [epicById, epics.length, onAddEpicWithToast, targetEpicForAddBelow],
+  );
+
+  const handleAddEpicBelow = useCallback((epicId: string) => {
     setTargetEpicForAddBelow(epicId);
     setIsAddEpicModalOpen(true);
-  };
+  }, []);
 
-  const handleOpenAddFeatureModal = (epicId: string) => {
+  const handleOpenAddFeatureModal = useCallback((epicId: string) => {
     setTargetEpicForFeature(epicId);
     setIsAddFeatureModalOpen(true);
-  };
+  }, []);
 
-  const handleOpenEditEpicModal = (epicId: string) => {
+  const handleOpenEditEpicModal = useCallback((epicId: string) => {
     setEditingEpicId(epicId);
     setIsEditEpicModalOpen(true);
-  };
+  }, []);
 
-  const handleUpdateEpicFromModal = async (data: {
-    title: string;
-    description: string;
-    priority: EpicPriority;
-    tags: string[];
-    start_date?: string;
-    end_date?: string;
-  }) => {
-    if (!editingEpicId) return;
-    const epic = epics.find((item) => item.id === editingEpicId);
-    if (!epic) return;
+  const handleUpdateEpicFromModal = useCallback(
+    async (data: {
+      title: string;
+      description: string;
+      priority: EpicPriority;
+      tags: string[];
+      start_date?: string;
+      end_date?: string;
+    }) => {
+      if (!editingEpicId) return;
+      const epic = epicById.get(editingEpicId);
+      if (!epic) return;
 
-    setIsEditEpicModalOpen(false);
-    setEditingEpicId(null);
-    setIsEpicLoading(true);
+      setIsEditEpicModalOpen(false);
+      setEditingEpicId(null);
+      setIsEpicLoading(true);
 
-    void onUpdateEpic({
-      ...epic,
-      title: data.title,
-      description: data.description,
-      priority: data.priority,
-      tags: data.tags,
-      start_date: data.start_date,
-      end_date: data.end_date,
-      updated_at: new Date().toISOString(),
-    })
-      .catch(() => undefined)
-      .finally(() => setIsEpicLoading(false));
-  };
+      void onUpdateEpic({
+        ...epic,
+        title: data.title,
+        description: data.description,
+        priority: data.priority,
+        tags: data.tags,
+        start_date: data.start_date,
+        end_date: data.end_date,
+        updated_at: new Date().toISOString(),
+      })
+        .catch(() => undefined)
+        .finally(() => setIsEpicLoading(false));
+    },
+    [editingEpicId, epicById, onUpdateEpic],
+  );
 
-  const handleCreateFeature = async (data: {
-    title: string;
-    description: string;
-    status: FeatureStatus;
-    is_deliverable: boolean;
-    start_date?: string;
-    end_date?: string;
-  }) => {
-    if (!targetEpicForFeature) return;
+  const handleCreateFeature = useCallback(
+    async (data: {
+      title: string;
+      description: string;
+      status: FeatureStatus;
+      is_deliverable: boolean;
+      start_date?: string;
+      end_date?: string;
+    }) => {
+      if (!targetEpicForFeature) return;
 
-    const epicId = targetEpicForFeature;
-    setIsAddFeatureModalOpen(false);
-    setTargetEpicForFeature(null);
-    setIsFeatureLoading(true);
+      const epicId = targetEpicForFeature;
+      setIsAddFeatureModalOpen(false);
+      setTargetEpicForFeature(null);
+      setIsFeatureLoading(true);
 
-    void onAddFeatureWithToast(epicId, data)
-      .catch(() => undefined)
-      .finally(() => setIsFeatureLoading(false));
-  };
+      void onAddFeatureWithToast(epicId, data)
+        .catch(() => undefined)
+        .finally(() => setIsFeatureLoading(false));
+    },
+    [onAddFeatureWithToast, targetEpicForFeature],
+  );
 
-  const handleOpenEditFeatureModal = (epicId: string, featureId: string) => {
-    setEditingFeatureEpicId(epicId);
-    setEditingFeatureId(featureId);
-    setIsEditFeatureModalOpen(true);
-  };
+  const handleOpenEditFeatureModal = useCallback(
+    (epicId: string, featureId: string) => {
+      setEditingFeatureEpicId(epicId);
+      setEditingFeatureId(featureId);
+      setIsEditFeatureModalOpen(true);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!openEpicEditorId) {
       return;
     }
 
-    const epicExists = epics.some((epic) => epic.id === openEpicEditorId);
+    const epicExists = epicById.has(openEpicEditorId);
     if (epicExists) {
       handleOpenEditEpicModal(openEpicEditorId);
     }
     onOpenEpicEditorHandled?.();
-  }, [epics, onOpenEpicEditorHandled, openEpicEditorId]);
+  }, [epicById, handleOpenEditEpicModal, onOpenEpicEditorHandled, openEpicEditorId]);
 
   useEffect(() => {
     if (!openFeatureEditor) {
       return;
     }
 
-    const epic = epics.find((item) => item.id === openFeatureEditor.epicId);
-    const featureExists = epic?.features?.some(
-      (feature) => feature.id === openFeatureEditor.featureId,
-    );
-    if (featureExists) {
+    const featureMeta = featureById.get(openFeatureEditor.featureId);
+    if (featureMeta && featureMeta.epicId === openFeatureEditor.epicId) {
       handleOpenEditFeatureModal(
         openFeatureEditor.epicId,
         openFeatureEditor.featureId,
       );
     }
     onOpenFeatureEditorHandled?.();
-  }, [epics, onOpenFeatureEditorHandled, openFeatureEditor]);
+  }, [
+    featureById,
+    handleOpenEditFeatureModal,
+    onOpenFeatureEditorHandled,
+    openFeatureEditor,
+  ]);
 
   useEffect(() => {
     if (!openTaskDetailId) {
       return;
     }
 
-    const taskExists = epics
-      .flatMap((epic) => epic.features || [])
-      .flatMap((feature) => feature.tasks || [])
-      .some((task) => task.id === openTaskDetailId);
+    const taskExists = taskById.has(openTaskDetailId);
 
     if (taskExists) {
       setSelectedTaskId(openTaskDetailId);
@@ -580,7 +662,7 @@ export function useRoadmapCanvasController({
       setSidePanelOpen(true);
     }
     onOpenTaskDetailHandled?.();
-  }, [epics, onOpenTaskDetailHandled, openTaskDetailId]);
+  }, [onOpenTaskDetailHandled, openTaskDetailId, taskById]);
 
   useEffect(() => {
     if (!addFeatureEpicId) {
@@ -603,61 +685,66 @@ export function useRoadmapCanvasController({
     closeAddTaskPanel();
   }, [addTaskFeatureId, closeAddTaskPanel]);
 
-  const handleUpdateFeatureFromModal = async (data: {
-    title: string;
-    description: string;
-    status: FeatureStatus;
-    is_deliverable: boolean;
-    start_date?: string;
-    end_date?: string;
-  }) => {
-    if (!editingFeatureId || !editingFeatureEpicId) return;
-    const epic = epics.find((item) => item.id === editingFeatureEpicId);
-    const feature = epic?.features?.find(
-      (item) => item.id === editingFeatureId,
-    );
-    if (!epic || !feature) return;
+  const handleUpdateFeatureFromModal = useCallback(
+    async (data: {
+      title: string;
+      description: string;
+      status: FeatureStatus;
+      is_deliverable: boolean;
+      start_date?: string;
+      end_date?: string;
+    }) => {
+      if (!editingFeatureId || !editingFeatureEpicId) return;
+      const featureMeta = featureById.get(editingFeatureId);
+      const feature = featureMeta?.feature;
+      if (!feature || featureMeta.epicId !== editingFeatureEpicId) return;
 
-    setIsEditFeatureModalOpen(false);
-    setEditingFeatureId(null);
-    setEditingFeatureEpicId(null);
-    setIsFeatureLoading(true);
+      setIsEditFeatureModalOpen(false);
+      setEditingFeatureId(null);
+      setEditingFeatureEpicId(null);
+      setIsFeatureLoading(true);
 
-    void onUpdateFeature({
-      ...feature,
-      title: data.title,
-      description: data.description,
-      status: data.status,
-      is_deliverable: data.is_deliverable,
-      start_date: data.start_date,
-      end_date: data.end_date,
-      updated_at: new Date().toISOString(),
-    })
-      .catch(() => undefined)
-      .finally(() => setIsFeatureLoading(false));
-  };
+      void onUpdateFeature({
+        ...feature,
+        title: data.title,
+        description: data.description,
+        status: data.status,
+        is_deliverable: data.is_deliverable,
+        start_date: data.start_date,
+        end_date: data.end_date,
+        updated_at: new Date().toISOString(),
+      })
+        .catch(() => undefined)
+        .finally(() => setIsFeatureLoading(false));
+    },
+    [editingFeatureEpicId, editingFeatureId, featureById, onUpdateFeature],
+  );
 
-  const handleDeleteEpic = (id: string) => {
-    const epic = epics.find((item) => item.id === id);
-    setDeleteConfirm({
-      type: "epic",
-      id,
-      label: epic?.title ? `"${epic.title}"` : "this epic",
-    });
-  };
+  const handleDeleteEpic = useCallback(
+    (id: string) => {
+      const epic = epicById.get(id);
+      setDeleteConfirm({
+        type: "epic",
+        id,
+        label: epic?.title ? `"${epic.title}"` : "this epic",
+      });
+    },
+    [epicById],
+  );
 
-  const handleDeleteFeature = (featureId: string) => {
-    const feature = epics
-      .flatMap((epic) => epic.features || [])
-      .find((item) => item.id === featureId);
-    setDeleteConfirm({
-      type: "feature",
-      id: featureId,
-      label: feature?.title ? `"${feature.title}"` : "this feature",
-    });
-  };
+  const handleDeleteFeature = useCallback(
+    (featureId: string) => {
+      const feature = featureById.get(featureId)?.feature;
+      setDeleteConfirm({
+        type: "feature",
+        id: featureId,
+        label: feature?.title ? `"${feature.title}"` : "this feature",
+      });
+    },
+    [featureById],
+  );
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = useCallback(() => {
     if (!deleteConfirm) return;
 
     if (deleteConfirm.type === "epic") {
@@ -665,52 +752,57 @@ export function useRoadmapCanvasController({
       if (selectedEpic === deleteConfirm.id) setSelectedEpic(null);
     } else {
       onDeleteFeature(deleteConfirm.id);
-      if (selectedFeature === deleteConfirm.id) setSelectedFeature(null);
     }
 
     setDeleteConfirm(null);
-  };
+  }, [deleteConfirm, onDeleteEpic, onDeleteFeature, selectedEpic, setSelectedEpic]);
 
-  const handleTaskCreate = async (taskData: Partial<RoadmapTask>) => {
-    if (targetFeatureForTask) {
+  const handleTaskCreate = useCallback(
+    async (taskData: Partial<RoadmapTask>) => {
+      if (targetFeatureForTask) {
+        setIsTaskLoading(true);
+        try {
+          await onAddTask(targetFeatureForTask, taskData);
+        } catch (error) {
+          toast.error(getErrorMessage(error, "Failed to create task"));
+          throw error;
+        } finally {
+          setIsTaskLoading(false);
+        }
+      }
+    },
+    [onAddTask, targetFeatureForTask, toast],
+  );
+
+  const handleTaskUpdate = useCallback(
+    async (task: RoadmapTask) => {
       setIsTaskLoading(true);
       try {
-        await onAddTask(targetFeatureForTask, taskData);
-      } catch (error) {
-        toast.error(getErrorMessage(error, "Failed to create task"));
-        throw error;
+        await onUpdateTask(task);
       } finally {
         setIsTaskLoading(false);
       }
-    }
-  };
+    },
+    [onUpdateTask],
+  );
 
-  const handleTaskUpdate = async (task: RoadmapTask) => {
-    setIsTaskLoading(true);
-    try {
-      await onUpdateTask(task);
-    } finally {
-      setIsTaskLoading(false);
-    }
-  };
+  const handleTaskDelete = useCallback(
+    async (taskId: string) => {
+      setIsTaskLoading(true);
+      try {
+        await onDeleteTask(taskId);
+        setSidePanelOpen(false);
+        setSelectedTaskId(null);
+      } finally {
+        setIsTaskLoading(false);
+      }
+    },
+    [onDeleteTask],
+  );
 
-  const handleTaskDelete = async (taskId: string) => {
-    setIsTaskLoading(true);
-    try {
-      await onDeleteTask(taskId);
-      setSidePanelOpen(false);
-      setSelectedTaskId(null);
-    } finally {
-      setIsTaskLoading(false);
-    }
-  };
-
-  const currentEpic = epics.find((epic) => epic.id === selectedEpic);
+  const currentEpic = selectedEpic ? epicById.get(selectedEpic) : undefined;
   const selectedTask = selectedTaskId
-    ? (epics
-        .flatMap((epic) => epic.features || [])
-        .flatMap((feature) => feature.tasks || [])
-        .find((task) => task.id === selectedTaskId) ?? null)
+    ? (taskById.get(selectedTaskId)?.task ?? null)
     : null;
 
   return {
