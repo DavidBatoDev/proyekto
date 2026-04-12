@@ -2,7 +2,7 @@ import logging
 import asyncio
 from datetime import datetime
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.exceptions import HTTPException
 
 # Extracted endpoint/auto-commit orchestrators.
@@ -60,10 +60,12 @@ from app.core.contracts.sessions import (
     DiscardResponse,
     MessageRequest,
     MessageResponse,
+    TraceEventDetailMode,
+    TraceEventsResponse,
     RollbackRequest,
 )
 from app.core.nest_client import NestRoadmapClient
-from app.core.logging_utils import log_event
+from app.core.logging_utils import get_progress_trace_events, log_event
 from app.core.orchestration.agent_service import AgentService
 from app.core.session_store import SessionStore
 
@@ -315,6 +317,33 @@ async def send_message(
         logger=logger,
         log_event_fn=log_event,
     )
+
+
+@router.get('/{session_id}/traces/{trace_id}/events', response_model=TraceEventsResponse)
+async def get_trace_events(
+    session_id: str,
+    trace_id: str,
+    after_seq: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    detail: TraceEventDetailMode = Query(default='verbose'),
+) -> TraceEventsResponse:
+    payload = get_progress_trace_events(
+        session_id=session_id,
+        trace_id=trace_id,
+        after_seq=after_seq,
+        limit=limit,
+        detail=detail,
+        settings=settings,
+    )
+    if payload is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                'code': 'TRACE_EVENTS_NOT_FOUND',
+                'message': 'Trace events were not found for this session.',
+            },
+        )
+    return TraceEventsResponse.model_validate(payload)
 
 
 @router.post('/{session_id}/commit')

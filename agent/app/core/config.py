@@ -124,6 +124,14 @@ class Settings(BaseSettings):
     agent_log_json: bool = Field(default=True, alias='AGENT_LOG_JSON')
     agent_log_color: str = Field(default='auto', alias='AGENT_LOG_COLOR')
     agent_log_include_content: bool = Field(default=False, alias='AGENT_LOG_INCLUDE_CONTENT')
+    agent_progress_events_enabled: bool = Field(
+        default=True,
+        alias='AGENT_PROGRESS_EVENTS_ENABLED',
+    )
+    agent_progress_events_allow_verbose: bool = Field(
+        default=True,
+        alias='AGENT_PROGRESS_EVENTS_ALLOW_VERBOSE',
+    )
     agent_cache_ttl_seconds: int = Field(default=600, alias='AGENT_CACHE_TTL_SECONDS')
     agent_resolve_cache_ttl_seconds: int = Field(
         default=30,

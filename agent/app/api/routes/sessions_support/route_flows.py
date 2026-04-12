@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from time import perf_counter
 from typing import Any, Awaitable, Callable
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import Request
 from fastapi.exceptions import HTTPException
@@ -66,6 +66,25 @@ async def create_session_flow(
     )
 
 
+def _normalize_trace_id(candidate: str | None) -> str | None:
+    if not isinstance(candidate, str):
+        return None
+    value = candidate.strip()
+    if not value:
+        return None
+    try:
+        return str(UUID(value))
+    except ValueError:
+        return None
+
+
+def _resolve_request_trace_id(request: Request) -> str:
+    header_trace_id = _normalize_trace_id(request.headers.get('X-Trace-Id'))
+    if header_trace_id is not None:
+        return header_trace_id
+    return str(uuid4())
+
+
 async def send_message_flow(
     *,
     session_id: str,
@@ -85,7 +104,7 @@ async def send_message_flow(
     log_event_fn: Callable[..., None],
 ) -> MessageResponse:
     store, agent_service = await get_agent_runtime_async()
-    trace_id = str(uuid4())
+    trace_id = _resolve_request_trace_id(request)
     started_at = perf_counter()
     session = await get_session_or_404_async(agent_service, session_id)
     log_event_fn(

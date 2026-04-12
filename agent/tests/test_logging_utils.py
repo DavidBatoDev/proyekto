@@ -27,15 +27,20 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
         handler.setFormatter(logging.Formatter('%(message)s'))
         self.logger.addHandler(handler)
         logging_utils._LIFECYCLE_TRACES.clear()
+        logging_utils._PROGRESS_TRACES.clear()
         self.settings_pretty = SimpleNamespace(
             agent_log_json=False,
             agent_log_color='auto',
             agent_log_include_content=False,
+            agent_progress_events_enabled=True,
+            agent_progress_events_allow_verbose=True,
         )
         self.settings_json = SimpleNamespace(
             agent_log_json=True,
             agent_log_color='auto',
             agent_log_include_content=False,
+            agent_progress_events_enabled=True,
+            agent_progress_events_allow_verbose=True,
         )
 
     def _emit_minimal_lifecycle(self) -> str:
@@ -269,6 +274,8 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
             agent_log_json=False,
             agent_log_color='auto',
             agent_log_include_content=False,
+            agent_progress_events_enabled=True,
+            agent_progress_events_allow_verbose=True,
         )
 
         logging_utils.log_event(
@@ -302,6 +309,8 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
             agent_log_json=False,
             agent_log_color='off',
             agent_log_include_content=False,
+            agent_progress_events_enabled=True,
+            agent_progress_events_allow_verbose=True,
         )
         logging_utils.log_event(
             logger,
@@ -327,6 +336,8 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
             agent_log_json=False,
             agent_log_color='on',
             agent_log_include_content=False,
+            agent_progress_events_enabled=True,
+            agent_progress_events_allow_verbose=True,
         )
         logging_utils.log_event(
             logger,
@@ -353,6 +364,202 @@ class LoggingUtilsLifecycleTests(unittest.TestCase):
         self.assertIn('stop        ready_to_stage', output)
         self.assertIn('action      execute', output)
         self.assertIn('react_loop  turns=2 budget=3 end=terminal', output)
+
+
+class LoggingUtilsProgressTraceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.stream = _TTYStringIO(tty=False)
+        self.logger = logging.getLogger(f'logging-utils-progress-tests-{id(self)}')
+        self.logger.handlers.clear()
+        self.logger.propagate = False
+        self.logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler(self.stream)
+        handler.setFormatter(logging.Formatter('%(message)s'))
+        self.logger.addHandler(handler)
+        logging_utils._LIFECYCLE_TRACES.clear()
+        logging_utils._PROGRESS_TRACES.clear()
+        self.settings = SimpleNamespace(
+            agent_log_json=False,
+            agent_log_color='off',
+            agent_log_include_content=False,
+            agent_progress_events_enabled=True,
+            agent_progress_events_allow_verbose=True,
+        )
+
+    def test_progress_trace_seq_and_completion_state(self) -> None:
+        trace_id = 'trace-progress-seq'
+        session_id = 'session-progress-seq'
+
+        logging_utils.log_event(
+            self.logger,
+            'message_received',
+            settings=self.settings,
+            trace_id=trace_id,
+            session_id=session_id,
+            roadmap_id='roadmap-progress-seq',
+            message='Assign to me all roadmap tasks',
+        )
+        logging_utils.log_event(
+            self.logger,
+            'tool_call_requested',
+            settings=self.settings,
+            trace_id=trace_id,
+            session_id=session_id,
+            roadmap_id='roadmap-progress-seq',
+            tool_name='bulk_update_tasks_by_filter',
+            tool_args={'status': 'all'},
+            arg_keys=['status'],
+        )
+        logging_utils.log_event(
+            self.logger,
+            'message_completed',
+            settings=self.settings,
+            trace_id=trace_id,
+            session_id=session_id,
+            roadmap_id='roadmap-progress-seq',
+            response_mode='edit_plan',
+            elapsed_ms=2000,
+            auto_commit_async_enqueued=True,
+        )
+
+        first = logging_utils.get_progress_trace_events(
+            session_id=session_id,
+            trace_id=trace_id,
+            after_seq=0,
+            limit=50,
+            detail='verbose',
+            settings=self.settings,
+        )
+        self.assertIsNotNone(first)
+        assert first is not None
+        self.assertEqual([event['seq'] for event in first['events']], [1, 2, 3])
+        self.assertEqual(first['next_seq'], 3)
+        self.assertFalse(first['done'])
+
+        logging_utils.log_event(
+            self.logger,
+            'auto_commit_async_completed',
+            settings=self.settings,
+            trace_id=trace_id,
+            session_id=session_id,
+            roadmap_id='roadmap-progress-seq',
+            auto_commit_ms=5104,
+        )
+
+        second = logging_utils.get_progress_trace_events(
+            session_id=session_id,
+            trace_id=trace_id,
+            after_seq=3,
+            limit=50,
+            detail='verbose',
+            settings=self.settings,
+        )
+        self.assertIsNotNone(second)
+        assert second is not None
+        self.assertEqual([event['seq'] for event in second['events']], [4])
+        self.assertTrue(second['done'])
+        self.assertIsInstance(second.get('elapsed_ms'), int)
+
+    def test_progress_trace_ttl_eviction(self) -> None:
+        trace_id = 'trace-progress-ttl'
+        session_id = 'session-progress-ttl'
+        logging_utils.log_event(
+            self.logger,
+            'message_received',
+            settings=self.settings,
+            trace_id=trace_id,
+            session_id=session_id,
+            roadmap_id='roadmap-progress-ttl',
+            message='hello',
+        )
+        trace = logging_utils._PROGRESS_TRACES[trace_id]
+        trace.last_seen_monotonic = (
+            trace.last_seen_monotonic - logging_utils._PROGRESS_EVENT_TRACE_TTL_SECONDS - 1.0
+        )
+
+        fetched = logging_utils.get_progress_trace_events(
+            session_id=session_id,
+            trace_id=trace_id,
+            settings=self.settings,
+        )
+        self.assertIsNone(fetched)
+
+    def test_structured_detail_mode_redacts_verbose_fields(self) -> None:
+        trace_id = 'trace-progress-structured'
+        session_id = 'session-progress-structured'
+        logging_utils.log_event(
+            self.logger,
+            'tool_call_requested',
+            settings=self.settings,
+            trace_id=trace_id,
+            session_id=session_id,
+            roadmap_id='roadmap-progress-structured',
+            tool_name='resolve_node_reference',
+            arg_keys=['label', 'limit'],
+            tool_args={'label': 'Platform Foundation', 'limit': 5, 'roadmap_id': 'x'},
+        )
+
+        structured = logging_utils.get_progress_trace_events(
+            session_id=session_id,
+            trace_id=trace_id,
+            detail='structured',
+            settings=self.settings,
+        )
+        self.assertIsNotNone(structured)
+        assert structured is not None
+        details = structured['events'][0].get('details')
+        self.assertIsInstance(details, dict)
+        assert isinstance(details, dict)
+        self.assertEqual(set(details.keys()), {'arg_keys', 'tool_args', 'tool_name'})
+
+    def test_summarize_tool_result_includes_capped_title_list_metadata(self) -> None:
+        result = {
+            'tasks': [
+                {'id': f't-{index}', 'title': f'Task {index}'}
+                for index in range(1, 61)
+            ],
+        }
+        summary = logging_utils.summarize_tool_result(result)
+        self.assertEqual(summary.get('tasks_count'), 60)
+        item_titles = summary.get('item_titles')
+        self.assertIsInstance(item_titles, list)
+        assert isinstance(item_titles, list)
+        self.assertEqual(len(item_titles), 50)
+        self.assertEqual(summary.get('item_titles_shown_count'), 50)
+        self.assertEqual(summary.get('item_titles_total_count'), 60)
+        self.assertTrue(summary.get('item_titles_has_more'))
+
+    def test_structured_auto_commit_failed_exposes_invalid_operation_snapshot(self) -> None:
+        trace_id = 'trace-progress-auto-commit-invalid'
+        session_id = 'session-progress-auto-commit-invalid'
+        logging_utils.log_event(
+            self.logger,
+            'auto_commit_async_failed',
+            settings=self.settings,
+            trace_id=trace_id,
+            session_id=session_id,
+            roadmap_id='roadmap-progress-auto-commit-invalid',
+            auto_commit_error_message='Commit has validation errors and cannot be applied',
+            auto_commit_error_upstream_status=400,
+            auto_commit_invalid_operation={
+                'index': 0,
+                'reason': 'mark_status.status_invalid',
+            },
+        )
+
+        structured = logging_utils.get_progress_trace_events(
+            session_id=session_id,
+            trace_id=trace_id,
+            detail='structured',
+            settings=self.settings,
+        )
+        self.assertIsNotNone(structured)
+        assert structured is not None
+        details = structured['events'][0].get('details')
+        self.assertIsInstance(details, dict)
+        assert isinstance(details, dict)
+        self.assertEqual(details.get('auto_commit_error_upstream_status'), 400)
+        self.assertIsInstance(details.get('auto_commit_invalid_operation'), dict)
 
 
 if __name__ == '__main__':

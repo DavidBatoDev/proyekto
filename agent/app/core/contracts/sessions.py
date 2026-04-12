@@ -33,6 +33,8 @@ ArtifactType = Literal['roadmap_commit']
 ProviderUsed = Literal['openai', 'rule_based']
 DraftMode = Literal['append', 'revise', 'branch']
 DraftStatus = Literal['active', 'previewed', 'applied', 'abandoned']
+TraceEventDetailMode = Literal['verbose', 'structured']
+TraceEventStatus = Literal['running', 'success', 'error']
 RecentResolvedTargetType = Literal['epic', 'feature', 'task']
 RecentResolvedTargetSource = Literal[
     'context_tool',
@@ -279,6 +281,28 @@ class MessageResponse(BaseModel):
     fallback_used: bool = False
     provider_error_code: str | None = None
     debug_trace_id: str | None = None
+
+
+class TraceEvent(BaseModel):
+    seq: int
+    ts: str
+    event: str
+    title: str
+    status: TraceEventStatus
+    summary: str
+    details: dict[str, Any] | None = None
+
+
+class TraceEventsResponse(BaseModel):
+    trace_id: str
+    session_id: str | None = None
+    roadmap_id: str | None = None
+    events: list[TraceEvent] = Field(default_factory=list)
+    next_seq: int
+    done: bool = False
+    started_at: str | None = None
+    completed_at: str | None = None
+    elapsed_ms: int | None = None
 
 
 class CommitRequest(BaseModel):
