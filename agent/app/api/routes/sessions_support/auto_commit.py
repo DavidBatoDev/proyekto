@@ -24,6 +24,9 @@ class AutoCommitExecutionResult:
     active_draft_version: int | None
     artifact: RoadmapCommitArtifact | None
     inline_commit_size_bytes: int | None
+    impacted_items: list[dict[str, Any]]
+    impacted_item_count: int
+    impacted_summary: dict[str, int]
 
 
 def _sanitize_invalid_operation_snapshot(
@@ -77,6 +80,93 @@ def _first_invalid_operation_snapshot(draft_operations: list[Any]) -> dict[str, 
     return None
 
 
+def _extract_impacted_items_from_commit_result(commit_result: dict[str, Any]) -> list[dict[str, Any]]:
+    semantic_diff = commit_result.get('semantic_diff')
+    changes = semantic_diff.get('changes') if isinstance(semantic_diff, dict) else None
+    if not isinstance(changes, list):
+        return []
+
+    impacted_items: list[dict[str, Any]] = []
+    for change in changes:
+        if not isinstance(change, dict):
+            continue
+        node = change.get('node')
+        if not isinstance(node, dict):
+            continue
+        node_id = node.get('id')
+        node_type_raw = node.get('type')
+        if not isinstance(node_id, str) or not node_id.strip():
+            continue
+        if not isinstance(node_type_raw, str):
+            continue
+        node_type = node_type_raw.strip().lower()
+        if node_type not in {'roadmap', 'epic', 'feature', 'task'}:
+            continue
+
+        change_type_raw = change.get('type')
+        change_type = (
+            change_type_raw.strip().upper()
+            if isinstance(change_type_raw, str) and change_type_raw.strip()
+            else None
+        )
+        if change_type == 'NODE_ADDED':
+            impact = 'created'
+        elif change_type == 'NODE_REMOVED':
+            impact = 'deleted'
+        else:
+            impact = 'modified'
+
+        title: str | None = None
+        for source in (change.get('to'), change.get('from')):
+            if not isinstance(source, dict):
+                continue
+            for key in ('title', 'name', 'node_title'):
+                raw_title = source.get(key)
+                if isinstance(raw_title, str) and raw_title.strip():
+                    title = raw_title.strip()
+                    break
+            if title:
+                break
+
+        impacted_items.append(
+            {
+                'node_id': node_id.strip(),
+                'node_type': node_type,
+                'title': title,
+                'change_type': change_type,
+                'impact': impact,
+            }
+        )
+
+    return impacted_items
+
+
+def _summarize_impacted_items(impacted_items: list[dict[str, Any]]) -> dict[str, int]:
+    summary = {'created': 0, 'modified': 0, 'deleted': 0}
+    for item in impacted_items:
+        impact = item.get('impact')
+        if impact in summary:
+            summary[impact] += 1
+    return summary
+
+
+def _compact_inline_commit_payload(commit_result: dict[str, Any]) -> dict[str, Any]:
+    compact_payload: dict[str, Any] = {}
+    for key in (
+        'change_id',
+        'committed_at',
+        'revision_token',
+        'semantic_diff',
+        'candidate_snapshot',
+        'operation_results',
+    ):
+        value = commit_result.get(key)
+        if value is None:
+            continue
+        compact_payload[key] = value
+    return compact_payload
+
+
 def schedule_auto_commit_task(
     *,
     task_set: set[asyncio.Task],
@@ -113,6 +203,8 @@ async def execute_auto_commit(
     commit_payload = {
         'base_revision': session.base_revision,
         'revision_token': session.revision_token,
+        'include_roadmap': False,
+        'include_timeline': False,
         'operations': [
             operation.model_dump(exclude_none=True)
             for operation in draft_operations
@@ -224,9 +316,15 @@ async def execute_auto_commit(
         change_id=change_id,
         status='applied',
     )
+    if artifact is not None and artifact.impacted_items:
+        impacted_items = [item.model_dump(exclude_none=True) for item in artifact.impacted_items]
+    else:
+        impacted_items = _extract_impacted_items_from_commit_result(commit_result)
+    impacted_summary = _summarize_impacted_items(impacted_items)
+    impacted_item_count = len(impacted_items)
     inline_commit_size_bytes: int | None = None
     if artifact is not None:
-        inline_payload = dict(commit_result)
+        inline_payload = _compact_inline_commit_payload(commit_result)
         inline_commit_size_bytes = serialized_payload_bytes(inline_payload)
         inline_artifact = artifact.model_copy(update={'inline_commit': inline_payload})
         session.artifacts.append(inline_artifact)
@@ -241,6 +339,9 @@ async def execute_auto_commit(
         active_draft_version=active_draft_version,
         artifact=artifact,
         inline_commit_size_bytes=inline_commit_size_bytes,
+        impacted_items=impacted_items,
+        impacted_item_count=impacted_item_count,
+        impacted_summary=impacted_summary,
     )
 
 
@@ -280,6 +381,9 @@ async def run_auto_commit_in_background(
             active_draft_id=result.active_draft_id,
             active_draft_version=result.active_draft_version,
             inline_commit_size_bytes=result.inline_commit_size_bytes,
+            impacted_items=result.impacted_items,
+            impacted_item_count=result.impacted_item_count,
+            impacted_summary=result.impacted_summary,
             elapsed_ms=int((perf_counter() - started_at) * 1000),
         )
     except HTTPException as exc:

@@ -44,6 +44,14 @@ RecentResolvedTargetSource = Literal[
 ]
 
 
+class CommitImpactedItem(BaseModel):
+    node_id: str
+    node_type: Literal['roadmap', 'epic', 'feature', 'task']
+    title: str | None = None
+    change_type: str | None = None
+    impact: Literal['created', 'modified', 'deleted'] = 'modified'
+
+
 class RoadmapCommitArtifact(BaseModel):
     artifact_id: str = Field(default_factory=lambda: str(uuid4()))
     type: ArtifactType = 'roadmap_commit'
@@ -56,6 +64,7 @@ class RoadmapCommitArtifact(BaseModel):
     semantic_diff_summary: dict[str, int] = Field(default_factory=dict)
     validation_issue_count: int = 0
     validation_issues: list[dict[str, Any]] = Field(default_factory=list)
+    impacted_items: list[CommitImpactedItem] = Field(default_factory=list)
     has_validation_errors: bool = False
     status: Literal['draft', 'applied', 'discarded'] = 'draft'
     inline_commit: dict[str, Any] | None = None

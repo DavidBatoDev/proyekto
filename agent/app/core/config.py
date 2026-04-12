@@ -99,7 +99,7 @@ class Settings(BaseSettings):
         alias='AGENT_DRAFT_GRAPH_ENABLED',
     )
     agent_async_auto_commit_enabled: bool = Field(
-        default=False,
+        default=True,
         alias='AGENT_ASYNC_AUTO_COMMIT_ENABLED',
     )
     agent_simple_edit_planner_profile_enabled: bool = Field(

@@ -444,6 +444,24 @@ class LoggingUtilsProgressTraceTests(unittest.TestCase):
             session_id=session_id,
             roadmap_id='roadmap-progress-seq',
             auto_commit_ms=5104,
+            impacted_item_count=2,
+            impacted_summary={'created': 1, 'modified': 1, 'deleted': 0},
+            impacted_items=[
+                {
+                    'node_id': 'feat-1',
+                    'node_type': 'feature',
+                    'title': 'Checkout flow',
+                    'impact': 'created',
+                    'change_type': 'NODE_ADDED',
+                },
+                {
+                    'node_id': 'task-1',
+                    'node_type': 'task',
+                    'title': 'Write tests',
+                    'impact': 'modified',
+                    'change_type': 'STATUS_CHANGED',
+                },
+            ],
         )
 
         second = logging_utils.get_progress_trace_events(
@@ -459,6 +477,11 @@ class LoggingUtilsProgressTraceTests(unittest.TestCase):
         self.assertEqual([event['seq'] for event in second['events']], [4])
         self.assertTrue(second['done'])
         self.assertIsInstance(second.get('elapsed_ms'), int)
+        details = second['events'][0].get('details')
+        self.assertIsInstance(details, dict)
+        assert isinstance(details, dict)
+        self.assertEqual(details.get('impacted_item_count'), 2)
+        self.assertIsInstance(details.get('impacted_items'), list)
 
     def test_progress_trace_ttl_eviction(self) -> None:
         trace_id = 'trace-progress-ttl'
@@ -560,6 +583,45 @@ class LoggingUtilsProgressTraceTests(unittest.TestCase):
         assert isinstance(details, dict)
         self.assertEqual(details.get('auto_commit_error_upstream_status'), 400)
         self.assertIsInstance(details.get('auto_commit_invalid_operation'), dict)
+
+    def test_structured_auto_commit_completed_exposes_impacted_items(self) -> None:
+        trace_id = 'trace-progress-auto-commit-completed'
+        session_id = 'session-progress-auto-commit-completed'
+        logging_utils.log_event(
+            self.logger,
+            'auto_commit_async_completed',
+            settings=self.settings,
+            trace_id=trace_id,
+            session_id=session_id,
+            roadmap_id='roadmap-progress-auto-commit-completed',
+            auto_commit_ms=1240,
+            impacted_item_count=1,
+            impacted_summary={'created': 1, 'modified': 0, 'deleted': 0},
+            impacted_items=[
+                {
+                    'node_id': 'epic-1',
+                    'node_type': 'epic',
+                    'title': 'Authentication',
+                    'impact': 'created',
+                    'change_type': 'NODE_ADDED',
+                }
+            ],
+        )
+
+        structured = logging_utils.get_progress_trace_events(
+            session_id=session_id,
+            trace_id=trace_id,
+            detail='structured',
+            settings=self.settings,
+        )
+        self.assertIsNotNone(structured)
+        assert structured is not None
+        details = structured['events'][0].get('details')
+        self.assertIsInstance(details, dict)
+        assert isinstance(details, dict)
+        self.assertEqual(details.get('impacted_item_count'), 1)
+        self.assertIsInstance(details.get('impacted_summary'), dict)
+        self.assertIsInstance(details.get('impacted_items'), list)
 
 
 if __name__ == '__main__':
