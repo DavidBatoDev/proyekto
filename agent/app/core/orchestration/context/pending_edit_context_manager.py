@@ -140,6 +140,20 @@ def summarize_tool_plan(
     return summary
 
 
+def looks_like_edit_confirmation_prompt(assistant_message: str) -> bool:
+    normalized = ' '.join(str(assistant_message or '').strip().lower().split())
+    if not normalized:
+        return False
+    if not re.search(r'\b(?:do you want me to|would you like me to|should i)\b', normalized):
+        return False
+    return bool(
+        re.search(
+            r'\b(?:mark|set|rename|move|delete|remove|add|create|update|assign|unassign|reassign|apply|change|shift|retitle)\b',
+            normalized,
+        )
+    )
+
+
 def sync_pending_edit_context(
     *,
     session: AgentSession,
@@ -210,6 +224,48 @@ def sync_pending_edit_context(
             normalize_intent_family=normalize_intent_family,
             reason='edit_guard_intervened',
         )
+        return
+
+    if (
+        planning.response_mode == 'chat'
+        and planning.clarifier_action is None
+        and looks_like_edit_confirmation_prompt(planning.assistant_message)
+    ):
+        if existing_context is None:
+            context = PendingEditContext(
+                intent_family='roadmap_edit_clarifier',
+                draft_operations=[],
+                required_fields=[],
+                resolved_references=PendingEditResolvedReferences(),
+                confirmation_mode='awaiting_clarification',
+                source_user_message=user_message,
+                last_followup_kind=edit_continuation_trigger,
+                created_at=utcnow(),
+                updated_at=utcnow(),
+            )
+            set_pending_edit_context(
+                session=session,
+                context=context,
+                event='set',
+                trace_id=trace_id,
+                logger=logger,
+                settings=settings,
+                normalize_intent_family=normalize_intent_family,
+                reason='implicit_edit_confirmation_prompt',
+            )
+        else:
+            existing_context.last_followup_kind = edit_continuation_trigger
+            existing_context.updated_at = utcnow()
+            set_pending_edit_context(
+                session=session,
+                context=existing_context,
+                event='updated',
+                trace_id=trace_id,
+                logger=logger,
+                settings=settings,
+                normalize_intent_family=normalize_intent_family,
+                reason='implicit_edit_confirmation_prompt',
+            )
         return
 
     if planning.intent_type != 'roadmap_edit':

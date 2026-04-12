@@ -457,6 +457,7 @@ class AgentSafetyTests(unittest.TestCase):
             'Okay Confirm',
             'OKay proceed',
             'yes, proceed',
+            'yes apply',
             'go ahead please',
             'confirm this',
             'proceed with this',
@@ -1513,6 +1514,71 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(outcome.route_lane, 'chat')
         self.assertEqual(outcome.parse_mode, 'openai_chat')
         self.assertIsNotNone(session.metadata.pending_edit_context)
+
+    def test_plan_message_context_answer_edit_confirmation_sets_pending_edit_context(self) -> None:
+        class _Planner:
+            def preview_intent_classification(self, user_message, session_context=None):
+                return ('roadmap_query', True)
+
+            def plan(self, user_message, existing_operations, session_context=None):
+                return PlanningResult(
+                    assistant_message=(
+                        'Do you want me to mark the "Authentication" feature '
+                        'inside the "Agent core" epic as in_progress?'
+                    ),
+                    operations=[],
+                    parse_mode='openai_context_tools',
+                    intent_type='roadmap_query',
+                    response_mode='chat',
+                    preview_recommended=False,
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        class _FakeStore:
+            def append_message(self, session, role, content):
+                session.messages.append(SimpleNamespace(role=role, content=content))
+
+            def update(self, _session):
+                return None
+
+            def get(self, _session_id):
+                return None
+
+        service = object.__new__(AgentService)
+        service._settings = get_settings().model_copy(
+            update={'agent_hybrid_react_enabled': True}
+        )
+        service._logger = logging.getLogger('agent-safety-tests')
+        service._store = _FakeStore()
+        service._planner = _Planner()
+        service._nest_client = _FakeNestClient({'matches': []})
+        service._actor_refresh_failures_key = 'actor_context_refresh_failures'
+        service._uuid_pattern = re.compile(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        )
+        session = AgentSession(roadmap_id='roadmap-1')
+
+        outcome = service.plan_message(
+            session=session,
+            user_message='I meant the Authentication inside Agent core epic',
+            replace=False,
+            auth_header=None,
+            trace_id='trace-context-answer-confirm-handoff',
+        )
+
+        self.assertEqual(outcome.response_mode, 'chat')
+        self.assertEqual(outcome.parse_mode, 'openai_context_tools')
+        pending_context = session.metadata.pending_edit_context
+        self.assertIsNotNone(pending_context)
+        assert pending_context is not None
+        self.assertEqual(pending_context.intent_family, 'roadmap_edit_clarifier')
+        self.assertEqual(pending_context.confirmation_mode, 'awaiting_clarification')
+        self.assertEqual(
+            pending_context.source_user_message,
+            'I meant the Authentication inside Agent core epic',
+        )
 
     def test_plan_message_pending_confirm_without_draft_avoids_context_answer_lane(self) -> None:
         class _Planner:
@@ -6038,6 +6104,27 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(state.get('response_mode'), 'chat')
         self.assertEqual(state.get('parse_mode'), 'openai_chat')
         self.assertEqual(state.get('assistant_message'), 'Stub chat reply')
+        self.assertEqual(len(state.get('planned_operations') or []), 0)
+
+    def test_generate_chat_reply_confirm_without_context_is_rule_based(self) -> None:
+        planner = self._planner()
+        state = planner._generate_chat_reply(
+            {
+                'intent_type': 'confirm_action',
+                'confirm_without_context': True,
+                'user_message': 'Yes apply',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-confirm-without-context',
+                },
+            }
+        )
+
+        self.assertEqual(state.get('response_mode'), 'chat')
+        self.assertEqual(state.get('parse_mode'), 'confirm_action_missing_context')
+        self.assertEqual(state.get('provider_used'), 'rule_based')
+        self.assertEqual(state.get('provider_error_code'), 'confirm_action_missing_context')
+        self.assertEqual(state.get('assistant_message'), 'rule-based fallback')
         self.assertEqual(len(state.get('planned_operations') or []), 0)
 
     def test_compose_dynamic_system_prompt_routes_roadmap_plan_mode(self) -> None:

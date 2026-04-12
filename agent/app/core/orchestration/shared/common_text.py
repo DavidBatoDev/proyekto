@@ -88,8 +88,8 @@ def detect_edit_continuation_trigger(user_message: str) -> str | None:
         return 'cancel'
     if re.fullmatch(
         r"(?:"
-        r"(?:ok|okay|yes|yep)(?:\s+(?:please|kindly))?(?:\s+(?:confirm|proceed|go ahead|do it))?"
-        r"|(?:confirm|proceed|go ahead|do it|let'?s do it)"
+        r"(?:ok|okay|yes|yep)(?:\s+(?:please|kindly))?(?:\s+(?:confirm|proceed|go ahead|do it|apply(?:\s+changes?)?))?"
+        r"|(?:confirm|proceed|go ahead|do it|let'?s do it|apply(?:\s+changes?)?)"
         r")"
         r"(?:\s+(?:please|kindly|now))?"
         r"(?:\s+(?:with\s+)?(?:this|it|that))?"

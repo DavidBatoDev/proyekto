@@ -180,9 +180,10 @@ def compose_dynamic_system_prompt(
     has_edit_continuation_context = bool(state.get('force_edit_continuation')) or bool(
         state.get('existing_operations')
     )
+    confirm_without_context = intent_type == 'confirm_action' and not has_edit_continuation_context
     edit_to_clarifier_guarded = False
 
-    if intent_type == 'confirm_action' and not has_edit_continuation_context:
+    if confirm_without_context:
         mode = 'chat'
         response_mode = 'chat'
         tool_mode = 'none'
@@ -251,6 +252,7 @@ def compose_dynamic_system_prompt(
         'tool_mode': tool_mode,
         'trace_id': trace_id,
         'edit_to_clarifier_guarded': edit_to_clarifier_guarded,
+        'confirm_without_context': confirm_without_context,
     }
 
 
@@ -276,6 +278,20 @@ def generate_chat_reply(
         user_message,
         state.get('intent_type', 'unclear'),
     )
+    if bool(state.get('confirm_without_context')):
+        return {
+            'assistant_message': fallback_response,
+            'planned_operations': [],
+            'response_mode': 'chat',
+            'preview_recommended': False,
+            'parse_mode': 'confirm_action_missing_context',
+            'provider_used': 'rule_based',
+            'fallback_used': False,
+            'provider_error_code': 'confirm_action_missing_context',
+            'tokens_input': None,
+            'tokens_output': None,
+            'tokens_total': None,
+        }
     llm_first_mode_enabled = bool(planner._settings.agent_llm_first_mode_enabled)
 
     try:
