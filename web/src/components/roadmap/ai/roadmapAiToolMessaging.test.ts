@@ -182,4 +182,59 @@ describe("roadmap AI tool messaging catalog", () => {
     expect(isSupportedTraceToolName("bulk_update_tasks_by_filter")).toBe(true);
     expect(isSupportedTraceToolName("unknown")).toBe(false);
   });
+
+  it("uses a negative title when resolve_node_reference finds zero matches", () => {
+    const message = buildCuratedToolResultMessage("resolve_node_reference", {
+      status: "success",
+      summary: "",
+      details: {
+        tool_name: "resolve_node_reference",
+        tool_args: { label: "Nonexistent Module", node_type: "feature" },
+        result_summary: { matches_count: 0 },
+      },
+    });
+
+    expect(message.title).toBe("No matching roadmap item found");
+    expect(message.usedFallback).toBe(false);
+  });
+
+  it("uses a positive title when resolve_node_reference finds matches", () => {
+    const message = buildCuratedToolResultMessage("resolve_node_reference", {
+      status: "success",
+      summary: "",
+      details: {
+        tool_name: "resolve_node_reference",
+        tool_args: { label: "Auth Module", node_type: "epic" },
+        result_summary: { matches_count: 2 },
+      },
+    });
+
+    expect(message.title).toBe("Found the right roadmap item");
+  });
+
+  it("uses a negative title when plan_roadmap_operations has zero operations", () => {
+    const message = buildCuratedToolResultMessage("plan_roadmap_operations", {
+      status: "success",
+      summary: "",
+      details: {
+        tool_name: "plan_roadmap_operations",
+        result_summary: { operations_count: 0 },
+      },
+    });
+
+    expect(message.title).toBe("No roadmap changes needed");
+  });
+
+  it("uses a positive title when plan_roadmap_operations has operations", () => {
+    const message = buildCuratedToolResultMessage("plan_roadmap_operations", {
+      status: "success",
+      summary: "",
+      details: {
+        tool_name: "plan_roadmap_operations",
+        result_summary: { operations_count: 5 },
+      },
+    });
+
+    expect(message.title).toBe("Prepared your roadmap changes");
+  });
 });
