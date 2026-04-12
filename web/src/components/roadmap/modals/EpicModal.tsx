@@ -537,6 +537,28 @@ export const EpicModal = ({
 
   const rightPanelTabs = [
     {
+      id: "comments",
+      label: "Comments",
+      content: epicId ? (
+        <CommentsSection
+          comments={comments}
+          onAddComment={handleAddComment}
+          onUpdateComment={handleUpdateComment}
+          onDeleteComment={handleDeleteComment}
+          currentUserId={user?.id}
+          canComment={Boolean(user)}
+          isLoading={loadingComments}
+          emptyMessage="No comments yet for this epic."
+        />
+      ) : (
+        <div className="text-center py-8">
+          <p className="text-sm text-gray-500">
+            Save epic first to add comments
+          </p>
+        </div>
+      ),
+    },
+    {
       id: "features",
       label: "Features",
       content: (
@@ -654,28 +676,6 @@ export const EpicModal = ({
         </div>
       ),
     },
-    {
-      id: "comments",
-      label: "Comments",
-      content: epicId ? (
-        <CommentsSection
-          comments={comments}
-          onAddComment={handleAddComment}
-          onUpdateComment={handleUpdateComment}
-          onDeleteComment={handleDeleteComment}
-          currentUserId={user?.id}
-          canComment={Boolean(user)}
-          isLoading={loadingComments}
-          emptyMessage="No comments yet for this epic."
-        />
-      ) : (
-        <div className="text-center py-8">
-          <p className="text-sm text-gray-500">
-            Save epic first to add comments
-          </p>
-        </div>
-      ),
-    },
   ];
 
   const dateActionButton = !hasDates ? (
@@ -704,7 +704,7 @@ export const EpicModal = ({
         footer={footer}
         canComment={Boolean(user)}
         rightPanelTabs={rightPanelTabs}
-        defaultRightPanelTabId="features"
+        defaultRightPanelTabId="comments"
         autoFocusTitle={true}
       />
       <UnsavedChangesConfirmModal

@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useState,
   useEffect,
   useMemo,
@@ -19,7 +20,6 @@ import {
 } from "@/components/roadmap";
 import { RoadmapTopBar } from "../../RoadmapTopBar";
 import { RoadmapPageSkeleton } from "../../RoadmapPageSkeleton";
-import { useRoadmapStore } from "@/stores/roadmapStore";
 import { useProjectSettingsStore } from "@/stores/projectSettingsStore";
 import {
   roadmapService,
@@ -28,12 +28,19 @@ import {
 import type { Roadmap } from "@/types/roadmap";
 import { useToast } from "@/contexts/ToastContext";
 import { useRoadmapFullLiveQuery } from "@/hooks/useProjectQueries";
+import {
+  useRoadmapStore,
+  type CanvasViewMode,
+} from "@/stores/roadmapStore";
 
 interface RoadmapViewContentProps {
   roadmapId: string;
   projectId: string;
-  focusNodeId?: string | null;
-  onFocusNodeConsumed?: () => void;
+  deepLinkNodeId?: string | null;
+  urlView?: RoadmapUrlView | null;
+  onDeepLinkNodeConsumed?: (view: RoadmapUrlView) => void;
+  onViewChange?: (view: RoadmapUrlView) => void;
+  onNodeOpened?: (nodeId: string, view: RoadmapUrlView) => void;
 }
 
 const CHAT_PANEL_DEFAULT_WIDTH = 380;
@@ -45,6 +52,50 @@ const CANVAS_MIN_WIDTH = 560;
 
 const clampPanelWidth = (value: number, maxAllowed: number) =>
   Math.min(Math.max(value, CHAT_PANEL_MIN_WIDTH), maxAllowed);
+
+type RoadmapUrlView = "roadmapView" | "timelineView";
+
+const toRoadmapUrlView = (mode: CanvasViewMode): RoadmapUrlView =>
+  mode === "milestones" ? "timelineView" : "roadmapView";
+
+const toCanvasViewMode = (view: RoadmapUrlView): CanvasViewMode =>
+  view === "timelineView" ? "milestones" : "roadmap";
+
+type DeepLinkTarget =
+  | { kind: "epic"; epicId: string }
+  | { kind: "feature"; epicId: string; featureId: string }
+  | { kind: "task"; epicId: string; featureId: string; taskId: string }
+  | null;
+
+const resolveDeepLinkTarget = (
+  roadmap: Roadmap,
+  nodeId: string,
+): DeepLinkTarget => {
+  const epics = roadmap.epics ?? [];
+  for (const epic of epics) {
+    if (epic.id === nodeId) {
+      return { kind: "epic", epicId: epic.id };
+    }
+
+    for (const feature of epic.features ?? []) {
+      if (feature.id === nodeId) {
+        return { kind: "feature", epicId: epic.id, featureId: feature.id };
+      }
+
+      for (const task of feature.tasks ?? []) {
+        if (task.id === nodeId) {
+          return {
+            kind: "task",
+            epicId: epic.id,
+            featureId: feature.id,
+            taskId: task.id,
+          };
+        }
+      }
+    }
+  }
+  return null;
+};
 
 const buildRoadmapJsonDocument = (roadmap: Roadmap): UpsertFullRoadmapDto => ({
   id: roadmap.id,
@@ -92,8 +143,11 @@ const buildRoadmapJsonDocument = (roadmap: Roadmap): UpsertFullRoadmapDto => ({
 export function RoadmapViewContent({
   roadmapId,
   projectId,
-  focusNodeId,
-  onFocusNodeConsumed,
+  deepLinkNodeId,
+  urlView,
+  onDeepLinkNodeConsumed,
+  onViewChange,
+  onNodeOpened,
 }: RoadmapViewContentProps) {
   const toast = useToast();
   // Roadmap data and actions from store
@@ -117,6 +171,7 @@ export function RoadmapViewContent({
   );
   const openTaskDetail = useRoadmapStore((state) => state.openTaskDetail);
   const canvasViewMode = useRoadmapStore((state) => state.canvasViewMode);
+  const setCanvasViewMode = useRoadmapStore((state) => state.setCanvasViewMode);
   const [roadmapError, setRoadmapError] = useState<string | null>(null);
   const [isJsonPanelOpen, setIsJsonPanelOpen] = useState(false);
   const [isSavingRoadmapJson, setIsSavingRoadmapJson] = useState(false);
@@ -127,15 +182,95 @@ export function RoadmapViewContent({
   );
   const chatPanelRef = useRef<HTMLDivElement | null>(null);
   const chatPanelWidthRef = useRef(chatPanelWidth);
+  const consumedNodeIdRef = useRef<string | null>(null);
+  const isApplyingUrlViewRef = useRef(false);
+  const lastAppliedUrlViewRef = useRef<RoadmapUrlView | null>(null);
   const roadmapLiveQuery = useRoadmapFullLiveQuery(roadmapId);
 
   useEffect(() => {
+    if (!urlView) {
+      lastAppliedUrlViewRef.current = null;
+      return;
+    }
+
+    if (lastAppliedUrlViewRef.current === urlView) {
+      return;
+    }
+    lastAppliedUrlViewRef.current = urlView;
+
+    const nextMode = toCanvasViewMode(urlView);
+    if (canvasViewMode === nextMode) return;
+
+    isApplyingUrlViewRef.current = true;
+    setCanvasViewMode(nextMode);
+  }, [canvasViewMode, setCanvasViewMode, urlView]);
+
+  useEffect(() => {
+    const nextUrlView = toRoadmapUrlView(canvasViewMode);
+    if (isApplyingUrlViewRef.current) {
+      const resolvedIncomingMode = urlView ? toCanvasViewMode(urlView) : null;
+      if (resolvedIncomingMode === canvasViewMode) {
+        isApplyingUrlViewRef.current = false;
+      }
+      return;
+    }
+
+    onViewChange?.(nextUrlView);
+  }, [canvasViewMode, onViewChange, urlView]);
+
+  useEffect(() => {
     const normalizedNodeId =
-      typeof focusNodeId === "string" ? focusNodeId.trim() : "";
-    if (!normalizedNodeId) return;
-    navigateToNode(normalizedNodeId);
-    onFocusNodeConsumed?.();
-  }, [focusNodeId, navigateToNode, onFocusNodeConsumed]);
+      typeof deepLinkNodeId === "string" ? deepLinkNodeId.trim() : "";
+    if (!normalizedNodeId) {
+      consumedNodeIdRef.current = null;
+      return;
+    }
+
+    if (!roadmap || roadmap.id !== roadmapId) {
+      return;
+    }
+
+    if (consumedNodeIdRef.current === normalizedNodeId) {
+      return;
+    }
+    consumedNodeIdRef.current = normalizedNodeId;
+
+    const target = resolveDeepLinkTarget(roadmap, normalizedNodeId);
+    if (!target) {
+      navigateToNode(normalizedNodeId);
+    } else if (target.kind === "epic") {
+      navigateToNode(target.epicId);
+      openEpicEditor(target.epicId);
+    } else if (target.kind === "feature") {
+      navigateToNode(target.featureId);
+      openFeatureEditor(target.epicId, target.featureId);
+    } else {
+      navigateToNode(target.featureId, { taskId: target.taskId });
+      openTaskDetail(target.taskId);
+    }
+
+    onDeepLinkNodeConsumed?.(urlView ?? toRoadmapUrlView(canvasViewMode));
+  }, [
+    canvasViewMode,
+    deepLinkNodeId,
+    navigateToNode,
+    onDeepLinkNodeConsumed,
+    openEpicEditor,
+    openFeatureEditor,
+    openTaskDetail,
+    roadmap,
+    roadmapId,
+    urlView,
+  ]);
+
+  const handleNodeOpen = useCallback(
+    (nodeId: string) => {
+      const normalizedNodeId = nodeId.trim();
+      if (!normalizedNodeId) return;
+      onNodeOpened?.(normalizedNodeId, toRoadmapUrlView(canvasViewMode));
+    },
+    [canvasViewMode, onNodeOpened],
+  );
 
   const setSidebarExpanded = useProjectSettingsStore(
     (state) => state.setSidebarExpanded,
@@ -442,7 +577,11 @@ export function RoadmapViewContent({
 
         {/* Right: Roadmap Canvas */}
         <div className="flex-1 relative">
-          <RoadmapCanvas roadmap={roadmap} hideMiniMap={isAiChatPanelOpen} />
+          <RoadmapCanvas
+            roadmap={roadmap}
+            hideMiniMap={isAiChatPanelOpen}
+            onNodeOpen={handleNodeOpen}
+          />
         </div>
 
         {isAiChatPanelOpen && (

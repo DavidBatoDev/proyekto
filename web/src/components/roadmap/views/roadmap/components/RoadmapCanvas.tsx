@@ -46,6 +46,7 @@ const RoadmapCanvas = ({
   openTaskDetailId: openTaskDetailIdProp,
   onOpenTaskDetailHandled: onOpenTaskDetailHandledProp,
   onActiveEpicChange,
+  onNodeOpen,
 }: RoadmapCanvasProps) => {
   const toast = useToast();
   const controller = useRoadmapCanvasController({
@@ -79,6 +80,7 @@ const RoadmapCanvas = ({
     openTaskDetailId: openTaskDetailIdProp,
     onOpenTaskDetailHandled: onOpenTaskDetailHandledProp,
     onActiveEpicChange,
+    onNodeOpen,
   });
 
   const {

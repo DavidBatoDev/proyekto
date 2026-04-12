@@ -38,6 +38,7 @@ export function useRoadmapCanvasController({
   openTaskDetailId: openTaskDetailIdProp,
   onOpenTaskDetailHandled: onOpenTaskDetailHandledProp,
   onActiveEpicChange,
+  onNodeOpen,
 }: UseRoadmapCanvasControllerArgs) {
   const toast = useToast();
 
@@ -408,6 +409,21 @@ export function useRoadmapCanvasController({
   useEffect(() => {
     onActiveEpicChangeResolved(viewMode === "epic" ? selectedEpic : null);
   }, [onActiveEpicChangeResolved, selectedEpic, viewMode]);
+
+  useEffect(() => {
+    if (!isEditEpicModalOpen || !editingEpicId) return;
+    onNodeOpen?.(editingEpicId);
+  }, [editingEpicId, isEditEpicModalOpen, onNodeOpen]);
+
+  useEffect(() => {
+    if (!isEditFeatureModalOpen || !editingFeatureId) return;
+    onNodeOpen?.(editingFeatureId);
+  }, [editingFeatureId, isEditFeatureModalOpen, onNodeOpen]);
+
+  useEffect(() => {
+    if (!sidePanelOpen || !selectedTaskId) return;
+    onNodeOpen?.(selectedTaskId);
+  }, [onNodeOpen, selectedTaskId, sidePanelOpen]);
 
   const handleCloseEpicTab = (epicId: string) => {
     closeCanvasEpicTab(epicId);

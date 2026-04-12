@@ -589,6 +589,28 @@ export const FeatureModal = ({
 
   const rightPanelTabs = [
     {
+      id: "comments",
+      label: "Comments",
+      content: featureId ? (
+        <CommentsSection
+          comments={comments}
+          onAddComment={handleAddComment}
+          onUpdateComment={handleUpdateComment}
+          onDeleteComment={handleDeleteComment}
+          currentUserId={user?.id}
+          canComment={Boolean(user)}
+          isLoading={loadingComments}
+          emptyMessage="No comments yet for this feature."
+        />
+      ) : (
+        <div className="text-center py-8">
+          <p className="text-sm text-gray-500">
+            Save feature first to add comments
+          </p>
+        </div>
+      ),
+    },
+    {
       id: "tasks",
       label: "Tasks",
       content: (
@@ -650,28 +672,6 @@ export const FeatureModal = ({
         </div>
       ),
     },
-    {
-      id: "comments",
-      label: "Comments",
-      content: featureId ? (
-        <CommentsSection
-          comments={comments}
-          onAddComment={handleAddComment}
-          onUpdateComment={handleUpdateComment}
-          onDeleteComment={handleDeleteComment}
-          currentUserId={user?.id}
-          canComment={Boolean(user)}
-          isLoading={loadingComments}
-          emptyMessage="No comments yet for this feature."
-        />
-      ) : (
-        <div className="text-center py-8">
-          <p className="text-sm text-gray-500">
-            Save feature first to add comments
-          </p>
-        </div>
-      ),
-    },
   ];
 
   const dateActionButton = !hasDates ? (
@@ -700,7 +700,7 @@ export const FeatureModal = ({
         footer={footer}
         canComment={Boolean(user)}
         rightPanelTabs={rightPanelTabs}
-        defaultRightPanelTabId="tasks"
+        defaultRightPanelTabId="comments"
       />
       <UnsavedChangesConfirmModal
         isOpen={isOpen && showUnsavedChangesConfirm}

@@ -1335,12 +1335,15 @@ export function RoadmapAiAssistantPanel({
   const autoCommitRefreshSeqByTraceRef = useRef<Record<string, number>>({});
 
   const roadmapFromStore = useRoadmapStore((state) => state.roadmap);
+  const canvasViewMode = useRoadmapStore((state) => state.canvasViewMode);
   const openArtifactTab = useRoadmapStore((state) => state.openArtifactTab);
   const applyArtifactSnapshot = useRoadmapStore(
     (state) => state.applyArtifactSnapshot,
   );
   const loadRoadmap = useRoadmapStore((state) => state.loadRoadmap);
   const currentRoadmap = roadmapSnapshot ?? roadmapFromStore ?? null;
+  const roadmapLinkView =
+    canvasViewMode === "milestones" ? "timelineView" : "roadmapView";
 
   const refreshRoadmapAfterAutoCommit = async () => {
     await queryClient.invalidateQueries({
@@ -2354,7 +2357,10 @@ export function RoadmapAiAssistantPanel({
                                       key={`${message.id}-${kind}-${item.nodeType}-${item.nodeId}`}
                                       to="/project/$projectId/roadmap/$roadmapId"
                                       params={{ projectId, roadmapId }}
-                                      search={{ node: item.nodeId }}
+                                      search={{
+                                        nodeId: item.nodeId,
+                                        view: roadmapLinkView,
+                                      }}
                                       className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] text-orange-700 hover:bg-orange-100"
                                     >
                                       {item.title ||

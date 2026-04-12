@@ -58,6 +58,7 @@ export interface RoadmapCanvasControllerProps {
 	openTaskDetailId?: string | null;
 	onOpenTaskDetailHandled?: () => void;
 	onActiveEpicChange?: (epicId: string | null) => void;
+	onNodeOpen?: (nodeId: string) => void;
 }
 
 export interface RoadmapCanvasProps extends RoadmapCanvasControllerProps {
