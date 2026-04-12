@@ -167,6 +167,9 @@ def operation_validation_guidance(reason: str | None) -> str:
         'mark_status.status_missing': (
             'The status update is missing a status value. Specify the exact status to apply.'
         ),
+        'mark_status.status_invalid': (
+            'The status value is not valid. Use one of: todo, in_progress, in_review, done, blocked.'
+        ),
         'shift_dates.delta_days_missing': (
             'The date shift amount is missing. Specify how many days to shift dates by.'
         ),

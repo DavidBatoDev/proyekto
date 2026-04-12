@@ -47,6 +47,23 @@ class OperationContractsTests(unittest.TestCase):
         assert validation_error is not None
         self.assertEqual(validation_error.get('reason'), 'mark_status.status_missing')
 
+    def test_mark_status_rejects_invalid_status_value(self) -> None:
+        operations = [
+            RoadmapOperation(
+                op='mark_status',
+                node_type='task',
+                node_id='123e4567-e89b-12d3-a456-426614174000',
+                status='inprogress',
+            )
+        ]
+        validation_error = validate_operation_contract(
+            operations,
+            is_uuid=self._is_uuid,
+        )
+        self.assertIsNotNone(validation_error)
+        assert validation_error is not None
+        self.assertEqual(validation_error.get('reason'), 'mark_status.status_invalid')
+
     def test_shift_dates_requires_delta_days(self) -> None:
         operations = [
             RoadmapOperation(
@@ -130,6 +147,10 @@ class OperationContractsTests(unittest.TestCase):
         self.assertIn(
             'missing a status value',
             operation_validation_guidance('mark_status.status_missing').lower(),
+        )
+        self.assertIn(
+            'status value is not valid',
+            operation_validation_guidance('mark_status.status_invalid').lower(),
         )
         self.assertIn(
             'include patch fields',
@@ -251,6 +272,16 @@ class OperationContractsTests(unittest.TestCase):
         issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
         self.assertEqual(issues, [])
 
+    def test_add_feature_accepts_feat_prefix_temp_id(self) -> None:
+        operation = RoadmapOperation(
+            op='add_feature',
+            parent_ref='epic_temp_1',
+            temp_id='feat_auth_t1',
+            data={'title': 'Authentication'},
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertEqual(issues, [])
+
     def test_add_feature_accepts_t_prefix_refs(self) -> None:
         operation = RoadmapOperation(
             op='add_feature',
@@ -275,6 +306,16 @@ class OperationContractsTests(unittest.TestCase):
         operation = RoadmapOperation(
             op='add_task',
             parent_ref='feature_temp_1',
+            temp_id='task_temp_1',
+            data={'title': 'Implement login flow'},
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertEqual(issues, [])
+
+    def test_add_task_accepts_feat_prefix_parent_ref(self) -> None:
+        operation = RoadmapOperation(
+            op='add_task',
+            parent_ref='feat_auth_t1',
             temp_id='task_temp_1',
             data={'title': 'Implement login flow'},
         )

@@ -1842,6 +1842,11 @@ def plan_operations(
                         'did not include any actual changes. Please confirm the exact fields to change '
                         '(for unassign, use assignee_id=null).'
                     )
+                elif reason == 'mark_status.status_invalid':
+                    question = (
+                        'I could not safely stage this edit because one or more status values were invalid. '
+                        'Please confirm using one of: todo, in_progress, in_review, done, blocked.'
+                    )
                 else:
                     question = (
                         'I could not safely stage this edit because the generated operations were '

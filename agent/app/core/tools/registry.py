@@ -694,6 +694,14 @@ def _normalize_operation_payload(item: Any) -> dict[str, Any]:
     payload = _normalize_single_item_helper_alias(payload)
     payload = _normalize_uuid_fields(payload)
     op = payload.get('op')
+    if op == 'mark_status':
+        normalized_status = _normalize_mark_status_value(
+            payload.get('status'),
+            payload.get('node_type'),
+        )
+        if normalized_status is not None:
+            payload['status'] = normalized_status
+        return payload
     if op in {'add_epic', 'add_feature', 'add_task'}:
         data = payload.get('data')
         if data is None:
@@ -812,6 +820,48 @@ def _sanitize_op_value(value: Any) -> str:
     if not sanitized:
         return ''
     return sanitized[:48]
+
+
+def _normalize_mark_status_value(value: Any, node_type: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    normalized = re.sub(r'[^a-z0-9]+', '_', normalized).strip('_')
+    if not normalized:
+        return None
+
+    node_type_value = str(node_type or '').strip().lower()
+    if node_type_value in {'feature', 'epic'}:
+        alias_map = {
+            'not_started': 'not_started',
+            'todo': 'not_started',
+            'to_do': 'not_started',
+            'in_progress': 'in_progress',
+            'inprogress': 'in_progress',
+            'in_review': 'in_review',
+            'inreview': 'in_review',
+            'blocked': 'blocked',
+            'completed': 'completed',
+            'complete': 'completed',
+            'done': 'completed',
+        }
+    else:
+        alias_map = {
+            'todo': 'todo',
+            'to_do': 'todo',
+            'in_progress': 'in_progress',
+            'inprogress': 'in_progress',
+            'in_review': 'in_review',
+            'inreview': 'in_review',
+            'review': 'in_review',
+            'blocked': 'blocked',
+            'done': 'done',
+            'complete': 'done',
+            'completed': 'done',
+        }
+    return alias_map.get(normalized)
 
 
 def _normalize_single_item_helper_alias(payload: dict[str, Any]) -> dict[str, Any]:

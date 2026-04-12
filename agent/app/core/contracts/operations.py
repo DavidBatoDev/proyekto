@@ -4,6 +4,15 @@ from typing import Any, Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+_TASK_MARK_STATUS_VALUES = {'todo', 'in_progress', 'in_review', 'done', 'blocked'}
+_FEATURE_MARK_STATUS_VALUES = {
+    'not_started',
+    'in_progress',
+    'in_review',
+    'completed',
+    'blocked',
+}
+
 
 class OperationType(str, Enum):
     ADD_EPIC = 'add_epic'
@@ -58,7 +67,7 @@ class RoadmapOperation(BaseModel):
                 return False
             return bool(
                 re.fullmatch(
-                    r'(?i)(?:tmp|t|temp|epic|feature|task)[_-][a-z0-9][a-z0-9_-]{0,63}',
+                    r'(?i)(?:tmp|t|temp|epic|feature|feat|task)[_-][a-z0-9][a-z0-9_-]{0,63}',
                     normalized,
                 )
             )
@@ -132,6 +141,13 @@ class RoadmapOperation(BaseModel):
             normalized_status = self.status.strip() if isinstance(self.status, str) else ''
             if not normalized_status:
                 issues.append('mark_status.status_missing')
+            else:
+                canonical_status = normalized_status.lower()
+                if self.node_type in {NodeType.FEATURE, NodeType.EPIC}:
+                    if canonical_status not in _FEATURE_MARK_STATUS_VALUES:
+                        issues.append('mark_status.status_invalid')
+                elif canonical_status not in _TASK_MARK_STATUS_VALUES:
+                    issues.append('mark_status.status_invalid')
 
         if op_name == 'shift_dates':
             if self.delta_days is None:

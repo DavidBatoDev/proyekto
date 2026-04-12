@@ -99,6 +99,23 @@ class ToolRegistryParsePlanTests(unittest.TestCase):
         self.assertEqual(operations[0].node_id, '123e4567-e89b-12d3-a456-426614174000')
         self.assertEqual(operations[0].status, 'done')
 
+    def test_parse_mark_status_normalizes_inprogress_alias(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'update status',
+                'operations': [
+                    {
+                        'op': 'mark_status',
+                        'node_type': 'task',
+                        'node_id': '123e4567-e89b-12d3-a456-426614174000',
+                        'status': 'inprogress',
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].status, 'in_progress')
+
     def test_parse_update_task_assignee_alias_normalizes_unassign_token(self) -> None:
         _, operations = parse_plan_tool_args(
             {
