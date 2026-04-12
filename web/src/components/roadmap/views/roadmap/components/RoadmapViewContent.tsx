@@ -52,6 +52,7 @@ const CHAT_PANEL_MAX_WIDTH = 820;
 const CHAT_PANEL_CLOSE_THRESHOLD = 260;
 const ROADMAP_LEFT_PANEL_WIDTH = 320;
 const CANVAS_MIN_WIDTH = 560;
+const TASK_NAVIGATE_OFFSET_X = 620;
 
 const clampPanelWidth = (value: number, maxAllowed: number) =>
   Math.min(Math.max(value, CHAT_PANEL_MIN_WIDTH), maxAllowed);
@@ -259,7 +260,10 @@ export function RoadmapViewContent({
       navigateToNode(target.featureId);
       openFeatureEditor(target.epicId, target.featureId);
     } else {
-      navigateToNode(target.featureId, { taskId: target.taskId });
+      navigateToNode(target.featureId, {
+        offsetX: TASK_NAVIGATE_OFFSET_X,
+        taskId: target.taskId,
+      });
       openTaskDetail(target.taskId);
     }
 

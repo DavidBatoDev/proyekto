@@ -6,6 +6,7 @@ import type { UseRoadmapCanvasControllerArgs } from "../models/types";
 
 /** @deprecated Use CanvasViewMode from roadmapStore instead */
 export type ViewMode = CanvasViewMode;
+const TASK_NAVIGATE_OFFSET_X = 620;
 
 const getErrorMessage = (error: unknown, fallback: string): string => {
   if (!(error instanceof Error) || error.message.trim().length === 0) {
@@ -102,6 +103,7 @@ export function useRoadmapCanvasController({
   const storeNavigateToEpicId = useRoadmapStore(
     (state) => state.navigateToEpicId,
   );
+  const storeNavigateToNode = useRoadmapStore((state) => state.navigateToNode);
   const storeNavigateToFeature = useRoadmapStore(
     (state) => state.navigateToFeature,
   );
@@ -480,6 +482,16 @@ export function useRoadmapCanvasController({
 
   useEffect(() => {
     if (activeDetailNodeId) {
+      if (sidePanelOpen && selectedTaskId && viewMode === "roadmap") {
+        const taskMeta = taskById.get(selectedTaskId);
+        if (taskMeta) {
+          storeNavigateToNode(taskMeta.featureId, {
+            offsetX: TASK_NAVIGATE_OFFSET_X,
+            taskId: selectedTaskId,
+          });
+        }
+      }
+
       hasNotifiedOpenNodeRef.current = true;
       onNodeOpen?.(activeDetailNodeId);
       return;
@@ -491,7 +503,16 @@ export function useRoadmapCanvasController({
 
     hasNotifiedOpenNodeRef.current = false;
     onNodeClose?.();
-  }, [activeDetailNodeId, onNodeClose, onNodeOpen]);
+  }, [
+    activeDetailNodeId,
+    onNodeClose,
+    onNodeOpen,
+    selectedTaskId,
+    sidePanelOpen,
+    storeNavigateToNode,
+    taskById,
+    viewMode,
+  ]);
 
   const handleCloseEpicTab = useCallback(
     (epicId: string) => {
