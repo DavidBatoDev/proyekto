@@ -31,6 +31,9 @@ import { useRoadmapFullLiveQuery } from "@/hooks/useProjectQueries";
 
 interface RoadmapViewContentProps {
   roadmapId: string;
+  projectId: string;
+  focusNodeId?: string | null;
+  onFocusNodeConsumed?: () => void;
 }
 
 const CHAT_PANEL_DEFAULT_WIDTH = 380;
@@ -86,7 +89,12 @@ const buildRoadmapJsonDocument = (roadmap: Roadmap): UpsertFullRoadmapDto => ({
   })),
 });
 
-export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
+export function RoadmapViewContent({
+  roadmapId,
+  projectId,
+  focusNodeId,
+  onFocusNodeConsumed,
+}: RoadmapViewContentProps) {
   const toast = useToast();
   // Roadmap data and actions from store
   const roadmap = useRoadmapStore((state) => state.roadmap);
@@ -120,6 +128,14 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
   const chatPanelRef = useRef<HTMLDivElement | null>(null);
   const chatPanelWidthRef = useRef(chatPanelWidth);
   const roadmapLiveQuery = useRoadmapFullLiveQuery(roadmapId);
+
+  useEffect(() => {
+    const normalizedNodeId =
+      typeof focusNodeId === "string" ? focusNodeId.trim() : "";
+    if (!normalizedNodeId) return;
+    navigateToNode(normalizedNodeId);
+    onFocusNodeConsumed?.();
+  }, [focusNodeId, navigateToNode, onFocusNodeConsumed]);
 
   const setSidebarExpanded = useProjectSettingsStore(
     (state) => state.setSidebarExpanded,
@@ -451,6 +467,7 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
             </div>
 
             <RoadmapAiAssistantPanel
+              projectId={projectId}
               roadmapId={roadmap.id}
               roadmapSnapshot={roadmap}
               isVisible={isAiChatPanelOpen}

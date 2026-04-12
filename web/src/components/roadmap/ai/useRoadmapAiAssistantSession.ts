@@ -12,9 +12,7 @@ export interface RoadmapAiChatAttachment {
 
 export type RoadmapAiActivityStepStatus = "running" | "success" | "error";
 export type RoadmapAiActivityDetailMode = "verbose" | "structured";
-export type RoadmapAiActivityPresentationMode =
-  | "curated"
-  | "friendly_minimal";
+export type RoadmapAiActivityPresentationMode = "curated" | "friendly_minimal";
 
 export interface RoadmapAiActivityStepTitleList {
   items: string[];
@@ -45,6 +43,30 @@ export interface RoadmapAiActivityTimeline {
   steps: RoadmapAiActivityStep[];
 }
 
+export type RoadmapAiCommitLifecycleState =
+  | "committing"
+  | "committed"
+  | "failed";
+
+export type RoadmapAiCommitImpactedItemKind =
+  | "created"
+  | "modified"
+  | "deleted";
+
+export interface RoadmapAiCommitImpactedItem {
+  nodeId: string;
+  nodeType: "roadmap" | "epic" | "feature" | "task";
+  title?: string;
+  kind: RoadmapAiCommitImpactedItemKind;
+  changeType?: string;
+}
+
+export interface RoadmapAiCommitLifecycle {
+  state: RoadmapAiCommitLifecycleState;
+  impactedItems: RoadmapAiCommitImpactedItem[];
+  updatedAt: string;
+}
+
 export interface RoadmapAiChatMessage {
   id: string;
   role: RoadmapAiChatRole;
@@ -64,6 +86,7 @@ export interface RoadmapAiChatMessage {
   artifacts?: RoadmapArtifactPreview[];
   attachments?: RoadmapAiChatAttachment[];
   activityTimeline?: RoadmapAiActivityTimeline;
+  commitLifecycle?: RoadmapAiCommitLifecycle;
 }
 
 interface RoadmapAiAssistantPersistedState {

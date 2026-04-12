@@ -11,16 +11,20 @@ import {
   Check,
   Eye,
   FolderOpen,
+  Loader2,
   Paperclip,
   Send,
   TriangleAlert,
   X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Link } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { RoadmapView } from "../views/roadmap/RoadmapView";
 import { useRoadmapStore } from "@/stores/roadmapStore";
+import { projectKeys } from "@/queries/project";
 import type {
   Roadmap,
   RoadmapEpic,
@@ -33,6 +37,7 @@ import type {
   RoadmapArtifactPreview,
 } from "@/types/roadmapArtifact";
 import roadmapAgentService, {
+  type AgentOperation,
   type AgentMessageResponse,
   type AgentCommitPayload,
   type AgentRoadmapCommitArtifact,
@@ -61,9 +66,13 @@ import {
   type RoadmapAiActivityPresentationMode,
   type RoadmapAiChatAttachment,
   type RoadmapAiChatMessage,
+  type RoadmapAiCommitLifecycle,
+  type RoadmapAiCommitImpactedItem,
+  type RoadmapAiCommitImpactedItemKind,
 } from "./useRoadmapAiAssistantSession";
 
 interface RoadmapAiAssistantPanelProps {
+  projectId: string;
   roadmapId: string;
   baseRevision?: number;
   roadmapSnapshot?: Roadmap | null;
@@ -86,6 +95,7 @@ const buildAssistantMessage = (
       | "unclear";
     responseMode?: "chat" | "edit_plan";
     artifacts?: RoadmapArtifactPreview[];
+    commitLifecycle?: RoadmapAiCommitLifecycle;
   },
 ): RoadmapAiChatMessage => ({
   id: crypto.randomUUID(),
@@ -96,6 +106,7 @@ const buildAssistantMessage = (
   intentType: options?.intentType,
   responseMode: options?.responseMode,
   artifacts: options?.artifacts,
+  commitLifecycle: options?.commitLifecycle,
 });
 
 const BRACKET_TAG_PATTERN = /\[([^\[\]\n]{1,120})\]/g;
@@ -475,9 +486,7 @@ const FRIENDLY_MINIMAL_EXTRA_HIDDEN_ACTIVITY_EVENTS = new Set<string>([
   "provider_attempt",
 ]);
 
-const toRecord = (
-  value: unknown,
-): Record<string, unknown> | null => {
+const toRecord = (value: unknown): Record<string, unknown> | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
@@ -488,6 +497,339 @@ const toStringValue = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+};
+
+const COMMIT_IMPACT_KIND_ORDER: RoadmapAiCommitImpactedItemKind[] = [
+  "created",
+  "modified",
+  "deleted",
+];
+
+const COMMIT_IMPACT_KIND_PRIORITY: Record<
+  RoadmapAiCommitImpactedItemKind,
+  number
+> = {
+  created: 2,
+  modified: 1,
+  deleted: 3,
+};
+
+const COMMIT_IMPACT_KIND_LABEL: Record<
+  RoadmapAiCommitImpactedItemKind,
+  string
+> = {
+  created: "Created",
+  modified: "Modified",
+  deleted: "Deleted",
+};
+
+const isRoadmapNodeType = (
+  value: unknown,
+): value is RoadmapAiCommitImpactedItem["nodeType"] => {
+  return (
+    value === "roadmap" ||
+    value === "epic" ||
+    value === "feature" ||
+    value === "task"
+  );
+};
+
+const normalizeChangeType = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  return normalized || null;
+};
+
+const mapChangeTypeToImpactKind = (
+  changeType: string | null,
+): RoadmapAiCommitImpactedItemKind => {
+  if (changeType === "NODE_ADDED") return "created";
+  if (changeType === "NODE_REMOVED") return "deleted";
+  return "modified";
+};
+
+export const parseCommitImpactedItemsFromOperations = (
+  operations: AgentOperation[] | undefined,
+): RoadmapAiCommitImpactedItem[] => {
+  if (!Array.isArray(operations)) return [];
+
+  const parsed = operations.flatMap((operation) => {
+    const op = toStringValue(operation.op)?.toLowerCase();
+    if (!op) return [];
+
+    let nodeTypeCandidate = toStringValue(operation.node_type)?.toLowerCase();
+    if (!nodeTypeCandidate) {
+      if (op === "add_epic") nodeTypeCandidate = "epic";
+      if (op === "add_feature") nodeTypeCandidate = "feature";
+      if (op === "add_task") nodeTypeCandidate = "task";
+    }
+    if (!isRoadmapNodeType(nodeTypeCandidate)) return [];
+
+    const operationData = toRecord(operation.data);
+    const operationPatch = toRecord(operation.patch);
+    const nodeId =
+      toStringValue(operation.node_id) || toStringValue(operationData?.id);
+    if (!nodeId) return [];
+
+    let kind: RoadmapAiCommitImpactedItemKind = "modified";
+    if (op === "add_epic" || op === "add_feature" || op === "add_task") {
+      kind = "created";
+    } else if (op === "delete_node") {
+      kind = "deleted";
+    }
+
+    let changeType: string | undefined;
+    if (op === "add_epic" || op === "add_feature" || op === "add_task") {
+      changeType = "NODE_ADDED";
+    } else if (op === "delete_node") {
+      changeType = "NODE_REMOVED";
+    } else if (op === "move_node") {
+      changeType = "NODE_MOVED";
+    } else if (op === "mark_status") {
+      changeType = "STATUS_CHANGED";
+    } else if (op === "shift_dates") {
+      changeType = "DATE_CHANGED";
+    } else if (op === "update_node") {
+      changeType = "NODE_UPDATED";
+    }
+
+    return [
+      {
+        nodeId,
+        nodeType: nodeTypeCandidate,
+        title: pickCommitItemTitle(operationPatch, operationData),
+        kind,
+        changeType,
+      },
+    ];
+  });
+
+  return mergeCommitImpactedItems(parsed);
+};
+
+const pickCommitItemTitle = (...sources: unknown[]): string | undefined => {
+  for (const source of sources) {
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+      continue;
+    }
+    const record = source as Record<string, unknown>;
+    const candidate =
+      toStringValue(record.title) ||
+      toStringValue(record.name) ||
+      toStringValue(record.node_title);
+    if (candidate) return candidate;
+  }
+  return undefined;
+};
+
+const mergeCommitImpactedItems = (
+  ...groups: Array<RoadmapAiCommitImpactedItem[] | undefined>
+): RoadmapAiCommitImpactedItem[] => {
+  const merged = new Map<string, RoadmapAiCommitImpactedItem>();
+  for (const group of groups) {
+    if (!Array.isArray(group)) continue;
+    for (const item of group) {
+      if (!item?.nodeId || !isRoadmapNodeType(item.nodeType)) continue;
+      const key = `${item.nodeType}:${item.nodeId}`;
+      const existing = merged.get(key);
+      if (!existing) {
+        merged.set(key, item);
+        continue;
+      }
+
+      const existingPriority = COMMIT_IMPACT_KIND_PRIORITY[existing.kind] ?? 0;
+      const nextPriority = COMMIT_IMPACT_KIND_PRIORITY[item.kind] ?? 0;
+      if (nextPriority > existingPriority) {
+        merged.set(key, {
+          ...existing,
+          ...item,
+          title: item.title || existing.title,
+          changeType: item.changeType || existing.changeType,
+        });
+        continue;
+      }
+
+      if (!existing.title && item.title) {
+        merged.set(key, {
+          ...existing,
+          title: item.title,
+        });
+      }
+    }
+  }
+
+  return [...merged.values()];
+};
+
+const toCommitImpactedItemsFromArtifact = (
+  artifact: RoadmapArtifactPreview,
+): RoadmapAiCommitImpactedItem[] => {
+  return (artifact.semanticDiffChanges ?? []).flatMap((change) => {
+    const nodeType = change.node?.type;
+    const nodeId = toStringValue(change.node?.id);
+    if (!nodeId || !isRoadmapNodeType(nodeType)) {
+      return [];
+    }
+
+    const changeType = normalizeChangeType(change.type);
+    return [
+      {
+        nodeId,
+        nodeType,
+        title: pickCommitItemTitle(change.to, change.from),
+        kind: mapChangeTypeToImpactKind(changeType),
+        changeType: changeType ?? undefined,
+      },
+    ];
+  });
+};
+
+const toAppliedArtifactImpactedItems = (
+  artifacts: RoadmapArtifactPreview[],
+): RoadmapAiCommitImpactedItem[] => {
+  const appliedArtifacts = artifacts.filter(
+    (artifact) => artifact.status === "applied",
+  );
+  return mergeCommitImpactedItems(
+    ...appliedArtifacts.map((artifact) =>
+      toCommitImpactedItemsFromArtifact(artifact),
+    ),
+  );
+};
+
+export const parseCommitImpactedItemsFromTraceDetails = (
+  details: Record<string, unknown> | undefined,
+): RoadmapAiCommitImpactedItem[] => {
+  const rawItems = details?.impacted_items;
+  if (!Array.isArray(rawItems)) return [];
+
+  const parsed = rawItems.flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return [];
+    }
+    const record = entry as Record<string, unknown>;
+    const nodeId =
+      toStringValue(record.node_id) || toStringValue(record.nodeId);
+    const nodeTypeCandidate =
+      toStringValue(record.node_type) || toStringValue(record.nodeType);
+    const nodeType = nodeTypeCandidate?.toLowerCase();
+    if (!nodeId || !isRoadmapNodeType(nodeType)) {
+      return [];
+    }
+
+    const changeType =
+      normalizeChangeType(record.change_type) ||
+      normalizeChangeType(record.changeType);
+    const impactCandidate =
+      toStringValue(record.impact)?.toLowerCase() ||
+      toStringValue(record.kind)?.toLowerCase();
+    const kind: RoadmapAiCommitImpactedItemKind =
+      impactCandidate === "created" ||
+      impactCandidate === "modified" ||
+      impactCandidate === "deleted"
+        ? impactCandidate
+        : mapChangeTypeToImpactKind(changeType);
+
+    return [
+      {
+        nodeId,
+        nodeType,
+        title: pickCommitItemTitle(record),
+        kind,
+        changeType: changeType ?? undefined,
+      },
+    ];
+  });
+
+  return mergeCommitImpactedItems(parsed);
+};
+
+const resolveCommitLifecycleFromTimeline = (
+  timeline: RoadmapAiActivityTimeline,
+  artifacts: RoadmapArtifactPreview[],
+): RoadmapAiCommitLifecycle | null => {
+  const completionStep = [...timeline.steps]
+    .reverse()
+    .find(
+      (step) =>
+        step.event === "auto_commit_async_completed" ||
+        step.event === "auto_commit_async_failed",
+    );
+
+  if (completionStep?.event === "auto_commit_async_failed") {
+    return {
+      state: "failed",
+      impactedItems: [],
+      updatedAt: completionStep.ts,
+    };
+  }
+
+  if (completionStep?.event === "auto_commit_async_completed") {
+    const fromTrace = parseCommitImpactedItemsFromTraceDetails(
+      completionStep.details,
+    );
+    const mergedItems = mergeCommitImpactedItems(
+      fromTrace,
+      toAppliedArtifactImpactedItems(artifacts),
+    );
+    return {
+      state: "committed",
+      impactedItems: mergedItems,
+      updatedAt: completionStep.ts,
+    };
+  }
+
+  const artifactItems = toAppliedArtifactImpactedItems(artifacts);
+  if (artifactItems.length > 0) {
+    return {
+      state: "committed",
+      impactedItems: artifactItems,
+      updatedAt: timeline.completedAt || new Date().toISOString(),
+    };
+  }
+
+  return null;
+};
+
+const groupCommitImpactedItems = (
+  items: RoadmapAiCommitImpactedItem[],
+): Record<RoadmapAiCommitImpactedItemKind, RoadmapAiCommitImpactedItem[]> => {
+  const grouped: Record<
+    RoadmapAiCommitImpactedItemKind,
+    RoadmapAiCommitImpactedItem[]
+  > = {
+    created: [],
+    modified: [],
+    deleted: [],
+  };
+
+  for (const item of items) {
+    grouped[item.kind].push(item);
+  }
+
+  for (const kind of COMMIT_IMPACT_KIND_ORDER) {
+    grouped[kind].sort((a, b) => {
+      const aTitle = (a.title || "").toLowerCase();
+      const bTitle = (b.title || "").toLowerCase();
+      if (aTitle && bTitle && aTitle !== bTitle) {
+        return aTitle.localeCompare(bTitle);
+      }
+      if (a.nodeType !== b.nodeType) {
+        return a.nodeType.localeCompare(b.nodeType);
+      }
+      return a.nodeId.localeCompare(b.nodeId);
+    });
+  }
+
+  return grouped;
+};
+
+const getCommitLifecycleLabel = (
+  state: RoadmapAiCommitLifecycle["state"],
+): string => {
+  if (state === "committed") return "Committed changes";
+  if (state === "failed") return "Commit did not complete";
+  return "Committing changes";
 };
 
 const parseCountFromUnknown = (value: unknown): number | null => {
@@ -635,10 +977,11 @@ const getProviderAttemptSummary = (rawStep: RawActivityStep): string => {
 
 const normalizeActivityStep = (
   rawStep: RawActivityStep,
-  presentationMode: RoadmapAiActivityPresentationMode =
-    PROGRESS_PRESENTATION_MODE,
+  presentationMode: RoadmapAiActivityPresentationMode = PROGRESS_PRESENTATION_MODE,
 ): RoadmapAiActivityStep | null => {
-  const normalizedEvent = String(rawStep.event || "").trim().toLowerCase();
+  const normalizedEvent = String(rawStep.event || "")
+    .trim()
+    .toLowerCase();
   if (!normalizedEvent) return null;
   if (isActivityEventHidden(normalizedEvent, presentationMode)) {
     return null;
@@ -779,11 +1122,11 @@ const normalizeActivityStep = (
     const invalidOperation = toRecord(details?.auto_commit_invalid_operation);
     const invalidReason = toStringValue(invalidOperation?.reason);
     const hasStatusValidationIssue =
-      (autoCommitErrorMessage ?? "").toLowerCase().includes("validation error") &&
+      (autoCommitErrorMessage ?? "")
+        .toLowerCase()
+        .includes("validation error") &&
       (invalidReason === "mark_status.status_invalid" ||
-        autoCommitErrorMessage
-          ?.toLowerCase()
-          .includes("status"));
+        autoCommitErrorMessage?.toLowerCase().includes("status"));
     return {
       ...baseStep,
       status: "error",
@@ -803,35 +1146,40 @@ const normalizeActivityStep = (
 export const mergeTimelineSteps = (
   existingSteps: RoadmapAiActivityStep[],
   incomingEvents: AgentTraceEvent[],
-  presentationMode: RoadmapAiActivityPresentationMode =
-    PROGRESS_PRESENTATION_MODE,
+  presentationMode: RoadmapAiActivityPresentationMode = PROGRESS_PRESENTATION_MODE,
 ): RoadmapAiActivityStep[] => {
   const deduped = new Map<number, RoadmapAiActivityStep>();
   for (const step of existingSteps) {
-    const normalized = normalizeActivityStep({
-      seq: step.seq,
-      ts: step.ts,
-      event: step.event,
-      title: step.title,
-      status: step.status,
-      summary: step.summary,
-      details: step.details,
-      titleList: step.titleList,
-    }, presentationMode);
+    const normalized = normalizeActivityStep(
+      {
+        seq: step.seq,
+        ts: step.ts,
+        event: step.event,
+        title: step.title,
+        status: step.status,
+        summary: step.summary,
+        details: step.details,
+        titleList: step.titleList,
+      },
+      presentationMode,
+    );
     if (normalized) {
       deduped.set(normalized.seq, normalized);
     }
   }
   for (const event of incomingEvents) {
-    const normalized = normalizeActivityStep({
-      seq: event.seq,
-      ts: event.ts,
-      event: event.event,
-      title: event.title,
-      status: event.status,
-      summary: event.summary,
-      details: event.details,
-    }, presentationMode);
+    const normalized = normalizeActivityStep(
+      {
+        seq: event.seq,
+        ts: event.ts,
+        event: event.event,
+        title: event.title,
+        status: event.status,
+        summary: event.summary,
+        details: event.details,
+      },
+      presentationMode,
+    );
     if (normalized) {
       deduped.set(normalized.seq, normalized);
     }
@@ -844,8 +1192,7 @@ export const toTimelineFromTraceResponse = (
   traceId: string,
   response: AgentTraceEventsResponse,
   previousTimeline?: RoadmapAiActivityTimeline | null,
-  presentationMode: RoadmapAiActivityPresentationMode =
-    PROGRESS_PRESENTATION_MODE,
+  presentationMode: RoadmapAiActivityPresentationMode = PROGRESS_PRESENTATION_MODE,
 ): RoadmapAiActivityTimeline => ({
   traceId,
   startedAt: response.started_at || previousTimeline?.startedAt,
@@ -866,22 +1213,24 @@ export const toTimelineFromTraceResponse = (
 
 export const normalizeTimelineForDisplay = (
   timeline?: RoadmapAiActivityTimeline | null,
-  presentationMode: RoadmapAiActivityPresentationMode =
-    PROGRESS_PRESENTATION_MODE,
+  presentationMode: RoadmapAiActivityPresentationMode = PROGRESS_PRESENTATION_MODE,
 ): RoadmapAiActivityTimeline | null => {
   if (!timeline) return null;
   const normalizedSteps = timeline.steps
     .map((step) =>
-      normalizeActivityStep({
-        seq: step.seq,
-        ts: step.ts,
-        event: step.event,
-        title: step.title,
-        status: step.status,
-        summary: step.summary,
-        details: step.details,
-        titleList: step.titleList,
-      }, presentationMode),
+      normalizeActivityStep(
+        {
+          seq: step.seq,
+          ts: step.ts,
+          event: step.event,
+          title: step.title,
+          status: step.status,
+          summary: step.summary,
+          details: step.details,
+          titleList: step.titleList,
+        },
+        presentationMode,
+      ),
     )
     .filter((step): step is RoadmapAiActivityStep => step != null);
   return {
@@ -948,11 +1297,13 @@ const isTraceNotReadyError = (error: unknown): boolean => {
 };
 
 export function RoadmapAiAssistantPanel({
+  projectId,
   roadmapId,
   baseRevision,
   roadmapSnapshot,
   isVisible = true,
 }: RoadmapAiAssistantPanelProps) {
+  const queryClient = useQueryClient();
   const { messages, appendMessage, updateMessage } =
     useRoadmapAiAssistantSession(roadmapId);
   const toast = useToast();
@@ -981,6 +1332,7 @@ export function RoadmapAiAssistantPanel({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const pollLoopRef = useRef<PollLoopState | null>(null);
   const liveActivityRef = useRef<RoadmapAiActivityTimeline | null>(null);
+  const autoCommitRefreshSeqByTraceRef = useRef<Record<string, number>>({});
 
   const roadmapFromStore = useRoadmapStore((state) => state.roadmap);
   const openArtifactTab = useRoadmapStore((state) => state.openArtifactTab);
@@ -989,6 +1341,49 @@ export function RoadmapAiAssistantPanel({
   );
   const loadRoadmap = useRoadmapStore((state) => state.loadRoadmap);
   const currentRoadmap = roadmapSnapshot ?? roadmapFromStore ?? null;
+
+  const refreshRoadmapAfterAutoCommit = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: projectKeys.roadmapFull(roadmapId),
+      exact: true,
+    });
+    await queryClient.refetchQueries({
+      queryKey: projectKeys.roadmapFull(roadmapId),
+      exact: true,
+      type: "active",
+    });
+    await loadRoadmap(roadmapId, { force: true });
+  };
+
+  const maybeRefreshRoadmapFromTraceEvents = async (
+    traceId: string,
+    events: AgentTraceEvent[],
+  ) => {
+    const completionSeq = events
+      .filter((event) => event.event === "auto_commit_async_completed")
+      .reduce<
+        number | null
+      >((max, event) => (max == null || event.seq > max ? event.seq : max), null);
+    if (completionSeq == null) return;
+
+    const alreadyRefreshedSeq =
+      autoCommitRefreshSeqByTraceRef.current[traceId] ?? 0;
+    if (completionSeq <= alreadyRefreshedSeq) return;
+    autoCommitRefreshSeqByTraceRef.current[traceId] = completionSeq;
+
+    try {
+      await refreshRoadmapAfterAutoCommit();
+    } catch (error) {
+      console.warn(
+        "[RoadmapAiAssistantPanel] roadmap_refresh_after_auto_commit_failed",
+        {
+          trace_id: traceId,
+          roadmap_id: roadmapId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({
@@ -1103,6 +1498,7 @@ export function RoadmapAiAssistantPanel({
           progressPresentationMode,
         ),
       );
+      await maybeRefreshRoadmapFromTraceEvents(loop.traceId, response.events);
       if (response.done) {
         return;
       }
@@ -1158,16 +1554,45 @@ export function RoadmapAiAssistantPanel({
     void pollTraceEvents(loop);
   };
 
-  const finalizeTraceTimeline = (assistantMessageId: string, traceId: string) => {
+  const finalizeTraceTimeline = (
+    assistantMessageId: string,
+    traceId: string,
+  ) => {
     const loop = pollLoopRef.current;
     if (!loop || loop.traceId !== traceId) {
       const existingTimeline = liveActivityRef.current;
       if (existingTimeline && existingTimeline.traceId === traceId) {
         const completedTimeline = ensureTimelineCompleted(existingTimeline);
-        updateMessage(assistantMessageId, (message) => ({
-          ...message,
-          activityTimeline: completedTimeline,
-        }));
+        updateMessage(assistantMessageId, (message) => {
+          const resolvedCommitLifecycleRaw = resolveCommitLifecycleFromTimeline(
+            completedTimeline,
+            message.artifacts ?? [],
+          );
+          const resolvedCommitLifecycle =
+            resolvedCommitLifecycleRaw?.state === "committed" &&
+            resolvedCommitLifecycleRaw.impactedItems.length === 0 &&
+            (message.commitLifecycle?.impactedItems.length ?? 0) > 0
+              ? {
+                  ...resolvedCommitLifecycleRaw,
+                  impactedItems: message.commitLifecycle?.impactedItems ?? [],
+                }
+              : resolvedCommitLifecycleRaw;
+          const fallbackCommitLifecycle =
+            !resolvedCommitLifecycle &&
+            message.commitLifecycle?.state === "committing"
+              ? {
+                  ...message.commitLifecycle,
+                  state: "failed" as const,
+                  updatedAt:
+                    completedTimeline.completedAt || new Date().toISOString(),
+                }
+              : message.commitLifecycle;
+          return {
+            ...message,
+            activityTimeline: completedTimeline,
+            commitLifecycle: resolvedCommitLifecycle ?? fallbackCommitLifecycle,
+          };
+        });
         setActivityExpandedByMessageId((prev) => ({
           ...prev,
           [assistantMessageId]: false,
@@ -1204,6 +1629,10 @@ export function RoadmapAiAssistantPanel({
               progressPresentationMode,
             ),
           );
+          await maybeRefreshRoadmapFromTraceEvents(
+            loop.traceId,
+            response.events,
+          );
           if (response.done) break;
         } catch (error) {
           if (
@@ -1233,12 +1662,42 @@ export function RoadmapAiAssistantPanel({
       }
 
       const timeline = liveActivityRef.current;
-      if (timeline && timeline.traceId === traceId && timeline.steps.length > 0) {
+      if (
+        timeline &&
+        timeline.traceId === traceId &&
+        timeline.steps.length > 0
+      ) {
         const completedTimeline = ensureTimelineCompleted(timeline);
-        updateMessage(assistantMessageId, (message) => ({
-          ...message,
-          activityTimeline: completedTimeline,
-        }));
+        updateMessage(assistantMessageId, (message) => {
+          const resolvedCommitLifecycleRaw = resolveCommitLifecycleFromTimeline(
+            completedTimeline,
+            message.artifacts ?? [],
+          );
+          const resolvedCommitLifecycle =
+            resolvedCommitLifecycleRaw?.state === "committed" &&
+            resolvedCommitLifecycleRaw.impactedItems.length === 0 &&
+            (message.commitLifecycle?.impactedItems.length ?? 0) > 0
+              ? {
+                  ...resolvedCommitLifecycleRaw,
+                  impactedItems: message.commitLifecycle?.impactedItems ?? [],
+                }
+              : resolvedCommitLifecycleRaw;
+          const fallbackCommitLifecycle =
+            !resolvedCommitLifecycle &&
+            message.commitLifecycle?.state === "committing"
+              ? {
+                  ...message.commitLifecycle,
+                  state: "failed" as const,
+                  updatedAt:
+                    completedTimeline.completedAt || new Date().toISOString(),
+                }
+              : message.commitLifecycle;
+          return {
+            ...message,
+            activityTimeline: completedTimeline,
+            commitLifecycle: resolvedCommitLifecycle ?? fallbackCommitLifecycle,
+          };
+        });
         setActivityExpandedByMessageId((prev) => ({
           ...prev,
           [assistantMessageId]: false,
@@ -1320,6 +1779,13 @@ export function RoadmapAiAssistantPanel({
 
       assistantId = crypto.randomUUID();
       setLiveActivityHostMessageId(assistantId);
+      const shouldTrackCommitLifecycle =
+        response.response_mode === "edit_plan" &&
+        ((response.staged_operations_count ?? 0) > 0 ||
+          (response.operations?.length ?? 0) > 0);
+      const initialCommitImpactedItems = parseCommitImpactedItemsFromOperations(
+        response.operations,
+      );
       appendMessage({
         ...buildAssistantMessage(
           response.assistant_message || "I analyzed your request.",
@@ -1328,6 +1794,13 @@ export function RoadmapAiAssistantPanel({
             intentType: response.intent_type,
             responseMode: response.response_mode,
             artifacts: [],
+            commitLifecycle: shouldTrackCommitLifecycle
+              ? {
+                  state: "committing",
+                  impactedItems: initialCommitImpactedItems,
+                  updatedAt: new Date().toISOString(),
+                }
+              : undefined,
           },
         ),
         id: assistantId,
@@ -1336,9 +1809,27 @@ export function RoadmapAiAssistantPanel({
       try {
         const artifacts = await hydrateArtifacts(activeSessionId, response);
         if (artifacts.length > 0) {
+          const commitLifecycleFromArtifacts = artifacts.some(
+            (artifact) => artifact.status === "applied",
+          )
+            ? {
+                state: "committed" as const,
+                impactedItems: toAppliedArtifactImpactedItems(artifacts),
+                updatedAt: new Date().toISOString(),
+              }
+            : undefined;
           updateMessage(assistantId, (message) => ({
             ...message,
             artifacts,
+            commitLifecycle: commitLifecycleFromArtifacts
+              ? {
+                  ...commitLifecycleFromArtifacts,
+                  impactedItems:
+                    commitLifecycleFromArtifacts.impactedItems.length > 0
+                      ? commitLifecycleFromArtifacts.impactedItems
+                      : (message.commitLifecycle?.impactedItems ?? []),
+                }
+              : message.commitLifecycle,
           }));
           for (const artifact of artifacts) {
             if (artifact.status === "applied") {
@@ -1441,18 +1932,28 @@ export function RoadmapAiAssistantPanel({
           : undefined;
       applyArtifactSnapshot(artifact.artifactId);
       await loadRoadmap(roadmapId, { force: true });
-      updateMessage(messageId, (message) => ({
-        ...message,
-        artifacts: (message.artifacts ?? []).map((entry) =>
+      updateMessage(messageId, (message) => {
+        const nextArtifacts: RoadmapArtifactPreview[] = (
+          message.artifacts ?? []
+        ).map((entry) =>
           entry.artifactId === artifact.artifactId
             ? {
                 ...entry,
-                status: "applied",
+                status: "applied" as const,
                 changeId: committedChangeId || entry.changeId,
               }
             : entry,
-        ),
-      }));
+        );
+        return {
+          ...message,
+          artifacts: nextArtifacts,
+          commitLifecycle: {
+            state: "committed",
+            impactedItems: toAppliedArtifactImpactedItems(nextArtifacts),
+            updatedAt: new Date().toISOString(),
+          },
+        };
+      });
       toast.success(`${artifact.title} applied to roadmap`);
     } catch (error) {
       const message =
@@ -1494,14 +1995,28 @@ export function RoadmapAiAssistantPanel({
         change_id: artifact.changeId,
       });
       await loadRoadmap(roadmapId, { force: true });
-      updateMessage(messageId, (message) => ({
-        ...message,
-        artifacts: (message.artifacts ?? []).map((entry) =>
+      updateMessage(messageId, (message) => {
+        const nextArtifacts: RoadmapArtifactPreview[] = (
+          message.artifacts ?? []
+        ).map((entry) =>
           entry.changeId === artifact.changeId
-            ? { ...entry, status: "discarded" }
+            ? { ...entry, status: "discarded" as const }
             : entry,
-        ),
-      }));
+        );
+        const impactedItems = toAppliedArtifactImpactedItems(nextArtifacts);
+        return {
+          ...message,
+          artifacts: nextArtifacts,
+          commitLifecycle:
+            impactedItems.length > 0
+              ? {
+                  state: "committed",
+                  impactedItems,
+                  updatedAt: new Date().toISOString(),
+                }
+              : message.commitLifecycle,
+        };
+      });
       toast.success("Committed AI change discarded.");
     } catch (error) {
       const message =
@@ -1543,14 +2058,24 @@ export function RoadmapAiAssistantPanel({
         change_id: artifact.changeId,
       });
       await loadRoadmap(roadmapId, { force: true });
-      updateMessage(messageId, (message) => ({
-        ...message,
-        artifacts: (message.artifacts ?? []).map((entry) =>
+      updateMessage(messageId, (message) => {
+        const nextArtifacts: RoadmapArtifactPreview[] = (
+          message.artifacts ?? []
+        ).map((entry) =>
           entry.changeId === artifact.changeId
-            ? { ...entry, status: "applied" }
+            ? { ...entry, status: "applied" as const }
             : entry,
-        ),
-      }));
+        );
+        return {
+          ...message,
+          artifacts: nextArtifacts,
+          commitLifecycle: {
+            state: "committed",
+            impactedItems: toAppliedArtifactImpactedItems(nextArtifacts),
+            updatedAt: new Date().toISOString(),
+          },
+        };
+      });
       toast.success("Discarded AI change reapplied.");
     } catch (error) {
       const message =
@@ -1631,8 +2156,8 @@ export function RoadmapAiAssistantPanel({
   );
   const isLiveTimelineAnchoredInMessage = Boolean(
     displayLiveTimeline &&
-      liveActivityHostMessageId &&
-      messages.some((message) => message.id === liveActivityHostMessageId),
+    liveActivityHostMessageId &&
+    messages.some((message) => message.id === liveActivityHostMessageId),
   );
 
   if (!isVisible) {
@@ -1658,6 +2183,10 @@ export function RoadmapAiAssistantPanel({
         ) : (
           messages.map((message) => {
             const artifacts = message.artifacts ?? [];
+            const commitLifecycle = message.commitLifecycle;
+            const groupedCommitItems = commitLifecycle
+              ? groupCommitImpactedItems(commitLifecycle.impactedItems)
+              : null;
             const persistedActivityTimeline = normalizeTimelineForDisplay(
               message.activityTimeline,
               progressPresentationMode,
@@ -1670,6 +2199,8 @@ export function RoadmapAiAssistantPanel({
               isLiveTimelineHostMessage && displayLiveTimeline
                 ? displayLiveTimeline
                 : persistedActivityTimeline;
+            const shouldCollapseForCommitLifecycle =
+              message.role === "assistant" && Boolean(commitLifecycle);
             return (
               <article
                 key={message.id}
@@ -1708,12 +2239,21 @@ export function RoadmapAiAssistantPanel({
                     <RoadmapAiActivityTimelineView
                       timeline={activityTimeline}
                       expanded={
-                        isLiveTimelineHostMessage && !activityTimeline.done
-                          ? true
-                          : isMessageActivityExpanded(message.id, activityTimeline)
+                        shouldCollapseForCommitLifecycle
+                          ? (activityExpandedByMessageId[message.id] ?? false)
+                          : isLiveTimelineHostMessage && !activityTimeline.done
+                            ? true
+                            : isMessageActivityExpanded(
+                                message.id,
+                                activityTimeline,
+                              )
                       }
                       onToggle={() => {
-                        if (isLiveTimelineHostMessage && !activityTimeline.done) {
+                        if (
+                          !shouldCollapseForCommitLifecycle &&
+                          isLiveTimelineHostMessage &&
+                          !activityTimeline.done
+                        ) {
                           return;
                         }
                         toggleMessageActivity(message.id, activityTimeline);
@@ -1770,6 +2310,63 @@ export function RoadmapAiAssistantPanel({
                         </span>
                       </span>
                     ))}
+                  </div>
+                )}
+
+                {message.role === "assistant" && commitLifecycle && (
+                  <div className="mt-2 rounded-md border border-gray-200 bg-white px-2.5 py-2">
+                    <div className="flex items-center gap-1.5 text-[10px] font-semibold text-gray-700">
+                      {commitLifecycle.state === "committing" ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-orange-500" />
+                      ) : commitLifecycle.state === "committed" ? (
+                        <Check className="h-3.5 w-3.5 text-green-600" />
+                      ) : (
+                        <TriangleAlert className="h-3.5 w-3.5 text-red-600" />
+                      )}
+                      <span>
+                        {getCommitLifecycleLabel(commitLifecycle.state)}
+                      </span>
+                    </div>
+
+                    {commitLifecycle.state === "failed" && (
+                      <p className="mt-1 text-[10px] text-red-700">
+                        Auto-commit did not finish. You can still review the
+                        suggested artifact and apply it manually.
+                      </p>
+                    )}
+
+                    {commitLifecycle.state === "committed" &&
+                      groupedCommitItems &&
+                      commitLifecycle.impactedItems.length > 0 && (
+                        <div className="mt-1.5 space-y-1.5">
+                          {COMMIT_IMPACT_KIND_ORDER.map((kind) => {
+                            const items = groupedCommitItems[kind];
+                            if (!items.length) return null;
+                            return (
+                              <div key={`${message.id}-${kind}`}>
+                                <p className="text-[10px] font-medium text-gray-700">
+                                  {COMMIT_IMPACT_KIND_LABEL[kind]} (
+                                  {items.length})
+                                </p>
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {items.map((item) => (
+                                    <Link
+                                      key={`${message.id}-${kind}-${item.nodeType}-${item.nodeId}`}
+                                      to="/project/$projectId/roadmap/$roadmapId"
+                                      params={{ projectId, roadmapId }}
+                                      search={{ node: item.nodeId }}
+                                      className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] text-orange-700 hover:bg-orange-100"
+                                    >
+                                      {item.title ||
+                                        `${item.nodeType} ${item.nodeId.slice(0, 8)}`}
+                                    </Link>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                   </div>
                 )}
 

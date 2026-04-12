@@ -4,6 +4,8 @@ import {
   getDefaultTimelineExpanded,
   mergeTimelineSteps,
   normalizeTimelineForDisplay,
+  parseCommitImpactedItemsFromTraceDetails,
+  parseCommitImpactedItemsFromOperations,
   parseProgressPresentationMode,
   shouldRenderThinkingFallback,
   toTimelineFromTraceResponse,
@@ -11,49 +13,52 @@ import {
 
 describe("assistant progress timeline logic", () => {
   it("uses curated mode by default and keeps selected internal reasoning stages", () => {
-    const merged = mergeTimelineSteps([], [
-      {
-        seq: 1,
-        ts: "2026-04-12T07:15:01.000Z",
-        event: "message_received",
-        title: "Message received",
-        status: "running",
-        summary: "Received user message",
-      },
-      {
-        seq: 2,
-        ts: "2026-04-12T07:15:02.000Z",
-        event: "intent_classified",
-        title: "Intent classified",
-        status: "success",
-        summary: "roadmap_edit",
-        details: {
-          intent_type: "roadmap_edit",
+    const merged = mergeTimelineSteps(
+      [],
+      [
+        {
+          seq: 1,
+          ts: "2026-04-12T07:15:01.000Z",
+          event: "message_received",
+          title: "Message received",
+          status: "running",
+          summary: "Received user message",
         },
-      },
-      {
-        seq: 3,
-        ts: "2026-04-12T07:15:03.000Z",
-        event: "provider_attempt",
-        title: "Provider attempt",
-        status: "running",
-        summary: "Planning edit",
-        details: {
-          phase: "edit_plan",
+        {
+          seq: 2,
+          ts: "2026-04-12T07:15:02.000Z",
+          event: "intent_classified",
+          title: "Intent classified",
+          status: "success",
+          summary: "roadmap_edit",
+          details: {
+            intent_type: "roadmap_edit",
+          },
         },
-      },
-      {
-        seq: 4,
-        ts: "2026-04-12T07:15:04.000Z",
-        event: "tool_call_requested",
-        title: "Tool call requested",
-        status: "running",
-        summary: "Calling resolve_node_reference",
-        details: {
-          tool_name: "resolve_node_reference",
+        {
+          seq: 3,
+          ts: "2026-04-12T07:15:03.000Z",
+          event: "provider_attempt",
+          title: "Provider attempt",
+          status: "running",
+          summary: "Planning edit",
+          details: {
+            phase: "edit_plan",
+          },
         },
-      },
-    ]);
+        {
+          seq: 4,
+          ts: "2026-04-12T07:15:04.000Z",
+          event: "tool_call_requested",
+          title: "Tool call requested",
+          status: "running",
+          summary: "Calling resolve_node_reference",
+          details: {
+            tool_name: "resolve_node_reference",
+          },
+        },
+      ],
+    );
 
     expect(merged.map((step) => step.seq)).toEqual([2, 3, 4]);
     expect(merged[0].title).toBe("Understanding your request");
@@ -231,11 +236,57 @@ describe("assistant progress timeline logic", () => {
     );
 
     expect(timeline.steps).toHaveLength(1);
-    expect(timeline.steps[0].title).toBe("Could not apply changes automatically");
+    expect(timeline.steps[0].title).toBe(
+      "Could not apply changes automatically",
+    );
     expect(timeline.steps[0].summary.toLowerCase()).toContain(
       "invalid status value",
     );
     expect(timeline.steps[0].summary.toLowerCase()).toContain("in review");
+  });
+
+  it("parses committed impacted items from trace details", () => {
+    const impactedItems = parseCommitImpactedItemsFromTraceDetails({
+      impacted_items: [
+        {
+          node_id: "epic-1",
+          node_type: "epic",
+          title: "Authentication",
+          impact: "created",
+          change_type: "NODE_ADDED",
+        },
+        {
+          node_id: "task-1",
+          node_type: "task",
+          title: "Implement OAuth callback",
+          impact: "modified",
+          change_type: "STATUS_CHANGED",
+        },
+      ],
+    });
+
+    expect(impactedItems).toHaveLength(2);
+    expect(impactedItems[0]?.kind).toBe("created");
+    expect(impactedItems[1]?.kind).toBe("modified");
+  });
+
+  it("falls back to operation-derived impacted items for rename updates", () => {
+    const impactedItems = parseCommitImpactedItemsFromOperations([
+      {
+        op: "update_node",
+        node_type: "epic",
+        node_id: "epic-123",
+        patch: {
+          title: "PM Module",
+        },
+      },
+    ]);
+
+    expect(impactedItems).toHaveLength(1);
+    expect(impactedItems[0]?.nodeId).toBe("epic-123");
+    expect(impactedItems[0]?.nodeType).toBe("epic");
+    expect(impactedItems[0]?.kind).toBe("modified");
+    expect(impactedItems[0]?.title).toBe("PM Module");
   });
 
   it("normalizes previously saved technical timeline rows at render time", () => {
@@ -260,7 +311,8 @@ describe("assistant progress timeline logic", () => {
             event: "tool_call_result",
             title: "Tool call result",
             status: "success",
-            summary: "Tool_get_tasks_assigned_to_me completed (tasks_count=19).",
+            summary:
+              "Tool_get_tasks_assigned_to_me completed (tasks_count=19).",
           },
         ],
       },
