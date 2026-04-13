@@ -272,6 +272,48 @@ describe("assistant progress timeline logic", () => {
     expect(timeline.steps[0].summary.toLowerCase()).toContain("in review");
   });
 
+  it("keeps elapsed time anchored to message completion when auto-commit continues", () => {
+    const timeline = toTimelineFromTraceResponse(
+      "structured",
+      "trace-auto-commit-elapsed",
+      {
+        trace_id: "trace-auto-commit-elapsed",
+        session_id: "session-1",
+        roadmap_id: "roadmap-1",
+        events: [
+          {
+            seq: 12,
+            ts: "2026-04-12T07:15:03.000Z",
+            event: "message_completed",
+            title: "Message completed",
+            status: "success",
+            summary: "Completed response in 3000 ms.",
+            details: {
+              elapsed_ms: 3000,
+            },
+          },
+          {
+            seq: 13,
+            ts: "2026-04-12T07:15:10.000Z",
+            event: "auto_commit_async_completed",
+            title: "Auto-commit completed",
+            status: "success",
+            summary: "Auto-commit completed in 7000 ms.",
+          },
+        ],
+        next_seq: 13,
+        done: true,
+        started_at: "2026-04-12T07:15:00.000Z",
+        completed_at: "2026-04-12T07:15:10.000Z",
+        elapsed_ms: 10000,
+      },
+      undefined,
+      "curated",
+    );
+
+    expect(timeline.elapsedMs).toBe(3000);
+  });
+
   it("parses committed impacted items from trace details", () => {
     const impactedItems = parseCommitImpactedItemsFromTraceDetails({
       impacted_items: [

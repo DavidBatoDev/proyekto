@@ -51,13 +51,15 @@ export const SUPPORTED_TRACE_TOOL_NAMES = [
   "get_tasks_by_epic",
 ] as const;
 
-export type SupportedTraceToolName = (typeof SUPPORTED_TRACE_TOOL_NAMES)[number];
+export type SupportedTraceToolName =
+  (typeof SUPPORTED_TRACE_TOOL_NAMES)[number];
 
 const SUPPORTED_TRACE_TOOL_SET = new Set<string>(SUPPORTED_TRACE_TOOL_NAMES);
 const UUID_LIKE_PATTERN =
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i;
 
 interface ToolMessageContext {
+  seq?: number;
   toolArgs: Record<string, unknown> | null;
   resultSummary: Record<string, unknown> | null;
   summaryText: string;
@@ -65,11 +67,11 @@ interface ToolMessageContext {
 }
 
 interface ToolMessageDescriptor {
-  requestedTitle: string;
-  completedTitle: string;
-  buildCompletedTitle?: (ctx: ToolMessageContext) => string;
-  buildRequestedSummary: (ctx: ToolMessageContext) => string;
-  buildResultSummary: (ctx: ToolMessageContext) => string;
+  requestedTitle: string | string[];
+  completedTitle: string | string[];
+  buildCompletedTitle?: (ctx: ToolMessageContext) => string | string[];
+  buildRequestedSummary: (ctx: ToolMessageContext) => string | string[];
+  buildResultSummary: (ctx: ToolMessageContext) => string | string[];
 }
 
 export interface ToolTraceMessage {
@@ -90,6 +92,27 @@ const FALLBACK_REQUESTED_SUMMARY =
   "I am working through this step now and validating the output before moving to the next step.";
 
 const warnedUnknownTools = new Set<string>();
+
+export const seededRandomIndex = (seedString: string, max: number): number => {
+  let hash = 0;
+  for (let i = 0; i < seedString.length; i++) {
+    hash = Math.imul(31, hash) + seedString.charCodeAt(i) | 0;
+  }
+  return Math.abs(hash) % max;
+};
+
+export const pickVariant = (variants: string | string[] | undefined, seed?: string | number): string => {
+  if (variants == null) return "";
+  if (typeof variants === "string") return variants;
+  if (variants.length === 0) return "";
+  if (variants.length === 1) return variants[0];
+  if (seed == null) return variants[0];
+  const max = variants.length;
+  if (typeof seed === "number") {
+    return variants[Math.abs(Math.floor(seed)) % max];
+  }
+  return variants[seededRandomIndex(seed, max)];
+};
 
 const toRecord = (value: unknown): Record<string, unknown> | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -288,7 +311,9 @@ const getResultTitleList = (
   };
 };
 
-const getStatusScope = (toolArgs: Record<string, unknown> | null): string | null => {
+const getStatusScope = (
+  toolArgs: Record<string, unknown> | null,
+): string | null => {
   const status = humanizeEnum(toStringValue(toolArgs?.status));
   if (!status || status === "all") return "across all statuses";
   return `with status ${status}`;
@@ -309,7 +334,9 @@ const getIncludeCompletedSuffix = (
   return "";
 };
 
-const getSelectedTaskCount = (toolArgs: Record<string, unknown> | null): number | null => {
+const getSelectedTaskCount = (
+  toolArgs: Record<string, unknown> | null,
+): number | null => {
   const taskIds = toArrayValue(toolArgs?.task_ids);
   if (taskIds.length > 0) return taskIds.length;
   return null;
@@ -329,7 +356,8 @@ const getToolScopePhrase = (
       return `tasks ${getStatusScope(toolArgs) ?? "across the roadmap"}${limitSuffix}`;
     }
     case "get_tasks_by_parent": {
-      const parentScope = readParentScopePhrase(toolArgs) || "under the selected parent";
+      const parentScope =
+        readParentScopePhrase(toolArgs) || "under the selected parent";
       const statusScope = getStatusScope(toolArgs);
       const statusPart = statusScope ? ` ${statusScope}` : "";
       return `tasks ${parentScope}${statusPart}${getIncludeCompletedSuffix(toolArgs)}${limitSuffix}`;
@@ -359,7 +387,8 @@ const getToolScopePhrase = (
       return `tasks ${describeBulkFilterScope(filters)}${limitSuffix}`;
     }
     case "bulk_update_tasks_by_parent": {
-      const parentScope = readParentScopePhrase(toolArgs) || "under the selected parent";
+      const parentScope =
+        readParentScopePhrase(toolArgs) || "under the selected parent";
       return `tasks ${parentScope}${getIncludeCompletedSuffix(toolArgs)}${limitSuffix}`;
     }
     case "bulk_update_task_status":
@@ -388,11 +417,14 @@ const getToolTargetPhrase = (
   }
   if (toolName === "bulk_update_task_status") {
     const status = humanizeEnum(toStringValue(toolArgs.status));
-    return status ? `set status to ${status}` : "apply the requested status update";
+    return status
+      ? `set status to ${status}`
+      : "apply the requested status update";
   }
   if (toolName === "bulk_assign_tasks") {
     if (toolArgs.assignee_id === null) return "clear assignee";
-    if (toStringValue(toolArgs.assignee_id)) return "assign to the selected teammate";
+    if (toStringValue(toolArgs.assignee_id))
+      return "assign to the selected teammate";
   }
   return null;
 };
@@ -464,7 +496,9 @@ const buildToolResultContextSentence = (
     );
   }
   if (scope) {
-    return toSentence(`I checked ${scope} and confirmed the outcome${titleEvidence}`);
+    return toSentence(
+      `I checked ${scope} and confirmed the outcome${titleEvidence}`,
+    );
   }
   if (actionParts.length > 0) {
     return toSentence(`I ${listWithAnd(actionParts)}${titleEvidence}`);
@@ -585,10 +619,10 @@ const actionFromStatus = (
 
 const outcomeTitle = (
   ctx: ToolMessageContext,
-  found: string,
-  notFound: string,
+  found: string | string[],
+  notFound: string | string[],
   ...keys: string[]
-): string => {
+): string | string[] => {
   for (const key of keys) {
     const count = countFromContext(ctx, key);
     if (count != null) return count > 0 ? found : notFound;
@@ -597,11 +631,11 @@ const outcomeTitle = (
 };
 
 const descriptor = (
-  requestedTitle: string,
-  completedTitle: string,
-  buildRequestedSummary: (ctx: ToolMessageContext) => string,
-  buildResultSummary: (ctx: ToolMessageContext) => string,
-  buildCompletedTitle?: (ctx: ToolMessageContext) => string,
+  requestedTitle: string | string[],
+  completedTitle: string | string[],
+  buildRequestedSummary: (ctx: ToolMessageContext) => string | string[],
+  buildResultSummary: (ctx: ToolMessageContext) => string | string[],
+  buildCompletedTitle?: (ctx: ToolMessageContext) => string | string[],
 ): ToolMessageDescriptor => ({
   requestedTitle,
   completedTitle,
@@ -628,10 +662,15 @@ const maybeWarnUnknownTool = (toolName: string | null): void => {
   if (!toolName || SUPPORTED_TRACE_TOOL_SET.has(toolName)) return;
   if (warnedUnknownTools.has(toolName)) return;
   warnedUnknownTools.add(toolName);
-  console.warn("[RoadmapAiToolMessaging] missing_tool_mapping", { tool_name: toolName });
+  console.warn("[RoadmapAiToolMessaging] missing_tool_mapping", {
+    tool_name: toolName,
+  });
 };
 
-const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor> = {
+const TOOL_MESSAGE_CATALOG: Record<
+  SupportedTraceToolName,
+  ToolMessageDescriptor
+> = {
   get_roadmap_summary: descriptor(
     "Loading roadmap summary",
     "Loaded roadmap summary",
@@ -673,10 +712,19 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
     (ctx) =>
       resultSummaryWithDefault(
         ctx,
-        { matches: "Found {count} matches", children: "Found {count} related items" },
+        {
+          matches: "Found {count} matches",
+          children: "Found {count} related items",
+        },
         "I found the right item in your roadmap.",
       ),
-    (ctx) => outcomeTitle(ctx, "Found the right roadmap item", "No matching roadmap item found", "matches_count"),
+    (ctx) =>
+      outcomeTitle(
+        ctx,
+        "Found the right roadmap item",
+        "No matching roadmap item found",
+        "matches_count",
+      ),
   ),
   search_nodes: descriptor(
     "Searching roadmap items",
@@ -689,7 +737,13 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
         { matches: "Found {count} matches" },
         "I finished searching roadmap items and collected the best matches.",
       ),
-    (ctx) => outcomeTitle(ctx, "Searched roadmap items", "No matching roadmap items found", "matches_count"),
+    (ctx) =>
+      outcomeTitle(
+        ctx,
+        "Searched roadmap items",
+        "No matching roadmap items found",
+        "matches_count",
+      ),
   ),
   search_tasks: descriptor(
     "Searching tasks",
@@ -702,27 +756,38 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
         { tasks: "Found {count} tasks", matches: "Found {count} matches" },
         "I finished searching tasks and identified relevant results.",
       ),
-    (ctx) => outcomeTitle(ctx, "Searched tasks", "No matching tasks found", "tasks_count", "matches_count"),
+    (ctx) =>
+      outcomeTitle(
+        ctx,
+        "Searched tasks",
+        "No matching tasks found",
+        "tasks_count",
+        "matches_count",
+      ),
   ),
   get_node_details: descriptor(
     "Loading item details",
     "Loaded item details",
-    () =>
-      "I am loading detailed information for the selected roadmap item.",
+    () => "I am loading detailed information for the selected roadmap item.",
     () => "I loaded the item details and have what I need to continue.",
   ),
   get_children_from_resolution: descriptor(
     "Loading related items",
     "Loaded related items",
-    () =>
-      "I am loading the items nested under this roadmap entry.",
+    () => "I am loading the items nested under this roadmap entry.",
     (ctx) =>
       resultSummaryWithDefault(
         ctx,
         { children: "Found {count} related items" },
         "I loaded related items from the selected reference.",
       ),
-    (ctx) => outcomeTitle(ctx, "Loaded related items", "No related items found", "children_count"),
+    (ctx) =>
+      outcomeTitle(
+        ctx,
+        "Loaded related items",
+        "No related items found",
+        "children_count",
+      ),
   ),
   get_features_by_epic: descriptor(
     "Listing epic features",
@@ -732,10 +797,20 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
     (ctx) =>
       resultSummaryWithDefault(
         ctx,
-        { matches: "Found {count} features", children: "Found {count} related items" },
+        {
+          matches: "Found {count} features",
+          children: "Found {count} related items",
+        },
         "I listed features for the selected epic.",
       ),
-    (ctx) => outcomeTitle(ctx, "Listed epic features", "No features found under this epic", "matches_count", "children_count"),
+    (ctx) =>
+      outcomeTitle(
+        ctx,
+        "Listed epic features",
+        "No features found under this epic",
+        "matches_count",
+        "children_count",
+      ),
   ),
   get_feature_details: descriptor(
     "Loading feature details",
@@ -758,7 +833,14 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
         { epics: "Found {count} epics", matches: "Found {count} matches" },
         "I listed your roadmap epics and their current progress.",
       ),
-    (ctx) => outcomeTitle(ctx, "Listed roadmap epics", "No epics found", "epics_count", "matches_count"),
+    (ctx) =>
+      outcomeTitle(
+        ctx,
+        "Listed roadmap epics",
+        "No epics found",
+        "epics_count",
+        "matches_count",
+      ),
   ),
   get_epic_progress: descriptor(
     "Computing epic progress",
@@ -778,7 +860,13 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
         { tasks: "Reviewed {count} assigned tasks" },
         "I reviewed your assigned tasks and confirmed the set.",
       ),
-    (ctx) => outcomeTitle(ctx, "Reviewed your assigned tasks", "No assigned tasks found", "tasks_count"),
+    (ctx) =>
+      outcomeTitle(
+        ctx,
+        "Reviewed your assigned tasks",
+        "No assigned tasks found",
+        "tasks_count",
+      ),
   ),
   get_tasks_by_status: descriptor(
     "Listing tasks by status",
@@ -791,7 +879,13 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
         { tasks: "Found {count} tasks" },
         "I listed tasks by status and prepared the result set.",
       ),
-    (ctx) => outcomeTitle(ctx, "Listed tasks by status", "No tasks found with that status", "tasks_count"),
+    (ctx) =>
+      outcomeTitle(
+        ctx,
+        "Listed tasks by status",
+        "No tasks found with that status",
+        "tasks_count",
+      ),
   ),
   get_tasks_by_parent: descriptor(
     "Listing tasks under a parent item",
@@ -812,7 +906,13 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
         { tasks: "Found {count} tasks" },
         "I listed tasks under the selected parent item.",
       ),
-    (ctx) => outcomeTitle(ctx, "Listed tasks under a parent item", "No tasks found under this item", "tasks_count"),
+    (ctx) =>
+      outcomeTitle(
+        ctx,
+        "Listed tasks under a parent item",
+        "No tasks found under this item",
+        "tasks_count",
+      ),
   ),
   get_overdue_tasks: descriptor(
     "Listing overdue tasks",
@@ -828,7 +928,13 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
         { tasks: "Found {count} overdue tasks" },
         "I listed overdue tasks and prepared them for action.",
       ),
-    (ctx) => outcomeTitle(ctx, "Listed overdue tasks", "No overdue tasks found", "tasks_count"),
+    (ctx) =>
+      outcomeTitle(
+        ctx,
+        "Listed overdue tasks",
+        "No overdue tasks found",
+        "tasks_count",
+      ),
   ),
   get_blocked_items: descriptor(
     "Listing blocked items",
@@ -848,10 +954,20 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
     (ctx) =>
       resultSummaryWithDefault(
         ctx,
-        { matches: "Found {count} blocked items", tasks: "Found {count} blocked tasks" },
+        {
+          matches: "Found {count} blocked items",
+          tasks: "Found {count} blocked tasks",
+        },
         "I listed blocked items and captured blockers for follow-up.",
       ),
-    (ctx) => outcomeTitle(ctx, "Listed blocked items", "No blocked items found", "matches_count", "tasks_count"),
+    (ctx) =>
+      outcomeTitle(
+        ctx,
+        "Listed blocked items",
+        "No blocked items found",
+        "matches_count",
+        "tasks_count",
+      ),
   ),
   create_epic: descriptor(
     "Preparing a new epic",
@@ -1006,8 +1122,7 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
   move_task_to_feature: descriptor(
     "Moving task to a feature",
     "Moved task to a feature",
-    () =>
-      "I am moving the selected task under the selected feature.",
+    () => "I am moving the selected task under the selected feature.",
     (ctx) =>
       resultSummaryWithDefault(
         ctx,
@@ -1018,8 +1133,7 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
   move_feature_to_epic: descriptor(
     "Moving feature to an epic",
     "Moved feature to an epic",
-    () =>
-      "I am moving the selected feature under the selected epic.",
+    () => "I am moving the selected feature under the selected epic.",
     (ctx) =>
       resultSummaryWithDefault(
         ctx,
@@ -1069,13 +1183,17 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
     (ctx) => {
       const status = humanizeEnum(toStringValue(ctx.toolArgs?.status));
       const total = toArrayValue(ctx.toolArgs?.task_ids).length;
-      const taskScope = total > 0 ? `${total} selected tasks` : "selected tasks";
+      const taskScope =
+        total > 0 ? `${total} selected tasks` : "selected tasks";
       return `I am applying status updates to ${taskScope} to ${actionFromStatus(status, "the requested status")}.`;
     },
     (ctx) =>
       resultSummaryWithDefault(
         ctx,
-        { operations: "Prepared {count} status changes", tasks: "Processed {count} tasks" },
+        {
+          operations: "Prepared {count} status changes",
+          tasks: "Processed {count} tasks",
+        },
         "I prepared bulk task status updates.",
       ),
   ),
@@ -1098,7 +1216,10 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
     (ctx) =>
       resultSummaryWithDefault(
         ctx,
-        { operations: "Prepared {count} status changes", tasks: "Processed {count} tasks" },
+        {
+          operations: "Prepared {count} status changes",
+          tasks: "Processed {count} tasks",
+        },
         "I prepared bulk parent-scope task updates.",
       ),
   ),
@@ -1115,7 +1236,10 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
     (ctx) =>
       resultSummaryWithDefault(
         ctx,
-        { operations: "Prepared {count} change operations", tasks: "Processed {count} tasks" },
+        {
+          operations: "Prepared {count} change operations",
+          tasks: "Processed {count} tasks",
+        },
         "I prepared updates for the filtered task set.",
       ),
   ),
@@ -1124,7 +1248,8 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
     "Assigned tasks in bulk",
     (ctx) => {
       const total = toArrayValue(ctx.toolArgs?.task_ids).length;
-      const taskScope = total > 0 ? `${total} selected tasks` : "selected tasks";
+      const taskScope =
+        total > 0 ? `${total} selected tasks` : "selected tasks";
       if (ctx.toolArgs?.assignee_id === null) {
         return `I am unassigning ${taskScope}.`;
       }
@@ -1133,7 +1258,10 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
     (ctx) =>
       resultSummaryWithDefault(
         ctx,
-        { operations: "Prepared {count} assignment changes", tasks: "Processed {count} tasks" },
+        {
+          operations: "Prepared {count} assignment changes",
+          tasks: "Processed {count} tasks",
+        },
         "I prepared bulk assignee updates.",
       ),
   ),
@@ -1142,13 +1270,17 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
     "Deleted tasks in bulk",
     (ctx) => {
       const total = toArrayValue(ctx.toolArgs?.task_ids).length;
-      const taskScope = total > 0 ? `${total} selected tasks` : "selected tasks";
+      const taskScope =
+        total > 0 ? `${total} selected tasks` : "selected tasks";
       return `I am preparing deletion for ${taskScope}.`;
     },
     (ctx) =>
       resultSummaryWithDefault(
         ctx,
-        { operations: "Prepared {count} deletion changes", tasks: "Processed {count} tasks" },
+        {
+          operations: "Prepared {count} deletion changes",
+          tasks: "Processed {count} tasks",
+        },
         "I prepared bulk task deletions.",
       ),
   ),
@@ -1157,13 +1289,17 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
     "Moved tasks to a feature in bulk",
     (ctx) => {
       const total = toArrayValue(ctx.toolArgs?.task_ids).length;
-      const taskScope = total > 0 ? `${total} selected tasks` : "selected tasks";
+      const taskScope =
+        total > 0 ? `${total} selected tasks` : "selected tasks";
       return `I am moving ${taskScope} to the selected feature.`;
     },
     (ctx) =>
       resultSummaryWithDefault(
         ctx,
-        { operations: "Prepared {count} move changes", tasks: "Processed {count} tasks" },
+        {
+          operations: "Prepared {count} move changes",
+          tasks: "Processed {count} tasks",
+        },
         "I prepared bulk task move changes.",
       ),
   ),
@@ -1173,13 +1309,17 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
     (ctx) => {
       const total = toArrayValue(ctx.toolArgs?.feature_ids).length;
       const status = humanizeEnum(toStringValue(ctx.toolArgs?.status));
-      const scope = total > 0 ? `${total} selected features` : "selected features";
+      const scope =
+        total > 0 ? `${total} selected features` : "selected features";
       return `I am updating ${scope} to ${actionFromStatus(status, "the requested status")}.`;
     },
     (ctx) =>
       resultSummaryWithDefault(
         ctx,
-        { operations: "Prepared {count} status changes", matches: "Processed {count} features" },
+        {
+          operations: "Prepared {count} status changes",
+          matches: "Processed {count} features",
+        },
         "I prepared bulk feature status updates.",
       ),
   ),
@@ -1195,35 +1335,49 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
     (ctx) =>
       resultSummaryWithDefault(
         ctx,
-        { operations: "Prepared {count} status changes", matches: "Processed {count} epics" },
+        {
+          operations: "Prepared {count} status changes",
+          matches: "Processed {count} epics",
+        },
         "I prepared bulk epic status updates.",
       ),
   ),
   plan_roadmap_operations: descriptor(
     "Preparing your roadmap changes",
     "Prepared your roadmap changes",
-    () =>
-      "I am putting together all the roadmap changes you requested.",
+    () => "I am putting together all the roadmap changes you requested.",
     (ctx) =>
       resultSummaryWithDefault(
         ctx,
         { operations: "Prepared {count} roadmap changes" },
         "I finalized your roadmap changes and they are ready to apply.",
       ),
-    (ctx) => outcomeTitle(ctx, "Prepared your roadmap changes", "No roadmap changes needed", "operations_count"),
+    (ctx) =>
+      outcomeTitle(
+        ctx,
+        "Prepared your roadmap changes",
+        "No roadmap changes needed",
+        "operations_count",
+      ),
   ),
   get_children: descriptor(
     "Loading child items",
     "Loaded child items",
-    () =>
-      "I am loading the items nested under the selected roadmap entry.",
+    () => "I am loading the items nested under the selected roadmap entry.",
     (ctx) =>
       resultSummaryWithDefault(
         ctx,
         { children: "Found {count} child items", tasks: "Found {count} tasks" },
         "I loaded child items for the selected parent.",
       ),
-    (ctx) => outcomeTitle(ctx, "Loaded child items", "No child items found", "children_count", "tasks_count"),
+    (ctx) =>
+      outcomeTitle(
+        ctx,
+        "Loaded child items",
+        "No child items found",
+        "children_count",
+        "tasks_count",
+      ),
   ),
   get_tasks_by_feature: descriptor(
     "Listing tasks by feature",
@@ -1236,7 +1390,13 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
         { tasks: "Found {count} tasks" },
         "I listed tasks under the selected feature.",
       ),
-    (ctx) => outcomeTitle(ctx, "Listed tasks by feature", "No tasks found under this feature", "tasks_count"),
+    (ctx) =>
+      outcomeTitle(
+        ctx,
+        "Listed tasks by feature",
+        "No tasks found under this feature",
+        "tasks_count",
+      ),
   ),
   get_tasks_by_epic: descriptor(
     "Listing tasks by epic",
@@ -1249,7 +1409,13 @@ const TOOL_MESSAGE_CATALOG: Record<SupportedTraceToolName, ToolMessageDescriptor
         { tasks: "Found {count} tasks" },
         "I listed tasks under the selected epic.",
       ),
-    (ctx) => outcomeTitle(ctx, "Listed tasks by epic", "No tasks found under this epic", "tasks_count"),
+    (ctx) =>
+      outcomeTitle(
+        ctx,
+        "Listed tasks by epic",
+        "No tasks found under this epic",
+        "tasks_count",
+      ),
   ),
 };
 
@@ -1258,19 +1424,22 @@ export const extractTraceToolName = (step: {
   summary: string;
   details?: Record<string, unknown>;
 }): string | null => {
-  const detailToolName = normalizeToolName(toStringValue(step.details?.tool_name));
+  const detailToolName = normalizeToolName(
+    toStringValue(step.details?.tool_name),
+  );
   if (detailToolName) return detailToolName;
   return (
-    extractToolNameFromText(step.title) ||
-    extractToolNameFromText(step.summary)
+    extractToolNameFromText(step.title) || extractToolNameFromText(step.summary)
   );
 };
 
 const toToolMessageContext = (step: {
+  seq?: number;
   summary: string;
   status: RoadmapAiActivityStepStatus;
   details?: Record<string, unknown>;
 }): ToolMessageContext => ({
+  seq: step.seq,
   toolArgs: toRecord(step.details?.tool_args),
   resultSummary: toRecord(step.details?.result_summary),
   summaryText: step.summary,
@@ -1279,6 +1448,7 @@ const toToolMessageContext = (step: {
 
 export const buildFriendlyMinimalToolLabel = (
   toolName: string | null,
+  seed?: string | number,
 ): FriendlyMinimalToolLabel => {
   const normalized = normalizeToolName(toolName);
   if (!normalized) {
@@ -1298,14 +1468,15 @@ export const buildFriendlyMinimalToolLabel = (
     };
   }
   return {
-    requested: toolDescriptor.requestedTitle,
-    completed: toolDescriptor.completedTitle,
+    requested: pickVariant(toolDescriptor.requestedTitle, seed),
+    completed: pickVariant(toolDescriptor.completedTitle, seed),
   };
 };
 
 export const buildCuratedToolRequestedMessage = (
   toolName: string | null,
   step: {
+    seq?: number;
     summary: string;
     status: RoadmapAiActivityStepStatus;
     details?: Record<string, unknown>;
@@ -1331,8 +1502,8 @@ export const buildCuratedToolRequestedMessage = (
     };
   }
   return {
-    title: toolDescriptor.requestedTitle,
-    summary: toolDescriptor.buildRequestedSummary(toToolMessageContext(step)),
+    title: pickVariant(toolDescriptor.requestedTitle, step.seq ?? step.summary),
+    summary: pickVariant(toolDescriptor.buildRequestedSummary(toToolMessageContext(step)), step.seq ?? step.summary),
     usedFallback: false,
   };
 };
@@ -1340,6 +1511,7 @@ export const buildCuratedToolRequestedMessage = (
 export const buildCuratedToolResultMessage = (
   toolName: string | null,
   step: {
+    seq?: number;
     summary: string;
     status: RoadmapAiActivityStepStatus;
     details?: Record<string, unknown>;
@@ -1354,9 +1526,8 @@ export const buildCuratedToolResultMessage = (
       usedFallback: true,
     };
   }
-  const toolDescriptor = TOOL_MESSAGE_CATALOG[
-    normalized as SupportedTraceToolName
-  ];
+  const toolDescriptor =
+    TOOL_MESSAGE_CATALOG[normalized as SupportedTraceToolName];
   if (!toolDescriptor) {
     maybeWarnUnknownTool(normalized);
     return {
@@ -1367,11 +1538,11 @@ export const buildCuratedToolResultMessage = (
     };
   }
   const ctx = toToolMessageContext(step);
-  const descriptorSummary = toolDescriptor.buildResultSummary(ctx);
+  const descriptorSummary = pickVariant(toolDescriptor.buildResultSummary(ctx), step.seq ?? step.summary);
   const titleList = getResultTitleList(ctx);
   const resolvedTitle = toolDescriptor.buildCompletedTitle
-    ? toolDescriptor.buildCompletedTitle(ctx)
-    : toolDescriptor.completedTitle;
+    ? pickVariant(toolDescriptor.buildCompletedTitle(ctx), step.seq ?? step.summary)
+    : pickVariant(toolDescriptor.completedTitle, step.seq ?? step.summary);
   return {
     title: resolvedTitle,
     summary: `${toOutcomeSentenceFromTitle(resolvedTitle)} ${buildToolResultContextSentence(

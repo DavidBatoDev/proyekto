@@ -1211,23 +1211,38 @@ export const toTimelineFromTraceResponse = (
   response: AgentTraceEventsResponse,
   previousTimeline?: RoadmapAiActivityTimeline | null,
   presentationMode: RoadmapAiActivityPresentationMode = PROGRESS_PRESENTATION_MODE,
-): RoadmapAiActivityTimeline => ({
-  traceId,
-  startedAt: response.started_at || previousTimeline?.startedAt,
-  completedAt: response.completed_at || previousTimeline?.completedAt,
-  elapsedMs:
-    typeof response.elapsed_ms === "number"
-      ? response.elapsed_ms
-      : previousTimeline?.elapsedMs,
-  done: response.done,
-  detailMode,
-  presentationMode,
-  steps: mergeTimelineSteps(
-    previousTimeline?.steps ?? [],
-    response.events,
+): RoadmapAiActivityTimeline => {
+  const messageCompletedElapsedMs = [...response.events].reverse().find(
+    (event) =>
+      String(event.event || "")
+        .trim()
+        .toLowerCase() === "message_completed",
+  )?.details?.elapsed_ms;
+  const normalizedMessageCompletedElapsedMs = parseCountFromUnknown(
+    messageCompletedElapsedMs,
+  );
+
+  return {
+    traceId,
+    startedAt: response.started_at || previousTimeline?.startedAt,
+    completedAt: response.completed_at || previousTimeline?.completedAt,
+    // Keep elapsed time anchored to message completion so auto-commit time is excluded.
+    elapsedMs:
+      normalizedMessageCompletedElapsedMs ??
+      previousTimeline?.elapsedMs ??
+      (typeof response.elapsed_ms === "number"
+        ? response.elapsed_ms
+        : undefined),
+    done: response.done,
+    detailMode,
     presentationMode,
-  ),
-});
+    steps: mergeTimelineSteps(
+      previousTimeline?.steps ?? [],
+      response.events,
+      presentationMode,
+    ),
+  };
+};
 
 export const normalizeTimelineForDisplay = (
   timeline?: RoadmapAiActivityTimeline | null,
