@@ -39,6 +39,9 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
   const descriptionRef = useRef<HTMLDivElement>(null);
   const [hasOverflow, setHasOverflow] = useState(false);
   const [isPulsing, setIsPulsing] = useState(false);
+  const [cardDropType, setCardDropType] = useState<
+    "epic" | "feature" | null
+  >(null);
   const [isAddFeatureDropActive, setIsAddFeatureDropActive] = useState(false);
   const [isAddEpicDropActive, setIsAddEpicDropActive] = useState(false);
   const computedProgress = calculateEpicProgressFromFeatures(epic.features);
@@ -72,26 +75,81 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
   const getToolbarItemType = (
     event: Pick<DragEvent<HTMLElement>, "dataTransfer">,
   ): ToolbarItemType | null => {
-    const raw = event.dataTransfer.getData(TOOLBAR_DRAG_MIME);
-    if (raw === "epic" || raw === "feature" || raw === "task") {
-      return raw;
+    const rawCustom = event.dataTransfer.getData(TOOLBAR_DRAG_MIME);
+    if (
+      rawCustom === "epic" ||
+      rawCustom === "feature" ||
+      rawCustom === "task"
+    ) {
+      return rawCustom;
     }
+
+    const rawText = event.dataTransfer.getData("text/plain");
+    if (rawText === "epic" || rawText === "feature" || rawText === "task") {
+      return rawText;
+    }
+
+    if (toolbarDraggingType) {
+      return toolbarDraggingType;
+    }
+
     return null;
   };
 
   const isGlobalFeatureDropHighlight = toolbarDraggingType === "feature";
   const isGlobalEpicDropHighlight = toolbarDraggingType === "epic";
+  const canAcceptCardDrop = (
+    itemType: ToolbarItemType | null,
+  ): itemType is "epic" | "feature" => {
+    if (itemType === "epic") return Boolean(onAddEpicBelow);
+    if (itemType === "feature") return Boolean(onAddFeature);
+    return false;
+  };
 
   return (
     <motion.div
       className={`group relative bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-[420px] flex flex-col cursor-pointer ${
         isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
       } ${
-        isGlobalFeatureDropHighlight
+        cardDropType === "epic" || cardDropType === "feature"
+          ? "border-emerald-500 ring-2 ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.3),0_12px_24px_rgba(16,185,129,0.22)]"
+          : isGlobalFeatureDropHighlight
           ? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
           : "border-gray-300"
       }`}
       onClick={() => onEdit?.(epic)}
+      onDragEnter={(event) => {
+        const itemType = getToolbarItemType(event);
+        if (!canAcceptCardDrop(itemType)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setCardDropType(itemType);
+      }}
+      onDragOver={(event) => {
+        const itemType = getToolbarItemType(event);
+        if (!canAcceptCardDrop(itemType)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = "move";
+        setCardDropType(itemType);
+      }}
+      onDragLeave={() => {
+        setCardDropType(null);
+      }}
+      onDrop={(event) => {
+        const itemType = getToolbarItemType(event);
+        setCardDropType(null);
+        if (!canAcceptCardDrop(itemType)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (itemType === "epic") {
+          onAddEpicBelow?.(epic.id);
+          return;
+        }
+        if (itemType === "feature") {
+          onAddFeature?.(epic.id);
+        }
+      }}
       initial={
         isReducedMotion ? false : { opacity: 0, y: 12, scale: 0.98 }
       }

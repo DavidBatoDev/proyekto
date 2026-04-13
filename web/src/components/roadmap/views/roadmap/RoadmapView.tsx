@@ -564,18 +564,38 @@ export const RoadmapView = ({
 
   const getToolbarItemFromTransfer = useCallback(
     (event: { dataTransfer: DataTransfer | null }): ToolbarItemType | null => {
-      const raw = event.dataTransfer?.getData(TOOLBAR_DRAG_MIME);
-      if (raw === "epic" || raw === "feature" || raw === "task") {
-        return raw;
+      const rawCustom = event.dataTransfer?.getData(TOOLBAR_DRAG_MIME);
+      if (rawCustom === "epic" || rawCustom === "feature" || rawCustom === "task") {
+        return rawCustom;
+      }
+
+      const rawText = event.dataTransfer?.getData("text/plain");
+      if (rawText === "epic" || rawText === "feature" || rawText === "task") {
+        return rawText;
+      }
+
+      if (toolbarDraggingType) {
+        // Browsers may hide custom drag data during dragover; keep toolbar DnD usable.
+        return toolbarDraggingType;
+      }
+
+      const types = Array.from(event.dataTransfer?.types ?? []);
+      if (types.includes(TOOLBAR_DRAG_MIME) && toolbarDraggingType) {
+        return toolbarDraggingType;
+      }
+
+      if (types.includes("text/plain") && toolbarDraggingType) {
+        return toolbarDraggingType;
       }
       return null;
     },
-    [],
+    [toolbarDraggingType],
   );
 
   const handleToolbarDragStart = useCallback(
     (itemType: ToolbarItemType, event: DragEvent<HTMLElement>) => {
       event.dataTransfer.setData(TOOLBAR_DRAG_MIME, itemType);
+      event.dataTransfer.setData("text/plain", itemType);
       event.dataTransfer.effectAllowed = "move";
       setToolbarDraggingType(itemType);
     },

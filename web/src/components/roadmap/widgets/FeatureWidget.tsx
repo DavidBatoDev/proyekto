@@ -64,6 +64,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   const descriptionRef = useRef<HTMLDivElement>(null);
   const [hasOverflow, setHasOverflow] = useState(false);
   const [isPulsing, setIsPulsing] = useState(false);
+  const [isCardTaskDropActive, setIsCardTaskDropActive] = useState(false);
   const [isAddTaskDropActive, setIsAddTaskDropActive] = useState(false);
 
   const getStatusColor = (status: RoadmapFeature["status"]) => {
@@ -135,10 +136,24 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   const getToolbarItemType = (
     event: Pick<DragEvent<HTMLElement>, "dataTransfer">,
   ): ToolbarItemType | null => {
-    const raw = event.dataTransfer.getData(TOOLBAR_DRAG_MIME);
-    if (raw === "epic" || raw === "feature" || raw === "task") {
-      return raw;
+    const rawCustom = event.dataTransfer.getData(TOOLBAR_DRAG_MIME);
+    if (
+      rawCustom === "epic" ||
+      rawCustom === "feature" ||
+      rawCustom === "task"
+    ) {
+      return rawCustom;
     }
+
+    const rawText = event.dataTransfer.getData("text/plain");
+    if (rawText === "epic" || rawText === "feature" || rawText === "task") {
+      return rawText;
+    }
+
+    if (toolbarDraggingType) {
+      return toolbarDraggingType;
+    }
+
     return null;
   };
   const isGlobalTaskDropHighlight = toolbarDraggingType === "task";
@@ -177,11 +192,37 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
         className={`relative group bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-80 flex flex-col cursor-pointer ${
           isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
         } ${
-          isGlobalTaskDropHighlight
+          isCardTaskDropActive
+            ? "border-emerald-500 ring-2 ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.3),0_12px_24px_rgba(16,185,129,0.22)]"
+            : isGlobalTaskDropHighlight
             ? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
             : "border-amber-300 hover:border-amber-400"
         }`}
         onClick={() => onClick?.(feature)}
+        onDragEnter={(event) => {
+          if (!onAddTask || getToolbarItemType(event) !== "task") return;
+          event.preventDefault();
+          event.stopPropagation();
+          setIsCardTaskDropActive(true);
+        }}
+        onDragOver={(event) => {
+          if (!onAddTask || getToolbarItemType(event) !== "task") return;
+          event.preventDefault();
+          event.stopPropagation();
+          event.dataTransfer.dropEffect = "move";
+          setIsCardTaskDropActive(true);
+        }}
+        onDragLeave={() => {
+          setIsCardTaskDropActive(false);
+        }}
+        onDrop={(event) => {
+          const itemType = getToolbarItemType(event);
+          setIsCardTaskDropActive(false);
+          if (!onAddTask || itemType !== "task") return;
+          event.preventDefault();
+          event.stopPropagation();
+          onAddTask(feature.id);
+        }}
         initial={
           isReducedMotion ? false : { opacity: 0, y: 12, scale: 0.98 }
         }

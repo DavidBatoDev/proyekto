@@ -36,9 +36,78 @@ export class EpicsRepositorySupabase implements IEpicsRepository {
   }
 
   async create(dto: CreateEpicDto, userId: string): Promise<any> {
+    const { data: existingEpics, error: existingError } = await this.db
+      .from('roadmap_epics')
+      .select('id, position')
+      .eq('roadmap_id', dto.roadmap_id)
+      .order('position', { ascending: true });
+    if (existingError) throw new Error(existingError.message);
+
+    const orderedEpics = (existingEpics ?? [])
+      .map((epic: any, index: number) => {
+        const rawPosition =
+          typeof epic?.position === 'number'
+            ? epic.position
+            : Number(epic?.position);
+        return {
+          id: String(epic.id),
+          position:
+            Number.isFinite(rawPosition) && rawPosition >= 0
+              ? rawPosition
+              : index,
+        };
+      })
+      .sort((a, b) => a.position - b.position);
+
+    const maxPosition =
+      orderedEpics.length > 0
+        ? orderedEpics.reduce(
+            (max, epic) => Math.max(max, Math.floor(epic.position)),
+            0,
+          )
+        : -1;
+    const appendPosition = maxPosition + 1;
+    const hasRequestedPosition =
+      typeof dto.position === 'number' && Number.isFinite(dto.position);
+    const requestedPosition = hasRequestedPosition
+      ? Math.max(0, Math.floor(dto.position as number))
+      : appendPosition;
+    const insertPosition = Math.min(requestedPosition, appendPosition);
+
+    const epicsToShift = orderedEpics.filter(
+      (epic) => epic.position >= insertPosition,
+    );
+    if (epicsToShift.length > 0) {
+      const tempBase = maxPosition + epicsToShift.length + 1000;
+
+      for (const [index, epic] of epicsToShift.entries()) {
+        const { error } = await this.db
+          .from('roadmap_epics')
+          .update({
+            position: tempBase + index,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', epic.id)
+          .eq('roadmap_id', dto.roadmap_id);
+        if (error) throw new Error(error.message);
+      }
+
+      for (const epic of epicsToShift) {
+        const { error } = await this.db
+          .from('roadmap_epics')
+          .update({
+            position: Math.floor(epic.position) + 1,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', epic.id)
+          .eq('roadmap_id', dto.roadmap_id);
+        if (error) throw new Error(error.message);
+      }
+    }
+
     const { data, error } = await this.db
       .from('roadmap_epics')
-      .insert({ ...dto })
+      .insert({ ...dto, position: insertPosition })
       .select()
       .single();
     if (error) throw new Error(error.message);
@@ -152,7 +221,82 @@ export class EpicsRepositorySupabase implements IEpicsRepository {
   }
 
   async remove(id: string): Promise<void> {
-    const { error } = await this.db.from('roadmap_epics').delete().eq('id', id);
-    if (error) throw new Error(error.message);
+    const existingEpic = await this.findById(id);
+
+    const { error: deleteError } = await this.db
+      .from('roadmap_epics')
+      .delete()
+      .eq('id', id);
+    if (deleteError) throw new Error(deleteError.message);
+
+    const roadmapId =
+      typeof existingEpic?.roadmap_id === 'string'
+        ? existingEpic.roadmap_id
+        : null;
+    const rawDeletedPosition =
+      typeof existingEpic?.position === 'number'
+        ? existingEpic.position
+        : Number(existingEpic?.position);
+    const deletedPosition =
+      Number.isFinite(rawDeletedPosition) && rawDeletedPosition >= 0
+        ? Math.floor(rawDeletedPosition)
+        : null;
+
+    if (!roadmapId || deletedPosition === null) {
+      return;
+    }
+
+    const { data: trailingEpics, error: trailingError } = await this.db
+      .from('roadmap_epics')
+      .select('id, position')
+      .eq('roadmap_id', roadmapId)
+      .gt('position', deletedPosition)
+      .order('position', { ascending: true });
+    if (trailingError) throw new Error(trailingError.message);
+
+    const epicsToShift = (trailingEpics ?? []).map((epic: any, index: number) => ({
+      id: String(epic.id),
+      nextPosition: deletedPosition + index,
+    }));
+    if (epicsToShift.length === 0) {
+      return;
+    }
+
+    const maxTrailingPosition = (trailingEpics ?? []).reduce(
+      (max: number, epic: any) => {
+        const rawPosition =
+          typeof epic?.position === 'number'
+            ? epic.position
+            : Number(epic?.position);
+        if (!Number.isFinite(rawPosition)) return max;
+        return Math.max(max, Math.floor(rawPosition));
+      },
+      deletedPosition,
+    );
+    const tempBase = maxTrailingPosition + epicsToShift.length + 1000;
+
+    for (const [index, epic] of epicsToShift.entries()) {
+      const { error } = await this.db
+        .from('roadmap_epics')
+        .update({
+          position: tempBase + index,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', epic.id)
+        .eq('roadmap_id', roadmapId);
+      if (error) throw new Error(error.message);
+    }
+
+    for (const epic of epicsToShift) {
+      const { error } = await this.db
+        .from('roadmap_epics')
+        .update({
+          position: epic.nextPosition,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', epic.id)
+        .eq('roadmap_id', roadmapId);
+      if (error) throw new Error(error.message);
+    }
   }
 }
