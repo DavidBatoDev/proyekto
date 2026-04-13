@@ -87,6 +87,7 @@ _PROGRESS_EVENT_ALLOWLIST = {
     'provider_failure',
     'tool_call_requested',
     'tool_call_result',
+    'planner_summary',
     'plan_generated',
     'session_staged_state',
     'message_completed',
@@ -471,6 +472,17 @@ def _to_structured_progress_details(event: str, details: dict[str, Any]) -> dict
         return _pick_progress_detail_fields(details, ('message', 'roadmap_role', 'actor_present'))
     if event == 'plan_generated':
         return _pick_progress_detail_fields(details, ('operations_count', 'operation_types', 'provider_used'))
+    if event == 'planner_summary':
+        return _pick_progress_detail_fields(
+            details,
+            (
+                'summary_text',
+                'summary_source',
+                'response_mode',
+                'operations_count',
+                'operation_types',
+            ),
+        )
     return _pick_progress_detail_fields(details, ('summary',))
 
 
@@ -541,6 +553,7 @@ def _progress_event_title(event: str) -> str:
         'provider_failure': 'Provider failed',
         'tool_call_requested': 'Tool call requested',
         'tool_call_result': 'Tool call result',
+        'planner_summary': 'Planner summary',
         'plan_generated': 'Plan generated',
         'session_staged_state': 'Session staged',
         'message_completed': 'Message completed',
@@ -562,6 +575,7 @@ def _progress_event_status(event: str, payload: dict[str, Any]) -> str:
     if event in {
         'provider_success',
         'tool_call_result',
+        'planner_summary',
         'plan_generated',
         'session_staged_state',
         'auto_commit_async_completed',
@@ -638,6 +652,16 @@ def _progress_event_summary(event: str, payload: dict[str, Any]) -> str:
             if tool_name
             else f'Tool call completed{suffix}.'
         )
+    if event == 'planner_summary':
+        summary_text = payload.get('summary_text')
+        if isinstance(summary_text, str):
+            normalized = ' '.join(summary_text.split())
+            if normalized:
+                return normalized
+        operations_count = payload.get('operations_count')
+        if operations_count is not None:
+            return f'Prepared a concise planning summary for {operations_count} operations.'
+        return 'Prepared a concise planning summary.'
     if event == 'plan_generated':
         operations_count = payload.get('operations_count')
         if operations_count is not None:

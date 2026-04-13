@@ -12,7 +12,7 @@ import {
 } from "./RoadmapAiAssistantPanel";
 
 describe("assistant progress timeline logic", () => {
-  it("uses curated mode by default and keeps selected internal reasoning stages", () => {
+  it("hides intent and route stages in curated mode", () => {
     const merged = mergeTimelineSteps(
       [],
       [
@@ -60,10 +60,9 @@ describe("assistant progress timeline logic", () => {
       ],
     );
 
-    expect(merged.map((step) => step.seq)).toEqual([2, 3, 4]);
-    expect(merged[0].title).toBe("Understanding your request");
-    expect(merged[1].title).toBe("Planning the next steps");
-    expect(merged[2].title).toBe("Finding the right roadmap item");
+    expect(merged.map((step) => step.seq)).toEqual([3, 4]);
+    expect(merged[0].title).toBe("Planning the next steps");
+    expect(merged[1].title).toBe("Finding the right roadmap item");
   });
 
   it("keeps friendly_minimal fallback behavior when explicitly requested", () => {
@@ -97,6 +96,34 @@ describe("assistant progress timeline logic", () => {
     expect(merged[0].seq).toBe(2);
     expect(merged[0].title).toBe("Finding the right roadmap item");
     expect(merged[0].summary).toBe("Working on this step now.");
+  });
+
+  it("renders planner_summary as a user-facing timeline row", () => {
+    const merged = mergeTimelineSteps(
+      [],
+      [
+        {
+          seq: 1,
+          ts: "2026-04-12T07:15:01.000Z",
+          event: "planner_summary",
+          title: "Planner summary",
+          status: "success",
+          summary: "Prepared a concise planning summary.",
+          details: {
+            summary_text:
+              "I reviewed the roadmap context and prepared 3 safe updates for staging.",
+            summary_source: "model_assistant_message",
+            operations_count: 3,
+          },
+        },
+      ],
+    );
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].title).toBe("Gearing up your plan");
+    expect(merged[0].summary).toBe(
+      "I reviewed the roadmap context and prepared 3 safe updates for staging.",
+    );
   });
 
   it("humanizes tool results and strips operation/tool codes from summary text", () => {

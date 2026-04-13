@@ -475,14 +475,14 @@ interface PollLoopState {
 const SHARED_HIDDEN_ACTIVITY_EVENTS = new Set<string>([
   "message_received",
   "actor_context_loaded",
+  "intent_classified",
+  "route_selected",
   "session_staged_state",
   "message_completed",
   "provider_success",
 ]);
 
 const FRIENDLY_MINIMAL_EXTRA_HIDDEN_ACTIVITY_EVENTS = new Set<string>([
-  "intent_classified",
-  "route_selected",
   "provider_attempt",
 ]);
 
@@ -1017,6 +1017,24 @@ const normalizeActivityStep = (
       status: "running",
       title: "Planning the next steps",
       summary: getProviderAttemptSummary(rawStep),
+    };
+  }
+
+  if (normalizedEvent === "planner_summary") {
+    const details = toRecord(rawStep.details);
+    const summaryText = toStringValue(details?.summary_text);
+    return {
+      ...baseStep,
+      status: rawStep.status === "error" ? "error" : "success",
+      title:
+        presentationMode === "curated"
+          ? "Gearing up your plan"
+          : "Planning summary",
+      summary:
+        summaryText ||
+        (presentationMode === "curated"
+          ? "I prepared a concise planning summary before applying your roadmap changes."
+          : "Prepared a planning summary."),
     };
   }
 

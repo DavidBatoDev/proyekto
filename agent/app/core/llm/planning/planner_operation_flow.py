@@ -182,6 +182,25 @@ def _operation_payloads(operations: list[RoadmapOperation]) -> list[dict[str, An
         operation.model_dump(mode='json', exclude_none=True)
         for operation in operations
     ]
+    
+def _build_planner_summary_payload(
+    *,
+    assistant_message: str,
+    operations: list[RoadmapOperation],
+) -> tuple[str, str]:
+    normalized = ' '.join(str(assistant_message or '').split())
+    if normalized:
+        if len(normalized) > 280:
+            normalized = f'{normalized[:277].rstrip()}...'
+        return normalized, 'model_assistant_message'
+
+    operations_count = len(operations)
+    if operations_count > 0:
+        return (
+            f'Prepared {operations_count} roadmap operation(s) for review.',
+            'fallback_template',
+        )
+    return 'Prepared roadmap changes for review.', 'fallback_template'
 
 
 def _first_semantic_contract_error(
@@ -1413,6 +1432,15 @@ def plan_operations(
             'Only plan_roadmap_operations may finalize staged operations. '
             'Treat helper tool results as intermediate context or drafts.'
         )
+
+    planner_prompt += (
+        '\n\nassistant_message requirement:\n'
+        'When you call plan_roadmap_operations, set assistant_message to a concise '
+        'user-visible planning summary (1-2 sentences) that states what you analyzed '
+        'and what operations you are staging.\n'
+        'Do not include hidden chain-of-thought, policy text, confidence scores, or '
+        'internal deliberation.'
+    )
     schema_invalid_attempts = 0
     repair_attempted = False
     last_provider_error_code: str | None = None
@@ -1995,6 +2023,24 @@ def plan_operations(
                         }
                     )
 
+            operation_types = [op.op.value for op in operations]
+            planner_summary_text, planner_summary_source = _build_planner_summary_payload(
+                assistant_message=assistant_message,
+                operations=operations,
+            )
+            log_event(
+                planner._logger,
+                'planner_summary',
+                settings=planner._settings,
+                trace_id=trace_id,
+                roadmap_id=roadmap_id_value,
+                response_mode='edit_plan',
+                summary_text=planner_summary_text,
+                summary_source=planner_summary_source,
+                operations_count=len(operations),
+                operation_types=operation_types,
+            )
+
             operation_payloads = _operation_payloads(operations)
             log_event(
                 planner._logger,
@@ -2004,7 +2050,7 @@ def plan_operations(
                 provider_used=result.provider_used,
                 fallback_used=result.fallback_used,
                 operations_count=len(operations),
-                operation_types=[op.op.value for op in operations],
+                operation_types=operation_types,
                 operation_payloads=operation_payloads,
                 parent_hint_applied=parent_hint_applied,
                 planner_prompt_bytes=planner_prompt_bytes,

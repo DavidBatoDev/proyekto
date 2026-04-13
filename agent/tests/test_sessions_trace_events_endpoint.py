@@ -135,6 +135,43 @@ class TraceEventsEndpointTests(unittest.TestCase):
             {'arg_keys', 'tool_args', 'tool_name'},
         )
 
+    def test_events_endpoint_includes_planner_summary_event(self) -> None:
+        trace_id = 'f680e7a0-85b4-4f48-8e4c-aa511f7f0cfd'
+        session_id = 'session-planner-summary'
+        roadmap_id = 'roadmap-planner-summary'
+        logging_utils.log_event(
+            self.logger,
+            'planner_summary',
+            settings=sessions_routes.settings,
+            trace_id=trace_id,
+            session_id=session_id,
+            roadmap_id=roadmap_id,
+            response_mode='edit_plan',
+            summary_text='I reviewed context and prepared 2 updates for staging.',
+            summary_source='model_assistant_message',
+            operations_count=2,
+            operation_types=['update_node', 'mark_status'],
+        )
+
+        response = self.client.get(
+            f'/agent/sessions/{session_id}/traces/{trace_id}/events',
+            params={'detail': 'structured'},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload['events']), 1)
+        event = payload['events'][0]
+        self.assertEqual(event['event'], 'planner_summary')
+        self.assertEqual(event['title'], 'Planner summary')
+        self.assertEqual(event['status'], 'success')
+        self.assertEqual(
+            event['summary'],
+            'I reviewed context and prepared 2 updates for staging.',
+        )
+        details = event.get('details') or {}
+        self.assertEqual(details.get('summary_source'), 'model_assistant_message')
+        self.assertEqual(details.get('operations_count'), 2)
+
     def test_events_endpoint_unknown_or_mismatched_trace_returns_404(self) -> None:
         missing = self.client.get(
             '/agent/sessions/session-404/traces/missing-trace/events',

@@ -535,6 +535,47 @@ class LoggingUtilsProgressTraceTests(unittest.TestCase):
         assert isinstance(details, dict)
         self.assertEqual(set(details.keys()), {'arg_keys', 'tool_args', 'tool_name'})
 
+    def test_structured_planner_summary_exposes_summary_fields(self) -> None:
+        trace_id = 'trace-progress-planner-summary'
+        session_id = 'session-progress-planner-summary'
+        summary_text = (
+            'I reviewed roadmap context and prepared three safe updates for staging.'
+        )
+        logging_utils.log_event(
+            self.logger,
+            'planner_summary',
+            settings=self.settings,
+            trace_id=trace_id,
+            session_id=session_id,
+            roadmap_id='roadmap-progress-planner-summary',
+            response_mode='edit_plan',
+            summary_text=summary_text,
+            summary_source='model_assistant_message',
+            operations_count=3,
+            operation_types=['update_node', 'mark_status', 'mark_status'],
+        )
+
+        structured = logging_utils.get_progress_trace_events(
+            session_id=session_id,
+            trace_id=trace_id,
+            detail='structured',
+            settings=self.settings,
+        )
+        self.assertIsNotNone(structured)
+        assert structured is not None
+        self.assertEqual(len(structured['events']), 1)
+        event = structured['events'][0]
+        self.assertEqual(event.get('event'), 'planner_summary')
+        self.assertEqual(event.get('title'), 'Planner summary')
+        self.assertEqual(event.get('status'), 'success')
+        self.assertEqual(event.get('summary'), summary_text)
+        details = event.get('details')
+        self.assertIsInstance(details, dict)
+        assert isinstance(details, dict)
+        self.assertEqual(details.get('summary_source'), 'model_assistant_message')
+        self.assertEqual(details.get('response_mode'), 'edit_plan')
+        self.assertEqual(details.get('operations_count'), 3)
+
     def test_summarize_tool_result_includes_capped_title_list_metadata(self) -> None:
         result = {
             'tasks': [

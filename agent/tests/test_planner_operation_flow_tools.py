@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from app.core.contracts.operations import RoadmapOperation
 from app.core.llm.providers import ProviderAdapterError
@@ -73,6 +74,8 @@ class _FakePlanner:
             agent_log_include_content=False,
             agent_log_json=True,
             agent_log_color='off',
+            agent_progress_events_enabled=False,
+            agent_progress_events_allow_verbose=False,
         )
         self._logger = logging.getLogger('planner-operation-flow-tools-tests')
         self._provider_orchestrator = _FakeOrchestrator(captured)
@@ -192,6 +195,53 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         self.assertNotIn('get_tasks_by_feature', tool_names)
         self.assertNotIn('get_tasks_by_epic', tool_names)
         self.assertEqual(result.get('response_mode'), 'edit_plan')
+
+    def test_emits_planner_summary_before_plan_generated(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+
+        with patch('app.core.llm.planning.planner_operation_flow.log_event') as mocked_log_event:
+            result = plan_operations(
+                planner,
+                {
+                    'user_message': 'mark auth tasks in review',
+                    'intent_type': 'roadmap_edit',
+                    'existing_operations': [],
+                    'system_prompt': 'system',
+                    'session_context': {
+                        'roadmap_id': 'r1',
+                        'trace_id': 'trace-planner-summary-order',
+                    },
+                },
+            )
+
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+
+        event_names = [
+            str(call.args[1])
+            for call in mocked_log_event.call_args_list
+            if len(call.args) >= 2
+        ]
+        self.assertIn('planner_summary', event_names)
+        self.assertIn('plan_generated', event_names)
+        self.assertLess(
+            event_names.index('planner_summary'),
+            event_names.index('plan_generated'),
+        )
+
+        planner_summary_calls = [
+            call
+            for call in mocked_log_event.call_args_list
+            if len(call.args) >= 2 and str(call.args[1]) == 'planner_summary'
+        ]
+        self.assertTrue(planner_summary_calls)
+        planner_summary_kwargs = planner_summary_calls[-1].kwargs
+        self.assertEqual(
+            planner_summary_kwargs.get('summary_source'),
+            'model_assistant_message',
+        )
+        self.assertEqual(planner_summary_kwargs.get('response_mode'), 'edit_plan')
+        self.assertEqual(planner_summary_kwargs.get('operations_count'), 1)
 
     def test_bulk_task_update_with_resolved_parent_uses_helper_and_plan_only(self) -> None:
         captured: dict[str, object] = {}
