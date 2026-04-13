@@ -1,4 +1,11 @@
-import { memo, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import {
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+} from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { motion } from "framer-motion";
 import {
@@ -98,6 +105,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   };
 
   const taskCount = feature.tasks?.length || 0;
+  const isOptimisticFeature = feature.id.startsWith("temp-");
   const completedTasks = getCompletedTaskCount(feature.tasks);
   const autoProgress = calculateFeatureProgressFromTasks(feature.tasks);
   const featureAssignees = useMemo(() => {
@@ -191,12 +199,12 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
       <motion.div
         className={`relative group bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-80 flex flex-col cursor-pointer ${
           isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
-        } ${
+        } ${isOptimisticFeature ? "opacity-75" : ""} ${
           isCardTaskDropActive
             ? "border-emerald-500 ring-2 ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.3),0_12px_24px_rgba(16,185,129,0.22)]"
             : isGlobalTaskDropHighlight
-            ? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
-            : "border-amber-300 hover:border-amber-400"
+              ? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
+              : "border-amber-300 hover:border-amber-400"
         }`}
         onClick={() => onClick?.(feature)}
         onDragEnter={(event) => {
@@ -223,9 +231,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
           event.stopPropagation();
           onAddTask(feature.id);
         }}
-        initial={
-          isReducedMotion ? false : { opacity: 0, y: 12, scale: 0.98 }
-        }
+        initial={isReducedMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
         animate={isReducedMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
         transition={
           isReducedMotion ? undefined : { duration: 0.25, ease: "easeOut" }

@@ -34,6 +34,9 @@ interface RoadmapCanvasOverlaysProps {
   isTaskLoading: boolean;
   isEpicLoading: boolean;
   isFeatureLoading: boolean;
+  isEditingEpicPending: boolean;
+  isEditingFeaturePending: boolean;
+  isSelectedTaskPending: boolean;
   isAddEpicModalOpen: boolean;
   isEditEpicModalOpen: boolean;
   isAddFeatureModalOpen: boolean;
@@ -105,6 +108,9 @@ export function RoadmapCanvasOverlays({
   isTaskLoading,
   isEpicLoading,
   isFeatureLoading,
+  isEditingEpicPending,
+  isEditingFeaturePending,
+  isSelectedTaskPending,
   isAddEpicModalOpen,
   isEditEpicModalOpen,
   isAddFeatureModalOpen,
@@ -145,6 +151,7 @@ export function RoadmapCanvasOverlays({
         onDeleteTask={handleTaskDelete}
         onCreateTask={handleTaskCreate}
         isLoading={isTaskLoading}
+        isPendingCreate={isSelectedTaskPending}
       />
 
       <EpicModal
@@ -221,6 +228,7 @@ export function RoadmapCanvasOverlays({
         titleText="Edit Epic"
         submitLabel="Save Changes"
         isLoading={isEpicLoading}
+        isPendingCreate={isEditingEpicPending}
       />
 
       <FeatureModal
@@ -277,6 +285,7 @@ export function RoadmapCanvasOverlays({
         }}
         onSubmit={handleUpdateFeatureFromModal}
         isLoading={isFeatureLoading}
+        isPendingCreate={isEditingFeaturePending}
       />
 
       {deleteConfirm && (

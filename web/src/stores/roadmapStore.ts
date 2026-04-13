@@ -29,6 +29,7 @@ interface RoadmapState {
   roadmap: Roadmap | null;
   epics: RoadmapEpic[];
   milestones: RoadmapMilestone[];
+  tempToRealNodeId: Record<string, string>;
   pendingEpicById: Record<string, boolean>;
   pendingFeatureById: Record<string, boolean>;
   pendingTaskById: Record<string, boolean>;
@@ -70,6 +71,7 @@ interface FeatureData {
   title: string;
   description: string;
   status: FeatureStatus;
+  position?: number;
   is_deliverable: boolean;
   start_date?: string;
   end_date?: string;
@@ -162,6 +164,10 @@ interface RoadmapActions {
   closeCanvasArtifactTab: (artifactId: string) => void;
   applyArtifactSnapshot: (artifactId: string) => void;
   discardArtifact: (artifactId: string) => void;
+
+  // Optimistic ID helpers
+  isOptimisticNodeId: (id: string | null | undefined) => boolean;
+  resolveCanonicalNodeId: (id: string | null | undefined) => string | null;
 }
 
 type RoadmapStore = RoadmapState & RoadmapActions;
@@ -229,11 +235,55 @@ const clearTaskRollbackKey = (
   return next;
 };
 
+const OPTIMISTIC_NODE_ID_PREFIX = "temp-";
+
+const isOptimisticNodeIdInternal = (
+  id: string | null | undefined,
+): id is string =>
+  typeof id === "string" && id.startsWith(OPTIMISTIC_NODE_ID_PREFIX);
+
+const resolveCanonicalNodeIdInternal = (
+  id: string | null | undefined,
+  tempToRealNodeId: Record<string, string>,
+): string | null => {
+  if (!id) return null;
+
+  let resolvedId = id;
+  const visited = new Set<string>([resolvedId]);
+
+  while (tempToRealNodeId[resolvedId]) {
+    const nextId = tempToRealNodeId[resolvedId];
+    if (!nextId || visited.has(nextId)) break;
+    resolvedId = nextId;
+    visited.add(resolvedId);
+  }
+
+  return resolvedId;
+};
+
+const clearNodeMappingsForIds = (
+  record: Record<string, string>,
+  removedNodeIds: Set<string>,
+): Record<string, string> => {
+  let changed = false;
+  const next = { ...record };
+
+  for (const [tempId, realId] of Object.entries(record)) {
+    if (removedNodeIds.has(tempId) || removedNodeIds.has(realId)) {
+      delete next[tempId];
+      changed = true;
+    }
+  }
+
+  return changed ? next : record;
+};
+
 export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
   // Initial State
   roadmap: null,
   epics: [],
   milestones: [],
+  tempToRealNodeId: {},
   pendingEpicById: {},
   pendingFeatureById: {},
   pendingTaskById: {},
@@ -275,6 +325,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         roadmap: fullRoadmap,
         epics: fullRoadmap.epics || [],
         milestones: fullRoadmap.milestones || [],
+        tempToRealNodeId: {},
         pendingEpicById: {},
         pendingFeatureById: {},
         pendingTaskById: {},
@@ -296,6 +347,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
       roadmap: fullRoadmap,
       epics: fullRoadmap.epics || [],
       milestones: fullRoadmap.milestones || [],
+      tempToRealNodeId: {},
       pendingEpicById: {},
       pendingFeatureById: {},
       pendingTaskById: {},
@@ -311,6 +363,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
       roadmap: null,
       epics: [],
       milestones: [],
+      tempToRealNodeId: {},
       pendingEpicById: {},
       pendingFeatureById: {},
       pendingTaskById: {},
@@ -353,19 +406,88 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 
   // Epic CRUD
   addEpic: async (_milestoneId?: string, epicInput?: Partial<RoadmapEpic>) => {
-    const { roadmap, epics } = get();
+    const { roadmap } = get();
     if (!roadmap) return;
 
+    const createdAt = new Date().toISOString();
+    const tempEpicId = `temp-epic-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    const requestedPositionRaw =
+      typeof epicInput?.position === "number"
+        ? epicInput.position
+        : Number(epicInput?.position);
+    const requestedPosition = Number.isFinite(requestedPositionRaw)
+      ? Math.max(0, Math.floor(requestedPositionRaw))
+      : null;
+    const title = epicInput?.title?.trim() || "New Epic";
+    const description = epicInput?.description || "";
+    const priority = epicInput?.priority || "medium";
+    const status = epicInput?.status || "backlog";
+    let optimisticPosition = 0;
+
     try {
-      set({ isLoadingEpic: true });
+      set((state) => {
+        const maxPosition = state.epics.reduce((max, epic) => {
+          const position =
+            typeof epic.position === "number"
+              ? epic.position
+              : Number(epic.position);
+          if (!Number.isFinite(position) || position < 0) return max;
+          return Math.max(max, Math.floor(position));
+        }, -1);
+        const appendPosition = maxPosition + 1;
+        optimisticPosition =
+          requestedPosition === null
+            ? appendPosition
+            : Math.min(requestedPosition, appendPosition);
+
+        const shiftedEpics = state.epics.map((epic) => {
+          const position =
+            typeof epic.position === "number"
+              ? epic.position
+              : Number(epic.position);
+          if (!Number.isFinite(position) || position < optimisticPosition) {
+            return epic;
+          }
+          return { ...epic, position: Math.floor(position) + 1 };
+        });
+
+        const optimisticEpic: RoadmapEpic = {
+          id: tempEpicId,
+          roadmap_id: roadmap.id,
+          title,
+          description,
+          priority,
+          status,
+          position: optimisticPosition,
+          color: epicInput?.color,
+          estimated_hours: epicInput?.estimated_hours,
+          actual_hours: epicInput?.actual_hours,
+          start_date: epicInput?.start_date,
+          end_date: epicInput?.end_date,
+          completed_date: epicInput?.completed_date,
+          tags: epicInput?.tags,
+          labels: epicInput?.labels,
+          created_at: createdAt,
+          updated_at: createdAt,
+          progress: epicInput?.progress,
+          features: [],
+        };
+
+        return {
+          isLoadingEpic: true,
+          epics: [...shiftedEpics, optimisticEpic],
+        };
+      });
 
       const newEpic = await epicService.create({
         roadmap_id: roadmap.id,
-        title: epicInput?.title?.trim() || "New Epic",
-        description: epicInput?.description || "",
-        priority: epicInput?.priority || "medium",
-        status: epicInput?.status || "backlog",
-        position: epicInput?.position ?? epics.length,
+        title,
+        description,
+        priority,
+        status,
+        position: optimisticPosition,
         color: epicInput?.color,
         estimated_hours: epicInput?.estimated_hours,
         start_date: epicInput?.start_date,
@@ -374,26 +496,36 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         labels: epicInput?.labels,
       });
 
-      // Update local state with optimistic update
-      if (newEpic.position < epics.length) {
-        const updatedEpics = epics.map((e) =>
-          e.position >= newEpic.position
-            ? { ...e, position: e.position + 1 }
-            : e,
-        );
-        set({
-          epics: [...updatedEpics, { ...newEpic, features: [] }],
-          isLoadingEpic: false,
-        });
-      } else {
-        set({
-          epics: [...epics, { ...newEpic, features: [] }],
-          isLoadingEpic: false,
-        });
-      }
+      set((state) => ({
+        tempToRealNodeId: {
+          ...state.tempToRealNodeId,
+          [tempEpicId]: newEpic.id,
+        },
+        epics: state.epics.map((epic) =>
+          epic.id === tempEpicId
+            ? { ...newEpic, features: epic.features || [] }
+            : epic,
+        ),
+        isLoadingEpic: false,
+      }));
     } catch (error) {
       console.error("Failed to create epic:", error);
-      set({ isLoadingEpic: false });
+      set((state) => ({
+        tempToRealNodeId: clearPendingKey(state.tempToRealNodeId, tempEpicId),
+        epics: state.epics
+          .filter((epic) => epic.id !== tempEpicId)
+          .map((epic) => {
+            const position =
+              typeof epic.position === "number"
+                ? epic.position
+                : Number(epic.position);
+            if (!Number.isFinite(position) || position <= optimisticPosition) {
+              return epic;
+            }
+            return { ...epic, position: Math.max(0, Math.floor(position) - 1) };
+          }),
+        isLoadingEpic: false,
+      }));
       throw error;
     }
   },
@@ -591,18 +723,55 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
   },
 
   deleteEpic: async (epicId: string) => {
-    const { epics } = get();
+    const { epics, tempToRealNodeId } = get();
+    const epicToDelete = epics.find((epic) => epic.id === epicId);
+    if (!epicToDelete) return;
+
+    const rollbackEpics = epics;
+    const rollbackTempToRealNodeId = tempToRealNodeId;
+    const epicPosition =
+      typeof epicToDelete.position === "number"
+        ? Math.floor(epicToDelete.position)
+        : Number(epicToDelete.position);
+    const removedNodeIds = new Set<string>([epicId]);
+    for (const feature of epicToDelete.features || []) {
+      removedNodeIds.add(feature.id);
+      for (const task of feature.tasks || []) {
+        removedNodeIds.add(task.id);
+      }
+    }
 
     try {
-      set({ isLoadingEpic: true });
+      set((state) => ({
+        isLoadingEpic: true,
+        tempToRealNodeId: clearNodeMappingsForIds(
+          state.tempToRealNodeId,
+          removedNodeIds,
+        ),
+        epics: state.epics
+          .filter((epic) => epic.id !== epicId)
+          .map((epic) => {
+            const position =
+              typeof epic.position === "number"
+                ? Math.floor(epic.position)
+                : Number(epic.position);
+            if (!Number.isFinite(epicPosition) || !Number.isFinite(position)) {
+              return epic;
+            }
+            if (position <= epicPosition) return epic;
+            return { ...epic, position: Math.max(0, position - 1) };
+          }),
+      }));
+
       await epicService.delete(epicId);
-      set({
-        epics: epics.filter((e) => e.id !== epicId),
-        isLoadingEpic: false,
-      });
+      set({ isLoadingEpic: false });
     } catch (error) {
       console.error("Failed to delete epic:", error);
-      set({ isLoadingEpic: false });
+      set({
+        epics: rollbackEpics,
+        tempToRealNodeId: rollbackTempToRealNodeId,
+        isLoadingEpic: false,
+      });
       throw error;
     }
   },
@@ -615,32 +784,153 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
     const epic = epics.find((e) => e.id === epicId);
     if (!epic) return;
 
+    const createdAt = new Date().toISOString();
+    const tempFeatureId = `temp-feature-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    const requestedPositionRaw =
+      typeof data.position === "number" ? data.position : Number(data.position);
+    const requestedPosition = Number.isFinite(requestedPositionRaw)
+      ? Math.max(0, Math.floor(requestedPositionRaw))
+      : null;
+    const title = data.title.trim();
+    let optimisticPosition = 0;
+    let hasOptimisticInsert = false;
+
     try {
-      set({ isLoadingFeature: true });
+      set((state) => {
+        const targetEpic = state.epics.find((item) => item.id === epicId);
+        if (!targetEpic) {
+          return { isLoadingFeature: false };
+        }
+
+        const existingFeatures = targetEpic.features || [];
+        const maxPosition = existingFeatures.reduce((max, feature) => {
+          const position =
+            typeof feature.position === "number"
+              ? feature.position
+              : Number(feature.position);
+          if (!Number.isFinite(position) || position < 0) return max;
+          return Math.max(max, Math.floor(position));
+        }, -1);
+        const appendPosition = maxPosition + 1;
+        optimisticPosition =
+          requestedPosition === null
+            ? appendPosition
+            : Math.min(requestedPosition, appendPosition);
+
+        const shiftedFeatures = existingFeatures.map((feature) => {
+          const position =
+            typeof feature.position === "number"
+              ? feature.position
+              : Number(feature.position);
+          if (!Number.isFinite(position) || position < optimisticPosition) {
+            return feature;
+          }
+          return { ...feature, position: Math.floor(position) + 1 };
+        });
+
+        const optimisticFeature: RoadmapFeature = {
+          id: tempFeatureId,
+          roadmap_id: roadmap.id,
+          epic_id: epicId,
+          title,
+          description: data.description,
+          status: data.status || "not_started",
+          position: optimisticPosition,
+          is_deliverable: data.is_deliverable,
+          estimated_hours: undefined,
+          actual_hours: undefined,
+          start_date: data.start_date,
+          end_date: data.end_date,
+          created_at: createdAt,
+          updated_at: createdAt,
+          progress: undefined,
+          comments: undefined,
+          tasks: [],
+        };
+
+        hasOptimisticInsert = true;
+
+        return {
+          isLoadingFeature: true,
+          epics: state.epics.map((item) =>
+            item.id === epicId
+              ? {
+                  ...item,
+                  features: [...shiftedFeatures, optimisticFeature],
+                  updated_at: createdAt,
+                }
+              : item,
+          ),
+        };
+      });
+      if (!hasOptimisticInsert) return;
 
       const newFeature = await featureService.create({
         roadmap_id: roadmap.id,
         epic_id: epicId,
-        title: data.title,
+        title,
         description: data.description,
         status: data.status,
-        position: epic.features?.length || 0,
+        position: optimisticPosition,
         is_deliverable: data.is_deliverable,
         start_date: data.start_date,
         end_date: data.end_date,
       });
 
-      set({
-        epics: epics.map((e) =>
-          e.id === epicId
-            ? { ...e, features: [...(e.features || []), newFeature] }
-            : e,
+      set((state) => ({
+        tempToRealNodeId: {
+          ...state.tempToRealNodeId,
+          [tempFeatureId]: newFeature.id,
+        },
+        epics: state.epics.map((item) =>
+          item.id === epicId
+            ? {
+                ...item,
+                features: (item.features || []).map((feature) =>
+                  feature.id === tempFeatureId
+                    ? { ...newFeature, tasks: feature.tasks || [] }
+                    : feature,
+                ),
+              }
+            : item,
         ),
         isLoadingFeature: false,
-      });
+      }));
     } catch (error) {
       console.error("Failed to create feature:", error);
-      set({ isLoadingFeature: false });
+      set((state) => ({
+        tempToRealNodeId: clearPendingKey(
+          state.tempToRealNodeId,
+          tempFeatureId,
+        ),
+        epics: state.epics.map((item) => {
+          if (item.id !== epicId) return item;
+          return {
+            ...item,
+            features: (item.features || [])
+              .filter((feature) => feature.id !== tempFeatureId)
+              .map((feature) => {
+                const position =
+                  typeof feature.position === "number"
+                    ? feature.position
+                    : Number(feature.position);
+                if (
+                  !Number.isFinite(position) ||
+                  position <= optimisticPosition
+                ) {
+                  return feature;
+                }
+                return {
+                  ...feature,
+                  position: Math.max(0, Math.floor(position) - 1),
+                };
+              }),
+          };
+        }),
+        isLoadingFeature: false,
+      }));
       throw error;
     }
   },
@@ -870,70 +1160,227 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
   },
 
   deleteFeature: async (featureId: string) => {
-    const { epics } = get();
+    const { epics, tempToRealNodeId } = get();
     const epic = epics.find((e) => e.features?.some((f) => f.id === featureId));
-    if (!epic) return;
+    const featureToDelete = epic?.features?.find(
+      (feature) => feature.id === featureId,
+    );
+    if (!epic || !featureToDelete) return;
+
+    const rollbackEpics = epics;
+    const rollbackTempToRealNodeId = tempToRealNodeId;
+    const featurePosition =
+      typeof featureToDelete.position === "number"
+        ? Math.floor(featureToDelete.position)
+        : Number(featureToDelete.position);
+    const removedNodeIds = new Set<string>([featureId]);
+    for (const task of featureToDelete.tasks || []) {
+      removedNodeIds.add(task.id);
+    }
 
     try {
-      set({ isLoadingFeature: true });
-      await featureService.delete(featureId);
-      set({
-        epics: epics.map((e) =>
-          e.id === epic.id
-            ? {
-                ...e,
-                features: e.features?.filter((f) => f.id !== featureId),
-                updated_at: new Date().toISOString(),
-              }
-            : e,
+      set((state) => ({
+        isLoadingFeature: true,
+        tempToRealNodeId: clearNodeMappingsForIds(
+          state.tempToRealNodeId,
+          removedNodeIds,
         ),
-        isLoadingFeature: false,
-      });
+        epics: state.epics.map((currentEpic) => {
+          if (currentEpic.id !== epic.id) return currentEpic;
+
+          return {
+            ...currentEpic,
+            features: (currentEpic.features || [])
+              .filter((feature) => feature.id !== featureId)
+              .map((feature) => {
+                const position =
+                  typeof feature.position === "number"
+                    ? Math.floor(feature.position)
+                    : Number(feature.position);
+                if (
+                  !Number.isFinite(featurePosition) ||
+                  !Number.isFinite(position) ||
+                  position <= featurePosition
+                ) {
+                  return feature;
+                }
+                return { ...feature, position: Math.max(0, position - 1) };
+              }),
+            updated_at: new Date().toISOString(),
+          };
+        }),
+      }));
+
+      await featureService.delete(featureId);
+      set({ isLoadingFeature: false });
     } catch (error) {
       console.error("Failed to delete feature:", error);
-      set({ isLoadingFeature: false });
+      set({
+        epics: rollbackEpics,
+        tempToRealNodeId: rollbackTempToRealNodeId,
+        isLoadingFeature: false,
+      });
       throw error;
     }
   },
 
   // Task CRUD
   addTask: async (featureId: string, data: Partial<RoadmapTask>) => {
-    if (!data.title) {
+    const title = data.title?.trim();
+    if (!title) {
       console.warn("Task title is required");
       return;
     }
 
-    const { epics } = get();
+    const createdAt = new Date().toISOString();
+    const tempTaskId = `temp-task-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    const requestedPositionRaw =
+      typeof data.position === "number" ? data.position : Number(data.position);
+    const requestedPosition = Number.isFinite(requestedPositionRaw)
+      ? Math.max(0, Math.floor(requestedPositionRaw))
+      : null;
+    let optimisticPosition = 0;
+    let hasOptimisticInsert = false;
 
     try {
-      set({ isLoadingTask: true });
+      set((state) => {
+        let foundFeature = false;
+        const nextEpics = state.epics.map((epic) => ({
+          ...epic,
+          features: (epic.features || []).map((feature) => {
+            if (feature.id !== featureId) {
+              return feature;
+            }
+            foundFeature = true;
+            const existingTasks = feature.tasks || [];
+            const maxPosition = existingTasks.reduce((max, task) => {
+              const position =
+                typeof task.position === "number"
+                  ? task.position
+                  : Number(task.position);
+              if (!Number.isFinite(position) || position < 0) return max;
+              return Math.max(max, Math.floor(position));
+            }, -1);
+            const appendPosition = maxPosition + 1;
+            optimisticPosition =
+              requestedPosition === null
+                ? appendPosition
+                : Math.min(requestedPosition, appendPosition);
+
+            const shiftedTasks = existingTasks.map((task) => {
+              const position =
+                typeof task.position === "number"
+                  ? task.position
+                  : Number(task.position);
+              if (!Number.isFinite(position) || position < optimisticPosition) {
+                return task;
+              }
+              return { ...task, position: Math.floor(position) + 1 };
+            });
+
+            const optimisticTask: RoadmapTask = {
+              id: tempTaskId,
+              feature_id: featureId,
+              title,
+              assignee_id: data.assignee_id,
+              status: data.status || "todo",
+              priority: data.priority || "medium",
+              position: optimisticPosition,
+              due_date: data.due_date,
+              completed_at: data.completed_at,
+              created_at: createdAt,
+              updated_at: createdAt,
+              description: data.description,
+              checklist: data.checklist,
+              assignee: data.assignee,
+              labels: data.labels,
+            };
+
+            return {
+              ...feature,
+              tasks: [...shiftedTasks, optimisticTask],
+              updated_at: createdAt,
+            };
+          }),
+        }));
+
+        if (!foundFeature) {
+          return { isLoadingTask: false };
+        }
+        hasOptimisticInsert = true;
+
+        return {
+          epics: nextEpics,
+          isLoadingTask: true,
+        };
+      });
+      if (!hasOptimisticInsert) return;
 
       const newTask = await taskService.create({
         feature_id: featureId,
-        title: data.title,
+        title,
         status: data.status || "todo",
         priority: data.priority || "medium",
-        position: data.position,
+        assignee_id: data.assignee_id,
+        position: optimisticPosition,
         due_date: data.due_date,
       });
 
-      set({
-        epics: epics.map((epic) => ({
+      set((state) => ({
+        tempToRealNodeId: {
+          ...state.tempToRealNodeId,
+          [tempTaskId]: newTask.id,
+        },
+        epics: state.epics.map((epic) => ({
           ...epic,
           features: (epic.features || []).map((feature) =>
             feature.id === featureId
               ? {
                   ...feature,
-                  tasks: [...(feature.tasks || []), newTask],
+                  tasks: (feature.tasks || []).map((task) =>
+                    task.id === tempTaskId ? newTask : task,
+                  ),
                 }
               : feature,
           ),
         })),
         isLoadingTask: false,
-      });
+      }));
     } catch (error) {
       console.error("Failed to create task:", error);
-      set({ isLoadingTask: false });
+      set((state) => ({
+        tempToRealNodeId: clearPendingKey(state.tempToRealNodeId, tempTaskId),
+        epics: state.epics.map((epic) => ({
+          ...epic,
+          features: (epic.features || []).map((feature) => {
+            if (feature.id !== featureId) return feature;
+            return {
+              ...feature,
+              tasks: (feature.tasks || [])
+                .filter((task) => task.id !== tempTaskId)
+                .map((task) => {
+                  const position =
+                    typeof task.position === "number"
+                      ? task.position
+                      : Number(task.position);
+                  if (
+                    !Number.isFinite(position) ||
+                    position <= optimisticPosition
+                  ) {
+                    return task;
+                  }
+                  return {
+                    ...task,
+                    position: Math.max(0, Math.floor(position) - 1),
+                  };
+                }),
+            };
+          }),
+        })),
+        isLoadingTask: false,
+      }));
       throw error;
     }
   },
@@ -1094,25 +1541,77 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
   },
 
   deleteTask: async (taskId: string) => {
-    const { epics } = get();
+    const { epics, tempToRealNodeId } = get();
+    let taskPosition: number | null = null;
+    let featureIdForTask: string | null = null;
+    const removedNodeIds = new Set<string>([taskId]);
+
+    for (const epic of epics) {
+      for (const feature of epic.features || []) {
+        const task = (feature.tasks || []).find(
+          (candidate) => candidate.id === taskId,
+        );
+        if (!task) continue;
+        featureIdForTask = feature.id;
+        taskPosition =
+          typeof task.position === "number"
+            ? Math.floor(task.position)
+            : Number(task.position);
+      }
+    }
+
+    if (!featureIdForTask) return;
+
+    const rollbackEpics = epics;
+    const rollbackTempToRealNodeId = tempToRealNodeId;
 
     try {
-      set({ isLoadingTask: true });
-      await taskService.delete(taskId);
-
-      set({
-        epics: epics.map((epic) => ({
+      set((state) => ({
+        isLoadingTask: true,
+        tempToRealNodeId: clearNodeMappingsForIds(
+          state.tempToRealNodeId,
+          removedNodeIds,
+        ),
+        epics: state.epics.map((epic) => ({
           ...epic,
-          features: (epic.features || []).map((feature) => ({
-            ...feature,
-            tasks: (feature.tasks || []).filter((t) => t.id !== taskId),
-          })),
+          features: (epic.features || []).map((feature) => {
+            if (feature.id !== featureIdForTask) return feature;
+
+            return {
+              ...feature,
+              tasks: (feature.tasks || [])
+                .filter((task) => task.id !== taskId)
+                .map((task) => {
+                  const position =
+                    typeof task.position === "number"
+                      ? Math.floor(task.position)
+                      : Number(task.position);
+                  if (
+                    taskPosition === null ||
+                    !Number.isFinite(taskPosition) ||
+                    !Number.isFinite(position) ||
+                    position <= taskPosition
+                  ) {
+                    return task;
+                  }
+
+                  return { ...task, position: Math.max(0, position - 1) };
+                }),
+              updated_at: new Date().toISOString(),
+            };
+          }),
         })),
-        isLoadingTask: false,
-      });
+      }));
+
+      await taskService.delete(taskId);
+      set({ isLoadingTask: false });
     } catch (error) {
       console.error("Failed to delete task:", error);
-      set({ isLoadingTask: false });
+      set({
+        epics: rollbackEpics,
+        tempToRealNodeId: rollbackTempToRealNodeId,
+        isLoadingTask: false,
+      });
       throw error;
     }
   },
@@ -1240,6 +1739,12 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
   clearOpenTaskDetail: () => {
     set({ openTaskDetailId: null });
   },
+
+  isOptimisticNodeId: (id: string | null | undefined) =>
+    isOptimisticNodeIdInternal(id),
+
+  resolveCanonicalNodeId: (id: string | null | undefined) =>
+    resolveCanonicalNodeIdInternal(id, get().tempToRealNodeId),
 
   setActiveEpicId: (epicId: string | null) => {
     set({ activeEpicId: epicId });
@@ -1379,3 +1884,9 @@ export const useEpics = () => useRoadmapStore((state) => state.epics);
 export const useMilestones = () => useRoadmapStore((state) => state.milestones);
 export const useRoadmapLoading = () =>
   useRoadmapStore((state) => state.isLoadingRoadmap);
+export const useTempToRealNodeIdMap = () =>
+  useRoadmapStore((state) => state.tempToRealNodeId);
+export const useIsOptimisticNodeId = () =>
+  useRoadmapStore((state) => state.isOptimisticNodeId);
+export const useResolveCanonicalNodeId = () =>
+  useRoadmapStore((state) => state.resolveCanonicalNodeId);

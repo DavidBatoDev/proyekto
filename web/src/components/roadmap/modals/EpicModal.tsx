@@ -49,6 +49,7 @@ interface EpicModalProps {
   titleText?: string;
   submitLabel?: string;
   isLoading?: boolean;
+  isPendingCreate?: boolean;
 }
 
 const resolveInitialLabels = (initialData?: EpicModalProps["initialData"]) => {
@@ -80,6 +81,7 @@ export const EpicModal = ({
   titleText: _titleText = "Add Epic",
   submitLabel = "Create Epic",
   isLoading = false,
+  isPendingCreate = false,
 }: EpicModalProps) => {
   const user = useUser();
   const [title, setTitle] = useState("");
@@ -109,6 +111,7 @@ export const EpicModal = ({
   } | null>(null);
 
   const epicId = initialData?.id;
+  const isReadOnlyPending = isPendingCreate;
 
   useEffect(() => {
     if (isOpen) {
@@ -262,7 +265,7 @@ export const EpicModal = ({
   };
 
   const handleSaveBeforeClose = () => {
-    if (isLoading || !title.trim()) return;
+    if (isLoading || isReadOnlyPending || !title.trim()) return;
     setShowUnsavedChangesConfirm(false);
     submitCurrentValues();
     onClose();
@@ -303,202 +306,210 @@ export const EpicModal = ({
 
   const body = (
     <>
-      {/* Labels and Priority Row */}
-      <div className="flex gap-6 mb-6">
-        {/* Labels */}
-        <div className="flex-1">
-          <h3 className="text-sm font-semibold text-gray-900 mb-2">Labels</h3>
-          <LabelSelector
-            selectedLabels={labels}
-            onLabelsChange={setLabels}
-            availableLabels={[]}
-          />
-        </div>
-
-        {/* Priority */}
-        <div className="w-48">
-          <h3 className="text-sm font-semibold text-gray-900 mb-2">Priority</h3>
-          <select
-            value={priority}
-            onChange={(e) => setPriority(e.target.value as EpicPriority)}
-            className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-white"
-          >
-            <option value="nice_to_have">Nice to Have</option>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="critical">Critical</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Dates */}
       <div
-        className={`relative ${hasDates || isDateMenuOpen ? "mb-6" : "mb-0"}`}
+        className={
+          isReadOnlyPending ? "pointer-events-none opacity-70" : undefined
+        }
       >
-        {hasDates && (
-          <button
-            type="button"
-            onClick={openDateMenu}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-900 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-          >
-            <Calendar className="w-4 h-4 text-gray-500" />
-            {displayDateRange}
-            <ChevronDown className="w-4 h-4 text-gray-500" />
-          </button>
-        )}
-
-        {isDateMenuOpen && (
-          <div className="absolute z-20 mt-2 w-full max-w-[420px] rounded-xl border border-gray-200 bg-white shadow-xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-900">Dates</h3>
-              <button
-                type="button"
-                onClick={() => setIsDateMenuOpen(false)}
-                className="p-1 rounded hover:bg-gray-100"
-              >
-                <X className="w-4 h-4 text-gray-500" />
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Start date
-                </label>
-                <input
-                  type="date"
-                  value={draftStartDate}
-                  onChange={(e) => setDraftStartDate(e.target.value)}
-                  className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-white"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  End date
-                </label>
-                <input
-                  type="date"
-                  value={draftEndDate}
-                  onChange={(e) => setDraftEndDate(e.target.value)}
-                  min={draftStartDate || undefined}
-                  className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-white"
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={removeDates}
-                className="px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-              >
-                Remove
-              </button>
-              <button
-                type="button"
-                onClick={saveDates}
-                className="px-3 py-1.5 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90 transition-colors"
-              >
-                Save
-              </button>
-            </div>
+        {/* Labels and Priority Row */}
+        <div className="flex gap-6 mb-6">
+          {/* Labels */}
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">Labels</h3>
+            <LabelSelector
+              selectedLabels={labels}
+              onLabelsChange={setLabels}
+              availableLabels={[]}
+            />
           </div>
-        )}
-      </div>
 
-      {/* Description */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-semibold text-gray-900">Description</h3>
-          {!isEditingDescription && description && (
+          {/* Priority */}
+          <div className="w-48">
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">
+              Priority
+            </h3>
+            <select
+              value={priority}
+              onChange={(e) => setPriority(e.target.value as EpicPriority)}
+              className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-white"
+            >
+              <option value="nice_to_have">Nice to Have</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Dates */}
+        <div
+          className={`relative ${hasDates || isDateMenuOpen ? "mb-6" : "mb-0"}`}
+        >
+          {hasDates && (
             <button
               type="button"
-              onClick={() => setIsEditingDescription(true)}
-              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 rounded transition-colors"
+              onClick={openDateMenu}
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-900 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
             >
-              <Edit2 className="w-3.5 h-3.5" />
-              Edit
+              <Calendar className="w-4 h-4 text-gray-500" />
+              {displayDateRange}
+              <ChevronDown className="w-4 h-4 text-gray-500" />
             </button>
+          )}
+
+          {isDateMenuOpen && (
+            <div className="absolute z-20 mt-2 w-full max-w-[420px] rounded-xl border border-gray-200 bg-white shadow-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-900">Dates</h3>
+                <button
+                  type="button"
+                  onClick={() => setIsDateMenuOpen(false)}
+                  className="p-1 rounded hover:bg-gray-100"
+                >
+                  <X className="w-4 h-4 text-gray-500" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Start date
+                  </label>
+                  <input
+                    type="date"
+                    value={draftStartDate}
+                    onChange={(e) => setDraftStartDate(e.target.value)}
+                    className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    End date
+                  </label>
+                  <input
+                    type="date"
+                    value={draftEndDate}
+                    onChange={(e) => setDraftEndDate(e.target.value)}
+                    min={draftStartDate || undefined}
+                    className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={removeDates}
+                  className="px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                >
+                  Remove
+                </button>
+                <button
+                  type="button"
+                  onClick={saveDates}
+                  className="px-3 py-1.5 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90 transition-colors"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
           )}
         </div>
 
-        {isEditingDescription ? (
-          <div className="space-y-2">
-            <RichTextEditor
-              value={description}
-              onChange={setDescription}
-              placeholder="Add a more detailed description..."
-              tools={[
-                "textFormat",
-                "bold",
-                "italic",
-                "more",
-                "separator",
-                "bulletList",
-                "numberedList",
-                "separator",
-                "link",
-                "image",
-              ]}
-              minHeight="100px"
-              maxHeight="none"
-              autoFocus
-            />
-            <div className="flex justify-end">
+        {/* Description */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-gray-900">Description</h3>
+            {!isEditingDescription && description && (
               <button
                 type="button"
-                onClick={() => setIsEditingDescription(false)}
-                className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+                onClick={() => setIsEditingDescription(true)}
+                className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 rounded transition-colors"
               >
-                Done
-              </button>
-            </div>
-          </div>
-        ) : description ? (
-          <div className="relative">
-            <div
-              ref={descriptionRef}
-              className={`relative text-sm text-gray-700 leading-relaxed prose prose-sm max-w-none overflow-hidden transition-[max-height] duration-300 ease-in-out ${
-                isExpanded ? "max-h-[2000px]" : "max-h-48"
-              }`}
-            >
-              <div dangerouslySetInnerHTML={{ __html: description }} />
-
-              {/* Gradient Overlay when collapsed */}
-              {!isExpanded && showReadMore && (
-                <div className="absolute bottom-0 left-0 right-0 h-12 bg-linear-to-t from-white to-transparent pointer-events-none" />
-              )}
-            </div>
-
-            {/* Show More / Less Button */}
-            {showReadMore && (
-              <button
-                type="button"
-                onClick={() => setIsExpanded(!isExpanded)}
-                className="mt-2 text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1"
-              >
-                {isExpanded ? (
-                  <>
-                    Show less <ChevronUp className="w-3 h-3" />
-                  </>
-                ) : (
-                  <>
-                    Show more <ChevronDown className="w-3 h-3" />
-                  </>
-                )}
+                <Edit2 className="w-3.5 h-3.5" />
+                Edit
               </button>
             )}
           </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setIsEditingDescription(true)}
-            className="w-full px-3 py-2 text-sm text-gray-500 border border-gray-300 border-dashed rounded-md hover:border-gray-400 hover:bg-gray-50 transition-colors text-left"
-          >
-            Add a description...
-          </button>
-        )}
+
+          {isEditingDescription ? (
+            <div className="space-y-2">
+              <RichTextEditor
+                value={description}
+                onChange={setDescription}
+                placeholder="Add a more detailed description..."
+                tools={[
+                  "textFormat",
+                  "bold",
+                  "italic",
+                  "more",
+                  "separator",
+                  "bulletList",
+                  "numberedList",
+                  "separator",
+                  "link",
+                  "image",
+                ]}
+                minHeight="100px"
+                maxHeight="none"
+                autoFocus
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingDescription(false)}
+                  className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          ) : description ? (
+            <div className="relative">
+              <div
+                ref={descriptionRef}
+                className={`relative text-sm text-gray-700 leading-relaxed prose prose-sm max-w-none overflow-hidden transition-[max-height] duration-300 ease-in-out ${
+                  isExpanded ? "max-h-[2000px]" : "max-h-48"
+                }`}
+              >
+                <div dangerouslySetInnerHTML={{ __html: description }} />
+
+                {/* Gradient Overlay when collapsed */}
+                {!isExpanded && showReadMore && (
+                  <div className="absolute bottom-0 left-0 right-0 h-12 bg-linear-to-t from-white to-transparent pointer-events-none" />
+                )}
+              </div>
+
+              {/* Show More / Less Button */}
+              {showReadMore && (
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  className="mt-2 text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                >
+                  {isExpanded ? (
+                    <>
+                      Show less <ChevronUp className="w-3 h-3" />
+                    </>
+                  ) : (
+                    <>
+                      Show more <ChevronDown className="w-3 h-3" />
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsEditingDescription(true)}
+              className="w-full px-3 py-2 text-sm text-gray-500 border border-gray-300 border-dashed rounded-md hover:border-gray-400 hover:bg-gray-50 transition-colors text-left"
+            >
+              Add a description...
+            </button>
+          )}
+        </div>
       </div>
     </>
   );
@@ -507,7 +518,7 @@ export const EpicModal = ({
     <div className="flex justify-end">
       <button
         type="submit"
-        disabled={!title.trim() || isLoading}
+        disabled={!title.trim() || isLoading || isReadOnlyPending}
         className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
       >
         {isLoading ? (
@@ -515,6 +526,8 @@ export const EpicModal = ({
             <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             Saving...
           </>
+        ) : isReadOnlyPending ? (
+          "Creating..."
         ) : (
           submitLabel
         )}
@@ -543,10 +556,15 @@ export const EpicModal = ({
         <CommentsSection
           comments={comments}
           onAddComment={handleAddComment}
-          onUpdateComment={handleUpdateComment}
-          onDeleteComment={handleDeleteComment}
+          onUpdateComment={isReadOnlyPending ? undefined : handleUpdateComment}
+          onDeleteComment={isReadOnlyPending ? undefined : handleDeleteComment}
           currentUserId={user?.id}
-          canComment={Boolean(user)}
+          canComment={Boolean(user) && !isReadOnlyPending}
+          disabledMessage={
+            isReadOnlyPending
+              ? "Comments will unlock once this epic is created."
+              : undefined
+          }
           isLoading={loadingComments}
           emptyMessage="No comments yet for this epic."
         />
@@ -571,7 +589,10 @@ export const EpicModal = ({
                   {/* Feature - Now Clickable */}
                   <div
                     className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm hover:border-primary hover:shadow-md transition-all cursor-pointer"
-                    onClick={() => onSelectFeature?.(feature)}
+                    onClick={() => {
+                      if (isReadOnlyPending) return;
+                      onSelectFeature?.(feature);
+                    }}
                   >
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-semibold text-gray-900">
@@ -602,10 +623,13 @@ export const EpicModal = ({
                           <TaskListItem
                             key={task.id ?? task.title}
                             task={task as RoadmapTask}
-                            onDelete={onDeleteTask}
+                            onDelete={
+                              isReadOnlyPending ? undefined : onDeleteTask
+                            }
                             onClick={onSelectTask}
                             density="compact"
                             onToggleComplete={(taskId) => {
+                              if (isReadOnlyPending) return;
                               if (!onUpdateTask) return;
                               const taskToUpdate = feature.tasks?.find(
                                 (t) => t.id === taskId,
@@ -622,6 +646,7 @@ export const EpicModal = ({
                               ).catch(() => undefined);
                             }}
                             onUpdateStatus={(taskId, status) => {
+                              if (isReadOnlyPending) return;
                               if (!onUpdateTask) return;
                               const taskToUpdate = feature.tasks?.find(
                                 (t) => t.id === taskId,
@@ -642,8 +667,10 @@ export const EpicModal = ({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (isReadOnlyPending) return;
                             onAddTask(feature.id!);
                           }}
+                          disabled={isReadOnlyPending}
                           className="w-full flex items-center justify-center gap-1 px-2 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-md text-xs font-medium transition-colors mt-1"
                         >
                           <Plus className="w-3 h-3" />
@@ -668,6 +695,7 @@ export const EpicModal = ({
           <button
             type="button"
             onClick={onAddFeature}
+            disabled={isReadOnlyPending}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg font-medium text-sm transition-colors mt-4"
           >
             <Plus className="w-4 h-4" />
@@ -682,6 +710,7 @@ export const EpicModal = ({
     <button
       type="button"
       onClick={openDateMenu}
+      disabled={isReadOnlyPending}
       className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
     >
       <Calendar className="w-4 h-4" />
@@ -694,6 +723,7 @@ export const EpicModal = ({
       <RoadmapModalLayout
         isOpen={isOpen}
         onClose={handleRequestClose}
+        isReadOnly={isReadOnlyPending}
         title={title}
         onTitleChange={setTitle}
         titlePlaceholder="Title"
@@ -702,7 +732,7 @@ export const EpicModal = ({
         showDefaultDatesAction={false}
         body={body}
         footer={footer}
-        canComment={Boolean(user)}
+        canComment={Boolean(user) && !isReadOnlyPending}
         rightPanelTabs={rightPanelTabs}
         defaultRightPanelTabId="comments"
         autoFocusTitle={true}

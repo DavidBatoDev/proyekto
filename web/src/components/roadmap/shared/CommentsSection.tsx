@@ -12,6 +12,7 @@ interface CommentsSectionProps {
   onDeleteComment?: (commentId: string) => Promise<void>;
   currentUserId?: string;
   canComment: boolean;
+  disabledMessage?: string;
   isLoading?: boolean;
   emptyMessage?: string;
 }
@@ -23,6 +24,7 @@ export const CommentsSection = ({
   onDeleteComment,
   currentUserId,
   canComment,
+  disabledMessage = "You need commenter or editor access to add comments",
   isLoading = false,
   emptyMessage = "No comments yet. Be the first to comment!",
 }: CommentsSectionProps) => {
@@ -228,9 +230,7 @@ export const CommentsSection = ({
 
       {!canComment && (
         <div className="text-center py-4 bg-gray-50 border border-gray-200 rounded-md">
-          <p className="text-sm text-gray-500">
-            You need commenter or editor access to add comments
-          </p>
+          <p className="text-sm text-gray-500">{disabledMessage}</p>
         </div>
       )}
 

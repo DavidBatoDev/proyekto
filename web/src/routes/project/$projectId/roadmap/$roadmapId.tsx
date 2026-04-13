@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
 import { RoadmapViewContent } from "@/components/roadmap";
+import { useRoadmapStore } from "@/stores/roadmapStore";
 
 type RoadmapDetailView = "roadmapView" | "timelineView";
 
@@ -37,25 +38,70 @@ function RoadmapViewPage() {
   const { nodeId, node, view } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const effectiveNodeId = nodeId ?? node;
+  const resolveCanonicalNodeId = useRoadmapStore(
+    (state) => state.resolveCanonicalNodeId,
+  );
+  const isOptimisticNodeId = useRoadmapStore(
+    (state) => state.isOptimisticNodeId,
+  );
+
+  const toCanonicalUrlNodeId = useCallback(
+    (rawNodeId?: string) => {
+      const canonicalNodeId = resolveCanonicalNodeId(rawNodeId);
+      if (!canonicalNodeId) return undefined;
+      const normalized = canonicalNodeId.trim();
+      if (!normalized || isOptimisticNodeId(normalized)) return undefined;
+      return normalized;
+    },
+    [isOptimisticNodeId, resolveCanonicalNodeId],
+  );
+  const safeEffectiveNodeId = toCanonicalUrlNodeId(effectiveNodeId);
 
   useEffect(() => {
     if (!node || nodeId) return;
+    const canonicalLegacyNodeId = toCanonicalUrlNodeId(node);
     void navigate({
       to: "/project/$projectId/roadmap/$roadmapId",
       params: { projectId, roadmapId },
-      search: {
-        nodeId: node,
-        view,
-      },
+      search: canonicalLegacyNodeId
+        ? {
+            nodeId: canonicalLegacyNodeId,
+            view,
+          }
+        : {
+            view,
+          },
       replace: true,
     });
-  }, [navigate, node, nodeId, projectId, roadmapId, view]);
+  }, [
+    navigate,
+    node,
+    nodeId,
+    projectId,
+    roadmapId,
+    toCanonicalUrlNodeId,
+    view,
+  ]);
 
   const handleDeepLinkNodeConsumed = useCallback(
     (nextView: RoadmapDetailView) => {
-      if (!effectiveNodeId) return;
-      const normalizedNodeId = effectiveNodeId.trim();
-      if (!normalizedNodeId) return;
+      const normalizedNodeId = toCanonicalUrlNodeId(effectiveNodeId);
+      if (!normalizedNodeId) {
+        const isCanonicalSearch =
+          node === undefined && nodeId === undefined && view === nextView;
+        if (isCanonicalSearch) return;
+
+        void navigate({
+          to: "/project/$projectId/roadmap/$roadmapId",
+          params: { projectId, roadmapId },
+          search: {
+            view: nextView,
+          },
+          replace: true,
+        });
+        return;
+      }
+
       const isCanonicalSearch =
         node === undefined && nodeId === normalizedNodeId && view === nextView;
       if (isCanonicalSearch) return;
@@ -70,12 +116,21 @@ function RoadmapViewPage() {
         replace: true,
       });
     },
-    [effectiveNodeId, navigate, node, nodeId, projectId, roadmapId, view],
+    [
+      effectiveNodeId,
+      navigate,
+      node,
+      nodeId,
+      projectId,
+      roadmapId,
+      toCanonicalUrlNodeId,
+      view,
+    ],
   );
 
   const handleViewChange = useCallback(
     (nextView: RoadmapDetailView) => {
-      const currentNodeId = nodeId ?? node;
+      const currentNodeId = toCanonicalUrlNodeId(nodeId ?? node);
       const isCanonicalSearch =
         node === undefined && nodeId === currentNodeId && view === nextView;
       if (isCanonicalSearch) return;
@@ -90,12 +145,12 @@ function RoadmapViewPage() {
         replace: true,
       });
     },
-    [navigate, node, nodeId, projectId, roadmapId, view],
+    [navigate, node, nodeId, projectId, roadmapId, toCanonicalUrlNodeId, view],
   );
 
   const handleNodeOpened = useCallback(
     (openedNodeId: string, nextView: RoadmapDetailView) => {
-      const normalizedNodeId = openedNodeId.trim();
+      const normalizedNodeId = toCanonicalUrlNodeId(openedNodeId);
       if (!normalizedNodeId) return;
 
       const isCanonicalSearch =
@@ -112,7 +167,7 @@ function RoadmapViewPage() {
         replace: true,
       });
     },
-    [navigate, node, nodeId, projectId, roadmapId, view],
+    [navigate, node, nodeId, projectId, roadmapId, toCanonicalUrlNodeId, view],
   );
 
   const handleNodeClosed = useCallback(
@@ -137,7 +192,7 @@ function RoadmapViewPage() {
     <RoadmapViewContent
       roadmapId={roadmapId}
       projectId={projectId}
-      deepLinkNodeId={effectiveNodeId ?? null}
+      deepLinkNodeId={safeEffectiveNodeId ?? null}
       urlView={view ?? null}
       onDeepLinkNodeConsumed={handleDeepLinkNodeConsumed}
       onViewChange={handleViewChange}

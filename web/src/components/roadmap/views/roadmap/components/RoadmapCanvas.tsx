@@ -109,6 +109,9 @@ const RoadmapCanvas = ({
     isTaskLoading,
     isEpicLoading,
     isFeatureLoading,
+    isEditingEpicPending,
+    isEditingFeaturePending,
+    isSelectedTaskPending,
     currentEpic,
     selectedTask,
     focusNodeId,
@@ -386,6 +389,9 @@ const RoadmapCanvas = ({
             isTaskLoading={isTaskLoading}
             isEpicLoading={isEpicLoading}
             isFeatureLoading={isFeatureLoading}
+            isEditingEpicPending={isEditingEpicPending}
+            isEditingFeaturePending={isEditingFeaturePending}
+            isSelectedTaskPending={isSelectedTaskPending}
             isAddEpicModalOpen={isAddEpicModalOpen}
             isEditEpicModalOpen={isEditEpicModalOpen}
             isAddFeatureModalOpen={isAddFeatureModalOpen}

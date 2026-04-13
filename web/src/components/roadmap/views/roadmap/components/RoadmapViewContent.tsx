@@ -28,10 +28,7 @@ import {
 import type { Roadmap } from "@/types/roadmap";
 import { useToast } from "@/contexts/ToastContext";
 import { useRoadmapFullLiveQuery } from "@/hooks/useProjectQueries";
-import {
-  useRoadmapStore,
-  type CanvasViewMode,
-} from "@/stores/roadmapStore";
+import { useRoadmapStore, type CanvasViewMode } from "@/stores/roadmapStore";
 import { useShallow } from "zustand/react/shallow";
 import type { RoadmapPerformanceMode } from "../models/types";
 
@@ -187,6 +184,12 @@ export function RoadmapViewContent({
       setCanvasViewMode: state.setCanvasViewMode,
     })),
   );
+  const resolveCanonicalNodeId = useRoadmapStore(
+    (state) => state.resolveCanonicalNodeId,
+  );
+  const isOptimisticNodeId = useRoadmapStore(
+    (state) => state.isOptimisticNodeId,
+  );
   const [roadmapError, setRoadmapError] = useState<string | null>(null);
   const [isJsonPanelOpen, setIsJsonPanelOpen] = useState(false);
   const [isSavingRoadmapJson, setIsSavingRoadmapJson] = useState(false);
@@ -285,9 +288,13 @@ export function RoadmapViewContent({
     (nodeId: string) => {
       const normalizedNodeId = nodeId.trim();
       if (!normalizedNodeId) return;
-      onNodeOpened?.(normalizedNodeId, toRoadmapUrlView(canvasViewMode));
+      const canonicalNodeId = resolveCanonicalNodeId(normalizedNodeId);
+      if (!canonicalNodeId || isOptimisticNodeId(canonicalNodeId)) {
+        return;
+      }
+      onNodeOpened?.(canonicalNodeId, toRoadmapUrlView(canvasViewMode));
     },
-    [canvasViewMode, onNodeOpened],
+    [canvasViewMode, isOptimisticNodeId, onNodeOpened, resolveCanonicalNodeId],
   );
 
   const handleNodeClose = useCallback(() => {
@@ -451,9 +458,7 @@ export function RoadmapViewContent({
       }
     }
 
-    return nodeCount >= 80 || taskCount >= 300
-      ? "reducedMotion"
-      : "normal";
+    return nodeCount >= 80 || taskCount >= 300 ? "reducedMotion" : "normal";
   }, [roadmap]);
 
   const currentUserRole = roadmap?.currentUserRole;

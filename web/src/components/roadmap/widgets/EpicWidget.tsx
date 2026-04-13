@@ -39,12 +39,13 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
   const descriptionRef = useRef<HTMLDivElement>(null);
   const [hasOverflow, setHasOverflow] = useState(false);
   const [isPulsing, setIsPulsing] = useState(false);
-  const [cardDropType, setCardDropType] = useState<
-    "epic" | "feature" | null
-  >(null);
+  const [cardDropType, setCardDropType] = useState<"epic" | "feature" | null>(
+    null,
+  );
   const [isAddFeatureDropActive, setIsAddFeatureDropActive] = useState(false);
   const [isAddEpicDropActive, setIsAddEpicDropActive] = useState(false);
   const computedProgress = calculateEpicProgressFromFeatures(epic.features);
+  const isOptimisticEpic = epic.id.startsWith("temp-");
   const taskCount = (epic.features ?? []).reduce(
     (count, feature) => count + (feature.tasks?.length ?? 0),
     0,
@@ -110,12 +111,12 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
     <motion.div
       className={`group relative bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-[420px] flex flex-col cursor-pointer ${
         isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
-      } ${
+      } ${isOptimisticEpic ? "opacity-75" : ""} ${
         cardDropType === "epic" || cardDropType === "feature"
           ? "border-emerald-500 ring-2 ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.3),0_12px_24px_rgba(16,185,129,0.22)]"
           : isGlobalFeatureDropHighlight
-          ? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
-          : "border-gray-300"
+            ? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
+            : "border-gray-300"
       }`}
       onClick={() => onEdit?.(epic)}
       onDragEnter={(event) => {
@@ -150,9 +151,7 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
           onAddFeature?.(epic.id);
         }
       }}
-      initial={
-        isReducedMotion ? false : { opacity: 0, y: 12, scale: 0.98 }
-      }
+      initial={isReducedMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
       animate={isReducedMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
       transition={
         isReducedMotion ? undefined : { duration: 0.25, ease: "easeOut" }
@@ -377,7 +376,9 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
           <div className="mb-3 shrink-0">
             <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
               <span>Progress</span>
-              <span className="font-medium">{Math.round(progressToRender)}%</span>
+              <span className="font-medium">
+                {Math.round(progressToRender)}%
+              </span>
             </div>
             <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
               <div

@@ -95,6 +95,13 @@ export function useRoadmapCanvasController({
     (state) => state.updateTaskStatusIntent,
   );
   const storeDeleteTask = useRoadmapStore((state) => state.deleteTask);
+  const tempToRealNodeId = useRoadmapStore((state) => state.tempToRealNodeId);
+  const storeIsOptimisticNodeId = useRoadmapStore(
+    (state) => state.isOptimisticNodeId,
+  );
+  const storeResolveCanonicalNodeId = useRoadmapStore(
+    (state) => state.resolveCanonicalNodeId,
+  );
   const storeFocusNodeId = useRoadmapStore((state) => state.focusNodeId);
   const storeFocusNodeOffsetX = useRoadmapStore(
     (state) => state.focusNodeOffsetX,
@@ -198,7 +205,10 @@ export function useRoadmapCanvasController({
     const nextEpicById = new Map<string, (typeof epics)[number]>();
     const nextFeatureById = new Map<
       string,
-      { feature: NonNullable<(typeof epics)[number]["features"]>[number]; epicId: string }
+      {
+        feature: NonNullable<(typeof epics)[number]["features"]>[number];
+        epicId: string;
+      }
     >();
     const nextTaskById = new Map<
       string,
@@ -298,7 +308,8 @@ export function useRoadmapCanvasController({
       const currentWithoutStatus = stripTaskStatus(currentTask);
       const nextWithoutStatus = stripTaskStatus(nextTask);
       return (
-        JSON.stringify(currentWithoutStatus) === JSON.stringify(nextWithoutStatus)
+        JSON.stringify(currentWithoutStatus) ===
+        JSON.stringify(nextWithoutStatus)
       );
     },
     [onUpdateTaskProp, stripTaskStatus, taskById],
@@ -480,8 +491,17 @@ export function useRoadmapCanvasController({
     sidePanelOpen,
   ]);
 
+  const canonicalActiveDetailNodeId = useMemo(
+    () => storeResolveCanonicalNodeId(activeDetailNodeId),
+    [activeDetailNodeId, storeResolveCanonicalNodeId],
+  );
+
   useEffect(() => {
-    if (activeDetailNodeId) {
+    const shouldNotifyOpen =
+      canonicalActiveDetailNodeId &&
+      !storeIsOptimisticNodeId(canonicalActiveDetailNodeId);
+
+    if (shouldNotifyOpen) {
       if (sidePanelOpen && selectedTaskId && viewMode === "roadmap") {
         const taskMeta = taskById.get(selectedTaskId);
         if (taskMeta) {
@@ -493,7 +513,7 @@ export function useRoadmapCanvasController({
       }
 
       hasNotifiedOpenNodeRef.current = true;
-      onNodeOpen?.(activeDetailNodeId);
+      onNodeOpen?.(canonicalActiveDetailNodeId);
       return;
     }
 
@@ -504,11 +524,12 @@ export function useRoadmapCanvasController({
     hasNotifiedOpenNodeRef.current = false;
     onNodeClose?.();
   }, [
-    activeDetailNodeId,
+    canonicalActiveDetailNodeId,
     onNodeClose,
     onNodeOpen,
     selectedTaskId,
     sidePanelOpen,
+    storeIsOptimisticNodeId,
     storeNavigateToNode,
     taskById,
     viewMode,
@@ -540,7 +561,6 @@ export function useRoadmapCanvasController({
 
       setIsAddEpicModalOpen(false);
       setTargetEpicForAddBelow(null);
-      setIsEpicLoading(true);
 
       void onAddEpicWithToast(undefined, {
         title: data.title,
@@ -551,9 +571,7 @@ export function useRoadmapCanvasController({
         position,
         start_date: data.start_date,
         end_date: data.end_date,
-      })
-        .catch(() => undefined)
-        .finally(() => setIsEpicLoading(false));
+      }).catch(() => undefined);
     },
     [epicById, epics.length, onAddEpicWithToast, targetEpicForAddBelow],
   );
@@ -620,11 +638,8 @@ export function useRoadmapCanvasController({
       const epicId = targetEpicForFeature;
       setIsAddFeatureModalOpen(false);
       setTargetEpicForFeature(null);
-      setIsFeatureLoading(true);
 
-      void onAddFeatureWithToast(epicId, data)
-        .catch(() => undefined)
-        .finally(() => setIsFeatureLoading(false));
+      void onAddFeatureWithToast(epicId, data).catch(() => undefined);
     },
     [onAddFeatureWithToast, targetEpicForFeature],
   );
@@ -643,24 +658,35 @@ export function useRoadmapCanvasController({
       return;
     }
 
-    const epicExists = epicById.has(openEpicEditorId);
+    const resolvedEpicId =
+      storeResolveCanonicalNodeId(openEpicEditorId) ?? openEpicEditorId;
+    const epicExists = epicById.has(resolvedEpicId);
     if (epicExists) {
-      handleOpenEditEpicModal(openEpicEditorId);
+      handleOpenEditEpicModal(resolvedEpicId);
     }
     onOpenEpicEditorHandled?.();
-  }, [epicById, handleOpenEditEpicModal, onOpenEpicEditorHandled, openEpicEditorId]);
+  }, [
+    epicById,
+    handleOpenEditEpicModal,
+    onOpenEpicEditorHandled,
+    openEpicEditorId,
+    storeResolveCanonicalNodeId,
+  ]);
 
   useEffect(() => {
     if (!openFeatureEditor) {
       return;
     }
 
-    const featureMeta = featureById.get(openFeatureEditor.featureId);
-    if (featureMeta && featureMeta.epicId === openFeatureEditor.epicId) {
-      handleOpenEditFeatureModal(
-        openFeatureEditor.epicId,
-        openFeatureEditor.featureId,
-      );
+    const resolvedFeatureId =
+      storeResolveCanonicalNodeId(openFeatureEditor.featureId) ??
+      openFeatureEditor.featureId;
+    const resolvedEpicId =
+      storeResolveCanonicalNodeId(openFeatureEditor.epicId) ??
+      openFeatureEditor.epicId;
+    const featureMeta = featureById.get(resolvedFeatureId);
+    if (featureMeta && featureMeta.epicId === resolvedEpicId) {
+      handleOpenEditFeatureModal(resolvedEpicId, resolvedFeatureId);
     }
     onOpenFeatureEditorHandled?.();
   }, [
@@ -668,6 +694,7 @@ export function useRoadmapCanvasController({
     handleOpenEditFeatureModal,
     onOpenFeatureEditorHandled,
     openFeatureEditor,
+    storeResolveCanonicalNodeId,
   ]);
 
   useEffect(() => {
@@ -675,15 +702,139 @@ export function useRoadmapCanvasController({
       return;
     }
 
-    const taskExists = taskById.has(openTaskDetailId);
+    const resolvedTaskId =
+      storeResolveCanonicalNodeId(openTaskDetailId) ?? openTaskDetailId;
+
+    const taskExists = taskById.has(resolvedTaskId);
 
     if (taskExists) {
-      setSelectedTaskId(openTaskDetailId);
+      setSelectedTaskId(resolvedTaskId);
       setTargetFeatureForTask(null);
       setSidePanelOpen(true);
     }
     onOpenTaskDetailHandled?.();
-  }, [onOpenTaskDetailHandled, openTaskDetailId, taskById]);
+  }, [
+    onOpenTaskDetailHandled,
+    openTaskDetailId,
+    storeResolveCanonicalNodeId,
+    taskById,
+  ]);
+
+  useEffect(() => {
+    if (!editingEpicId || !isEditEpicModalOpen) return;
+
+    const canonicalEpicId = storeResolveCanonicalNodeId(editingEpicId);
+    if (canonicalEpicId && canonicalEpicId !== editingEpicId) {
+      setEditingEpicId(canonicalEpicId);
+      return;
+    }
+
+    if (epicById.has(editingEpicId)) return;
+
+    const mappedRealId = tempToRealNodeId[editingEpicId];
+    if (mappedRealId && epicById.has(mappedRealId)) {
+      setEditingEpicId(mappedRealId);
+      return;
+    }
+
+    if (!storeIsOptimisticNodeId(editingEpicId)) return;
+
+    setIsEditEpicModalOpen(false);
+    setEditingEpicId(null);
+    setScrollToFeatureId(null);
+    if (selectedEpic === editingEpicId) {
+      setSelectedEpic(null);
+    }
+    storeClearNodeFocus();
+  }, [
+    editingEpicId,
+    epicById,
+    isEditEpicModalOpen,
+    selectedEpic,
+    setSelectedEpic,
+    storeClearNodeFocus,
+    storeIsOptimisticNodeId,
+    storeResolveCanonicalNodeId,
+    tempToRealNodeId,
+  ]);
+
+  useEffect(() => {
+    if (!editingFeatureId || !isEditFeatureModalOpen) return;
+
+    const canonicalFeatureId = storeResolveCanonicalNodeId(editingFeatureId);
+    if (canonicalFeatureId && canonicalFeatureId !== editingFeatureId) {
+      setEditingFeatureId(canonicalFeatureId);
+      return;
+    }
+
+    const currentFeatureMeta = featureById.get(editingFeatureId);
+    if (currentFeatureMeta) {
+      if (editingFeatureEpicId !== currentFeatureMeta.epicId) {
+        setEditingFeatureEpicId(currentFeatureMeta.epicId);
+      }
+      return;
+    }
+
+    const mappedRealId = tempToRealNodeId[editingFeatureId];
+    const mappedFeatureMeta = mappedRealId
+      ? featureById.get(mappedRealId)
+      : undefined;
+    if (mappedRealId && mappedFeatureMeta) {
+      setEditingFeatureId(mappedRealId);
+      setEditingFeatureEpicId(mappedFeatureMeta.epicId);
+      return;
+    }
+
+    if (!storeIsOptimisticNodeId(editingFeatureId)) return;
+
+    setIsEditFeatureModalOpen(false);
+    setEditingFeatureId(null);
+    setEditingFeatureEpicId(null);
+    setScrollToFeatureId(null);
+    storeClearNodeFocus();
+  }, [
+    editingFeatureEpicId,
+    editingFeatureId,
+    featureById,
+    isEditFeatureModalOpen,
+    storeClearNodeFocus,
+    storeIsOptimisticNodeId,
+    storeResolveCanonicalNodeId,
+    tempToRealNodeId,
+  ]);
+
+  useEffect(() => {
+    if (!selectedTaskId || !sidePanelOpen) return;
+
+    const canonicalTaskId = storeResolveCanonicalNodeId(selectedTaskId);
+    if (canonicalTaskId && canonicalTaskId !== selectedTaskId) {
+      setSelectedTaskId(canonicalTaskId);
+      return;
+    }
+
+    if (taskById.has(selectedTaskId)) return;
+
+    const mappedRealId = tempToRealNodeId[selectedTaskId];
+    if (mappedRealId && taskById.has(mappedRealId)) {
+      setSelectedTaskId(mappedRealId);
+      return;
+    }
+
+    if (!storeIsOptimisticNodeId(selectedTaskId)) return;
+
+    setSidePanelOpen(false);
+    setSelectedTaskId(null);
+    setTargetFeatureForTask(null);
+    storeClearNodeFocus();
+  }, [
+    selectedTaskId,
+    sidePanelOpen,
+    storeClearNodeFocus,
+    storeIsOptimisticNodeId,
+    storeResolveCanonicalNodeId,
+    taskById,
+    tempToRealNodeId,
+  ]);
 
   useEffect(() => {
     if (!addFeatureEpicId) {
@@ -768,27 +919,54 @@ export function useRoadmapCanvasController({
   const handleConfirmDelete = useCallback(() => {
     if (!deleteConfirm) return;
 
-    if (deleteConfirm.type === "epic") {
-      onDeleteEpic(deleteConfirm.id);
-      if (selectedEpic === deleteConfirm.id) setSelectedEpic(null);
-    } else {
-      onDeleteFeature(deleteConfirm.id);
+    const target = deleteConfirm;
+    const selectedEpicBeforeDelete = selectedEpic;
+    setDeleteConfirm(null);
+
+    if (target.type === "epic" && selectedEpicBeforeDelete === target.id) {
+      setSelectedEpic(null);
     }
 
-    setDeleteConfirm(null);
-  }, [deleteConfirm, onDeleteEpic, onDeleteFeature, selectedEpic, setSelectedEpic]);
+    void (async () => {
+      try {
+        if (target.type === "epic") {
+          await onDeleteEpic(target.id);
+          return;
+        }
+
+        await onDeleteFeature(target.id);
+      } catch (error) {
+        toast.error(
+          getErrorMessage(
+            error,
+            target.type === "epic"
+              ? "Failed to delete epic"
+              : "Failed to delete feature",
+          ),
+        );
+
+        if (target.type === "epic" && selectedEpicBeforeDelete === target.id) {
+          setSelectedEpic(target.id);
+        }
+      }
+    })();
+  }, [
+    deleteConfirm,
+    onDeleteEpic,
+    onDeleteFeature,
+    selectedEpic,
+    setSelectedEpic,
+    toast,
+  ]);
 
   const handleTaskCreate = useCallback(
     async (taskData: Partial<RoadmapTask>) => {
       if (targetFeatureForTask) {
-        setIsTaskLoading(true);
         try {
           await onAddTask(targetFeatureForTask, taskData);
         } catch (error) {
           toast.error(getErrorMessage(error, "Failed to create task"));
           throw error;
-        } finally {
-          setIsTaskLoading(false);
         }
       }
     },
@@ -809,22 +987,40 @@ export function useRoadmapCanvasController({
 
   const handleTaskDelete = useCallback(
     async (taskId: string) => {
+      const wasPanelOpen = sidePanelOpen;
+      const selectedTaskBeforeDelete = selectedTaskId;
+
+      setSidePanelOpen(false);
+      setSelectedTaskId(null);
+      setTargetFeatureForTask(null);
       setIsTaskLoading(true);
+
       try {
         await onDeleteTask(taskId);
-        setSidePanelOpen(false);
-        setSelectedTaskId(null);
+      } catch (error) {
+        toast.error(getErrorMessage(error, "Failed to delete task"));
+
+        if (wasPanelOpen && selectedTaskBeforeDelete === taskId) {
+          setSelectedTaskId(taskId);
+          setSidePanelOpen(true);
+        }
       } finally {
         setIsTaskLoading(false);
       }
     },
-    [onDeleteTask],
+    [onDeleteTask, selectedTaskId, sidePanelOpen, toast],
   );
 
   const currentEpic = selectedEpic ? epicById.get(selectedEpic) : undefined;
   const selectedTask = selectedTaskId
     ? (taskById.get(selectedTaskId)?.task ?? null)
     : null;
+  const isEditingEpicPending =
+    Boolean(editingEpicId) && storeIsOptimisticNodeId(editingEpicId);
+  const isEditingFeaturePending =
+    Boolean(editingFeatureId) && storeIsOptimisticNodeId(editingFeatureId);
+  const isSelectedTaskPending =
+    Boolean(selectedTaskId) && storeIsOptimisticNodeId(selectedTaskId);
 
   return {
     roadmap,
@@ -849,6 +1045,9 @@ export function useRoadmapCanvasController({
     isTaskLoading,
     isEpicLoading,
     isFeatureLoading,
+    isEditingEpicPending,
+    isEditingFeaturePending,
+    isSelectedTaskPending,
     currentEpic,
     selectedTask,
     focusNodeId,

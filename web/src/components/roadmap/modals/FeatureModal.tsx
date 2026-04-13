@@ -38,6 +38,7 @@ interface FeatureModalProps {
     end_date?: string;
   }) => void;
   isLoading?: boolean;
+  isPendingCreate?: boolean;
 }
 
 export const FeatureModal = ({
@@ -53,6 +54,7 @@ export const FeatureModal = ({
   onSelectTask,
   onSubmit,
   isLoading = false,
+  isPendingCreate = false,
 }: FeatureModalProps) => {
   const user = useUser();
   const [title, setTitle] = useState("");
@@ -80,6 +82,7 @@ export const FeatureModal = ({
     startDate: string;
     endDate: string;
   } | null>(null);
+  const isReadOnlyPending = isPendingCreate;
 
   // Populate form from initialData when modal opens
   useEffect(() => {
@@ -184,7 +187,7 @@ export const FeatureModal = ({
   };
 
   const handleSaveBeforeClose = () => {
-    if (isLoading || !title.trim()) return;
+    if (isLoading || isReadOnlyPending || !title.trim()) return;
     setShowUnsavedChangesConfirm(false);
     submitCurrentValues();
     onClose();
@@ -320,250 +323,258 @@ export const FeatureModal = ({
 
   const body = (
     <>
-      {/* Status and Deliverable Row */}
-      <div className="flex gap-6 mb-6">
-        {/* Status */}
-        <div className="flex-1">
-          <h3 className="text-sm font-semibold text-gray-900 mb-2">Status</h3>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value as FeatureStatus)}
-            className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-white"
-          >
-            <option value="not_started">Not Started</option>
-            <option value="in_progress">In Progress</option>
-            <option value="in_review">In Review</option>
-            <option value="completed">Completed</option>
-            <option value="blocked">Blocked</option>
-          </select>
-        </div>
-
-        {/* Is Deliverable */}
-        <div className="w-48">
-          <h3 className="text-sm font-semibold text-gray-900 mb-2">
-            Deliverable
-          </h3>
-          <label className="flex items-center gap-2 cursor-pointer h-[42px]">
-            <input
-              type="checkbox"
-              checked={isDeliverable}
-              onChange={(e) => setIsDeliverable(e.target.checked)}
-              className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
-            />
-            <span className="text-sm text-gray-700">Milestone progress</span>
-          </label>
-        </div>
-      </div>
-
-      {/* Progress (auto-calculated from task statuses) */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between text-sm text-gray-700 mb-1.5">
-          <h3 className="font-semibold text-gray-900">Progress</h3>
-          <span className="font-medium">{autoProgress}%</span>
-        </div>
-        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-primary transition-all duration-300"
-            style={{ width: `${autoProgress}%` }}
-          />
-        </div>
-        <p className="mt-1 text-xs text-gray-500">
-          Auto-calculated from tasks: {completedTasks}/{tasks.length} done
-        </p>
-      </div>
-
-      {/* Assignees (derived from child tasks) */}
-      <div className="mb-6">
-        <h3 className="text-sm font-semibold text-gray-900 mb-2">Assignees</h3>
-        {featureAssignees.length > 0 ? (
-          <div className="flex items-center">
-            {featureAssignees.slice(0, 6).map((assignee, index) => (
-              <div
-                key={assignee.id}
-                className={index > 0 ? "-ml-1.5" : ""}
-                title={assignee.display_name ?? assignee.email ?? "Assignee"}
-              >
-                {renderAssigneeAvatar(assignee)}
-              </div>
-            ))}
-            {featureAssignees.length > 6 && (
-              <span className="-ml-1.5 w-6 h-6 rounded-full bg-gray-100 border border-white flex items-center justify-center text-[9px] font-semibold text-gray-600">
-                +{featureAssignees.length - 6}
-              </span>
-            )}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-500">No assignees yet</p>
-        )}
-      </div>
-
-      {/* Dates */}
       <div
-        className={`relative ${hasDates || isDateMenuOpen ? "mb-6" : "mb-0"}`}
+        className={
+          isReadOnlyPending ? "pointer-events-none opacity-70" : undefined
+        }
       >
-        {hasDates && (
-          <button
-            type="button"
-            onClick={openDateMenu}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-900 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-          >
-            <Calendar className="w-4 h-4 text-gray-500" />
-            {displayDateRange}
-            <ChevronDown className="w-4 h-4 text-gray-500" />
-          </button>
-        )}
-
-        {isDateMenuOpen && (
-          <div className="absolute z-20 mt-2 w-full max-w-[420px] rounded-xl border border-gray-200 bg-white shadow-xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-900">Dates</h3>
-              <button
-                type="button"
-                onClick={() => setIsDateMenuOpen(false)}
-                className="p-1 rounded hover:bg-gray-100"
-              >
-                <X className="w-4 h-4 text-gray-500" />
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Start date
-                </label>
-                <input
-                  type="date"
-                  value={draftStartDate}
-                  onChange={(e) => setDraftStartDate(e.target.value)}
-                  className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-white"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  End date
-                </label>
-                <input
-                  type="date"
-                  value={draftEndDate}
-                  onChange={(e) => setDraftEndDate(e.target.value)}
-                  min={draftStartDate || undefined}
-                  className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-white"
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={removeDates}
-                className="px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-              >
-                Remove
-              </button>
-              <button
-                type="button"
-                onClick={saveDates}
-                className="px-3 py-1.5 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90 transition-colors"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Description */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-semibold text-gray-900">Description</h3>
-          {!isEditingDescription && description && (
-            <button
-              type="button"
-              onClick={() => setIsEditingDescription(true)}
-              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 rounded transition-colors"
+        {/* Status and Deliverable Row */}
+        <div className="flex gap-6 mb-6">
+          {/* Status */}
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">Status</h3>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as FeatureStatus)}
+              className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-white"
             >
-              <Edit2 className="w-3.5 h-3.5" />
-              Edit
-            </button>
+              <option value="not_started">Not Started</option>
+              <option value="in_progress">In Progress</option>
+              <option value="in_review">In Review</option>
+              <option value="completed">Completed</option>
+              <option value="blocked">Blocked</option>
+            </select>
+          </div>
+
+          {/* Is Deliverable */}
+          <div className="w-48">
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">
+              Deliverable
+            </h3>
+            <label className="flex items-center gap-2 cursor-pointer h-[42px]">
+              <input
+                type="checkbox"
+                checked={isDeliverable}
+                onChange={(e) => setIsDeliverable(e.target.checked)}
+                className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
+              />
+              <span className="text-sm text-gray-700">Milestone progress</span>
+            </label>
+          </div>
+        </div>
+
+        {/* Progress (auto-calculated from task statuses) */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between text-sm text-gray-700 mb-1.5">
+            <h3 className="font-semibold text-gray-900">Progress</h3>
+            <span className="font-medium">{autoProgress}%</span>
+          </div>
+          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary transition-all duration-300"
+              style={{ width: `${autoProgress}%` }}
+            />
+          </div>
+          <p className="mt-1 text-xs text-gray-500">
+            Auto-calculated from tasks: {completedTasks}/{tasks.length} done
+          </p>
+        </div>
+
+        {/* Assignees (derived from child tasks) */}
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-900 mb-2">
+            Assignees
+          </h3>
+          {featureAssignees.length > 0 ? (
+            <div className="flex items-center">
+              {featureAssignees.slice(0, 6).map((assignee, index) => (
+                <div
+                  key={assignee.id}
+                  className={index > 0 ? "-ml-1.5" : ""}
+                  title={assignee.display_name ?? assignee.email ?? "Assignee"}
+                >
+                  {renderAssigneeAvatar(assignee)}
+                </div>
+              ))}
+              {featureAssignees.length > 6 && (
+                <span className="-ml-1.5 w-6 h-6 rounded-full bg-gray-100 border border-white flex items-center justify-center text-[9px] font-semibold text-gray-600">
+                  +{featureAssignees.length - 6}
+                </span>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500">No assignees yet</p>
           )}
         </div>
 
-        {isEditingDescription ? (
-          <div className="space-y-2">
-            <RichTextEditor
-              value={description}
-              onChange={setDescription}
-              placeholder="Add a more detailed description..."
-              tools={[
-                "textFormat",
-                "bold",
-                "italic",
-                "more",
-                "separator",
-                "bulletList",
-                "numberedList",
-                "separator",
-                "link",
-                "image",
-              ]}
-              minHeight="100px"
-              maxHeight="none"
-              autoFocus
-            />
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setIsEditingDescription(false)}
-                className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        ) : description ? (
-          <div className="relative">
-            <div
-              ref={descriptionRef}
-              className={`relative text-sm text-gray-700 leading-relaxed prose prose-sm max-w-none overflow-hidden transition-[max-height] duration-300 ease-in-out ${
-                isExpanded ? "max-h-[2000px]" : "max-h-48"
-              }`}
+        {/* Dates */}
+        <div
+          className={`relative ${hasDates || isDateMenuOpen ? "mb-6" : "mb-0"}`}
+        >
+          {hasDates && (
+            <button
+              type="button"
+              onClick={openDateMenu}
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-900 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
             >
-              <div dangerouslySetInnerHTML={{ __html: description }} />
+              <Calendar className="w-4 h-4 text-gray-500" />
+              {displayDateRange}
+              <ChevronDown className="w-4 h-4 text-gray-500" />
+            </button>
+          )}
 
-              {/* Gradient Overlay when collapsed */}
-              {!isExpanded && showReadMore && (
-                <div className="absolute bottom-0 left-0 right-0 h-12 bg-linear-to-t from-white to-transparent pointer-events-none" />
-              )}
+          {isDateMenuOpen && (
+            <div className="absolute z-20 mt-2 w-full max-w-[420px] rounded-xl border border-gray-200 bg-white shadow-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-900">Dates</h3>
+                <button
+                  type="button"
+                  onClick={() => setIsDateMenuOpen(false)}
+                  className="p-1 rounded hover:bg-gray-100"
+                >
+                  <X className="w-4 h-4 text-gray-500" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Start date
+                  </label>
+                  <input
+                    type="date"
+                    value={draftStartDate}
+                    onChange={(e) => setDraftStartDate(e.target.value)}
+                    className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    End date
+                  </label>
+                  <input
+                    type="date"
+                    value={draftEndDate}
+                    onChange={(e) => setDraftEndDate(e.target.value)}
+                    min={draftStartDate || undefined}
+                    className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={removeDates}
+                  className="px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                >
+                  Remove
+                </button>
+                <button
+                  type="button"
+                  onClick={saveDates}
+                  className="px-3 py-1.5 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90 transition-colors"
+                >
+                  Save
+                </button>
+              </div>
             </div>
+          )}
+        </div>
 
-            {/* Show More / Less Button */}
-            {showReadMore && (
+        {/* Description */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-gray-900">Description</h3>
+            {!isEditingDescription && description && (
               <button
                 type="button"
-                onClick={() => setIsExpanded(!isExpanded)}
-                className="mt-2 text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                onClick={() => setIsEditingDescription(true)}
+                className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 rounded transition-colors"
               >
-                {isExpanded ? (
-                  <>
-                    Show less <ChevronUp className="w-3 h-3" />
-                  </>
-                ) : (
-                  <>
-                    Show more <ChevronDown className="w-3 h-3" />
-                  </>
-                )}
+                <Edit2 className="w-3.5 h-3.5" />
+                Edit
               </button>
             )}
           </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setIsEditingDescription(true)}
-            className="w-full px-3 py-2 text-sm text-gray-500 border border-gray-300 border-dashed rounded-md hover:border-gray-400 hover:bg-gray-50 transition-colors text-left"
-          >
-            Add a description...
-          </button>
-        )}
+
+          {isEditingDescription ? (
+            <div className="space-y-2">
+              <RichTextEditor
+                value={description}
+                onChange={setDescription}
+                placeholder="Add a more detailed description..."
+                tools={[
+                  "textFormat",
+                  "bold",
+                  "italic",
+                  "more",
+                  "separator",
+                  "bulletList",
+                  "numberedList",
+                  "separator",
+                  "link",
+                  "image",
+                ]}
+                minHeight="100px"
+                maxHeight="none"
+                autoFocus
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingDescription(false)}
+                  className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          ) : description ? (
+            <div className="relative">
+              <div
+                ref={descriptionRef}
+                className={`relative text-sm text-gray-700 leading-relaxed prose prose-sm max-w-none overflow-hidden transition-[max-height] duration-300 ease-in-out ${
+                  isExpanded ? "max-h-[2000px]" : "max-h-48"
+                }`}
+              >
+                <div dangerouslySetInnerHTML={{ __html: description }} />
+
+                {/* Gradient Overlay when collapsed */}
+                {!isExpanded && showReadMore && (
+                  <div className="absolute bottom-0 left-0 right-0 h-12 bg-linear-to-t from-white to-transparent pointer-events-none" />
+                )}
+              </div>
+
+              {/* Show More / Less Button */}
+              {showReadMore && (
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  className="mt-2 text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                >
+                  {isExpanded ? (
+                    <>
+                      Show less <ChevronUp className="w-3 h-3" />
+                    </>
+                  ) : (
+                    <>
+                      Show more <ChevronDown className="w-3 h-3" />
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsEditingDescription(true)}
+              className="w-full px-3 py-2 text-sm text-gray-500 border border-gray-300 border-dashed rounded-md hover:border-gray-400 hover:bg-gray-50 transition-colors text-left"
+            >
+              Add a description...
+            </button>
+          )}
+        </div>
       </div>
     </>
   );
@@ -572,7 +583,7 @@ export const FeatureModal = ({
     <div className="flex justify-end">
       <button
         type="submit"
-        disabled={!title.trim() || isLoading}
+        disabled={!title.trim() || isLoading || isReadOnlyPending}
         className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
       >
         {isLoading ? (
@@ -580,6 +591,8 @@ export const FeatureModal = ({
             <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             Saving...
           </>
+        ) : isReadOnlyPending ? (
+          "Creating..."
         ) : (
           submitLabel
         )}
@@ -595,10 +608,15 @@ export const FeatureModal = ({
         <CommentsSection
           comments={comments}
           onAddComment={handleAddComment}
-          onUpdateComment={handleUpdateComment}
-          onDeleteComment={handleDeleteComment}
+          onUpdateComment={isReadOnlyPending ? undefined : handleUpdateComment}
+          onDeleteComment={isReadOnlyPending ? undefined : handleDeleteComment}
           currentUserId={user?.id}
-          canComment={Boolean(user)}
+          canComment={Boolean(user) && !isReadOnlyPending}
+          disabledMessage={
+            isReadOnlyPending
+              ? "Comments will unlock once this feature is created."
+              : undefined
+          }
           isLoading={loadingComments}
           emptyMessage="No comments yet for this feature."
         />
@@ -622,20 +640,23 @@ export const FeatureModal = ({
                 <TaskListItem
                   key={task.id ?? task.title}
                   task={task}
-                  onDelete={onDeleteTask}
+                  onDelete={isReadOnlyPending ? undefined : onDeleteTask}
                   onClick={onSelectTask}
                   onToggleComplete={(taskId) => {
+                    if (isReadOnlyPending) return;
                     const taskToUpdate = tasks.find((t) => t.id === taskId);
                     if (!taskToUpdate) return;
                     if (!onUpdateTask) return;
                     void Promise.resolve(
                       onUpdateTask({
                         ...taskToUpdate,
-                        status: taskToUpdate.status === "done" ? "todo" : "done",
+                        status:
+                          taskToUpdate.status === "done" ? "todo" : "done",
                       }),
                     ).catch(() => undefined);
                   }}
                   onUpdateStatus={(taskId, status) => {
+                    if (isReadOnlyPending) return;
                     const taskToUpdate = tasks.find((t) => t.id === taskId);
                     if (!taskToUpdate) return;
                     if (!onUpdateTask) return;
@@ -662,7 +683,11 @@ export const FeatureModal = ({
           {onAddTask && featureId && (
             <button
               type="button"
-              onClick={() => onAddTask(featureId)}
+              onClick={() => {
+                if (isReadOnlyPending) return;
+                onAddTask(featureId);
+              }}
+              disabled={isReadOnlyPending}
               className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg font-medium text-sm transition-colors mt-4"
             >
               <Plus className="w-4 h-4" />
@@ -678,6 +703,7 @@ export const FeatureModal = ({
     <button
       type="button"
       onClick={openDateMenu}
+      disabled={isReadOnlyPending}
       className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
     >
       <Calendar className="w-4 h-4" />
@@ -690,6 +716,7 @@ export const FeatureModal = ({
       <RoadmapModalLayout
         isOpen={isOpen}
         onClose={handleRequestClose}
+        isReadOnly={isReadOnlyPending}
         title={title}
         onTitleChange={setTitle}
         titlePlaceholder="Feature title"
@@ -698,7 +725,7 @@ export const FeatureModal = ({
         showDefaultDatesAction={false}
         body={body}
         footer={footer}
-        canComment={Boolean(user)}
+        canComment={Boolean(user) && !isReadOnlyPending}
         rightPanelTabs={rightPanelTabs}
         defaultRightPanelTabId="comments"
       />

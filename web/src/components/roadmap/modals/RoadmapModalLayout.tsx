@@ -13,6 +13,7 @@ import { X, Plus, Calendar, Paperclip } from "lucide-react";
 interface RoadmapModalLayoutProps {
   isOpen: boolean;
   onClose: () => void;
+  isReadOnly?: boolean;
   title: string;
   onTitleChange: (value: string) => void;
   titlePlaceholder: string;
@@ -31,6 +32,7 @@ interface RoadmapModalLayoutProps {
 export const RoadmapModalLayout = ({
   isOpen,
   onClose,
+  isReadOnly = false,
   title,
   onTitleChange,
   titlePlaceholder,
@@ -169,6 +171,7 @@ export const RoadmapModalLayout = ({
                 <div className="flex items-center gap-3 mb-6">
                   <button
                     type="button"
+                    disabled={isReadOnly}
                     className="w-6 h-6 rounded-full border-2 border-gray-300 hover:border-gray-400 transition-colors shrink-0"
                     aria-label="Mark complete"
                   />
@@ -177,9 +180,11 @@ export const RoadmapModalLayout = ({
                     autoFocus={autoFocusTitle}
                     value={title}
                     onChange={(e) => onTitleChange(e.target.value)}
+                    readOnly={isReadOnly}
+                    disabled={isReadOnly}
                     placeholder={titlePlaceholder}
                     required
-                    className="text-4xl font-bold text-gray-900 border-none outline-none bg-transparent w-full placeholder:text-gray-300"
+                    className="text-4xl font-bold text-gray-900 border-none outline-none bg-transparent w-full placeholder:text-gray-300 disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                 </div>
 
@@ -187,6 +192,7 @@ export const RoadmapModalLayout = ({
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
+                    disabled={isReadOnly}
                     className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
                   >
                     <Plus className="w-4 h-4" />
@@ -195,6 +201,7 @@ export const RoadmapModalLayout = ({
                   {showDefaultDatesAction && (
                     <button
                       type="button"
+                      disabled={isReadOnly}
                       className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
                     >
                       <Calendar className="w-4 h-4" />
@@ -203,6 +210,7 @@ export const RoadmapModalLayout = ({
                   )}
                   <button
                     type="button"
+                    disabled={isReadOnly}
                     className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
                   >
                     <Paperclip className="w-4 h-4" />

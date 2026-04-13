@@ -88,6 +88,7 @@ export const TaskListItem = memo(
     pulseToken,
   }: TaskListItemProps) => {
     const isCompleted = task.status === "done";
+    const isOptimisticTask = task.id.startsWith("temp-");
     const categoryLabel = getCategoryLabel(task);
     const isCompact = density === "compact";
     const [isStatusOpen, setIsStatusOpen] = useState(false);
@@ -178,7 +179,9 @@ export const TaskListItem = memo(
         data-task-id={task.id}
         className={`flex items-center transition-colors border border-transparent hover:border-gray-200 group ${
           isCompact ? "gap-2 px-0 py-0" : "gap-3 px-4 py-3"
-        } hover:bg-gray-50 ${isPulsing ? "roadmap-task-row-pulse" : ""}`}
+        } hover:bg-gray-50 ${isPulsing ? "roadmap-task-row-pulse" : ""} ${
+          isOptimisticTask ? "opacity-75" : ""
+        }`}
         onClick={() => onClick?.(task)}
       >
         {/* Checkbox */}
