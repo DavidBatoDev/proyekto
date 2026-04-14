@@ -9,11 +9,11 @@ Tracking document for the six-part refactor of `agent/`. Update checkboxes as mi
 ## Sequencing (must be done in order)
 
 1. [x] Split `ContextToolsExecutor` by tool category
-2. [ ] Error catalog + per-tool latency metrics
-3. [ ] `contextvars` for `trace_id` / `session_id` propagation
-4. [ ] Session CAS (optimistic concurrency on Redis writes)
-5. [ ] Async-native orchestration (remove `async_bridge` threading)
-6. [ ] Prompt consolidation + LangChain removal
+2. [x] Error catalog + per-tool latency metrics
+3. [x] `contextvars` for `trace_id` / `session_id` propagation
+4. [x] Session CAS (optimistic concurrency on Redis writes)
+5. [~] Async-native orchestration (remove `async_bridge` threading) — **Phase A done** (see `agent-refactor-05a-async-tool-handlers.md`); Phases B/C/D pending
+6. [~] Prompt consolidation + LangChain removal — **6a Phase A done** (see `agent-refactor-06a-prompt-manager.md`); **6b cancelled** — see §6b below for the retention decision
 
 Rationale: each step removes friction for the next. #1 makes later changes tractable. #2 and #3 are cheap and compound. #4 fixes a latent correctness bug. #5 is the big rewrite and benefits from #1–#3. #6 is independent of #5 but easier once the provider boundary is the only LangChain touch point.
 
@@ -105,21 +105,29 @@ agent/app/core/llm/context/
 - Modified: all tool handlers (apply decorator), route error handlers, `context_tools_executor` error returns
 
 **Checklist:**
-- [ ] `ErrorCode` enum drafted — list every existing error string found via grep
-- [ ] `AgentError` with `code`, `message`, `details`, `retriable` fields
-- [ ] `to_http_exception()` maps to FastAPI `HTTPException` with stable shape
-- [ ] `@tool_metric` decorator emits `{event: "tool.invoked", tool, duration_ms, outcome}`
-- [ ] All tool handlers decorated
-- [ ] Route error handlers converted to `AgentError`
-- [ ] Tool `{'error': {...}}` returns converted to raising `AgentError`
-- [ ] Dashboard-ready log fields documented in this file
+- [x] `ErrorCode` enum drafted — populated from every error string found via grep (20 codes)
+- [x] `AgentError` with `code`, `message`, `details`, `http_status`, `retriable` fields + `to_tool_dict()` method
+- [x] `to_http_exception()` maps to FastAPI `HTTPException` with stable shape
+- [x] `tool.invoked` event emitted via `record_tool_invocation()` helper — fires once per top-level dispatch with `{tool_name, duration_ms, outcome, error_code, trace_id, roadmap_id}`
+- [x] Dispatcher wired (single instrumentation point covers all 44 tools)
+- [~] Route error handlers converted to `AgentError` — **deferred to follow-up PR**. Helpers exist (`to_http_exception`, `error_dict`), but migrating the existing `raise HTTPException(detail={...})` sites is 102 occurrences across 22 files and not mechanically safe in one pass.
+- [~] Tool `{'error': {...}}` returns converted to raising `AgentError` — **deferred to follow-up PR**. Same rationale; `error_dict()` helper is in place for new code to use. The dict shape is part of the LLM tool contract and each of the ~40 sites has subtly different `log_event` calls that would need careful preservation.
+- [x] Dashboard-ready log fields documented (§2.1 below)
 
-**Acceptance:**
-- `grep -r "HTTPException" agent/app` returns only the central error mapper and the route layer.
-- Every tool invocation produces a `tool.invoked` log line with `duration_ms`.
-- Cache hit/miss counters emitted for `ContextAnswerCache`.
+**Acceptance (actuals):**
+- `grep -r "HTTPException" agent/app` still returns 102 occurrences — unchanged. Deferred to a follow-up PR.
+- Every tool invocation **now** emits a `tool.invoked` log line with `duration_ms` (verified via smoke test).
+- Resolve caches emit `cache.event` with `{cache: 'resolve_lookup'|'resolve_request', outcome: 'hit'|'miss', ...}`. `ContextAnswerCache` already emitted `cache_hit`/`cache_miss` events prior to this PR; left alone to avoid breaking existing dashboards.
 
-**Rollback:** Revert the PR. The error shapes are additive; old callers still work if reverted.
+**Rollback:** Revert the PR. The two new modules (`errors.py`, `metrics.py`) have no imports from outside them except for `dispatch.py` and `handlers/base.py`, both of which degrade gracefully if the modules are removed.
+
+### §2.1 Observability fields emitted
+
+| Event          | Fields                                                                              | Source                                                |
+|----------------|-------------------------------------------------------------------------------------|-------------------------------------------------------|
+| `tool.invoked` | `tool_name`, `duration_ms`, `outcome` (ok/error), `error_code?`, `trace_id`, `roadmap_id` | `dispatch.py` finally block → `record_tool_invocation` |
+| `cache.event`  | `cache` (resolve_lookup / resolve_request), `outcome` (hit/miss), `trace_id?`, `extra?` (reason) | `handlers/base.py::_read_resolve_*`                    |
+| `cache_hit` / `cache_miss` | `cache_scope: 'context_answer'`, `trace_id`, `roadmap_id` | `context_answer_service.py` (pre-existing, unchanged) |
 
 ---
 
@@ -136,19 +144,39 @@ agent/app/core/llm/context/
 - Modified: all functions currently accepting `trace_id` — remove the param
 
 **Checklist:**
-- [ ] `trace_context.py` with four ContextVars and `bind_trace_context()` context manager
-- [ ] Route layer binds at request entry, unbinds on exit
-- [ ] `log_event()` auto-pulls fields from contextvars (still overridable by explicit kwargs)
-- [ ] Async bridge (`async_bridge.py`) propagates context across threads via `contextvars.copy_context()`
-- [ ] Signatures cleaned up — `trace_id` removed from at least 20 functions
-- [ ] Tests updated; no test should need to pass `trace_id` by hand anymore
+- [x] `trace_context.py` with four ContextVars + `bind()` (imperative, for FastAPI task-scoped binding) + `bind_trace_context()` (context manager for nested scopes)
+- [x] Route layer binds at request entry. No explicit unbind — each FastAPI request runs in its own asyncio Task, and ContextVars are task-local, so the binding expires naturally when the task completes
+- [x] `log_event()` auto-pulls `trace_id`, `session_id`, `roadmap_id`, `actor_id` from contextvars when callers don't pass them. Explicit kwargs still override
+- [x] Async bridge (`async_bridge.py`) uses `contextvars.copy_context()` so the bridge thread inherits the caller's trace correlation
+- [~] Signatures cleaned up — **deferred to follow-up PR**. `trace_id` is used in two roles in the codebase: (a) logging correlation, and (b) upstream HTTP header propagation (`nest_client.context_*(..., trace_id=trace_id)`). Role (b) means many signature removals aren't mechanically safe — we'd also have to change how the value reaches the nest_client call. Doing this carefully is a separate PR
+- [~] Tests updated — **deferred to follow-up PR** alongside signature cleanup
 
-**Acceptance:**
-- `grep -rn "trace_id:" agent/app | wc -l` drops by ≥ 70%.
-- Log lines from deep utilities still carry `trace_id` without being passed it.
-- Canary matrix green.
+**Acceptance (actuals):**
+- `grep -rn "trace_id:" agent/app | wc -l` still high — signature cleanup deferred. This is acceptable because the *infrastructure* for that cleanup now exists
+- **Log lines from deep utilities auto-carry `trace_id` without being passed it** — verified via smoke test. This is the core observability win and it landed
+- Async bridge: verified that `run_async_call()` inside a task bound to `trace_id=T1` propagates correctly; the bridge-thread coroutine sees `T1` and its log entries carry it
 
-**Rollback:** Revert. No wire-format change.
+**Rollback:** Revert the PR. The new module has no imports from outside it except `logging_utils.py` (added one import) and the route-flow file (added one import + three calls). No wire-format change.
+
+### §3.1 Usage cheat sheet
+
+```python
+# Route handlers: imperative bind at entry, no unbind needed (task-scoped).
+from app.core.trace_context import bind as bind_trace_context_values
+bind_trace_context_values(trace_id=t, session_id=s, roadmap_id=r)
+
+# Deep utilities / new code: just call log_event without trace_id. It auto-populates.
+log_event(logger, 'some_event', settings=settings, other_field='x')
+
+# Nested scope with different trace_id (rare — e.g., fan-out tasks):
+from app.core.trace_context import bind_trace_context
+with bind_trace_context(trace_id='child-trace'):
+    ...  # log_event() inside sees 'child-trace', caller's trace_id restored on exit
+
+# Read current values (for cases that need them as args, e.g., nest_client):
+from app.core.trace_context import get_trace_id
+trace_id = get_trace_id()
+```
 
 ---
 
@@ -165,20 +193,34 @@ agent/app/core/llm/context/
 - On conflict, raise `SessionConflictError`. Caller retries up to N times (N=3) by re-reading and re-applying the mutation closure.
 
 **Checklist:**
-- [ ] `AgentSession.version` field added, default 0
-- [ ] `SessionStore.get()` returns `(session, version)` tuple
-- [ ] `SessionStore.save(session, expected_version)` with CAS via Lua script
-- [ ] `SessionConflictError` exception
-- [ ] `AgentService` wraps session mutations in retry loop (max 3 attempts, jitter backoff)
-- [ ] Metric: `session.cas_conflict` counter
-- [ ] Test: simulate concurrent writes, assert no lost updates
-- [ ] Test: exhaust retries, assert clean error bubble-up
+- [x] `AgentSession.version` field added, default 0. Backwards-compat verified: old session JSON without the field deserializes with version=0
+- [~] `SessionStore.get()` returns `(session, version)` tuple — **not done, intentionally**. The `version` travels inside the session model (`session.version`), so callers don't need a tuple. This is a cleaner API than the plan originally sketched
+- [x] `SessionStore.save_cas(session)` with CAS via Lua `EVAL` on Upstash. Uses `session.version` as expected; on success bumps both the stored counter key and `session.version` in-place
+- [x] `SessionStoreConflictError` exception with `session_id`, `expected_version`, `stored_version` fields
+- [x] `with_cas_retry(load_fn, mutate_fn, save_fn, ...)` helper with jitter backoff, configurable `max_attempts`, and `on_conflict` callback for telemetry
+- [x] Metric helper `record_session_cas_conflict()` added to `metrics.py` (fires per retry attempt)
+- [x] Test: stale-version conflict detected
+- [x] Test: retry-then-succeed flow
+- [x] Test: retry exhaustion raises last conflict
+- [~] Wiring `save_cas` into `plan_message` / `auto_commit` — **deferred to follow-up PR**. This is the hot-path rewire that actually eliminates lost updates in production. It requires making the mutation closure safely re-runnable (either idempotent, or a pattern where we re-load then re-apply staged-ops diff). Doing this well is a focused effort that should ship separately; this PR establishes the contract and proves it with unit tests
 
-**Acceptance:**
-- Two overlapping `send_message` calls on the same session produce two committed messages (no loss). Verified by integration test.
-- `session.cas_conflict` metric visible in logs during the concurrency test.
+**Acceptance (actuals):**
+- Contract exists: `save_cas` detects version mismatches correctly (14/14 unit tests pass)
+- `session.cas_conflict` metric ships structured log lines; `on_conflict` callback in `with_cas_retry` wires it per attempt
+- "Two overlapping `send_message` calls produce two committed messages" acceptance criterion is **not yet met in production** because the hot path still uses legacy `update()`. Marking this acceptance as partial; closing it is the goal of the follow-up PR
 
-**Rollback:** Revert. Older clients tolerate the new `version` field (Pydantic ignores unknown on read).
+**Rollback:** Revert. The CAS surface is additive (`save_cas` is a new method; `update()`, `get()`, `create()` unchanged). The new `version` field on `AgentSession` has default 0 so older JSON still deserializes.
+
+### §4.1 Storage schema
+
+Two Redis keys per session:
+
+- `{prefix}:{session_id}`   — session JSON payload
+- `{prefix}:{session_id}:v` — integer version counter (string-encoded)
+
+Both share the configured `SESSION_TTL_SECONDS` and are refreshed atomically by the Lua `save_cas` script. Legacy `_save()` / `update()` writes only the JSON key — the version counter only advances when `save_cas` is used.
+
+**Migration note for the follow-up PR:** when switching `plan_message` to `save_cas`, sessions that were created via legacy `update()` won't have a `:v` key yet. The Lua script handles this: `stored == false` + `expected == '0'` is the valid first-CAS-write case. So the first `save_cas` on a legacy session succeeds cleanly and initializes the counter.
 
 ---
 
@@ -225,7 +267,7 @@ Each phase is independently shippable behind an `AGENT_ASYNC_NATIVE_ENABLED` fea
 
 **Goal:** One `PromptManager` owns every template, versioned. OpenAI SDK replaces LangChain at the provider boundary.
 
-**Two independent sub-tracks** — can be done in parallel if we have hands for it.
+**Two independent sub-tracks** — originally planned in parallel. **Only 6a was executed**; 6b was cancelled after the retention decision on 2026-04-15 (see §6b for rationale).
 
 ### 6a. Prompt consolidation
 
@@ -241,28 +283,28 @@ Each phase is independently shippable behind an `AGENT_ASYNC_NATIVE_ENABLED` fea
 - [ ] Feature-flag for template version: `AGENT_PROMPT_VERSION_OVERRIDE` (maps id → version)
 - [ ] A/B test hook: `choose_version(template_id, session_id) -> version`
 
-### 6b. LangChain removal
+### 6b. LangChain removal — **CANCELLED (2026-04-15)**
 
-- New: `agent/app/core/llm/providers/openai_native.py` — raw `openai` SDK, implements `LLMProvider` protocol.
-- Modified: `OpenAILangChainAdapter` becomes `LegacyLangChainAdapter`, kept behind flag for one release.
-- Gain: enables `cache_control` breakpoints on system prompts → lower token costs.
+**Original proposal:** Replace LangChain (`ChatOpenAI`, `bind_tools`, `SystemMessage/HumanMessage/ToolMessage`) with a raw `openai` SDK adapter. Gain billed as "cache_control breakpoints → lower token costs" plus the general cleanup of a thin wrapper layer.
 
-**Checklist:**
-- [ ] Narrow `LLMProvider` protocol finalized (`plan`, `classify_intent`, `tools` support)
-- [ ] `openai_native.py` implementation
-- [ ] Cache-control breakpoints added to system prompts (after 6a consolidation)
-- [ ] `AGENT_LLM_PROVIDER` flag: `langchain` | `openai_native`, default `langchain` initially
-- [ ] Canary with `openai_native` for 1 week
-- [ ] Default flipped to `openai_native`
-- [ ] `langchain` + `langchain_openai` + `langchain_core` removed from `requirements.txt`
-- [ ] `LegacyLangChainAdapter` deleted
+**Why it was cancelled:**
 
-**Acceptance:**
-- `grep -r "langchain" agent/app` returns zero.
-- Prompt cache hit rate > 60% on system prompts (measured via OpenAI response `cache_read_input_tokens`).
-- Token cost per message drops (baseline the week before, compare the week after).
+1. **The cost-savings justification was factually wrong.** `cache_control` is an **Anthropic**-specific API feature. OpenAI (which this codebase uses exclusively) performs prompt caching **automatically** for any prompt ≥ 1024 tokens — no markers, no SDK migration required. Whatever token savings are available from caching on OpenAI are already happening (or will happen once prompts cross the threshold) regardless of SDK.
 
-**Rollback:** Flag flip for provider; revert for prompt consolidation (templates are additive until callers switch).
+2. **The retrieval roadmap changes the calculus.** Complex retrieval pipelines are planned. LangChain's real value is not its `ChatOpenAI` wrapper (~10% of its surface, the cheap-to-replace part) — it's the retrievers, document loaders, text splitters, LCEL composition, and LangGraph (already in use at `langgraph==0.6.6`) ergonomics. Tearing out LangChain now would mean either rewriting retrieval infra from scratch later, or reinstalling LangChain when those primitives are needed. Either is worse than keeping it.
+
+3. **The cleanup argument is real but low-priority.** Drift risk across `_chat_model` / `_planner_chat_model` / profile variants is a minor code-smell issue, not a business-value issue. It doesn't warrant a 641-line adapter rewrite.
+
+**What's retained in `requirements.txt`:**
+- `langchain==0.3.27`
+- `langchain-openai==0.3.30`
+- `langgraph==0.6.6`
+
+**Follow-up cleanup** (not scheduled, noted for future work):
+- Consolidate the `ChatOpenAI` instantiation surface in `openai_adapter.py` into a single factory so profile variants don't duplicate kwargs.
+- Make the adapter's message construction ready to compose with LCEL-based retrieval chains when the retrieval work starts (structure, not rewrite).
+
+**If you're reading this and considering reviving 6b:** the retention decision was driven by the retrieval roadmap. If that roadmap changes, or if the project moves to Anthropic (where `cache_control` actually applies), re-evaluate.
 
 ---
 
@@ -271,10 +313,11 @@ Each phase is independently shippable behind an `AGENT_ASYNC_NATIVE_ENABLED` fea
 To keep scope honest, these are **explicitly deferred** and should not be bundled in:
 
 - OpenTelemetry / distributed tracing — keep structured logs until there's a real need.
-- Provider diversity (Claude, Gemini) — the protocol from 6b makes it possible, but not now.
+- Provider diversity (Claude, Gemini) — out of scope.
 - Tool batching / parallel tool calls — separate project.
 - Draft graph rework — keep as-is.
 - Supabase schema changes — out of scope.
+- **LangChain removal** — cancelled. Retained for the retrieval roadmap (retrievers, loaders, splitters, LCEL) and LangGraph ergonomics. See §6b.
 
 If one of these becomes necessary to finish a step, stop and re-scope. Don't let scope creep in mid-PR.
 
@@ -286,8 +329,8 @@ If one of these becomes necessary to finish a step, stop and re-scope. Don't let
 |-----|-----------------------------------------|--------|--------|-------|
 | #1  | `refactor/agent-01-split-context-tools` | 2026-04-14 | _pending_ | Done on working tree; 0 regressions (identical test failure set pre/post). Files: `dispatch.py`, `handlers/{base,context_query,edit_helpers}.py`, façade reduced to 43 lines. |
 | #2  | `refactor/agent-02-errors-metrics`      |        |        |       |
-| #3  | `refactor/agent-03-trace-contextvars`   |        |        |       |
-| #4  | `refactor/agent-04-session-cas`         |        |        |       |
-| #5  | `refactor/agent-05-async-native`        |        |        |       |
-| #6a | `refactor/agent-06a-prompt-manager`     |        |        |       |
-| #6b | `refactor/agent-06b-drop-langchain`     |        |        |       |
+| #3  | `refactor/agent-03-trace-contextvars`   | 2026-04-14 | _pending_ | Infra landed: `trace_context.py` + `log_event` auto-populate + route binding + async-bridge `copy_context()`. Signature cleanup deferred (many `trace_id` params also flow to `nest_client` HTTP headers; separate PR). Tests identical to baseline. |
+| #4  | `refactor/agent-04-session-cas`         | 2026-04-14 | _pending_ | CAS infra landed: `AgentSession.version`, `SessionStore.save_cas` (Lua eval), `SessionStoreConflictError`, `with_cas_retry` helper, `session.cas_conflict` metric, 14 unit tests. Hot-path rewire (plan_message → save_cas) deferred to follow-up. |
+| #5  | `refactor/agent-05a-async-tool-handlers` | 2026-04-14 | _pending_ | Phase A: tool handlers + 7 base helpers now async; dispatcher drives via self-contained `_drive_handler_coroutine`. One thread spawn per tool dispatch (was N per tool). No flag — drift-free. 4 new unit tests. Baseline identical (176 tests). Phases B/C/D deferred. |
+| #6a | `refactor/agent-06a-prompt-manager`     | 2026-04-15 | _pending_ | Phase A: `PromptManager` with versioned templates (`templates/<id>/v1.md`), env override hook, A/B hook reserved. `PromptRepository` kept as shim. 13 new unit tests. Baseline identical (189 tests). Inline f-string extraction deferred to follow-up. |
+| #6b | `refactor/agent-06b-drop-langchain`     | _n/a_ | **cancelled 2026-04-15** | LangChain retained. Cost-savings justification (`cache_control`) was Anthropic-specific and doesn't apply on OpenAI (auto-caching). Retrieval roadmap makes LangChain's retriever/loader/splitter/LCEL surface load-bearing. See §6b for full rationale. |

@@ -17,12 +17,16 @@ def record_tool_invocation(
     error_code: str | None = None,
     trace_id: str | None = None,
     roadmap_id: str | None = None,
+    async_inner: bool | None = None,
 ) -> None:
     """Emit a `tool.invoked` structured event.
 
     One event per top-level tool dispatch. Complements the existing
     `tool_call_requested` / `tool_call_result` logs with a single
-    dashboard-friendly record: (tool, duration_ms, outcome, error_code).
+    dashboard-friendly record: (tool, duration_ms, outcome, error_code,
+    async_inner). `async_inner` indicates whether the inner tool body ran
+    on a native async path (Phase A onwards). Kept as a field so later
+    phases can introduce `async_outer` etc. without schema churn.
     """
     log_event(
         logger,
@@ -34,6 +38,7 @@ def record_tool_invocation(
         duration_ms=round(duration_ms, 3),
         outcome=outcome,
         error_code=error_code,
+        async_inner=async_inner,
     )
 
 

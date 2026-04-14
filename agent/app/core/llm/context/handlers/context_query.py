@@ -13,7 +13,7 @@ from .base import RELAXED_RESOLVE_UNIQUE_MIN_CONFIDENCE, ToolHandlerBase
 
 
 class ContextQueryHandler(ToolHandlerBase):
-    def execute(
+    async def execute(
         self,
         tool_name: str,
         args: dict[str, Any],
@@ -29,7 +29,7 @@ class ContextQueryHandler(ToolHandlerBase):
             context_selector = None
 
         if tool_name == 'get_roadmap_summary':
-            result = self._run_context_call(
+            result = await self._run_context_call(
                 session_context,
                 self._nest_client.context_summary(
                     roadmap_id=roadmap_id,
@@ -49,7 +49,7 @@ class ContextQueryHandler(ToolHandlerBase):
             return result
 
         if tool_name == 'get_roadmap_overview':
-            summary = self._run_context_call(
+            summary = await self._run_context_call(
                 session_context,
                 self._nest_client.context_summary(
                     roadmap_id=roadmap_id,
@@ -73,7 +73,7 @@ class ContextQueryHandler(ToolHandlerBase):
                         epic_id = str(epic.get('id') or '').strip()
                         if not epic_id:
                             continue
-                        progress = self._compute_epic_progress(
+                        progress = await self._compute_epic_progress(
                             roadmap_id=roadmap_id,
                             epic_id=epic_id,
                             session_context=session_context,
@@ -122,7 +122,7 @@ class ContextQueryHandler(ToolHandlerBase):
             return result
 
         if tool_name == 'get_epics_by_roadmap':
-            summary = self._run_context_call(
+            summary = await self._run_context_call(
                 session_context,
                 self._nest_client.context_summary(
                     roadmap_id=roadmap_id,
@@ -243,7 +243,7 @@ class ContextQueryHandler(ToolHandlerBase):
             query = self._normalize_query_text(query)
             limit_raw = args.get('limit')
             limit = int(limit_raw) if isinstance(limit_raw, int) else None
-            result = self._run_context_call(
+            result = await self._run_context_call(
                 session_context,
                 self._nest_client.context_search(
                     roadmap_id=roadmap_id,
@@ -286,7 +286,7 @@ class ContextQueryHandler(ToolHandlerBase):
             normalized_query = self._normalize_query_text(query)
             limit_raw = args.get('limit')
             limit = int(limit_raw) if isinstance(limit_raw, int) else None
-            result = self._run_context_call(
+            result = await self._run_context_call(
                 session_context,
                 self._nest_client.context_search(
                     roadmap_id=roadmap_id,
@@ -425,7 +425,7 @@ class ContextQueryHandler(ToolHandlerBase):
                     )
                     for query in query_variants
                 ]
-                parallel_results = self._run_context_calls_parallel(
+                parallel_results = await self._run_context_calls_parallel(
                     session_context,
                     coroutines,
                 )
@@ -435,7 +435,7 @@ class ContextQueryHandler(ToolHandlerBase):
                 ]
             else:
                 for query in query_variants:
-                    search_result = self._run_context_call(
+                    search_result = await self._run_context_call(
                         session_context,
                         self._nest_client.context_search(
                             roadmap_id=roadmap_id,
@@ -484,7 +484,7 @@ class ContextQueryHandler(ToolHandlerBase):
                         )
                         for query in query_variants
                     ]
-                    parallel_results = self._run_context_calls_parallel(
+                    parallel_results = await self._run_context_calls_parallel(
                         session_context,
                         coroutines,
                     )
@@ -494,7 +494,7 @@ class ContextQueryHandler(ToolHandlerBase):
                     ]
                 else:
                     for query in query_variants:
-                        search_result = self._run_context_call(
+                        search_result = await self._run_context_call(
                             session_context,
                             self._nest_client.context_search(
                                 roadmap_id=roadmap_id,
@@ -585,7 +585,7 @@ class ContextQueryHandler(ToolHandlerBase):
                 and not raw_matches
                 and node_type in {None, 'epic'}
             ):
-                fuzzy_epic_matches = self._resolve_epic_fuzzy_fallback_matches(
+                fuzzy_epic_matches = await self._resolve_epic_fuzzy_fallback_matches(
                     roadmap_id=roadmap_id,
                     label=label,
                     limit=limit,
@@ -645,7 +645,7 @@ class ContextQueryHandler(ToolHandlerBase):
                 if selected_id in backend_choice_by_id:
                     selected_payload['backend_choice'] = backend_choice_by_id[selected_id]
 
-            resolved_subgraph = self._build_resolve_unique_subgraph(
+            resolved_subgraph = await self._build_resolve_unique_subgraph(
                 roadmap_id=roadmap_id,
                 selected=selected_payload,
                 session_context=session_context,
@@ -748,7 +748,7 @@ class ContextQueryHandler(ToolHandlerBase):
                 return result
             limit_raw = args.get('limit')
             limit = int(limit_raw) if isinstance(limit_raw, int) else None
-            result = self._run_context_call(
+            result = await self._run_context_call(
                 session_context,
                 self._nest_client.context_children_from_resolution(
                     roadmap_id=roadmap_id,
@@ -832,7 +832,7 @@ class ContextQueryHandler(ToolHandlerBase):
                     arg_value_preview=str(args.get('status'))[:40] if args.get('status') is not None else None,
                 )
                 return result
-            upstream_result = self._run_context_call(
+            upstream_result = await self._run_context_call(
                 session_context,
                 self._nest_client.context_features(
                     roadmap_id=roadmap_id,
@@ -880,7 +880,7 @@ class ContextQueryHandler(ToolHandlerBase):
                     result_summary=summarize_tool_result(result),
                 )
                 return result
-            result = self._compute_epic_progress(
+            result = await self._compute_epic_progress(
                 roadmap_id=roadmap_id,
                 epic_id=epic_id,
                 session_context=session_context,
@@ -916,7 +916,7 @@ class ContextQueryHandler(ToolHandlerBase):
                     result_summary=summarize_tool_result(result),
                 )
                 return result
-            result = self._run_context_call(
+            result = await self._run_context_call(
                 session_context,
                 self._nest_client.context_node_details(
                     roadmap_id=roadmap_id,
@@ -1004,7 +1004,7 @@ class ContextQueryHandler(ToolHandlerBase):
 
             parent_type = parent_type_raw
             if not parent_type:
-                parent_details = self._run_context_call(
+                parent_details = await self._run_context_call(
                     session_context,
                     self._nest_client.context_node_details(
                         roadmap_id=roadmap_id,
@@ -1036,7 +1036,7 @@ class ContextQueryHandler(ToolHandlerBase):
 
             tasks: list[dict[str, Any]] = []
             if parent_type == 'feature':
-                children_result = self._run_context_call(
+                children_result = await self._run_context_call(
                     session_context,
                     self._nest_client.context_children(
                         roadmap_id=roadmap_id,
@@ -1053,7 +1053,7 @@ class ContextQueryHandler(ToolHandlerBase):
                     limit=limit,
                 )
             else:
-                tasks_result = self._collect_tasks_for_epic(
+                tasks_result = await self._collect_tasks_for_epic(
                     roadmap_id=roadmap_id,
                     epic_id=parent_id,
                     status_filter=status_filter,
@@ -1141,7 +1141,7 @@ class ContextQueryHandler(ToolHandlerBase):
             limit_raw = args.get('limit')
             limit = int(limit_raw) if isinstance(limit_raw, int) else 200
             limit = max(1, min(limit, 500))
-            children_result = self._run_context_call(
+            children_result = await self._run_context_call(
                 session_context,
                 self._nest_client.context_children(
                     roadmap_id=roadmap_id,
@@ -1210,7 +1210,7 @@ class ContextQueryHandler(ToolHandlerBase):
             limit_raw = args.get('limit')
             limit = int(limit_raw) if isinstance(limit_raw, int) else 200
             limit = max(1, min(limit, 500))
-            result = self._collect_tasks_for_epic(
+            result = await self._collect_tasks_for_epic(
                 roadmap_id=roadmap_id,
                 epic_id=epic_id,
                 status_filter=status_filter,
@@ -1250,7 +1250,7 @@ class ContextQueryHandler(ToolHandlerBase):
             limit_raw = args.get('limit')
             limit = int(limit_raw) if isinstance(limit_raw, int) else 200
             limit = max(1, min(limit, 500))
-            result = self._collect_tasks_for_roadmap(
+            result = await self._collect_tasks_for_roadmap(
                 roadmap_id=roadmap_id,
                 status_filter=status_filter,
                 limit=limit,
@@ -1275,7 +1275,7 @@ class ContextQueryHandler(ToolHandlerBase):
             limit_raw = args.get('limit')
             limit = int(limit_raw) if isinstance(limit_raw, int) else 200
             limit = max(1, min(limit, 500))
-            task_result = self._collect_tasks_for_roadmap(
+            task_result = await self._collect_tasks_for_roadmap(
                 roadmap_id=roadmap_id,
                 status_filter='all',
                 limit=max(limit, 200),
@@ -1303,7 +1303,7 @@ class ContextQueryHandler(ToolHandlerBase):
                 )
                 for task_id in candidate_ids
             ]
-            detail_results = self._run_context_calls_parallel(
+            detail_results = await self._run_context_calls_parallel(
                 session_context,
                 detail_coroutines,
             )
@@ -1354,7 +1354,7 @@ class ContextQueryHandler(ToolHandlerBase):
             limit = max(1, min(limit, 500))
             blocked: list[dict[str, Any]] = []
 
-            summary = self._run_context_call(
+            summary = await self._run_context_call(
                 session_context,
                 self._nest_client.context_summary(
                     roadmap_id=roadmap_id,
@@ -1383,7 +1383,7 @@ class ContextQueryHandler(ToolHandlerBase):
                     )
                 if not epic_id:
                     continue
-                feature_result = self._run_context_call(
+                feature_result = await self._run_context_call(
                     session_context,
                     self._nest_client.context_features(
                         roadmap_id=roadmap_id,
@@ -1413,7 +1413,7 @@ class ContextQueryHandler(ToolHandlerBase):
                         )
                     if not include_tasks or not feature_id:
                         continue
-                    task_result = self._run_context_call(
+                    task_result = await self._run_context_call(
                         session_context,
                         self._nest_client.context_children(
                             roadmap_id=roadmap_id,
@@ -1485,7 +1485,7 @@ class ContextQueryHandler(ToolHandlerBase):
             limit_raw = args.get('limit')
             limit = int(limit_raw) if isinstance(limit_raw, int) else None
             upstream_status = 'all' if status_filter and status_filter not in {'all', 'open'} else status_filter
-            result = self._run_context_call(
+            result = await self._run_context_call(
                 session_context,
                 self._nest_client.context_tasks_assigned_to_me(
                     roadmap_id=roadmap_id,
@@ -1557,7 +1557,7 @@ class ContextQueryHandler(ToolHandlerBase):
                     arg_value_preview=node_id[:40],
                 )
                 return result
-            result = self._run_context_call(
+            result = await self._run_context_call(
                 session_context,
                 self._nest_client.context_node_details(
                     roadmap_id=roadmap_id,
@@ -1617,7 +1617,7 @@ class ContextQueryHandler(ToolHandlerBase):
                 return result
             limit_raw = args.get('limit')
             limit = int(limit_raw) if isinstance(limit_raw, int) else None
-            result = self._run_context_call(
+            result = await self._run_context_call(
                 session_context,
                 self._nest_client.context_children(
                     roadmap_id=roadmap_id,

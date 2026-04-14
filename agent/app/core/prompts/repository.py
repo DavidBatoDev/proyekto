@@ -1,53 +1,50 @@
 from __future__ import annotations
 
-import json
-from datetime import date, datetime
-from functools import lru_cache
-from pathlib import Path
 from typing import Any
+
+from app.core.prompts.manager import (
+    PromptManager,
+    PromptNotFoundError,
+    _format_context,
+    _safe_default,
+)
 
 
 class PromptRepository:
-    def __init__(self) -> None:
-        self._base_dir = Path(__file__).resolve().parent
+    """Backwards-compatible shim around PromptManager.
 
-    @lru_cache(maxsize=16)
+    Existing callers (LLMPlanner, ContextAnswerService, etc.) use this API.
+    New code should use PromptManager directly. This shim will be removed
+    once all call sites are migrated; see
+    docs/agent-refactor-06a-prompt-manager.md.
+    """
+
+    def __init__(self) -> None:
+        self._manager = PromptManager()
+
     def load(self, template_name: str) -> str:
-        template_path = self._base_dir / template_name
-        if not template_path.exists():
+        """Load a template by name. Accepts both `'chat_mode'` and
+        `'chat_mode.md'` forms. Returns empty string on missing template
+        (matching the pre-refactor behavior — the strict path is
+        `PromptManager.render`, which raises).
+        """
+        template_id = template_name[:-3] if template_name.endswith('.md') else template_name
+        try:
+            return self._manager.render(template_id)
+        except PromptNotFoundError:
             return ''
-        return template_path.read_text(encoding='utf-8').strip()
 
     def build_system_prompt(self, mode: str, context: dict[str, Any]) -> str:
-        base_prompt = self.load('base_system.md')
-        mode_templates = {
-            'chat': 'chat_mode.md',
-            'query': 'query_mode.md',
-            'plan': 'plan_mode.md',
-            'edit': 'edit_mode.md',
-        }
-        template_name = mode_templates.get(mode, 'chat_mode.md')
-        mode_prompt = self.load(template_name)
-        context_payload = self._format_context(context)
-        return (
-            f'{base_prompt}\n\n'
-            f'{mode_prompt}\n\n'
-            f'Runtime context:\n{context_payload}'
-        ).strip()
+        return self._manager.build_system_prompt(mode, context)
 
     def intent_classifier_prompt(self) -> str:
-        return self.load('intent_classifier.md')
+        return self._manager.intent_classifier_prompt()
 
+    # Private helpers preserved as module-level delegates for backcompat with
+    # existing tests that patched them at the class level.
     def _format_context(self, context: dict[str, Any]) -> str:
-        return json.dumps(
-            context,
-            ensure_ascii=True,
-            separators=(',', ':'),
-            default=self._safe_default,
-        )
+        return _format_context(context)
 
     @staticmethod
     def _safe_default(value: Any) -> str:
-        if isinstance(value, (datetime, date)):
-            return value.isoformat()
-        return str(value)
+        return _safe_default(value)

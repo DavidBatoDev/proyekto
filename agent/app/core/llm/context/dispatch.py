@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from time import perf_counter
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from fastapi import HTTPException
 
 from app.core.config import Settings
 from app.core.logging_utils import log_event, summarize_tool_result
 from app.core.metrics import record_tool_invocation
+from app.core.orchestration.shared.async_bridge import run_async_call
 from app.core.tools.registry import (
     CONTEXT_TOOL_NAMES,
     EDIT_HELPER_TOOL_NAMES,
@@ -40,25 +42,44 @@ class ToolDispatcher:
         settings: Settings,
         logger: logging.Logger,
         nest_client: Any,
-        run_async_context_call: Callable[[Any], dict[str, Any]],
+        run_async_context_call: Callable[[Any], dict[str, Any]] | None = None,
     ) -> None:
         self._settings = settings
         self._logger = logger
         self._nest_client = nest_client
-        self._run_async_context_call = run_async_context_call
+        # `run_async_context_call` is accepted for backwards compatibility with
+        # pre-#5A callers (e.g. LLMPlanner passing its own adapter). It is no
+        # longer used: the dispatcher drives the now-async handler coroutine
+        # via its own `_drive_handler_coroutine()` helper, which picks the
+        # correct sync→async strategy based on whether an event loop is
+        # running in the current thread.
         self._resolve_lookup_cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._max_resolve_lookup_cache_entries = 256
         shared = dict(
             settings=settings,
             logger=logger,
             nest_client=nest_client,
-            run_async_context_call=run_async_context_call,
             resolve_lookup_cache=self._resolve_lookup_cache,
             max_resolve_lookup_cache_entries=self._max_resolve_lookup_cache_entries,
         )
         self._context_handler = ContextQueryHandler(**shared)
         self._edit_handler = EditHelperHandler(**shared)
         self._base_helper = ToolHandlerBase(**shared)
+
+    def _drive_handler_coroutine(self, coro: Awaitable[dict[str, Any]]) -> dict[str, Any]:
+        """Run the async handler coroutine from the sync dispatcher boundary.
+
+        No event loop running in this thread → `asyncio.run()` owns one.
+        Already inside a loop (dispatcher called from async context that
+        delegated through a thread adapter incorrectly, etc.) → fall back to
+        the existing bridge. Either way, at most ONE thread spawn per tool
+        dispatch — versus one per inner nest_client call pre-#5A.
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        return run_async_call(coro, settings=self._settings, logger=self._logger)
 
     def execute(
         self,
@@ -160,10 +181,16 @@ class ToolDispatcher:
             session_context['context_change_selector'] = context_selector
 
             if tool_name in CONTEXT_TOOL_NAMES:
-                result = self._context_handler.execute(tool_name, args, session_context)
+                # Handler is async; sync→async once at dispatcher boundary
+                # (was once-per-inner-nest-call before Phase A).
+                result = self._drive_handler_coroutine(
+                    self._context_handler.execute(tool_name, args, session_context)
+                )
                 return result
             if tool_name in EDIT_HELPER_TOOL_NAMES:
-                result = self._edit_handler.execute(tool_name, args, session_context)
+                result = self._drive_handler_coroutine(
+                    self._edit_handler.execute(tool_name, args, session_context)
+                )
                 return result
             result = {
                 'error': {
@@ -225,4 +252,5 @@ class ToolDispatcher:
                 error_code=error_code,
                 trace_id=trace_id,
                 roadmap_id=roadmap_id or None,
+                async_inner=True,
             )

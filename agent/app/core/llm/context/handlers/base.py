@@ -43,29 +43,34 @@ class ToolHandlerBase:
         settings: Settings,
         logger: logging.Logger,
         nest_client: Any,
-        run_async_context_call: Callable[[Any], dict[str, Any]],
         resolve_lookup_cache: dict[str, tuple[float, dict[str, Any]]],
         max_resolve_lookup_cache_entries: int,
     ) -> None:
         self._settings = settings
         self._logger = logger
         self._nest_client = nest_client
-        self._run_async_context_call = run_async_context_call
         self._resolve_lookup_cache = resolve_lookup_cache
         self._max_resolve_lookup_cache_entries = max_resolve_lookup_cache_entries
 
-    def _run_context_call(
+    async def _run_context_call(
         self,
         session_context: dict[str, Any],
         coro: Any,
     ) -> dict[str, Any]:
         started = perf_counter()
-        result = self._run_async_context_call(coro)
-        elapsed_ms = (perf_counter() - started) * 1000
-        self._record_context_http_timing(session_context=session_context, elapsed_ms=elapsed_ms)
-        return result
+        try:
+            # Accept either a coroutine (production nest_client) or a plain
+            # value (some test mocks return dicts directly). The defensive
+            # branch keeps existing mock shapes working without forcing every
+            # test to convert to AsyncMock.
+            if asyncio.iscoroutine(coro) or asyncio.isfuture(coro):
+                return await coro
+            return coro
+        finally:
+            elapsed_ms = (perf_counter() - started) * 1000
+            self._record_context_http_timing(session_context=session_context, elapsed_ms=elapsed_ms)
 
-    def _run_context_calls_parallel(
+    async def _run_context_calls_parallel(
         self,
         session_context: dict[str, Any],
         coroutines: list[Any],
@@ -74,38 +79,27 @@ class ToolHandlerBase:
             return []
         started = perf_counter()
 
-        async def _gather_calls() -> list[dict[str, Any]]:
-            awaitables: list[Any] = []
-            for item in coroutines:
-                if asyncio.iscoroutine(item) or asyncio.isfuture(item):
-                    awaitables.append(item)
-                else:
-                    async def _immediate(value: Any) -> Any:
-                        return value
+        async def _immediate(value: Any) -> Any:
+            return value
 
-                    awaitables.append(_immediate(item))
-            gathered = await asyncio.gather(*awaitables, return_exceptions=True)
-            normalized: list[dict[str, Any]] = []
-            for item in gathered:
-                if isinstance(item, Exception):
-                    normalized.append({})
-                elif isinstance(item, dict):
-                    normalized.append(item)
-                else:
-                    normalized.append({})
-            return normalized
-
-        gather_coro = _gather_calls()
-        result = self._run_async_context_call(gather_coro)
-        if asyncio.iscoroutine(result):
-            result = asyncio.run(result)
-        elif not isinstance(result, list):
-            gather_coro.close()
+        awaitables: list[Any] = []
+        for item in coroutines:
+            if asyncio.iscoroutine(item) or asyncio.isfuture(item):
+                awaitables.append(item)
+            else:
+                awaitables.append(_immediate(item))
+        gathered = await asyncio.gather(*awaitables, return_exceptions=True)
         elapsed_ms = (perf_counter() - started) * 1000
         self._record_context_http_timing(session_context=session_context, elapsed_ms=elapsed_ms)
-        if isinstance(result, list):
-            return [item if isinstance(item, dict) else {} for item in result]
-        return []
+        normalized: list[dict[str, Any]] = []
+        for item in gathered:
+            if isinstance(item, Exception):
+                normalized.append({})
+            elif isinstance(item, dict):
+                normalized.append(item)
+            else:
+                normalized.append({})
+        return normalized
 
     def _record_context_tool_timing(
         self,
@@ -225,7 +219,7 @@ class ToolHandlerBase:
             variants.append(fallback)
         return variants[:3]
 
-    def _resolve_epic_fuzzy_fallback_matches(
+    async def _resolve_epic_fuzzy_fallback_matches(
         self,
         *,
         roadmap_id: str,
@@ -244,7 +238,7 @@ class ToolHandlerBase:
         if len(normalized_label) < 4:
             return []
 
-        summary = self._run_context_call(
+        summary = await self._run_context_call(
             session_context,
             context_summary(
                 roadmap_id=roadmap_id,
@@ -326,7 +320,7 @@ class ToolHandlerBase:
         lowered = re.sub(r'[^a-z0-9\s]+', ' ', lowered)
         return ' '.join(lowered.split())
 
-    def _build_resolve_unique_subgraph(
+    async def _build_resolve_unique_subgraph(
         self,
         *,
         roadmap_id: str,
@@ -352,7 +346,7 @@ class ToolHandlerBase:
             return None
 
         subgraph: dict[str, Any] = {'node': node_payload}
-        parent_payload = self._resolve_subgraph_parent(
+        parent_payload = await self._resolve_subgraph_parent(
             roadmap_id=roadmap_id,
             selected=selected,
             node_type=node_type,
@@ -363,7 +357,7 @@ class ToolHandlerBase:
         if isinstance(parent_payload, dict):
             subgraph['parent'] = parent_payload
 
-        children_payload = self._resolve_subgraph_children(
+        children_payload = await self._resolve_subgraph_children(
             roadmap_id=roadmap_id,
             node_id=node_id,
             node_type=node_type,
@@ -376,7 +370,7 @@ class ToolHandlerBase:
             subgraph['children'] = children_payload
         return subgraph
 
-    def _resolve_subgraph_parent(
+    async def _resolve_subgraph_parent(
         self,
         *,
         roadmap_id: str,
@@ -398,7 +392,7 @@ class ToolHandlerBase:
         if not parent_id:
             if not has_context_node_details:
                 return None
-            detail_result = self._run_context_call(
+            detail_result = await self._run_context_call(
                 session_context,
                 context_node_details(
                     roadmap_id=roadmap_id,
@@ -427,7 +421,7 @@ class ToolHandlerBase:
                     'type': parent_type,
                     'title': parent_title,
                 }
-            parent_result = self._run_context_call(
+            parent_result = await self._run_context_call(
                 session_context,
                 context_node_details(
                     roadmap_id=roadmap_id,
@@ -449,7 +443,7 @@ class ToolHandlerBase:
         }
         return parent_payload
 
-    def _resolve_subgraph_children(
+    async def _resolve_subgraph_children(
         self,
         *,
         roadmap_id: str,
@@ -468,7 +462,7 @@ class ToolHandlerBase:
             context_features = getattr(self._nest_client, 'context_features', None)
             if not callable(context_features):
                 return []
-            feature_result = self._run_context_call(
+            feature_result = await self._run_context_call(
                 session_context,
                 context_features(
                     roadmap_id=roadmap_id,
@@ -500,7 +494,7 @@ class ToolHandlerBase:
         context_children = getattr(self._nest_client, 'context_children', None)
         if not callable(context_children):
             return []
-        child_result = self._run_context_call(
+        child_result = await self._run_context_call(
             session_context,
             context_children(
                 roadmap_id=roadmap_id,
@@ -939,7 +933,7 @@ class ToolHandlerBase:
             return parsed
         return datetime.now(timezone.utc).date()
 
-    def _collect_tasks_for_epic(
+    async def _collect_tasks_for_epic(
         self,
         *,
         roadmap_id: str,
@@ -952,7 +946,7 @@ class ToolHandlerBase:
     ) -> dict[str, Any]:
         normalized_limit = max(1, min(int(limit), 2000))
         feature_limit = max(10, min(100, normalized_limit))
-        features_result = self._run_context_call(
+        features_result = await self._run_context_call(
             session_context,
             self._nest_client.context_features(
                 roadmap_id=roadmap_id,
@@ -995,7 +989,7 @@ class ToolHandlerBase:
                 )
                 for feature_id in batch_feature_ids
             ]
-            task_results = self._run_context_calls_parallel(session_context, task_coroutines)
+            task_results = await self._run_context_calls_parallel(session_context, task_coroutines)
             for feature_id, task_result in zip(batch_feature_ids, task_results):
                 children = self._children_from_result(task_result)
                 feature_meta = feature_meta_by_id.get(feature_id, {})
@@ -1028,7 +1022,7 @@ class ToolHandlerBase:
             'tasks': tasks,
         }
 
-    def _collect_tasks_for_roadmap(
+    async def _collect_tasks_for_roadmap(
         self,
         *,
         roadmap_id: str,
@@ -1040,7 +1034,7 @@ class ToolHandlerBase:
         context_selector: str | None,
     ) -> dict[str, Any]:
         normalized_limit = max(1, min(int(limit), 2000))
-        summary_result = self._run_context_call(
+        summary_result = await self._run_context_call(
             session_context,
             self._nest_client.context_summary(
                 roadmap_id=roadmap_id,
@@ -1062,7 +1056,7 @@ class ToolHandlerBase:
             if not epic_id:
                 continue
             epic_title = str(epic.get('title') or 'Untitled epic')
-            per_epic = self._collect_tasks_for_epic(
+            per_epic = await self._collect_tasks_for_epic(
                 roadmap_id=roadmap_id,
                 epic_id=epic_id,
                 status_filter=status_filter,
@@ -1085,7 +1079,7 @@ class ToolHandlerBase:
 
         return {'roadmap_id': roadmap_id, 'tasks': tasks}
 
-    def _compute_epic_progress(
+    async def _compute_epic_progress(
         self,
         *,
         roadmap_id: str,
@@ -1094,7 +1088,7 @@ class ToolHandlerBase:
         auth_header: str | None,
         trace_id: str | None,
     ) -> dict[str, Any]:
-        task_result = self._collect_tasks_for_epic(
+        task_result = await self._collect_tasks_for_epic(
             roadmap_id=roadmap_id,
             epic_id=epic_id,
             status_filter='all',

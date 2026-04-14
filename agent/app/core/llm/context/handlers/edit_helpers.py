@@ -11,7 +11,7 @@ from .base import ToolHandlerBase
 
 
 class EditHelperHandler(ToolHandlerBase):
-    def execute(
+    async def execute(
         self,
         tool_name: str,
         args: dict[str, Any],
@@ -545,7 +545,7 @@ class EditHelperHandler(ToolHandlerBase):
 
             tasks: list[dict[str, Any]] = []
             if parent_type == 'feature':
-                feature_children_result = self._run_context_call(
+                feature_children_result = await self._run_context_call(
                     session_context,
                     self._nest_client.context_children(
                         roadmap_id=roadmap_id,
@@ -573,7 +573,7 @@ class EditHelperHandler(ToolHandlerBase):
                     limit=limit,
                 )
             else:
-                epic_tasks_result = self._collect_tasks_for_epic(
+                epic_tasks_result = await self._collect_tasks_for_epic(
                     roadmap_id=roadmap_id,
                     epic_id=parent_id,
                     status_filter=None,
@@ -835,7 +835,7 @@ class EditHelperHandler(ToolHandlerBase):
             filtered_endpoint_loaded = False
             context_tasks_filtered = getattr(self._nest_client, 'context_tasks_filtered', None)
             if callable(context_tasks_filtered):
-                filtered_result = self._run_context_call(
+                filtered_result = await self._run_context_call(
                     session_context,
                     context_tasks_filtered(
                         roadmap_id=roadmap_id,
@@ -887,7 +887,7 @@ class EditHelperHandler(ToolHandlerBase):
                     else 'all'
                 )
                 collect_limit = min(2000, max(limit, 200))
-                task_result = self._collect_tasks_for_roadmap(
+                task_result = await self._collect_tasks_for_roadmap(
                     roadmap_id=roadmap_id,
                     status_filter=collect_status_filter,
                     limit=collect_limit,
@@ -932,7 +932,7 @@ class EditHelperHandler(ToolHandlerBase):
                         )
                         for task_id in task_ids_for_detail
                     ]
-                    detail_results = self._run_context_calls_parallel(
+                    detail_results = await self._run_context_calls_parallel(
                         session_context,
                         detail_coroutines,
                     )

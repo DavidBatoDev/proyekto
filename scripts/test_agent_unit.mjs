@@ -17,6 +17,8 @@ const defaultTests = [
   'tests.test_agent_safety',
   'tests.test_edit_resolver',
   'tests.test_session_store_cas',
+  'tests.test_async_native_dispatcher',
+  'tests.test_prompt_manager',
 ];
 
 const pythonCandidates = [
