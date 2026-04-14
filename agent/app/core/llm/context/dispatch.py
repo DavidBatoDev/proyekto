@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 from app.core.config import Settings
 from app.core.logging_utils import log_event, summarize_tool_result
+from app.core.metrics import record_tool_invocation
 from app.core.tools.registry import (
     CONTEXT_TOOL_NAMES,
     EDIT_HELPER_TOOL_NAMES,
@@ -17,6 +18,19 @@ from app.core.tools.registry import (
 from .handlers.base import ToolHandlerBase
 from .handlers.context_query import ContextQueryHandler
 from .handlers.edit_helpers import EditHelperHandler
+
+
+def _derive_invocation_outcome(result: Any) -> tuple[str, str | None]:
+    if not isinstance(result, dict):
+        # None or unexpected type — dispatcher always assigns a dict to `result`
+        # before returning, so this means an exception leaked past both except
+        # handlers. Report as error so `tool.invoked` doesn't silently log 'ok'.
+        return 'error', 'CONTEXT_TOOL_FAILED' if result is None else None
+    error = result.get('error')
+    if isinstance(error, dict):
+        code = error.get('code')
+        return 'error', str(code) if code is not None else None
+    return 'ok', None
 
 
 class ToolDispatcher:
@@ -55,6 +69,7 @@ class ToolDispatcher:
         started = perf_counter()
         trace_id = session_context.get('trace_id')
         roadmap_id = ''
+        result: Any = None
         try:
             if tool_name not in EXECUTABLE_TOOL_NAMES:
                 result = {
@@ -145,17 +160,20 @@ class ToolDispatcher:
             session_context['context_change_selector'] = context_selector
 
             if tool_name in CONTEXT_TOOL_NAMES:
-                return self._context_handler.execute(tool_name, args, session_context)
+                result = self._context_handler.execute(tool_name, args, session_context)
+                return result
             if tool_name in EDIT_HELPER_TOOL_NAMES:
-                return self._edit_handler.execute(tool_name, args, session_context)
-            return {
+                result = self._edit_handler.execute(tool_name, args, session_context)
+                return result
+            result = {
                 'error': {
                     'code': 'UNKNOWN_TOOL',
                     'message': f'Tool {tool_name} is not available in edit mode.',
                 }
             }
+            return result
         except HTTPException as exc:
-            error_payload = self._base_helper._map_upstream_context_error(exc)
+            result = self._base_helper._map_upstream_context_error(exc)
             log_event(
                 self._logger,
                 'tool_call_result',
@@ -163,10 +181,10 @@ class ToolDispatcher:
                 level=logging.WARNING,
                 trace_id=trace_id,
                 tool_name=tool_name,
-                result_summary=summarize_tool_result(error_payload),
-                tool_error_code=error_payload.get('error', {}).get('code'),
+                result_summary=summarize_tool_result(result),
+                tool_error_code=result.get('error', {}).get('code'),
             )
-            return error_payload
+            return result
         except Exception as exc:  # pragma: no cover
             self._logger.warning(
                 'Context tool execution failed. tool=%s roadmap_id=%s error=%s',
@@ -183,15 +201,28 @@ class ToolDispatcher:
                 tool_name=tool_name,
                 result_summary={'result_type': 'error', 'error_code': 'CONTEXT_TOOL_FAILED'},
             )
-            return {
+            result = {
                 'error': {
                     'code': 'CONTEXT_TOOL_FAILED',
                     'message': 'Failed to fetch roadmap context from backend.',
                 }
             }
+            return result
         finally:
+            elapsed_ms = (perf_counter() - started) * 1000
             self._base_helper._record_context_tool_timing(
                 session_context=session_context,
                 tool_name=tool_name,
-                elapsed_ms=(perf_counter() - started) * 1000,
+                elapsed_ms=elapsed_ms,
+            )
+            outcome, error_code = _derive_invocation_outcome(result)
+            record_tool_invocation(
+                self._logger,
+                self._settings,
+                tool_name=tool_name,
+                duration_ms=elapsed_ms,
+                outcome=outcome,
+                error_code=error_code,
+                trace_id=trace_id,
+                roadmap_id=roadmap_id or None,
             )

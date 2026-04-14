@@ -14,6 +14,7 @@ from fastapi import HTTPException
 
 from app.core.config import Settings
 from app.core.logging_utils import log_event, summarize_tool_result
+from app.core.metrics import record_cache_event
 from app.core.orchestration.edits.edit_resolver import resolve_candidates
 from app.core.uuid_utils import is_uuid_like
 
@@ -606,11 +607,27 @@ class ToolHandlerBase:
         cache_key: str,
     ) -> dict[str, Any] | None:
         cache = session_context.setdefault('_resolve_request_cache', {})
+        trace_id = session_context.get('trace_id') if isinstance(session_context, dict) else None
         if not isinstance(cache, dict):
+            record_cache_event(
+                self._logger, self._settings,
+                cache='resolve_request', outcome='miss',
+                trace_id=trace_id,
+            )
             return None
         cached_value = cache.get(cache_key)
         if not isinstance(cached_value, dict):
+            record_cache_event(
+                self._logger, self._settings,
+                cache='resolve_request', outcome='miss',
+                trace_id=trace_id,
+            )
             return None
+        record_cache_event(
+            self._logger, self._settings,
+            cache='resolve_request', outcome='hit',
+            trace_id=trace_id,
+        )
         return deepcopy(cached_value)
 
     def _write_resolve_request_cache(
@@ -628,16 +645,34 @@ class ToolHandlerBase:
     def _read_resolve_lookup_cache(self, cache_key: str) -> dict[str, Any] | None:
         entry = self._resolve_lookup_cache.get(cache_key)
         if entry is None:
+            record_cache_event(
+                self._logger, self._settings,
+                cache='resolve_lookup', outcome='miss',
+            )
             return None
         cached_at, payload = entry
         ttl_seconds = max(int(self._settings.agent_resolve_cache_ttl_seconds), 0)
         if ttl_seconds <= 0:
             self._resolve_lookup_cache.pop(cache_key, None)
+            record_cache_event(
+                self._logger, self._settings,
+                cache='resolve_lookup', outcome='miss',
+                extra={'reason': 'ttl_disabled'},
+            )
             return None
         age_seconds = perf_counter() - cached_at
         if age_seconds > float(ttl_seconds):
             self._resolve_lookup_cache.pop(cache_key, None)
+            record_cache_event(
+                self._logger, self._settings,
+                cache='resolve_lookup', outcome='miss',
+                extra={'reason': 'expired'},
+            )
             return None
+        record_cache_event(
+            self._logger, self._settings,
+            cache='resolve_lookup', outcome='hit',
+        )
         return deepcopy(payload)
 
     def _write_resolve_lookup_cache(
