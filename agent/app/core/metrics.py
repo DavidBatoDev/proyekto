@@ -37,6 +37,32 @@ def record_tool_invocation(
     )
 
 
+def record_session_cas_conflict(
+    logger: logging.Logger,
+    settings: Settings,
+    *,
+    session_id: str,
+    attempt: int,
+    expected_version: int,
+    stored_version: int | None,
+    will_retry: bool,
+) -> None:
+    """Emit `session.cas_conflict` when SessionStore.save_cas detects a version
+    mismatch. Fires per retry attempt, so the event count reflects true
+    contention frequency.
+    """
+    log_event(
+        logger,
+        'session.cas_conflict',
+        settings=settings,
+        session_id=session_id,
+        attempt=attempt,
+        expected_version=expected_version,
+        stored_version=stored_version,
+        will_retry=will_retry,
+    )
+
+
 def record_cache_event(
     logger: logging.Logger,
     settings: Settings,

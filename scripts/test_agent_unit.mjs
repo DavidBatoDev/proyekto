@@ -16,6 +16,7 @@ loadEnvFiles();
 const defaultTests = [
   'tests.test_agent_safety',
   'tests.test_edit_resolver',
+  'tests.test_session_store_cas',
 ];
 
 const pythonCandidates = [

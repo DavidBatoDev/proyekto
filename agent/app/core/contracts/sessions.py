@@ -247,6 +247,9 @@ class AgentSession(BaseModel):
     revision_token: str | None = None
     operations: list[RoadmapOperation] = Field(default_factory=list)
     staged_operations_version: int = 0
+    # Storage-level optimistic-lock version; bumped by SessionStore.save_cas on
+    # every successful write. Independent of `staged_operations_version`.
+    version: int = 0
     last_intent_type: IntentType | None = None
     artifacts: list[RoadmapCommitArtifact] = Field(default_factory=list)
     messages: list[Message] = Field(default_factory=list)
