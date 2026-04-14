@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
 from queue import Empty, Queue
 import threading
@@ -48,8 +49,14 @@ def run_async_call(
         except Exception as exc:  # pragma: no cover
             queue.put(('error', exc))
 
+    # Copy the caller's context so the thread inherits ContextVars (trace_id,
+    # session_id, etc.). Without this the new thread starts with a fresh
+    # context and log lines emitted from within the bridged coroutine lose
+    # their trace correlation.
+    ctx = contextvars.copy_context()
     bridge_thread = threading.Thread(
-        target=_bridge_runner,
+        target=ctx.run,
+        args=(_bridge_runner,),
         name='agent-async-bridge',
         daemon=True,
     )

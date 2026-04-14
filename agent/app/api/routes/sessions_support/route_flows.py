@@ -23,6 +23,7 @@ from app.core.contracts.sessions import (
 )
 from app.core.orchestration.agent_service import AgentService
 from app.core.session_store import SessionStore
+from app.core.trace_context import bind as bind_trace_context_values
 
 
 async def create_session_flow(
@@ -107,6 +108,11 @@ async def send_message_flow(
     trace_id = _resolve_request_trace_id(request)
     started_at = perf_counter()
     session = await get_session_or_404_async(agent_service, session_id)
+    bind_trace_context_values(
+        trace_id=trace_id,
+        session_id=session_id,
+        roadmap_id=session.roadmap_id,
+    )
     log_event_fn(
         logger,
         'message_received',
@@ -450,6 +456,11 @@ async def commit_session_flow(
     store, agent_service = await get_agent_runtime_async()
     session = await get_session_or_404_async(agent_service, session_id)
     trace_id = request.headers.get('X-Trace-Id') or str(uuid4())
+    bind_trace_context_values(
+        trace_id=trace_id,
+        session_id=session_id,
+        roadmap_id=session.roadmap_id,
+    )
     started_at = perf_counter()
     if payload.operations is not None:
         selected_draft_id = session.metadata.active_draft_id or f'{session.session_id}:adhoc'
@@ -594,6 +605,11 @@ async def discard_session_flow(
 ) -> DiscardResponse:
     store, agent_service = await get_agent_runtime_async()
     session = await get_session_or_404_async(agent_service, session_id)
+    bind_trace_context_values(
+        trace_id=_resolve_request_trace_id(request),
+        session_id=session_id,
+        roadmap_id=session.roadmap_id,
+    )
     change_id = payload.change_id
     if not change_id:
         for commit in reversed(session.metadata.applied_draft_commits):
@@ -695,6 +711,11 @@ async def rollback_session_flow(
 ) -> dict:
     store, agent_service = await get_agent_runtime_async()
     session = await get_session_or_404_async(agent_service, session_id)
+    bind_trace_context_values(
+        trace_id=_resolve_request_trace_id(request),
+        session_id=session_id,
+        roadmap_id=session.roadmap_id,
+    )
 
     rollback_result = await nest_client.rollback(
         roadmap_id=session.roadmap_id,

@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.core.config import Settings, get_settings
+from app.core.trace_context import get_trace_fields
 
 _KEY_PRIORITY = (
     'ts',
@@ -170,6 +171,14 @@ def log_event(
     **data: Any,
 ) -> None:
     cfg = settings or get_settings()
+    # Auto-populate trace correlation fields from contextvars when the caller
+    # did not pass them explicitly. An explicit None is treated as "omit"
+    # (matches pre-contextvars behavior where missing fields were not logged).
+    for field_name, field_value in get_trace_fields().items():
+        if field_value is None:
+            continue
+        if field_name not in data or data[field_name] is None:
+            data[field_name] = field_value
     payload = {
         'ts': datetime.now(timezone.utc).isoformat(),
         'event': event,
