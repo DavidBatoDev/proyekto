@@ -173,49 +173,38 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                     assistant_message, operations = parse_plan_tool_args(args)
                 except ValueError as exc:
                     error_message = str(exc)
-                    autofix_attempted = False
+                    autofix_attempted = True
                     autofix_applied = False
                     autofix_failure_reason: str | None = None
-                    assignee_autofix_enabled = bool(
-                        getattr(
-                            self._settings,
-                            'agent_edit_assignee_autofix_enabled',
-                            False,
-                        )
+                    rewritten_args, autofix_failure_reason = _rewrite_assignee_payload_to_actor_id(
+                        args=args,
+                        error_message=error_message,
+                        actor_id=actor_id,
                     )
-                    if assignee_autofix_enabled:
-                        autofix_attempted = True
-                        rewritten_args, autofix_failure_reason = _rewrite_assignee_payload_to_actor_id(
-                            args=args,
-                            error_message=error_message,
-                            actor_id=actor_id,
-                        )
-                        if rewritten_args is not None:
-                            try:
-                                assistant_message, operations = parse_plan_tool_args(rewritten_args)
-                            except ValueError as autofix_exc:
-                                autofix_failure_reason = 'autofix_reparse_failed'
-                                error_message = str(autofix_exc)
-                            else:
-                                autofix_applied = True
-                                log_event(
-                                    logger,
-                                    'planner_assignee_autofix',
-                                    settings=self._settings,
-                                    provider=self.provider_name,
-                                    autofix_attempted=True,
-                                    autofix_applied=True,
-                                    autofix_failure_reason=None,
-                                    actor_present=bool(actor_id),
-                                )
-                                if not assistant_message.strip():
-                                    assistant_message = 'Prepared roadmap operations.'
-                                return BoundedToolLoopOutcome(
-                                    value=(assistant_message, operations),
-                                    usage_totals=usage_totals,
-                                )
-                    if not assignee_autofix_enabled and autofix_failure_reason is None:
-                        autofix_failure_reason = 'feature_disabled'
+                    if rewritten_args is not None:
+                        try:
+                            assistant_message, operations = parse_plan_tool_args(rewritten_args)
+                        except ValueError as autofix_exc:
+                            autofix_failure_reason = 'autofix_reparse_failed'
+                            error_message = str(autofix_exc)
+                        else:
+                            autofix_applied = True
+                            log_event(
+                                logger,
+                                'planner_assignee_autofix',
+                                settings=self._settings,
+                                provider=self.provider_name,
+                                autofix_attempted=True,
+                                autofix_applied=True,
+                                autofix_failure_reason=None,
+                                actor_present=bool(actor_id),
+                            )
+                            if not assistant_message.strip():
+                                assistant_message = 'Prepared roadmap operations.'
+                            return BoundedToolLoopOutcome(
+                                value=(assistant_message, operations),
+                                usage_totals=usage_totals,
+                            )
                     log_event(
                         logger,
                         'planner_assignee_autofix',

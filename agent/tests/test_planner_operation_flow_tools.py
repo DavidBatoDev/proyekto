@@ -67,9 +67,7 @@ class _FakePlanner:
             max_edit_tool_turns=4,
             agent_react_max_attempts=1,
             agent_react_repair_retries=0,
-            agent_llm_first_mode_enabled=False,
             agent_edit_actionable_failure_clarifier_enabled=False,
-            agent_simple_edit_planner_profile_enabled=False,
             agent_strict_mutation_authority_enabled=False,
             agent_log_include_content=False,
             agent_log_json=True,
@@ -1418,7 +1416,6 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
     def test_llm_first_mode_skips_deterministic_parent_first_clarifier(self) -> None:
         captured: dict[str, object] = {}
         planner = _FakePlanner(captured)
-        planner._settings.agent_llm_first_mode_enabled = True
         planner._settings.agent_react_max_attempts = 1
         planner._settings.agent_react_repair_retries = 0
 
@@ -1475,7 +1472,6 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
     def test_llm_first_mode_skips_deterministic_synthesized_closure(self) -> None:
         captured: dict[str, object] = {}
         planner = _FakePlanner(captured)
-        planner._settings.agent_llm_first_mode_enabled = True
         synth_calls = {'count': 0}
 
         def fake_synthesize(**kwargs):  # noqa: ANN003
@@ -1543,7 +1539,6 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
     def test_llm_first_missing_tool_call_returns_actionable_clarifier_when_flag_enabled(self) -> None:
         captured: dict[str, object] = {}
         planner = _FakePlanner(captured)
-        planner._settings.agent_llm_first_mode_enabled = True
         planner._settings.agent_edit_actionable_failure_clarifier_enabled = True
         planner._settings.agent_react_max_attempts = 1
         planner._settings.agent_react_repair_retries = 0
@@ -1602,7 +1597,6 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
     def test_llm_first_global_bulk_filter_missing_tool_call_uses_filter_narrow_option(self) -> None:
         captured: dict[str, object] = {}
         planner = _FakePlanner(captured)
-        planner._settings.agent_llm_first_mode_enabled = True
         planner._settings.agent_edit_actionable_failure_clarifier_enabled = True
         planner._settings.agent_react_max_attempts = 1
         planner._settings.agent_react_repair_retries = 0
@@ -1667,7 +1661,6 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
     def test_llm_first_missing_tool_call_with_bulk_filter_helper_synthesizes(self) -> None:
         captured: dict[str, object] = {}
         planner = _FakePlanner(captured)
-        planner._settings.agent_llm_first_mode_enabled = True
         planner._settings.agent_edit_actionable_failure_clarifier_enabled = True
         planner._settings.agent_react_max_attempts = 2
         planner._settings.agent_react_repair_retries = 1
@@ -1815,7 +1808,6 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
     def test_llm_first_invalid_assignee_payload_returns_actionable_clarifier_when_flag_enabled(self) -> None:
         captured: dict[str, object] = {}
         planner = _FakePlanner(captured)
-        planner._settings.agent_llm_first_mode_enabled = True
         planner._settings.agent_edit_actionable_failure_clarifier_enabled = True
         planner._settings.agent_react_max_attempts = 1
         planner._settings.agent_react_repair_retries = 0
@@ -1960,7 +1952,6 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
     def test_llm_first_provider_timeout_still_uses_outage_clarifier_when_flag_enabled(self) -> None:
         captured: dict[str, object] = {}
         planner = _FakePlanner(captured)
-        planner._settings.agent_llm_first_mode_enabled = True
         planner._settings.agent_edit_actionable_failure_clarifier_enabled = True
         planner._settings.agent_react_max_attempts = 1
         planner._settings.agent_react_repair_retries = 0

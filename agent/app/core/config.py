@@ -82,14 +82,6 @@ class Settings(BaseSettings):
         default=True,
         alias='AGENT_HYBRID_REACT_ENABLED',
     )
-    agent_llm_first_mode_enabled: bool = Field(
-        default=True,
-        alias='AGENT_LLM_FIRST_MODE_ENABLED',
-    )
-    agent_edit_assignee_autofix_enabled: bool = Field(
-        default=True,
-        alias='AGENT_EDIT_ASSIGNEE_AUTOFIX_ENABLED',
-    )
     agent_edit_actionable_failure_clarifier_enabled: bool = Field(
         default=False,
         alias='AGENT_EDIT_ACTIONABLE_FAILURE_CLARIFIER_ENABLED',
@@ -102,18 +94,10 @@ class Settings(BaseSettings):
         default=True,
         alias='AGENT_ASYNC_AUTO_COMMIT_ENABLED',
     )
-    agent_simple_edit_planner_profile_enabled: bool = Field(
-        default=False,
-        alias='AGENT_SIMPLE_EDIT_PLANNER_PROFILE_ENABLED',
-    )
     # Keep disabled by default to preserve hybrid behavior; enable for strict planner authority.
     agent_strict_mutation_authority_enabled: bool = Field(
         default=False,
         alias='AGENT_STRICT_MUTATION_AUTHORITY_ENABLED',
-    )
-    agent_strict_preview_fingerprint: bool = Field(
-        default=True,
-        alias='AGENT_STRICT_PREVIEW_FINGERPRINT',
     )
     inline_preview_max_bytes: int = Field(
         default=262144,

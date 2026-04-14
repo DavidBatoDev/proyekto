@@ -59,7 +59,6 @@ class ContextAnswerService:
         intent_type: IntentType,
     ) -> dict[str, Any]:
         trace_id = session_context.get('trace_id')
-        llm_first_mode_enabled = bool(self._settings.agent_llm_first_mode_enabled)
         context_tools = get_context_tools()
         cache_key = self._build_context_cache_key(
             roadmap_id=str(session_context.get('roadmap_id') or ''),
@@ -140,7 +139,7 @@ class ContextAnswerService:
                 discovery_repeat_hits=discovery_state.repeat_hits,
                 discovery_stop_reason='resolved',
                 clarifier_returned=False,
-                llm_first_mode_enabled=llm_first_mode_enabled,
+                llm_first_mode_enabled=True,
                 outage_clarifier_returned=False,
             )
             response = {
@@ -219,7 +218,7 @@ class ContextAnswerService:
                     clarifier_returned=True,
                     clarifier_template_id='context_clarifier_budget_v1',
                     provider_error_code=exc.code,
-                    llm_first_mode_enabled=llm_first_mode_enabled,
+                    llm_first_mode_enabled=True,
                     outage_clarifier_returned=False,
                 )
                 return {
@@ -261,7 +260,7 @@ class ContextAnswerService:
                 discovery_repeat_hits=discovery_state.repeat_hits,
                 discovery_stop_reason='tool_error',
                 clarifier_returned=False,
-                llm_first_mode_enabled=llm_first_mode_enabled,
+                llm_first_mode_enabled=True,
             )
             outage_message = build_outage_clarifier_message()
             return {

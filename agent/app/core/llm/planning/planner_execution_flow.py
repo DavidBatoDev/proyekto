@@ -292,7 +292,6 @@ def generate_chat_reply(
             'tokens_output': None,
             'tokens_total': None,
         }
-    llm_first_mode_enabled = bool(planner._settings.agent_llm_first_mode_enabled)
 
     try:
         result = planner._provider_orchestrator.call(
@@ -322,26 +321,12 @@ def generate_chat_reply(
             exc.code,
             exc.message,
         )
-        if llm_first_mode_enabled:
-            return {
-                'assistant_message': build_outage_clarifier_message(),
-                'planned_operations': [],
-                'response_mode': 'chat',
-                'preview_recommended': False,
-                'parse_mode': 'llm_first_chat_outage',
-                'provider_used': 'rule_based',
-                'fallback_used': False,
-                'provider_error_code': exc.code,
-                'tokens_input': exc.tokens_input,
-                'tokens_output': exc.tokens_output,
-                'tokens_total': exc.tokens_total,
-            }
         return {
-            'assistant_message': fallback_response,
+            'assistant_message': build_outage_clarifier_message(),
             'planned_operations': [],
             'response_mode': 'chat',
             'preview_recommended': False,
-            'parse_mode': 'rule_based_chat',
+            'parse_mode': 'llm_first_chat_outage',
             'provider_used': 'rule_based',
             'fallback_used': False,
             'provider_error_code': exc.code,

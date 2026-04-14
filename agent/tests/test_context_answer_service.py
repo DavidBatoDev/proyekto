@@ -45,9 +45,7 @@ class _FakeProviderOrchestrator:
 
 class ContextAnswerServiceCacheTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.settings = get_settings().model_copy(
-            update={'agent_llm_first_mode_enabled': True}
-        )
+        self.settings = get_settings()
         self.logger = logging.getLogger('context-answer-service-tests')
 
     def _service(self, execute_tool):
@@ -1033,9 +1031,6 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             return {'ok': True, 'name': name, 'args': args}
 
         service, _cache, _provider, _build_key = self._service(execute_tool)
-        service._settings = service._settings.model_copy(
-            update={'agent_llm_first_mode_enabled': True}
-        )
 
         def provider_call(operation, trace_context=None):  # noqa: ANN001
             calls['provider'] += 1
@@ -1086,9 +1081,6 @@ class ContextAnswerServiceCacheTests(unittest.TestCase):
             return {'ok': True, 'name': name, 'args': args}
 
         service, _cache, _provider, _build_key = self._service(execute_tool)
-        service._settings = service._settings.model_copy(
-            update={'agent_llm_first_mode_enabled': True}
-        )
 
         def provider_call(operation, trace_context=None):  # noqa: ANN001
             raise ProviderAdapterError(
