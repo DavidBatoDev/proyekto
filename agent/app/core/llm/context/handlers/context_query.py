@@ -405,6 +405,27 @@ class ContextQueryHandler(ToolHandlerBase):
             resolution_id: str | None = None
             seen_ids: set[str] = set()
             type_relaxed = False
+            # W7 — the batch `/ai/context/resolve` endpoint returns the same
+            # `matches[]` shape as the legacy `/context/search` endpoint plus a
+            # `top_match` block containing parent + children for the first
+            # candidate. Stashing each variant's top_match here lets us skip
+            # the follow-up parent+children HTTPs in `_build_resolve_unique_subgraph`
+            # when the planner's winning candidate matches a variant's top hit.
+            top_matches_by_id: dict[str, dict[str, Any]] = {}
+            subgraph_children_limit = max(1, min(int(limit), 20))
+
+            def _harvest_variant_payload(result: dict[str, Any]) -> None:
+                top_match = result.get('top_match') if isinstance(result, dict) else None
+                if not isinstance(top_match, dict):
+                    return
+                node_payload = top_match.get('node')
+                if not isinstance(node_payload, dict):
+                    return
+                top_id = str(node_payload.get('id') or '').strip()
+                if not top_id or top_id in top_matches_by_id:
+                    return
+                top_matches_by_id[top_id] = top_match
+
             if auto_correct_enabled:
                 query_variants = self._query_variants(label)
             else:
@@ -415,13 +436,14 @@ class ContextQueryHandler(ToolHandlerBase):
                 and len(query_variants) > 1
             ):
                 coroutines = [
-                    self._nest_client.context_search(
+                    self._context_resolve_coroutine(
                         roadmap_id=roadmap_id,
                         query=query,
                         node_type=node_type,
                         limit=limit,
                         auth_header=auth_value,
                         trace_id=trace_id,
+                        children_limit=subgraph_children_limit,
                     )
                     for query in query_variants
                 ]
@@ -433,20 +455,24 @@ class ContextQueryHandler(ToolHandlerBase):
                     (query, result if isinstance(result, dict) else {})
                     for query, result in zip(query_variants, parallel_results)
                 ]
+                for _query, result in search_results_by_variant:
+                    _harvest_variant_payload(result)
             else:
                 for query in query_variants:
                     search_result = await self._run_context_call(
                         session_context,
-                        self._nest_client.context_search(
+                        self._context_resolve_coroutine(
                             roadmap_id=roadmap_id,
                             query=query,
                             node_type=node_type,
                             limit=limit,
                             auth_header=auth_value,
                             trace_id=trace_id,
+                            children_limit=subgraph_children_limit,
                         ),
                     )
                     search_results_by_variant.append((query, search_result))
+                    _harvest_variant_payload(search_result)
                     if resolution_id is None:
                         maybe_resolution = search_result.get('resolution_id')
                         if isinstance(maybe_resolution, str) and maybe_resolution.strip():
@@ -474,13 +500,14 @@ class ContextQueryHandler(ToolHandlerBase):
                     and len(query_variants) > 1
                 ):
                     coroutines = [
-                        self._nest_client.context_search(
+                        self._context_resolve_coroutine(
                             roadmap_id=roadmap_id,
                             query=query,
                             node_type=None,
                             limit=limit,
                             auth_header=auth_value,
                             trace_id=trace_id,
+                            children_limit=subgraph_children_limit,
                         )
                         for query in query_variants
                     ]
@@ -492,20 +519,24 @@ class ContextQueryHandler(ToolHandlerBase):
                         (query, result if isinstance(result, dict) else {})
                         for query, result in zip(query_variants, parallel_results)
                     ]
+                    for _query, result in relaxed_search_results_by_variant:
+                        _harvest_variant_payload(result)
                 else:
                     for query in query_variants:
                         search_result = await self._run_context_call(
                             session_context,
-                            self._nest_client.context_search(
+                            self._context_resolve_coroutine(
                                 roadmap_id=roadmap_id,
                                 query=query,
                                 node_type=None,
                                 limit=limit,
                                 auth_header=auth_value,
                                 trace_id=trace_id,
+                                children_limit=subgraph_children_limit,
                             ),
                         )
                         relaxed_search_results_by_variant.append((query, search_result))
+                        _harvest_variant_payload(search_result)
                         if relaxed_resolution_id is None:
                             maybe_resolution = search_result.get('resolution_id')
                             if isinstance(maybe_resolution, str) and maybe_resolution.strip():
@@ -645,14 +676,19 @@ class ContextQueryHandler(ToolHandlerBase):
                 if selected_id in backend_choice_by_id:
                     selected_payload['backend_choice'] = backend_choice_by_id[selected_id]
 
-            resolved_subgraph = await self._build_resolve_unique_subgraph(
-                roadmap_id=roadmap_id,
-                selected=selected_payload,
-                session_context=session_context,
-                auth_header=auth_value,
-                trace_id=trace_id,
-                child_limit=min(max(1, limit), 20),
+            resolved_subgraph = self._subgraph_from_batch_top_match(
+                top_match=top_matches_by_id.get(selected_id) if selected_id else None,
+                selected_payload=selected_payload,
             )
+            if resolved_subgraph is None:
+                resolved_subgraph = await self._build_resolve_unique_subgraph(
+                    roadmap_id=roadmap_id,
+                    selected=selected_payload,
+                    session_context=session_context,
+                    auth_header=auth_value,
+                    trace_id=trace_id,
+                    child_limit=subgraph_children_limit,
+                )
             result = {
                 'status': resolved.status,
                 'resolution_id': resolution_id,

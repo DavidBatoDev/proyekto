@@ -249,10 +249,33 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                     usage_totals=usage_totals,
                 )
 
+            def _invoke_and_detect_truncation(messages: list[Any]) -> Any:
+                ai_message = tool_model.invoke(messages)
+                # If the model hit the output-token ceiling we set via the
+                # planner profile, its tool-call JSON may be partial or
+                # missing — treat this as a dedicated error so the planner
+                # retry loop can widen the budget (`repair_retry` profile)
+                # on the next attempt rather than surfacing a confusing
+                # schema-validation failure downstream.
+                if _response_finish_reason(ai_message) == 'length':
+                    usage_dict = self._extract_usage(ai_message) or {}
+                    raise ProviderAdapterError(
+                        provider=self.provider_name,
+                        code='planner_output_truncated',
+                        message=(
+                            'Planner hit the output-token ceiling before completing '
+                            'its tool call.'
+                        ),
+                        tokens_input=usage_dict.get('tokens_input'),
+                        tokens_output=usage_dict.get('tokens_output'),
+                        tokens_total=usage_dict.get('tokens_total'),
+                    )
+                return ai_message
+
             outcome = run_bounded_tool_loop(
                 provider=self.provider_name,
                 initial_messages=initial_messages,
-                invoke=lambda messages: tool_model.invoke(messages),
+                invoke=_invoke_and_detect_truncation,
                 tool_executor=tool_executor,
                 normalize_tool_args=self._normalize_tool_args,
                 extract_usage=self._extract_usage,
@@ -380,6 +403,10 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
             return self._settings.openai_planner_max_tokens
         if normalized_profile == 'simple_edit':
             profile_tokens = self._settings.openai_simple_edit_max_tokens
+            if profile_tokens is not None:
+                return profile_tokens
+        if normalized_profile == 'scoped_edit':
+            profile_tokens = self._settings.openai_planner_scoped_max_tokens
             if profile_tokens is not None:
                 return profile_tokens
         return self._settings.openai_planner_max_tokens
@@ -544,6 +571,22 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                     'tokens_cached': cached_tokens,
                 }
         return None
+
+
+def _response_finish_reason(ai_message: Any) -> str | None:
+    """Pull `finish_reason` out of a LangChain AIMessage's provider metadata.
+
+    OpenAI sets this to `'length'` when the response was cut off by
+    `max_tokens`. Other common values: `'stop'` (clean completion),
+    `'tool_calls'`, `'content_filter'`. Returns None when the metadata
+    isn't present (e.g. test doubles or unsupported providers).
+    """
+    response_metadata = getattr(ai_message, 'response_metadata', None)
+    if isinstance(response_metadata, dict):
+        finish_reason = response_metadata.get('finish_reason')
+        if isinstance(finish_reason, str):
+            return finish_reason.strip().lower() or None
+    return None
 
 
 def _extract_offending_operation_value(*, args: dict[str, Any], error_message: str) -> str:

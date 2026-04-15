@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 from urllib.parse import quote_plus
 from time import perf_counter
@@ -14,10 +15,71 @@ class NestRoadmapClient:
     def __init__(self) -> None:
         self._settings = get_settings()
         self._logger = logging.getLogger(__name__)
+        # Per-loop client cache. `httpx.AsyncClient`'s connection pool is
+        # bound to the event loop that created it — sockets get registered
+        # on that loop's selector. Sharing a client across loops (e.g. when
+        # the agent's sync tool dispatcher spins up `asyncio.run(...)` per
+        # call, creating a fresh loop each time) triggers cryptic
+        # "Event loop is closed" errors on the NEXT call, because any
+        # attempt to close the old client uses the new loop to touch
+        # sockets registered on the dead one.
+        #
+        # Instead, key clients by `id(loop)`. The main FastAPI event loop
+        # keeps its client for the process lifetime (huge TLS keep-alive
+        # win for actor fetch, commit, preview). Short-lived worker-thread
+        # loops each get a fresh client — no keep-alive across runs for
+        # those, but also no crashes. We deliberately do not attempt to
+        # close stale clients; when their loop is closed the OS will
+        # reclaim the sockets on GC / process exit.
+        self._clients_by_loop_id: dict[
+            int, tuple[asyncio.AbstractEventLoop, httpx.AsyncClient]
+        ] = {}
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        loop = asyncio.get_running_loop()
+        loop_id = id(loop)
+        cached = self._clients_by_loop_id.get(loop_id)
+        if cached is not None:
+            cached_loop, cached_client = cached
+            # Same id() doesn't guarantee same loop object: Python may reuse
+            # the memory address of a garbage-collected loop for a new one
+            # spun up by the next `asyncio.run(...)`. So we additionally
+            # check identity + whether the cached loop already closed. If
+            # either fails we drop the zombie entry without touching its
+            # client (any aclose attempt would cross-loop and crash).
+            if (
+                cached_loop is loop
+                and not cached_loop.is_closed()
+                and not cached_client.is_closed
+            ):
+                return cached_client
+            self._clients_by_loop_id.pop(loop_id, None)
+        client = httpx.AsyncClient(
+            timeout=self._settings.nest_timeout_seconds,
+            limits=httpx.Limits(
+                max_keepalive_connections=20,
+                max_connections=40,
+                keepalive_expiry=30.0,
+            ),
+        )
+        self._clients_by_loop_id[loop_id] = (loop, client)
+        return client
 
     async def aclose(self) -> None:
-        # Client instances are short-lived per request call.
-        return None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        entry = self._clients_by_loop_id.pop(id(loop), None)
+        if entry is None:
+            return
+        cached_loop, cached_client = entry
+        if (
+            cached_loop is loop
+            and not cached_loop.is_closed()
+            and not cached_client.is_closed
+        ):
+            await cached_client.aclose()
 
     async def preview(
         self,
@@ -306,10 +368,10 @@ class NestRoadmapClient:
             headers['X-Trace-Id'] = trace_id
 
         url = f"{self._settings.nest_api_base_url}{path}"
+        client = await self._get_client()
         started = perf_counter()
         network_started = perf_counter()
-        async with httpx.AsyncClient(timeout=self._settings.nest_timeout_seconds) as client:
-            response = await client.post(url, json=payload, headers=headers)
+        response = await client.post(url, json=payload, headers=headers)
         network_ms = int((perf_counter() - network_started) * 1000)
 
         if response.is_success:
@@ -374,10 +436,10 @@ class NestRoadmapClient:
             headers['X-Trace-Id'] = trace_id
 
         url = f"{self._settings.nest_api_base_url}{path}"
+        client = await self._get_client()
         started = perf_counter()
         network_started = perf_counter()
-        async with httpx.AsyncClient(timeout=self._settings.nest_timeout_seconds) as client:
-            response = await client.get(url, headers=headers)
+        response = await client.get(url, headers=headers)
         network_ms = int((perf_counter() - network_started) * 1000)
 
         if response.is_success:

@@ -29,6 +29,7 @@ import type {
   RoadmapAiCommitDto,
   RoadmapAiCommitResponseDto,
   RoadmapAiChangeTimelineEntryDto,
+  RoadmapAiContextChildDto,
   RoadmapAiContextChildrenQueryDto,
   RoadmapAiContextChildrenResponseDto,
   RoadmapAiContextActorResponseDto,
@@ -731,16 +732,32 @@ export class RoadmapAiService {
     traceId?: string,
   ): Promise<RoadmapAiContextResolveResponseDto> {
     const handlerStartedAt = Date.now();
-    const search = await this.searchContextNodes(
-      roadmapId,
-      {
-        query: query.query,
-        node_type: query.node_type,
-        limit: query.limit,
-      },
-      userId,
-      traceId,
-    );
+    // Parallelize the two independent Supabase round-trips:
+    //   1. `searchContextNodes` — scans the full-text candidate index.
+    //   2. `findFull` — fetches the roadmap graph we'll walk in-memory to
+    //      derive the top match's parent + children in one shot.
+    // The earlier version called `getContextNodeDetails` + `getContextNodeChildren`
+    // in Promise.all, but each of those internally called `findFull` again,
+    // giving us 2× findFull per batch (plus 3× authz). On Vercel that turned
+    // a 1.9s legacy resolve into a 5–6s batch — exactly the latency we set
+    // out to remove. Now: 1× authz (inside searchContextNodes) + 1× findFull.
+    const includeParent = query.include_parent !== false;
+    const includeChildren = query.include_children !== false;
+    const childrenLimit = Math.min(Math.max(query.children_limit ?? 10, 1), 50);
+    const needsState = includeParent || includeChildren;
+
+    const [search, fullState] = await Promise.all([
+      this.searchContextNodes(
+        roadmapId,
+        { query: query.query, node_type: query.node_type, limit: query.limit },
+        userId,
+        traceId,
+      ),
+      needsState
+        ? this.roadmapsRepo.findFull(roadmapId, userId).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+
     if (!search.matches.length) {
       this.logRoadmapAiHandlerTiming({
         event: 'roadmap_ai_context_resolve_timing',
@@ -757,28 +774,27 @@ export class RoadmapAiService {
       };
     }
     const top = search.matches[0];
-    const includeParent = query.include_parent !== false;
-    const includeChildren = query.include_children !== false;
-    const childrenLimit = Math.min(Math.max(query.children_limit ?? 10, 1), 50);
-    const [parentResult, childrenResult] = await Promise.all([
-      includeParent && top.parent_id
-        ? this.getContextNodeDetails(
-            roadmapId,
-            top.parent_id,
-            userId,
-            traceId,
-          ).catch(() => null)
-        : Promise.resolve(null),
-      includeChildren
-        ? this.getContextNodeChildren(
-            roadmapId,
+    let parentResult: RoadmapAiContextNodeResponseDto | null = null;
+    let childrenResult: RoadmapAiContextChildrenResponseDto = { children: [] };
+
+    if (needsState && fullState) {
+      const state = this.normalizeFullRoadmapState(
+        fullState as Record<string, unknown>,
+      );
+      if (includeParent && top.parent_id) {
+        parentResult = this.buildContextNodeDetailsFromState(state, top.parent_id);
+      }
+      if (includeChildren) {
+        childrenResult = {
+          children: this.buildContextNodeChildrenFromState(
+            state,
             top.id,
-            { limit: childrenLimit },
-            userId,
-            traceId,
-          ).catch(() => ({ children: [] }))
-        : Promise.resolve({ children: [] }),
-    ]);
+            childrenLimit,
+          ),
+        };
+      }
+    }
+
     this.logRoadmapAiHandlerTiming({
       event: 'roadmap_ai_context_resolve_timing',
       traceId,
@@ -796,6 +812,125 @@ export class RoadmapAiService {
         children: childrenResult.children,
       },
     };
+  }
+
+  private buildContextNodeDetailsFromState(
+    state: FullRoadmapState,
+    nodeId: string,
+  ): RoadmapAiContextNodeResponseDto | null {
+    if (!this.isUuid(nodeId)) return null;
+    const roadmapNodeId = this.requireNodeId(state.id, 'roadmap');
+    if (roadmapNodeId === nodeId) {
+      return {
+        id: roadmapNodeId,
+        type: 'roadmap',
+        title: state.name,
+        description: state.description,
+        status: state.status,
+        start_date: state.start_date,
+        end_date: state.end_date,
+      };
+    }
+    const locator = this.findNodeById(state, nodeId);
+    if (!locator || locator.type === 'roadmap') return null;
+    if (locator.type === 'epic') {
+      return {
+        id: this.requireNodeId(locator.epic.id, 'epic'),
+        type: 'epic',
+        title: locator.epic.title ?? 'Untitled epic',
+        description: locator.epic.description,
+        status: locator.epic.status,
+        priority: locator.epic.priority,
+        start_date: locator.epic.start_date,
+        end_date: locator.epic.end_date,
+        parent_id: roadmapNodeId,
+      };
+    }
+    if (locator.type === 'feature') {
+      return {
+        id: this.requireNodeId(locator.feature.id, 'feature'),
+        type: 'feature',
+        title: locator.feature.title ?? 'Untitled feature',
+        description: locator.feature.description,
+        status: locator.feature.status,
+        start_date: locator.feature.start_date,
+        end_date: locator.feature.end_date,
+        parent_id: this.requireNodeId(locator.epic.id, 'epic'),
+      };
+    }
+    return {
+      id: this.requireNodeId(locator.task.id, 'task'),
+      type: 'task',
+      title: locator.task.title ?? 'Untitled task',
+      description: locator.task.description,
+      status: locator.task.status,
+      priority: locator.task.priority,
+      due_date: locator.task.due_date,
+      parent_id: this.requireNodeId(locator.feature.id, 'feature'),
+    };
+  }
+
+  private buildContextNodeChildrenFromState(
+    state: FullRoadmapState,
+    nodeId: string,
+    limit: number,
+  ): RoadmapAiContextChildDto[] {
+    if (!this.isUuid(nodeId)) return [];
+    const roadmapNodeId = this.requireNodeId(state.id, 'roadmap');
+    if (roadmapNodeId === nodeId) {
+      return (state.roadmap_epics ?? []).slice(0, limit).flatMap((epic) =>
+        epic.id
+          ? [
+              {
+                id: epic.id,
+                type: 'epic' as const,
+                title: epic.title ?? 'Untitled epic',
+                status: epic.status,
+                parent_id: roadmapNodeId,
+              },
+            ]
+          : [],
+      );
+    }
+    const locator = this.findNodeById(state, nodeId);
+    if (!locator) return [];
+    if (locator.type === 'epic') {
+      const parentId = this.requireNodeId(locator.epic.id, 'epic');
+      return (locator.epic.roadmap_features ?? [])
+        .slice(0, limit)
+        .flatMap((feature) =>
+          feature.id
+            ? [
+                {
+                  id: feature.id,
+                  type: 'feature' as const,
+                  title: feature.title ?? 'Untitled feature',
+                  status: feature.status,
+                  parent_id: parentId,
+                },
+              ]
+            : [],
+        );
+    }
+    if (locator.type === 'feature') {
+      const parentId = this.requireNodeId(locator.feature.id, 'feature');
+      return (locator.feature.roadmap_tasks ?? [])
+        .slice(0, limit)
+        .flatMap((task) =>
+          task.id
+            ? [
+                {
+                  id: task.id,
+                  type: 'task' as const,
+                  title: task.title ?? 'Untitled task',
+                  status: task.status,
+                  parent_id: parentId,
+                },
+              ]
+            : [],
+        );
+    }
+    return [];
   }
 
   async getContextFeatures(

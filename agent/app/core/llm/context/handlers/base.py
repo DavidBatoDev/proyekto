@@ -208,7 +208,15 @@ class ToolHandlerBase:
     def _query_variants(self, label: str) -> list[str]:
         base = self._normalize_query_text(label)
         variants: list[str] = []
-        if base:
+        # Noise-word-stripped variant first so the parallel backend search
+        # hits the cleaner form (which matches exact titles) rather than
+        # falling through to the 2s fuzzy/summary fallback. We keep the
+        # original as a subsequent variant so labels that intentionally
+        # contain "my"/"the"/"our" (e.g. "My App") still resolve.
+        stripped = self._strip_label_noise_words(base)
+        if stripped and stripped != base:
+            variants.append(stripped)
+        if base and base not in variants:
             variants.append(base)
         compact = re.sub(r'[^a-zA-Z0-9\s-]', ' ', base)
         compact = re.sub(r'\s+', ' ', compact).strip()
@@ -218,6 +226,27 @@ class ToolHandlerBase:
         if fallback and fallback not in variants:
             variants.append(fallback)
         return variants[:3]
+
+    # Leading determiners / possessives the planner often echoes from the
+    # user's phrasing (e.g. "Rename my PM Module..." → label="my PM Module").
+    # Stripping them creates a clean-title variant that exact-matches the
+    # backend's stored titles without going through fuzzy fallback.
+    _LABEL_NOISE_LEADING = re.compile(
+        r'^\s*(?:my|our|your|the|this|that|these|those|a|an)\s+',
+        re.IGNORECASE,
+    )
+
+    def _strip_label_noise_words(self, value: str) -> str:
+        if not value:
+            return value
+        stripped = value
+        # Peel off up to two leading noise words (handles "the my app").
+        for _ in range(2):
+            new_stripped = self._LABEL_NOISE_LEADING.sub('', stripped)
+            if new_stripped == stripped:
+                break
+            stripped = new_stripped
+        return stripped.strip()
 
     async def _resolve_epic_fuzzy_fallback_matches(
         self,
@@ -319,6 +348,115 @@ class ToolHandlerBase:
         lowered = value.strip().lower()
         lowered = re.sub(r'[^a-z0-9\s]+', ' ', lowered)
         return ' '.join(lowered.split())
+
+    def _context_resolve_coroutine(
+        self,
+        *,
+        roadmap_id: str,
+        query: str,
+        node_type: str | None,
+        limit: int,
+        auth_header: str | None,
+        trace_id: str | None,
+        children_limit: int,
+    ) -> Any:
+        """Return a coroutine for the resolve step, preferring the batch endpoint.
+
+        When the nest_client exposes `context_resolve` (production path),
+        use the new `/ai/context/resolve` endpoint — it returns `matches[]`
+        plus a `top_match` subgraph (parent + children) in one round-trip.
+        When only `context_search` is available (legacy clients and many
+        unit-test doubles that predate the batch endpoint), fall back to
+        the original behaviour so callers don't need to special-case.
+        """
+        context_resolve = getattr(self._nest_client, 'context_resolve', None)
+        if callable(context_resolve):
+            return context_resolve(
+                roadmap_id=roadmap_id,
+                query=query,
+                node_type=node_type,
+                limit=limit,
+                auth_header=auth_header,
+                include_parent=True,
+                include_children=True,
+                children_limit=children_limit,
+                trace_id=trace_id,
+            )
+        return self._nest_client.context_search(
+            roadmap_id=roadmap_id,
+            query=query,
+            node_type=node_type,
+            limit=limit,
+            auth_header=auth_header,
+            trace_id=trace_id,
+        )
+
+    def _subgraph_from_batch_top_match(
+        self,
+        *,
+        top_match: dict[str, Any] | None,
+        selected_payload: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Reuse the `/ai/context/resolve` top_match as a subgraph, if valid.
+
+        The batch endpoint returns parent + children alongside the matches
+        it resolved. When the planner's winning candidate matches the
+        batch's top hit, we can skip the sequential parent+children HTTP
+        pair in `_build_resolve_unique_subgraph` and use the batch payload
+        directly — saving ~0.7–1s of serial round-trips on Vercel per
+        resolve. Returns None when the batch data isn't usable, so the
+        caller falls back to the original discovery path.
+        """
+        if not isinstance(top_match, dict) or not isinstance(selected_payload, dict):
+            return None
+        top_node = top_match.get('node')
+        if not isinstance(top_node, dict):
+            return None
+        top_id = str(top_node.get('id') or '').strip()
+        selected_id = str(selected_payload.get('id') or '').strip()
+        if not top_id or top_id != selected_id:
+            return None
+        node_payload = self._compact_subgraph_node_payload(
+            selected_payload,
+            default_type=None,
+            include_status=False,
+        )
+        if node_payload is None:
+            return None
+        subgraph: dict[str, Any] = {'node': node_payload}
+        parent_payload = top_match.get('parent')
+        if isinstance(parent_payload, dict):
+            parent_id = str(parent_payload.get('id') or '').strip()
+            parent_type = str(parent_payload.get('type') or '').strip().lower()
+            parent_title = str(parent_payload.get('title') or '').strip()
+            if parent_id and parent_type in {'epic', 'feature', 'roadmap'}:
+                subgraph['parent'] = {
+                    'id': parent_id,
+                    'type': parent_type,
+                    'title': parent_title,
+                }
+        children_payload = top_match.get('children')
+        if isinstance(children_payload, list):
+            clean_children: list[dict[str, Any]] = []
+            for child in children_payload:
+                if not isinstance(child, dict):
+                    continue
+                child_id = str(child.get('id') or '').strip()
+                child_type = str(child.get('type') or '').strip().lower()
+                child_title = str(child.get('title') or '').strip()
+                if not child_id or child_type not in {'epic', 'feature', 'task'}:
+                    continue
+                entry: dict[str, Any] = {
+                    'id': child_id,
+                    'type': child_type,
+                    'title': child_title,
+                }
+                child_status = child.get('status')
+                if isinstance(child_status, str) and child_status.strip():
+                    entry['status'] = child_status.strip()
+                clean_children.append(entry)
+            subgraph['children'] = clean_children
+        return subgraph
 
     async def _build_resolve_unique_subgraph(
         self,

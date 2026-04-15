@@ -8,6 +8,9 @@ from typing import Any
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import AgentSession, IntentType
 from app.core.logging_utils import log_event
+from app.core.orchestration.context.actor_context_provider import (
+    is_actor_context_required_message,
+)
 
 _ACTOR_FETCH_EXECUTOR: ThreadPoolExecutor | None = None
 
@@ -135,6 +138,30 @@ def dispatch_pre_planning_phase(
             pending_confirmation_mode=pending_context.confirmation_mode,
         )
 
+    # Speculative actor-context prefetch: kick off the fetch BEFORE intent
+    # classification when the cheap heuristics already make it likely we'll
+    # need actor data. The same regex (`is_actor_context_required_message`)
+    # gates both this prefetch and the formal `should_fetch_actor_context`
+    # decision below, so this is never wasted work — it just shifts the
+    # 1.5s round-trip to overlap with classification + LLM call #1 instead
+    # of running serially before them.
+    speculative_actor_future: Future[None] | None = None
+    if (
+        auth_header
+        and session.metadata.actor_context is None
+        and is_actor_context_required_message(user_message)
+    ):
+        def _run_speculative_actor_fetch() -> None:
+            self._ensure_actor_context(
+                session=session,
+                auth_header=auth_header,
+                trace_id=trace_id,
+            )
+
+        speculative_actor_future = _get_actor_fetch_executor().submit(
+            _run_speculative_actor_fetch
+        )
+
     session_context = self._build_session_context(session, auth_header, trace_id)
     if should_force_edit_preview:
         preview_intent: IntentType = 'roadmap_edit'
@@ -168,24 +195,36 @@ def dispatch_pre_planning_phase(
     actor_fetch_future: Future[None] | None = None
     if should_fetch_actor:
         actor_fetch_attempted = True
+        if speculative_actor_future is not None:
+            # Speculative prefetch already in flight (or finished) — reuse it
+            # rather than launching a second fetch for the same data.
+            actor_fetch_future = speculative_actor_future
+            speculative_actor_future = None
+        else:
+            def _run_actor_fetch() -> None:
+                self._ensure_actor_context(
+                    session=session,
+                    auth_header=auth_header,
+                    trace_id=trace_id,
+                )
 
-        def _run_actor_fetch() -> None:
-            self._ensure_actor_context(
-                session=session,
-                auth_header=auth_header,
-                trace_id=trace_id,
+            # Submit on a shared thread pool so the fetch overlaps with all
+            # downstream pre-dispatch work (deictic resolution, session_context
+            # rebuild, the planner's prompt construction, and the first LLM
+            # network call). The future is joined at every consumer site that
+            # reads session_context['actor_context'] via
+            # `resolve_deferred_actor_context`.
+            actor_fetch_future = _get_actor_fetch_executor().submit(
+                _run_actor_fetch
             )
-
-        # Submit on a shared thread pool so the fetch overlaps with all
-        # downstream pre-dispatch work (deictic resolution, session_context
-        # rebuild, the planner's prompt construction, and the first LLM
-        # network call). The future is joined at every consumer site that
-        # reads session_context['actor_context'] via
-        # `resolve_deferred_actor_context`.
-        actor_fetch_future = _get_actor_fetch_executor().submit(
-            _run_actor_fetch
-        )
     else:
+        if speculative_actor_future is not None:
+            # Formal decision says we don't need actor — best-effort cancel.
+            # If already running, the result still populates
+            # session.metadata.actor_context and benefits the next request;
+            # not wasted, just unattributed.
+            speculative_actor_future.cancel()
+            speculative_actor_future = None
         actor_fetch_skipped_reason = actor_skip_reason
         if actor_skip_reason == 'missing_auth_header':
             self._clear_actor_context_for_missing_auth(

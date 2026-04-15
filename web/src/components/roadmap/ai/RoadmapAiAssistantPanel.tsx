@@ -788,6 +788,31 @@ const resolveCommitLifecycleFromTimeline = (
     };
   }
 
+  // When the server told us auto-commit was enqueued but we haven't yet
+  // seen a terminal auto_commit_* event, keep the UI in "committing" so
+  // the user doesn't see a spurious "did not finish" toast while the
+  // backend is still working. Slow commits (10s+ on Vercel cold starts)
+  // legitimately race past the poll deadline; the caller will reconcile
+  // against the roadmap itself once the terminal event eventually lands.
+  const messageCompletedStep = [...timeline.steps]
+    .reverse()
+    .find((step) => step.event === "message_completed");
+  const autoCommitEnqueued = Boolean(
+    messageCompletedStep?.details &&
+      (messageCompletedStep.details as { auto_commit_async_enqueued?: unknown })
+        .auto_commit_async_enqueued,
+  );
+  if (autoCommitEnqueued) {
+    return {
+      state: "committing",
+      impactedItems: [],
+      updatedAt:
+        messageCompletedStep?.ts ||
+        timeline.completedAt ||
+        new Date().toISOString(),
+    };
+  }
+
   return null;
 };
 
@@ -1641,7 +1666,23 @@ export function RoadmapAiAssistantPanel({
     }
 
     const finish = async () => {
-      const deadline = Date.now() + 12_000;
+      // 30s accommodates slow Vercel cold-start commits (observed 10-15s).
+      // The backend sets `trace.done=true` on auto_commit_async_completed
+      // or auto_commit_async_failed, so we usually break well before this
+      // deadline. When we do hit it, `resolveCommitLifecycleFromTimeline`
+      // keeps the UI in "committing" (not "failed") for enqueued-but-not-yet-
+      // completed commits — avoids a false-negative toast.
+      const deadline = Date.now() + 30_000;
+      // Track the latest computed timeline locally so the finalize block
+      // below doesn't depend on `liveActivityRef.current` being synced.
+      // The ref is updated via a useEffect after render, so when the loop
+      // breaks synchronously on `response.done`, the ref still holds the
+      // previous iteration's timeline — missing the just-arrived
+      // auto_commit_async_completed event. That stale read triggers the
+      // `commitLifecycle: 'failed'` fallback even when the commit actually
+      // succeeded.
+      let latestTimeline: RoadmapAiActivityTimeline | null =
+        liveActivityRef.current;
       while (!loop.cancelled && Date.now() < deadline) {
         if (loop.pollingFailed) break;
         try {
@@ -1656,15 +1697,17 @@ export function RoadmapAiAssistantPanel({
           );
           if (loop.cancelled) return;
           loop.afterSeq = Math.max(loop.afterSeq, response.next_seq);
-          setLiveActivity((prev) =>
-            toTimelineFromTraceResponse(
+          setLiveActivity((prev) => {
+            const next = toTimelineFromTraceResponse(
               progressDetailMode,
               loop.traceId,
               response,
               prev,
               progressPresentationMode,
-            ),
-          );
+            );
+            latestTimeline = next;
+            return next;
+          });
           await maybeRefreshRoadmapFromTraceEvents(
             loop.traceId,
             response.events,
@@ -1697,7 +1740,7 @@ export function RoadmapAiAssistantPanel({
         pollLoopRef.current = null;
       }
 
-      const timeline = liveActivityRef.current;
+      const timeline = latestTimeline ?? liveActivityRef.current;
       if (
         timeline &&
         timeline.traceId === traceId &&

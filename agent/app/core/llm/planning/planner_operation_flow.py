@@ -765,6 +765,7 @@ def plan_operations(
         max_messages=planner._settings.max_edit_history_messages,
     )
     trace_id = session_context.get('trace_id')
+    edit_sub_intent: str | None = None
     if intent_type == 'roadmap_plan':
         tool_definitions = get_operation_tools()
     else:
@@ -777,6 +778,7 @@ def plan_operations(
                 metrics['planner_tools_scope'] = edit_sub_intent
                 metrics['planner_tools_count'] = len(tool_definitions)
         else:
+            edit_sub_intent = None
             tool_definitions = get_edit_mode_tools()
     total_edit_turns = max(1, int(planner._settings.max_edit_tool_turns))
     react_loop_turn_raw = session_context.get('_react_loop_turn')
@@ -1375,7 +1377,14 @@ def plan_operations(
             ]
         edit_turns = max(1, min(edit_turns, 2))
 
-    planner_profile: str | None = None
+    # When the W5 sub-intent classifier matched (e.g. rename_only /
+    # delete_only), use the reduced `scoped_edit` planner profile so the
+    # model call is budgeted against `openai_planner_scoped_max_tokens`
+    # (default 400) rather than the full 1200 ceiling. On the rare
+    # truncation (finish_reason=='length'), the retry block below widens
+    # the budget by switching to the `repair_retry` profile
+    # (openai_planner_retry_max_tokens, default 2000).
+    planner_profile: str | None = 'scoped_edit' if edit_sub_intent else None
 
     if intent_type == 'roadmap_plan':
         planner_prompt = (
@@ -1460,6 +1469,9 @@ def plan_operations(
         planner_prompt = (
             'You are in edit planning mode.\n'
             'Resolve named targets to node IDs with resolve_node_reference before asking for IDs.\n'
+            'When calling resolve_node_reference, pass the bare target title — omit leading '
+            'possessives and articles (my/our/your/the/this/that/a/an). For example, '
+            'for "Rename my PM Module to ..." pass label="PM Module", not "my PM Module".\n'
             'Use context tools when needed to resolve node IDs and hierarchy before drafting operations.\n'
             'Use intent-level helper tools for common actions (create_*, move_*, reorder_*, bulk_*).\n'
             f'{operation_op_guardrail}\n'
@@ -1649,6 +1661,18 @@ def plan_operations(
                 )
                 if synthesized_state is not None:
                     return synthesized_state
+            if exc.code == 'planner_output_truncated' and attempt + 1 < max_attempts:
+                # Scoped profile's output ceiling was too tight for this
+                # turn — retry once at the full repair budget. Same
+                # messages, so the OpenAI prompt-cache prefix still hits.
+                metrics = session_context.setdefault('_phase_metrics', {})
+                if isinstance(metrics, dict):
+                    metrics['planner_max_tokens_truncated'] = int(
+                        metrics.get('planner_max_tokens_truncated') or 0
+                    ) + 1
+                repair_attempted = True
+                planner_profile = 'repair_retry'
+                continue
             if exc.code in {'invalid_operation_payload', 'missing_tool_call'} and attempt + 1 < max_attempts:
                 enum_op_payload = (
                     exc.code == 'invalid_operation_payload'
