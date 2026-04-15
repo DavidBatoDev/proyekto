@@ -2,10 +2,61 @@ from __future__ import annotations
 
 import unittest
 
-from app.core.tools.registry import parse_plan_tool_args
+from app.core.tools.registry import get_planning_tool, parse_plan_tool_args
 
 
 class ToolRegistryParsePlanTests(unittest.TestCase):
+    def test_get_planning_tool_requires_create_titles_and_parent_targets(self) -> None:
+        tool = get_planning_tool()
+        operations_item = (
+            tool.get('function', {})
+            .get('parameters', {})
+            .get('properties', {})
+            .get('operations', {})
+            .get('items', {})
+        )
+
+        all_of = operations_item.get('allOf')
+        self.assertIsInstance(all_of, list)
+        assert isinstance(all_of, list)
+
+        def _rule_for(op_name: str) -> dict[str, object] | None:
+            for rule in all_of:
+                if not isinstance(rule, dict):
+                    continue
+                if_op = (
+                    rule.get('if', {})
+                    .get('properties', {})
+                    .get('op', {})
+                    .get('const')
+                )
+                if if_op == op_name:
+                    return rule
+            return None
+
+        for op_name in ('add_epic', 'add_feature', 'add_task'):
+            op_rule = _rule_for(op_name)
+            self.assertIsNotNone(op_rule)
+            assert isinstance(op_rule, dict)
+            then_block = op_rule.get('then', {})
+            self.assertIn('data', then_block.get('required', []))
+            data_schema = then_block.get('properties', {}).get('data', {})
+            self.assertIn('title', data_schema.get('required', []))
+
+        add_feature_rule = _rule_for('add_feature')
+        self.assertIsNotNone(add_feature_rule)
+        assert isinstance(add_feature_rule, dict)
+        add_feature_parent_one_of = add_feature_rule.get('then', {}).get('oneOf', [])
+        self.assertIn({'required': ['parent_id']}, add_feature_parent_one_of)
+        self.assertIn({'required': ['parent_ref']}, add_feature_parent_one_of)
+
+        add_task_rule = _rule_for('add_task')
+        self.assertIsNotNone(add_task_rule)
+        assert isinstance(add_task_rule, dict)
+        add_task_parent_one_of = add_task_rule.get('then', {}).get('oneOf', [])
+        self.assertIn({'required': ['parent_id']}, add_task_parent_one_of)
+        self.assertIn({'required': ['parent_ref']}, add_task_parent_one_of)
+
     def test_parse_add_feature_normalizes_title_aliases(self) -> None:
         _, operations = parse_plan_tool_args(
             {
@@ -22,6 +73,63 @@ class ToolRegistryParsePlanTests(unittest.TestCase):
         self.assertEqual(len(operations), 1)
         self.assertEqual(operations[0].op.value, 'add_feature')
         self.assertEqual(operations[0].data, {'title': 'Authentication'})
+
+    def test_parse_add_epic_status_alias_normalizes_for_backend_enum(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'create epic',
+                'operations': [
+                    {
+                        'op': 'add_epic',
+                        'data': {
+                            'title': 'Agent Core',
+                            'status': 'Not started',
+                        },
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual((operations[0].data or {}).get('status'), 'backlog')
+
+    def test_parse_add_feature_status_alias_normalizes_for_backend_enum(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'create feature',
+                'operations': [
+                    {
+                        'op': 'add_feature',
+                        'parent_id': '123e4567-e89b-12d3-a456-426614174000',
+                        'data': {
+                            'title': 'Authentication',
+                            'status': 'Not started',
+                        },
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual((operations[0].data or {}).get('status'), 'not_started')
+
+    def test_parse_add_task_status_alias_moves_into_data_and_normalizes(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'create task',
+                'operations': [
+                    {
+                        'op': 'add_task',
+                        'parent_id': '123e4567-e89b-12d3-a456-426614174000',
+                        'status': 'Todo',
+                        'data': {
+                            'title': 'Login flow',
+                        },
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual((operations[0].data or {}).get('status'), 'todo')
+        self.assertIsNone(operations[0].status)
 
     def test_parse_update_node_normalizes_top_level_patch_aliases(self) -> None:
         _, operations = parse_plan_tool_args(
@@ -116,6 +224,58 @@ class ToolRegistryParsePlanTests(unittest.TestCase):
         self.assertEqual(len(operations), 1)
         self.assertEqual(operations[0].status, 'in_progress')
 
+    def test_parse_mark_status_normalizes_epic_not_started_to_backlog(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'update epic status',
+                'operations': [
+                    {
+                        'op': 'mark_status',
+                        'node_type': 'epic',
+                        'node_id': '123e4567-e89b-12d3-a456-426614174000',
+                        'status': 'Not started',
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].status, 'backlog')
+
+    def test_parse_mark_status_infers_node_type_from_create_temp_refs(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'create and mark',
+                'operations': [
+                    {
+                        'op': 'add_epic',
+                        'temp_id': 'epic_agent_core',
+                        'data': {'title': 'Agent Core'},
+                    },
+                    {
+                        'op': 'add_feature',
+                        'parent_ref': 'epic_agent_core',
+                        'temp_id': 'f_auth',
+                        'data': {'title': 'Authentication'},
+                    },
+                    {
+                        'op': 'mark_status',
+                        'node_ref': 'epic_agent_core',
+                        'status': 'Not started',
+                    },
+                    {
+                        'op': 'mark_status',
+                        'node_ref': 'f_auth',
+                        'status': 'todo',
+                    },
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 4)
+        self.assertEqual(operations[2].node_type.value, 'epic')
+        self.assertEqual(operations[2].status, 'backlog')
+        self.assertEqual(operations[3].node_type.value, 'feature')
+        self.assertEqual(operations[3].status, 'not_started')
+
     def test_parse_update_task_assignee_alias_normalizes_unassign_token(self) -> None:
         _, operations = parse_plan_tool_args(
             {
@@ -201,6 +361,69 @@ class ToolRegistryParsePlanTests(unittest.TestCase):
         self.assertEqual(operations[0].parent_ref, 'tmp_epic_1')
         self.assertEqual(operations[0].temp_id, 'tmp_feature_1')
 
+    def test_parse_add_feature_normalizes_short_temp_id_alias(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'create feature',
+                'operations': [
+                    {
+                        'op': 'add_feature',
+                        'parent_ref': 'epic_1',
+                        'temp_id': 'f_auth',
+                        'data': {'title': 'Authentication'},
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].temp_id, 'feat_auth')
+
+    def test_parse_add_task_normalizes_short_parent_ref_alias(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'create task',
+                'operations': [
+                    {
+                        'op': 'add_task',
+                        'parent_ref': 'f_auth',
+                        'temp_id': 't_login_flow',
+                        'data': {'title': 'Login flow'},
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].parent_ref, 'feat_auth')
+
+    def test_parse_create_chain_keeps_refs_consistent_after_alias_normalization(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'create chain',
+                'operations': [
+                    {
+                        'op': 'add_epic',
+                        'temp_id': 'epic_1',
+                        'data': {'title': 'Agent Core'},
+                    },
+                    {
+                        'op': 'add_feature',
+                        'parent_ref': 'epic_1',
+                        'temp_id': 'f_auth',
+                        'data': {'title': 'Authentication'},
+                    },
+                    {
+                        'op': 'add_task',
+                        'parent_ref': 'f_auth',
+                        'temp_id': 't_login',
+                        'data': {'title': 'Login flow'},
+                    },
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 3)
+        self.assertEqual(operations[1].temp_id, 'feat_auth')
+        self.assertEqual(operations[2].parent_ref, 'feat_auth')
+
     def test_parse_update_node_accepts_node_ref(self) -> None:
         _, operations = parse_plan_tool_args(
             {
@@ -218,6 +441,57 @@ class ToolRegistryParsePlanTests(unittest.TestCase):
         self.assertEqual(len(operations), 1)
         self.assertEqual(operations[0].node_ref, 'tmp_feature_1')
         self.assertEqual(operations[0].patch, {'title': 'Auth V2'})
+
+    def test_parse_update_node_promotes_target_id_alias(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'update node target alias',
+                'operations': [
+                    {
+                        'op': 'update_node',
+                        'target_id': '123e4567-e89b-12d3-a456-426614174000',
+                        'patch': {'title': 'Auth V2'},
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].node_id, '123e4567-e89b-12d3-a456-426614174000')
+        self.assertEqual(operations[0].patch, {'title': 'Auth V2'})
+
+    def test_parse_update_node_promotes_feature_id_alias(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'update node feature alias',
+                'operations': [
+                    {
+                        'op': 'update_node',
+                        'feature_id': '123e4567-e89b-12d3-a456-426614174000',
+                        'patch': {'description': 'Updated'},
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].node_id, '123e4567-e89b-12d3-a456-426614174000')
+        self.assertEqual(operations[0].patch, {'description': 'Updated'})
+
+    def test_parse_update_node_promotes_target_ref_alias(self) -> None:
+        _, operations = parse_plan_tool_args(
+            {
+                'assistant_message': 'update node target ref alias',
+                'operations': [
+                    {
+                        'op': 'update_node',
+                        'target_ref': 'f_auth',
+                        'patch': {'description': 'Updated'},
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].node_ref, 'feat_auth')
+        self.assertEqual(operations[0].patch, {'description': 'Updated'})
 
     def test_parse_add_feature_rejects_parent_id_parent_ref_conflict(self) -> None:
         with self.assertRaises(ValueError) as ctx:

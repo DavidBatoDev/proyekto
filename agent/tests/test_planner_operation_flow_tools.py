@@ -1949,6 +1949,88 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         self.assertGreaterEqual(len(observed_prompts), 2)
         self.assertIn('SEMANTIC OPERATION CONTRACT REPAIR:', observed_prompts[1])
 
+    def test_semantic_missing_add_epic_title_retry_includes_targeted_guidance(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+        planner._settings.agent_react_max_attempts = 2
+        planner._settings.agent_react_repair_retries = 1
+        observed_prompts: list[str] = []
+        call_counter = {'count': 0}
+
+        class _MissingTitleRetryOrchestrator:
+            def call(self, operation, trace_context=None):  # noqa: ANN001
+                class _Adapter:
+                    def plan_operations_with_tools(
+                        self,
+                        *,
+                        system_prompt,
+                        planner_prompt,
+                        history_messages,
+                        tools,
+                        tool_executor,
+                        max_tool_turns,
+                        planner_profile=None,
+                    ):
+                        call_counter['count'] += 1
+                        observed_prompts.append(str(planner_prompt))
+                        if call_counter['count'] == 1:
+                            return (
+                                'Prepared create chain.',
+                                [
+                                    {
+                                        'op': 'add_epic',
+                                        'temp_id': 'tmp_epic_agent_core',
+                                        'data': {},
+                                    }
+                                ],
+                            )
+                        return (
+                            'Prepared create chain.',
+                            [
+                                {
+                                    'op': 'add_epic',
+                                    'temp_id': 'tmp_epic_agent_core',
+                                    'data': {'title': 'Agent Core'},
+                                }
+                            ],
+                        )
+
+                return SimpleNamespace(
+                    value=operation(_Adapter()),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                    tokens_input=1,
+                    tokens_output=1,
+                    tokens_total=2,
+                )
+
+        planner._provider_orchestrator = _MissingTitleRetryOrchestrator()
+        result = plan_operations(
+            planner,
+            {
+                'user_message': 'create epic Agent Core',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': 'r1',
+                    'trace_id': 'trace-semantic-add-epic-title-retry',
+                },
+            },
+        )
+
+        self.assertEqual(call_counter['count'], 2)
+        self.assertEqual(result.get('response_mode'), 'edit_plan')
+        planned_operations = result.get('planned_operations')
+        self.assertIsInstance(planned_operations, list)
+        assert isinstance(planned_operations, list)
+        self.assertEqual(len(planned_operations), 1)
+        self.assertEqual((planned_operations[0].data or {}).get('title'), 'Agent Core')
+        self.assertGreaterEqual(len(observed_prompts), 2)
+        self.assertIn('SEMANTIC OPERATION CONTRACT REPAIR:', observed_prompts[1])
+        self.assertIn('Each add_epic operation must include data.title', observed_prompts[1])
+
     def test_llm_first_provider_timeout_still_uses_outage_clarifier_when_flag_enabled(self) -> None:
         captured: dict[str, object] = {}
         planner = _FakePlanner(captured)

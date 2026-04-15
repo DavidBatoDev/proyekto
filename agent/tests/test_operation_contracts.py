@@ -64,6 +64,37 @@ class OperationContractsTests(unittest.TestCase):
         assert validation_error is not None
         self.assertEqual(validation_error.get('reason'), 'mark_status.status_invalid')
 
+    def test_mark_status_epic_accepts_backlog_and_rejects_not_started(self) -> None:
+        valid_operations = [
+            RoadmapOperation(
+                op='mark_status',
+                node_type='epic',
+                node_id='123e4567-e89b-12d3-a456-426614174000',
+                status='backlog',
+            )
+        ]
+        validation_error = validate_operation_contract(
+            valid_operations,
+            is_uuid=self._is_uuid,
+        )
+        self.assertIsNone(validation_error)
+
+        invalid_operations = [
+            RoadmapOperation(
+                op='mark_status',
+                node_type='epic',
+                node_id='123e4567-e89b-12d3-a456-426614174000',
+                status='not_started',
+            )
+        ]
+        validation_error = validate_operation_contract(
+            invalid_operations,
+            is_uuid=self._is_uuid,
+        )
+        self.assertIsNotNone(validation_error)
+        assert validation_error is not None
+        self.assertEqual(validation_error.get('reason'), 'mark_status.status_invalid')
+
     def test_shift_dates_requires_delta_days(self) -> None:
         operations = [
             RoadmapOperation(

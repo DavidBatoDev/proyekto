@@ -10,6 +10,21 @@ from app.core.contracts.operations import OperationType, RoadmapOperation
 from app.core.uuid_utils import normalize_uuid
 
 TASK_STATUS_VALUES = ['todo', 'in_progress', 'in_review', 'done', 'blocked']
+FEATURE_STATUS_VALUES = [
+    'not_started',
+    'in_progress',
+    'in_review',
+    'completed',
+    'blocked',
+]
+EPIC_STATUS_VALUES = [
+    'backlog',
+    'planned',
+    'in_progress',
+    'in_review',
+    'completed',
+    'on_hold',
+]
 TASK_STATUS_FILTER_VALUES = [*TASK_STATUS_VALUES, 'all']
 FEATURE_STATUS_FILTER_VALUES = [
     'not_started',
@@ -82,6 +97,32 @@ _UNASSIGN_ASSIGNEE_TOKENS = {
     'no assignee',
     'remove assignee',
     'clear assignee',
+}
+
+_VALID_TEMP_REF_PATTERN = re.compile(
+    r'(?i)^(?:tmp|t|temp|epic|feature|feat|task)[_-][a-z0-9][a-z0-9_-]{0,63}$'
+)
+_TEMP_REF_ALIAS_PATTERN = re.compile(
+    r'(?i)^(?P<prefix>[a-z]+)(?P<sep>[_-])(?P<suffix>[a-z0-9][a-z0-9_-]{0,63})$'
+)
+_TEMP_REF_PREFIX_ALIASES = {
+    'e': 'epic',
+    'ep': 'epic',
+    'f': 'feat',
+    'fea': 'feat',
+    'ft': 'feat',
+    'tsk': 'task',
+}
+_TEMP_REF_NODE_TYPE_PREFIXES = {
+    'epic': 'epic',
+    'feat': 'feature',
+    'feature': 'feature',
+    'task': 'task',
+}
+_CREATE_OP_NODE_TYPES = {
+    'add_epic': 'epic',
+    'add_feature': 'feature',
+    'add_task': 'task',
 }
 
 
@@ -640,6 +681,82 @@ def get_planning_tool() -> dict[str, Any]:
                                 'scope': {'type': 'object'},
                                 'data': {'type': 'object'},
                             },
+                            'allOf': [
+                                {
+                                    'if': {
+                                        'properties': {
+                                            'op': {'const': 'add_epic'},
+                                        }
+                                    },
+                                    'then': {
+                                        'required': ['data'],
+                                        'properties': {
+                                            'data': {
+                                                'type': 'object',
+                                                'required': ['title'],
+                                                'properties': {
+                                                    'title': {
+                                                        'type': 'string',
+                                                        'minLength': 1,
+                                                    }
+                                                },
+                                            }
+                                        },
+                                    },
+                                },
+                                {
+                                    'if': {
+                                        'properties': {
+                                            'op': {'const': 'add_feature'},
+                                        }
+                                    },
+                                    'then': {
+                                        'required': ['data'],
+                                        'properties': {
+                                            'data': {
+                                                'type': 'object',
+                                                'required': ['title'],
+                                                'properties': {
+                                                    'title': {
+                                                        'type': 'string',
+                                                        'minLength': 1,
+                                                    }
+                                                },
+                                            }
+                                        },
+                                        'oneOf': [
+                                            {'required': ['parent_id']},
+                                            {'required': ['parent_ref']},
+                                        ],
+                                    },
+                                },
+                                {
+                                    'if': {
+                                        'properties': {
+                                            'op': {'const': 'add_task'},
+                                        }
+                                    },
+                                    'then': {
+                                        'required': ['data'],
+                                        'properties': {
+                                            'data': {
+                                                'type': 'object',
+                                                'required': ['title'],
+                                                'properties': {
+                                                    'title': {
+                                                        'type': 'string',
+                                                        'minLength': 1,
+                                                    }
+                                                },
+                                            }
+                                        },
+                                        'oneOf': [
+                                            {'required': ['parent_id']},
+                                            {'required': ['parent_ref']},
+                                        ],
+                                    },
+                                },
+                            ],
                         },
                     },
                 },
@@ -711,11 +828,16 @@ def parse_plan_tool_args(raw_args: Any) -> tuple[str, list[RoadmapOperation]]:
         raise ValueError('Plan tool operations must be an array.')
 
     operations: list[RoadmapOperation] = []
+    temp_ref_node_types: dict[str, str] = {}
     for index, item in enumerate(raw_operations):
         normalized = _normalize_operation_payload(item)
+        if isinstance(normalized, dict):
+            _infer_mark_status_node_type(normalized, temp_ref_node_types)
         _validate_operation_identity_payload(normalized, index=index)
         try:
-            operations.append(RoadmapOperation.model_validate(normalized))
+            operation = RoadmapOperation.model_validate(normalized)
+            operations.append(operation)
+            _register_created_temp_ref_type(operation, temp_ref_node_types)
         except ValidationError as exc:
             op_value = ''
             if isinstance(normalized, dict):
@@ -735,6 +857,7 @@ def _normalize_operation_payload(item: Any) -> dict[str, Any]:
     payload = dict(item)
     payload = _normalize_single_item_helper_alias(payload)
     payload = _normalize_uuid_fields(payload)
+    payload = _normalize_temp_ref_aliases(payload)
     op = payload.get('op')
     if op == 'mark_status':
         normalized_status = _normalize_mark_status_value(
@@ -758,12 +881,25 @@ def _normalize_operation_payload(item: Any) -> dict[str, Any]:
                 normalized_data['title'] = payload.pop('title')
             if 'title' not in normalized_data and isinstance(payload.get('name'), str):
                 normalized_data['title'] = payload.pop('name')
+
+            # Backend create handlers consume `data.status`, not top-level `status`.
+            if 'status' not in normalized_data and isinstance(payload.get('status'), str):
+                normalized_data['status'] = payload.pop('status')
+
+            normalized_status = _normalize_create_status_value(
+                str(op),
+                normalized_data.get('status'),
+            )
+            if normalized_status is not None:
+                normalized_data['status'] = normalized_status
             if normalized_data:
                 payload['data'] = normalized_data
         return payload
 
     if op != 'update_node':
         return payload
+
+    payload = _promote_update_node_target_aliases(payload)
 
     patch = payload.get('patch')
     if patch is None:
@@ -807,6 +943,143 @@ def _normalize_uuid_fields(payload: dict[str, Any]) -> dict[str, Any]:
         if normalized is not None:
             payload[field_name] = normalized
     return payload
+
+
+def _normalize_temp_ref_aliases(payload: dict[str, Any]) -> dict[str, Any]:
+    for field_name in ('temp_id', 'node_ref', 'parent_ref', 'new_parent_ref'):
+        field_value = payload.get(field_name)
+        if not isinstance(field_value, str):
+            continue
+        normalized = _normalize_temp_ref_value(field_value)
+        if normalized is not None:
+            payload[field_name] = normalized
+    return payload
+
+
+def _normalize_temp_ref_value(value: str) -> str | None:
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if _VALID_TEMP_REF_PATTERN.fullmatch(normalized):
+        return normalized
+    match = _TEMP_REF_ALIAS_PATTERN.fullmatch(normalized)
+    if match is None:
+        return normalized
+    prefix = str(match.group('prefix') or '').lower()
+    mapped_prefix = _TEMP_REF_PREFIX_ALIASES.get(prefix)
+    if not mapped_prefix:
+        return normalized
+    separator = str(match.group('sep') or '_')
+    suffix = str(match.group('suffix') or '').lower()
+    if not suffix:
+        return normalized
+    return f'{mapped_prefix}{separator}{suffix}'
+
+
+def _promote_update_node_target_aliases(payload: dict[str, Any]) -> dict[str, Any]:
+    has_node_id = _is_non_empty_string(payload.get('node_id'))
+    has_node_ref = _is_non_empty_string(payload.get('node_ref'))
+    if has_node_id or has_node_ref:
+        return payload
+
+    for field_name in ('target_id', 'task_id', 'feature_id', 'epic_id', 'id'):
+        value = payload.get(field_name)
+        if not _is_non_empty_string(value):
+            continue
+        payload.pop(field_name, None)
+        stripped = str(value).strip()
+        normalized_uuid = normalize_uuid(stripped)
+        payload['node_id'] = normalized_uuid or stripped
+        return payload
+
+    for field_name in ('target_ref', 'ref'):
+        value = payload.get(field_name)
+        if not _is_non_empty_string(value):
+            continue
+        payload.pop(field_name, None)
+        stripped = str(value).strip()
+        normalized_ref = _normalize_temp_ref_value(stripped)
+        payload['node_ref'] = normalized_ref or stripped
+        return payload
+
+    node_payload = payload.get('node')
+    if isinstance(node_payload, dict):
+        node_id = node_payload.get('id')
+        if _is_non_empty_string(node_id):
+            stripped = str(node_id).strip()
+            normalized_uuid = normalize_uuid(stripped)
+            payload['node_id'] = normalized_uuid or stripped
+            return payload
+        node_ref = node_payload.get('ref')
+        if _is_non_empty_string(node_ref):
+            stripped = str(node_ref).strip()
+            normalized_ref = _normalize_temp_ref_value(stripped)
+            payload['node_ref'] = normalized_ref or stripped
+            return payload
+    elif _is_non_empty_string(node_payload):
+        stripped = str(node_payload).strip()
+        normalized_uuid = normalize_uuid(stripped)
+        if normalized_uuid is not None:
+            payload['node_id'] = normalized_uuid
+        else:
+            normalized_ref = _normalize_temp_ref_value(stripped)
+            payload['node_ref'] = normalized_ref or stripped
+
+    return payload
+
+
+def _register_created_temp_ref_type(
+    operation: RoadmapOperation,
+    temp_ref_node_types: dict[str, str],
+) -> None:
+    op_name = operation.op.value
+    node_type = _CREATE_OP_NODE_TYPES.get(op_name)
+    if node_type is None:
+        return
+    temp_id = operation.temp_id.strip() if isinstance(operation.temp_id, str) else ''
+    if not temp_id:
+        return
+    temp_ref_node_types[temp_id] = node_type
+
+
+def _infer_mark_status_node_type(
+    payload: dict[str, Any],
+    temp_ref_node_types: dict[str, str],
+) -> None:
+    op_name = str(payload.get('op') or '').strip()
+    if op_name != 'mark_status':
+        return
+    existing_node_type = payload.get('node_type')
+    if isinstance(existing_node_type, str) and existing_node_type.strip():
+        return
+    node_ref = payload.get('node_ref')
+    if not isinstance(node_ref, str):
+        return
+    normalized_ref = node_ref.strip()
+    if not normalized_ref:
+        return
+
+    inferred_node_type = temp_ref_node_types.get(normalized_ref)
+    if inferred_node_type is None:
+        inferred_node_type = _infer_node_type_from_ref(normalized_ref)
+    if inferred_node_type is None:
+        return
+
+    payload['node_type'] = inferred_node_type
+    normalized_status = _normalize_mark_status_value(
+        payload.get('status'),
+        inferred_node_type,
+    )
+    if normalized_status is not None:
+        payload['status'] = normalized_status
+
+
+def _infer_node_type_from_ref(node_ref: str) -> str | None:
+    match = _TEMP_REF_ALIAS_PATTERN.fullmatch(node_ref)
+    if match is None:
+        return None
+    prefix = str(match.group('prefix') or '').lower()
+    return _TEMP_REF_NODE_TYPE_PREFIXES.get(prefix)
 
 
 def _is_non_empty_string(value: Any) -> bool:
@@ -864,6 +1137,89 @@ def _sanitize_op_value(value: Any) -> str:
     return sanitized[:48]
 
 
+def _normalize_create_status_value(op: str, value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    normalized = re.sub(r'[^a-z0-9]+', '_', normalized).strip('_')
+    if not normalized:
+        return None
+
+    if op == 'add_epic':
+        alias_map = {
+            'backlog': 'backlog',
+            'planned': 'planned',
+            'not_started': 'backlog',
+            'todo': 'backlog',
+            'to_do': 'backlog',
+            'in_progress': 'in_progress',
+            'inprogress': 'in_progress',
+            'in_review': 'in_review',
+            'inreview': 'in_review',
+            'review': 'in_review',
+            'completed': 'completed',
+            'complete': 'completed',
+            'done': 'completed',
+            'on_hold': 'on_hold',
+            'onhold': 'on_hold',
+            'blocked': 'on_hold',
+        }
+        normalized_value = alias_map.get(normalized)
+        if normalized_value in EPIC_STATUS_VALUES:
+            return normalized_value
+        return None
+
+    if op == 'add_feature':
+        alias_map = {
+            'not_started': 'not_started',
+            'backlog': 'not_started',
+            'planned': 'not_started',
+            'todo': 'not_started',
+            'to_do': 'not_started',
+            'in_progress': 'in_progress',
+            'inprogress': 'in_progress',
+            'in_review': 'in_review',
+            'inreview': 'in_review',
+            'review': 'in_review',
+            'completed': 'completed',
+            'complete': 'completed',
+            'done': 'completed',
+            'blocked': 'blocked',
+            'on_hold': 'blocked',
+            'onhold': 'blocked',
+        }
+        normalized_value = alias_map.get(normalized)
+        if normalized_value in FEATURE_STATUS_VALUES:
+            return normalized_value
+        return None
+
+    if op == 'add_task':
+        alias_map = {
+            'todo': 'todo',
+            'to_do': 'todo',
+            'not_started': 'todo',
+            'backlog': 'todo',
+            'planned': 'todo',
+            'in_progress': 'in_progress',
+            'inprogress': 'in_progress',
+            'in_review': 'in_review',
+            'inreview': 'in_review',
+            'review': 'in_review',
+            'blocked': 'blocked',
+            'done': 'done',
+            'complete': 'done',
+            'completed': 'done',
+        }
+        normalized_value = alias_map.get(normalized)
+        if normalized_value in TASK_STATUS_VALUES:
+            return normalized_value
+        return None
+
+    return None
+
+
 def _normalize_mark_status_value(value: Any, node_type: Any) -> str | None:
     if not isinstance(value, str):
         return None
@@ -875,7 +1231,26 @@ def _normalize_mark_status_value(value: Any, node_type: Any) -> str | None:
         return None
 
     node_type_value = str(node_type or '').strip().lower()
-    if node_type_value in {'feature', 'epic'}:
+    if node_type_value == 'epic':
+        alias_map = {
+            'backlog': 'backlog',
+            'planned': 'planned',
+            'not_started': 'backlog',
+            'todo': 'backlog',
+            'to_do': 'backlog',
+            'in_progress': 'in_progress',
+            'inprogress': 'in_progress',
+            'in_review': 'in_review',
+            'inreview': 'in_review',
+            'review': 'in_review',
+            'blocked': 'on_hold',
+            'on_hold': 'on_hold',
+            'onhold': 'on_hold',
+            'completed': 'completed',
+            'complete': 'completed',
+            'done': 'completed',
+        }
+    elif node_type_value == 'feature':
         alias_map = {
             'not_started': 'not_started',
             'todo': 'not_started',
@@ -884,6 +1259,7 @@ def _normalize_mark_status_value(value: Any, node_type: Any) -> str | None:
             'inprogress': 'in_progress',
             'in_review': 'in_review',
             'inreview': 'in_review',
+            'review': 'in_review',
             'blocked': 'blocked',
             'completed': 'completed',
             'complete': 'completed',

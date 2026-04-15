@@ -665,12 +665,22 @@ def augment_repair_planner_prompt(
     elif error_code == 'invalid_operation_payload':
         detail = str(error_message or '').strip()
         enum_payload_failure = is_invalid_operation_enum_payload(detail)
+        target_missing_failure = (
+            '(op=update_node)' in detail
+            and 'target missing' in detail.lower()
+        )
         detail_suffix = f' Validation detail: {detail}' if detail else ''
         allowed_ops = ', '.join(item.value for item in OperationType)
         enum_guardrail = (
             ' Helper tool names are never valid operation op values. '
             f'Allowed operation op values: {allowed_ops}.'
             if enum_payload_failure
+            else ''
+        )
+        target_guardrail = (
+            ' For update_node operations, you MUST include exactly one target identifier: '
+            'node_id (UUID) or node_ref (valid temp ref). Do not omit both.'
+            if target_missing_failure
             else ''
         )
         guidance = (
@@ -683,6 +693,7 @@ def augment_repair_planner_prompt(
             'and include assignee_id. '
             'When assigning to "me", use actor_context.actor_id from runtime context.'
             f'{enum_guardrail}'
+            f'{target_guardrail}'
             f'{detail_suffix}'
         )
     else:

@@ -5,6 +5,14 @@ from typing import Any, Callable, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 _TASK_MARK_STATUS_VALUES = {'todo', 'in_progress', 'in_review', 'done', 'blocked'}
+_EPIC_MARK_STATUS_VALUES = {
+    'backlog',
+    'planned',
+    'in_progress',
+    'in_review',
+    'completed',
+    'on_hold',
+}
 _FEATURE_MARK_STATUS_VALUES = {
     'not_started',
     'in_progress',
@@ -143,7 +151,10 @@ class RoadmapOperation(BaseModel):
                 issues.append('mark_status.status_missing')
             else:
                 canonical_status = normalized_status.lower()
-                if self.node_type in {NodeType.FEATURE, NodeType.EPIC}:
+                if self.node_type == NodeType.EPIC:
+                    if canonical_status not in _EPIC_MARK_STATUS_VALUES:
+                        issues.append('mark_status.status_invalid')
+                elif self.node_type == NodeType.FEATURE:
                     if canonical_status not in _FEATURE_MARK_STATUS_VALUES:
                         issues.append('mark_status.status_invalid')
                 elif canonical_status not in _TASK_MARK_STATUS_VALUES:

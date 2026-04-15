@@ -551,12 +551,39 @@ def _augment_semantic_contract_retry_prompt(
         return planner_prompt
 
     reason = str(validation_error.get('reason') or '').strip()
-    guidance = (
-        'Each update_node operation must include an actual mutation payload. '
-        'Use a non-empty patch object (for example patch.title, patch.priority, or patch.assignee_id). '
-        'For unassign actions, set patch.assignee_id to null.'
-        if reason == 'update_node.mutation_missing'
-        else 'Fix the invalid operation shape and produce only semantically valid operations.'
+    guidance_by_reason = {
+        'update_node.mutation_missing': (
+            'Each update_node operation must include an actual mutation payload. '
+            'Use a non-empty patch object (for example patch.title, patch.priority, or patch.assignee_id). '
+            'For unassign actions, set patch.assignee_id to null.'
+        ),
+        'add_epic.data.title_missing': (
+            'Each add_epic operation must include data.title as a non-empty string. '
+            'Do not place title only at the top level. Example: '
+            '{"op":"add_epic","temp_id":"tmp_epic_1","data":{"title":"Agent Core"}}.'
+        ),
+        'add_feature.data.title_missing': (
+            'Each add_feature operation must include data.title and a parent target '
+            '(parent_id or parent_ref). Example: '
+            '{"op":"add_feature","parent_ref":"tmp_epic_1","temp_id":"tmp_feature_1",'
+            '"data":{"title":"Authentication"}}.'
+        ),
+        'add_task.data.title_missing': (
+            'Each add_task operation must include data.title and a parent target '
+            '(parent_id or parent_ref). Example: '
+            '{"op":"add_task","parent_ref":"tmp_feature_1","temp_id":"tmp_task_1",'
+            '"data":{"title":"Login flow"}}.'
+        ),
+        'add_feature.parent_target_missing': (
+            'Each add_feature operation must include exactly one parent target: parent_id or parent_ref.'
+        ),
+        'add_task.parent_target_missing': (
+            'Each add_task operation must include exactly one parent target: parent_id or parent_ref.'
+        ),
+    }
+    guidance = guidance_by_reason.get(
+        reason,
+        'Fix the invalid operation shape and produce only semantically valid operations.',
     )
     payload = json.dumps(
         validation_error,
