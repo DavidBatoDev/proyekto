@@ -21,6 +21,7 @@ import {
   RoadmapAiContextTasksFilterQueryDto,
   RoadmapAiContextFeaturesQueryDto,
   RoadmapAiContextResolutionChildrenQueryDto,
+  RoadmapAiContextResolveQueryDto,
   RoadmapAiContextSearchQueryDto,
   RoadmapAiDiscardDto,
   RoadmapAiPreviewDto,
@@ -80,6 +81,21 @@ export class RoadmapAiController {
     @Headers('x-trace-id') traceId?: string,
   ) {
     return this.roadmapAiService.getContextActor(roadmapId, user.id, traceId);
+  }
+
+  @Get('context/resolve')
+  resolveContext(
+    @Param('id') roadmapId: string,
+    @Query() query: RoadmapAiContextResolveQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
+  ) {
+    return this.roadmapAiService.resolveContext(
+      roadmapId,
+      query,
+      user.id,
+      traceId,
+    );
   }
 
   @Get('context/search')

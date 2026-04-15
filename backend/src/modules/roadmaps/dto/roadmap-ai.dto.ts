@@ -581,6 +581,71 @@ export class RoadmapAiContextChildrenResponseDto {
   children: RoadmapAiContextChildDto[];
 }
 
+export class RoadmapAiContextResolveQueryDto {
+  @IsString()
+  @IsNotEmpty()
+  query: string;
+
+  @IsOptional()
+  @IsEnum(['epic', 'feature', 'task'])
+  node_type?: Exclude<RoadmapNodeType, 'roadmap'>;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  include_parent?: boolean;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  include_children?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  children_limit?: number;
+}
+
+export class RoadmapAiContextResolveTopMatchDto {
+  @ValidateNested()
+  @Type(() => RoadmapAiContextSearchMatchDto)
+  node: RoadmapAiContextSearchMatchDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RoadmapAiContextNodeResponseDto)
+  parent?: RoadmapAiContextNodeResponseDto | null;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapAiContextChildDto)
+  children?: RoadmapAiContextChildDto[];
+}
+
+export class RoadmapAiContextResolveResponseDto {
+  @IsOptional()
+  @IsUUID()
+  resolution_id?: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapAiContextSearchMatchDto)
+  matches: RoadmapAiContextSearchMatchDto[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RoadmapAiContextResolveTopMatchDto)
+  top_match?: RoadmapAiContextResolveTopMatchDto | null;
+}
+
 export class RoadmapAiContextActorResponseDto {
   @IsUUID()
   actor_id: string;

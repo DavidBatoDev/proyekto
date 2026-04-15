@@ -184,5 +184,109 @@ class ReactExecutorTests(unittest.TestCase):
         self.assertEqual(outcome.usage_totals['tokens_total'], 6)
 
 
+    def test_parallel_tool_executor_batches_adjacent_safe_calls(self) -> None:
+        sync_calls: list[tuple[str, dict]] = []
+        parallel_batches: list[list[tuple[str, dict]]] = []
+
+        def _sync_executor(name, args):
+            sync_calls.append((name, args))
+            return {'sync': name}
+
+        def _parallel_executor(calls):
+            parallel_batches.append(list(calls))
+            return [{'parallel': n, 'args': a} for n, a in calls]
+
+        outcome = run_bounded_tool_loop(
+            provider='openai',
+            initial_messages=['initial'],
+            invoke=lambda _messages: _FakeAIMessage(
+                content='done',
+                tool_calls=[
+                    {'id': 'c1', 'name': 'resolve_node_reference', 'args': {'label': 'A'}},
+                    {'id': 'c2', 'name': 'resolve_node_reference', 'args': {'label': 'B'}},
+                    {'id': 'c3', 'name': 'plan_roadmap_operations', 'args': {'operations': []}},
+                ],
+                usage_metadata={'input_tokens': 1, 'output_tokens': 1, 'total_tokens': 2},
+            ),
+            tool_executor=_sync_executor,
+            normalize_tool_args=lambda args: args or {},
+            extract_usage=lambda message: {
+                'tokens_input': int(message.usage_metadata.get('input_tokens') or 0),
+                'tokens_output': int(message.usage_metadata.get('output_tokens') or 0),
+                'tokens_total': int(message.usage_metadata.get('total_tokens') or 0),
+            },
+            build_tool_message=lambda content, tool_call_id: {
+                'content': content,
+                'tool_call_id': tool_call_id,
+            },
+            on_no_tool_calls=lambda message, usage: BoundedToolLoopOutcome(
+                value=message.content, usage_totals=usage
+            ),
+            on_tool_call=lambda name, args, _tc, _turn, _index, usage: (
+                BoundedToolLoopOutcome(value=('planned', args), usage_totals=usage)
+                if name == 'plan_roadmap_operations'
+                else None
+            ),
+            max_tool_turns=2,
+            max_turns_error_code='max_turns',
+            max_turns_error_message='Loop exhausted',
+            parallel_tool_executor=_parallel_executor,
+            parallel_safe_tools=frozenset({'resolve_node_reference'}),
+        )
+
+        self.assertEqual(outcome.value[0], 'planned')
+        self.assertEqual(len(parallel_batches), 1)
+        self.assertEqual(
+            [name for name, _ in parallel_batches[0]],
+            ['resolve_node_reference', 'resolve_node_reference'],
+        )
+        self.assertEqual(sync_calls, [])
+
+    def test_parallel_dispatch_skipped_when_single_safe_call(self) -> None:
+        sync_calls: list[str] = []
+        parallel_batches: list[list] = []
+
+        outcome = run_bounded_tool_loop(
+            provider='openai',
+            initial_messages=['initial'],
+            invoke=lambda _messages: _FakeAIMessage(
+                content='done',
+                tool_calls=[
+                    {'id': 'c1', 'name': 'resolve_node_reference', 'args': {'label': 'A'}},
+                    {'id': 'c2', 'name': 'plan_roadmap_operations', 'args': {}},
+                ],
+                usage_metadata={'input_tokens': 1, 'output_tokens': 1, 'total_tokens': 2},
+            ),
+            tool_executor=lambda name, _args: sync_calls.append(name) or {'ok': True},
+            normalize_tool_args=lambda args: args or {},
+            extract_usage=lambda message: {
+                'tokens_input': int(message.usage_metadata.get('input_tokens') or 0),
+                'tokens_output': int(message.usage_metadata.get('output_tokens') or 0),
+                'tokens_total': int(message.usage_metadata.get('total_tokens') or 0),
+            },
+            build_tool_message=lambda content, tool_call_id: {
+                'content': content, 'tool_call_id': tool_call_id,
+            },
+            on_no_tool_calls=lambda message, usage: BoundedToolLoopOutcome(
+                value=message.content, usage_totals=usage
+            ),
+            on_tool_call=lambda name, _args, _tc, _turn, _index, usage: (
+                BoundedToolLoopOutcome(value='planned', usage_totals=usage)
+                if name == 'plan_roadmap_operations'
+                else None
+            ),
+            max_tool_turns=2,
+            max_turns_error_code='max_turns',
+            max_turns_error_message='Loop exhausted',
+            parallel_tool_executor=lambda calls: parallel_batches.append(list(calls))
+            or [{} for _ in calls],
+            parallel_safe_tools=frozenset({'resolve_node_reference'}),
+        )
+
+        self.assertEqual(outcome.value, 'planned')
+        self.assertEqual(parallel_batches, [])
+        self.assertEqual(sync_calls, ['resolve_node_reference'])
+
+
 if __name__ == '__main__':
     unittest.main()

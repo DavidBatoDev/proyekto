@@ -204,6 +204,11 @@ def compose_dynamic_system_prompt(
         response_mode = 'chat'
         tool_mode = 'none'
 
+    if session_context.get('_actor_fetch_future') is not None:
+        from app.core.orchestration.planning.planning_pre_dispatcher import (
+            resolve_deferred_actor_context,
+        )
+        resolve_deferred_actor_context(session_context)
     prompt_context = {
         'roadmap_id': session_context.get('roadmap_id'),
         'base_revision': session_context.get('base_revision'),

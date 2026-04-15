@@ -137,6 +137,33 @@ class NestRoadmapClient:
             trace_id=trace_id,
         )
 
+    async def context_resolve(
+        self,
+        roadmap_id: str,
+        query: str,
+        node_type: str | None,
+        limit: int | None,
+        auth_header: str | None,
+        include_parent: bool = True,
+        include_children: bool = True,
+        children_limit: int | None = None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        query_string = f"?query={quote_plus(query)}"
+        if node_type:
+            query_string += f"&node_type={quote_plus(node_type)}"
+        if limit is not None:
+            query_string += f"&limit={limit}"
+        query_string += f"&include_parent={'true' if include_parent else 'false'}"
+        query_string += f"&include_children={'true' if include_children else 'false'}"
+        if children_limit is not None:
+            query_string += f"&children_limit={children_limit}"
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/context/resolve{query_string}",
+            auth_header,
+            trace_id=trace_id,
+        )
+
     async def context_children_from_resolution(
         self,
         roadmap_id: str,

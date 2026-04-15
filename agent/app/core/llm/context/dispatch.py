@@ -87,6 +87,39 @@ class ToolDispatcher:
         args: dict[str, Any],
         session_context: dict[str, Any],
     ) -> dict[str, Any]:
+        return self._drive_handler_coroutine(
+            self._execute_async(tool_name, args, session_context)
+        )
+
+    def execute_many(
+        self,
+        calls: list[tuple[str, dict[str, Any]]],
+        session_context: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Run multiple read-only tool calls concurrently on a single event loop.
+
+        Callers must ensure every (name, args) is parallel-safe — typically
+        restricted to CONTEXT_TOOL_NAMES. Results are returned in input order.
+        """
+        if not calls:
+            return []
+        if len(calls) == 1:
+            name, args = calls[0]
+            return [self.execute(name, args, session_context)]
+
+        async def _gather_all() -> list[dict[str, Any]]:
+            return await asyncio.gather(
+                *[self._execute_async(n, a, session_context) for n, a in calls]
+            )
+
+        return self._drive_handler_coroutine(_gather_all())
+
+    async def _execute_async(
+        self,
+        tool_name: str,
+        args: dict[str, Any],
+        session_context: dict[str, Any],
+    ) -> dict[str, Any]:
         started = perf_counter()
         trace_id = session_context.get('trace_id')
         roadmap_id = ''
@@ -181,16 +214,10 @@ class ToolDispatcher:
             session_context['context_change_selector'] = context_selector
 
             if tool_name in CONTEXT_TOOL_NAMES:
-                # Handler is async; sync→async once at dispatcher boundary
-                # (was once-per-inner-nest-call before Phase A).
-                result = self._drive_handler_coroutine(
-                    self._context_handler.execute(tool_name, args, session_context)
-                )
+                result = await self._context_handler.execute(tool_name, args, session_context)
                 return result
             if tool_name in EDIT_HELPER_TOOL_NAMES:
-                result = self._drive_handler_coroutine(
-                    self._edit_handler.execute(tool_name, args, session_context)
-                )
+                result = await self._edit_handler.execute(tool_name, args, session_context)
                 return result
             result = {
                 'error': {

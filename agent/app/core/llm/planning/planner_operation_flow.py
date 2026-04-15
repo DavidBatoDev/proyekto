@@ -11,10 +11,12 @@ from app.core.llm.outage import build_outage_clarifier_message
 from app.core.llm.providers import ProviderAdapterError
 from app.core.logging_utils import log_event
 from app.core.tools.registry import (
+    CONTEXT_TOOL_NAMES,
     get_edit_helper_tools,
     get_edit_mode_tools,
     get_operation_tools,
     get_planning_tool,
+    get_scoped_edit_tools,
     PLANNING_TOOL_NAME,
     parse_plan_tool_args,
 )
@@ -101,6 +103,47 @@ def _is_global_bulk_filter_update_intent(user_message: str) -> bool:
         )
     )
     return has_bulk_scope and has_update_verb and (has_named_filter_hint or has_status_task_filter_hint)
+
+
+_RENAME_VERB_PATTERN = re.compile(
+    r'\b(rename|renaming|retitle|retitling|relabel|relabeling)\b',
+)
+_NAME_TO_PATTERN = re.compile(
+    r'\b(?:change|set|update|make)\b[^.?!]{0,40}\b(?:name|title|label)\b[^.?!]{0,40}\bto\b',
+)
+_DELETE_VERB_PATTERN = re.compile(
+    r'\b(delete|deleting|remove|removing|drop|dropping)\b',
+)
+
+
+def _classify_edit_sub_intent(user_message: str) -> str | None:
+    """Classify a roadmap_edit message into a narrow sub-intent for tool scoping.
+
+    Returns one of: 'rename_only', 'delete_only', or None when the message
+    doesn't cleanly match a scoped manifest. Conservative by design: any
+    create/move/status verb in the message disqualifies a scoped path.
+    """
+    normalized = ' '.join(str(user_message or '').lower().split())
+    if not normalized:
+        return None
+    has_create = bool(re.search(r'\b(add|create|new|insert)\b', normalized))
+    has_move = bool(re.search(r'\b(move|reparent|reorder|shift)\b', normalized))
+    has_status = bool(
+        re.search(
+            r'\b(mark|status|done|complete|completed|in[\s_-]*progress|todo|blocked|assign|unassign|priority)\b',
+            normalized,
+        )
+    )
+    if has_create or has_move or has_status:
+        return None
+
+    has_rename = bool(_RENAME_VERB_PATTERN.search(normalized) or _NAME_TO_PATTERN.search(normalized))
+    has_delete = bool(_DELETE_VERB_PATTERN.search(normalized))
+    if has_rename and not has_delete:
+        return 'rename_only'
+    if has_delete and not has_rename:
+        return 'delete_only'
+    return None
 
 
 def _is_assign_me_bulk_update_intent(user_message: str) -> bool:
@@ -722,9 +765,19 @@ def plan_operations(
         max_messages=planner._settings.max_edit_history_messages,
     )
     trace_id = session_context.get('trace_id')
-    tool_definitions = (
-        get_operation_tools() if intent_type == 'roadmap_plan' else get_edit_mode_tools()
-    )
+    if intent_type == 'roadmap_plan':
+        tool_definitions = get_operation_tools()
+    else:
+        edit_sub_intent = _classify_edit_sub_intent(user_message)
+        scoped_tools = get_scoped_edit_tools(edit_sub_intent)
+        if scoped_tools:
+            tool_definitions = scoped_tools
+            metrics = session_context.setdefault('_phase_metrics', {})
+            if isinstance(metrics, dict):
+                metrics['planner_tools_scope'] = edit_sub_intent
+                metrics['planner_tools_count'] = len(tool_definitions)
+        else:
+            tool_definitions = get_edit_mode_tools()
     total_edit_turns = max(1, int(planner._settings.max_edit_tool_turns))
     react_loop_turn_raw = session_context.get('_react_loop_turn')
     react_loop_turn = 1
@@ -782,6 +835,11 @@ def plan_operations(
             False,
         )
     )
+    if session_context.get('_actor_fetch_future') is not None:
+        from app.core.orchestration.planning.planning_pre_dispatcher import (
+            resolve_deferred_actor_context,
+        )
+        resolve_deferred_actor_context(session_context)
     actor_context_for_planner = (
         session_context.get('actor_context')
         if isinstance(session_context.get('actor_context'), dict)
@@ -838,7 +896,7 @@ def plan_operations(
             return 'missing_required'
         return 'other'
 
-    def _capturing_tool_executor(name: str, args: dict[str, Any]) -> dict[str, Any]:
+    def _rewrite_tool_args(name: str, args: dict[str, Any]) -> dict[str, Any]:
         effective_args = dict(args) if isinstance(args, dict) else {}
         if name == 'resolve_node_reference' and bulk_scope_update_intent:
             if explicit_parent_type_hint in {'epic', 'feature'}:
@@ -854,6 +912,10 @@ def plan_operations(
                 coerced_update = dict(update_payload)
                 coerced_update['assignee_id'] = actor_id_for_planner
                 effective_args['update'] = coerced_update
+        return effective_args
+
+    def _capturing_tool_executor(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        effective_args = _rewrite_tool_args(name, args)
 
         cache_key: tuple[str, str] | None = None
         if name in dedupe_tool_names and isinstance(effective_args, dict):
@@ -882,6 +944,63 @@ def plan_operations(
             result=result,
         )
         return result
+
+    def _capturing_parallel_tool_executor(
+        calls: list[tuple[str, dict[str, Any]]],
+    ) -> list[dict[str, Any]]:
+        """Run a group of read-only tool calls concurrently, preserving input order.
+
+        Applies the same arg rewrites and dedupe-cache semantics as the sync
+        `_capturing_tool_executor` above. Entries satisfied by the dedupe cache
+        bypass the dispatch entirely; the remainder are dispatched in a single
+        batch via `planner._execute_context_tools_parallel`.
+        """
+        prepared: list[tuple[str, dict[str, Any], tuple[str, str] | None]] = []
+        for name, args in calls:
+            effective_args = _rewrite_tool_args(name, args)
+            cache_key: tuple[str, str] | None = None
+            if name in dedupe_tool_names and isinstance(effective_args, dict):
+                cache_key = (name, _serialize_tool_args(effective_args))
+            prepared.append((name, effective_args, cache_key))
+
+        results: list[dict[str, Any] | None] = [None] * len(prepared)
+        pending: list[tuple[int, str, dict[str, Any]]] = []
+        for idx, (name, effective_args, cache_key) in enumerate(prepared):
+            if cache_key is not None:
+                cached = dedupe_result_cache.get(cache_key)
+                if cached is not None:
+                    _record_tool_dedupe_hit()
+                    results[idx] = deepcopy(cached)
+                    continue
+            pending.append((idx, name, effective_args))
+
+        if pending:
+            batch_calls = [(n, a) for _idx, n, a in pending]
+            batch_results = planner._execute_context_tools_parallel(
+                batch_calls, session_context
+            )
+            for offset, (idx, _name, _args) in enumerate(pending):
+                results[idx] = (
+                    batch_results[offset] if offset < len(batch_results) else {}
+                )
+
+        for idx, (name, effective_args, cache_key) in enumerate(prepared):
+            result = results[idx] or {}
+            if (
+                cache_key is not None
+                and isinstance(result, dict)
+                and cache_key not in dedupe_result_cache
+            ):
+                dedupe_result_cache[cache_key] = deepcopy(result)
+            planner._record_react_tool_observation(
+                observations=tool_observations,
+                summary=tool_observation_summary,
+                tool_name=name,
+                args=effective_args,
+                result=result,
+            )
+
+        return [r if r is not None else {} for r in results]
 
     def _finalize_state(
         next_state: dict[str, Any],
@@ -1426,18 +1545,25 @@ def plan_operations(
             base_kwargs['planner_profile'] = current_planner_profile
         if actor_context_for_planner is not None:
             base_kwargs['actor_context'] = actor_context_for_planner
+        base_kwargs['parallel_tool_executor'] = _capturing_parallel_tool_executor
+        base_kwargs['parallel_safe_tools'] = CONTEXT_TOOL_NAMES
 
         try:
             return adapter.plan_operations_with_tools(**base_kwargs)
         except TypeError:
             # Backward compatibility for test doubles and legacy adapters.
             fallback_kwargs = dict(base_kwargs)
-            fallback_kwargs.pop('actor_context', None)
+            fallback_kwargs.pop('parallel_tool_executor', None)
+            fallback_kwargs.pop('parallel_safe_tools', None)
             try:
                 return adapter.plan_operations_with_tools(**fallback_kwargs)
             except TypeError:
-                fallback_kwargs.pop('planner_profile', None)
-                return adapter.plan_operations_with_tools(**fallback_kwargs)
+                fallback_kwargs.pop('actor_context', None)
+                try:
+                    return adapter.plan_operations_with_tools(**fallback_kwargs)
+                except TypeError:
+                    fallback_kwargs.pop('planner_profile', None)
+                    return adapter.plan_operations_with_tools(**fallback_kwargs)
 
     for attempt in range(max_attempts):
         if attempt > 0:

@@ -464,6 +464,16 @@ class LLMPlanner:
             session_context=session_context,
         )
 
+    def _execute_context_tools_parallel(
+        self,
+        calls: list[tuple[str, dict[str, Any]]],
+        session_context: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        return self._get_context_tools_executor().execute_many(
+            calls=calls,
+            session_context=session_context,
+        )
+
     def _get_context_tools_executor(self) -> ContextToolsExecutor:
         executor = getattr(self, '_context_tools_executor', None)
         if executor is None:

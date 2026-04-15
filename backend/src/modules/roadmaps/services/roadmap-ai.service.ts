@@ -40,6 +40,8 @@ import type {
   RoadmapAiContextFeaturesQueryDto,
   RoadmapAiContextNodeResponseDto,
   RoadmapAiContextResolutionChildrenQueryDto,
+  RoadmapAiContextResolveQueryDto,
+  RoadmapAiContextResolveResponseDto,
   RoadmapAiContextSearchMatchDto,
   RoadmapAiContextSearchQueryDto,
   RoadmapAiContextSearchResponseDto,
@@ -720,6 +722,80 @@ export class RoadmapAiService {
       resolutionId,
     });
     return response;
+  }
+
+  async resolveContext(
+    roadmapId: string,
+    query: RoadmapAiContextResolveQueryDto,
+    userId: string,
+    traceId?: string,
+  ): Promise<RoadmapAiContextResolveResponseDto> {
+    const handlerStartedAt = Date.now();
+    const search = await this.searchContextNodes(
+      roadmapId,
+      {
+        query: query.query,
+        node_type: query.node_type,
+        limit: query.limit,
+      },
+      userId,
+      traceId,
+    );
+    if (!search.matches.length) {
+      this.logRoadmapAiHandlerTiming({
+        event: 'roadmap_ai_context_resolve_timing',
+        traceId,
+        roadmapId,
+        method: 'GET',
+        path: '/roadmaps/:id/ai/context/resolve',
+        totalHandlerMs: Date.now() - handlerStartedAt,
+      });
+      return {
+        resolution_id: search.resolution_id,
+        matches: search.matches,
+        top_match: null,
+      };
+    }
+    const top = search.matches[0];
+    const includeParent = query.include_parent !== false;
+    const includeChildren = query.include_children !== false;
+    const childrenLimit = Math.min(Math.max(query.children_limit ?? 10, 1), 50);
+    const [parentResult, childrenResult] = await Promise.all([
+      includeParent && top.parent_id
+        ? this.getContextNodeDetails(
+            roadmapId,
+            top.parent_id,
+            userId,
+            traceId,
+          ).catch(() => null)
+        : Promise.resolve(null),
+      includeChildren
+        ? this.getContextNodeChildren(
+            roadmapId,
+            top.id,
+            { limit: childrenLimit },
+            userId,
+            traceId,
+          ).catch(() => ({ children: [] }))
+        : Promise.resolve({ children: [] }),
+    ]);
+    this.logRoadmapAiHandlerTiming({
+      event: 'roadmap_ai_context_resolve_timing',
+      traceId,
+      roadmapId,
+      method: 'GET',
+      path: '/roadmaps/:id/ai/context/resolve',
+      totalHandlerMs: Date.now() - handlerStartedAt,
+    });
+    return {
+      resolution_id: search.resolution_id,
+      matches: search.matches,
+      top_match: {
+        node: top,
+        parent: parentResult,
+        children: childrenResult.children,
+      },
+    };
   }
 
   async getContextFeatures(

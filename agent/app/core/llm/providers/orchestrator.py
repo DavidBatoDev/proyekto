@@ -78,6 +78,7 @@ class ProviderOrchestrator:
                 tokens_input=usage.get('tokens_input'),
                 tokens_output=usage.get('tokens_output'),
                 tokens_total=usage.get('tokens_total'),
+                tokens_cached=usage.get('tokens_cached'),
                 **(trace_context or {}),
             )
             return ProviderCallOutcome(

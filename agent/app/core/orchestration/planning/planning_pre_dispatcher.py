@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
@@ -7,6 +8,52 @@ from typing import Any
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import AgentSession, IntentType
 from app.core.logging_utils import log_event
+
+_ACTOR_FETCH_EXECUTOR: ThreadPoolExecutor | None = None
+
+
+def _get_actor_fetch_executor() -> ThreadPoolExecutor:
+    global _ACTOR_FETCH_EXECUTOR
+    if _ACTOR_FETCH_EXECUTOR is None:
+        _ACTOR_FETCH_EXECUTOR = ThreadPoolExecutor(
+            max_workers=4,
+            thread_name_prefix='actor-ctx-fetch',
+        )
+    return _ACTOR_FETCH_EXECUTOR
+
+
+def resolve_deferred_actor_context(
+    session_context: dict[str, Any],
+) -> int | None:
+    """Join a deferred actor-context fetch started by pre-dispatch.
+
+    Idempotent: if no future is attached, returns None. When present, blocks
+    until the background fetch resolves (the task itself updates
+    session_context['actor_context']), and records join-wait under
+    `phase_timings.actor_fetch_join_ms`. Overlap with planner setup absorbs
+    most of the fetch latency; only the un-overlappable tail is measured.
+    """
+    future: Future[None] | None = session_context.pop(
+        '_actor_fetch_future', None
+    )
+    rebuild = session_context.pop('_actor_fetch_rebuild', None)
+    if future is None:
+        return None
+    join_started = perf_counter()
+    try:
+        future.result()
+    except Exception:  # pragma: no cover - best-effort join
+        pass
+    join_ms = int((perf_counter() - join_started) * 1000)
+    if callable(rebuild):
+        try:
+            rebuild()
+        except Exception:  # pragma: no cover
+            pass
+    metrics = session_context.setdefault('_phase_metrics', {})
+    if isinstance(metrics, dict):
+        metrics['actor_fetch_join_ms'] = join_ms
+    return join_ms
 
 
 @dataclass
@@ -118,16 +165,26 @@ def dispatch_pre_planning_phase(
         simple_edit_detected=simple_edit_detected,
         actor_context_present=session.metadata.actor_context is not None,
     )
+    actor_fetch_future: Future[None] | None = None
     if should_fetch_actor:
         actor_fetch_attempted = True
-        actor_started = perf_counter()
-        self._ensure_actor_context(
-            session=session,
-            auth_header=auth_header,
-            trace_id=trace_id,
+
+        def _run_actor_fetch() -> None:
+            self._ensure_actor_context(
+                session=session,
+                auth_header=auth_header,
+                trace_id=trace_id,
+            )
+
+        # Submit on a shared thread pool so the fetch overlaps with all
+        # downstream pre-dispatch work (deictic resolution, session_context
+        # rebuild, the planner's prompt construction, and the first LLM
+        # network call). The future is joined at every consumer site that
+        # reads session_context['actor_context'] via
+        # `resolve_deferred_actor_context`.
+        actor_fetch_future = _get_actor_fetch_executor().submit(
+            _run_actor_fetch
         )
-        actor_fetch_ms = int((perf_counter() - actor_started) * 1000)
-        phase_timings['actor_fetch_ms'] = actor_fetch_ms
     else:
         actor_fetch_skipped_reason = actor_skip_reason
         if actor_skip_reason == 'missing_auth_header':
@@ -137,6 +194,18 @@ def dispatch_pre_planning_phase(
             )
 
     session_context = self._build_session_context(session, auth_header, trace_id)
+    if actor_fetch_future is not None:
+        session_context['_actor_fetch_future'] = actor_fetch_future
+
+        def _rebuild_actor_on_context() -> None:
+            refreshed = self._build_session_context(
+                session, auth_header, trace_id
+            )
+            actor = refreshed.get('actor_context')
+            if isinstance(actor, dict):
+                session_context['actor_context'] = actor
+
+        session_context['_actor_fetch_rebuild'] = _rebuild_actor_on_context
     if pending_context is not None and edit_continuation_trigger:
         session_context['pending_followup_kind'] = edit_continuation_trigger
     if should_force_edit_preview:

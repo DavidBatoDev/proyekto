@@ -122,7 +122,7 @@ class Settings(BaseSettings):
         alias='AGENT_RESOLVE_CACHE_TTL_SECONDS',
     )
     agent_resolve_parallel_variants_enabled: bool = Field(
-        default=False,
+        default=True,
         alias='AGENT_RESOLVE_PARALLEL_VARIANTS_ENABLED',
     )
 

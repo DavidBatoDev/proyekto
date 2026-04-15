@@ -346,7 +346,7 @@ class ToolHandlerBase:
             return None
 
         subgraph: dict[str, Any] = {'node': node_payload}
-        parent_payload = await self._resolve_subgraph_parent(
+        parent_task = self._resolve_subgraph_parent(
             roadmap_id=roadmap_id,
             selected=selected,
             node_type=node_type,
@@ -354,10 +354,7 @@ class ToolHandlerBase:
             auth_header=auth_header,
             trace_id=trace_id,
         )
-        if isinstance(parent_payload, dict):
-            subgraph['parent'] = parent_payload
-
-        children_payload = await self._resolve_subgraph_children(
+        children_task = self._resolve_subgraph_children(
             roadmap_id=roadmap_id,
             node_id=node_id,
             node_type=node_type,
@@ -366,6 +363,11 @@ class ToolHandlerBase:
             auth_header=auth_header,
             trace_id=trace_id,
         )
+        parent_payload, children_payload = await asyncio.gather(
+            parent_task, children_task
+        )
+        if isinstance(parent_payload, dict):
+            subgraph['parent'] = parent_payload
         if children_payload is not None:
             subgraph['children'] = children_payload
         return subgraph

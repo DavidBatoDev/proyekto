@@ -41,3 +41,10 @@ class ContextToolsExecutor:
         session_context: dict[str, Any],
     ) -> dict[str, Any]:
         return self._dispatcher.execute(tool_name, args, session_context)
+
+    def execute_many(
+        self,
+        calls: list[tuple[str, dict[str, Any]]],
+        session_context: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        return self._dispatcher.execute_many(calls, session_context)

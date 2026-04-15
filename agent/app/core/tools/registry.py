@@ -657,6 +657,48 @@ def get_edit_mode_tools() -> list[dict[str, Any]]:
     return [*get_context_tools(), *get_edit_helper_tools(), get_planning_tool()]
 
 
+# Tool-name manifests per sub-intent. Keep these names in sync with
+# CONTEXT_TOOL_NAMES / EDIT_HELPER_TOOL_NAMES / PLANNING_TOOL_NAME above.
+SCOPED_EDIT_TOOL_MANIFESTS: dict[str, frozenset[str]] = {
+    # Pure renames: planner only needs to resolve nodes by label and emit
+    # update_node operations through plan_roadmap_operations.
+    'rename_only': frozenset({
+        'resolve_node_reference',
+        'get_node_details',
+        PLANNING_TOOL_NAME,
+    }),
+    # Pure deletions: resolve_node_reference already returns parent +
+    # children in `resolved_subgraph`, so the planner has scope context
+    # without needing a dedicated children tool.
+    'delete_only': frozenset({
+        'resolve_node_reference',
+        'get_node_details',
+        PLANNING_TOOL_NAME,
+    }),
+}
+
+
+def get_scoped_edit_tools(sub_intent: str | None) -> list[dict[str, Any]] | None:
+    """Return a reduced tool manifest for a known sub-intent, else None.
+
+    Returning None signals the caller should fall back to the full
+    `get_edit_mode_tools()` set so the planner is never starved of options
+    on an ambiguous edit.
+    """
+    if not sub_intent:
+        return None
+    allowed = SCOPED_EDIT_TOOL_MANIFESTS.get(sub_intent)
+    if not allowed:
+        return None
+    return [
+        tool
+        for tool in get_edit_mode_tools()
+        if isinstance(tool, dict)
+        and isinstance(tool.get('function'), dict)
+        and tool['function'].get('name') in allowed
+    ]
+
+
 def parse_plan_tool_args(raw_args: Any) -> tuple[str, list[RoadmapOperation]]:
     args = raw_args
     if isinstance(args, str):

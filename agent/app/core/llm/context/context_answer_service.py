@@ -59,6 +59,11 @@ class ContextAnswerService:
         intent_type: IntentType,
     ) -> dict[str, Any]:
         trace_id = session_context.get('trace_id')
+        if session_context.get('_actor_fetch_future') is not None:
+            from app.core.orchestration.planning.planning_pre_dispatcher import (
+                resolve_deferred_actor_context,
+            )
+            resolve_deferred_actor_context(session_context)
         context_tools = get_context_tools()
         cache_key = self._build_context_cache_key(
             roadmap_id=str(session_context.get('roadmap_id') or ''),

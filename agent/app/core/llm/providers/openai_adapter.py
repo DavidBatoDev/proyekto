@@ -125,6 +125,11 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
         max_tool_turns: int,
         planner_profile: str | None = None,
         actor_context: dict[str, Any] | None = None,
+        parallel_tool_executor: Callable[
+            [list[tuple[str, dict[str, Any]]]],
+            list[dict[str, Any]],
+        ] | None = None,
+        parallel_safe_tools: frozenset[str] | set[str] | None = None,
     ) -> tuple[str, list[RoadmapOperation]]:
         try:
             self._last_usage = None
@@ -262,6 +267,8 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                 max_turns_error_message=(
                     'OpenAI planning loop reached max tool turns before returning a final operation plan.'
                 ),
+                parallel_tool_executor=parallel_tool_executor,
+                parallel_safe_tools=parallel_safe_tools,
             )
             self._last_usage = outcome.usage_totals
             return outcome.value
@@ -502,10 +509,19 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
             total_tokens = int(
                 usage_metadata.get('total_tokens') or input_tokens + output_tokens
             )
+            cached_tokens = 0
+            input_details = usage_metadata.get('input_token_details')
+            if isinstance(input_details, dict):
+                cached_tokens = int(
+                    input_details.get('cache_read')
+                    or input_details.get('cached_tokens')
+                    or 0
+                )
             return {
                 'tokens_input': input_tokens,
                 'tokens_output': output_tokens,
                 'tokens_total': total_tokens,
+                'tokens_cached': cached_tokens,
             }
 
         response_metadata = getattr(message, 'response_metadata', None)
@@ -517,10 +533,15 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                 total_tokens = int(
                     token_usage.get('total_tokens') or input_tokens + output_tokens
                 )
+                cached_tokens = 0
+                prompt_details = token_usage.get('prompt_tokens_details')
+                if isinstance(prompt_details, dict):
+                    cached_tokens = int(prompt_details.get('cached_tokens') or 0)
                 return {
                     'tokens_input': input_tokens,
                     'tokens_output': output_tokens,
                     'tokens_total': total_tokens,
+                    'tokens_cached': cached_tokens,
                 }
         return None
 
