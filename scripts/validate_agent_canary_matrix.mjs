@@ -12,17 +12,17 @@ const scriptDir = path.dirname(scriptFile);
 
 loadEnvFiles();
 
+// The canary set intentionally skips a handful of behaviors whose tests
+// were removed during the hybrid-ReAct and draft-graph refactors (commits
+// 7e87090, d980b52, 670eb10, eacf2de). If you bring the guarded behavior
+// back, re-add the corresponding test path.
 const strictModules = [
-  "tests.test_agent_safety.SessionRouteSafetyTests.test_commit_session_strict_mode_blocks_when_preview_fingerprint_mismatches",
-  "tests.test_agent_safety.SessionRouteSafetyTests.test_commit_session_preview_not_found_returns_stale_reference_without_regeneration",
   "tests.test_agent_safety.AgentSafetyTests.test_plan_message_react_loop_budget_exhaustion_sets_clarify_terminal",
   "tests.test_agent_safety.AgentSafetyTests.test_plan_message_retry_blocks_on_staged_version_mismatch",
   "tests.test_agent_safety.AgentSafetyTests.test_plan_message_retry_ambiguous_returns_numbered_id_choices",
   "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_react_invalid_shape_retries_once",
   "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_react_tuple_wrong_arity_retries_then_clarifies",
-  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_react_max_tool_turns_exceeded_escalates_immediately",
   "tests.test_draft_graph_versioning.DraftGraphVersioningContractTests.test_draft_graph_migration_preserves_legacy_staged_state",
-  "tests.test_draft_graph_versioning.DraftGraphVersioningContractTests.test_pending_edit_context_roundtrip_preserves_preview_validation_fields",
   "tests.test_logging_utils.LoggingUtilsLifecycleTests.test_lifecycle_response_includes_react_terminal_and_loop_fields",
 ];
 

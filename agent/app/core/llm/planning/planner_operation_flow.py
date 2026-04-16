@@ -162,6 +162,41 @@ def _classify_edit_sub_intent(user_message: str) -> str | None:
     return None
 
 
+_PLAN_ITEM_ADD_TOKENS = 70
+_PLAN_ITEM_STATUS_UPDATE_TOKENS = 30
+_PLAN_BASE_OVERHEAD_TOKENS = 400
+
+
+def estimate_plan_output_tokens(user_message: str) -> int:
+    """Rough forecast of planner output tokens for a `roadmap_plan` turn.
+
+    Used as a preflight check so we can start the call at the `repair_retry`
+    budget when the prompt obviously asks for more ops than the default
+    ceiling allows. Beats paying for a first call that's guaranteed to
+    truncate.
+
+    Heuristic, deliberately conservative:
+    - 400-token base for assistant_message + tool envelope
+    - ~100 tokens per planned item (add op + its status update)
+    - Item count = max(explicit epic/feature/task word hits, bullet lines)
+      so both "Epic: ... Feature: ..." and bulleted lists are covered.
+    """
+    text = str(user_message or '')
+    if not text.strip():
+        return 0
+    normalized = text.lower()
+    epic_hits = len(re.findall(r'\bepic[s]?\b', normalized))
+    feature_hits = len(re.findall(r'\bfeature[s]?\b', normalized))
+    task_hits = len(re.findall(r'\btask[s]?\b', normalized))
+    bullet_hits = sum(
+        1 for line in text.splitlines()
+        if line.lstrip().startswith(('-', '*', '•'))
+    )
+    item_count = max(epic_hits + feature_hits + task_hits, bullet_hits)
+    per_item_tokens = _PLAN_ITEM_ADD_TOKENS + _PLAN_ITEM_STATUS_UPDATE_TOKENS
+    return _PLAN_BASE_OVERHEAD_TOKENS + item_count * per_item_tokens
+
+
 def _is_assign_me_bulk_update_intent(user_message: str) -> bool:
     normalized = ' '.join(str(user_message or '').lower().split())
     if not normalized or 'task' not in normalized:
@@ -1444,6 +1479,30 @@ def plan_operations(
     # (openai_planner_repair_max_tokens, default 3000).
     planner_profile: str | None = 'scoped_edit' if edit_sub_intent else None
 
+    # Preflight for roadmap_plan: if the user prompt obviously asks for
+    # more ops than the default budget can fit, start at the repair_retry
+    # budget instead of paying for a guaranteed-to-truncate first call.
+    # The heuristic is intentionally coarse — we'd rather oversize a few
+    # plans than retry on every big one.
+    if intent_type == 'roadmap_plan':
+        planner_default_budget = planner._settings.openai_planner_default_max_tokens or 2000
+        estimated_output = estimate_plan_output_tokens(user_message)
+        if estimated_output > planner_default_budget:
+            planner_profile = 'repair_retry'
+            preflight_metrics = session_context.setdefault('_phase_metrics', {})
+            if isinstance(preflight_metrics, dict):
+                preflight_metrics['planner_preflight_widened'] = 1
+                preflight_metrics['planner_preflight_estimate'] = estimated_output
+            log_event(
+                planner._logger,
+                'planner_preflight_widened',
+                settings=planner._settings,
+                trace_id=trace_id,
+                estimated_output_tokens=estimated_output,
+                planner_default_max_tokens=planner_default_budget,
+                planner_profile_selected=planner_profile,
+            )
+
     if intent_type == 'roadmap_plan':
         planner_prompt = (
             'You are in roadmap planning mode.\n'
@@ -1728,6 +1787,19 @@ def plan_operations(
                     metrics['planner_max_tokens_truncated'] = int(
                         metrics.get('planner_max_tokens_truncated') or 0
                     ) + 1
+                    metrics['planner_repair_retry_fired'] = 1
+                    metrics['planner_repair_retry_reason'] = 'output_truncated'
+                log_event(
+                    planner._logger,
+                    'planner_repair_retry_fired',
+                    settings=planner._settings,
+                    trace_id=trace_id,
+                    reason='output_truncated',
+                    previous_profile=planner_profile,
+                    tokens_input=exc.tokens_input,
+                    tokens_output=exc.tokens_output,
+                    tokens_total=exc.tokens_total,
+                )
                 repair_attempted = True
                 planner_profile = 'repair_retry'
                 continue
@@ -1747,6 +1819,21 @@ def plan_operations(
                     # Retry in planning-only mode to avoid rediscovery churn.
                     tool_definitions = get_operation_tools()
                     if exc.code == 'missing_tool_call':
+                        missing_tool_metrics = session_context.setdefault('_phase_metrics', {})
+                        if isinstance(missing_tool_metrics, dict):
+                            missing_tool_metrics['planner_repair_retry_fired'] = 1
+                            missing_tool_metrics['planner_repair_retry_reason'] = 'missing_tool_call'
+                        log_event(
+                            planner._logger,
+                            'planner_repair_retry_fired',
+                            settings=planner._settings,
+                            trace_id=trace_id,
+                            reason='missing_tool_call',
+                            previous_profile=planner_profile,
+                            tokens_input=exc.tokens_input,
+                            tokens_output=exc.tokens_output,
+                            tokens_total=exc.tokens_total,
+                        )
                         planner_profile = 'repair_retry'
                     planner_prompt = planner._augment_missing_tool_call_retry_prompt(
                         planner_prompt=planner_prompt,

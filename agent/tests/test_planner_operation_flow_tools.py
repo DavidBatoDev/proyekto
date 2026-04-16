@@ -60,7 +60,12 @@ class _FakeOrchestrator:
 
 
 class _FakePlanner:
-    def __init__(self, captured: dict[str, object]) -> None:
+    def __init__(
+        self,
+        captured: dict[str, object],
+        *,
+        openai_planner_default_max_tokens: int | None = 2000,
+    ) -> None:
         self._captured = captured
         self._settings = SimpleNamespace(
             max_edit_history_messages=4,
@@ -74,6 +79,7 @@ class _FakePlanner:
             agent_log_color='off',
             agent_progress_events_enabled=False,
             agent_progress_events_allow_verbose=False,
+            openai_planner_default_max_tokens=openai_planner_default_max_tokens,
         )
         self._logger = logging.getLogger('planner-operation-flow-tools-tests')
         self._provider_orchestrator = _FakeOrchestrator(captured)
@@ -518,7 +524,13 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
             '09f2e875-bd56-4f95-9bde-d6bbca2fa4e3',
         )
 
-    def test_bulk_move_intent_does_not_force_helper_only_allowlist(self) -> None:
+    def test_bulk_move_intent_uses_scoped_move_manifest(self) -> None:
+        """Pure bulk-move prompts now classify as `move_only` sub-intent and
+        get the scoped manifest (resolve + node_details + move helpers +
+        planning tool). The old assertion that `get_roadmap_overview` was
+        present is obsolete — the scoped path intentionally drops broad
+        discovery tools because the move helpers already know the shape.
+        """
         captured: dict[str, object] = {}
         planner = _FakePlanner(captured)
 
@@ -531,7 +543,7 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
                 'system_prompt': 'system',
                 'session_context': {
                     'roadmap_id': 'r1',
-                    'trace_id': 'trace-bulk-move-general-tools',
+                    'trace_id': 'trace-bulk-move-scoped-manifest',
                     'deictic_parent_hint': {
                         'node_type': 'feature',
                         'node_id': '123e4567-e89b-12d3-a456-426614174000',
@@ -543,9 +555,11 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         tool_names = captured.get('tool_names')
         self.assertIsInstance(tool_names, list)
         assert isinstance(tool_names, list)
-        self.assertIn('get_roadmap_overview', tool_names)
         self.assertIn('resolve_node_reference', tool_names)
+        self.assertIn('bulk_move_tasks_to_feature', tool_names)
         self.assertIn('plan_roadmap_operations', tool_names)
+        # Scoped manifest deliberately excludes broad discovery tools.
+        self.assertNotIn('get_roadmap_overview', tool_names)
         self.assertEqual(result.get('response_mode'), 'edit_plan')
 
     def test_roadmap_plan_mode_uses_plan_tool_only(self) -> None:
@@ -1046,7 +1060,11 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         )
 
         self.assertEqual(call_count['value'], 2)
-        self.assertEqual(observed_profiles, [None, 'repair_retry'])
+        # "Mark all tasks ... as in review" now classifies as the
+        # `status_change_only` sub-intent, so the first call starts on
+        # the scoped profile rather than the default. After the missing-
+        # tool-call retry triggers, profile widens to repair_retry.
+        self.assertEqual(observed_profiles, ['scoped_edit', 'repair_retry'])
         self.assertEqual(len(observed_args), 2)
         self.assertTrue(all('node_type' not in args for args in observed_args))
         self.assertTrue(
@@ -2084,6 +2102,60 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         self.assertEqual(result.get('parse_mode'), 'llm_first_edit_outage')
         self.assertEqual(result.get('stop_reason'), 'provider_outage')
         self.assertIn('Temporary AI provider issue', str(result.get('assistant_message')))
+
+
+class PlannerPreflightPreflightBudgetTests(unittest.TestCase):
+    """Verifies the preflight estimator widens the first-call budget for
+    `roadmap_plan` turns that obviously won't fit in the default ceiling.
+    """
+
+    def test_small_plan_does_not_trigger_preflight_widening(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured, openai_planner_default_max_tokens=2000)
+        session_context: dict[str, object] = {
+            'roadmap_id': 'r1',
+            'trace_id': 'trace-preflight-small',
+        }
+        plan_operations(
+            planner,
+            {
+                'user_message': 'add one epic called Auth',
+                'intent_type': 'roadmap_plan',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': session_context,
+            },
+        )
+        metrics = session_context.get('_phase_metrics') or {}
+        assert isinstance(metrics, dict)
+        self.assertNotIn('planner_preflight_widened', metrics)
+
+    def test_large_plan_triggers_preflight_widening(self) -> None:
+        captured: dict[str, object] = {}
+        # Shrink the default so the test doesn't need a monster prompt.
+        planner = _FakePlanner(captured, openai_planner_default_max_tokens=500)
+        session_context: dict[str, object] = {
+            'roadmap_id': 'r1',
+            'trace_id': 'trace-preflight-large',
+        }
+        user_message = '\n'.join(
+            ['Create the following roadmap:']
+            + [f'- Task {i}' for i in range(20)]
+        )
+        plan_operations(
+            planner,
+            {
+                'user_message': user_message,
+                'intent_type': 'roadmap_plan',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': session_context,
+            },
+        )
+        metrics = session_context.get('_phase_metrics') or {}
+        assert isinstance(metrics, dict)
+        self.assertEqual(metrics.get('planner_preflight_widened'), 1)
+        self.assertGreater(int(metrics.get('planner_preflight_estimate') or 0), 500)
 
 
 if __name__ == '__main__':

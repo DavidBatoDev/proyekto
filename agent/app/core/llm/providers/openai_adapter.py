@@ -461,6 +461,24 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
         return model_instance
 
     def _planner_max_tokens_for_profile(self, planner_profile: str | None) -> int | None:
+        """Map a planner profile string to an output-token ceiling.
+
+        Profiles are how the planner loop varies the `max_tokens` cap
+        across attempts without juggling separate ChatOpenAI instances
+        per caller. The seam exists so the retry-on-truncation path can
+        widen the budget for one call without widening it forever.
+
+        We retry on `finish_reason='length'` (and `missing_tool_call`)
+        specifically — a hard signal that output was cut off — not on
+        vibes or quality concerns. This is different from the anti-pattern
+        of "call small, blindly retry bigger": our first attempt's budget
+        is already sized from empirical data (`openai_planner_default_max_
+        tokens` default 2000, covering the observed p95 plan output), and
+        the preflight in `planner_operation_flow.estimate_plan_output_
+        tokens` escalates to the repair budget *before* the first call
+        when the prompt obviously asks for more. Retry here is a last
+        resort, not a routine extra round-trip.
+        """
         normalized_profile = str(planner_profile or '').strip().lower()
         if normalized_profile == 'repair_retry':
             profile_tokens = self._settings.openai_planner_repair_max_tokens
