@@ -130,10 +130,11 @@ class PromptManager:
         base_prompt = self.render('base_system', session_id=session_id)
         mode_prompt = self.render(template_id, session_id=session_id)
 
-        # The overview is rendered as a separate prose section above the JSON
-        # runtime context — JSON-stringified multi-line prose is hard for the
-        # model to parse, and keeping it as a stable prefix also maximises
-        # OpenAI prompt-cache hits across turns.
+        # Two narrative sections are rendered as prose above the JSON runtime
+        # context — "Current roadmap" (shape of the roadmap today) and "Recent
+        # committed changes" (undo/revert anchor). JSON-stringified multi-line
+        # prose is hard for the model to parse, and keeping these as a stable
+        # prefix also maximises OpenAI prompt-cache hits across turns.
         overview = context.get('roadmap_overview_summary')
         overview_section: str | None = None
         if isinstance(overview, str) and overview.strip():
@@ -141,16 +142,23 @@ class PromptManager:
                 'Current roadmap (reference this when advising or planning next steps):\n'
                 + overview.strip()
             )
+
+        recent_changes_section = _format_recent_changes_section(
+            context.get('recent_applied_changes'),
+        )
+
         context_for_json = {
             key: value
             for key, value in context.items()
-            if key != 'roadmap_overview_summary'
+            if key not in {'roadmap_overview_summary', 'recent_applied_changes'}
         }
         context_payload = _format_context(context_for_json)
 
         parts: list[str] = [base_prompt, mode_prompt]
         if overview_section is not None:
             parts.append(overview_section)
+        if recent_changes_section is not None:
+            parts.append(recent_changes_section)
         parts.append(f'Runtime context:\n{context_payload}')
         rendered = '\n\n'.join(parts).strip()
         overview_text_for_log = (
@@ -159,15 +167,20 @@ class PromptManager:
         recent_targets_for_log = context_for_json.get('recent_resolved_targets')
         logger.info(
             'system_prompt_built mode=%s roadmap_overview_included=%s '
-            'overview_chars=%d prompt_chars=%d',
+            'recent_changes_included=%s overview_chars=%d prompt_chars=%d',
             mode,
             overview_section is not None,
+            recent_changes_section is not None,
             len(overview_text_for_log),
             len(rendered),
         )
         if overview_text_for_log:
             logger.info(
                 'system_prompt_overview_text\n%s', overview_text_for_log
+            )
+        if recent_changes_section is not None:
+            logger.info(
+                'system_prompt_recent_changes_text\n%s', recent_changes_section
             )
         if recent_targets_for_log:
             logger.info(
@@ -178,6 +191,37 @@ class PromptManager:
 
     def intent_classifier_prompt(self, *, session_id: str | None = None) -> str:
         return self.render('intent_classifier', session_id=session_id)
+
+
+def _format_recent_changes_section(value: Any) -> str | None:
+    """Render `session_context['recent_applied_changes']` as a prose section
+    for the planner. Accepts a list of dumped `AppliedChange` dicts so this
+    module stays independent of the contract type.
+    """
+    if not isinstance(value, list) or not value:
+        return None
+    from app.core.contracts.sessions import AppliedChange
+    from app.core.orchestration.context.applied_changes_log import (
+        format_recent_applied_changes,
+    )
+
+    entries: list[AppliedChange] = []
+    for raw in value:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            entries.append(AppliedChange.model_validate(raw))
+        except Exception:
+            continue
+    rendered = format_recent_applied_changes(entries)
+    if not rendered:
+        return None
+    header = (
+        'Recent committed changes (most recent first — consult this for '
+        '"undo", "revert", or "change it back" requests; the `id` is stable '
+        'across renames, so prefer it over re-resolving by title):'
+    )
+    return f'{header}\n{rendered}'
 
 
 def _format_context(context: dict[str, Any]) -> str:

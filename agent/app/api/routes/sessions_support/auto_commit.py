@@ -11,6 +11,9 @@ from fastapi.exceptions import HTTPException
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import AgentSession, AppliedDraftCommit, RoadmapCommitArtifact
 from app.core.orchestration.agent_service import AgentService
+from app.core.orchestration.context.applied_changes_log import (
+    record_applied_changes_from_commit,
+)
 from app.core.session_store import SessionStore
 from app.core.uuid_utils import is_uuid_like
 
@@ -402,6 +405,9 @@ async def execute_auto_commit(
     # doesn't see a stale pre-rename title for an epic/feature/task it just
     # renamed in a previous turn.
     _refresh_recent_resolved_target_titles(session, draft_operations)
+    # Record the committed changes onto the session so the planner's prompt
+    # can reference them (enables deterministic undo/revert reasoning).
+    record_applied_changes_from_commit(session, commit_result)
 
     artifact = build_commit_artifact(
         session,

@@ -109,6 +109,25 @@ class RecentResolvedTarget(BaseModel):
     created_at: datetime = Field(default_factory=_utcnow)
 
 
+class AppliedChange(BaseModel):
+    """One structural change that was actually committed to the roadmap.
+
+    Records a single entry from the backend's `semantic_diff.changes` so the
+    LLM can answer undo/revert requests deterministically across turns — it
+    reads `change_from` / `change_to` to know the direction of the change
+    and uses the stable `node_id` to stage the reversal without re-resolving
+    by a (possibly stale) title.
+    """
+
+    node_id: str
+    node_type: str
+    change_type: str
+    change_from: dict[str, Any] = Field(default_factory=dict)
+    change_to: dict[str, Any] = Field(default_factory=dict)
+    title: str | None = None
+    committed_at: datetime = Field(default_factory=_utcnow)
+
+
 class PendingEditContext(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -238,6 +257,7 @@ class SessionMetadata(BaseModel):
     applied_draft_commits: list[AppliedDraftCommit] = Field(default_factory=list)
     roadmap_overview_summary: str | None = None
     roadmap_overview_summary_fetched_at: datetime | None = None
+    recent_applied_changes: list[AppliedChange] = Field(default_factory=list)
 
 
 class AgentSession(BaseModel):

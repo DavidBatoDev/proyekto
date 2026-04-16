@@ -94,6 +94,44 @@ class PromptManagerRenderTests(unittest.TestCase):
             prompt,
         )
 
+    def test_build_system_prompt_injects_recent_applied_changes_section(self) -> None:
+        recent_applied_changes = [
+            {
+                'node_id': 'epic-1',
+                'node_type': 'epic',
+                'change_type': 'TITLE_CHANGED',
+                'change_from': {'title': 'PM module'},
+                'change_to': {'title': 'Project Management Module'},
+                'title': 'Project Management Module',
+                'committed_at': '2026-04-16T19:00:00',
+            },
+        ]
+        prompt = self.manager.build_system_prompt(
+            'edit',
+            {'foo': 'bar', 'recent_applied_changes': recent_applied_changes},
+        )
+        self.assertIn('Recent committed changes', prompt)
+        self.assertIn(
+            'Renamed epic "PM module" → "Project Management Module"', prompt,
+        )
+        self.assertIn('(id: epic-1)', prompt)
+        # JSON blob should not carry the list (same rule as overview — keeps
+        # the cacheable prose prefix stable).
+        self.assertNotIn(
+            'recent_applied_changes', prompt.split('Runtime context:')[1],
+        )
+
+    def test_build_system_prompt_omits_recent_changes_section_when_empty(self) -> None:
+        prompt = self.manager.build_system_prompt(
+            'edit',
+            {'foo': 'bar', 'recent_applied_changes': []},
+        )
+        # The edit_mode template mentions "Recent committed changes" in its
+        # advisor guidance, so assert on the injected section header instead.
+        self.assertNotIn(
+            'Recent committed changes (most recent first', prompt,
+        )
+
 
 class ChooseVersionTests(unittest.TestCase):
     def setUp(self) -> None:

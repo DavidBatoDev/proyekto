@@ -269,6 +269,7 @@ def compose_dynamic_system_prompt(
         'intent_type': intent_type,
         'prompt_mode': mode,
         'roadmap_overview_summary': session_context.get('roadmap_overview_summary'),
+        'recent_applied_changes': session_context.get('recent_applied_changes', []),
     }
     deictic_parent_hint = session_context.get('deictic_parent_hint')
     if isinstance(deictic_parent_hint, dict):
