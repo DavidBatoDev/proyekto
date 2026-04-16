@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import unittest
 
-from app.core.tools.registry import get_planning_tool, parse_plan_tool_args
+from app.core.tools.registry import (
+    ALL_STATUS_VALUES,
+    EPIC_STATUS_VALUES,
+    FEATURE_STATUS_VALUES,
+    TASK_STATUS_VALUES,
+    get_edit_helper_tools,
+    get_planning_tool,
+    parse_plan_tool_args,
+)
 
 
 class ToolRegistryParsePlanTests(unittest.TestCase):
@@ -546,6 +554,100 @@ class ToolRegistryParsePlanTests(unittest.TestCase):
                 }
             )
         self.assertIn('move destination conflict', str(ctx.exception))
+
+
+class PlanToolStatusEnumSchemaTests(unittest.TestCase):
+    """Locks in the status enum constraints on the planner's tool schema.
+
+    Without these, the LLM can emit display-formatted values like
+    `"Not started"` or `"Todo"`, which parse fine in Python but fail the
+    backend commit validator. OpenAI's tool-calling enforces declared
+    enums at generation time, so keeping the schema strict is the cheapest
+    way to prevent that class of 400s.
+    """
+
+    def _operation_item_schema(self) -> dict[str, object]:
+        tool = get_planning_tool()
+        return (
+            tool['function']['parameters']['properties']['operations']['items']  # type: ignore[index]
+        )
+
+    def test_top_level_status_enforces_full_enum_union(self) -> None:
+        item = self._operation_item_schema()
+        status_schema = item['properties']['status']  # type: ignore[index]
+        self.assertEqual(status_schema['enum'], ALL_STATUS_VALUES)  # type: ignore[index]
+
+    def test_patch_status_enforces_full_enum_union(self) -> None:
+        item = self._operation_item_schema()
+        patch_schema = item['properties']['patch']  # type: ignore[index]
+        patch_status = patch_schema['properties']['status']  # type: ignore[index]
+        self.assertEqual(patch_status['enum'], ALL_STATUS_VALUES)
+
+    def test_add_epic_data_status_enforces_epic_enum(self) -> None:
+        item = self._operation_item_schema()
+        all_of = item['allOf']  # type: ignore[index]
+        epic_rule = next(
+            rule for rule in all_of
+            if rule.get('if', {}).get('properties', {}).get('op', {}).get('const') == 'add_epic'
+        )
+        epic_status = (
+            epic_rule['then']['properties']['data']['properties']['status']
+        )
+        self.assertEqual(epic_status['enum'], EPIC_STATUS_VALUES)
+
+    def test_add_feature_data_status_enforces_feature_enum(self) -> None:
+        item = self._operation_item_schema()
+        all_of = item['allOf']  # type: ignore[index]
+        feature_rule = next(
+            rule for rule in all_of
+            if rule.get('if', {}).get('properties', {}).get('op', {}).get('const') == 'add_feature'
+        )
+        feature_status = (
+            feature_rule['then']['properties']['data']['properties']['status']
+        )
+        self.assertEqual(feature_status['enum'], FEATURE_STATUS_VALUES)
+
+    def test_add_task_data_status_enforces_task_enum(self) -> None:
+        item = self._operation_item_schema()
+        all_of = item['allOf']  # type: ignore[index]
+        task_rule = next(
+            rule for rule in all_of
+            if rule.get('if', {}).get('properties', {}).get('op', {}).get('const') == 'add_task'
+        )
+        task_status = (
+            task_rule['then']['properties']['data']['properties']['status']
+        )
+        self.assertEqual(task_status['enum'], TASK_STATUS_VALUES)
+
+    def test_edit_helper_status_fields_are_type_specific(self) -> None:
+        tools = get_edit_helper_tools()
+        by_name = {tool['function']['name']: tool for tool in tools}
+        expectations = {
+            'create_epic': EPIC_STATUS_VALUES,
+            'create_feature': FEATURE_STATUS_VALUES,
+            'create_task': TASK_STATUS_VALUES,
+            'update_task_status': TASK_STATUS_VALUES,
+            'update_feature_status': FEATURE_STATUS_VALUES,
+            'update_epic_status': EPIC_STATUS_VALUES,
+            'bulk_update_feature_status': FEATURE_STATUS_VALUES,
+            'bulk_update_epic_status': EPIC_STATUS_VALUES,
+        }
+        for tool_name, expected_enum in expectations.items():
+            tool = by_name.get(tool_name)
+            self.assertIsNotNone(tool, f'tool {tool_name} missing from edit helpers')
+            assert tool is not None
+            status_schema = tool['function']['parameters']['properties']['status']
+            self.assertEqual(
+                status_schema.get('enum'),
+                expected_enum,
+                f'{tool_name} status enum mismatch',
+            )
+
+    def test_all_status_union_contains_every_node_type_value(self) -> None:
+        expected = sorted(
+            {*EPIC_STATUS_VALUES, *FEATURE_STATUS_VALUES, *TASK_STATUS_VALUES}
+        )
+        self.assertEqual(ALL_STATUS_VALUES, expected)
 
 
 if __name__ == '__main__':

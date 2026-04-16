@@ -25,6 +25,13 @@ EPIC_STATUS_VALUES = [
     'completed',
     'on_hold',
 ]
+# Union of every accepted status string across node types. Used when the
+# JSON schema cannot cheaply branch on `node_type` (top-level `status` for
+# mark_status, and `patch.status` for update_node). The planner's
+# semantic validator still enforces the per-type enum on the server side.
+ALL_STATUS_VALUES = sorted(
+    {*TASK_STATUS_VALUES, *FEATURE_STATUS_VALUES, *EPIC_STATUS_VALUES}
+)
 TASK_STATUS_FILTER_VALUES = [*TASK_STATUS_VALUES, 'all']
 FEATURE_STATUS_FILTER_VALUES = [
     'not_started',
@@ -368,7 +375,7 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
             properties={
                 'title': {'type': 'string'},
                 'description': {'type': 'string'},
-                'status': {'type': 'string'},
+                'status': {'type': 'string', 'enum': EPIC_STATUS_VALUES},
             },
         ),
         _function_tool(
@@ -379,7 +386,7 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
                 'epic_id': {'type': 'string'},
                 'title': {'type': 'string'},
                 'description': {'type': 'string'},
-                'status': {'type': 'string'},
+                'status': {'type': 'string', 'enum': FEATURE_STATUS_VALUES},
             },
         ),
         _function_tool(
@@ -390,7 +397,7 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
                 'feature_id': {'type': 'string'},
                 'title': {'type': 'string'},
                 'description': {'type': 'string'},
-                'status': {'type': 'string'},
+                'status': {'type': 'string', 'enum': TASK_STATUS_VALUES},
                 'priority': {'type': 'string'},
                 'assignee_id': {'type': 'string'},
                 'due_date': {'type': 'string'},
@@ -402,7 +409,7 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
             required=['task_id', 'status'],
             properties={
                 'task_id': {'type': 'string'},
-                'status': {'type': 'string'},
+                'status': {'type': 'string', 'enum': TASK_STATUS_VALUES},
             },
         ),
         _function_tool(
@@ -434,7 +441,7 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
             required=['feature_id', 'status'],
             properties={
                 'feature_id': {'type': 'string'},
-                'status': {'type': 'string'},
+                'status': {'type': 'string', 'enum': FEATURE_STATUS_VALUES},
             },
         ),
         _function_tool(
@@ -443,7 +450,7 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
             required=['epic_id', 'status'],
             properties={
                 'epic_id': {'type': 'string'},
-                'status': {'type': 'string'},
+                'status': {'type': 'string', 'enum': EPIC_STATUS_VALUES},
             },
         ),
         _function_tool(
@@ -622,7 +629,7 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
             required=['feature_ids', 'status'],
             properties={
                 'feature_ids': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1},
-                'status': {'type': 'string'},
+                'status': {'type': 'string', 'enum': FEATURE_STATUS_VALUES},
             },
         ),
         _function_tool(
@@ -631,7 +638,7 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
             required=['epic_ids', 'status'],
             properties={
                 'epic_ids': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1},
-                'status': {'type': 'string'},
+                'status': {'type': 'string', 'enum': EPIC_STATUS_VALUES},
             },
         ),
     ]
@@ -675,8 +682,19 @@ def get_planning_tool() -> dict[str, Any]:
                                 'new_parent_ref': {'type': 'string'},
                                 'temp_id': {'type': 'string'},
                                 'position': {'type': 'integer', 'minimum': 0},
-                                'patch': {'type': 'object'},
-                                'status': {'type': 'string'},
+                                'patch': {
+                                    'type': 'object',
+                                    'properties': {
+                                        'status': {
+                                            'type': 'string',
+                                            'enum': ALL_STATUS_VALUES,
+                                        },
+                                    },
+                                },
+                                'status': {
+                                    'type': 'string',
+                                    'enum': ALL_STATUS_VALUES,
+                                },
                                 'delta_days': {'type': 'integer'},
                                 'scope': {'type': 'object'},
                                 'data': {'type': 'object'},
@@ -698,7 +716,11 @@ def get_planning_tool() -> dict[str, Any]:
                                                     'title': {
                                                         'type': 'string',
                                                         'minLength': 1,
-                                                    }
+                                                    },
+                                                    'status': {
+                                                        'type': 'string',
+                                                        'enum': EPIC_STATUS_VALUES,
+                                                    },
                                                 },
                                             }
                                         },
@@ -720,7 +742,11 @@ def get_planning_tool() -> dict[str, Any]:
                                                     'title': {
                                                         'type': 'string',
                                                         'minLength': 1,
-                                                    }
+                                                    },
+                                                    'status': {
+                                                        'type': 'string',
+                                                        'enum': FEATURE_STATUS_VALUES,
+                                                    },
                                                 },
                                             }
                                         },
@@ -746,7 +772,11 @@ def get_planning_tool() -> dict[str, Any]:
                                                     'title': {
                                                         'type': 'string',
                                                         'minLength': 1,
-                                                    }
+                                                    },
+                                                    'status': {
+                                                        'type': 'string',
+                                                        'enum': TASK_STATUS_VALUES,
+                                                    },
                                                 },
                                             }
                                         },
