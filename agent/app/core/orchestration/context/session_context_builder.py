@@ -77,4 +77,5 @@ def build_session_context(
             if session.metadata.pending_edit_context is not None
             else None
         ),
+        'roadmap_overview_summary': session.metadata.roadmap_overview_summary,
     }

@@ -934,6 +934,11 @@ def plan_operations(
             resolve_deferred_actor_context,
         )
         resolve_deferred_actor_context(session_context)
+    if session_context.get('_roadmap_overview_fetch_future') is not None:
+        from app.core.orchestration.planning.planning_pre_dispatcher import (
+            resolve_deferred_roadmap_overview_summary,
+        )
+        resolve_deferred_roadmap_overview_summary(session_context)
     actor_context_for_planner = (
         session_context.get('actor_context')
         if isinstance(session_context.get('actor_context'), dict)

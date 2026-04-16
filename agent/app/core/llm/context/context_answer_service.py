@@ -64,6 +64,11 @@ class ContextAnswerService:
                 resolve_deferred_actor_context,
             )
             resolve_deferred_actor_context(session_context)
+        if session_context.get('_roadmap_overview_fetch_future') is not None:
+            from app.core.orchestration.planning.planning_pre_dispatcher import (
+                resolve_deferred_roadmap_overview_summary,
+            )
+            resolve_deferred_roadmap_overview_summary(session_context)
         context_tools = get_context_tools()
         cache_key = self._build_context_cache_key(
             roadmap_id=str(session_context.get('roadmap_id') or ''),

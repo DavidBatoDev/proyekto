@@ -39,6 +39,9 @@ from app.core.orchestration.edits.draft_graph_manager import (
     get_active_draft_if_available as get_active_draft_if_available_helper,
     resolve_staged_state as resolve_staged_state_helper,
 )
+from app.core.orchestration.context.roadmap_overview_summarizer import (
+    build_roadmap_overview_summary as build_roadmap_overview_summary_helper,
+)
 from app.core.orchestration.context.deictic_resolver import (
     build_deictic_ambiguity_planning as build_deictic_ambiguity_planning_helper,
     infer_required_parent_node_type as infer_required_parent_node_type_helper,
@@ -752,6 +755,31 @@ class AgentService:
                 'actor_context_refresh_failures',
             ),
         )
+
+    def _ensure_roadmap_overview_summary(
+        self,
+        *,
+        session: AgentSession,
+        auth_header: str | None,
+        trace_id: str | None,
+    ) -> None:
+        # Cached on session.metadata. Skip the backend call if we already have
+        # it; it's invalidated on auto-commit success so the next turn refetches.
+        if session.metadata.roadmap_overview_summary is not None:
+            return
+        if not auth_header or not session.roadmap_id:
+            return
+        summary = self._run_async_call(
+            build_roadmap_overview_summary_helper(
+                nest_client=self._nest_client,
+                roadmap_id=session.roadmap_id,
+                auth_header=auth_header,
+                trace_id=trace_id,
+            )
+        )
+        if summary:
+            session.metadata.roadmap_overview_summary = summary
+            session.metadata.roadmap_overview_summary_fetched_at = _utcnow()
 
     def _clear_actor_context_for_missing_auth(
         self,

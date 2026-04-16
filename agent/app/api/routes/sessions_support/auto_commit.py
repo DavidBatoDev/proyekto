@@ -309,6 +309,10 @@ async def execute_auto_commit(
 
     session.metadata.pending_context_resolution = None
     session.metadata.pending_edit_context = None
+    # The roadmap shape has changed — next turn's pre-dispatcher will refetch
+    # the overview via the speculative path.
+    session.metadata.roadmap_overview_summary = None
+    session.metadata.roadmap_overview_summary_fetched_at = None
 
     artifact = build_commit_artifact(
         session,

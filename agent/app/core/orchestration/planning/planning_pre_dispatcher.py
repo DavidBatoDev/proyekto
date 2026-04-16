@@ -59,6 +59,38 @@ def resolve_deferred_actor_context(
     return join_ms
 
 
+def resolve_deferred_roadmap_overview_summary(
+    session_context: dict[str, Any],
+) -> int | None:
+    """Join a deferred roadmap-overview fetch started by pre-dispatch.
+
+    Same contract as `resolve_deferred_actor_context`: idempotent, bounded
+    by the fetch's own HTTP timeout, and failures degrade silently (the
+    prompt just omits the overview section).
+    """
+    future: Future[None] | None = session_context.pop(
+        '_roadmap_overview_fetch_future', None
+    )
+    rebuild = session_context.pop('_roadmap_overview_fetch_rebuild', None)
+    if future is None:
+        return None
+    join_started = perf_counter()
+    try:
+        future.result()
+    except Exception:  # pragma: no cover - best-effort join
+        pass
+    join_ms = int((perf_counter() - join_started) * 1000)
+    if callable(rebuild):
+        try:
+            rebuild()
+        except Exception:  # pragma: no cover
+            pass
+    metrics = session_context.setdefault('_phase_metrics', {})
+    if isinstance(metrics, dict):
+        metrics['roadmap_overview_fetch_join_ms'] = join_ms
+    return join_ms
+
+
 @dataclass
 class PrePlanningDispatchResult:
     session_context: dict[str, Any]
@@ -161,6 +193,29 @@ def dispatch_pre_planning_phase(
             _run_speculative_actor_fetch
         )
 
+    # Speculative roadmap-overview prefetch: populate
+    # `session.metadata.roadmap_overview_summary` in parallel so the planner's
+    # system prompt can include a compact roadmap shape without spending a
+    # discovery tool call. The fetch is idempotent (skips if already cached)
+    # and joined later at the prompt-build site via
+    # `resolve_deferred_roadmap_overview_summary`.
+    roadmap_overview_fetch_future: Future[None] | None = None
+    if (
+        auth_header
+        and session.metadata.roadmap_overview_summary is None
+        and session.roadmap_id
+    ):
+        def _run_roadmap_overview_fetch() -> None:
+            self._ensure_roadmap_overview_summary(
+                session=session,
+                auth_header=auth_header,
+                trace_id=trace_id,
+            )
+
+        roadmap_overview_fetch_future = _get_actor_fetch_executor().submit(
+            _run_roadmap_overview_fetch
+        )
+
     session_context = self._build_session_context(session, auth_header, trace_id)
     cached_classifier_result: dict[str, Any] | None = None
     if should_force_edit_preview:
@@ -253,6 +308,19 @@ def dispatch_pre_planning_phase(
                 session_context['actor_context'] = actor
 
         session_context['_actor_fetch_rebuild'] = _rebuild_actor_on_context
+    if roadmap_overview_fetch_future is not None:
+        session_context['_roadmap_overview_fetch_future'] = roadmap_overview_fetch_future
+
+        def _rebuild_roadmap_overview_on_context() -> None:
+            # The background task writes to session.metadata — pull the fresh
+            # value into session_context so the next prompt build picks it up.
+            summary = session.metadata.roadmap_overview_summary
+            if isinstance(summary, str) and summary.strip():
+                session_context['roadmap_overview_summary'] = summary
+
+        session_context['_roadmap_overview_fetch_rebuild'] = (
+            _rebuild_roadmap_overview_on_context
+        )
     if pending_context is not None and edit_continuation_trigger:
         session_context['pending_followup_kind'] = edit_continuation_trigger
     if should_force_edit_preview:

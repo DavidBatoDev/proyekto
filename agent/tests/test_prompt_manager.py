@@ -56,6 +56,44 @@ class PromptManagerRenderTests(unittest.TestCase):
         # Base prompt shouldn't be empty
         self.assertTrue(len(prompt) > 50)
 
+    def test_build_system_prompt_injects_roadmap_overview_as_prose_section(self) -> None:
+        overview = 'Roadmap: "Demo"\n1 epic\n1. Alpha — 1 feature'
+        prompt = self.manager.build_system_prompt(
+            'chat',
+            {'foo': 'bar', 'roadmap_overview_summary': overview},
+        )
+        # Prose section is rendered before the JSON blob, not inside it.
+        self.assertIn(
+            'Current roadmap (reference this when advising or planning next steps):',
+            prompt,
+        )
+        self.assertIn('Roadmap: "Demo"', prompt)
+        self.assertIn('1. Alpha — 1 feature', prompt)
+        # JSON blob must NOT carry the overview (keeps the cacheable prefix stable
+        # and avoids stringified multi-line prose inside JSON).
+        self.assertNotIn('roadmap_overview_summary', prompt.split('Runtime context:')[1])
+        overview_index = prompt.find('Current roadmap')
+        runtime_index = prompt.find('Runtime context:')
+        self.assertLess(overview_index, runtime_index)
+
+    def test_build_system_prompt_omits_overview_section_when_missing(self) -> None:
+        prompt = self.manager.build_system_prompt('chat', {'foo': 'bar'})
+        # The full injected header must not appear when no overview is provided.
+        self.assertNotIn(
+            'Current roadmap (reference this when advising or planning next steps):',
+            prompt,
+        )
+
+    def test_build_system_prompt_omits_overview_section_when_empty_string(self) -> None:
+        prompt = self.manager.build_system_prompt(
+            'chat',
+            {'foo': 'bar', 'roadmap_overview_summary': '   '},
+        )
+        self.assertNotIn(
+            'Current roadmap (reference this when advising or planning next steps):',
+            prompt,
+        )
+
 
 class ChooseVersionTests(unittest.TestCase):
     def setUp(self) -> None:

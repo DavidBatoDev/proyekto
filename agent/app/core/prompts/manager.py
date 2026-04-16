@@ -129,12 +129,30 @@ class PromptManager:
         template_id = mode_templates.get(mode, 'chat_mode')
         base_prompt = self.render('base_system', session_id=session_id)
         mode_prompt = self.render(template_id, session_id=session_id)
-        context_payload = _format_context(context)
-        return (
-            f'{base_prompt}\n\n'
-            f'{mode_prompt}\n\n'
-            f'Runtime context:\n{context_payload}'
-        ).strip()
+
+        # The overview is rendered as a separate prose section above the JSON
+        # runtime context — JSON-stringified multi-line prose is hard for the
+        # model to parse, and keeping it as a stable prefix also maximises
+        # OpenAI prompt-cache hits across turns.
+        overview = context.get('roadmap_overview_summary')
+        overview_section: str | None = None
+        if isinstance(overview, str) and overview.strip():
+            overview_section = (
+                'Current roadmap (reference this when advising or planning next steps):\n'
+                + overview.strip()
+            )
+        context_for_json = {
+            key: value
+            for key, value in context.items()
+            if key != 'roadmap_overview_summary'
+        }
+        context_payload = _format_context(context_for_json)
+
+        parts: list[str] = [base_prompt, mode_prompt]
+        if overview_section is not None:
+            parts.append(overview_section)
+        parts.append(f'Runtime context:\n{context_payload}')
+        return '\n\n'.join(parts).strip()
 
     def intent_classifier_prompt(self, *, session_id: str | None = None) -> str:
         return self.render('intent_classifier', session_id=session_id)

@@ -236,6 +236,8 @@ class SessionMetadata(BaseModel):
     drafts: dict[str, DraftNode] = Field(default_factory=dict)
     draft_head_ids: list[str] = Field(default_factory=list)
     applied_draft_commits: list[AppliedDraftCommit] = Field(default_factory=list)
+    roadmap_overview_summary: str | None = None
+    roadmap_overview_summary_fetched_at: datetime | None = None
 
 
 class AgentSession(BaseModel):

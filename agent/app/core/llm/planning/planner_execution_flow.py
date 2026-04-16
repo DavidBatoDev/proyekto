@@ -253,6 +253,11 @@ def compose_dynamic_system_prompt(
             resolve_deferred_actor_context,
         )
         resolve_deferred_actor_context(session_context)
+    if session_context.get('_roadmap_overview_fetch_future') is not None:
+        from app.core.orchestration.planning.planning_pre_dispatcher import (
+            resolve_deferred_roadmap_overview_summary,
+        )
+        resolve_deferred_roadmap_overview_summary(session_context)
     prompt_context = {
         'roadmap_id': session_context.get('roadmap_id'),
         'base_revision': session_context.get('base_revision'),
@@ -263,6 +268,7 @@ def compose_dynamic_system_prompt(
         'actor_context': session_context.get('actor_context'),
         'intent_type': intent_type,
         'prompt_mode': mode,
+        'roadmap_overview_summary': session_context.get('roadmap_overview_summary'),
     }
     deictic_parent_hint = session_context.get('deictic_parent_hint')
     if isinstance(deictic_parent_hint, dict):
