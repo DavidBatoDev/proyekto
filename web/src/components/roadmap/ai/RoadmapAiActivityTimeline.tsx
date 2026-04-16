@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import type { RoadmapAiActivityTimeline } from "./useRoadmapAiAssistantSession";
+import type {
+  RoadmapAiActivityStep,
+  RoadmapAiActivityTimeline,
+} from "./useRoadmapAiAssistantSession";
 
 interface RoadmapAiActivityTimelineProps {
   timeline: RoadmapAiActivityTimeline;
@@ -45,10 +48,72 @@ export const getTimelineHeaderLabel = (
   seconds: number,
 ): string => {
   if (seconds > 0) {
+    if (timeline.done && seconds < 10) {
+      return "Worked in a while";
+    }
     return `${timeline.done ? "Worked" : "Working"} for ${seconds} seconds`;
   }
   return timeline.done ? "Worked" : "Working...";
 };
+
+// Group consecutive steps with the same title into a single display entry.
+// This silently merges parallel tool calls so the timeline stays clean.
+export function groupParallelSteps(
+  steps: RoadmapAiActivityStep[],
+): RoadmapAiActivityStep[] {
+  const result: RoadmapAiActivityStep[] = [];
+  let i = 0;
+  while (i < steps.length) {
+    const current = steps[i];
+    let j = i + 1;
+    while (j < steps.length && steps[j].title === current.title) {
+      j++;
+    }
+    if (j - i === 1) {
+      result.push(current);
+    } else {
+      const group = steps.slice(i, j);
+      const worstStatus = group.reduce<RoadmapAiActivityStep["status"]>(
+        (worst, s) => {
+          if (s.status === "error") return "error";
+          if (s.status === "running" && worst !== "error") return "running";
+          return worst;
+        },
+        current.status,
+      );
+      // Use last step's summary (result steps are more informative than request steps)
+      const lastSummary = group[group.length - 1].summary;
+      // Merge titleLists from all steps, deduplicating by value
+      const allItems = group
+        .flatMap((s) => s.titleList?.items ?? [])
+        .filter((item, idx, arr) => arr.indexOf(item) === idx);
+      const totalCount = group.reduce(
+        (sum, s) => sum + (s.titleList?.totalCount ?? 0),
+        0,
+      );
+      const hasMore = group.some((s) => s.titleList?.hasMore ?? false);
+      const mergedTitleList =
+        allItems.length > 0
+          ? { items: allItems, shownCount: allItems.length, totalCount, hasMore }
+          : undefined;
+      // Patch the first number in the summary to match the real merged count
+      // e.g. "I found 1 matching roadmap item" → "I found 2 matching roadmap items"
+      const mergedCount = mergedTitleList?.items.length ?? 0;
+      const correctedSummary =
+        mergedCount > 0
+          ? lastSummary.replace(/\b\d+\b/, String(mergedCount))
+          : lastSummary;
+      result.push({
+        ...current,
+        status: worstStatus,
+        summary: correctedSummary,
+        titleList: mergedTitleList,
+      });
+    }
+    i = j;
+  }
+  return result;
+}
 
 const statusClassName: Record<string, string> = {
   running: "text-gray-600",
@@ -78,7 +143,10 @@ export function RoadmapAiActivityTimelineView({
     () => getTimelineHeaderLabel(timeline, seconds),
     [timeline, seconds],
   );
-  const visibleSteps = useMemo(() => getVisibleTimelineSteps(timeline), [timeline]);
+  const visibleSteps = useMemo(
+    () => groupParallelSteps(getVisibleTimelineSteps(timeline)),
+    [timeline],
+  );
 
   useEffect(() => {
     if (visibleSteps.length === 0) {

@@ -491,11 +491,10 @@ const SHARED_HIDDEN_ACTIVITY_EVENTS = new Set<string>([
   "session_staged_state",
   "message_completed",
   "provider_success",
-]);
-
-const FRIENDLY_MINIMAL_EXTRA_HIDDEN_ACTIVITY_EVENTS = new Set<string>([
   "provider_attempt",
 ]);
+
+const FRIENDLY_MINIMAL_EXTRA_HIDDEN_ACTIVITY_EVENTS = new Set<string>([]);
 
 const toRecord = (value: unknown): Record<string, unknown> | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -2912,7 +2911,7 @@ export function RoadmapAiAssistantPanel({
             Boolean(liveActivity),
             tracePollingFailed,
           ) ? (
-          <div className="rounded-xl px-3 py-2.5 border border-gray-200 bg-white mr-4 text-xs text-gray-600">
+          <div className="mr-4 text-xs text-gray-400 italic">
             Thinking...
           </div>
         ) : null}
