@@ -10,6 +10,7 @@ import { TasksController } from './controllers/tasks.controller';
 import { TaskExtrasController } from './controllers/task-extras.controller';
 import { RoadmapPatchController } from './controllers/roadmap-patch.controller';
 import { RoadmapAiController } from './controllers/roadmap-ai.controller';
+import { RoadmapAiSessionsController } from './controllers/roadmap-ai-sessions.controller';
 
 // Services & tokens
 import {
@@ -36,6 +37,8 @@ import {
 } from './services/roadmap-patch.service';
 import { RoadmapAiService } from './services/roadmap-ai.service';
 import { RoadmapAiPreviewStoreService } from './services/roadmap-ai-preview-store.service';
+import { RoadmapAiSessionsService } from './services/roadmap-ai-sessions.service';
+import { RoadmapAiTitleGeneratorService } from './services/roadmap-ai-title-generator.service';
 
 // Repository implementations
 import { RoadmapsRepositorySupabase } from './repositories/roadmaps.repository.supabase';
@@ -59,12 +62,15 @@ import { RoadmapAuthorizationService } from './services/roadmap-authorization.se
     TaskExtrasController,
     RoadmapPatchController,
     RoadmapAiController,
+    RoadmapAiSessionsController,
   ],
   providers: [
     RoadmapsService,
     { provide: ROADMAPS_REPOSITORY, useClass: RoadmapsRepositorySupabase },
     RoadmapAiService,
     RoadmapAiPreviewStoreService,
+    RoadmapAiSessionsService,
+    RoadmapAiTitleGeneratorService,
     RoadmapPatchService,
     {
       provide: ROADMAP_PATCH_REPOSITORY,

@@ -51,12 +51,17 @@ async def create_session_flow(
             roadmap_id=payload.roadmap_id,
             actor_context_stripped=True,
         )
-    session = AgentSession(
-        roadmap_id=payload.roadmap_id,
-        base_revision=payload.base_revision,
-        revision_token=payload.revision_token,
-        metadata=sanitized_metadata,
-    )
+    session_kwargs: dict[str, Any] = {
+        'roadmap_id': payload.roadmap_id,
+        'base_revision': payload.base_revision,
+        'revision_token': payload.revision_token,
+        'metadata': sanitized_metadata,
+    }
+    if payload.session_id:
+        session_kwargs['session_id'] = payload.session_id
+    if payload.seed_messages:
+        session_kwargs['messages'] = list(payload.seed_messages)
+    session = AgentSession(**session_kwargs)
     await run_store_call(store.create, session)
     return CreateSessionResponse(
         session_id=session.session_id,

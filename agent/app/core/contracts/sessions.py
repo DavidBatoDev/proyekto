@@ -259,10 +259,21 @@ class AgentSession(BaseModel):
 
 
 class CreateSessionRequest(BaseModel):
+    # Optional — when supplied (e.g. by the backend after inserting a
+    # roadmap_ai_sessions row), the agent uses it as the Redis session key so
+    # the DB row id and the agent session id are the same value. When omitted,
+    # the agent generates a uuid as before.
+    session_id: str | None = None
     roadmap_id: str
     base_revision: int | None = None
     revision_token: str | None = None
     metadata: dict[str, Any] | None = None
+    # Optional conversation history for rehydration after Redis TTL expiry.
+    # The web client replays the last N messages from the DB into a fresh
+    # Redis session so the planner has context. Ignored on a miss-hit race
+    # where the session already exists — Redis remains authoritative for
+    # transient working state (staged operations, drafts, resolver caches).
+    seed_messages: list[Message] | None = None
 
 
 class CreateSessionResponse(BaseModel):

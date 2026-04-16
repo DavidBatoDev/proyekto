@@ -45,6 +45,14 @@ class EnvironmentVariables {
 
   @IsString()
   CLIENT_URL: string = 'http://localhost:3000';
+
+  @IsOptional()
+  @IsString()
+  OPENAI_API_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  ROADMAP_AI_AUTO_TITLE_ENABLED?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

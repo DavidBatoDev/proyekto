@@ -84,8 +84,18 @@ function extractPythonClassFields(content, className) {
   if (!match) {
     throw new Error(`Could not find Python class: ${className}`);
   }
+  // Stop at the first method definition — Pydantic models declare fields at
+  // the top of the class body, then methods below. Matching beyond this
+  // point scoops up type-annotated locals inside methods (e.g. `issues:
+  // list[str]`) and even `else:` keywords, since they fit the
+  // `name: type` shape.
+  const body = match[1];
+  const methodStart = body.search(/\n {4}def\s+\w+\(/);
+  const fieldBody = methodStart === -1 ? body : body.slice(0, methodStart);
+  // Constrain to exactly 4 spaces of indentation so only direct class-body
+  // declarations match, not nested scopes.
   const fields = [];
-  const matches = match[1].matchAll(/\n\s*([a-z_][a-z0-9_]*)\s*:\s*[^\n]+/g);
+  const matches = fieldBody.matchAll(/\n {4}([a-z_][a-z0-9_]*)\s*:\s*[^\n]+/g);
   for (const item of matches) {
     if (item[1] !== 'model_config') {
       fields.push(item[1]);
@@ -170,20 +180,22 @@ function main() {
 }
 
 function extractRegistryToolRequiredArgs(content, toolName) {
+  // The registry was refactored to use a `_function_tool(...)` helper with
+  // keyword arguments rather than inline dict literals. Match the
+  // `name='<toolName>'` entry and then walk forward to its sibling
+  // `required=[...]` within the same call. Sibling safety is fine because
+  // `required=` only appears once per `_function_tool(...)` invocation and
+  // always comes after `name=`.
+  const nameEscaped = toolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const namePattern = new RegExp(
-    `'name':\\s*'${toolName}'([\\s\\S]*?)'parameters':\\s*\\{([\\s\\S]*?)\\}\\s*,?\\s*\\},`,
+    `name=['"]${nameEscaped}['"][\\s\\S]*?required=\\[([^\\]]*)\\]`,
     'm',
   );
-  const nameMatch = content.match(namePattern);
-  if (!nameMatch) {
+  const match = content.match(namePattern);
+  if (!match) {
     throw new Error(`Could not find tool definition in registry: ${toolName}`);
   }
-  const parametersChunk = nameMatch[2];
-  const requiredMatch = parametersChunk.match(/'required':\s*\[([^\]]*)\]/m);
-  if (!requiredMatch) {
-    throw new Error(`Could not find required args for tool: ${toolName}`);
-  }
-  return [...requiredMatch[1].matchAll(/'([^']+)'/g)].map((item) => item[1]);
+  return [...match[1].matchAll(/['"]([^'"]+)['"]/g)].map((item) => item[1]);
 }
 
 main();
