@@ -3,16 +3,21 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Callable
+from dataclasses import dataclass
+from typing import Any, Callable, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.config import Settings
 from app.core.contracts.operations import RoadmapOperation
 from app.core.llm.react.react_executor import BoundedToolLoopOutcome, run_bounded_tool_loop
 from app.core.contracts.sessions import IntentType
 from app.core.logging_utils import log_event
-from app.core.llm.providers.base import LLMProviderAdapter, ProviderAdapterError
+from app.core.llm.providers.base import (
+    IntentClassificationResult,
+    LLMProviderAdapter,
+    ProviderAdapterError,
+)
 from app.core.tools.registry import PLANNING_TOOL_NAME, parse_plan_tool_args
 
 try:
@@ -37,7 +42,8 @@ logger = logging.getLogger(__name__)
 
 class _IntentClassification(BaseModel):
     intent_type: IntentType
-    rationale: str
+    sub_intent: Literal['rename_only', 'delete_only', None] = Field(default=None)
+    rationale: str = Field(default='')
 
 
 class OpenAILangChainAdapter(LLMProviderAdapter):
@@ -48,6 +54,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
         self._last_usage: dict[str, int] | None = None
         self._chat_model_instance: Any | None = None
         self._planner_chat_model_instances: dict[str, Any] = {}
+        self._classifier_chat_model_instance: Any | None = None
 
     def is_available(self) -> bool:
         return bool(
@@ -70,18 +77,48 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
         self,
         classifier_prompt: str,
         classifier_input: str,
-    ) -> IntentType:
+    ) -> IntentClassificationResult:
         try:
             self._last_usage = None
-            model = self._chat_model().with_structured_output(_IntentClassification)
-            classification: _IntentClassification = model.invoke(
+            model = self._classifier_chat_model()
+            ai_message = model.invoke(
                 [
                     SystemMessage(content=classifier_prompt),
                     HumanMessage(content=classifier_input),
                 ]
             )
-            self._last_usage = self._extract_usage(classification)
-            return classification.intent_type
+            self._last_usage = self._extract_usage(ai_message)
+            raw_text = self._extract_text(ai_message.content)
+            if not raw_text:
+                raise ProviderAdapterError(
+                    provider=self.provider_name,
+                    code='empty_classifier_response',
+                    message='Classifier returned empty content.',
+                )
+            try:
+                payload = json.loads(raw_text)
+            except json.JSONDecodeError as exc:
+                raise ProviderAdapterError(
+                    provider=self.provider_name,
+                    code='invalid_classifier_payload',
+                    message=f'Classifier returned non-JSON content: {exc}',
+                )
+            try:
+                parsed = _IntentClassification.model_validate(payload)
+            except Exception as exc:
+                raise ProviderAdapterError(
+                    provider=self.provider_name,
+                    code='invalid_classifier_payload',
+                    message=f'Classifier payload failed schema validation: {exc}',
+                )
+            return IntentClassificationResult(
+                intent_type=parsed.intent_type,
+                sub_intent=parsed.sub_intent,
+                rationale=parsed.rationale or '',
+                model=self._settings.openai_classifier_model,
+            )
+        except ProviderAdapterError:
+            raise
         except Exception as exc:  # pragma: no cover
             raise self._to_provider_error(exc)
 
@@ -380,6 +417,29 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                 **self._base_model_kwargs(max_tokens=self._settings.openai_max_tokens),
             )
         return self._chat_model_instance
+
+    def _classifier_chat_model(self) -> Any:
+        if self._classifier_chat_model_instance is None:
+            # `response_format=json_object` skips the function-calling
+            # wrapper that `with_structured_output` imposes. The server
+            # streams JSON directly, cutting ~400–800ms of TTFT on
+            # gpt-4o-mini compared to tool-call mode. We validate the
+            # payload with Pydantic in `classify_intent`, so schema safety
+            # is preserved even though the server isn't strictly enforcing
+            # the schema.
+            constructor_kwargs: dict[str, Any] = {
+                'api_key': self._settings.openai_api_key,
+                'model': self._settings.openai_classifier_model,
+                'temperature': self._settings.openai_classifier_temperature,
+                'timeout': 20,
+                'model_kwargs': {
+                    'response_format': {'type': 'json_object'},
+                },
+            }
+            if self._settings.openai_classifier_max_tokens is not None:
+                constructor_kwargs['max_tokens'] = self._settings.openai_classifier_max_tokens
+            self._classifier_chat_model_instance = ChatOpenAI(**constructor_kwargs)
+        return self._classifier_chat_model_instance
 
     def _planner_chat_model(self, *, planner_profile: str | None = None) -> Any:
         planner_max_tokens = self._planner_max_tokens_for_profile(planner_profile)

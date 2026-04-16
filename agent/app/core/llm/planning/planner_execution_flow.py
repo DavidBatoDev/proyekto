@@ -112,6 +112,7 @@ def classify_intent(
             intent_type='roadmap_edit',
             is_roadmap_question=False,
             parse_mode=parse_mode,
+            classifier_source=None,
         )
         return {
             'intent_type': 'roadmap_edit',
@@ -122,29 +123,59 @@ def classify_intent(
             'is_roadmap_question': False,
             'force_edit_continuation': True,
             'force_edit_continuation_reason': force_reason,
+            'classifier_sub_intent': None,
+            'classifier_source': None,
+            'classifier_model': None,
+            'classifier_fallback_reason': None,
+            'classifier_rationale': None,
+            'classifier_elapsed_ms': None,
         }
-    heuristic_intent = planner._heuristic_intent(user_message)
+
+    cached = session_context.get('_classifier_result')
+    if isinstance(cached, dict) and cached.get('intent_type'):
+        classifier_payload = cached
+    else:
+        classifier_payload = planner._classify_intent_llm_first(
+            user_message=user_message,
+            session_context=session_context,
+        )
+        session_context['_classifier_result'] = classifier_payload
+
+    classifier_intent = classifier_payload.get('intent_type', 'unclear')
+    classifier_sub_intent = classifier_payload.get('sub_intent')
+    classifier_source = classifier_payload.get('source')
+    classifier_model = classifier_payload.get('model')
+    classifier_rationale = classifier_payload.get('rationale') or None
+    classifier_fallback_reason = classifier_payload.get('fallback_reason')
+    classifier_elapsed_ms = classifier_payload.get('elapsed_ms')
+
     question_style_edit_promoted = False
     is_roadmap_question = planner._is_roadmap_question(
-        intent_type=heuristic_intent,
+        intent_type=classifier_intent,
         user_message=user_message,
         session_context=session_context,
     )
-    routed_intent = heuristic_intent
+    routed_intent = classifier_intent
     if (
-        heuristic_intent in {'general_question', 'question', 'unclear'}
+        classifier_intent in {'general_question', 'question', 'unclear'}
         and planner._is_question_style_edit_request(user_message)
     ):
         routed_intent = 'roadmap_edit'
         question_style_edit_promoted = True
         is_roadmap_question = False
-    if heuristic_intent in {'general_question', 'question', 'unclear'} and is_roadmap_question:
+    if classifier_intent in {'general_question', 'question', 'unclear'} and is_roadmap_question:
         routed_intent = 'roadmap_query'
-    parse_mode = (
-        'heuristic_question_style_edit_override'
-        if question_style_edit_promoted
-        else 'heuristic_prerouter'
-    )
+
+    if routed_intent != 'roadmap_edit':
+        classifier_sub_intent = None
+
+    if question_style_edit_promoted:
+        parse_mode = 'heuristic_question_style_edit_override'
+    elif classifier_source == 'llm':
+        parse_mode = 'llm_classifier'
+    else:
+        parse_mode = 'heuristic_prerouter'
+
     log_event(
         planner._logger,
         'intent_classified',
@@ -154,6 +185,13 @@ def classify_intent(
         is_roadmap_question=is_roadmap_question,
         parse_mode=parse_mode,
         question_style_edit_promoted=question_style_edit_promoted,
+        classifier_source=classifier_source,
+        classifier_model=classifier_model,
+        classifier_sub_intent=classifier_sub_intent,
+        classifier_fallback_reason=classifier_fallback_reason,
+        classifier_elapsed_ms=classifier_elapsed_ms,
+        classifier_tokens_input=classifier_payload.get('tokens_input'),
+        classifier_tokens_output=classifier_payload.get('tokens_output'),
     )
     return {
         'intent_type': routed_intent,
@@ -163,6 +201,12 @@ def classify_intent(
         'provider_error_code': None,
         'is_roadmap_question': is_roadmap_question,
         'question_style_edit_promoted': question_style_edit_promoted,
+        'classifier_sub_intent': classifier_sub_intent,
+        'classifier_source': classifier_source,
+        'classifier_model': classifier_model,
+        'classifier_fallback_reason': classifier_fallback_reason,
+        'classifier_rationale': classifier_rationale,
+        'classifier_elapsed_ms': classifier_elapsed_ms,
     }
 
 

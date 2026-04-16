@@ -793,10 +793,17 @@ def plan_operations(
     )
     trace_id = session_context.get('trace_id')
     edit_sub_intent: str | None = None
+    sub_intent_source: str | None = None
     if intent_type == 'roadmap_plan':
         tool_definitions = get_operation_tools()
     else:
-        edit_sub_intent = _classify_edit_sub_intent(user_message)
+        cached_sub_intent = state.get('classifier_sub_intent')
+        if isinstance(cached_sub_intent, str) and cached_sub_intent in {'rename_only', 'delete_only'}:
+            edit_sub_intent = cached_sub_intent
+            sub_intent_source = 'llm_classifier'
+        else:
+            edit_sub_intent = _classify_edit_sub_intent(user_message)
+            sub_intent_source = 'regex_fallback' if edit_sub_intent else None
         scoped_tools = get_scoped_edit_tools(edit_sub_intent)
         if scoped_tools:
             tool_definitions = scoped_tools
@@ -804,6 +811,8 @@ def plan_operations(
             if isinstance(metrics, dict):
                 metrics['planner_tools_scope'] = edit_sub_intent
                 metrics['planner_tools_count'] = len(tool_definitions)
+                if sub_intent_source:
+                    metrics['planner_tools_scope_source'] = sub_intent_source
         else:
             edit_sub_intent = None
             tool_definitions = get_edit_mode_tools()

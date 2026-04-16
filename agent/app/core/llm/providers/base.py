@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import IntentType
@@ -21,6 +21,20 @@ class ProviderCallFailure:
     code: str
     message: str
     provider: str
+
+
+@dataclass
+class IntentClassificationResult:
+    """Structured output of an LLM intent classification call.
+
+    `sub_intent` is only meaningful when `intent_type == 'roadmap_edit'`;
+    callers use it to pick a scoped tool manifest. `model` records which
+    model produced the result so telemetry can track adoption per SKU.
+    """
+    intent_type: IntentType
+    sub_intent: Literal['rename_only', 'delete_only', None]
+    rationale: str
+    model: str
 
 
 class ProviderAdapterError(RuntimeError):
@@ -55,7 +69,7 @@ class LLMProviderAdapter(ABC):
         self,
         classifier_prompt: str,
         classifier_input: str,
-    ) -> IntentType:
+    ) -> IntentClassificationResult:
         raise NotImplementedError
 
     @abstractmethod

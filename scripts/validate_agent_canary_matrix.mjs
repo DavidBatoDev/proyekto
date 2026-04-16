@@ -51,6 +51,18 @@ const compatEnv = {
   MAX_EDIT_TOOL_TURNS: "4",
 };
 
+const classifierOffEnv = {
+  AGENT_HYBRID_REACT_ENABLED: "true",
+  AGENT_DRAFT_GRAPH_ENABLED: "true",
+  AGENT_STRICT_PREVIEW_FINGERPRINT: "true",
+  AGENT_LLM_INTENT_CLASSIFIER_ENABLED: "false",
+};
+
+const classifierOffModules = [
+  "tests.test_planner_intent_classifier",
+  "tests.test_planner_max_tokens_profile",
+];
+
 function loadEnvFiles() {
   const cwd = process.cwd();
   const candidates = [
@@ -143,10 +155,16 @@ function main() {
   console.log(`Using Python: ${py}`);
   const strictOk = runProfile(py, "strict-canary", strictEnv, strictModules);
   const compatOk = runProfile(py, "react-compat", compatEnv, compatModules);
+  const classifierOffOk = runProfile(
+    py,
+    "llm-classifier-off",
+    classifierOffEnv,
+    classifierOffModules,
+  );
 
-  if (strictOk && compatOk) {
+  if (strictOk && compatOk && classifierOffOk) {
     console.log(
-      "Canary matrix validation passed for strict and react-compat profiles.",
+      "Canary matrix validation passed for strict, react-compat, and llm-classifier-off profiles.",
     );
     process.exit(0);
   }

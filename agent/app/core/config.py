@@ -47,6 +47,22 @@ class Settings(BaseSettings):
         default=320,
         alias='OPENAI_SIMPLE_EDIT_MAX_TOKENS',
     )
+    openai_classifier_model: str = Field(
+        default='gpt-4o-mini',
+        alias='OPENAI_CLASSIFIER_MODEL',
+    )
+    openai_classifier_max_tokens: int | None = Field(
+        default=120,
+        alias='OPENAI_CLASSIFIER_MAX_TOKENS',
+    )
+    openai_classifier_temperature: float = Field(
+        default=0.0,
+        alias='OPENAI_CLASSIFIER_TEMPERATURE',
+    )
+    agent_llm_intent_classifier_enabled: bool = Field(
+        default=True,
+        alias='AGENT_LLM_INTENT_CLASSIFIER_ENABLED',
+    )
 
     session_ttl_seconds: int = Field(default=1800, alias='SESSION_TTL_SECONDS')
     upstash_redis_rest_url: str | None = Field(default=None, alias='UPSTASH_REDIS_REST_URL')
@@ -211,6 +227,26 @@ class Settings(BaseSettings):
             return 64
         if value > 4096:
             return 4096
+        return value
+
+    @field_validator('openai_classifier_max_tokens')
+    @classmethod
+    def normalize_openai_classifier_max_tokens(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if value < 32:
+            return 32
+        if value > 512:
+            return 512
+        return value
+
+    @field_validator('openai_classifier_temperature')
+    @classmethod
+    def normalize_openai_classifier_temperature(cls, value: float) -> float:
+        if value < 0.0:
+            return 0.0
+        if value > 1.0:
+            return 1.0
         return value
 
     @field_validator('agent_edit_planner_repair_retries')

@@ -29,6 +29,12 @@ class ProviderOrchestrator:
         self._logger = logging.getLogger(__name__)
         self._adapter: LLMProviderAdapter = OpenAILangChainAdapter(settings)
 
+    def is_available(self) -> bool:
+        try:
+            return bool(self._adapter.is_available())
+        except Exception:
+            return False
+
     def call(
         self,
         operation: Callable[[LLMProviderAdapter], T],

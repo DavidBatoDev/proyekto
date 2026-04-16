@@ -1,4 +1,5 @@
 from app.core.llm.providers.base import (
+    IntentClassificationResult,
     LLMProviderAdapter,
     ProviderAdapterError,
     ProviderCallFailure,
@@ -21,6 +22,7 @@ def __getattr__(name: str):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
+    'IntentClassificationResult',
     'LLMProviderAdapter',
     'ProviderAdapterError',
     'ProviderCallFailure',

@@ -163,6 +163,7 @@ def dispatch_pre_planning_phase(
         )
 
     session_context = self._build_session_context(session, auth_header, trace_id)
+    cached_classifier_result: dict[str, Any] | None = None
     if should_force_edit_preview:
         preview_intent: IntentType = 'roadmap_edit'
         phase_timings['intent_classification_ms'] = 0
@@ -175,6 +176,7 @@ def dispatch_pre_planning_phase(
         phase_timings['intent_classification_ms'] = int(
             (perf_counter() - classify_started) * 1000
         )
+        cached_classifier_result = session_context.get('_classifier_result')
 
     simple_edit_detected = preview_intent == 'roadmap_edit'
     # Mixed edit/query follow-up orchestration is intentionally disabled.
@@ -233,6 +235,12 @@ def dispatch_pre_planning_phase(
             )
 
     session_context = self._build_session_context(session, auth_header, trace_id)
+    if cached_classifier_result is not None:
+        # `_build_session_context` returns a fresh dict, so the classifier
+        # result stashed before the actor-fetch branch would otherwise be
+        # dropped — forcing the LangGraph `classify_intent` node to re-call
+        # the LLM. Carry it across the rebuild so the cache hits.
+        session_context['_classifier_result'] = cached_classifier_result
     if actor_fetch_future is not None:
         session_context['_actor_fetch_future'] = actor_fetch_future
 

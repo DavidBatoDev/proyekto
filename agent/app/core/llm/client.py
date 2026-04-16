@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import logging
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel
@@ -19,7 +20,11 @@ from app.core.llm.planning import planner_intent_classifier
 from app.core.llm.planning import planner_react_helpers
 from app.core.llm.planning import planner_rule_fallback
 from app.core.llm.planning.planner_operation_flow import plan_operations as plan_operations_helper
-from app.core.llm.providers import ProviderOrchestrator
+from app.core.llm.providers import (
+    IntentClassificationResult,
+    ProviderAdapterError,
+    ProviderOrchestrator,
+)
 from app.core.nest_client import NestRoadmapClient
 from app.core.prompts import PromptRepository
 from app.core.response_cache import ContextAnswerCache
@@ -70,6 +75,50 @@ class PlannerState(TypedDict, total=False):
     stop_reason: str | None
     llm_calls_used: int | None
     react_tool_observation_summary: list[dict[str, Any]] | None
+    classifier_sub_intent: Literal['rename_only', 'delete_only'] | None
+    classifier_source: Literal['llm', 'heuristic_fallback'] | None
+    classifier_model: str | None
+    classifier_fallback_reason: str | None
+    classifier_rationale: str | None
+    classifier_elapsed_ms: int | None
+
+
+_CLASSIFIER_TRANSLATIONS: dict[str, IntentType] = {
+    'question': 'general_question',
+}
+
+
+def _heuristic_classifier_payload(
+    *,
+    user_message: str,
+    fallback_reason: str,
+) -> dict[str, Any]:
+    intent = planner_intent_classifier.heuristic_intent(user_message)
+    return {
+        'intent_type': intent,
+        'sub_intent': None,
+        'rationale': '',
+        'model': None,
+        'source': 'heuristic_fallback',
+        'fallback_reason': fallback_reason,
+        'tokens_input': None,
+        'tokens_output': None,
+        'tokens_total': None,
+        'tokens_cached': None,
+        'elapsed_ms': 0,
+    }
+
+
+def _normalize_classifier_intent(intent: IntentType) -> IntentType:
+    """Collapse the `question` alias to `general_question`.
+
+    The prompt template still lists `question` as a legal value for
+    backwards compatibility with older callers, but the live routing logic
+    (`_route_from_intent`, `_is_roadmap_question`) treats the two
+    interchangeably. Normalizing here keeps the rest of the pipeline on a
+    single canonical value.
+    """
+    return _CLASSIFIER_TRANSLATIONS.get(intent, intent)
 
 
 class _EditClarifierPayload(BaseModel):
@@ -171,13 +220,95 @@ class LLMPlanner:
         user_message: str,
         session_context: dict[str, Any] | None = None,
     ) -> tuple[IntentType, bool]:
-        intent = self._heuristic_intent(user_message)
+        payload = self._classify_intent_llm_first(
+            user_message=user_message,
+            session_context=session_context,
+        )
+        intent = payload['intent_type']
+        if session_context is not None:
+            session_context['_classifier_result'] = payload
         is_roadmap_question = self._is_roadmap_question(
             intent_type=intent,
             user_message=user_message,
             session_context=session_context or {},
         )
         return intent, is_roadmap_question
+
+    def _classify_intent_llm_first(
+        self,
+        *,
+        user_message: str,
+        session_context: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        trace_id: Any = None
+        if isinstance(session_context, dict):
+            trace_id = session_context.get('trace_id')
+
+        if not self._settings.agent_llm_intent_classifier_enabled:
+            return _heuristic_classifier_payload(
+                user_message=user_message,
+                fallback_reason='feature_flag_disabled',
+            )
+
+        is_available_fn = getattr(self._provider_orchestrator, 'is_available', None)
+        if callable(is_available_fn):
+            try:
+                provider_available = bool(is_available_fn())
+            except Exception:
+                provider_available = False
+        else:
+            provider_available = False
+        if not provider_available:
+            return _heuristic_classifier_payload(
+                user_message=user_message,
+                fallback_reason='provider_unavailable',
+            )
+
+        classifier_prompt = self._prompt_repository.intent_classifier_prompt()
+        if not classifier_prompt.strip():
+            return _heuristic_classifier_payload(
+                user_message=user_message,
+                fallback_reason='classifier_prompt_missing',
+            )
+
+        started = perf_counter()
+        try:
+            outcome = self._provider_orchestrator.call(
+                lambda adapter: adapter.classify_intent(
+                    classifier_prompt=classifier_prompt,
+                    classifier_input=user_message,
+                ),
+                trace_context={'trace_id': trace_id, 'phase': 'intent_classifier'},
+            )
+        except ProviderAdapterError as exc:
+            elapsed_ms = int((perf_counter() - started) * 1000)
+            self._logger.info(
+                'LLM intent classifier failed; falling back to heuristic. code=%s',
+                exc.code,
+            )
+            payload = _heuristic_classifier_payload(
+                user_message=user_message,
+                fallback_reason=f'provider_error:{exc.code}',
+            )
+            payload['elapsed_ms'] = elapsed_ms
+            return payload
+
+        elapsed_ms = int((perf_counter() - started) * 1000)
+        classification: IntentClassificationResult = outcome.value
+        normalized_intent = _normalize_classifier_intent(classification.intent_type)
+        return {
+            'intent_type': normalized_intent,
+            'sub_intent': classification.sub_intent,
+            'rationale': classification.rationale,
+            'model': classification.model,
+            'source': 'llm',
+            'fallback_reason': None,
+            'tokens_input': outcome.tokens_input,
+            'tokens_output': outcome.tokens_output,
+            'tokens_total': outcome.tokens_total,
+            'tokens_cached': None,
+            'elapsed_ms': elapsed_ms,
+        }
 
     def _get_langgraph_disabled_reason(self) -> str | None:
         if StateGraph is None or END is None:
