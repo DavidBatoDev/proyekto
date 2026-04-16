@@ -10,6 +10,7 @@ import {
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
 
 export const EPICS_REPOSITORY = Symbol('EPICS_REPOSITORY');
+const TEMP_EPIC_ID_PREFIX = 'temp-epic-';
 
 @Injectable()
 export class EpicsService {
@@ -75,6 +76,12 @@ export class EpicsService {
   }
 
   async remove(id: string, userId: string) {
+    // Optimistic UI rows may issue a delete before a real UUID exists.
+    // Treat client temp IDs as already-removed to keep delete idempotent.
+    if (id.startsWith(TEMP_EPIC_ID_PREFIX)) {
+      return;
+    }
+
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Epic not found');
     await this.roadmapAuthz.assertEpicPermission(id, userId, 'roadmap.edit');
