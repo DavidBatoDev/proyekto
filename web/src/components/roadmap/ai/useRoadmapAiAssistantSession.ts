@@ -1,5 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { create } from "zustand";
+import roadmapAgentService from "@/services/roadmap-agent.service";
+import {
+  RoadmapAiSessionsServiceError,
+  roadmapAiSessionsService,
+  type AppendRoadmapAiMessagePayload,
+  type RoadmapAiMessage,
+} from "@/services/roadmap-ai-sessions.service";
+import { useRoadmapAiThreadsStore } from "@/stores/roadmapAiThreadsStore";
 import type { RoadmapArtifactPreview } from "@/types/roadmapArtifact";
+
+// =============================================================================
+// Public types (unchanged shape — imported by the panel, activity timeline
+// renderer, and tool-messaging helpers).
+// =============================================================================
 
 export type RoadmapAiChatRole = "user" | "assistant";
 
@@ -89,95 +103,322 @@ export interface RoadmapAiChatMessage {
   commitLifecycle?: RoadmapAiCommitLifecycle;
 }
 
-interface RoadmapAiAssistantPersistedState {
-  isOpen: boolean;
-  messages: RoadmapAiChatMessage[];
+// =============================================================================
+// In-memory message store (Zustand). This is working state for the panel —
+// the DB is the source of truth. On thread switch we hydrate from backend and
+// seed this store; all live appendMessage/updateMessage calls operate here so
+// the panel's stateful UX (live activity trace, optimistic artifacts, commit
+// lifecycle) keeps working without touching the network.
+// =============================================================================
+
+interface ThreadMessagesState {
+  messagesByThread: Record<string, RoadmapAiChatMessage[]>;
+  hydratedThreads: Record<string, boolean>;
+  setThreadMessages: (
+    threadId: string,
+    messages: RoadmapAiChatMessage[],
+  ) => void;
+  markHydrated: (threadId: string) => void;
+  clearThread: (threadId: string) => void;
+  appendToThread: (threadId: string, message: RoadmapAiChatMessage) => void;
+  updateInThread: (
+    threadId: string,
+    messageId: string,
+    updater: (message: RoadmapAiChatMessage) => RoadmapAiChatMessage,
+  ) => void;
 }
 
-interface UseRoadmapAiAssistantSessionResult {
-  isOpen: boolean;
+const useThreadMessagesStore = create<ThreadMessagesState>((set) => ({
+  messagesByThread: {},
+  hydratedThreads: {},
+  setThreadMessages: (threadId, messages) =>
+    set((state) => ({
+      messagesByThread: { ...state.messagesByThread, [threadId]: messages },
+    })),
+  markHydrated: (threadId) =>
+    set((state) => ({
+      hydratedThreads: { ...state.hydratedThreads, [threadId]: true },
+    })),
+  clearThread: (threadId) =>
+    set((state) => {
+      const nextMessages = { ...state.messagesByThread };
+      delete nextMessages[threadId];
+      const nextHydrated = { ...state.hydratedThreads };
+      delete nextHydrated[threadId];
+      return {
+        messagesByThread: nextMessages,
+        hydratedThreads: nextHydrated,
+      };
+    }),
+  appendToThread: (threadId, message) =>
+    set((state) => {
+      const current = state.messagesByThread[threadId] ?? [];
+      return {
+        messagesByThread: {
+          ...state.messagesByThread,
+          [threadId]: [...current, message],
+        },
+      };
+    }),
+  updateInThread: (threadId, messageId, updater) =>
+    set((state) => {
+      const current = state.messagesByThread[threadId];
+      if (!current) return state;
+      return {
+        messagesByThread: {
+          ...state.messagesByThread,
+          [threadId]: current.map((m) => (m.id === messageId ? updater(m) : m)),
+        },
+      };
+    }),
+}));
+
+// Map a persisted DB row back to the rich client message shape. Client-only
+// fields (activity timeline, attachments, inline roadmap artifact objects)
+// don't round-trip — they're ephemeral UI state; the DB keeps the commit
+// lifecycle + artifact metadata so past threads still look complete.
+function dbRowToClientMessage(row: RoadmapAiMessage): RoadmapAiChatMessage {
+  const base: RoadmapAiChatMessage = {
+    id: row.id,
+    role: row.role === "system" ? "assistant" : row.role,
+    content: row.content,
+    timestamp: row.created_at,
+    parseMode: row.parse_mode ?? undefined,
+    intentType: (row.intent_type ??
+      undefined) as RoadmapAiChatMessage["intentType"],
+    responseMode: (row.response_mode ??
+      undefined) as RoadmapAiChatMessage["responseMode"],
+  };
+  if (row.artifacts && Array.isArray(row.artifacts)) {
+    base.artifacts = row.artifacts as unknown as RoadmapArtifactPreview[];
+  }
+  if (row.activity_timeline && typeof row.activity_timeline === "object") {
+    base.activityTimeline =
+      row.activity_timeline as unknown as RoadmapAiActivityTimeline;
+  }
+  if (row.commit_lifecycle && typeof row.commit_lifecycle === "object") {
+    base.commitLifecycle =
+      row.commit_lifecycle as unknown as RoadmapAiCommitLifecycle;
+  }
+  return base;
+}
+
+// =============================================================================
+// Hook
+// =============================================================================
+
+export interface UseRoadmapAiAssistantSessionResult {
   messages: RoadmapAiChatMessage[];
-  setIsOpen: (value: boolean) => void;
+  isLoading: boolean;
   appendMessage: (message: RoadmapAiChatMessage) => void;
   updateMessage: (
     messageId: string,
     updater: (message: RoadmapAiChatMessage) => RoadmapAiChatMessage,
   ) => void;
   clearMessages: () => void;
+  // Persist a completed turn to the backend. Returns the seed_messages the
+  // agent should fall back on if its Redis session has expired.
+  persistTurn: (
+    role: "user" | "assistant",
+    content: string,
+    extras?: {
+      intentType?: string;
+      responseMode?: "chat" | "edit_plan";
+      parseMode?: string;
+      artifacts?: Array<Record<string, unknown>>;
+      activityTimeline?: Record<string, unknown>;
+      commitLifecycle?: Record<string, unknown>;
+      tokens?: number;
+      metadata?: Record<string, unknown>;
+    },
+  ) => Promise<{ seed_messages: Array<{ role: string; content: string }> }>;
+  // On Redis-miss (agent sendMessage returns 404), replay the given
+  // seed_messages into the agent's session so the next send succeeds.
+  rehydrateAgentSession: (
+    seedMessages: Array<{ role: string; content: string }>,
+    options: { roadmapId: string; baseRevision?: number },
+  ) => Promise<void>;
 }
-
-const STORAGE_PREFIX = "roadmap.ai.assistant.v1";
-
-const DEFAULT_STATE: RoadmapAiAssistantPersistedState = {
-  isOpen: false,
-  messages: [],
-};
-
-const parseStoredState = (
-  rawValue: string | null,
-): RoadmapAiAssistantPersistedState => {
-  if (!rawValue) return DEFAULT_STATE;
-  try {
-    const parsed = JSON.parse(
-      rawValue,
-    ) as Partial<RoadmapAiAssistantPersistedState>;
-    return {
-      isOpen: Boolean(parsed.isOpen),
-      messages: Array.isArray(parsed.messages) ? parsed.messages : [],
-    };
-  } catch {
-    return DEFAULT_STATE;
-  }
-};
 
 export function useRoadmapAiAssistantSession(
   roadmapId: string,
+  threadId: string | null,
 ): UseRoadmapAiAssistantSessionResult {
-  const storageKey = useMemo(
-    () => `${STORAGE_PREFIX}:${roadmapId}`,
-    [roadmapId],
+  const messages = useThreadMessagesStore((s) =>
+    threadId
+      ? (s.messagesByThread[threadId] ?? EMPTY_MESSAGES)
+      : EMPTY_MESSAGES,
+  );
+  const hydrated = useThreadMessagesStore((s) =>
+    threadId ? Boolean(s.hydratedThreads[threadId]) : true,
+  );
+  const setThreadMessages = useThreadMessagesStore((s) => s.setThreadMessages);
+  const markHydrated = useThreadMessagesStore((s) => s.markHydrated);
+  const clearThread = useThreadMessagesStore((s) => s.clearThread);
+  const appendToThread = useThreadMessagesStore((s) => s.appendToThread);
+  const updateInThread = useThreadMessagesStore((s) => s.updateInThread);
+
+  const loadingRef = useRef(false);
+  const setActiveThreadInStore = useRoadmapAiThreadsStore(
+    (s) => s.setActiveThread,
+  );
+  const clearDraftInput = useRoadmapAiThreadsStore((s) => s.clearDraftInput);
+
+  useEffect(() => {
+    if (!threadId || !roadmapId) return;
+    if (hydrated) return;
+    if (loadingRef.current) return;
+
+    // If messages were already written to this thread's in-memory slot (e.g.
+    // handleSend called appendMessage before this effect fired for a freshly
+    // created thread), skip the DB fetch — the DB is empty for a brand-new
+    // session and fetching would overwrite the optimistic user message with [].
+    // On a real page reload the in-memory store is reset, so this guard is a
+    // no-op and normal hydration proceeds.
+    const preloaded = useThreadMessagesStore.getState().messagesByThread[threadId];
+    if (preloaded && preloaded.length > 0) {
+      markHydrated(threadId);
+      return;
+    }
+
+    loadingRef.current = true;
+    (async () => {
+      try {
+        const rows = await roadmapAiSessionsService.listMessages(
+          roadmapId,
+          threadId,
+          { limit: 100 },
+        );
+        const clientMessages = rows.map(dbRowToClientMessage);
+        setThreadMessages(threadId, clientMessages);
+        markHydrated(threadId);
+      } catch (err) {
+        // Stale `activeThreadId` persisted in localStorage can point at a DB
+        // row the user doesn't own (or that never made it to the DB due to
+        // an earlier failure). Drop it silently so the panel auto-selects a
+        // real thread or creates a new one on first message.
+        if (
+          err instanceof RoadmapAiSessionsServiceError &&
+          err.statusCode === 404
+        ) {
+          console.debug(
+            "[useRoadmapAiAssistantSession] stale activeThreadId — clearing",
+            { roadmapId, threadId },
+          );
+          // Mark hydrated so a remounted component (e.g. HMR) doesn't
+          // re-fire this effect before setActiveThreadInStore propagates.
+          markHydrated(threadId);
+          clearDraftInput(threadId);
+          setActiveThreadInStore(roadmapId, null);
+        } else {
+          console.error(
+            "[useRoadmapAiAssistantSession] failed to hydrate thread",
+            err,
+          );
+        }
+      } finally {
+        loadingRef.current = false;
+      }
+    })();
+  }, [
+    roadmapId,
+    threadId,
+    hydrated,
+    setThreadMessages,
+    markHydrated,
+    setActiveThreadInStore,
+    clearDraftInput,
+  ]);
+
+  const appendMessage = useCallback(
+    (message: RoadmapAiChatMessage) => {
+      if (!threadId) return;
+      appendToThread(threadId, message);
+    },
+    [threadId, appendToThread],
   );
 
-  const [state, setState] = useState<RoadmapAiAssistantPersistedState>(() => {
-    if (typeof window === "undefined") return DEFAULT_STATE;
-    return parseStoredState(window.sessionStorage.getItem(storageKey));
-  });
+  const updateMessage = useCallback(
+    (
+      messageId: string,
+      updater: (message: RoadmapAiChatMessage) => RoadmapAiChatMessage,
+    ) => {
+      if (!threadId) return;
+      updateInThread(threadId, messageId, updater);
+    },
+    [threadId, updateInThread],
+  );
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setState(parseStoredState(window.sessionStorage.getItem(storageKey)));
-  }, [storageKey]);
+  const clearMessages = useCallback(() => {
+    if (!threadId) return;
+    clearThread(threadId);
+  }, [threadId, clearThread]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.sessionStorage.setItem(storageKey, JSON.stringify(state));
-  }, [storageKey, state]);
+  const persistTurn = useCallback<
+    UseRoadmapAiAssistantSessionResult["persistTurn"]
+  >(
+    async (role, content, extras) => {
+      if (!threadId || !roadmapId) {
+        return { seed_messages: [] };
+      }
+      const payload: AppendRoadmapAiMessagePayload = {
+        role,
+        content,
+        intent_type: extras?.intentType,
+        response_mode: extras?.responseMode,
+        parse_mode: extras?.parseMode,
+        artifacts: extras?.artifacts,
+        activity_timeline: extras?.activityTimeline,
+        commit_lifecycle: extras?.commitLifecycle,
+        tokens: extras?.tokens,
+        metadata: extras?.metadata,
+      };
+      const result = await roadmapAiSessionsService.appendMessage(
+        roadmapId,
+        threadId,
+        payload,
+      );
+      return { seed_messages: result.seed_messages };
+    },
+    [roadmapId, threadId],
+  );
 
-  return {
-    isOpen: state.isOpen,
-    messages: state.messages,
-    setIsOpen: (value) => {
-      setState((prev) => ({ ...prev, isOpen: value }));
+  const rehydrateAgentSession = useCallback<
+    UseRoadmapAiAssistantSessionResult["rehydrateAgentSession"]
+  >(
+    async (seedMessages, options) => {
+      if (!threadId) return;
+      await roadmapAgentService.createSession({
+        session_id: threadId,
+        roadmap_id: options.roadmapId,
+        base_revision: options.baseRevision,
+        seed_messages: seedMessages,
+      });
     },
-    appendMessage: (message) => {
-      setState((prev) => ({
-        ...prev,
-        messages: [...prev.messages, message],
-      }));
-    },
-    updateMessage: (messageId, updater) => {
-      setState((prev) => ({
-        ...prev,
-        messages: prev.messages.map((message) =>
-          message.id === messageId ? updater(message) : message,
-        ),
-      }));
-    },
-    clearMessages: () => {
-      setState((prev) => ({
-        ...prev,
-        messages: [],
-      }));
-    },
-  };
+    [threadId],
+  );
+
+  return useMemo(
+    () => ({
+      messages,
+      isLoading: Boolean(threadId) && !hydrated,
+      appendMessage,
+      updateMessage,
+      clearMessages,
+      persistTurn,
+      rehydrateAgentSession,
+    }),
+    [
+      messages,
+      threadId,
+      hydrated,
+      appendMessage,
+      updateMessage,
+      clearMessages,
+      persistTurn,
+      rehydrateAgentSession,
+    ],
+  );
 }
+
+const EMPTY_MESSAGES: RoadmapAiChatMessage[] = [];

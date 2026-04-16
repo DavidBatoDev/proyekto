@@ -41,10 +41,24 @@ agentApiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response) {
-      console.error(
-        `Agent API Error (${error.response.status}):`,
-        error.response.data,
-      );
+      // 404s on the agent are commonly expected: the trace-events endpoint
+      // 404s during the ~1s cold-start race between `startTracePolling` and
+      // the agent creating the trace for a new message, and the /messages
+      // endpoint 404s on Redis TTL expiry (the caller rehydrates and
+      // retries). Keep these out of the error log so real failures stand
+      // out; callers still receive the rejected promise and decide.
+      const status = error.response.status;
+      if (status === 404) {
+        console.debug(
+          `Agent API 404 (caller will handle):`,
+          error.config?.url,
+        );
+      } else {
+        console.error(
+          `Agent API Error (${status}):`,
+          error.response.data,
+        );
+      }
     } else if (error.request) {
       console.error("No response from agent server - Check your connection");
     } else {

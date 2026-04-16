@@ -1,6 +1,7 @@
 import {
   cloneElement,
   isValidElement,
+  type CSSProperties,
   type ReactNode,
   useEffect,
   useRef,
@@ -9,6 +10,7 @@ import {
 import {
   Bot,
   Check,
+  ChevronDown,
   Eye,
   FolderOpen,
   Loader2,
@@ -70,6 +72,15 @@ import {
   type RoadmapAiCommitImpactedItem,
   type RoadmapAiCommitImpactedItemKind,
 } from "./useRoadmapAiAssistantSession";
+import { RoadmapAiThreadList } from "./RoadmapAiThreadList";
+import {
+  useRoadmapAiThreadsStore,
+  useActiveRoadmapAiThread,
+} from "@/stores/roadmapAiThreadsStore";
+import {
+  useCreateRoadmapAiSession,
+  useRoadmapAiSessionsList,
+} from "@/hooks/useRoadmapAiSessions";
 
 interface RoadmapAiAssistantPanelProps {
   projectId: string;
@@ -1354,6 +1365,58 @@ const isTraceNotReadyError = (error: unknown): boolean => {
   return false;
 };
 
+function SkeletonBlock({
+  className,
+  style,
+}: {
+  className: string;
+  style?: CSSProperties;
+}) {
+  return (
+    <div
+      className={`rounded-md bg-gray-200 animate-pulse ${className}`}
+      style={style}
+    />
+  );
+}
+
+const SKELETON_ROWS: Array<{ role: "user" | "assistant"; lines: number[] }> = [
+  { role: "assistant", lines: [75, 55, 40] },
+  { role: "user",      lines: [60] },
+  { role: "assistant", lines: [85, 65] },
+  { role: "user",      lines: [50] },
+  { role: "assistant", lines: [80, 60, 45, 30] },
+];
+
+function ThreadHistorySkeleton() {
+  return (
+    <div className="space-y-3">
+      {SKELETON_ROWS.map((row, i) =>
+        row.role === "user" ? (
+          <div key={i} className="ml-8 mr-0">
+            <div className="rounded-lg px-3.5 py-2.5 border border-orange-100 bg-orange-50/60 space-y-2">
+              <SkeletonBlock className="h-2.5 bg-orange-200/70" style={{ width: `${row.lines[0]}%` }} />
+            </div>
+          </div>
+        ) : (
+          <div key={i} className="ml-0 mr-4 px-0 py-1.5 space-y-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <SkeletonBlock className="h-2 w-12 bg-blue-200/60" />
+            </div>
+            {row.lines.map((w, j) => (
+              <SkeletonBlock
+                key={j}
+                className="h-2.5"
+                style={{ width: `${w}%` }}
+              />
+            ))}
+          </div>
+        ),
+      )}
+    </div>
+  );
+}
+
 export function RoadmapAiAssistantPanel({
   projectId,
   roadmapId,
@@ -1362,10 +1425,21 @@ export function RoadmapAiAssistantPanel({
   isVisible = true,
 }: RoadmapAiAssistantPanelProps) {
   const queryClient = useQueryClient();
-  const { messages, appendMessage, updateMessage } =
-    useRoadmapAiAssistantSession(roadmapId);
+  const activeThreadId = useActiveRoadmapAiThread(roadmapId);
+  const setActiveThread = useRoadmapAiThreadsStore((s) => s.setActiveThread);
+  const {
+    messages,
+    isLoading: isThreadLoading,
+    appendMessage,
+    updateMessage,
+    persistTurn,
+    rehydrateAgentSession,
+  } = useRoadmapAiAssistantSession(roadmapId, activeThreadId);
+  const createAiSession = useCreateRoadmapAiSession(roadmapId);
+  const threadsList = useRoadmapAiSessionsList(roadmapId, { archived: false });
+  const [isThreadMenuOpen, setIsThreadMenuOpen] = useState(false);
+  const agentSessionsInitializedRef = useRef<Set<string>>(new Set());
   const toast = useToast();
-  const [sessionId, setSessionId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [previewArtifactId, setPreviewArtifactId] = useState<string | null>(
@@ -1476,14 +1550,109 @@ export function RoadmapAiAssistantPanel({
     };
   }, []);
 
-  const ensureSession = async (): Promise<string> => {
-    if (sessionId) return sessionId;
-    const created = await roadmapAgentService.createSession({
+  // Reset ephemeral UI state when the active thread changes, so live trace
+  // events, toasts, and pending artifacts from the previous thread don't
+  // leak into the new one. Also abort any in-flight poll loop.
+  useEffect(() => {
+    const currentLoop = pollLoopRef.current;
+    if (currentLoop?.timerId != null) {
+      window.clearTimeout(currentLoop.timerId);
+    }
+    if (currentLoop) {
+      currentLoop.cancelled = true;
+    }
+    pollLoopRef.current = null;
+    setLiveActivity(null);
+    setLiveActivityExpanded(true);
+    setLiveActivityHostMessageId(null);
+    setErrorMessage(null);
+    setTracePollingFailed(false);
+    setPreviewArtifactId(null);
+    setActivityExpandedByMessageId({});
+    autoCommitRefreshSeqByTraceRef.current = {};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeThreadId]);
+
+  // Auto-select the most recent active thread on mount if none is selected —
+  // the pop menu can still flip between threads later. Also reconciles a
+  // stale persisted `activeThreadId` (from localStorage) against the current
+  // server list so we don't hydrate a thread the user doesn't own anymore.
+  useEffect(() => {
+    const threads = threadsList.data;
+    if (!threads) return;
+    // While the list is refetching (e.g. immediately after createAiSession
+    // invalidates the query), the cached data is stale. Skip reconciliation
+    // so an explicitly-set activeThreadId (from handleCreateNewThread) isn't
+    // overwritten by "ID not found in stale list → reset to first thread".
+    if (threadsList.isFetching) return;
+    if (activeThreadId) {
+      const stillExists = threads.some((t) => t.id === activeThreadId);
+      if (stillExists) return;
+      if (threads.length > 0) {
+        setActiveThread(roadmapId, threads[0].id);
+      } else {
+        setActiveThread(roadmapId, null);
+      }
+      return;
+    }
+    if (threads.length === 0) return;
+    setActiveThread(roadmapId, threads[0].id);
+  }, [activeThreadId, threadsList.data, threadsList.isFetching, roadmapId, setActiveThread]);
+
+  // Returns the active thread id, creating a brand-new DB row + agent Redis
+  // session if none exists. On Redis-TTL expiry of an existing thread, the
+  // send-message path rehydrates via `rehydrateAgentSession` on 404 rather
+  // than calling this.
+  const ensureThread = async (): Promise<string> => {
+    if (activeThreadId) {
+      // Guarantee the agent has a Redis session for this thread — first hit
+      // after a cold browser load, the DB row exists but Redis may not.
+      if (!agentSessionsInitializedRef.current.has(activeThreadId)) {
+        try {
+          await roadmapAgentService.createSession({
+            session_id: activeThreadId,
+            roadmap_id: roadmapId,
+            base_revision: baseRevision,
+          });
+          agentSessionsInitializedRef.current.add(activeThreadId);
+        } catch (err) {
+          // Non-fatal — the send call below will surface any real error.
+          console.warn(
+            "[RoadmapAiAssistantPanel] agent createSession precheck failed",
+            err,
+          );
+        }
+      }
+      return activeThreadId;
+    }
+    const dbRow = await createAiSession.mutateAsync({});
+    await roadmapAgentService.createSession({
+      session_id: dbRow.id,
       roadmap_id: roadmapId,
       base_revision: baseRevision,
     });
-    setSessionId(created.session_id);
-    return created.session_id;
+    agentSessionsInitializedRef.current.add(dbRow.id);
+    setActiveThread(roadmapId, dbRow.id);
+    return dbRow.id;
+  };
+
+  // Detect 404-from-agent (Redis miss) and recreate the session with the
+  // last N messages from the DB so the planner has context before retry.
+  const rehydrateAndRetry = async <T,>(
+    threadId: string,
+    seedMessages: Array<{ role: string; content: string }>,
+    op: () => Promise<T>,
+  ): Promise<T> => {
+    try {
+      return await op();
+    } catch (err) {
+      const isNotFound =
+        err instanceof RoadmapAgentServiceError && err.statusCode === 404;
+      if (!isNotFound) throw err;
+      await rehydrateAgentSession(seedMessages, { roadmapId, baseRevision });
+      agentSessionsInitializedRef.current.add(threadId);
+      return op();
+    }
   };
 
   const hydrateArtifacts = async (
@@ -1817,13 +1986,6 @@ export function RoadmapAiAssistantPanel({
     setAttachments([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
     setErrorMessage(null);
-    appendMessage({
-      id: crypto.randomUUID(),
-      role: "user",
-      content: trimmedMessage || "Attached files",
-      timestamp: new Date().toISOString(),
-      attachments: attachmentMetadata,
-    });
 
     setIsSending(true);
     setTracePollingFailed(false);
@@ -1831,18 +1993,43 @@ export function RoadmapAiAssistantPanel({
     let traceId: string | null = null;
     let assistantId: string | null = null;
     try {
-      activeSessionId = await ensureSession();
+      // ensureThread must run first — if there is no activeThreadId yet (first
+      // message), it creates the DB row and calls setActiveThread so the hook's
+      // threadId is non-null before appendMessage fires. Calling appendMessage
+      // before this resolves silently drops the message (threadId === null
+      // hits the early return in useRoadmapAiAssistantSession).
+      activeSessionId = await ensureThread();
+      appendMessage({
+        id: crypto.randomUUID(),
+        role: "user",
+        content: trimmedMessage || "Attached files",
+        timestamp: new Date().toISOString(),
+        attachments: attachmentMetadata,
+      });
       traceId = crypto.randomUUID();
+      // Persist the user turn BEFORE calling the agent so it survives an
+      // agent failure (matches ChatGPT retry UX). The response includes the
+      // last N messages we can replay if the agent's Redis session expired.
+      const { seed_messages: seedMessagesForRetry } = await persistTurn(
+        "user",
+        agentMessage,
+      );
       startTracePolling(activeSessionId, traceId);
 
-      const response = await roadmapAgentService.sendMessage(
-        activeSessionId,
-        {
-          message: agentMessage,
-        },
-        {
-          traceId,
-        },
+      const boundSessionId = activeSessionId;
+      const response = await rehydrateAndRetry(
+        boundSessionId,
+        seedMessagesForRetry,
+        () =>
+          roadmapAgentService.sendMessage(
+            boundSessionId,
+            {
+              message: agentMessage,
+            },
+            {
+              traceId: traceId ?? undefined,
+            },
+          ),
       );
       const effectiveTraceId = response.debug_trace_id || traceId;
       if (effectiveTraceId !== traceId) {
@@ -1883,6 +2070,24 @@ export function RoadmapAiAssistantPanel({
           },
         ),
         id: assistantId,
+      });
+
+      // Persist the assistant turn to the DB. Fire-and-forget so slow
+      // Supabase writes never block artifact hydration or the live trace.
+      // Artifact snapshots evolve after this point via updateMessage (live
+      // trace, commit lifecycle), but those updates are ephemeral UI state
+      // and don't round-trip to the DB — past threads still render fine
+      // since the assistant text + intent + response_mode are persisted.
+      void persistTurn("assistant", response.assistant_message || "", {
+        intentType: response.intent_type,
+        responseMode: response.response_mode,
+        parseMode: response.parse_mode || "agent_response",
+        tokens: undefined,
+      }).catch((err) => {
+        console.warn(
+          "[RoadmapAiAssistantPanel] assistant message persistence failed",
+          err,
+        );
       });
 
       try {
@@ -1986,7 +2191,7 @@ export function RoadmapAiAssistantPanel({
       return;
     }
 
-    const activeSessionId = sessionId;
+    const activeSessionId = activeThreadId;
     if (!activeSessionId) {
       toast.error(
         "Missing AI session. Send a message first, then apply again.",
@@ -2058,7 +2263,7 @@ export function RoadmapAiAssistantPanel({
     if (applyingArtifactIds.has(artifact.artifactId)) {
       return;
     }
-    if (!sessionId) {
+    if (!activeThreadId) {
       toast.error("Missing AI session. Send a message first, then retry.");
       return;
     }
@@ -2070,7 +2275,7 @@ export function RoadmapAiAssistantPanel({
     });
 
     try {
-      await roadmapAgentService.discardSession(sessionId, {
+      await roadmapAgentService.discardSession(activeThreadId, {
         change_id: artifact.changeId,
       });
       await loadRoadmap(roadmapId, { force: true });
@@ -2121,7 +2326,7 @@ export function RoadmapAiAssistantPanel({
     if (applyingArtifactIds.has(artifact.artifactId)) {
       return;
     }
-    if (!sessionId) {
+    if (!activeThreadId) {
       toast.error("Missing AI session. Send a message first, then retry.");
       return;
     }
@@ -2133,7 +2338,7 @@ export function RoadmapAiAssistantPanel({
     });
 
     try {
-      await roadmapAgentService.rollbackSession(sessionId, {
+      await roadmapAgentService.rollbackSession(activeThreadId, {
         change_id: artifact.changeId,
       });
       await loadRoadmap(roadmapId, { force: true });
@@ -2243,13 +2448,75 @@ export function RoadmapAiAssistantPanel({
     return null;
   }
 
+  const activeThreadLabel = (() => {
+    if (!activeThreadId) return "New thread";
+    const thread = threadsList.data?.find((t) => t.id === activeThreadId);
+    const title = thread?.title?.trim();
+    return title && title.length > 0 ? title : "Untitled";
+  })();
+
+  const handleSelectThread = (threadId: string) => {
+    if (threadId === activeThreadId) return;
+    setActiveThread(roadmapId, threadId);
+  };
+
+  const handleCreateNewThread = async () => {
+    try {
+      const row = await createAiSession.mutateAsync({});
+      await roadmapAgentService.createSession({
+        session_id: row.id,
+        roadmap_id: roadmapId,
+        base_revision: baseRevision,
+      });
+      agentSessionsInitializedRef.current.add(row.id);
+      setActiveThread(roadmapId, row.id);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to create new thread.";
+      toast.error(message);
+    }
+  };
+
   return (
     <section
       className="h-full w-full bg-white border-l border-gray-200 overflow-hidden flex flex-col"
       aria-label="AI Assistant Panel"
     >
+      <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 bg-white">
+        <div className="flex items-center gap-2 min-w-0">
+          <Bot size={14} className="text-blue-500 shrink-0" />
+          <span className="text-xs font-semibold text-gray-800">
+            AI Assistant
+          </span>
+        </div>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setIsThreadMenuOpen((prev) => !prev)}
+            className="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+            aria-haspopup="dialog"
+            aria-expanded={isThreadMenuOpen}
+          >
+            <span className="max-w-[140px] truncate">{activeThreadLabel}</span>
+            <ChevronDown size={12} />
+          </button>
+          <AnimatePresence>
+            {isThreadMenuOpen && (
+              <RoadmapAiThreadList
+                roadmapId={roadmapId}
+                activeThreadId={activeThreadId}
+                onSelectThread={handleSelectThread}
+                onCreateNewThread={handleCreateNewThread}
+                onClose={() => setIsThreadMenuOpen(false)}
+              />
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-3 bg-gray-50/40 relative [scrollbar-width:thin] [scrollbar-color:rgba(156,163,175,0.5)_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-400 [&::-webkit-scrollbar-thumb]:rounded-full hover:[scrollbar-color:rgba(107,114,128,0.7)_transparent] hover:[&::-webkit-scrollbar-thumb]:bg-gray-500">
-        {messages.length === 0 ? (
+        {isThreadLoading ? (
+          <ThreadHistorySkeleton />
+        ) : messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center px-4">
             <Bot className="w-8 h-8 text-gray-400 mb-2" />
             <p className="text-sm text-gray-700 font-medium">

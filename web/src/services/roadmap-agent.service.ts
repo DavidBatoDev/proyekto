@@ -79,9 +79,11 @@ export interface AgentRoadmapCommitArtifact {
 }
 
 export interface AgentCreateSessionRequest {
+  session_id?: string;
   roadmap_id: string;
   base_revision?: number;
   metadata?: Record<string, unknown>;
+  seed_messages?: Array<{ role: string; content: string }>;
 }
 
 export interface AgentCreateSessionResponse {
@@ -263,7 +265,14 @@ function extractNestedMessage(value: unknown, depth = 0): string | undefined {
 }
 
 function throwAgentError(error: unknown, operation: string): never {
-  console.error(`[RoadmapAgentService] ${operation} failed:`, error);
+  // 404s flow through the caller's own retry logic (trace-not-ready grace,
+  // Redis-miss rehydration) — don't redundantly log them at error level.
+  const status = isAxiosError(error) ? error.response?.status : undefined;
+  if (status === 404) {
+    console.debug(`[RoadmapAgentService] ${operation} → 404 (caller handles)`);
+  } else {
+    console.error(`[RoadmapAgentService] ${operation} failed:`, error);
+  }
 
   if (isAxiosError(error)) {
     const status = error.response?.status;
