@@ -54,10 +54,6 @@ class PlannerIntentClassifierTests(unittest.TestCase):
             )
         )
 
-    def test_is_simple_edit_planner_request_matches_rename(self) -> None:
-        self.assertTrue(planner_intent_classifier.is_simple_edit_planner_request('rename feature to "Auth"'))
-        self.assertFalse(planner_intent_classifier.is_simple_edit_planner_request('add a new epic'))
-
     def test_is_roadmap_question_requires_roadmap_id(self) -> None:
         self.assertFalse(
             planner_intent_classifier.is_roadmap_question(

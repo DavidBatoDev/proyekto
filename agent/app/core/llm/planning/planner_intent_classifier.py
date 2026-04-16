@@ -77,22 +77,6 @@ def looks_like_roadmap_plan_request(normalized_text: str) -> bool:
     )
 
 
-def is_simple_edit_planner_request(user_message: str) -> bool:
-    normalized = ' '.join(str(user_message or '').strip().lower().split())
-    if not normalized:
-        return False
-    if looks_like_roadmap_plan_request(normalized):
-        return False
-    if re.search(r'\b(add|create|delete|remove|move|shift|plan|roadmap)\b', normalized):
-        return False
-    return bool(
-        re.search(
-            r'\b(rename|retitle|change\s+name|update\s+(?:the\s+)?(?:title|name))\b',
-            normalized,
-        )
-    )
-
-
 def is_roadmap_question(
     *,
     intent_type: IntentType,

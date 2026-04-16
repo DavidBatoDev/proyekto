@@ -30,22 +30,49 @@ class Settings(BaseSettings):
         default='low',
         alias='OPENAI_REASONING_EFFORT',
     )
-    openai_max_tokens: int | None = Field(default=None, alias='OPENAI_MAX_TOKENS')
-    openai_planner_max_tokens: int | None = Field(
-        default=1200,
-        alias='OPENAI_PLANNER_MAX_TOKENS',
+    # Caps the output of chat replies and roadmap-query answers (NOT the
+    # planner, NOT the classifier). Legacy alias kept one release:
+    # OPENAI_MAX_TOKENS.
+    openai_chat_max_tokens: int | None = Field(
+        default=None,
+        alias='OPENAI_CHAT_MAX_TOKENS',
+        validation_alias=AliasChoices(
+            'OPENAI_CHAT_MAX_TOKENS',
+            'OPENAI_MAX_TOKENS',
+        ),
     )
-    openai_planner_retry_max_tokens: int | None = Field(
+    # Default output budget for the planner when no narrower profile
+    # applies. Legacy alias: OPENAI_PLANNER_MAX_TOKENS.
+    openai_planner_default_max_tokens: int | None = Field(
         default=2000,
-        alias='OPENAI_PLANNER_RETRY_MAX_TOKENS',
+        alias='OPENAI_PLANNER_DEFAULT_MAX_TOKENS',
+        validation_alias=AliasChoices(
+            'OPENAI_PLANNER_DEFAULT_MAX_TOKENS',
+            'OPENAI_PLANNER_MAX_TOKENS',
+        ),
     )
-    openai_planner_scoped_max_tokens: int | None = Field(
+    # Expanded budget used for the `repair_retry` profile when the
+    # previous planner attempt truncated or missed its tool call. Legacy
+    # alias: OPENAI_PLANNER_RETRY_MAX_TOKENS.
+    openai_planner_repair_max_tokens: int | None = Field(
+        default=3000,
+        alias='OPENAI_PLANNER_REPAIR_MAX_TOKENS',
+        validation_alias=AliasChoices(
+            'OPENAI_PLANNER_REPAIR_MAX_TOKENS',
+            'OPENAI_PLANNER_RETRY_MAX_TOKENS',
+        ),
+    )
+    # Tighter budget used when the sub-intent classifier identifies the
+    # turn as a narrow single-dimension edit (rename_only, delete_only,
+    # status_change_only, move_only). Legacy alias:
+    # OPENAI_PLANNER_SCOPED_MAX_TOKENS.
+    openai_planner_narrow_edit_max_tokens: int | None = Field(
         default=800,
-        alias='OPENAI_PLANNER_SCOPED_MAX_TOKENS',
-    )
-    openai_simple_edit_max_tokens: int | None = Field(
-        default=320,
-        alias='OPENAI_SIMPLE_EDIT_MAX_TOKENS',
+        alias='OPENAI_PLANNER_NARROW_EDIT_MAX_TOKENS',
+        validation_alias=AliasChoices(
+            'OPENAI_PLANNER_NARROW_EDIT_MAX_TOKENS',
+            'OPENAI_PLANNER_SCOPED_MAX_TOKENS',
+        ),
     )
     openai_classifier_model: str = Field(
         default='gpt-4o-mini',
@@ -174,9 +201,9 @@ class Settings(BaseSettings):
             return 'low'
         return normalized
 
-    @field_validator('openai_max_tokens')
+    @field_validator('openai_chat_max_tokens')
     @classmethod
-    def normalize_openai_max_tokens(cls, value: int | None) -> int | None:
+    def normalize_openai_chat_max_tokens(cls, value: int | None) -> int | None:
         if value is None:
             return None
         if value < 64:
@@ -185,9 +212,9 @@ class Settings(BaseSettings):
             return 4096
         return value
 
-    @field_validator('openai_planner_max_tokens')
+    @field_validator('openai_planner_default_max_tokens')
     @classmethod
-    def normalize_openai_planner_max_tokens(cls, value: int | None) -> int | None:
+    def normalize_openai_planner_default_max_tokens(cls, value: int | None) -> int | None:
         if value is None:
             return None
         if value < 64:
@@ -196,9 +223,9 @@ class Settings(BaseSettings):
             return 4096
         return value
 
-    @field_validator('openai_planner_retry_max_tokens')
+    @field_validator('openai_planner_repair_max_tokens')
     @classmethod
-    def normalize_openai_planner_retry_max_tokens(cls, value: int | None) -> int | None:
+    def normalize_openai_planner_repair_max_tokens(cls, value: int | None) -> int | None:
         if value is None:
             return None
         if value < 64:
@@ -207,20 +234,9 @@ class Settings(BaseSettings):
             return 4096
         return value
 
-    @field_validator('openai_simple_edit_max_tokens')
+    @field_validator('openai_planner_narrow_edit_max_tokens')
     @classmethod
-    def normalize_openai_simple_edit_max_tokens(cls, value: int | None) -> int | None:
-        if value is None:
-            return None
-        if value < 64:
-            return 64
-        if value > 4096:
-            return 4096
-        return value
-
-    @field_validator('openai_planner_scoped_max_tokens')
-    @classmethod
-    def normalize_openai_planner_scoped_max_tokens(cls, value: int | None) -> int | None:
+    def normalize_openai_planner_narrow_edit_max_tokens(cls, value: int | None) -> int | None:
         if value is None:
             return None
         if value < 64:

@@ -28,29 +28,38 @@ def _build_adapter() -> OpenAILangChainAdapter:
 
 
 class PlannerMaxTokensProfileTests(unittest.TestCase):
-    def test_default_profile_uses_planner_max_tokens(self) -> None:
+    def test_default_profile_uses_planner_default_max_tokens(self) -> None:
         adapter = _build_adapter()
         self.assertEqual(
             adapter._planner_max_tokens_for_profile(None),
-            adapter._settings.openai_planner_max_tokens,
+            adapter._settings.openai_planner_default_max_tokens,
         )
 
-    def test_scoped_profile_uses_scoped_max_tokens(self) -> None:
+    def test_scoped_profile_uses_narrow_edit_max_tokens(self) -> None:
         adapter = _build_adapter()
         self.assertEqual(
             adapter._planner_max_tokens_for_profile('scoped_edit'),
-            adapter._settings.openai_planner_scoped_max_tokens,
+            adapter._settings.openai_planner_narrow_edit_max_tokens,
         )
 
-    def test_repair_profile_uses_retry_max_tokens(self) -> None:
+    def test_repair_profile_uses_repair_max_tokens(self) -> None:
         adapter = _build_adapter()
         self.assertEqual(
             adapter._planner_max_tokens_for_profile('repair_retry'),
-            adapter._settings.openai_planner_retry_max_tokens,
+            adapter._settings.openai_planner_repair_max_tokens,
         )
 
-    def test_scoped_max_tokens_default_is_800(self) -> None:
-        self.assertEqual(get_settings().openai_planner_scoped_max_tokens, 800)
+    def test_narrow_edit_max_tokens_default_is_800(self) -> None:
+        self.assertEqual(get_settings().openai_planner_narrow_edit_max_tokens, 800)
+
+    def test_legacy_planner_max_tokens_env_alias_still_accepted(self) -> None:
+        # Renamed OPENAI_PLANNER_MAX_TOKENS -> OPENAI_PLANNER_DEFAULT_MAX_TOKENS
+        # in config.py; AliasChoices keeps the old env var working for one
+        # release so existing deployments don't break silently.
+        from app.core.config import Settings
+
+        settings = Settings(_env_file=None, OPENAI_PLANNER_MAX_TOKENS=1500)  # type: ignore[arg-type]
+        self.assertEqual(settings.openai_planner_default_max_tokens, 1500)
 
 
 class ResponseFinishReasonTests(unittest.TestCase):

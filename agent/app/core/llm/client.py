@@ -75,7 +75,12 @@ class PlannerState(TypedDict, total=False):
     stop_reason: str | None
     llm_calls_used: int | None
     react_tool_observation_summary: list[dict[str, Any]] | None
-    classifier_sub_intent: Literal['rename_only', 'delete_only'] | None
+    classifier_sub_intent: Literal[
+        'rename_only',
+        'delete_only',
+        'status_change_only',
+        'move_only',
+    ] | None
     classifier_source: Literal['llm', 'heuristic_fallback'] | None
     classifier_model: str | None
     classifier_fallback_reason: str | None
@@ -662,9 +667,6 @@ class LLMPlanner:
 
     def _looks_like_roadmap_plan_request(self, normalized_text: str) -> bool:
         return planner_intent_classifier.looks_like_roadmap_plan_request(normalized_text)
-
-    def _is_simple_edit_planner_request(self, user_message: str) -> bool:
-        return planner_intent_classifier.is_simple_edit_planner_request(user_message)
 
     def _is_roadmap_question(
         self,

@@ -95,9 +95,6 @@ class _FakePlanner:
         observations.append({'tool_name': tool_name, 'args': args, 'result': result})
         summary.append({'tool_name': tool_name})
 
-    def _is_simple_edit_planner_request(self, user_message):  # noqa: ANN001
-        return False
-
     def _augment_repair_planner_prompt(
         self,
         planner_prompt,

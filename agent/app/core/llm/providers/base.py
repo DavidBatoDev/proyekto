@@ -32,7 +32,13 @@ class IntentClassificationResult:
     model produced the result so telemetry can track adoption per SKU.
     """
     intent_type: IntentType
-    sub_intent: Literal['rename_only', 'delete_only', None]
+    sub_intent: Literal[
+        'rename_only',
+        'delete_only',
+        'status_change_only',
+        'move_only',
+        None,
+    ]
     rationale: str
     model: str
 

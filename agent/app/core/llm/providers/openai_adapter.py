@@ -42,7 +42,13 @@ logger = logging.getLogger(__name__)
 
 class _IntentClassification(BaseModel):
     intent_type: IntentType
-    sub_intent: Literal['rename_only', 'delete_only', None] = Field(default=None)
+    sub_intent: Literal[
+        'rename_only',
+        'delete_only',
+        'status_change_only',
+        'move_only',
+        None,
+    ] = Field(default=None)
     rationale: str = Field(default='')
 
 
@@ -414,7 +420,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
     def _chat_model(self) -> Any:
         if self._chat_model_instance is None:
             self._chat_model_instance = ChatOpenAI(
-                **self._base_model_kwargs(max_tokens=self._settings.openai_max_tokens),
+                **self._base_model_kwargs(max_tokens=self._settings.openai_chat_max_tokens),
             )
         return self._chat_model_instance
 
@@ -443,7 +449,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
 
     def _planner_chat_model(self, *, planner_profile: str | None = None) -> Any:
         planner_max_tokens = self._planner_max_tokens_for_profile(planner_profile)
-        if planner_max_tokens is None or planner_max_tokens == self._settings.openai_max_tokens:
+        if planner_max_tokens is None or planner_max_tokens == self._settings.openai_chat_max_tokens:
             return self._chat_model()
         cache_key = str(planner_max_tokens)
         model_instance = self._planner_chat_model_instances.get(cache_key)
@@ -457,19 +463,15 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
     def _planner_max_tokens_for_profile(self, planner_profile: str | None) -> int | None:
         normalized_profile = str(planner_profile or '').strip().lower()
         if normalized_profile == 'repair_retry':
-            profile_tokens = self._settings.openai_planner_retry_max_tokens
+            profile_tokens = self._settings.openai_planner_repair_max_tokens
             if profile_tokens is not None:
                 return profile_tokens
-            return self._settings.openai_planner_max_tokens
-        if normalized_profile == 'simple_edit':
-            profile_tokens = self._settings.openai_simple_edit_max_tokens
-            if profile_tokens is not None:
-                return profile_tokens
+            return self._settings.openai_planner_default_max_tokens
         if normalized_profile == 'scoped_edit':
-            profile_tokens = self._settings.openai_planner_scoped_max_tokens
+            profile_tokens = self._settings.openai_planner_narrow_edit_max_tokens
             if profile_tokens is not None:
                 return profile_tokens
-        return self._settings.openai_planner_max_tokens
+        return self._settings.openai_planner_default_max_tokens
 
     def _bind_tools_for_planning(
         self,

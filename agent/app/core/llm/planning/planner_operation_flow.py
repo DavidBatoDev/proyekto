@@ -114,35 +114,51 @@ _NAME_TO_PATTERN = re.compile(
 _DELETE_VERB_PATTERN = re.compile(
     r'\b(delete|deleting|remove|removing|drop|dropping)\b',
 )
+_STATUS_VERB_PATTERN = re.compile(
+    r'\b(mark|marking|complete|completed|finish|finished|reopen|reopening)\b'
+    r'|\b(set|change|update|move)\b[^.?!]{0,40}\bstatus\b'
+    r'|\bstatus\b[^.?!]{0,40}\bto\b'
+    r'|\b(?:as|to)\s+(todo|in[\s_-]*progress|in[\s_-]*review|done|blocked|not[\s_-]*started|backlog|planned|completed|on[\s_-]*hold)\b',
+)
+_MOVE_VERB_PATTERN = re.compile(
+    r'\b(move|moving|reparent|reparenting|relocate|relocating|transfer|transferring)\b',
+)
 
 
 def _classify_edit_sub_intent(user_message: str) -> str | None:
     """Classify a roadmap_edit message into a narrow sub-intent for tool scoping.
 
-    Returns one of: 'rename_only', 'delete_only', or None when the message
-    doesn't cleanly match a scoped manifest. Conservative by design: any
-    create/move/status verb in the message disqualifies a scoped path.
+    Returns one of: 'rename_only', 'delete_only', 'status_change_only',
+    'move_only', or None when the message doesn't cleanly match a scoped
+    manifest. Conservative by design: any verb outside the intended narrow
+    dimension disqualifies the scoped path, which keeps `openai_planner_
+    narrow_edit_max_tokens` from being used for multi-dimension edits.
     """
     normalized = ' '.join(str(user_message or '').lower().split())
     if not normalized:
         return None
-    has_create = bool(re.search(r'\b(add|create|new|insert)\b', normalized))
-    has_move = bool(re.search(r'\b(move|reparent|reorder|shift)\b', normalized))
-    has_status = bool(
-        re.search(
-            r'\b(mark|status|done|complete|completed|in[\s_-]*progress|todo|blocked|assign|unassign|priority)\b',
-            normalized,
-        )
-    )
-    if has_create or has_move or has_status:
-        return None
 
+    has_create = bool(re.search(r'\b(add|create|new|insert)\b', normalized))
     has_rename = bool(_RENAME_VERB_PATTERN.search(normalized) or _NAME_TO_PATTERN.search(normalized))
     has_delete = bool(_DELETE_VERB_PATTERN.search(normalized))
-    if has_rename and not has_delete:
+    has_status = bool(_STATUS_VERB_PATTERN.search(normalized))
+    has_move = bool(_MOVE_VERB_PATTERN.search(normalized))
+    has_assign = bool(re.search(r'\b(assign|unassign|reassign|assignee)\b', normalized))
+
+    # A scoped manifest is only safe when exactly one mutation dimension
+    # shows up in the prompt. Count hits and bail on >1.
+    dimensions = [has_rename, has_delete, has_status, has_move, has_assign or has_create]
+    if sum(1 for hit in dimensions if hit) != 1:
+        return None
+
+    if has_rename:
         return 'rename_only'
-    if has_delete and not has_rename:
+    if has_delete:
         return 'delete_only'
+    if has_status:
+        return 'status_change_only'
+    if has_move:
+        return 'move_only'
     return None
 
 
@@ -798,7 +814,12 @@ def plan_operations(
         tool_definitions = get_operation_tools()
     else:
         cached_sub_intent = state.get('classifier_sub_intent')
-        if isinstance(cached_sub_intent, str) and cached_sub_intent in {'rename_only', 'delete_only'}:
+        if isinstance(cached_sub_intent, str) and cached_sub_intent in {
+            'rename_only',
+            'delete_only',
+            'status_change_only',
+            'move_only',
+        }:
             edit_sub_intent = cached_sub_intent
             sub_intent_source = 'llm_classifier'
         else:
@@ -1413,13 +1434,14 @@ def plan_operations(
             ]
         edit_turns = max(1, min(edit_turns, 2))
 
-    # When the W5 sub-intent classifier matched (e.g. rename_only /
-    # delete_only), use the reduced `scoped_edit` planner profile so the
-    # model call is budgeted against `openai_planner_scoped_max_tokens`
-    # (default 400) rather than the full 1200 ceiling. On the rare
-    # truncation (finish_reason=='length'), the retry block below widens
-    # the budget by switching to the `repair_retry` profile
-    # (openai_planner_retry_max_tokens, default 2000).
+    # When the sub-intent classifier matched a narrow edit (rename_only,
+    # delete_only, status_change_only, move_only), use the reduced
+    # `scoped_edit` planner profile so the model call is budgeted against
+    # `openai_planner_narrow_edit_max_tokens` (default 800) rather than
+    # the full default ceiling. On the rare truncation
+    # (finish_reason=='length'), the retry block below widens the budget
+    # by switching to the `repair_retry` profile
+    # (openai_planner_repair_max_tokens, default 3000).
     planner_profile: str | None = 'scoped_edit' if edit_sub_intent else None
 
     if intent_type == 'roadmap_plan':

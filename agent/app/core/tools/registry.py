@@ -822,6 +822,42 @@ SCOPED_EDIT_TOOL_MANIFESTS: dict[str, frozenset[str]] = {
         'get_node_details',
         PLANNING_TOOL_NAME,
     }),
+    # Pure status changes: single-item helpers for epic/feature/task
+    # plus bulk variants scoped by parent or filter. search_tasks and
+    # the get_tasks_by_* helpers let the planner find the target set for
+    # "mark all tasks in Epic X done"-style asks without pulling in the
+    # full discovery toolbelt.
+    'status_change_only': frozenset({
+        'resolve_node_reference',
+        'get_node_details',
+        'get_children_from_resolution',
+        'search_tasks',
+        'get_tasks_by_status',
+        'get_tasks_by_parent',
+        'get_tasks_assigned_to_me',
+        'update_task_status',
+        'update_feature_status',
+        'update_epic_status',
+        'bulk_update_task_status',
+        'bulk_update_tasks_by_parent',
+        'bulk_update_tasks_by_filter',
+        'bulk_update_feature_status',
+        'bulk_update_epic_status',
+        PLANNING_TOOL_NAME,
+    }),
+    # Pure moves: resolve_node_reference gets both source and destination,
+    # the move_* single-item helpers cover individual reparents, and the
+    # bulk helper handles multi-task moves. Reorder tools are intentionally
+    # omitted — reordering isn't semantically a "move" and keeps drift out
+    # of this scope.
+    'move_only': frozenset({
+        'resolve_node_reference',
+        'get_node_details',
+        'move_task_to_feature',
+        'move_feature_to_epic',
+        'bulk_move_tasks_to_feature',
+        PLANNING_TOOL_NAME,
+    }),
 }
 
 
