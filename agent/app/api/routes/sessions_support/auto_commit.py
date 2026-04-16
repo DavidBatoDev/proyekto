@@ -14,6 +14,8 @@ from app.core.orchestration.agent_service import AgentService
 from app.core.session_store import SessionStore
 from app.core.uuid_utils import is_uuid_like
 
+_commit_diagnostic_logger = logging.getLogger(__name__)
+
 
 @dataclass
 class AutoCommitExecutionResult:
@@ -78,6 +80,83 @@ def _first_invalid_operation_snapshot(draft_operations: list[Any]) -> dict[str, 
             reason=issues[0],
         )
     return None
+
+
+def _refresh_recent_resolved_target_titles(
+    session: AgentSession,
+    applied_operations: list[RoadmapOperation],
+) -> None:
+    """After a commit, update `recent_resolved_targets[*].title` for any node
+    that was just renamed. Without this, a subsequent turn's system prompt
+    still shows the pre-rename title and the LLM may resolve references by
+    the obsolete name. Safe no-op when no renames were applied.
+    """
+    # Build { node_id → new_title } from this turn's applied operations.
+    renames: dict[str, str] = {}
+    for operation in applied_operations:
+        op_value = getattr(operation.op, 'value', str(operation.op or ''))
+        if op_value != 'update_node':
+            continue
+        node_id = operation.node_id
+        patch = operation.patch
+        if not isinstance(node_id, str) or not node_id.strip():
+            continue
+        if not isinstance(patch, dict):
+            continue
+        new_title = patch.get('title')
+        if not isinstance(new_title, str) or not new_title.strip():
+            continue
+        renames[node_id] = new_title.strip()
+
+    if not renames:
+        return
+
+    for target in session.metadata.recent_resolved_targets:
+        new_title = renames.get(target.node_id)
+        if new_title is None:
+            continue
+        target.title = new_title
+
+
+def _log_commit_response_shape(
+    *,
+    commit_result: dict[str, Any],
+    session_id: str,
+    roadmap_id: str,
+    trace_id: str | None,
+) -> None:
+    """Dump the structural fields of the backend commit response.
+
+    Helps diagnose why `impacted_items` comes back empty — we need to see
+    whether `semantic_diff.changes` is actually empty (backend diff bug) or
+    whether the agent parser is mismatching the field shape.
+    """
+    semantic_diff = commit_result.get('semantic_diff')
+    if isinstance(semantic_diff, dict):
+        changes_raw = semantic_diff.get('changes')
+        changes = changes_raw if isinstance(changes_raw, list) else []
+        summary = semantic_diff.get('summary')
+        # Log the first two changes in full so we can see the actual key names
+        # the backend uses (node.id / node.type vs node_ref / etc).
+        sample = changes[:2]
+    else:
+        changes = []
+        summary = None
+        sample = None
+    _commit_diagnostic_logger.info(
+        'commit_response_shape trace_id=%s session_id=%s roadmap_id=%s '
+        'top_level_keys=%s semantic_diff_keys=%s '
+        'semantic_diff_changes_count=%d semantic_diff_summary=%s '
+        'semantic_diff_first_changes=%s',
+        trace_id,
+        session_id,
+        roadmap_id,
+        sorted(commit_result.keys()) if isinstance(commit_result, dict) else None,
+        sorted(semantic_diff.keys()) if isinstance(semantic_diff, dict) else None,
+        len(changes),
+        summary,
+        sample,
+    )
 
 
 def _extract_impacted_items_from_commit_result(commit_result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -217,6 +296,12 @@ async def execute_auto_commit(
             auth_header=auth_header,
             trace_id=trace_id,
         )
+        _log_commit_response_shape(
+            commit_result=commit_result,
+            session_id=session.session_id,
+            roadmap_id=session.roadmap_id,
+            trace_id=trace_id,
+        )
     except HTTPException as exc:
         if exc.status_code == 400:
             invalid_snapshot = _first_invalid_operation_snapshot(draft_operations)
@@ -313,6 +398,10 @@ async def execute_auto_commit(
     # the overview via the speculative path.
     session.metadata.roadmap_overview_summary = None
     session.metadata.roadmap_overview_summary_fetched_at = None
+    # Keep recent_resolved_targets in sync with committed renames so the LLM
+    # doesn't see a stale pre-rename title for an epic/feature/task it just
+    # renamed in a previous turn.
+    _refresh_recent_resolved_target_titles(session, draft_operations)
 
     artifact = build_commit_artifact(
         session,

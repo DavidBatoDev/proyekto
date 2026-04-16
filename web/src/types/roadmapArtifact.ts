@@ -4,7 +4,14 @@ export interface ArtifactSemanticDiffSummary {
   node_added: number;
   node_removed: number;
   node_moved: number;
+  title_changed: number;
+  description_changed: number;
   status_changed: number;
+  priority_changed: number;
+  assignee_changed: number;
+  tags_changed: number;
+  color_changed: number;
+  deliverable_changed: number;
   date_changed: number;
   dependency_changed: number;
 }

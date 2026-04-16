@@ -152,7 +152,29 @@ class PromptManager:
         if overview_section is not None:
             parts.append(overview_section)
         parts.append(f'Runtime context:\n{context_payload}')
-        return '\n\n'.join(parts).strip()
+        rendered = '\n\n'.join(parts).strip()
+        overview_text_for_log = (
+            overview.strip() if isinstance(overview, str) else ''
+        )
+        recent_targets_for_log = context_for_json.get('recent_resolved_targets')
+        logger.info(
+            'system_prompt_built mode=%s roadmap_overview_included=%s '
+            'overview_chars=%d prompt_chars=%d',
+            mode,
+            overview_section is not None,
+            len(overview_text_for_log),
+            len(rendered),
+        )
+        if overview_text_for_log:
+            logger.info(
+                'system_prompt_overview_text\n%s', overview_text_for_log
+            )
+        if recent_targets_for_log:
+            logger.info(
+                'system_prompt_recent_resolved_targets=%s',
+                recent_targets_for_log,
+            )
+        return rendered
 
     def intent_classifier_prompt(self, *, session_id: str | None = None) -> str:
         return self.render('intent_classifier', session_id=session_id)

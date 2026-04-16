@@ -8,8 +8,23 @@ from app.core.orchestration.context.roadmap_overview_summarizer import (
 )
 
 
-def _epic(title: str, *, feature_count: int = 0, status: str | None = None) -> dict:
+def _epic(
+    title: str,
+    *,
+    feature_count: int = 0,
+    status: str | None = None,
+    features: list[dict] | None = None,
+) -> dict:
     entry: dict = {'id': f'id-{title}', 'title': title, 'feature_count': feature_count}
+    if status is not None:
+        entry['status'] = status
+    if features is not None:
+        entry['features'] = features
+    return entry
+
+
+def _feature(title: str, *, status: str | None = None) -> dict:
+    entry: dict = {'id': f'id-{title}', 'title': title}
     if status is not None:
         entry['status'] = status
     return entry
@@ -88,6 +103,67 @@ class FormatOverviewSummaryTests(unittest.TestCase):
         self.assertIsNotNone(rendered)
         assert rendered is not None
         self.assertIn('Roadmap: "Untitled roadmap"', rendered)
+
+    def test_renders_feature_titles_under_each_epic(self) -> None:
+        payload = {
+            'title': 'Demo',
+            'epic_count': 2,
+            'feature_count': 3,
+            'task_count': 0,
+            'epics': [
+                _epic(
+                    'Alpha',
+                    feature_count=2,
+                    status='in_progress',
+                    features=[
+                        _feature('Login API', status='done'),
+                        _feature('Signup flow'),
+                    ],
+                ),
+                _epic(
+                    'Beta',
+                    feature_count=1,
+                    features=[_feature('Onboarding wizard', status='todo')],
+                ),
+            ],
+        }
+        rendered = format_overview_summary(payload)
+        assert rendered is not None
+        self.assertIn('1. Alpha — 2 features, status: in_progress', rendered)
+        self.assertIn('   · Login API (status: done)', rendered)
+        self.assertIn('   · Signup flow', rendered)
+        self.assertIn('2. Beta — 1 feature', rendered)
+        self.assertIn('   · Onboarding wizard (status: todo)', rendered)
+
+    def test_truncates_features_per_epic(self) -> None:
+        features = [_feature(f'Feature {i}') for i in range(1, 11)]
+        payload = {
+            'title': 'Demo',
+            'epic_count': 1,
+            'feature_count': 10,
+            'task_count': 0,
+            'epics': [_epic('Alpha', feature_count=10, features=features)],
+        }
+        rendered = format_overview_summary(payload, max_features_per_epic=3)
+        assert rendered is not None
+        self.assertIn('   · Feature 1', rendered)
+        self.assertIn('   · Feature 3', rendered)
+        self.assertNotIn('   · Feature 4', rendered)
+        self.assertIn('   · …and 7 more features', rendered)
+
+    def test_epic_without_features_renders_cleanly(self) -> None:
+        payload = {
+            'title': 'Demo',
+            'epic_count': 1,
+            'feature_count': 0,
+            'task_count': 0,
+            'epics': [_epic('Empty epic', feature_count=0, features=[])],
+        }
+        rendered = format_overview_summary(payload)
+        assert rendered is not None
+        self.assertIn('1. Empty epic — 0 features', rendered)
+        # No feature bullets should be present
+        self.assertNotIn('   · ', rendered)
 
     def test_max_epics_clamped_to_sane_range(self) -> None:
         epics = [_epic(f'E{i}', feature_count=0) for i in range(3)]

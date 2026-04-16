@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from time import perf_counter
@@ -13,6 +14,7 @@ from app.core.orchestration.context.actor_context_provider import (
 )
 
 _ACTOR_FETCH_EXECUTOR: ThreadPoolExecutor | None = None
+_overview_join_logger = logging.getLogger(__name__)
 
 
 def _get_actor_fetch_executor() -> ThreadPoolExecutor:
@@ -66,7 +68,10 @@ def resolve_deferred_roadmap_overview_summary(
 
     Same contract as `resolve_deferred_actor_context`: idempotent, bounded
     by the fetch's own HTTP timeout, and failures degrade silently (the
-    prompt just omits the overview section).
+    prompt just omits the overview section). `session_context` is passed
+    to the rebuild so it writes into the caller's live dict — LangGraph
+    shallow-copies state between nodes, so the pre-dispatcher's original
+    dict is a different object.
     """
     future: Future[None] | None = session_context.pop(
         '_roadmap_overview_fetch_future', None
@@ -82,12 +87,19 @@ def resolve_deferred_roadmap_overview_summary(
     join_ms = int((perf_counter() - join_started) * 1000)
     if callable(rebuild):
         try:
-            rebuild()
+            rebuild(session_context)
         except Exception:  # pragma: no cover
             pass
     metrics = session_context.setdefault('_phase_metrics', {})
     if isinstance(metrics, dict):
         metrics['roadmap_overview_fetch_join_ms'] = join_ms
+    summary = session_context.get('roadmap_overview_summary')
+    _overview_join_logger.info(
+        'roadmap_overview_summary_join_ms=%d present=%s chars=%d',
+        join_ms,
+        isinstance(summary, str) and bool(summary.strip()),
+        len(summary) if isinstance(summary, str) else 0,
+    )
     return join_ms
 
 
@@ -311,12 +323,20 @@ def dispatch_pre_planning_phase(
     if roadmap_overview_fetch_future is not None:
         session_context['_roadmap_overview_fetch_future'] = roadmap_overview_fetch_future
 
-        def _rebuild_roadmap_overview_on_context() -> None:
-            # The background task writes to session.metadata — pull the fresh
-            # value into session_context so the next prompt build picks it up.
-            summary = session.metadata.roadmap_overview_summary
+        def _rebuild_roadmap_overview_on_context(
+            target_context: dict[str, Any],
+        ) -> None:
+            # `target_context` is the session_context dict held by the
+            # caller of `resolve_deferred_roadmap_overview_summary`. That can
+            # differ from the pre-dispatcher's original dict when LangGraph
+            # shallow-copies state between nodes, so write to the caller's
+            # dict directly rather than the closed-over one.
+            refreshed = self._build_session_context(
+                session, auth_header, trace_id
+            )
+            summary = refreshed.get('roadmap_overview_summary')
             if isinstance(summary, str) and summary.strip():
-                session_context['roadmap_overview_summary'] = summary
+                target_context['roadmap_overview_summary'] = summary
 
         session_context['_roadmap_overview_fetch_rebuild'] = (
             _rebuild_roadmap_overview_on_context

@@ -17,6 +17,7 @@ from app.core.contracts.sessions import (
 )
 from app.core.contracts.sessions import AgentSession, IntentType
 from app.core.llm.client import LLMPlanner, PlanningResult
+from app.core.logging_utils import log_event
 from app.core.nest_client import NestRoadmapClient
 from app.core.orchestration.context.actor_context_provider import (
     clear_actor_context_for_missing_auth as clear_actor_context_for_missing_auth_helper,
@@ -780,6 +781,29 @@ class AgentService:
         if summary:
             session.metadata.roadmap_overview_summary = summary
             session.metadata.roadmap_overview_summary_fetched_at = _utcnow()
+            log_event(
+                self._logger,
+                'roadmap_overview_summary_loaded',
+                settings=self._settings,
+                trace_id=trace_id,
+                roadmap_id=session.roadmap_id,
+                session_id=session.session_id,
+                summary_chars=len(summary),
+                summary_lines=summary.count('\n') + 1,
+                # Emit full summary so we can confirm post-commit freshness
+                # end-to-end without guessing from a 240-char preview.
+                summary_full=summary,
+            )
+        else:
+            log_event(
+                self._logger,
+                'roadmap_overview_summary_fetch_empty',
+                settings=self._settings,
+                trace_id=trace_id,
+                roadmap_id=session.roadmap_id,
+                session_id=session.session_id,
+                reason='backend_returned_no_summary',
+            )
 
     def _clear_actor_context_for_missing_auth(
         self,

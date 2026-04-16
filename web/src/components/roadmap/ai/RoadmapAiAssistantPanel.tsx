@@ -181,8 +181,27 @@ const toDiffSummary = (
   node_added: Number(summary?.node_added ?? summary?.NODE_ADDED ?? 0),
   node_removed: Number(summary?.node_removed ?? summary?.NODE_REMOVED ?? 0),
   node_moved: Number(summary?.node_moved ?? summary?.NODE_MOVED ?? 0),
+  title_changed: Number(
+    summary?.title_changed ?? summary?.TITLE_CHANGED ?? 0,
+  ),
+  description_changed: Number(
+    summary?.description_changed ?? summary?.DESCRIPTION_CHANGED ?? 0,
+  ),
   status_changed: Number(
     summary?.status_changed ?? summary?.STATUS_CHANGED ?? 0,
+  ),
+  priority_changed: Number(
+    summary?.priority_changed ?? summary?.PRIORITY_CHANGED ?? 0,
+  ),
+  assignee_changed: Number(
+    summary?.assignee_changed ?? summary?.ASSIGNEE_CHANGED ?? 0,
+  ),
+  tags_changed: Number(summary?.tags_changed ?? summary?.TAGS_CHANGED ?? 0),
+  color_changed: Number(
+    summary?.color_changed ?? summary?.COLOR_CHANGED ?? 0,
+  ),
+  deliverable_changed: Number(
+    summary?.deliverable_changed ?? summary?.DELIVERABLE_CHANGED ?? 0,
   ),
   date_changed: Number(summary?.date_changed ?? summary?.DATE_CHANGED ?? 0),
   dependency_changed: Number(

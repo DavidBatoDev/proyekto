@@ -196,7 +196,14 @@ export class SemanticDiffChangeDto {
     'NODE_ADDED',
     'NODE_REMOVED',
     'NODE_MOVED',
+    'TITLE_CHANGED',
+    'DESCRIPTION_CHANGED',
     'STATUS_CHANGED',
+    'PRIORITY_CHANGED',
+    'ASSIGNEE_CHANGED',
+    'TAGS_CHANGED',
+    'COLOR_CHANGED',
+    'DELIVERABLE_CHANGED',
     'DATE_CHANGED',
     'DEPENDENCY_CHANGED',
   ])
@@ -204,7 +211,14 @@ export class SemanticDiffChangeDto {
     | 'NODE_ADDED'
     | 'NODE_REMOVED'
     | 'NODE_MOVED'
+    | 'TITLE_CHANGED'
+    | 'DESCRIPTION_CHANGED'
     | 'STATUS_CHANGED'
+    | 'PRIORITY_CHANGED'
+    | 'ASSIGNEE_CHANGED'
+    | 'TAGS_CHANGED'
+    | 'COLOR_CHANGED'
+    | 'DELIVERABLE_CHANGED'
     | 'DATE_CHANGED'
     | 'DEPENDENCY_CHANGED';
 
@@ -379,6 +393,18 @@ export class RoadmapAiDiscardResponseDto {
   roadmap: Record<string, unknown>;
 }
 
+export class RoadmapAiContextSummaryFeatureDto {
+  @IsUUID()
+  id: string;
+
+  @IsString()
+  title: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+}
+
 export class RoadmapAiContextSummaryEpicDto {
   @IsUUID()
   id: string;
@@ -392,6 +418,11 @@ export class RoadmapAiContextSummaryEpicDto {
 
   @IsInt()
   feature_count: number;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapAiContextSummaryFeatureDto)
+  features: RoadmapAiContextSummaryFeatureDto[];
 }
 
 export class RoadmapAiContextSummaryResponseDto {

@@ -15,6 +15,7 @@ from app.core.nest_client import NestRoadmapClient
 
 
 DEFAULT_MAX_EPICS = 15
+DEFAULT_MAX_FEATURES_PER_EPIC = 6
 
 
 async def build_roadmap_overview_summary(
@@ -24,6 +25,7 @@ async def build_roadmap_overview_summary(
     auth_header: str | None,
     trace_id: str | None = None,
     max_epics: int = DEFAULT_MAX_EPICS,
+    max_features_per_epic: int = DEFAULT_MAX_FEATURES_PER_EPIC,
 ) -> str | None:
     if not roadmap_id or not auth_header:
         return None
@@ -39,13 +41,18 @@ async def build_roadmap_overview_summary(
         return None
     if not isinstance(payload, dict) or isinstance(payload.get('error'), dict):
         return None
-    return format_overview_summary(payload, max_epics=max_epics)
+    return format_overview_summary(
+        payload,
+        max_epics=max_epics,
+        max_features_per_epic=max_features_per_epic,
+    )
 
 
 def format_overview_summary(
     payload: dict[str, Any],
     *,
     max_epics: int = DEFAULT_MAX_EPICS,
+    max_features_per_epic: int = DEFAULT_MAX_FEATURES_PER_EPIC,
 ) -> str | None:
     title = _clean_str(payload.get('title')) or 'Untitled roadmap'
     status = _clean_str(payload.get('status'))
@@ -73,6 +80,7 @@ def format_overview_summary(
     capped_max = max(1, min(int(max_epics), 100))
     shown = epics[:capped_max]
     remaining = max(0, len(epics) - len(shown))
+    capped_features = max(0, min(int(max_features_per_epic), 50))
 
     epic_lines: list[str] = []
     for index, epic in enumerate(shown, start=1):
@@ -86,6 +94,26 @@ def format_overview_summary(
             bits.append(f'status: {epic_status}')
         suffix = f' — {", ".join(bits)}' if bits else ''
         epic_lines.append(f'{index}. {epic_title}{suffix}')
+
+        # Render feature titles as a bulleted sublist so the LLM can reference
+        # them by name without needing a drill-down tool call.
+        features_raw = epic.get('features')
+        features = [item for item in features_raw if isinstance(item, dict)] if isinstance(features_raw, list) else []
+        if features and capped_features > 0:
+            shown_features = features[:capped_features]
+            remaining_features = max(0, len(features) - len(shown_features))
+            for feature in shown_features:
+                feature_title = _clean_str(feature.get('title')) or 'Untitled feature'
+                feature_status = _clean_str(feature.get('status'))
+                if feature_status:
+                    epic_lines.append(f'   · {feature_title} (status: {feature_status})')
+                else:
+                    epic_lines.append(f'   · {feature_title}')
+            if remaining_features > 0:
+                epic_lines.append(
+                    f'   · …and {remaining_features} more '
+                    f'{_pluralize(remaining_features, "feature", "features")}'
+                )
     if remaining > 0:
         epic_lines.append(f'…and {remaining} more {_pluralize(remaining, "epic", "epics")}')
 

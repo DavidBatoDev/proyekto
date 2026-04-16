@@ -146,7 +146,14 @@ type FlatNodeSnapshot = {
   type: RoadmapNodeType;
   parentId?: string;
   position?: number;
+  title?: string;
+  description?: string;
   status?: string;
+  priority?: string;
+  assigneeId?: string;
+  tags?: string[];
+  color?: string;
+  isDeliverable?: boolean;
   startDate?: string;
   endDate?: string;
   dueDate?: string;
@@ -437,6 +444,17 @@ export class RoadmapAiService {
                 title: epic.title ?? 'Untitled epic',
                 status: epic.status,
                 feature_count: epic.roadmap_features?.length ?? 0,
+                features: (epic.roadmap_features ?? []).flatMap((feature) =>
+                  feature.id
+                    ? [
+                        {
+                          id: feature.id,
+                          title: feature.title ?? 'Untitled feature',
+                          status: feature.status,
+                        },
+                      ]
+                    : [],
+                ),
               },
             ]
           : [],
@@ -3255,12 +3273,78 @@ export class RoadmapAiService {
         });
       }
 
+      if (prevNode.title !== nextNode.title) {
+        changes.push({
+          type: 'TITLE_CHANGED',
+          node: { type: nextNode.type, id },
+          from: { title: prevNode.title },
+          to: { title: nextNode.title },
+        });
+      }
+
+      if (prevNode.description !== nextNode.description) {
+        changes.push({
+          type: 'DESCRIPTION_CHANGED',
+          node: { type: nextNode.type, id },
+          from: { description: prevNode.description },
+          to: { description: nextNode.description },
+        });
+      }
+
       if (prevNode.status !== nextNode.status) {
         changes.push({
           type: 'STATUS_CHANGED',
           node: { type: nextNode.type, id },
           from: { status: prevNode.status },
           to: { status: nextNode.status },
+        });
+      }
+
+      if (prevNode.priority !== nextNode.priority) {
+        changes.push({
+          type: 'PRIORITY_CHANGED',
+          node: { type: nextNode.type, id },
+          from: { priority: prevNode.priority },
+          to: { priority: nextNode.priority },
+        });
+      }
+
+      if (prevNode.assigneeId !== nextNode.assigneeId) {
+        changes.push({
+          type: 'ASSIGNEE_CHANGED',
+          node: { type: nextNode.type, id },
+          from: { assignee_id: prevNode.assigneeId },
+          to: { assignee_id: nextNode.assigneeId },
+        });
+      }
+
+      if (
+        JSON.stringify(prevNode.tags ?? []) !==
+        JSON.stringify(nextNode.tags ?? [])
+      ) {
+        changes.push({
+          type: 'TAGS_CHANGED',
+          node: { type: nextNode.type, id },
+          from: { tags: prevNode.tags ?? [] },
+          to: { tags: nextNode.tags ?? [] },
+        });
+      }
+
+      if (prevNode.color !== nextNode.color) {
+        changes.push({
+          type: 'COLOR_CHANGED',
+          node: { type: nextNode.type, id },
+          from: { color: prevNode.color },
+          to: { color: nextNode.color },
+        });
+      }
+
+      if (prevNode.isDeliverable !== nextNode.isDeliverable) {
+        changes.push({
+          type: 'DELIVERABLE_CHANGED',
+          node: { type: nextNode.type, id },
+          from: { is_deliverable: prevNode.isDeliverable },
+          to: { is_deliverable: nextNode.isDeliverable },
         });
       }
 
@@ -3321,6 +3405,8 @@ export class RoadmapAiService {
     map.set(roadmapId, {
       id: roadmapId,
       type: 'roadmap',
+      title: state.name,
+      description: state.description,
       status: state.status,
       startDate: state.start_date,
       endDate: state.end_date,
@@ -3337,7 +3423,12 @@ export class RoadmapAiService {
         type: 'epic',
         parentId: roadmapId,
         position: epic.position,
+        title: epic.title,
+        description: epic.description,
         status: epic.status,
+        priority: epic.priority,
+        tags: Array.isArray(epic.tags) ? epic.tags : undefined,
+        color: epic.color,
         startDate: epic.start_date,
         endDate: epic.end_date,
         dependencies: this.readDependencies(
@@ -3353,7 +3444,10 @@ export class RoadmapAiService {
           type: 'feature',
           parentId: epicId,
           position: feature.position,
+          title: feature.title,
+          description: feature.description,
           status: feature.status,
+          isDeliverable: feature.is_deliverable,
           startDate: feature.start_date,
           endDate: feature.end_date,
           dependencies: this.readDependencies(
@@ -3369,7 +3463,11 @@ export class RoadmapAiService {
             type: 'task',
             parentId: featureId,
             position: task.position,
+            title: task.title,
+            description: task.description,
             status: task.status,
+            priority: task.priority,
+            assigneeId: task.assignee_id,
             dueDate: task.due_date,
             dependencies: this.readDependencies(
               task as unknown as Record<string, unknown>,
