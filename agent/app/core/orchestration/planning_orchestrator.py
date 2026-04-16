@@ -63,7 +63,6 @@ def plan_message(
     has_staged_operations = pre_dispatch_result.has_staged_operations
     preview_intent = pre_dispatch_result.preview_intent
     planning_user_message = pre_dispatch_result.planning_user_message
-    mixed_query_followup_message = pre_dispatch_result.mixed_query_followup_message
     deictic_resolution = pre_dispatch_result.deictic_resolution
     actor_fetch_attempted = pre_dispatch_result.actor_fetch_attempted
     actor_fetch_skipped_reason = pre_dispatch_result.actor_fetch_skipped_reason
@@ -198,7 +197,6 @@ def plan_message(
         planning=planning,
         applied_operations=applied_operations,
         staged_changed=staged_changed,
-        mixed_query_followup_message=mixed_query_followup_message,
         draft_graph_enabled=draft_graph_enabled,
         active_draft=active_draft,
         auth_header=auth_header,
@@ -207,7 +205,6 @@ def plan_message(
     )
     assistant_message = post_execution_outcome.assistant_message
     parse_mode = post_execution_outcome.parse_mode
-    mixed_query_followup_warning_code = post_execution_outcome.mixed_query_followup_warning_code
 
     staged_operations, staged_operations_version = self._resolve_staged_state(
         session,
@@ -275,7 +272,6 @@ def plan_message(
         retry_tool_calls_used=retry_tool_calls_used,
         retry_duplicate_operation_deduped=retry_duplicate_operation_deduped,
         retry_autostage_applied=retry_autostage_applied,
-        mixed_query_followup_warning_code=mixed_query_followup_warning_code,
         resolve_cache_hits=resolve_cache_hits,
         resolve_cache_misses=resolve_cache_misses,
         resolve_dedup_hits=resolve_dedup_hits,

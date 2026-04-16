@@ -126,29 +126,7 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertEqual(len(session.operations), 1)
         self.assertEqual(session.operations[0].op.value, 'add_epic')
 
-    def test_extract_mixed_query_followup_message_detects_edit_then_query(self) -> None:
-        service = self._service({'matches': []})
-
-        followup = service._extract_mixed_query_followup_message(
-            user_message=(
-                'Delete top 2 todo tasks under API Security feature and '
-                'tell me how many total tasks remain in this roadmap'
-            ),
-            preview_intent='roadmap_edit',
-        )
-
-        self.assertEqual(
-            followup,
-            'tell me how many total tasks remain in this roadmap',
-        )
-        self.assertIsNone(
-            service._extract_mixed_query_followup_message(
-                user_message='Tell me how many tasks remain in this roadmap',
-                preview_intent='roadmap_query',
-            )
-        )
-
-    def test_plan_message_mixed_query_appends_draft_view_followup(self) -> None:
+    def test_plan_message_mixed_intent_passes_full_message_to_single_planner_call(self) -> None:
         class _MixedPlanner:
             def __init__(self) -> None:
                 self.plan_inputs: list[str] = []
@@ -273,7 +251,7 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertTrue(outcome.actor_fetch_attempted)
         self.assertEqual(nest_client.actor_calls, 1)
 
-    def test_plan_message_mixed_query_what_would_change_uses_deterministic_followup(self) -> None:
+    def test_plan_message_mixed_intent_what_would_change_uses_planner_message_unchanged(self) -> None:
         class _MixedPlanner:
             def __init__(self) -> None:
                 self.plan_inputs: list[str] = []

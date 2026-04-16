@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import Settings
 from app.core.contracts.operations import RoadmapOperation
@@ -50,6 +50,16 @@ class _IntentClassification(BaseModel):
         None,
     ] = Field(default=None)
     rationale: str = Field(default='')
+
+    @field_validator('sub_intent', mode='before')
+    @classmethod
+    def _coerce_null_sub_intent(cls, value: Any) -> Any:
+        # The prompt lists `null` as a valid enum value alongside quoted strings,
+        # so LLMs sometimes return the literal string "null" (or "none", or "")
+        # instead of JSON null. Coerce those to None so validation succeeds.
+        if isinstance(value, str) and value.strip().lower() in {'null', 'none', ''}:
+            return None
+        return value
 
 
 class OpenAILangChainAdapter(LLMProviderAdapter):

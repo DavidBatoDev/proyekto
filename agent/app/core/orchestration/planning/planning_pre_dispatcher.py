@@ -67,7 +67,6 @@ class PrePlanningDispatchResult:
     has_staged_operations: bool
     preview_intent: IntentType
     planning_user_message: str
-    mixed_query_followup_message: str | None
     deictic_resolution: dict[str, Any] | None
     actor_fetch_attempted: bool
     actor_fetch_skipped_reason: str | None
@@ -179,9 +178,10 @@ def dispatch_pre_planning_phase(
         cached_classifier_result = session_context.get('_classifier_result')
 
     simple_edit_detected = preview_intent == 'roadmap_edit'
-    # Mixed edit/query follow-up orchestration is intentionally disabled.
-    # Let the planner handle the full user message in one pass.
-    mixed_query_followup_message = None
+    # Mixed intents (edit + informational question in one turn) are handled
+    # LLM-natively inside the edit planner via prompt + context tools — see
+    # agent/app/core/prompts/templates/edit_mode/v1.md "Answering questions
+    # alongside edits". The regex-based pre-split was removed.
     planning_user_message = user_message
 
     actor_fetch_attempted = False
@@ -299,7 +299,6 @@ def dispatch_pre_planning_phase(
         has_staged_operations=has_staged_operations,
         preview_intent=preview_intent,
         planning_user_message=planning_user_message,
-        mixed_query_followup_message=mixed_query_followup_message,
         deictic_resolution=deictic_resolution,
         actor_fetch_attempted=actor_fetch_attempted,
         actor_fetch_skipped_reason=actor_fetch_skipped_reason,

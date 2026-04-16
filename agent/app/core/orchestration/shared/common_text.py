@@ -4,8 +4,6 @@ import re
 import string
 from typing import Any
 
-from app.core.contracts.sessions import IntentType
-
 _CANONICAL_INTENT_FAMILIES = {
     'rename_node',
     'create_epic',
@@ -32,11 +30,6 @@ _INTENT_FAMILY_ALIASES = {
     'mark': 'mark_status',
     'shift': 'shift_dates',
 }
-
-_MIXED_QUERY_CUE_PATTERN = re.compile(
-    r'\b(?:how many|what|which|who|where|when|summarize|summary|overview|tell me|show me|list|count)\b',
-    re.IGNORECASE,
-)
 
 _MIXED_EDIT_VERB_PATTERN = re.compile(
     r'\b(?:add|create|remove|delete|mark|rename|move|update|set|assign|unassign|reassign|change)\b',
@@ -192,72 +185,6 @@ def _normalize_followup_text(user_message: str) -> str:
     normalized = re.sub(r'[.!?,;:]+', ' ', normalized).strip()
     normalized = re.sub(r'\s+', ' ', normalized)
     return normalized
-
-
-def extract_mixed_query_followup_message(
-    *,
-    user_message: str,
-    preview_intent: IntentType,
-    mixed_query_cue_pattern: re.Pattern[str] = _MIXED_QUERY_CUE_PATTERN,
-    mixed_edit_verb_pattern: re.Pattern[str] = _MIXED_EDIT_VERB_PATTERN,
-) -> str | None:
-    if preview_intent != 'roadmap_edit':
-        return None
-    message = ' '.join(user_message.strip().split())
-    if not message:
-        return None
-
-    for query_match in mixed_query_cue_pattern.finditer(message):
-        start = query_match.start()
-        if start <= 0:
-            continue
-        prefix = message[:start]
-        if not mixed_edit_verb_pattern.search(prefix):
-            continue
-        bridge_window = message[max(0, start - 32) : start]
-        if not re.search(r'(?:\band\b|\bthen\b|[;,.])', bridge_window, re.IGNORECASE):
-            continue
-        query_tail = message[start:]
-        query_tail = re.sub(
-            r'^(?:and|then|also|plus)\s+',
-            '',
-            query_tail,
-            flags=re.IGNORECASE,
-        ).strip()
-        query_tail = query_tail.rstrip(' .!?')
-        if len(query_tail.split()) < 3:
-            continue
-        return query_tail
-    return None
-
-
-def extract_mixed_edit_primary_message(
-    *,
-    user_message: str,
-    query_message: str | None,
-) -> str | None:
-    if not query_message:
-        return None
-    message = ' '.join(user_message.strip().split())
-    query_tail = ' '.join(query_message.strip().split())
-    if not message or not query_tail:
-        return None
-    lowered_message = message.lower()
-    lowered_query = query_tail.lower()
-    query_index = lowered_message.find(lowered_query)
-    if query_index <= 0:
-        return None
-
-    primary = message[:query_index].rstrip(' ,;:.!?')
-    primary = re.sub(
-        r'(?:\b(?:and|then|also|plus)\b\s*)+$',
-        '',
-        primary,
-        flags=re.IGNORECASE,
-    ).strip()
-    if len(primary.split()) < 2:
-        return None
-    return primary
 
 
 def strip_quotes_and_punctuation(value: str) -> str:

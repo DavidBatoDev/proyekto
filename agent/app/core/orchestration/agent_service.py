@@ -27,8 +27,6 @@ from app.core.orchestration.shared.async_bridge import run_async_call
 from app.core.orchestration.shared.common_text import (
     detect_edit_continuation_trigger,
     detect_pending_edit_followup_kind,
-    extract_mixed_edit_primary_message,
-    extract_mixed_query_followup_message,
     extract_rename_intent,
     is_rename_message,
     normalize_intent_family,
@@ -105,12 +103,6 @@ from app.core.orchestration.context.session_runtime_access import (
     get_session_or_404 as get_session_or_404_helper,
     resolve_session_staged_state as resolve_session_staged_state_helper,
 )
-from app.core.orchestration.shared.mixed_query_handler import (
-    compose_mixed_query_assistant_message as compose_mixed_query_assistant_message_helper,
-    is_mixed_query_followup_clarifier as is_mixed_query_followup_clarifier_helper,
-    mixed_query_warning_text as mixed_query_warning_text_helper,
-    run_mixed_query_followup as run_mixed_query_followup_helper,
-)
 from app.core.session_store import SessionStore
 
 
@@ -121,14 +113,6 @@ def _utcnow() -> datetime:
 
 class AgentService:
     _ORDER_INSENSITIVE_SIGNATURE_FIELDS = {'tags'}
-    _MIXED_QUERY_CUE_PATTERN = re.compile(
-        r'\b(?:how many|what|which|who|where|when|summarize|summary|overview|tell me|show me|list|count)\b',
-        re.IGNORECASE,
-    )
-    _MIXED_EDIT_VERB_PATTERN = re.compile(
-        r'\b(?:add|create|remove|delete|mark|rename|move|update|set|assign|unassign|reassign|change)\b',
-        re.IGNORECASE,
-    )
     _RECENT_TARGET_MAX_ITEMS = 20
     _RECENT_TARGET_MAX_AGE_HOURS = 24
     _RECENT_TARGET_SOURCE_PRIORITY = {
@@ -275,71 +259,6 @@ class AgentService:
             user_message=user_message,
             pending_context=pending_context,
         )
-
-    def _extract_mixed_query_followup_message(
-        self,
-        *,
-        user_message: str,
-        preview_intent: IntentType,
-    ) -> str | None:
-        return extract_mixed_query_followup_message(
-            user_message=user_message,
-            preview_intent=preview_intent,
-            mixed_query_cue_pattern=self._MIXED_QUERY_CUE_PATTERN,
-            mixed_edit_verb_pattern=self._MIXED_EDIT_VERB_PATTERN,
-        )
-
-    def _extract_mixed_edit_primary_message(
-        self,
-        *,
-        user_message: str,
-        query_message: str | None,
-    ) -> str | None:
-        return extract_mixed_edit_primary_message(
-            user_message=user_message,
-            query_message=query_message,
-        )
-
-    def _run_mixed_query_followup(
-        self,
-        *,
-        session: AgentSession,
-        query_message: str,
-        staged_operations: list[RoadmapOperation],
-        auth_header: str | None,
-        trace_id: str | None,
-    ) -> tuple[str | None, str | None]:
-        return run_mixed_query_followup_helper(
-            session=session,
-            query_message=query_message,
-            staged_operations=staged_operations,
-            auth_header=auth_header,
-            trace_id=trace_id,
-            planner=self._planner,
-            build_session_context=self._build_session_context,
-            apply_context_answer_output_guard=self._apply_context_answer_output_guard,
-            is_mixed_query_followup_clarifier=self._is_mixed_query_followup_clarifier,
-        )
-
-    def _compose_mixed_query_assistant_message(
-        self,
-        *,
-        edit_message: str,
-        followup_answer: str | None,
-        warning_code: str | None,
-    ) -> str:
-        return compose_mixed_query_assistant_message_helper(
-            edit_message=edit_message,
-            followup_answer=followup_answer,
-            warning_code=warning_code,
-            mixed_query_warning_text=self._mixed_query_warning_text,
-        )
-
-    def _is_mixed_query_followup_clarifier(self, planning: PlanningResult) -> bool:
-        return is_mixed_query_followup_clarifier_helper(planning)
-
-    def _mixed_query_warning_text(self, warning_code: str | None) -> str | None:
-        return mixed_query_warning_text_helper(warning_code)
 
     # ------------------------------------------------------------------
     # Recent Target Helpers
