@@ -11,6 +11,7 @@ import {
   MessageSquare,
   BookOpen,
   Settings,
+  UserPlus,
 } from "lucide-react";
 import { useState } from "react";
 import type { Project } from "@/services/project.service";
@@ -62,6 +63,7 @@ export function ProjectSidebar({
     retry: 1,
   });
   const canViewTime = permissionsQuery.data?.time?.view === true;
+  const isConsultant = !!project?.consultant_id && !!user?.id && project.consultant_id === user.id;
 
   const chatRoomsQuery = useQuery({
     queryKey: chatKeys.rooms(projectId),
@@ -146,6 +148,13 @@ export function ProjectSidebar({
           requiresProject: true,
         },
         {
+          label: "Invitations",
+          icon: UserPlus,
+          to: `/project/${projectId}/invitations`,
+          requiresProject: true,
+          requiresConsultant: true,
+        },
+        {
           label: "Chat",
           icon: MessageSquare,
           to: `/project/${projectId}/chat/channel-general`,
@@ -184,7 +193,8 @@ export function ProjectSidebar({
       items: section.items.filter(
         (item) =>
           (!item.requiresProject || isProjectActive) &&
-          (!item.requiresTimeView || canViewTime),
+          (!item.requiresTimeView || canViewTime) &&
+          (!item.requiresConsultant || isConsultant),
       ),
     }))
     .filter((section) => section.items.length > 0);

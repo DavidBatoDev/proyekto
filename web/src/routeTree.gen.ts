@@ -20,6 +20,7 @@ import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as RoadmapSharedWithMeRouteImport } from './routes/roadmap/shared-with-me'
 import { Route as ProjectProjectIdRouteImport } from './routes/project/$projectId'
 import { Route as ProfileProfileIdRouteImport } from './routes/profile/$profileId'
+import { Route as InviteTokenRouteImport } from './routes/invite/$token'
 import { Route as FreelancerInvitesRouteImport } from './routes/freelancer/invites'
 import { Route as FreelancerGoLiveRouteImport } from './routes/freelancer/go-live'
 import { Route as ConsultantTemplatesRouteImport } from './routes/consultant/templates'
@@ -45,6 +46,7 @@ import { Route as ProjectProjectIdResourcesRouteImport } from './routes/project/
 import { Route as ProjectProjectIdPaymentsRouteImport } from './routes/project/$projectId/payments'
 import { Route as ProjectProjectIdOverviewRouteImport } from './routes/project/$projectId/overview'
 import { Route as ProjectProjectIdLogsRouteImport } from './routes/project/$projectId/logs'
+import { Route as ProjectProjectIdInvitationsRouteImport } from './routes/project/$projectId/invitations'
 import { Route as AuthAdminSigninRouteImport } from './routes/auth/admin/signin'
 import { Route as AuthAdminLoginRouteImport } from './routes/auth/admin/login'
 import { Route as ProjectProjectIdTimeIndexRouteImport } from './routes/project/$projectId/time/index'
@@ -112,6 +114,11 @@ const ProjectProjectIdRoute = ProjectProjectIdRouteImport.update({
 const ProfileProfileIdRoute = ProfileProfileIdRouteImport.update({
   id: '/profile/$profileId',
   path: '/profile/$profileId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FreelancerInvitesRoute = FreelancerInvitesRouteImport.update({
@@ -243,6 +250,12 @@ const ProjectProjectIdLogsRoute = ProjectProjectIdLogsRouteImport.update({
   path: '/logs',
   getParentRoute: () => ProjectProjectIdRoute,
 } as any)
+const ProjectProjectIdInvitationsRoute =
+  ProjectProjectIdInvitationsRouteImport.update({
+    id: '/invitations',
+    path: '/invitations',
+    getParentRoute: () => ProjectProjectIdRoute,
+  } as any)
 const AuthAdminSigninRoute = AuthAdminSigninRouteImport.update({
   id: '/auth/admin/signin',
   path: '/auth/admin/signin',
@@ -344,12 +357,14 @@ export interface FileRoutesByFullPath {
   '/consultant/templates': typeof ConsultantTemplatesRoute
   '/freelancer/go-live': typeof FreelancerGoLiveRoute
   '/freelancer/invites': typeof FreelancerInvitesRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/project/$projectId': typeof ProjectProjectIdRouteWithChildren
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
   '/admin/': typeof AdminIndexRoute
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
+  '/project/$projectId/invitations': typeof ProjectProjectIdInvitationsRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
   '/project/$projectId/overview': typeof ProjectProjectIdOverviewRoute
   '/project/$projectId/payments': typeof ProjectProjectIdPaymentsRoute
@@ -394,12 +409,14 @@ export interface FileRoutesByTo {
   '/consultant/templates': typeof ConsultantTemplatesRoute
   '/freelancer/go-live': typeof FreelancerGoLiveRoute
   '/freelancer/invites': typeof FreelancerInvitesRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/project/$projectId': typeof ProjectProjectIdRouteWithChildren
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
   '/admin': typeof AdminIndexRoute
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
+  '/project/$projectId/invitations': typeof ProjectProjectIdInvitationsRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
   '/project/$projectId/overview': typeof ProjectProjectIdOverviewRoute
   '/project/$projectId/payments': typeof ProjectProjectIdPaymentsRoute
@@ -446,12 +463,14 @@ export interface FileRoutesById {
   '/consultant/templates': typeof ConsultantTemplatesRoute
   '/freelancer/go-live': typeof FreelancerGoLiveRoute
   '/freelancer/invites': typeof FreelancerInvitesRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/project/$projectId': typeof ProjectProjectIdRouteWithChildren
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
   '/admin/': typeof AdminIndexRoute
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
+  '/project/$projectId/invitations': typeof ProjectProjectIdInvitationsRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
   '/project/$projectId/overview': typeof ProjectProjectIdOverviewRoute
   '/project/$projectId/payments': typeof ProjectProjectIdPaymentsRoute
@@ -499,12 +518,14 @@ export interface FileRouteTypes {
     | '/consultant/templates'
     | '/freelancer/go-live'
     | '/freelancer/invites'
+    | '/invite/$token'
     | '/profile/$profileId'
     | '/project/$projectId'
     | '/roadmap/shared-with-me'
     | '/admin/'
     | '/auth/admin/login'
     | '/auth/admin/signin'
+    | '/project/$projectId/invitations'
     | '/project/$projectId/logs'
     | '/project/$projectId/overview'
     | '/project/$projectId/payments'
@@ -549,12 +570,14 @@ export interface FileRouteTypes {
     | '/consultant/templates'
     | '/freelancer/go-live'
     | '/freelancer/invites'
+    | '/invite/$token'
     | '/profile/$profileId'
     | '/project/$projectId'
     | '/roadmap/shared-with-me'
     | '/admin'
     | '/auth/admin/login'
     | '/auth/admin/signin'
+    | '/project/$projectId/invitations'
     | '/project/$projectId/logs'
     | '/project/$projectId/overview'
     | '/project/$projectId/payments'
@@ -600,12 +623,14 @@ export interface FileRouteTypes {
     | '/consultant/templates'
     | '/freelancer/go-live'
     | '/freelancer/invites'
+    | '/invite/$token'
     | '/profile/$profileId'
     | '/project/$projectId'
     | '/roadmap/shared-with-me'
     | '/admin/'
     | '/auth/admin/login'
     | '/auth/admin/signin'
+    | '/project/$projectId/invitations'
     | '/project/$projectId/logs'
     | '/project/$projectId/overview'
     | '/project/$projectId/payments'
@@ -648,6 +673,7 @@ export interface RootRouteChildren {
   ConsultantTemplatesRoute: typeof ConsultantTemplatesRoute
   FreelancerGoLiveRoute: typeof FreelancerGoLiveRoute
   FreelancerInvitesRoute: typeof FreelancerInvitesRoute
+  InviteTokenRoute: typeof InviteTokenRoute
   ProfileProfileIdRoute: typeof ProfileProfileIdRoute
   ProjectProjectIdRoute: typeof ProjectProjectIdRouteWithChildren
   RoadmapSharedWithMeRoute: typeof RoadmapSharedWithMeRoute
@@ -734,6 +760,13 @@ declare module '@tanstack/react-router' {
       path: '/profile/$profileId'
       fullPath: '/profile/$profileId'
       preLoaderRoute: typeof ProfileProfileIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/freelancer/invites': {
@@ -911,6 +944,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectProjectIdLogsRouteImport
       parentRoute: typeof ProjectProjectIdRoute
     }
+    '/project/$projectId/invitations': {
+      id: '/project/$projectId/invitations'
+      path: '/invitations'
+      fullPath: '/project/$projectId/invitations'
+      preLoaderRoute: typeof ProjectProjectIdInvitationsRouteImport
+      parentRoute: typeof ProjectProjectIdRoute
+    }
     '/auth/admin/signin': {
       id: '/auth/admin/signin'
       path: '/auth/admin/signin'
@@ -1071,6 +1111,7 @@ const ProjectProjectIdTimeTeamLogsRouteWithChildren =
   )
 
 interface ProjectProjectIdRouteChildren {
+  ProjectProjectIdInvitationsRoute: typeof ProjectProjectIdInvitationsRoute
   ProjectProjectIdLogsRoute: typeof ProjectProjectIdLogsRoute
   ProjectProjectIdOverviewRoute: typeof ProjectProjectIdOverviewRoute
   ProjectProjectIdPaymentsRoute: typeof ProjectProjectIdPaymentsRoute
@@ -1088,6 +1129,7 @@ interface ProjectProjectIdRouteChildren {
 }
 
 const ProjectProjectIdRouteChildren: ProjectProjectIdRouteChildren = {
+  ProjectProjectIdInvitationsRoute: ProjectProjectIdInvitationsRoute,
   ProjectProjectIdLogsRoute: ProjectProjectIdLogsRoute,
   ProjectProjectIdOverviewRoute: ProjectProjectIdOverviewRoute,
   ProjectProjectIdPaymentsRoute: ProjectProjectIdPaymentsRoute,
@@ -1128,6 +1170,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConsultantTemplatesRoute: ConsultantTemplatesRoute,
   FreelancerGoLiveRoute: FreelancerGoLiveRoute,
   FreelancerInvitesRoute: FreelancerInvitesRoute,
+  InviteTokenRoute: InviteTokenRoute,
   ProfileProfileIdRoute: ProfileProfileIdRoute,
   ProjectProjectIdRoute: ProjectProjectIdRouteWithChildren,
   RoadmapSharedWithMeRoute: RoadmapSharedWithMeRoute,

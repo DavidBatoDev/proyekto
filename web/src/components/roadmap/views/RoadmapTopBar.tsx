@@ -7,6 +7,7 @@ import {
   CalendarDays,
   FileText,
   Boxes,
+  UserPlus,
 } from "lucide-react";
 import {
   DndContext,
@@ -93,6 +94,7 @@ const SortableEpicTab = ({
 interface RoadmapTopBarProps {
   onEditBrief?: () => void;
   onShare?: () => void;
+  onInvite?: () => void;
   onExport?: () => void;
   onOpenJsonPanel?: () => void;
 }
@@ -100,6 +102,7 @@ interface RoadmapTopBarProps {
 export function RoadmapTopBar({
   onEditBrief,
   onShare,
+  onInvite,
   onExport,
   onOpenJsonPanel,
 }: RoadmapTopBarProps) {
@@ -280,6 +283,17 @@ export function RoadmapTopBar({
           >
             <FileText className="w-4 h-4" />
             Edit Roadmap
+          </button>
+        )}
+
+        {onInvite && (
+          <button
+            onClick={onInvite}
+            className="inline-flex items-center gap-2 rounded-md border border-[#ff9933]/40 bg-[#ff9933]/10 px-3 py-1.5 text-sm font-semibold text-[#ff9933] transition-colors hover:bg-[#ff9933]/20"
+            title="Invite to Project"
+          >
+            <UserPlus className="w-4 h-4" />
+            Invite
           </button>
         )}
 

@@ -20,7 +20,9 @@ import {
 } from "@/services/roadmap.service";
 import type { Roadmap } from "@/types/roadmap";
 import { useToast } from "@/contexts/ToastContext";
-import { useRoadmapFullLiveQuery } from "@/hooks/useProjectQueries";
+import { useRoadmapFullLiveQuery, useProjectDetailQuery } from "@/hooks/useProjectQueries";
+import { useUser } from "@/stores/authStore";
+import { ProjectInviteLinksModal } from "@/components/project/invitations/ProjectInviteLinksModal";
 
 interface RoadmapViewContentProps {
   roadmapId: string;
@@ -140,6 +142,16 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
 
   // Share Modal state
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+
+  // Invite Modal state — visible only to the project consultant
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const currentUser = useUser();
+  const projectId = roadmap?.project_id ?? null;
+  const projectQuery = useProjectDetailQuery(projectId ?? "");
+  const isConsultant =
+    !!projectId &&
+    !!currentUser?.id &&
+    projectQuery.data?.consultant_id === currentUser.id;
 
   const roadmapJsonValue = useMemo(() => {
     if (!roadmap) return "{}";
@@ -263,6 +275,7 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
       <RoadmapTopBar
         onEditBrief={() => setIsBriefOpen(true)}
         onShare={() => setIsShareModalOpen(true)}
+        onInvite={projectId ? () => setIsInviteModalOpen(true) : undefined}
         onOpenJsonPanel={() => setIsJsonPanelOpen(true)}
         onExport={() => {
           /* TODO: Export functionality */
@@ -327,6 +340,17 @@ export function RoadmapViewContent({ roadmapId }: RoadmapViewContentProps) {
           onClose={() => setIsShareModalOpen(false)}
           roadmapId={roadmap.id}
           roadmapName={roadmap.name}
+        />
+
+      )}
+
+      {/* Project Invite Links Modal — all members; consultant gets full manage access */}
+      {projectId && (
+        <ProjectInviteLinksModal
+          isOpen={isInviteModalOpen}
+          onClose={() => setIsInviteModalOpen(false)}
+          projectId={projectId}
+          canManage={isConsultant}
         />
       )}
 
