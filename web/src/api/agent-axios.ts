@@ -9,7 +9,10 @@ const AGENT_API_BASE_URL =
 
 const agentApiClient: AxiosInstance = axios.create({
   baseURL: AGENT_API_BASE_URL,
-  timeout: 90000,
+  // 180s — plan-mode turns with multiple clarifier questions and a full
+  // hierarchy envelope can take 40-90s on reasoning models. Must exceed
+  // the agent's OpenAI adapter ceiling (90s) plus 2-3 tool-loop round trips.
+  timeout: 180000,
   headers: {
     "Content-Type": "application/json",
   },

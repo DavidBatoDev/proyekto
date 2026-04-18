@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from app.core.config import Settings, get_settings
@@ -148,9 +150,30 @@ def configure_logging(settings: Settings | None = None) -> None:
     cfg = settings or get_settings()
     level_name = (cfg.agent_log_level or 'INFO').upper()
     level = getattr(logging, level_name, logging.INFO)
+    fmt = '%(message)s' if cfg.agent_log_json else '%(asctime)s %(levelname)s %(name)s %(message)s'
+    formatter = logging.Formatter(fmt)
+
+    handlers: list[logging.Handler] = []
+    log_file_raw = (cfg.agent_log_file or '').strip() if cfg.agent_log_file else ''
+    if log_file_raw:
+        file_path = Path(log_file_raw).expanduser()
+        if not file_path.is_absolute():
+            file_path = Path(os.getcwd()) / file_path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(file_path, mode='a', encoding='utf-8')
+        file_handler.setLevel(level)
+        file_handler.setFormatter(formatter)
+        handlers.append(file_handler)
+
+    if cfg.agent_log_to_console or not handlers:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setLevel(level)
+        stream_handler.setFormatter(formatter)
+        handlers.append(stream_handler)
+
     logging.basicConfig(
         level=level,
-        format='%(message)s' if cfg.agent_log_json else '%(asctime)s %(levelname)s %(name)s %(message)s',
+        handlers=handlers,
         force=True,
     )
     # Keep agent logs structured and useful by suppressing transport-level noise.
@@ -1176,9 +1199,28 @@ def _resolve_palette(cfg: Settings, logger: logging.Logger) -> _AnsiPalette:
     mode = _normalize_log_color_mode(getattr(cfg, 'agent_log_color', 'auto'))
     if mode == 'off':
         return _AnsiPalette(enabled=False)
+    # A FileHandler is attached whenever AGENT_LOG_FILE is set. ANSI escape
+    # codes are undesirable in on-disk log files regardless of 'on'/'auto'.
+    if _has_file_handler(logger):
+        return _AnsiPalette(enabled=False)
     if mode == 'on':
         return _AnsiPalette(enabled=True)
     return _AnsiPalette(enabled=_is_logger_tty(logger))
+
+
+def _has_file_handler(logger: logging.Logger) -> bool:
+    visited: set[int] = set()
+    current: logging.Logger | None = logger
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        for handler in current.handlers:
+            if isinstance(handler, logging.FileHandler):
+                return True
+        current = current.parent if current.propagate else None
+    for handler in logging.getLogger().handlers:
+        if isinstance(handler, logging.FileHandler):
+            return True
+    return False
 
 
 def _normalize_log_color_mode(value: Any) -> str:

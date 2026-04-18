@@ -108,7 +108,7 @@ class Settings(BaseSettings):
     upstash_redis_rest_url: str | None = Field(default=None, alias='UPSTASH_REDIS_REST_URL')
     upstash_redis_rest_token: str | None = Field(default=None, alias='UPSTASH_REDIS_REST_TOKEN')
     redis_session_key_prefix: str = Field(default='roadmap:ai:session', alias='REDIS_SESSION_KEY_PREFIX')
-    max_operations_per_request: int = Field(default=25, alias='MAX_OPERATIONS_PER_REQUEST')
+    max_operations_per_request: int = Field(default=90, alias='MAX_OPERATIONS_PER_REQUEST')
     max_chat_history_messages: int = Field(default=8, alias='MAX_CHAT_HISTORY_MESSAGES')
     max_edit_history_messages: int = Field(default=4, alias='MAX_EDIT_HISTORY_MESSAGES')
     max_edit_tool_turns: int = Field(default=4, alias='MAX_EDIT_TOOL_TURNS')
@@ -177,6 +177,8 @@ class Settings(BaseSettings):
     agent_log_json: bool = Field(default=True, alias='AGENT_LOG_JSON')
     agent_log_color: str = Field(default='auto', alias='AGENT_LOG_COLOR')
     agent_log_include_content: bool = Field(default=False, alias='AGENT_LOG_INCLUDE_CONTENT')
+    agent_log_file: str | None = Field(default=None, alias='AGENT_LOG_FILE')
+    agent_log_to_console: bool = Field(default=True, alias='AGENT_LOG_TO_CONSOLE')
     agent_progress_events_enabled: bool = Field(
         default=True,
         alias='AGENT_PROGRESS_EVENTS_ENABLED',
