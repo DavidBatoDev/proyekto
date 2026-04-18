@@ -21,17 +21,17 @@ export class RoadmapPatchRepositorySupabase implements IRoadmapPatchRepository {
     ownerId: string;
     fullState: FullRoadmapState;
     createIfMissing?: boolean;
-  }): Promise<void> {
+  }): Promise<Date | null> {
     const { roadmapId, ownerId, fullState, createIfMissing = false } = params;
 
-    const { error } = await this.db.rpc('upsert_full_roadmap', {
+    const { data, error } = await this.db.rpc('upsert_full_roadmap', {
       p_roadmap_id: roadmapId,
       p_owner_id: ownerId,
       p_full_state: fullState,
       p_create_if_missing: createIfMissing,
     });
 
-    if (!error) return;
+    if (!error) return data ? new Date(data as string) : null;
 
     this.logger.error(
       [

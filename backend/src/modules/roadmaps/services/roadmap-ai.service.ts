@@ -1566,7 +1566,7 @@ export class RoadmapAiService {
     );
 
     const upsertStartedAt = Date.now();
-    await this.patchRepo.upsertFullRoadmap({
+    const upsertedAt = await this.patchRepo.upsertFullRoadmap({
       roadmapId,
       ownerId: current.owner_id,
       fullState: candidate,
@@ -1613,11 +1613,11 @@ export class RoadmapAiService {
       stateAfter = this.clone(candidate);
     }
 
-    const revisionTokenLookupStartedAt = Date.now();
-    const persistedMeta = await this.roadmapsRepo.findById(roadmapId, userId);
-    const revisionTokenLookupMs = Date.now() - revisionTokenLookupStartedAt;
+    // Use the updated_at returned by the upsert RPC to derive the revision
+    // token without an extra findById round trip.
+    const revisionTokenLookupMs = 0;
     const revisionTokenAfter = this.requireRevisionToken(
-      persistedMeta?.updated_at ?? currentRevisionToken,
+      upsertedAt?.toISOString() ?? currentRevisionToken,
     );
     const committedAt = new Date().toISOString();
     const changeId = randomUUID();
@@ -1626,33 +1626,36 @@ export class RoadmapAiService {
       tempIdMapping[result.temp_id] = result.assigned_id;
     }
 
+    // Run timeline append and cache invalidation in parallel — neither depends
+    // on the other and both only require the upsert to have completed.
     const timelineStartedAt = Date.now();
-    const timeline = await this.appendChangeToTimeline({
-      roadmapId,
-      userId,
-      entry: {
-        changeId,
-        committedAt,
-        status: 'applied',
-        operations,
-        operationsCount: operations.length,
-        semanticDiff,
-        stateBefore: this.clone(base),
-        stateAfter,
-        tempIdMapping,
-        revisionTokenBefore: currentRevisionToken,
-        revisionTokenAfter,
-      },
-      tolerateStoreFailure: true,
-      includeEntriesInResponse: includeTimeline,
-    });
-    const timelineMs = Date.now() - timelineStartedAt;
-
     const resolveCacheInvalidateStartedAt = Date.now();
-    await this.invalidateResolveLookupCache(
-      roadmapId,
-      this.collectResolveLookupNodeTypesFromSemanticDiff(semanticDiff),
-    );
+    const [timeline] = await Promise.all([
+      this.appendChangeToTimeline({
+        roadmapId,
+        userId,
+        entry: {
+          changeId,
+          committedAt,
+          status: 'applied',
+          operations,
+          operationsCount: operations.length,
+          semanticDiff,
+          stateBefore: this.clone(base),
+          stateAfter,
+          tempIdMapping,
+          revisionTokenBefore: currentRevisionToken,
+          revisionTokenAfter,
+        },
+        tolerateStoreFailure: true,
+        includeEntriesInResponse: includeTimeline,
+      }),
+      this.invalidateResolveLookupCache(
+        roadmapId,
+        this.collectResolveLookupNodeTypesFromSemanticDiff(semanticDiff),
+      ),
+    ]);
+    const timelineMs = Date.now() - timelineStartedAt;
     const resolveCacheInvalidateMs =
       Date.now() - resolveCacheInvalidateStartedAt;
     const totalElapsedMs = Date.now() - startedAt;

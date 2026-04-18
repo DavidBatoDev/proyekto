@@ -6,5 +6,5 @@ export interface IRoadmapPatchRepository {
     ownerId: string;
     fullState: FullRoadmapState;
     createIfMissing?: boolean;
-  }): Promise<void>;
+  }): Promise<Date | null>;
 }
