@@ -1450,6 +1450,7 @@ export function RoadmapAiAssistantPanel({
     isLoading: isThreadLoading,
     appendMessage,
     updateMessage,
+    markThreadHydrated,
     persistTurn,
     rehydrateAgentSession,
   } = useRoadmapAiAssistantSession(roadmapId, activeThreadId);
@@ -1650,6 +1651,11 @@ export function RoadmapAiAssistantPanel({
       base_revision: baseRevision,
     });
     agentSessionsInitializedRef.current.add(dbRow.id);
+    // Mark hydrated BEFORE setActiveThread so the hook's hydration effect
+    // short-circuits on its first run with the new threadId. Otherwise the
+    // effect fetches an empty DB result and overwrites the user message that
+    // handleSend is about to append.
+    markThreadHydrated(dbRow.id);
     setActiveThread(roadmapId, dbRow.id);
     return dbRow.id;
   };
@@ -2487,6 +2493,7 @@ export function RoadmapAiAssistantPanel({
         base_revision: baseRevision,
       });
       agentSessionsInitializedRef.current.add(row.id);
+      markThreadHydrated(row.id);
       setActiveThread(roadmapId, row.id);
     } catch (err) {
       const message =

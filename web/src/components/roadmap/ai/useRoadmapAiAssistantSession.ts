@@ -216,6 +216,11 @@ export interface UseRoadmapAiAssistantSessionResult {
     updater: (message: RoadmapAiChatMessage) => RoadmapAiChatMessage,
   ) => void;
   clearMessages: () => void;
+  // Called after creating a brand-new thread so the hydration effect skips
+  // the DB fetch (the DB is empty for a new row). Without this, the effect
+  // fires after `setActiveThread`, fetches `[]`, and overwrites the user's
+  // freshly-appended first message.
+  markThreadHydrated: (threadId: string) => void;
   // Persist a completed turn to the backend. Returns the seed_messages the
   // agent should fall back on if its Redis session has expired.
   persistTurn: (
@@ -263,6 +268,22 @@ export function useRoadmapAiAssistantSession(
     (s) => s.setActiveThread,
   );
   const clearDraftInput = useRoadmapAiThreadsStore((s) => s.clearDraftInput);
+
+  // Resolve the current thread id at call time. The prop reflects the last
+  // committed render, but the panel's first-message flow calls `setActiveThread`
+  // (zustand, synchronous) and then immediately calls `appendMessage` /
+  // `persistTurn` — before React has had a chance to re-render this hook with
+  // the new threadId. Without this fallback, those writes silently drop
+  // because the closed-over `threadId` is still null, which surfaces as the
+  // user's message and the AI response both disappearing on the first turn
+  // in a brand-new thread.
+  const resolveThreadId = useCallback((): string | null => {
+    if (threadId) return threadId;
+    return (
+      useRoadmapAiThreadsStore.getState().activeThreadIdByRoadmap[roadmapId] ??
+      null
+    );
+  }, [threadId, roadmapId]);
 
   useEffect(() => {
     if (!threadId || !roadmapId) return;
@@ -332,10 +353,11 @@ export function useRoadmapAiAssistantSession(
 
   const appendMessage = useCallback(
     (message: RoadmapAiChatMessage) => {
-      if (!threadId) return;
-      appendToThread(threadId, message);
+      const tid = resolveThreadId();
+      if (!tid) return;
+      appendToThread(tid, message);
     },
-    [threadId, appendToThread],
+    [resolveThreadId, appendToThread],
   );
 
   const updateMessage = useCallback(
@@ -343,22 +365,25 @@ export function useRoadmapAiAssistantSession(
       messageId: string,
       updater: (message: RoadmapAiChatMessage) => RoadmapAiChatMessage,
     ) => {
-      if (!threadId) return;
-      updateInThread(threadId, messageId, updater);
+      const tid = resolveThreadId();
+      if (!tid) return;
+      updateInThread(tid, messageId, updater);
     },
-    [threadId, updateInThread],
+    [resolveThreadId, updateInThread],
   );
 
   const clearMessages = useCallback(() => {
-    if (!threadId) return;
-    clearThread(threadId);
-  }, [threadId, clearThread]);
+    const tid = resolveThreadId();
+    if (!tid) return;
+    clearThread(tid);
+  }, [resolveThreadId, clearThread]);
 
   const persistTurn = useCallback<
     UseRoadmapAiAssistantSessionResult["persistTurn"]
   >(
     async (role, content, extras) => {
-      if (!threadId || !roadmapId) {
+      const tid = resolveThreadId();
+      if (!tid || !roadmapId) {
         return { seed_messages: [] };
       }
       const payload: AppendRoadmapAiMessagePayload = {
@@ -375,27 +400,28 @@ export function useRoadmapAiAssistantSession(
       };
       const result = await roadmapAiSessionsService.appendMessage(
         roadmapId,
-        threadId,
+        tid,
         payload,
       );
       return { seed_messages: result.seed_messages };
     },
-    [roadmapId, threadId],
+    [roadmapId, resolveThreadId],
   );
 
   const rehydrateAgentSession = useCallback<
     UseRoadmapAiAssistantSessionResult["rehydrateAgentSession"]
   >(
     async (seedMessages, options) => {
-      if (!threadId) return;
+      const tid = resolveThreadId();
+      if (!tid) return;
       await roadmapAgentService.createSession({
-        session_id: threadId,
+        session_id: tid,
         roadmap_id: options.roadmapId,
         base_revision: options.baseRevision,
         seed_messages: seedMessages,
       });
     },
-    [threadId],
+    [resolveThreadId],
   );
 
   return useMemo(
@@ -405,6 +431,7 @@ export function useRoadmapAiAssistantSession(
       appendMessage,
       updateMessage,
       clearMessages,
+      markThreadHydrated: markHydrated,
       persistTurn,
       rehydrateAgentSession,
     }),
@@ -415,6 +442,7 @@ export function useRoadmapAiAssistantSession(
       appendMessage,
       updateMessage,
       clearMessages,
+      markHydrated,
       persistTurn,
       rehydrateAgentSession,
     ],
