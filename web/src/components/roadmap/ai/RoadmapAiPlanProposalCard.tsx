@@ -141,17 +141,6 @@ export const RoadmapAiPlanProposalCard: FC<RoadmapAiPlanProposalCardProps> = ({
             </ul>
           </div>
         ) : null}
-
-        {plan.open_questions && plan.open_questions.length > 0 ? (
-          <div>
-            <SectionTitle>Open questions</SectionTitle>
-            <ul className="mt-1 list-disc pl-5 text-sm text-amber-800 dark:text-amber-300">
-              {plan.open_questions.map((question, idx) => (
-                <li key={`q-${idx}`}>{question}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
       </div>
 
       {!isSettled ? (

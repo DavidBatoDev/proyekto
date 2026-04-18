@@ -72,6 +72,7 @@ import {
   type RoadmapAiCommitImpactedItem,
   type RoadmapAiCommitImpactedItemKind,
 } from "./useRoadmapAiAssistantSession";
+import { RoadmapAiClarifierCard } from "./RoadmapAiClarifierCard";
 import { RoadmapAiPlanProposalCard } from "./RoadmapAiPlanProposalCard";
 import { RoadmapAiPlanQuestionCard } from "./RoadmapAiPlanQuestionCard";
 import { RoadmapAiThreadList } from "./RoadmapAiThreadList";
@@ -108,6 +109,7 @@ const buildAssistantMessage = (
       | "unclear";
     responseMode?: "chat" | "edit_plan" | "plan_proposal";
     planProposal?: import("@/services/roadmap-agent.service").AgentPlanProposal | null;
+    clarifier?: import("@/services/roadmap-agent.service").AgentClarifierCard | null;
     artifacts?: RoadmapArtifactPreview[];
     commitLifecycle?: RoadmapAiCommitLifecycle;
   },
@@ -120,6 +122,7 @@ const buildAssistantMessage = (
   intentType: options?.intentType,
   responseMode: options?.responseMode,
   planProposal: options?.planProposal ?? undefined,
+  clarifier: options?.clarifier ?? undefined,
   artifacts: options?.artifacts,
   commitLifecycle: options?.commitLifecycle,
 });
@@ -2090,6 +2093,7 @@ export function RoadmapAiAssistantPanel({
             intentType: response.intent_type,
             responseMode: response.response_mode,
             planProposal: response.plan_proposal ?? undefined,
+            clarifier: response.clarifier ?? undefined,
             artifacts: [],
             commitLifecycle: shouldTrackCommitLifecycle
               ? {
@@ -2114,9 +2118,16 @@ export function RoadmapAiAssistantPanel({
         responseMode: response.response_mode,
         parseMode: response.parse_mode || "agent_response",
         tokens: undefined,
-        metadata: response.plan_proposal
-          ? { plan_proposal: response.plan_proposal as unknown as Record<string, unknown> }
-          : undefined,
+        metadata: (() => {
+          const meta: Record<string, unknown> = {};
+          if (response.plan_proposal) {
+            meta.plan_proposal = response.plan_proposal as unknown as Record<string, unknown>;
+          }
+          if (response.clarifier) {
+            meta.clarifier = response.clarifier as unknown as Record<string, unknown>;
+          }
+          return Object.keys(meta).length > 0 ? meta : undefined;
+        })(),
       }).catch((err) => {
         console.warn(
           "[RoadmapAiAssistantPanel] assistant message persistence failed",
@@ -2776,16 +2787,38 @@ export function RoadmapAiAssistantPanel({
                 )}
 
                 {message.role === "assistant" &&
+                  message.clarifier &&
+                  !message.planProposal && (
+                    <RoadmapAiClarifierCard
+                      card={message.clarifier}
+                      disabled={isSending}
+                      onSubmit={(answer) =>
+                        submitProgrammaticMessage(
+                          `__clarifier_answer__\n${JSON.stringify({
+                            lane: message.clarifier!.lane,
+                            ...answer,
+                          })}`,
+                        )
+                      }
+                    />
+                  )}
+
+                {message.role === "assistant" &&
                   message.planProposal &&
                   message.planProposal.status === "awaiting_answers" && (
                     <RoadmapAiPlanQuestionCard
                       plan={message.planProposal}
                       disabled={isSending}
-                      onSubmit={(answer) =>
+                      onSubmit={(answers) => {
+                        // Batched submit: all answers for the current question
+                        // batch go in one sentinel. Legacy shape `{question_id,
+                        // ...}` still works for single-question clarifiers
+                        // because the pre-dispatcher's plan-answer ingest
+                        // accepts both `{answers: [...]}` and a bare dict.
                         submitProgrammaticMessage(
-                          `__plan_answers__\n${JSON.stringify(answer)}`,
-                        )
-                      }
+                          `__plan_answers__\n${JSON.stringify({ answers })}`,
+                        );
+                      }}
                       onDiscard={() =>
                         submitProgrammaticMessage("Cancel this plan.")
                       }

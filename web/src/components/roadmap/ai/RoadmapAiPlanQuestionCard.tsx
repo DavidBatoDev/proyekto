@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FC } from "react";
 import type {
   AgentPlanProposal,
@@ -8,12 +8,21 @@ import type {
 
 export interface RoadmapAiPlanQuestionCardProps {
   plan: AgentPlanProposal;
-  onSubmit: (answer: AgentPlanProposalAnswer) => void;
+  /** Called with the full batch of answers when the user finishes the last question. */
+  onSubmit: (answers: AgentPlanProposalAnswer[]) => void;
   onDiscard: () => void;
   disabled?: boolean;
 }
 
 const CUSTOM_SENTINEL = "__custom__";
+
+const resolveQuestions = (plan: AgentPlanProposal): AgentPlanProposalQuestion[] => {
+  if (Array.isArray(plan.current_questions) && plan.current_questions.length > 0) {
+    return plan.current_questions;
+  }
+  if (plan.current_question) return [plan.current_question];
+  return [];
+};
 
 export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
   plan,
@@ -21,37 +30,85 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
   onDiscard,
   disabled,
 }) => {
-  const question: AgentPlanProposalQuestion | null | undefined =
-    plan.current_question;
-  const [selection, setSelection] = useState<string>("");
-  const [customText, setCustomText] = useState<string>("");
+  const questions = useMemo(() => resolveQuestions(plan), [plan]);
+  const [currentIndex, setCurrentIndex] = useState<number>(0);
+  const [selections, setSelections] = useState<Record<string, string>>({});
+  const [customs, setCustoms] = useState<Record<string, string>>({});
 
-  if (!question) return null;
+  // Reset pagination + drafts when the plan switches to a new batch of
+  // questions (e.g. the model asked another round after the first answers).
+  useEffect(() => {
+    setCurrentIndex(0);
+    setSelections({});
+    setCustoms({});
+  }, [plan.plan_id, questions.length]);
 
-  const allowCustom = question.allow_custom !== false;
+  if (questions.length === 0) return null;
+
+  const boundedIndex = Math.min(currentIndex, questions.length - 1);
+  const currentQ = questions[boundedIndex];
+  const totalQuestions = questions.length;
+  const hasMultiple = totalQuestions > 1;
+  const isLast = boundedIndex === totalQuestions - 1;
+
+  const selection = selections[currentQ.id] ?? "";
+  const customText = customs[currentQ.id] ?? "";
+  const allowCustom = currentQ.allow_custom !== false;
   const trimmedCustom = customText.trim();
-  const canSubmit =
+  const currentAnswered =
     selection === CUSTOM_SENTINEL
-       ? trimmedCustom.length > 0
+      ? trimmedCustom.length > 0
       : selection.length > 0;
 
-  const handleSubmit = () => {
-    if (!canSubmit || disabled) return;
-    if (selection === CUSTOM_SENTINEL) {
-      onSubmit({
-        question_id: question.id,
-        question_text: question.question,
-        custom_answer: trimmedCustom,
-      });
-    } else {
-      onSubmit({
-        question_id: question.id,
-        question_text: question.question,
-        selected_option: selection,
-      });
+  const allAnswered = questions.every((q) => {
+    const sel = selections[q.id] ?? "";
+    if (sel === CUSTOM_SENTINEL) {
+      return (customs[q.id] ?? "").trim().length > 0;
     }
-    setSelection("");
-    setCustomText("");
+    return sel.length > 0;
+  });
+
+  const buildAnswers = (): AgentPlanProposalAnswer[] =>
+    questions.map((q) => {
+      const sel = selections[q.id] ?? "";
+      if (sel === CUSTOM_SENTINEL) {
+        return {
+          question_id: q.id,
+          question_text: q.question,
+          custom_answer: (customs[q.id] ?? "").trim(),
+        };
+      }
+      return {
+        question_id: q.id,
+        question_text: q.question,
+        selected_option: sel,
+      };
+    });
+
+  const handleNext = () => {
+    if (!currentAnswered || disabled) return;
+    if (isLast) return;
+    setCurrentIndex(boundedIndex + 1);
+  };
+
+  const handleBack = () => {
+    if (boundedIndex === 0 || disabled) return;
+    setCurrentIndex(boundedIndex - 1);
+  };
+
+  const handleSubmit = () => {
+    if (!allAnswered || disabled) return;
+    onSubmit(buildAnswers());
+    setSelections({});
+    setCustoms({});
+    setCurrentIndex(0);
+  };
+
+  const setCurrentSelection = (value: string) => {
+    setSelections((prev) => ({ ...prev, [currentQ.id]: value }));
+  };
+  const setCurrentCustom = (value: string) => {
+    setCustoms((prev) => ({ ...prev, [currentQ.id]: value }));
   };
 
   return (
@@ -60,20 +117,25 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
         <span className="inline-flex rounded-full bg-amber-200 px-2 py-0.5 text-xs font-semibold text-amber-900 dark:bg-amber-800 dark:text-amber-100">
           Plan clarifier
         </span>
+        {hasMultiple ? (
+          <span className="text-xs font-medium text-amber-800 dark:text-amber-300">
+            Question {boundedIndex + 1} of {totalQuestions}
+          </span>
+        ) : null}
         {plan.answers && plan.answers.length > 0 ? (
           <span className="text-xs text-amber-700 dark:text-amber-300">
-            {plan.answers.length} answered
+            ({plan.answers.length} answered so far)
           </span>
         ) : null}
       </div>
 
       <div className="mb-3 text-sm font-medium text-neutral-900 dark:text-neutral-100">
-        {question.question}
+        {currentQ.question}
       </div>
 
       <div className="space-y-1.5">
-        {question.options.map((option, idx) => {
-          const optionId = `plan-q-${question.id}-opt-${idx}`;
+        {currentQ.options.map((option, idx) => {
+          const optionId = `plan-q-${currentQ.id}-opt-${idx}`;
           return (
             <label
               key={optionId}
@@ -83,10 +145,10 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
               <input
                 id={optionId}
                 type="radio"
-                name={`plan-q-${question.id}`}
+                name={`plan-q-${currentQ.id}`}
                 value={option}
                 checked={selection === option}
-                onChange={() => setSelection(option)}
+                onChange={() => setCurrentSelection(option)}
                 disabled={disabled}
                 className="mt-0.5"
               />
@@ -98,16 +160,16 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
         {allowCustom ? (
           <div>
             <label
-              htmlFor={`plan-q-${question.id}-custom`}
+              htmlFor={`plan-q-${currentQ.id}-custom`}
               className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-neutral-800 hover:bg-amber-100/60 dark:text-neutral-200 dark:hover:bg-amber-900/30"
             >
               <input
-                id={`plan-q-${question.id}-custom`}
+                id={`plan-q-${currentQ.id}-custom`}
                 type="radio"
-                name={`plan-q-${question.id}`}
+                name={`plan-q-${currentQ.id}`}
                 value={CUSTOM_SENTINEL}
                 checked={selection === CUSTOM_SENTINEL}
-                onChange={() => setSelection(CUSTOM_SENTINEL)}
+                onChange={() => setCurrentSelection(CUSTOM_SENTINEL)}
                 disabled={disabled}
                 className="mt-0.5"
               />
@@ -116,7 +178,7 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
             {selection === CUSTOM_SENTINEL ? (
               <textarea
                 value={customText}
-                onChange={(event) => setCustomText(event.target.value)}
+                onChange={(event) => setCurrentCustom(event.target.value)}
                 disabled={disabled}
                 rows={2}
                 placeholder="Type your answer..."
@@ -128,14 +190,35 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
       </div>
 
       <div className="mt-3 flex items-center gap-2 border-t border-amber-200 pt-2 dark:border-amber-900">
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={!canSubmit || disabled}
-          className="inline-flex items-center rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-amber-500 dark:hover:bg-amber-600"
-        >
-          Submit answer
-        </button>
+        {hasMultiple && boundedIndex > 0 ? (
+          <button
+            type="button"
+            onClick={handleBack}
+            disabled={disabled}
+            className="inline-flex items-center rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+          >
+            Back
+          </button>
+        ) : null}
+        {!isLast ? (
+          <button
+            type="button"
+            onClick={handleNext}
+            disabled={!currentAnswered || disabled}
+            className="inline-flex items-center rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-amber-500 dark:hover:bg-amber-600"
+          >
+            Next
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!allAnswered || disabled}
+            className="inline-flex items-center rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-amber-500 dark:hover:bg-amber-600"
+          >
+            {hasMultiple ? "Submit answers" : "Submit answer"}
+          </button>
+        )}
         <button
           type="button"
           onClick={onDiscard}

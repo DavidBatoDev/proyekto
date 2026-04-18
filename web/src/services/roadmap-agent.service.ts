@@ -121,6 +121,7 @@ export interface AgentMessageResponse {
   staged_operations_count: number;
   artifacts: AgentRoadmapCommitArtifact[];
   plan_proposal?: AgentPlanProposal | null;
+  clarifier?: AgentClarifierCard | null;
   provider_used?: "openai" | "rule_based";
   fallback_used?: boolean;
   provider_error_code?: string | null;
@@ -171,15 +172,26 @@ export interface AgentPlanProposal {
   proposed_hierarchy: AgentPlanProposalEpic[];
   risks?: string[];
   next_steps?: string[];
-  open_questions?: string[];
   status?:
     | "awaiting_answers"
     | "proposed"
     | "confirmed"
     | "discarded"
     | "superseded";
+  /** Plural — 1 to 4 questions the planner asked this turn. */
+  current_questions?: AgentPlanProposalQuestion[];
+  /** @deprecated Singular form — legacy shape kept for one release. Prefer `current_questions`. */
   current_question?: AgentPlanProposalQuestion | null;
   answers?: AgentPlanProposalAnswer[];
+}
+
+export interface AgentClarifierCard {
+  lane: "edit" | "query" | "plan";
+  question_id: string;
+  question: string;
+  options: string[];
+  allow_custom: boolean;
+  reason?: string | null;
 }
 
 export type AgentTraceEventStatus = "running" | "success" | "error";

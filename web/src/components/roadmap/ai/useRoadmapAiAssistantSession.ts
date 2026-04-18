@@ -98,6 +98,7 @@ export interface RoadmapAiChatMessage {
     | "unclear";
   responseMode?: "chat" | "edit_plan" | "plan_proposal";
   planProposal?: import("@/services/roadmap-agent.service").AgentPlanProposal;
+  clarifier?: import("@/services/roadmap-agent.service").AgentClarifierCard;
   artifacts?: RoadmapArtifactPreview[];
   attachments?: RoadmapAiChatAttachment[];
   activityTimeline?: RoadmapAiActivityTimeline;
@@ -204,6 +205,10 @@ function dbRowToClientMessage(row: RoadmapAiMessage): RoadmapAiChatMessage {
   const metadataPlan = (row.metadata as Record<string, unknown> | null)?.plan_proposal;
   if (metadataPlan && typeof metadataPlan === "object") {
     base.planProposal = metadataPlan as RoadmapAiChatMessage["planProposal"];
+  }
+  const metadataClarifier = (row.metadata as Record<string, unknown> | null)?.clarifier;
+  if (metadataClarifier && typeof metadataClarifier === "object") {
+    base.clarifier = metadataClarifier as RoadmapAiChatMessage["clarifier"];
   }
   return base;
 }
