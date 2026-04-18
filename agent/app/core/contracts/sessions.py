@@ -165,6 +165,17 @@ class PendingEditContext(BaseModel):
     last_guard_reason: str | None = None
     last_retry_blocked_reason: str | None = None
     last_retry_blocked_intent_family: str | None = None
+    # Set when an edit-lane clarifier was emitted with a ClarifierCard. The
+    # pre-dispatcher uses this to verify that an incoming `__clarifier_answer__`
+    # sentinel is routed to the correct pending context.
+    pending_clarifier_question_id: str | None = None
+    # Tool observations snapshot from the turn that emitted this clarifier.
+    # Replayed into the next turn's planner prompt so the LLM skips
+    # redundant tool calls (e.g. re-resolving an already-resolved target).
+    # Each entry is a compact dict: {tool_name, args, result_summary}. Cap
+    # 10 entries. Cleared with the rest of pending_edit_context on commit/
+    # cancel/supersede.
+    prior_tool_observations: list[dict[str, Any]] = Field(default_factory=list)
     staging_validation_errors: list[dict[str, Any]] = Field(
         default_factory=list,
         alias='preview_validation_errors',
@@ -281,6 +292,24 @@ class PendingPlanAnswer(BaseModel):
     answered_at: datetime = Field(default_factory=_utcnow)
 
 
+class ClarifierCard(BaseModel):
+    """Lane-agnostic structured clarifier payload surfaced to the web.
+
+    Emitted by any lane (plan, edit, query) when the LLM needs user input
+    to proceed. Web renders a card with radio options + optional "Other..."
+    input. Submit replays the selection via the `__clarifier_answer__`
+    sentinel, and the pre-dispatcher routes the answer to the lane's
+    pending-state machine based on `lane`.
+    """
+
+    lane: Literal['edit', 'query', 'plan']
+    question_id: str
+    question: str
+    options: list[str] = Field(default_factory=list)
+    allow_custom: bool = True
+    reason: str | None = None
+
+
 class ProposedTask(BaseModel):
     title: str
     description: str | None = None
@@ -323,7 +352,6 @@ class PendingPlan(BaseModel):
     proposed_hierarchy: list[ProposedEpic] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
     next_steps: list[str] = Field(default_factory=list)
-    open_questions: list[str] = Field(default_factory=list)
     source_user_message: str
     base_revision: int | None = None
     revision_token: str | None = None
@@ -331,10 +359,12 @@ class PendingPlan(BaseModel):
     status: PendingPlanStatus = 'proposed'
     # Multi-turn clarifier machinery: when the plan lane decides it needs
     # more info before drafting, it emits `status='awaiting_answers'` with
-    # `current_question` populated. Each user answer is appended to `answers`;
-    # the pre-dispatcher synthesizes a new prompt that replays the original
-    # request plus all accumulated answers and re-enters the plan lane.
-    current_question: PendingPlanQuestion | None = None
+    # one or more questions in `current_questions` (1-4 per turn). Each user
+    # answer is appended to `answers`; the pre-dispatcher synthesizes a new
+    # prompt that replays the original request plus all accumulated answers
+    # and re-enters the plan lane. Hard cap of 10 total questions per plan
+    # session — past that, the replay prompt forces `plan_ready`.
+    current_questions: list[PendingPlanQuestion] = Field(default_factory=list)
     answers: list[PendingPlanAnswer] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
@@ -420,6 +450,7 @@ class MessageResponse(BaseModel):
     active_draft_version: int | None = None
     artifacts: list[RoadmapCommitArtifact] = Field(default_factory=list)
     plan_proposal: dict[str, Any] | None = None
+    clarifier: ClarifierCard | None = None
     provider_used: ProviderUsed = 'rule_based'
     fallback_used: bool = False
     provider_error_code: str | None = None

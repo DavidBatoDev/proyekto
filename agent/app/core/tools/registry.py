@@ -653,13 +653,36 @@ def get_planning_tool() -> dict[str, Any]:
                 'Generate safe roadmap edit operations. Never rewrite full JSON and never mutate unrelated fields. '
                 'For add_epic/add_feature/add_task, include data.title. '
                 'For add_feature/add_task, include a valid parent_id or parent_ref. '
-                'For transactional creation chains, use temp_id on created nodes and *_ref fields to point to those temp IDs.'
+                'For transactional creation chains, use temp_id on created nodes and *_ref fields to point to those temp IDs. '
+                'CLARIFIER CONTRACT — when you return operations=[] AND assistant_message contains a question, you MUST '
+                'include `clarifier_options` with 3 concrete answer strings the user can click. Omit `clarifier_options` '
+                'ONLY when the question is genuinely open-ended and no answer could be predicted from context. '
+                'For rename/retitle questions, suggest 3 plausible new titles derived from the target\'s existing title, '
+                'its children, and the roadmap theme. '
+                'For ambiguous targets, list the candidate titles verbatim. '
+                'For status/assignee/date questions, list the valid enum values or likely candidates. '
+                'Each option must be a short full-answer string the user could select as-is — never category labels.'
             ),
             'parameters': {
                 'type': 'object',
                 'required': ['assistant_message', 'operations'],
                 'properties': {
                     'assistant_message': {'type': 'string'},
+                    'clarifier_options': {
+                        'type': 'array',
+                        'description': (
+                            'REQUIRED whenever operations=[] AND assistant_message contains a '
+                            'clarifier question. Provide 3 concrete full-answer strings the user '
+                            'could select as-is (suggested new titles, candidate target names, '
+                            'valid enum values, etc.). Derive them from context the tools returned '
+                            'or the roadmap overview — never generic labels like "Confirm target" '
+                            'or "Provide name". Omit ONLY for questions that are genuinely '
+                            'unpredictable from context.'
+                        ),
+                        'items': {'type': 'string', 'minLength': 1, 'maxLength': 120},
+                        'minItems': 0,
+                        'maxItems': 5,
+                    },
                     'operations': {
                         'type': 'array',
                         'items': {
@@ -914,6 +937,39 @@ def parse_plan_tool_args(raw_args: Any) -> tuple[str, list[RoadmapOperation]]:
             ) from exc
     assistant_message = str(args.get('assistant_message', 'Prepared roadmap operations.'))
     return assistant_message, operations
+
+
+def parse_plan_tool_clarifier_options(raw_args: Any) -> list[str]:
+    """Extract `clarifier_options` from the `plan_roadmap_operations` tool
+    args. Returns [] when the field is missing / malformed / the tool call
+    was not a clarifier (has non-empty operations). Each option is trimmed
+    and capped at 120 chars; duplicates removed while preserving order.
+    """
+
+    args = raw_args
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(args, dict):
+        return []
+    raw = args.get('clarifier_options')
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        normalized = item.strip()[:120]
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        out.append(normalized)
+        if len(out) >= 5:
+            break
+    return out
 
 
 def _normalize_operation_payload(item: Any) -> dict[str, Any]:

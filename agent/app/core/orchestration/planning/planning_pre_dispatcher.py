@@ -25,6 +25,7 @@ from app.core.orchestration.context.pending_plan_manager import (
 )
 
 _PLAN_ANSWER_SENTINEL = '__plan_answers__'
+_CLARIFIER_ANSWER_SENTINEL = '__clarifier_answer__'
 
 
 def _parse_plan_answer_sentinel(user_message: str) -> list[dict[str, Any]] | None:
@@ -55,6 +56,34 @@ def _parse_plan_answer_sentinel(user_message: str) -> list[dict[str, Any]] | Non
     if isinstance(parsed, dict):
         return [parsed]
     return None
+
+
+def _parse_clarifier_answer_sentinel(user_message: str) -> dict[str, Any] | None:
+    """Detect the generic `__clarifier_answer__\\n{json}` sentinel used by
+    any lane's clarifier card. Returns the parsed answer dict — must
+    contain `lane` (one of 'edit' | 'query' | 'plan') and `question_id`.
+    Returns None for non-matching or malformed messages.
+    """
+
+    stripped = user_message.strip()
+    if not stripped.startswith(_CLARIFIER_ANSWER_SENTINEL):
+        return None
+    body = stripped[len(_CLARIFIER_ANSWER_SENTINEL):].strip()
+    if not body:
+        return None
+    try:
+        parsed = json.loads(body)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    lane = parsed.get('lane')
+    question_id = parsed.get('question_id')
+    if not isinstance(lane, str) or lane not in {'edit', 'query', 'plan'}:
+        return None
+    if not isinstance(question_id, str) or not question_id.strip():
+        return None
+    return parsed
 
 _ACTOR_FETCH_EXECUTOR: ThreadPoolExecutor | None = None
 _overview_join_logger = logging.getLogger(__name__)
@@ -183,11 +212,14 @@ def _ingest_plan_answers(
         if not isinstance(selected, str) and not isinstance(custom, str):
             continue
         question_text = raw.get('question_text')
-        if not isinstance(question_text, str) and pending_plan.current_question is not None:
+        if not isinstance(question_text, str) and pending_plan.current_questions:
             # Snapshot the question text on the answer so the LLM can read it
             # back later without needing to cross-reference a removed question.
-            if pending_plan.current_question.id == question_id:
-                question_text = pending_plan.current_question.question
+            # Match by question_id across the current batch.
+            for q in pending_plan.current_questions:
+                if q.id == question_id:
+                    question_text = q.question
+                    break
         answer = PendingPlanAnswer(
             question_id=question_id,
             question_text=question_text if isinstance(question_text, str) else None,
@@ -228,6 +260,215 @@ def _compose_plan_replay_prompt(pending_plan: PendingPlan) -> str:
             lines.append(f'  {idx}. Q: {q}')
             lines.append(f'     A: {value}')
     return '\n'.join(lines)
+
+
+def _ingest_edit_clarifier_answer(
+    *,
+    session: AgentSession,
+    parsed_answer: dict[str, Any],
+    logger: logging.Logger,
+    settings: Any,
+    trace_id: str | None,
+) -> bool:
+    """Route a `lane='edit'` clarifier answer into `PendingEditContext`.
+
+    Validates `question_id` against the stamped id on the pending context,
+    then writes the answer into the correct slot based on `awaiting_field`
+    (rename_title/title → default_title; target_label/parent → target_hint).
+    Returns True when the answer was applied; False when there's no matching
+    pending state (caller should fall through to normal classification).
+    """
+
+    pending = session.metadata.pending_edit_context
+    if pending is None:
+        log_event(
+            logger,
+            'edit_clarifier_answer_dropped_no_pending_context',
+            settings=settings,
+            level=logging.WARNING,
+            trace_id=trace_id,
+            session_id=session.session_id,
+            roadmap_id=session.roadmap_id,
+        )
+        return False
+    expected_id = pending.pending_clarifier_question_id
+    incoming_id = parsed_answer.get('question_id')
+    if expected_id is None or expected_id != incoming_id:
+        log_event(
+            logger,
+            'edit_clarifier_answer_question_id_mismatch',
+            settings=settings,
+            level=logging.WARNING,
+            trace_id=trace_id,
+            session_id=session.session_id,
+            roadmap_id=session.roadmap_id,
+            expected_id=expected_id,
+            incoming_id=incoming_id,
+        )
+        return False
+    selected = parsed_answer.get('selected_option')
+    custom = parsed_answer.get('custom_answer')
+    value: str | None = None
+    if isinstance(custom, str) and custom.strip():
+        value = custom.strip()
+    elif isinstance(selected, str) and selected.strip():
+        value = selected.strip()
+    if value is None:
+        log_event(
+            logger,
+            'edit_clarifier_answer_empty',
+            settings=settings,
+            level=logging.WARNING,
+            trace_id=trace_id,
+            session_id=session.session_id,
+            roadmap_id=session.roadmap_id,
+        )
+        return False
+
+    # Route the value to the right slot on the pending context.
+    awaiting = pending.awaiting_field
+    if awaiting in {'rename_title', 'title'}:
+        pending.default_title = value
+    else:
+        # target_label / parent / None → write to target_hint so the
+        # resolver picks up the disambiguation on the next turn.
+        pending.target_hint = value
+    pending.pending_clarifier_question_id = None
+    pending.last_followup_kind = 'clarifier_answer'
+    log_event(
+        logger,
+        'edit_clarifier_answer_ingested',
+        settings=settings,
+        trace_id=trace_id,
+        session_id=session.session_id,
+        roadmap_id=session.roadmap_id,
+        question_id=incoming_id,
+        awaiting_field=awaiting,
+        value_source='custom' if isinstance(custom, str) and custom.strip() else 'option',
+    )
+    return True
+
+
+_PRIOR_TOOL_OBSERVATION_MAX_ENTRIES = 3
+_PRIOR_TOOL_OBSERVATION_BLOCK_CAP_CHARS = 500
+
+
+def _format_matched_nodes_inline(matched_nodes: list[dict[str, Any]]) -> str:
+    """Render matched nodes as `type id=<id> title="<title>"` segments.
+
+    Keeps the id verbatim so the LLM can stage operations against it
+    without re-resolving. Caller inlines this into the observation line.
+    """
+
+    if not matched_nodes:
+        return ''
+    parts: list[str] = []
+    for node in matched_nodes:
+        if not isinstance(node, dict):
+            continue
+        node_id = node.get('id')
+        if not isinstance(node_id, str):
+            continue
+        title = node.get('title')
+        node_type = node.get('type') or 'node'
+        title_segment = f' title="{title}"' if isinstance(title, str) else ''
+        parts.append(f'{node_type} id={node_id}{title_segment}')
+    return '; '.join(parts)
+
+
+def _format_prior_tool_observation_line(entry: Any) -> str | None:
+    if not isinstance(entry, dict):
+        return None
+    tool_name = entry.get('tool_name')
+    if not isinstance(tool_name, str) or not tool_name.strip():
+        return None
+    args = entry.get('args') or {}
+    if isinstance(args, dict) and args:
+        key_args_parts = []
+        for key in sorted(args.keys()):
+            value = args[key]
+            if isinstance(value, str):
+                value = value[:60]
+            key_args_parts.append(f'{key}={value}')
+        key_args_text = ', '.join(key_args_parts)
+    else:
+        key_args_text = ''
+    # Prefer the concrete matched_nodes segment (includes ids the LLM
+    # needs to stage operations); fall back to the textual summary.
+    matched_nodes = entry.get('matched_nodes')
+    if isinstance(matched_nodes, list) and matched_nodes:
+        matched_segment = _format_matched_nodes_inline(matched_nodes)
+        if matched_segment:
+            return f'- {tool_name}({key_args_text}) → matched: {matched_segment}'
+    result_summary = entry.get('result_summary') or {}
+    if isinstance(result_summary, dict) and result_summary:
+        summary_parts = []
+        for key in sorted(result_summary.keys()):
+            value = result_summary[key]
+            if isinstance(value, list):
+                value = value[:3]
+            summary_parts.append(f'{key}={value}')
+        summary_text = ', '.join(summary_parts)
+    else:
+        summary_text = '(no result)'
+    return f'- {tool_name}({key_args_text}) → {summary_text}'
+
+
+def _compose_prior_tool_observation_block(
+    observations: list[dict[str, Any]] | None,
+) -> str:
+    """Format a compact 'already done' block listing prior tool calls.
+
+    Returns '' when there's nothing meaningful to show. Caps at the 3 most
+    recent entries and ~500 chars total so the injected block stays
+    within budget.
+    """
+
+    if not observations:
+        return ''
+    # Most recent first (react-loop appends chronologically, so flip).
+    recent = list(reversed(observations))[:_PRIOR_TOOL_OBSERVATION_MAX_ENTRIES]
+    lines: list[str] = []
+    for entry in recent:
+        line = _format_prior_tool_observation_line(entry)
+        if line:
+            lines.append(line)
+    if not lines:
+        return ''
+    header = (
+        'Context from the prior turn (already done — do NOT repeat these '
+        'tool calls; reuse the resolved targets below):'
+    )
+    block = '\n'.join([header, *lines])
+    if len(block) > _PRIOR_TOOL_OBSERVATION_BLOCK_CAP_CHARS:
+        block = block[: _PRIOR_TOOL_OBSERVATION_BLOCK_CAP_CHARS - 3] + '...'
+    return block
+
+
+def _compose_edit_clarifier_replay_prompt(
+    *,
+    pending: Any,
+    user_answer_value: str,
+) -> str:
+    """Synthesize the user-side prompt after an edit-clarifier answer.
+    The edit planner sees the answer in context and continues staging.
+    """
+
+    parts: list[str] = []
+    prior_observations = getattr(pending, 'prior_tool_observations', None) or []
+    prior_block = _compose_prior_tool_observation_block(prior_observations)
+    if prior_block:
+        parts.append(prior_block)
+        parts.append('')
+    parts.append(
+        'Continuing the edit clarifier. The user picked their answer via '
+        'the clarifier card — proceed with the edit, do not ask again.'
+    )
+    parts.append('')
+    parts.append(f'Original request: {pending.source_user_message}')
+    field = pending.awaiting_field or 'the field'
+    parts.append(f'User answer for `{field}`: {user_answer_value}')
+    return '\n'.join(parts)
 
 
 def _compose_plan_confirmation_prompt(
@@ -345,32 +586,71 @@ def dispatch_pre_planning_phase(
     plan_flag_enabled = bool(
         getattr(self._settings, 'agent_plan_proposal_enabled', False)
     )
-    # Detect a plan-clarifier answer payload BEFORE we classify. When we see
-    # the sentinel, we append answer(s) to the pending plan and route back
-    # through the plan lane (not the confirm bridge).
+    # Detect a clarifier answer payload BEFORE we classify. Two sentinels:
+    #  - new `__clarifier_answer__` — lane-aware, any lane (preferred)
+    #  - legacy `__plan_answers__`  — plan lane only, kept one release
     plan_answers_submitted = False
+    edit_clarifier_answer_submitted = False
     if plan_flag_enabled:
-        parsed_answers = _parse_plan_answer_sentinel(user_message)
-        if parsed_answers is not None:
-            plan_answers_submitted = _ingest_plan_answers(
-                session=session,
-                pending_plan=pending_plan,
-                parsed_answers=parsed_answers,
-                logger=self._logger,
-                settings=self._settings,
-                trace_id=trace_id,
-            )
-            pending_plan = session.metadata.pending_plan  # refresh reference
+        clarifier_answer = _parse_clarifier_answer_sentinel(user_message)
+        if clarifier_answer is not None:
+            lane = clarifier_answer.get('lane')
+            if lane == 'plan':
+                plan_answers_submitted = _ingest_plan_answers(
+                    session=session,
+                    pending_plan=pending_plan,
+                    parsed_answers=[clarifier_answer],
+                    logger=self._logger,
+                    settings=self._settings,
+                    trace_id=trace_id,
+                )
+                pending_plan = session.metadata.pending_plan
+            elif lane == 'edit':
+                edit_clarifier_answer_submitted = _ingest_edit_clarifier_answer(
+                    session=session,
+                    parsed_answer=clarifier_answer,
+                    logger=self._logger,
+                    settings=self._settings,
+                    trace_id=trace_id,
+                )
+            else:
+                # 'query' lane deferred to Phase 2 — just log and fall through.
+                log_event(
+                    self._logger,
+                    'clarifier_answer_lane_not_implemented',
+                    settings=self._settings,
+                    trace_id=trace_id,
+                    session_id=session.session_id,
+                    roadmap_id=session.roadmap_id,
+                    lane=lane,
+                )
+        else:
+            # Legacy plan-mode sentinel still honoured for one release.
+            parsed_answers = _parse_plan_answer_sentinel(user_message)
+            if parsed_answers is not None:
+                plan_answers_submitted = _ingest_plan_answers(
+                    session=session,
+                    pending_plan=pending_plan,
+                    parsed_answers=parsed_answers,
+                    logger=self._logger,
+                    settings=self._settings,
+                    trace_id=trace_id,
+                )
+                pending_plan = session.metadata.pending_plan
     pending_plan_present = (
         pending_plan is not None and pending_plan.status == 'proposed'
     )
     plan_confirmation_requested = False
     plan_stale_cleared = False
+    # Plan-confirm bridge fires for explicit confirms AND for 'retry' when a
+    # pending plan exists — that covers the "apply crashed mid-flow, user
+    # hit retry" case where the pending_plan is still in session but the
+    # edit-lane apply never committed.
     if (
         plan_flag_enabled
         and pending_plan_present
         and pending_plan is not None
-        and edit_continuation_trigger == 'confirm'
+        and edit_continuation_trigger in {'confirm', 'retry'}
         and not pending_continuation_requested
     ):
         if is_plan_stale(session, pending_plan):
@@ -402,6 +682,7 @@ def dispatch_pre_planning_phase(
         or staged_operation_continuation
         or recent_target_continuation
         or plan_confirmation_requested
+        or edit_clarifier_answer_submitted
     )
     if recent_target_continuation:
         phase_timings['deictic_recent_target_continuation'] = 1
@@ -488,10 +769,50 @@ def dispatch_pre_planning_phase(
         cached_classifier_result = session_context.get('_classifier_result')
 
     simple_edit_detected = preview_intent == 'roadmap_edit'
-    # Mixed intents (edit + informational question in one turn) are handled
-    # LLM-natively inside the edit planner via prompt + context tools — see
-    # agent/app/core/prompts/templates/edit_mode/v1.md "Answering questions
-    # alongside edits". The regex-based pre-split was removed.
+    # Post-classification plan-confirm bridge: the pre-classification heuristic
+    # `edit_continuation_trigger` uses strict regex fullmatch and misses
+    # phrasing like "Yes, apply this plan." (trailing "plan" falls outside
+    # the allowed tail group). The classifier handles these reliably — so
+    # if it returned `confirm_action` (or `roadmap_query` for a retry-style
+    # message when a plan is pending) and we have a fresh pending plan,
+    # fire the plan-confirm bridge now.
+    retry_with_pending_plan = (
+        edit_continuation_trigger == 'retry'
+        and pending_plan_present
+        and pending_plan is not None
+    )
+    if (
+        plan_flag_enabled
+        and pending_plan_present
+        and pending_plan is not None
+        and not plan_confirmation_requested
+        and not plan_stale_cleared
+        and (preview_intent == 'confirm_action' or retry_with_pending_plan)
+        and not pending_continuation_requested
+    ):
+        if is_plan_stale(session, pending_plan):
+            clear_pending_plan(
+                session,
+                reason='stale_base_revision',
+                logger=self._logger,
+                settings=self._settings,
+                trace_id=trace_id,
+            )
+            plan_stale_cleared = True
+        else:
+            plan_confirmation_requested = True
+            should_force_edit_preview = True
+            # Force preview_intent to edit so downstream compose_dynamic_system_prompt
+            # sees `intent_type='roadmap_edit'` via the force_edit_continuation flag
+            # on session_context (set below).
+            preview_intent = 'roadmap_edit'
+    # Vague-value handling is LLM-native: the edit planner's tool schema
+    # requires `clarifier_options` when operations=[] + a question, and the
+    # edit_mode prompt forbids inventing values. See the planner tool
+    # schema in `agent/app/core/tools/registry.py` and `edit_mode/v1.md`.
+    # The edit_planner_staged_op_with_unverified_value log in the
+    # orchestrator is the observability layer that tells us if the LLM
+    # ever slips.
     planning_user_message = user_message
     if plan_answers_submitted and pending_plan is not None:
         # Replay the original request plus the freshly-appended answer(s) so
@@ -521,6 +842,27 @@ def dispatch_pre_planning_phase(
             roadmap_id=session.roadmap_id,
             plan_id=pending_plan.plan_id,
         )
+    if edit_clarifier_answer_submitted:
+        pending_ctx = session.metadata.pending_edit_context
+        if pending_ctx is not None:
+            user_answer_value = (
+                pending_ctx.default_title
+                or pending_ctx.target_hint
+                or ''
+            )
+            planning_user_message = _compose_edit_clarifier_replay_prompt(
+                pending=pending_ctx,
+                user_answer_value=user_answer_value,
+            )
+            log_event(
+                self._logger,
+                'edit_clarifier_answer_replay_triggered',
+                settings=self._settings,
+                trace_id=trace_id,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                awaiting_field=pending_ctx.awaiting_field,
+            )
     _ = plan_stale_cleared  # observable via pending_plan_cleared event
 
     actor_fetch_attempted = False
@@ -626,11 +968,13 @@ def dispatch_pre_planning_phase(
         session_context['pending_followup_kind'] = edit_continuation_trigger
     if should_force_edit_preview:
         session_context['force_edit_continuation'] = True
-        session_context['force_edit_continuation_reason'] = (
-            'pending_plan_confirm'
-            if plan_confirmation_requested
-            else (edit_continuation_trigger or 'pending_context')
-        )
+        if plan_confirmation_requested:
+            reason = 'pending_plan_confirm'
+        elif edit_clarifier_answer_submitted:
+            reason = 'edit_clarifier_answer'
+        else:
+            reason = edit_continuation_trigger or 'pending_context'
+        session_context['force_edit_continuation_reason'] = reason
     deictic_resolution = self._resolve_deictic_parent_reference(
         session=session,
         user_message=user_message,

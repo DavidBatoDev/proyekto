@@ -276,7 +276,72 @@ def _operation_payloads(operations: list[RoadmapOperation]) -> list[dict[str, An
         operation.model_dump(mode='json', exclude_none=True)
         for operation in operations
     ]
-    
+
+
+_SCHEMA_INVALID_MAX_STR = 500
+_SCHEMA_INVALID_MAX_LIST = 8
+_SCHEMA_INVALID_MAX_DEPTH = 5
+
+
+def _truncate_for_schema_invalid_log(value: Any, depth: int = 0) -> Any:
+    if depth >= _SCHEMA_INVALID_MAX_DEPTH:
+        return '[TRUNCATED]'
+    if isinstance(value, dict):
+        return {
+            key: _truncate_for_schema_invalid_log(value[key], depth + 1)
+            for key in sorted(value.keys())
+        }
+    if isinstance(value, list):
+        items = value[: _SCHEMA_INVALID_MAX_LIST]
+        trimmed = [_truncate_for_schema_invalid_log(item, depth + 1) for item in items]
+        if len(value) > _SCHEMA_INVALID_MAX_LIST:
+            trimmed.append(f'...({len(value) - _SCHEMA_INVALID_MAX_LIST} more items)')
+        return trimmed
+    if isinstance(value, str) and len(value) > _SCHEMA_INVALID_MAX_STR:
+        return f'{value[:_SCHEMA_INVALID_MAX_STR]}...(+{len(value) - _SCHEMA_INVALID_MAX_STR})'
+    return value
+
+
+def _log_planner_schema_invalid(
+    *,
+    planner: Any,
+    trace_id: str | None,
+    attempt_index: int,
+    error_code: str,
+    error_message: str | None,
+    raw_payload: Any,
+    payload_source: str,
+) -> None:
+    """Emit one structured event per schema-invalid planner retry.
+
+    Captures what the LLM actually emitted so schema mismatches can be
+    diagnosed without re-running. Payload is depth/length truncated to keep
+    the log line bounded.
+    """
+
+    trimmed_payload = _truncate_for_schema_invalid_log(raw_payload)
+    message_preview: str | None = None
+    if isinstance(error_message, str):
+        normalized = ' '.join(error_message.split())
+        if normalized:
+            message_preview = (
+                normalized
+                if len(normalized) <= _SCHEMA_INVALID_MAX_STR
+                else f'{normalized[:_SCHEMA_INVALID_MAX_STR]}...'
+            )
+    log_event(
+        planner._logger,
+        'planner_schema_invalid_raw_output',
+        settings=planner._settings,
+        trace_id=trace_id,
+        attempt_index=attempt_index,
+        error_code=error_code,
+        error_message=message_preview,
+        payload_source=payload_source,
+        raw_payload=trimmed_payload,
+    )
+
+
 def _build_planner_summary_payload(
     *,
     assistant_message: str,
@@ -1136,6 +1201,9 @@ def plan_operations(
                 'clarifier_action': 'ask_clarifier',
                 'clarifier_reason': 'provider_outage',
                 'clarifier_options': ['Retry', 'Narrow to one target', 'Cancel'],
+                'clarifier_question': (
+                    'The planner provider had a temporary issue. How would you like to proceed?'
+                ),
                 'clarifier_schema_retries': schema_invalid_attempts,
                 'planner_schema_invalid_attempts': schema_invalid_attempts,
                 'planner_repair_attempted': repair_attempted,
@@ -1143,6 +1211,7 @@ def plan_operations(
                 'tool_plan': [],
                 'needs_more_info': True,
                 'stop_reason': 'provider_outage',
+                'tool_observations': list(tool_observations),
             }
         )
 
@@ -1234,6 +1303,7 @@ def plan_operations(
                 'tool_plan': [],
                 'needs_more_info': True,
                 'stop_reason': 'awaiting_user_input',
+                'tool_observations': list(tool_observations),
             }
         )
 
@@ -1814,6 +1884,15 @@ def plan_operations(
                     and planner._is_invalid_operation_enum_payload(exc.message)
                 )
                 schema_invalid_attempts += 1
+                _log_planner_schema_invalid(
+                    planner=planner,
+                    trace_id=trace_id,
+                    attempt_index=attempt,
+                    error_code=exc.code,
+                    error_message=exc.message,
+                    raw_payload=exc.raw_tool_args,
+                    payload_source='provider_adapter_error',
+                )
                 repair_attempted = True
                 planner_prompt = planner._augment_repair_planner_prompt(
                     planner_prompt=planner_prompt,
@@ -1888,20 +1967,53 @@ def plan_operations(
             )
             return failure_state
 
-        if not isinstance(result.value, tuple) or len(result.value) != 2:
+        # Accept both 2-tuples (legacy adapters) and 3-tuples (current: adds
+        # `clarifier_options`). The unpacking block below handles both.
+        if not isinstance(result.value, tuple) or len(result.value) not in (2, 3):
             if attempt + 1 < max_attempts:
                 schema_invalid_attempts += 1
+                _log_planner_schema_invalid(
+                    planner=planner,
+                    trace_id=trace_id,
+                    attempt_index=attempt,
+                    error_code='unexpected_result_shape',
+                    error_message=(
+                        f'expected 2- or 3-tuple, got '
+                        f'{type(result.value).__name__}'
+                        + (
+                            f' of length {len(result.value)}'
+                            if isinstance(result.value, tuple)
+                            else ''
+                        )
+                    ),
+                    raw_payload=result.value,
+                    payload_source='result_value_shape',
+                )
                 repair_attempted = True
                 continue
             break
 
-        assistant_message, raw_operations = result.value
+        # Tuple widened to 3-elements to carry LLM-provided `clarifier_options`
+        # alongside the assistant message and operations. Older adapters that
+        # still return 2-tuples are tolerated: default clarifier_options to [].
+        result_value = result.value
+        llm_clarifier_options: list[str] = []
+        if isinstance(result_value, tuple) and len(result_value) >= 3:
+            assistant_message, raw_operations, llm_clarifier_options = (
+                result_value[0],
+                result_value[1],
+                result_value[2] if isinstance(result_value[2], list) else [],
+            )
+        else:
+            assistant_message, raw_operations = result_value  # type: ignore[assignment]
         assistant_message = (
             assistant_message if isinstance(assistant_message, str) else str(assistant_message or '')
         )
         planning_tool_args = {
             'assistant_message': assistant_message.strip()[:200],
             'operations_count': len(raw_operations) if isinstance(raw_operations, list) else 0,
+            'clarifier_options_count': len(llm_clarifier_options),
+            'clarifier_options_preview': list(llm_clarifier_options)[:5],
         }
         log_event(
             planner._logger,
@@ -1939,7 +2051,7 @@ def plan_operations(
                     user_message=user_message,
                     operations=operations,
                 )
-            except Exception:
+            except Exception as parse_exc:
                 log_event(
                     planner._logger,
                     'tool_call_result',
@@ -1955,6 +2067,18 @@ def plan_operations(
                 )
                 if attempt + 1 < max_attempts:
                     schema_invalid_attempts += 1
+                    _log_planner_schema_invalid(
+                        planner=planner,
+                        trace_id=trace_id,
+                        attempt_index=attempt,
+                        error_code='invalid_operation_payload',
+                        error_message=str(parse_exc),
+                        raw_payload={
+                            'assistant_message': assistant_message,
+                            'operations': raw_operations,
+                        },
+                        payload_source='parse_plan_tool_args_failed',
+                    )
                     repair_attempted = True
                     continue
                 break
@@ -1974,6 +2098,18 @@ def plan_operations(
             )
             if attempt + 1 < max_attempts:
                 schema_invalid_attempts += 1
+                _log_planner_schema_invalid(
+                    planner=planner,
+                    trace_id=trace_id,
+                    attempt_index=attempt,
+                    error_code='invalid_operation_payload',
+                    error_message=f'operations is {type(raw_operations).__name__}, expected list',
+                    raw_payload={
+                        'assistant_message': assistant_message,
+                        'operations': raw_operations,
+                    },
+                    payload_source='operations_not_a_list',
+                )
                 repair_attempted = True
                 continue
             break
@@ -2004,6 +2140,18 @@ def plan_operations(
             if parent_uuid_violations:
                 if attempt + 1 < max_attempts:
                     schema_invalid_attempts += 1
+                    _log_planner_schema_invalid(
+                        planner=planner,
+                        trace_id=trace_id,
+                        attempt_index=attempt,
+                        error_code='invalid_parent_uuid',
+                        error_message=None,
+                        raw_payload={
+                            'parent_uuid_violations': parent_uuid_violations,
+                            'operations': _operation_payloads(operations),
+                        },
+                        payload_source='parent_uuid_violations',
+                    )
                     repair_attempted = True
                     planner_prompt = planner._augment_parent_uuid_retry_prompt(
                         planner_prompt=planner_prompt,
@@ -2250,11 +2398,11 @@ def plan_operations(
         )
         clarifier_action = 'ask_clarifier'
         clarifier_reason = 'discovery_unresolved'
-        clarifier_options = [
-            'Confirm the exact target label',
-            'Provide the exact name',
-            'Cancel',
-        ]
+        # The LLM owns clarifier suggestions via `clarifier_options` in its
+        # tool call (tool schema + vague-value preflight steer it to emit 3
+        # context-aware values). If it still drops them, the card renders
+        # with only the "Other..." input — no server-side fallback triple.
+        clarifier_options = list(llm_clarifier_options)
         clarifier_message, clarifier_options = build_clarifier_contract(
             reason=clarifier_reason,
             question=clarifier_message,
@@ -2285,6 +2433,7 @@ def plan_operations(
                 'tool_plan': [],
                 'needs_more_info': True,
                 'stop_reason': 'awaiting_user_input',
+                'tool_observations': list(tool_observations),
             }
         )
 

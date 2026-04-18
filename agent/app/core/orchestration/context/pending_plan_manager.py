@@ -93,6 +93,10 @@ def record_pending_plan_from_planner_output(
     )
 
 
+_MAX_CLARIFIER_QUESTIONS_PER_SESSION = 10
+_MAX_QUESTIONS_PER_TURN = 4
+
+
 def _record_pending_plan_question(
     session: AgentSession,
     *,
@@ -103,8 +107,14 @@ def _record_pending_plan_question(
     settings: Any,
     planning_turn_id: str | None,
 ) -> PendingPlan | None:
-    question_raw = payload.get('question')
-    if not isinstance(question_raw, dict):
+    # Accept either `questions: [...]` (new, plural) or `question: {...}`
+    # (legacy singular — treated as a list of one).
+    raw_questions: list[dict[str, Any]] = []
+    if isinstance(payload.get('questions'), list):
+        raw_questions = [q for q in payload['questions'] if isinstance(q, dict)]
+    elif isinstance(payload.get('question'), dict):
+        raw_questions = [payload['question']]
+    if not raw_questions:
         log_event(
             logger,
             'pending_plan_question_missing',
@@ -116,29 +126,50 @@ def _record_pending_plan_question(
         )
         return None
 
-    try:
-        question = PendingPlanQuestion(**{
-            key: value
-            for key, value in question_raw.items()
-            if key in PendingPlanQuestion.model_fields
-        })
-    except ValidationError as exc:
+    # Cap per-turn batch so the web doesn't render a wall of questions.
+    if len(raw_questions) > _MAX_QUESTIONS_PER_TURN:
         log_event(
             logger,
-            'pending_plan_question_schema_invalid',
+            'pending_plan_question_batch_truncated',
             settings=settings,
-            level=logging.WARNING,
             trace_id=trace_id,
             session_id=session.session_id,
             roadmap_id=session.roadmap_id,
-            error_count=len(exc.errors()),
-            first_error=exc.errors()[0] if exc.errors() else None,
+            emitted=len(raw_questions),
+            kept=_MAX_QUESTIONS_PER_TURN,
         )
+        raw_questions = raw_questions[:_MAX_QUESTIONS_PER_TURN]
+
+    parsed_questions: list[PendingPlanQuestion] = []
+    for raw in raw_questions:
+        try:
+            parsed_questions.append(
+                PendingPlanQuestion(**{
+                    key: value
+                    for key, value in raw.items()
+                    if key in PendingPlanQuestion.model_fields
+                })
+            )
+        except ValidationError as exc:
+            log_event(
+                logger,
+                'pending_plan_question_schema_invalid',
+                settings=settings,
+                level=logging.WARNING,
+                trace_id=trace_id,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                error_count=len(exc.errors()),
+                first_error=exc.errors()[0] if exc.errors() else None,
+            )
+            # Skip this bad entry; keep the rest of the batch.
+            continue
+    if not parsed_questions:
         return None
 
     # Preserve accumulated answers and the original source_user_message from
-    # the first turn of the planning session. This is the multi-turn bit: each
-    # needs_answer envelope narrows the plan by adding one more Q/A pair.
+    # the first turn of the planning session. Each needs_answer envelope
+    # narrows the plan by adding more Q/A pairs.
     existing = session.metadata.pending_plan
     previous_answers: list[PendingPlanAnswer] = (
         list(existing.answers) if existing is not None else []
@@ -148,13 +179,36 @@ def _record_pending_plan_question(
         if existing is not None and existing.source_user_message
         else user_message
     )
+
+    # Enforce the session-wide cap: answered + new pending questions.
+    total_q_budget = (
+        len(previous_answers) + len(parsed_questions)
+    )
+    cap_reached = total_q_budget > _MAX_CLARIFIER_QUESTIONS_PER_SESSION
+    if cap_reached:
+        allowed = max(0, _MAX_CLARIFIER_QUESTIONS_PER_SESSION - len(previous_answers))
+        if allowed == 0:
+            log_event(
+                logger,
+                'pending_plan_question_cap_exhausted',
+                settings=settings,
+                level=logging.WARNING,
+                trace_id=trace_id,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                answered_so_far=len(previous_answers),
+                dropped=len(parsed_questions),
+            )
+            return None
+        parsed_questions = parsed_questions[:allowed]
+
     plan_kwargs: dict[str, Any] = {
         'planning_turn_id': planning_turn_id,
         'summary': '',
         'goal': '',
         'source_user_message': source_user_message,
         'status': 'awaiting_answers',
-        'current_question': question,
+        'current_questions': parsed_questions,
         'answers': previous_answers,
         'base_revision': session.base_revision,
         'revision_token': session.revision_token,
@@ -176,10 +230,10 @@ def _record_pending_plan_question(
         session_id=session.session_id,
         roadmap_id=session.roadmap_id,
         plan_id=plan.plan_id,
-        question_id=question.id,
-        option_count=len(question.options),
-        allow_custom=question.allow_custom,
+        question_count=len(parsed_questions),
         answers_so_far=len(previous_answers),
+        total_budget=total_q_budget,
+        cap_triggered=cap_reached,
     )
     return plan
 
@@ -247,7 +301,7 @@ def _record_pending_plan_final(
     plan.roadmap_overview_hash = _compute_overview_hash(
         session.metadata.roadmap_overview_summary
     )
-    plan.current_question = None  # terminal envelope → no pending question
+    plan.current_questions = []  # terminal envelope → no pending questions
     plan.status = 'proposed'
     plan.updated_at = _utcnow()
 
@@ -302,9 +356,12 @@ def append_plan_answer(
     if plan is None or plan.status != 'awaiting_answers':
         return False
     plan.answers.append(answer)
-    # Clearing current_question signals to the next plan turn that this
-    # question has been resolved; the model decides whether to ask another.
-    plan.current_question = None
+    # Remove the just-answered question from the pending batch. When all
+    # questions in the batch are answered, `current_questions` is empty and
+    # the next plan turn will decide whether to ask more or finalize.
+    plan.current_questions = [
+        q for q in plan.current_questions if q.id != answer.question_id
+    ]
     plan.updated_at = _utcnow()
     log_event(
         logger,
@@ -389,11 +446,13 @@ def format_pending_plan_section(plan: PendingPlan | None) -> str | None:
                 value = answer.custom_answer or answer.selected_option or '(unknown)'
                 qtext = answer.question_text or answer.question_id
                 lines.append(f'{idx}. Q: {qtext} / A: {value}')
-        if plan.current_question is not None:
-            lines.append(
-                f'Currently asked: "{plan.current_question.question}" '
-                f'(options: {", ".join(plan.current_question.options) or "(none)"})'
-            )
+        if plan.current_questions:
+            lines.append(f'Currently asked ({len(plan.current_questions)}):')
+            for idx, q in enumerate(plan.current_questions, start=1):
+                lines.append(
+                    f'  {idx}. "{q.question}" '
+                    f'(options: {", ".join(q.options) or "(none)"})'
+                )
         return '\n'.join(lines)
     lines = []
     lines.append(f'Plan summary: {plan.summary}')
@@ -421,6 +480,4 @@ def format_pending_plan_section(plan: PendingPlan | None) -> str | None:
         lines.append('Risks: ' + '; '.join(plan.risks))
     if plan.next_steps:
         lines.append('Next steps: ' + '; '.join(plan.next_steps))
-    if plan.open_questions:
-        lines.append('Open questions: ' + '; '.join(plan.open_questions))
     return '\n'.join(lines)

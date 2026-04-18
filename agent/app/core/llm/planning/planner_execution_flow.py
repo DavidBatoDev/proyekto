@@ -93,6 +93,7 @@ def plan_with_langgraph(
         clarifier_action=state.get('clarifier_action'),
         clarifier_reason=state.get('clarifier_reason'),
         clarifier_options=state.get('clarifier_options'),
+        clarifier_question=state.get('clarifier_question'),
         clarifier_schema_retries=state.get('clarifier_schema_retries'),
         planner_schema_invalid_attempts=state.get('planner_schema_invalid_attempts'),
         planner_repair_attempted=state.get('planner_repair_attempted'),
@@ -103,6 +104,7 @@ def plan_with_langgraph(
         llm_calls_used=state.get('llm_calls_used'),
         react_tool_observation_summary=state.get('react_tool_observation_summary'),
         plan_proposal_payload=state.get('plan_proposal_payload'),
+        tool_observations=state.get('tool_observations'),
     )
 
 

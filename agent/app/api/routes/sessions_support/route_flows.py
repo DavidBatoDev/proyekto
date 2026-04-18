@@ -246,6 +246,7 @@ async def send_message_flow(
             ),
             artifacts=response_artifacts or artifacts,
             plan_proposal=outcome.plan_proposal_payload,
+            clarifier=outcome.clarifier_card,
             provider_used=outcome.provider_used,
             fallback_used=outcome.fallback_used,
             provider_error_code=outcome.provider_error_code,

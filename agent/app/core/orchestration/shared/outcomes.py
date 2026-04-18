@@ -59,6 +59,7 @@ class MessagePlanningOutcome:
     resolve_cache_misses: int | None = None
     resolve_dedup_hits: int | None = None
     plan_proposal_payload: dict[str, Any] | None = None
+    clarifier_card: dict[str, Any] | None = None
 
 
 @dataclass

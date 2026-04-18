@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import uuid
 from datetime import datetime
 import logging
 from time import perf_counter
@@ -22,6 +24,240 @@ from app.core.orchestration.planning.planning_post_execution import run_post_exe
 from app.core.orchestration.planning.planning_pre_dispatcher import dispatch_pre_planning_phase
 from app.core.orchestration.planning.planning_result_dispatcher import dispatch_planning_result
 from app.core.orchestration.planning.staged_operations_applier import apply_planned_operations
+
+
+# Clarifier reasons where the user MUST pick an existing option (resolver
+# candidates, parent targets); we disable the "Other..." input on these.
+_EDIT_CLARIFIER_REASONS_NO_CUSTOM: frozenset[str] = frozenset({
+    'pending_rename_target_ambiguous',
+    'retry_multiple_matches',
+    'deictic_parent_ambiguous',
+    'compound_create_parent_first',
+})
+
+# `build_clarifier_contract` wraps every option as `[<slug>_<hash>] <label>`
+# for the old prose path (so the LLM could track which option the user
+# picked by id). Now that the web renders a card, the prefix is noise —
+# strip it so users see clean labels.
+_OPTION_ID_PREFIX_RE = re.compile(r'^\[[^\]]+\]\s*')
+
+
+def _strip_option_id_prefix(option: str) -> str:
+    if not isinstance(option, str):
+        return ''
+    return _OPTION_ID_PREFIX_RE.sub('', option).strip()
+
+
+# Minimum value length to check for hallucination — shorter strings are
+# noisy (common substrings, status enums). We still log status enum values
+# if they're not matched, but skip very short freeform values.
+_HALLUCINATION_DETECTOR_MIN_VALUE_LENGTH = 3
+
+# Known enum-like values that pass without substring verification. The
+# classifier/LLM can legitimately produce these from keyword mention
+# ("mark done" → patch.status='done'). We rely on the normal prompt
+# discipline for these; the detector watches freeform values instead.
+_HALLUCINATION_DETECTOR_SEMANTIC_ENUMS = frozenset({
+    'todo', 'to_do', 'to-do',
+    'in_progress', 'in-progress', 'ongoing',
+    'in_review', 'in-review', 'review',
+    'done', 'complete', 'completed',
+    'blocked', 'on_hold', 'on-hold',
+    'backlog', 'not_started', 'not-started',
+    'canceled', 'cancelled',
+})
+
+
+def _normalize_for_hallucination_match(value: str) -> str:
+    """Lowercase + strip quotes/punctuation + collapse whitespace. Used
+    both to normalize the candidate value and the haystack strings.
+    """
+
+    lowered = value.lower()
+    # Strip typical surrounding quotes / backticks / trailing punctuation.
+    stripped = re.sub(r'[\"\'`,;:!?()\[\]{}]', ' ', lowered)
+    return ' '.join(stripped.split())
+
+
+def _collect_user_provided_haystack(
+    *,
+    user_message: str,
+    session: AgentSession,
+    recent_message_limit: int = 6,
+) -> str:
+    """Assemble a single lowercase haystack of everything the user could
+    plausibly have said. Includes the current turn, any pending edit
+    context (source message, clarifier answers), and the last N user
+    messages in the session.
+    """
+
+    parts: list[str] = []
+    if isinstance(user_message, str):
+        parts.append(user_message)
+    pending = session.metadata.pending_edit_context
+    if pending is not None:
+        if isinstance(pending.source_user_message, str):
+            parts.append(pending.source_user_message)
+        if isinstance(pending.default_title, str) and pending.default_title:
+            parts.append(pending.default_title)
+        if isinstance(pending.target_hint, str) and pending.target_hint:
+            parts.append(pending.target_hint)
+    recent = session.messages[-recent_message_limit:] if session.messages else []
+    for msg in recent:
+        role = getattr(msg, 'role', None)
+        content = getattr(msg, 'content', None)
+        if role == 'user' and isinstance(content, str):
+            parts.append(content)
+    return _normalize_for_hallucination_match(' '.join(parts))
+
+
+def _iter_operation_freeform_values(operation: Any):
+    """Yield (field_path, value) tuples for freeform text fields on an
+    operation that are worth verifying against the user's input. Skips
+    enum/semantic fields (status values, UUIDs, ref fields).
+    """
+
+    op_name = getattr(operation.op, 'value', None) or str(getattr(operation, 'op', ''))
+    data = getattr(operation, 'data', None)
+    if isinstance(data, dict):
+        for key in ('title', 'description'):
+            value = data.get(key)
+            if isinstance(value, str) and value.strip():
+                yield (f'{op_name}.data.{key}', value)
+    patch = getattr(operation, 'patch', None)
+    if isinstance(patch, dict):
+        for key in ('title', 'description'):
+            value = patch.get(key)
+            if isinstance(value, str) and value.strip():
+                yield (f'{op_name}.patch.{key}', value)
+
+
+def _detect_unverified_values(
+    *,
+    planning: Any,
+    session: AgentSession,
+    user_message: str,
+    logger: logging.Logger,
+    settings: Any,
+    trace_id: str | None,
+) -> None:
+    """Observability hook: fire `edit_planner_staged_op_with_unverified_value`
+    when the planner staged an operation whose freeform value (title,
+    description) does NOT appear in anything the user could have said this
+    turn or via a prior clarifier answer. Does NOT block the operation —
+    this is a metric the team uses to decide whether additional planner
+    guardrails are needed. An event with count=0 over time is evidence
+    that the tool schema + prompt are sufficient on their own.
+    """
+
+    operations = getattr(planning, 'operations', None)
+    if not operations:
+        return
+    if getattr(planning, 'response_mode', None) != 'edit_plan':
+        return
+
+    haystack = _collect_user_provided_haystack(
+        user_message=user_message,
+        session=session,
+    )
+
+    unverified: list[dict[str, Any]] = []
+    for index, operation in enumerate(operations):
+        for field_path, value in _iter_operation_freeform_values(operation):
+            normalized_value = _normalize_for_hallucination_match(value)
+            if len(normalized_value) < _HALLUCINATION_DETECTOR_MIN_VALUE_LENGTH:
+                continue
+            if normalized_value in _HALLUCINATION_DETECTOR_SEMANTIC_ENUMS:
+                continue
+            if normalized_value in haystack:
+                continue
+            unverified.append({
+                'operation_index': index,
+                'field_path': field_path,
+                'value_preview': value[:120],
+                'value_length': len(value),
+            })
+
+    if not unverified:
+        return
+
+    log_event(
+        logger,
+        'edit_planner_staged_op_with_unverified_value',
+        settings=settings,
+        trace_id=trace_id,
+        session_id=session.session_id,
+        roadmap_id=session.roadmap_id,
+        operations_count=len(operations),
+        unverified_count=len(unverified),
+        unverified=unverified,
+    )
+
+
+def _build_edit_clarifier_card(
+    *,
+    planning: Any,
+    session: AgentSession,
+    assistant_message: str,
+) -> dict[str, Any] | None:
+    """Assemble a ClarifierCard dict from an edit-lane planning result.
+
+    Only fires when the planner emitted `clarifier_action='ask_clarifier'`.
+    The card is attached to the message response and surfaced by the web
+    as a radio-button UI. The pending edit context gets stamped with a
+    matching `question_id` so the user's sentinel answer next turn is
+    routed back to the right state.
+
+    The options are the LLM's own suggestions (via `clarifier_options` on
+    the `plan_roadmap_operations` tool call). `[<id>] ` prefixes from
+    `build_clarifier_contract` are stripped for display. If the LLM
+    produced no options the card renders with only the "Other..." input —
+    we deliberately do not fabricate defaults server-side.
+
+    `prior_tool_observations` is populated upstream inside
+    `pending_edit_context_manager` so it rides on the existing post-
+    execution save; this helper does not touch persistence.
+    """
+
+    if planning.clarifier_action != 'ask_clarifier':
+        return None
+    raw_options = planning.clarifier_options or []
+    cleaned_options: list[str] = []
+    for raw in raw_options:
+        label = _strip_option_id_prefix(raw)
+        if label:
+            cleaned_options.append(label)
+
+    reason = planning.clarifier_reason
+    pending = session.metadata.pending_edit_context
+
+    question_id = str(uuid.uuid4())
+    question_text = (
+        planning.clarifier_question
+        if getattr(planning, 'clarifier_question', None)
+        else assistant_message
+    )
+    allow_custom = reason not in _EDIT_CLARIFIER_REASONS_NO_CUSTOM
+
+    # If we end up with no options AND can't offer custom input, there's
+    # nothing for the user to do — skip the card (assistant_message prose
+    # still shows through).
+    if not cleaned_options and not allow_custom:
+        return None
+
+    card = {
+        'lane': 'edit',
+        'question_id': question_id,
+        'question': question_text.strip() if isinstance(question_text, str) else '',
+        'options': cleaned_options,
+        'allow_custom': allow_custom,
+        'reason': reason,
+    }
+    # Stamp the id on the pending context so the next turn's sentinel
+    # parser can validate it matches.
+    if pending is not None:
+        pending.pending_clarifier_question_id = question_id
+    return card
 
 
 def plan_message(
@@ -152,6 +388,20 @@ def plan_message(
                 f'({self._settings.max_operations_per_request}).'
             ),
         )
+
+    # Hallucination observability: flag any staged op whose freeform
+    # value (title/description) doesn't appear in the user's own input.
+    # Non-blocking — used to validate that the tool schema + prompt
+    # guardrails are sufficient on their own now that the vague-value
+    # preflight has been removed.
+    _detect_unverified_values(
+        planning=planning,
+        session=session,
+        user_message=user_message,
+        logger=self._logger,
+        settings=self._settings,
+        trace_id=trace_id,
+    )
 
     self._sync_pending_edit_context(
         session=session,
@@ -298,6 +548,12 @@ def plan_message(
         phase_timings=phase_timings,
     )
 
+    clarifier_card = _build_edit_clarifier_card(
+        planning=planning,
+        session=session,
+        assistant_message=assistant_message,
+    )
+
     return MessagePlanningOutcome(
         session=session,
         assistant_message=assistant_message,
@@ -355,4 +611,5 @@ def plan_message(
             )
             else None
         ),
+        clarifier_card=clarifier_card,
     )

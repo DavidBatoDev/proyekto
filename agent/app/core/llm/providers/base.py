@@ -53,6 +53,7 @@ class ProviderAdapterError(RuntimeError):
         tokens_input: int | None = None,
         tokens_output: int | None = None,
         tokens_total: int | None = None,
+        raw_tool_args: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.provider = provider
@@ -61,6 +62,11 @@ class ProviderAdapterError(RuntimeError):
         self.tokens_input = tokens_input
         self.tokens_output = tokens_output
         self.tokens_total = tokens_total
+        # Raw tool-call arguments captured when the LLM produced an
+        # unparseable planning payload. Carried through so the caller can
+        # emit a `planner_schema_invalid_raw_output` event and we can finally
+        # see what the model is actually sending.
+        self.raw_tool_args = raw_tool_args
 
 
 class LLMProviderAdapter(ABC):

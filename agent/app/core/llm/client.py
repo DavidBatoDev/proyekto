@@ -64,6 +64,7 @@ class PlannerState(TypedDict, total=False):
     clarifier_action: str | None
     clarifier_reason: str | None
     clarifier_options: list[str] | None
+    clarifier_question: str | None
     clarifier_schema_retries: int | None
     planner_schema_invalid_attempts: int | None
     planner_repair_attempted: bool | None
@@ -76,6 +77,11 @@ class PlannerState(TypedDict, total=False):
     llm_calls_used: int | None
     react_tool_observation_summary: list[dict[str, Any]] | None
     plan_proposal_payload: dict[str, Any] | None
+    clarifier_question: str | None
+    # Raw tool-observation list from the edit-lane react loop, surfaced
+    # through PlannerState so the orchestrator can snapshot it onto
+    # `pending_edit_context.prior_tool_observations` for next-turn replay.
+    tool_observations: list[dict[str, Any]] | None
     classifier_sub_intent: Literal[
         'rename_only',
         'delete_only',
@@ -154,6 +160,7 @@ class PlanningResult:
     clarifier_action: str | None = None
     clarifier_reason: str | None = None
     clarifier_options: list[str] | None = None
+    clarifier_question: str | None = None
     clarifier_schema_retries: int | None = None
     planner_schema_invalid_attempts: int | None = None
     planner_repair_attempted: bool | None = None
@@ -164,6 +171,7 @@ class PlanningResult:
     llm_calls_used: int | None = None
     react_tool_observation_summary: list[dict[str, Any]] | None = None
     plan_proposal_payload: dict[str, Any] | None = None
+    tool_observations: list[dict[str, Any]] | None = None
 
 
 class LLMPlanner:

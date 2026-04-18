@@ -18,7 +18,11 @@ from app.core.llm.providers.base import (
     LLMProviderAdapter,
     ProviderAdapterError,
 )
-from app.core.tools.registry import PLANNING_TOOL_NAME, parse_plan_tool_args
+from app.core.tools.registry import (
+    PLANNING_TOOL_NAME,
+    parse_plan_tool_args,
+    parse_plan_tool_clarifier_options,
+)
 
 try:
     from langchain_core.messages import HumanMessage, SystemMessage
@@ -270,8 +274,9 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                             )
                             if not assistant_message.strip():
                                 assistant_message = 'Prepared roadmap operations.'
+                            clarifier_options = parse_plan_tool_clarifier_options(rewritten_args)
                             return BoundedToolLoopOutcome(
-                                value=(assistant_message, operations),
+                                value=(assistant_message, operations, clarifier_options),
                                 usage_totals=usage_totals,
                             )
                     log_event(
@@ -298,6 +303,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                             PLANNING_TOOL_NAME,
                             error_message,
                         )
+                    raw_args_snapshot = args if isinstance(args, dict) else None
                     raise ProviderAdapterError(
                         provider=self.provider_name,
                         code='invalid_operation_payload',
@@ -305,11 +311,13 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                         tokens_input=usage_totals['tokens_input'],
                         tokens_output=usage_totals['tokens_output'],
                         tokens_total=usage_totals['tokens_total'],
+                        raw_tool_args=raw_args_snapshot,
                     ) from exc
                 if not assistant_message.strip():
                     assistant_message = 'Prepared roadmap operations.'
+                clarifier_options = parse_plan_tool_clarifier_options(args)
                 return BoundedToolLoopOutcome(
-                    value=(assistant_message, operations),
+                    value=(assistant_message, operations, clarifier_options),
                     usage_totals=usage_totals,
                 )
 
@@ -566,7 +574,10 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
             'api_key': self._settings.openai_api_key,
             'model': self._settings.openai_model,
             'temperature': self._settings.openai_temperature,
-            'timeout': 30,
+            # 90s ceiling — reasoning models (GPT-5 family) can take 40-60s
+            # for a dense structured-output turn (plan envelope with 5 epics).
+            # Previously 30s was too tight and caused premature timeouts.
+            'timeout': 90,
         }
         if self._settings.openai_reasoning_effort is not None:
             model_kwargs['reasoning_effort'] = self._settings.openai_reasoning_effort
