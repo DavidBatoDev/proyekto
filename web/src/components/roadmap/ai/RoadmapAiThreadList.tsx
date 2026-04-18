@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   Archive,
   ArchiveRestore,
-  Check,
   MessageSquare,
   MoreHorizontal,
   Pencil,
@@ -114,12 +114,16 @@ export function RoadmapAiThreadList({
     deleteMutation.mutate(sessionId, {
       onSuccess: () => {
         setConfirmDeleteId(null);
-        if (sessionId === activeThreadId) {
-          // Caller will handle switching away; we just close the confirm.
-        }
       },
     });
   };
+
+  const pendingDeleteSession = useMemo(() => {
+    if (!confirmDeleteId) return null;
+    return (
+      (listQuery.data ?? []).find((s) => s.id === confirmDeleteId) ?? null
+    );
+  }, [confirmDeleteId, listQuery.data]);
 
   return (
     <motion.div
@@ -201,7 +205,6 @@ export function RoadmapAiThreadList({
             renaming={renameId === session.id}
             renameDraft={renameDraft}
             menuOpen={menuOpenId === session.id}
-            confirmingDelete={confirmDeleteId === session.id}
             onRenameDraftChange={setRenameDraft}
             onStartRename={() => startRename(session)}
             onSubmitRename={submitRename}
@@ -215,8 +218,6 @@ export function RoadmapAiThreadList({
               setConfirmDeleteId(session.id);
               setMenuOpenId(null);
             }}
-            onCancelDelete={() => setConfirmDeleteId(null)}
-            onConfirmDelete={() => confirmDelete(session.id)}
             onSelect={() => {
               onSelectThread(session.id);
               onClose();
@@ -236,7 +237,6 @@ export function RoadmapAiThreadList({
             renaming={renameId === session.id}
             renameDraft={renameDraft}
             menuOpen={menuOpenId === session.id}
-            confirmingDelete={confirmDeleteId === session.id}
             onRenameDraftChange={setRenameDraft}
             onStartRename={() => startRename(session)}
             onSubmitRename={submitRename}
@@ -250,8 +250,6 @@ export function RoadmapAiThreadList({
               setConfirmDeleteId(session.id);
               setMenuOpenId(null);
             }}
-            onCancelDelete={() => setConfirmDeleteId(null)}
-            onConfirmDelete={() => confirmDelete(session.id)}
             onSelect={() => {
               onSelectThread(session.id);
               onClose();
@@ -273,6 +271,15 @@ export function RoadmapAiThreadList({
           New thread
         </button>
       </div>
+
+      <DeleteThreadConfirmModal
+        session={pendingDeleteSession}
+        isDeleting={deleteMutation.isPending}
+        onCancel={() => setConfirmDeleteId(null)}
+        onConfirm={() => {
+          if (pendingDeleteSession) confirmDelete(pendingDeleteSession.id);
+        }}
+      />
     </motion.div>
   );
 }
@@ -283,7 +290,6 @@ interface ThreadRowProps {
   renaming: boolean;
   renameDraft: string;
   menuOpen: boolean;
-  confirmingDelete: boolean;
   onRenameDraftChange: (value: string) => void;
   onStartRename: () => void;
   onSubmitRename: () => void;
@@ -292,8 +298,6 @@ interface ThreadRowProps {
   onTogglePin: () => void;
   onToggleArchive: () => void;
   onRequestDelete: () => void;
-  onCancelDelete: () => void;
-  onConfirmDelete: () => void;
   onSelect: () => void;
 }
 
@@ -303,7 +307,6 @@ function ThreadRow({
   renaming,
   renameDraft,
   menuOpen,
-  confirmingDelete,
   onRenameDraftChange,
   onStartRename,
   onSubmitRename,
@@ -312,8 +315,6 @@ function ThreadRow({
   onTogglePin,
   onToggleArchive,
   onRequestDelete,
-  onCancelDelete,
-  onConfirmDelete,
   onSelect,
 }: ThreadRowProps) {
   const renameInputRef = useRef<HTMLInputElement | null>(null);
@@ -336,7 +337,7 @@ function ThreadRow({
           ? "bg-blue-50 text-blue-900"
           : "text-gray-800 hover:bg-gray-50"
       }`}
-      onClick={() => !renaming && !confirmingDelete && onSelect()}
+      onClick={() => !renaming && onSelect()}
     >
       <MessageSquare
         size={13}
@@ -375,90 +376,171 @@ function ThreadRow({
       {session.is_pinned && (
         <Pin size={11} className="shrink-0 text-gray-400" />
       )}
-      {confirmingDelete ? (
-        <div
-          className="flex items-center gap-1 shrink-0"
-          onClick={(e) => e.stopPropagation()}
+      <div
+        className="relative shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onToggleMenu}
+          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+          aria-label="Thread actions"
         >
-          <button
-            type="button"
-            onClick={onConfirmDelete}
-            className="rounded p-1 text-red-600 hover:bg-red-50"
-            aria-label="Confirm delete"
-          >
-            <Check size={12} />
-          </button>
-          <button
-            type="button"
-            onClick={onCancelDelete}
-            className="rounded p-1 text-gray-400 hover:bg-gray-100"
-            aria-label="Cancel delete"
-          >
-            <X size={12} />
-          </button>
-        </div>
-      ) : (
-        <div
-          className="relative shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            onClick={onToggleMenu}
-            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-            aria-label="Thread actions"
-          >
-            <MoreHorizontal size={12} />
-          </button>
-          <AnimatePresence>
-            {menuOpen && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.1 }}
-                className="absolute right-0 top-full mt-1 z-50 w-40 rounded-md border border-gray-200 bg-white shadow-lg py-1"
+          <MoreHorizontal size={12} />
+        </button>
+        <AnimatePresence>
+          {menuOpen && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.1 }}
+              className="absolute right-0 top-full mt-1 z-50 w-40 rounded-md border border-gray-200 bg-white shadow-lg py-1"
+            >
+              <MenuItem onClick={onStartRename} icon={<Pencil size={12} />}>
+                Rename
+              </MenuItem>
+              <MenuItem
+                onClick={onTogglePin}
+                icon={
+                  session.is_pinned ? (
+                    <PinOff size={12} />
+                  ) : (
+                    <Pin size={12} />
+                  )
+                }
               >
-                <MenuItem onClick={onStartRename} icon={<Pencil size={12} />}>
-                  Rename
-                </MenuItem>
-                <MenuItem
-                  onClick={onTogglePin}
-                  icon={
-                    session.is_pinned ? (
-                      <PinOff size={12} />
-                    ) : (
-                      <Pin size={12} />
-                    )
-                  }
-                >
-                  {session.is_pinned ? "Unpin" : "Pin"}
-                </MenuItem>
-                <MenuItem
-                  onClick={onToggleArchive}
-                  icon={
-                    session.is_archived ? (
-                      <ArchiveRestore size={12} />
-                    ) : (
-                      <Archive size={12} />
-                    )
-                  }
-                >
-                  {session.is_archived ? "Restore" : "Archive"}
-                </MenuItem>
-                <MenuItem
-                  onClick={onRequestDelete}
-                  icon={<Trash2 size={12} />}
-                  destructive
-                >
-                  Delete
-                </MenuItem>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      )}
+                {session.is_pinned ? "Unpin" : "Pin"}
+              </MenuItem>
+              <MenuItem
+                onClick={onToggleArchive}
+                icon={
+                  session.is_archived ? (
+                    <ArchiveRestore size={12} />
+                  ) : (
+                    <Archive size={12} />
+                  )
+                }
+              >
+                {session.is_archived ? "Restore" : "Archive"}
+              </MenuItem>
+              <MenuItem
+                onClick={onRequestDelete}
+                icon={<Trash2 size={12} />}
+                destructive
+              >
+                Delete
+              </MenuItem>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
+  );
+}
+
+function DeleteThreadConfirmModal({
+  session,
+  isDeleting,
+  onCancel,
+  onConfirm,
+}: {
+  session: RoadmapAiSession | null;
+  isDeleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const isOpen = session !== null;
+  const displayTitle = session?.title?.trim() || "New thread";
+
+  return createPortal(
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="fixed inset-0 z-[180] flex items-center justify-center p-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+        >
+          <motion.button
+            type="button"
+            className="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
+            onClick={onCancel}
+            aria-label="Cancel delete"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+          />
+
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-thread-title"
+            className="relative w-full max-w-md rounded-2xl border border-red-100 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.35)] overflow-hidden"
+            initial={{ opacity: 0, y: 14, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.97 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+          >
+            <div className="flex items-center gap-3 border-b border-red-100 bg-gradient-to-r from-red-50 to-rose-50 px-5 py-4">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500 text-white shadow-sm">
+                <Trash2 className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <h3
+                  id="delete-thread-title"
+                  className="text-base font-semibold text-slate-900"
+                >
+                  Delete thread
+                </h3>
+                <p className="text-xs text-slate-600">
+                  This will permanently remove the thread and its messages.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={isDeleting}
+                className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-white/70 hover:text-slate-900 disabled:opacity-60"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-5 py-4 text-sm text-slate-700">
+              Are you sure you want to delete{" "}
+              <span className="font-semibold text-slate-900">
+                “{displayTitle}”
+              </span>
+              ? This action cannot be undone.
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/70 px-5 py-4">
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={isDeleting}
+                className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onConfirm}
+                disabled={isDeleting}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60"
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>,
+    document.body,
   );
 }
 
