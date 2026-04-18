@@ -72,6 +72,8 @@ import {
   type RoadmapAiCommitImpactedItem,
   type RoadmapAiCommitImpactedItemKind,
 } from "./useRoadmapAiAssistantSession";
+import { RoadmapAiPlanProposalCard } from "./RoadmapAiPlanProposalCard";
+import { RoadmapAiPlanQuestionCard } from "./RoadmapAiPlanQuestionCard";
 import { RoadmapAiThreadList } from "./RoadmapAiThreadList";
 import {
   useRoadmapAiThreadsStore,
@@ -104,7 +106,8 @@ const buildAssistantMessage = (
       | "confirm_action"
       | "question"
       | "unclear";
-    responseMode?: "chat" | "edit_plan";
+    responseMode?: "chat" | "edit_plan" | "plan_proposal";
+    planProposal?: import("@/services/roadmap-agent.service").AgentPlanProposal | null;
     artifacts?: RoadmapArtifactPreview[];
     commitLifecycle?: RoadmapAiCommitLifecycle;
   },
@@ -116,6 +119,7 @@ const buildAssistantMessage = (
   parseMode,
   intentType: options?.intentType,
   responseMode: options?.responseMode,
+  planProposal: options?.planProposal ?? undefined,
   artifacts: options?.artifacts,
   commitLifecycle: options?.commitLifecycle,
 });
@@ -1983,6 +1987,8 @@ export function RoadmapAiAssistantPanel({
     void finish();
   };
 
+  const pendingAutoSubmitRef = useRef<string | null>(null);
+
   const handleSend = async () => {
     const trimmedMessage = input.trim();
     if ((!trimmedMessage && attachments.length === 0) || isSending) return;
@@ -2083,6 +2089,7 @@ export function RoadmapAiAssistantPanel({
           {
             intentType: response.intent_type,
             responseMode: response.response_mode,
+            planProposal: response.plan_proposal ?? undefined,
             artifacts: [],
             commitLifecycle: shouldTrackCommitLifecycle
               ? {
@@ -2107,6 +2114,9 @@ export function RoadmapAiAssistantPanel({
         responseMode: response.response_mode,
         parseMode: response.parse_mode || "agent_response",
         tokens: undefined,
+        metadata: response.plan_proposal
+          ? { plan_proposal: response.plan_proposal as unknown as Record<string, unknown> }
+          : undefined,
       }).catch((err) => {
         console.warn(
           "[RoadmapAiAssistantPanel] assistant message persistence failed",
@@ -2197,6 +2207,27 @@ export function RoadmapAiAssistantPanel({
         finalizeTraceTimeline(assistantId, traceId);
       }
     }
+  };
+
+  // When onApplyPlan/onDiscardPlan fills the input with a canonical string,
+  // this effect auto-dispatches handleSend once React has flushed the state
+  // update. The ref gates the auto-submit so user typing can't accidentally
+  // trigger it.
+  useEffect(() => {
+    if (
+      pendingAutoSubmitRef.current !== null
+      && input === pendingAutoSubmitRef.current
+      && !isSending
+    ) {
+      pendingAutoSubmitRef.current = null;
+      void handleSend();
+    }
+  }, [input, isSending]);
+
+  const submitProgrammaticMessage = (content: string) => {
+    if (isSending) return;
+    pendingAutoSubmitRef.current = content;
+    setInput(content);
   };
 
   const handleOpenArtifact = (artifact: RoadmapArtifactPreview) => {
@@ -2743,6 +2774,38 @@ export function RoadmapAiAssistantPanel({
                       )}
                   </div>
                 )}
+
+                {message.role === "assistant" &&
+                  message.planProposal &&
+                  message.planProposal.status === "awaiting_answers" && (
+                    <RoadmapAiPlanQuestionCard
+                      plan={message.planProposal}
+                      disabled={isSending}
+                      onSubmit={(answer) =>
+                        submitProgrammaticMessage(
+                          `__plan_answers__\n${JSON.stringify(answer)}`,
+                        )
+                      }
+                      onDiscard={() =>
+                        submitProgrammaticMessage("Cancel this plan.")
+                      }
+                    />
+                  )}
+
+                {message.role === "assistant" &&
+                  message.planProposal &&
+                  message.planProposal.status !== "awaiting_answers" && (
+                    <RoadmapAiPlanProposalCard
+                      plan={message.planProposal}
+                      disabled={isSending}
+                      onApply={() =>
+                        submitProgrammaticMessage("Yes, apply this plan.")
+                      }
+                      onDiscard={() =>
+                        submitProgrammaticMessage("Cancel this plan.")
+                      }
+                    />
+                  )}
 
                 {artifacts.length > 0 && (
                   <div className="mt-2.5 space-y-2">
