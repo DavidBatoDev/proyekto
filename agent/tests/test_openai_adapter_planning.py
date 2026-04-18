@@ -99,8 +99,8 @@ class OpenAIAdapterPlanningAutofixTests(unittest.TestCase):
     def test_bind_tools_for_planning_uses_required_tool_choice_when_supported(self) -> None:
         settings = get_settings().model_copy(
             update={
-                'openai_planner_default_max_tokens': 1200,
-                'openai_planner_repair_max_tokens': 1600,
+                'openai_edit_default_max_tokens': 1200,
+                'openai_edit_repair_max_tokens': 1600,
             }
         )
         adapter = OpenAILangChainAdapter(settings)
@@ -129,8 +129,8 @@ class OpenAIAdapterPlanningAutofixTests(unittest.TestCase):
     def test_bind_tools_for_planning_falls_back_when_tool_choice_unsupported(self) -> None:
         settings = get_settings().model_copy(
             update={
-                'openai_planner_default_max_tokens': 1200,
-                'openai_planner_repair_max_tokens': 1600,
+                'openai_edit_default_max_tokens': 1200,
+                'openai_edit_repair_max_tokens': 1600,
             }
         )
         adapter = OpenAILangChainAdapter(settings)
@@ -161,8 +161,8 @@ class OpenAIAdapterPlanningAutofixTests(unittest.TestCase):
     def test_planner_max_tokens_uses_retry_profile_override(self) -> None:
         settings = get_settings().model_copy(
             update={
-                'openai_planner_default_max_tokens': 1200,
-                'openai_planner_repair_max_tokens': 1600,
+                'openai_edit_default_max_tokens': 1200,
+                'openai_edit_repair_max_tokens': 1600,
             }
         )
         adapter = OpenAILangChainAdapter(settings)
@@ -173,8 +173,8 @@ class OpenAIAdapterPlanningAutofixTests(unittest.TestCase):
     def test_bind_tools_for_planning_logs_required_binding_mode(self) -> None:
         settings = get_settings().model_copy(
             update={
-                'openai_planner_default_max_tokens': 1200,
-                'openai_planner_repair_max_tokens': 1600,
+                'openai_edit_default_max_tokens': 1200,
+                'openai_edit_repair_max_tokens': 1600,
             }
         )
         adapter = OpenAILangChainAdapter(settings)
@@ -201,8 +201,8 @@ class OpenAIAdapterPlanningAutofixTests(unittest.TestCase):
     def test_bind_tools_for_planning_logs_fallback_binding_mode(self) -> None:
         settings = get_settings().model_copy(
             update={
-                'openai_planner_default_max_tokens': 1200,
-                'openai_planner_repair_max_tokens': 1600,
+                'openai_edit_default_max_tokens': 1200,
+                'openai_edit_repair_max_tokens': 1600,
             }
         )
         adapter = OpenAILangChainAdapter(settings)

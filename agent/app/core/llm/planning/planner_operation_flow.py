@@ -1490,7 +1490,7 @@ def plan_operations(
     # The heuristic is intentionally coarse — we'd rather oversize a few
     # plans than retry on every big one.
     if intent_type == 'roadmap_plan':
-        planner_default_budget = planner._settings.openai_planner_default_max_tokens or 2000
+        planner_default_budget = planner._settings.openai_edit_default_max_tokens or 2000
         estimated_output = estimate_plan_output_tokens(user_message)
         if estimated_output > planner_default_budget:
             planner_profile = 'repair_retry'

@@ -64,7 +64,7 @@ class _FakePlanner:
         self,
         captured: dict[str, object],
         *,
-        openai_planner_default_max_tokens: int | None = 2000,
+        openai_edit_default_max_tokens: int | None = 2000,
     ) -> None:
         self._captured = captured
         self._settings = SimpleNamespace(
@@ -79,7 +79,7 @@ class _FakePlanner:
             agent_log_color='off',
             agent_progress_events_enabled=False,
             agent_progress_events_allow_verbose=False,
-            openai_planner_default_max_tokens=openai_planner_default_max_tokens,
+            openai_edit_default_max_tokens=openai_edit_default_max_tokens,
         )
         self._logger = logging.getLogger('planner-operation-flow-tools-tests')
         self._provider_orchestrator = _FakeOrchestrator(captured)
@@ -2111,7 +2111,7 @@ class PlannerPreflightPreflightBudgetTests(unittest.TestCase):
 
     def test_small_plan_does_not_trigger_preflight_widening(self) -> None:
         captured: dict[str, object] = {}
-        planner = _FakePlanner(captured, openai_planner_default_max_tokens=2000)
+        planner = _FakePlanner(captured, openai_edit_default_max_tokens=2000)
         session_context: dict[str, object] = {
             'roadmap_id': 'r1',
             'trace_id': 'trace-preflight-small',
@@ -2133,7 +2133,7 @@ class PlannerPreflightPreflightBudgetTests(unittest.TestCase):
     def test_large_plan_triggers_preflight_widening(self) -> None:
         captured: dict[str, object] = {}
         # Shrink the default so the test doesn't need a monster prompt.
-        planner = _FakePlanner(captured, openai_planner_default_max_tokens=500)
+        planner = _FakePlanner(captured, openai_edit_default_max_tokens=500)
         session_context: dict[str, object] = {
             'roadmap_id': 'r1',
             'trace_id': 'trace-preflight-large',
