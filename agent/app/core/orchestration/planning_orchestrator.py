@@ -15,6 +15,9 @@ from app.core.orchestration.planning.planning_phase_metrics import (
     read_resolve_cache_metrics,
     record_context_tool_phase_metrics,
 )
+from app.core.orchestration.context.pending_plan_manager import (
+    record_pending_plan_from_planner_output,
+)
 from app.core.orchestration.planning.planning_post_execution import run_post_execution_phase
 from app.core.orchestration.planning.planning_pre_dispatcher import dispatch_pre_planning_phase
 from app.core.orchestration.planning.planning_result_dispatcher import dispatch_planning_result
@@ -99,16 +102,21 @@ def plan_message(
     retry_tool_calls_used = planning_dispatch_result.retry_tool_calls_used
     retry_autostage_applied = planning_dispatch_result.retry_autostage_applied
 
-    react_loop_outcome = self._run_edit_react_loop(
-        planning=planning,
-        pending_edit_context_present=pending_edit_context_present,
-        edit_continuation_trigger=edit_continuation_trigger,
-        route_lane=route_lane,
-        user_message=planning_user_message,
-    )
-    planning = react_loop_outcome.planning
-    edit_guard_intervened = react_loop_outcome.edit_guard_intervened
-    operation_validation_error = react_loop_outcome.operation_validation_error
+    if planning.response_mode == 'plan_proposal':
+        # Plan turns never stage ops, so skip the edit react loop and guardrails.
+        edit_guard_intervened = False
+        operation_validation_error = None
+    else:
+        react_loop_outcome = self._run_edit_react_loop(
+            planning=planning,
+            pending_edit_context_present=pending_edit_context_present,
+            edit_continuation_trigger=edit_continuation_trigger,
+            route_lane=route_lane,
+            user_message=planning_user_message,
+        )
+        planning = react_loop_outcome.planning
+        edit_guard_intervened = react_loop_outcome.edit_guard_intervened
+        operation_validation_error = react_loop_outcome.operation_validation_error
 
     if operation_validation_error is not None:
         invalid_operation_detected = True
@@ -172,24 +180,36 @@ def plan_message(
 
     self._store.append_message(session, 'user', user_message)
 
-    apply_result = apply_planned_operations(
-        session=session,
-        planning=planning,
-        draft_graph_enabled=draft_graph_enabled,
-        active_draft=active_draft,
-        edit_continuation_trigger=edit_continuation_trigger,
-        should_replace_staged_operations=self._should_replace_staged_operations,
-        get_active_draft=self._get_active_draft,
-        operation_signature=self._operation_signature,
-        utcnow=_utcnow,
-    )
-    applied_operations = apply_result.applied_operations
-    staged_changed = apply_result.staged_changed
-    retry_duplicate_operation_deduped = (
-        retry_duplicate_operation_deduped
-        or apply_result.retry_duplicate_operation_deduped
-    )
-    active_draft = apply_result.active_draft
+    if planning.response_mode == 'plan_proposal':
+        applied_operations: list[Any] = []
+        staged_changed = False
+        record_pending_plan_from_planner_output(
+            session=session,
+            payload=planning.plan_proposal_payload,
+            user_message=user_message,
+            trace_id=trace_id,
+            logger=self._logger,
+            settings=self._settings,
+        )
+    else:
+        apply_result = apply_planned_operations(
+            session=session,
+            planning=planning,
+            draft_graph_enabled=draft_graph_enabled,
+            active_draft=active_draft,
+            edit_continuation_trigger=edit_continuation_trigger,
+            should_replace_staged_operations=self._should_replace_staged_operations,
+            get_active_draft=self._get_active_draft,
+            operation_signature=self._operation_signature,
+            utcnow=_utcnow,
+        )
+        applied_operations = apply_result.applied_operations
+        staged_changed = apply_result.staged_changed
+        retry_duplicate_operation_deduped = (
+            retry_duplicate_operation_deduped
+            or apply_result.retry_duplicate_operation_deduped
+        )
+        active_draft = apply_result.active_draft
 
     post_execution_outcome = run_post_execution_phase(
         service=self,
@@ -327,4 +347,12 @@ def plan_message(
         active_draft_id=active_draft_id,
         active_draft_version=active_draft_version,
         draft_graph_migration_applied=draft_graph_migration_applied,
+        plan_proposal_payload=(
+            session.metadata.pending_plan.model_dump(mode='json', exclude_none=True)
+            if (
+                planning.response_mode == 'plan_proposal'
+                and session.metadata.pending_plan is not None
+            )
+            else None
+        ),
     )

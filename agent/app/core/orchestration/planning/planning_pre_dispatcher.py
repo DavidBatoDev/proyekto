@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
@@ -7,11 +8,53 @@ from time import perf_counter
 from typing import Any
 
 from app.core.contracts.operations import RoadmapOperation
-from app.core.contracts.sessions import AgentSession, IntentType
+from app.core.contracts.sessions import (
+    AgentSession,
+    IntentType,
+    PendingPlan,
+    PendingPlanAnswer,
+)
 from app.core.logging_utils import log_event
 from app.core.orchestration.context.actor_context_provider import (
     is_actor_context_required_message,
 )
+from app.core.orchestration.context.pending_plan_manager import (
+    append_plan_answer,
+    clear_pending_plan,
+    is_plan_stale,
+)
+
+_PLAN_ANSWER_SENTINEL = '__plan_answers__'
+
+
+def _parse_plan_answer_sentinel(user_message: str) -> list[dict[str, Any]] | None:
+    """Detect the `__plan_answers__\\n{json}` sentinel used by the web to
+    submit answers to plan-mode clarifier questions. Returns a list of
+    answer dicts on match, or `None` if the message isn't an answer payload.
+
+    Accepted shapes (JSON body after the sentinel line):
+      - `{"question_id": "...", "selected_option": "...", "custom_answer": null}`
+      - `{"answers": [{...}, {...}]}`  — batched
+      - `[{...}, {...}]`                — bare list
+    """
+
+    stripped = user_message.strip()
+    if not stripped.startswith(_PLAN_ANSWER_SENTINEL):
+        return None
+    body = stripped[len(_PLAN_ANSWER_SENTINEL):].strip()
+    if not body:
+        return None
+    try:
+        parsed = json.loads(body)
+    except (ValueError, TypeError):
+        return None
+    if isinstance(parsed, dict) and 'answers' in parsed and isinstance(parsed['answers'], list):
+        return [entry for entry in parsed['answers'] if isinstance(entry, dict)]
+    if isinstance(parsed, list):
+        return [entry for entry in parsed if isinstance(entry, dict)]
+    if isinstance(parsed, dict):
+        return [parsed]
+    return None
 
 _ACTOR_FETCH_EXECUTOR: ThreadPoolExecutor | None = None
 _overview_join_logger = logging.getLogger(__name__)
@@ -103,6 +146,143 @@ def resolve_deferred_roadmap_overview_summary(
     return join_ms
 
 
+def _ingest_plan_answers(
+    *,
+    session: AgentSession,
+    pending_plan: PendingPlan | None,
+    parsed_answers: list[dict[str, Any]],
+    logger: logging.Logger,
+    settings: Any,
+    trace_id: str | None,
+) -> bool:
+    """Validate and append each answer. Returns True when at least one
+    answer landed on an `awaiting_answers` plan; False otherwise (e.g. no
+    pending plan, or plan in the wrong status).
+    """
+
+    if pending_plan is None or pending_plan.status != 'awaiting_answers':
+        log_event(
+            logger,
+            'plan_answers_dropped_no_pending_plan',
+            settings=settings,
+            level=logging.WARNING,
+            trace_id=trace_id,
+            session_id=session.session_id,
+            roadmap_id=session.roadmap_id,
+            pending_plan_status=(pending_plan.status if pending_plan else None),
+        )
+        return False
+
+    appended = 0
+    for raw in parsed_answers:
+        question_id = str(raw.get('question_id') or '').strip()
+        if not question_id:
+            continue
+        selected = raw.get('selected_option')
+        custom = raw.get('custom_answer')
+        if not isinstance(selected, str) and not isinstance(custom, str):
+            continue
+        question_text = raw.get('question_text')
+        if not isinstance(question_text, str) and pending_plan.current_question is not None:
+            # Snapshot the question text on the answer so the LLM can read it
+            # back later without needing to cross-reference a removed question.
+            if pending_plan.current_question.id == question_id:
+                question_text = pending_plan.current_question.question
+        answer = PendingPlanAnswer(
+            question_id=question_id,
+            question_text=question_text if isinstance(question_text, str) else None,
+            selected_option=selected if isinstance(selected, str) and selected.strip() else None,
+            custom_answer=custom if isinstance(custom, str) and custom.strip() else None,
+        )
+        if append_plan_answer(
+            session,
+            answer=answer,
+            logger=logger,
+            settings=settings,
+            trace_id=trace_id,
+        ):
+            appended += 1
+    return appended > 0
+
+
+def _compose_plan_replay_prompt(pending_plan: PendingPlan) -> str:
+    """Synthesize the user-side prompt for a plan-lane replay after the user
+    submitted one or more answers. The plan lane sees the original request
+    plus every accumulated Q/A pair, and decides whether to ask another
+    question or finalize with `plan_ready`.
+    """
+
+    lines: list[str] = [
+        'Continuing the plan clarifier. Use the answers below to either ask '
+        'the next most-important question or emit the final `plan_ready` '
+        'envelope with a concrete, non-empty proposed_hierarchy.',
+        '',
+        f'Original request: {pending_plan.source_user_message}',
+    ]
+    if pending_plan.answers:
+        lines.append('')
+        lines.append('Answers so far (most recent last):')
+        for idx, answer in enumerate(pending_plan.answers, start=1):
+            value = answer.custom_answer or answer.selected_option or '(no answer)'
+            q = answer.question_text or answer.question_id
+            lines.append(f'  {idx}. Q: {q}')
+            lines.append(f'     A: {value}')
+    return '\n'.join(lines)
+
+
+def _compose_plan_confirmation_prompt(
+    *,
+    original_user_message: str,
+    pending_plan: PendingPlan,
+) -> str:
+    """Synthesize an edit-lane prompt describing the plan the user just
+    confirmed. The edit planner sees this as the user message and stages
+    concrete operations, resolving existing nodes by title and creating the
+    rest.
+    """
+
+    lines: list[str] = []
+    lines.append(
+        'The user confirmed the following plan — stage the concrete roadmap '
+        'operations to implement it. Do not ask for further confirmation. '
+        'Resolve existing nodes by title (use the `target_*_title` hints); '
+        'create new epics/features/tasks otherwise.'
+    )
+    lines.append('')
+    lines.append(f'Plan summary: {pending_plan.summary}')
+    if pending_plan.goal:
+        lines.append(f'Goal: {pending_plan.goal}')
+    if pending_plan.proposed_hierarchy:
+        lines.append('Proposed structure:')
+        for epic in pending_plan.proposed_hierarchy:
+            lines.append(f'- Epic "{epic.title}"')
+            if epic.description:
+                lines.append(f'    description: {epic.description}')
+            for feature in epic.features:
+                anchor = (
+                    f' (under existing epic "{feature.target_epic_title}")'
+                    if feature.target_epic_title else ''
+                )
+                lines.append(f'  - Feature "{feature.title}"{anchor}')
+                if feature.description:
+                    lines.append(f'      description: {feature.description}')
+                for task in feature.tasks:
+                    task_anchor = (
+                        f' (under existing feature "{task.target_feature_title}")'
+                        if task.target_feature_title else ''
+                    )
+                    lines.append(f'    - Task "{task.title}"{task_anchor}')
+                    if task.description:
+                        lines.append(f'        description: {task.description}')
+                    if task.status:
+                        lines.append(f'        status: {task.status}')
+    if pending_plan.next_steps:
+        lines.append('Next steps (advisory, not operations): ' + '; '.join(pending_plan.next_steps))
+    lines.append('')
+    lines.append(f'Original user confirmation: "{original_user_message}"')
+    return '\n'.join(lines)
+
+
 @dataclass
 class PrePlanningDispatchResult:
     session_context: dict[str, Any]
@@ -161,10 +341,67 @@ def dispatch_pre_planning_phase(
         and deictic_reference_present
         and recent_targets_available
     )
+    pending_plan = session.metadata.pending_plan
+    plan_flag_enabled = bool(
+        getattr(self._settings, 'agent_plan_proposal_enabled', False)
+    )
+    # Detect a plan-clarifier answer payload BEFORE we classify. When we see
+    # the sentinel, we append answer(s) to the pending plan and route back
+    # through the plan lane (not the confirm bridge).
+    plan_answers_submitted = False
+    if plan_flag_enabled:
+        parsed_answers = _parse_plan_answer_sentinel(user_message)
+        if parsed_answers is not None:
+            plan_answers_submitted = _ingest_plan_answers(
+                session=session,
+                pending_plan=pending_plan,
+                parsed_answers=parsed_answers,
+                logger=self._logger,
+                settings=self._settings,
+                trace_id=trace_id,
+            )
+            pending_plan = session.metadata.pending_plan  # refresh reference
+    pending_plan_present = (
+        pending_plan is not None and pending_plan.status == 'proposed'
+    )
+    plan_confirmation_requested = False
+    plan_stale_cleared = False
+    if (
+        plan_flag_enabled
+        and pending_plan_present
+        and pending_plan is not None
+        and edit_continuation_trigger == 'confirm'
+        and not pending_continuation_requested
+    ):
+        if is_plan_stale(session, pending_plan):
+            clear_pending_plan(
+                session,
+                reason='stale_base_revision',
+                logger=self._logger,
+                settings=self._settings,
+                trace_id=trace_id,
+            )
+            plan_stale_cleared = True
+        else:
+            plan_confirmation_requested = True
+    elif (
+        plan_flag_enabled
+        and pending_plan_present
+        and edit_continuation_trigger == 'cancel'
+    ):
+        clear_pending_plan(
+            session,
+            reason='user_cancel',
+            logger=self._logger,
+            settings=self._settings,
+            trace_id=trace_id,
+        )
+
     should_force_edit_preview = (
         pending_continuation_requested
         or staged_operation_continuation
         or recent_target_continuation
+        or plan_confirmation_requested
     )
     if recent_target_continuation:
         phase_timings['deictic_recent_target_continuation'] = 1
@@ -230,8 +467,14 @@ def dispatch_pre_planning_phase(
 
     session_context = self._build_session_context(session, auth_header, trace_id)
     cached_classifier_result: dict[str, Any] | None = None
-    if should_force_edit_preview:
-        preview_intent: IntentType = 'roadmap_edit'
+    if plan_answers_submitted:
+        # Skip classification — we know we're re-entering the plan lane with
+        # new answers accumulated on the pending plan.
+        preview_intent: IntentType = 'roadmap_plan'
+        phase_timings['intent_classification_ms'] = 0
+        phase_timings['plan_answers_replay'] = 1
+    elif should_force_edit_preview:
+        preview_intent = 'roadmap_edit'
         phase_timings['intent_classification_ms'] = 0
     else:
         classify_started = perf_counter()
@@ -250,6 +493,35 @@ def dispatch_pre_planning_phase(
     # agent/app/core/prompts/templates/edit_mode/v1.md "Answering questions
     # alongside edits". The regex-based pre-split was removed.
     planning_user_message = user_message
+    if plan_answers_submitted and pending_plan is not None:
+        # Replay the original request plus the freshly-appended answer(s) so
+        # the plan lane can finalize (or ask the next question).
+        planning_user_message = _compose_plan_replay_prompt(pending_plan)
+        log_event(
+            self._logger,
+            'pending_plan_answers_replay_triggered',
+            settings=self._settings,
+            trace_id=trace_id,
+            session_id=session.session_id,
+            roadmap_id=session.roadmap_id,
+            plan_id=pending_plan.plan_id,
+            answer_count=len(pending_plan.answers),
+        )
+    if plan_confirmation_requested and pending_plan is not None:
+        planning_user_message = _compose_plan_confirmation_prompt(
+            original_user_message=user_message,
+            pending_plan=pending_plan,
+        )
+        log_event(
+            self._logger,
+            'pending_plan_confirmation_triggered',
+            settings=self._settings,
+            trace_id=trace_id,
+            session_id=session.session_id,
+            roadmap_id=session.roadmap_id,
+            plan_id=pending_plan.plan_id,
+        )
+    _ = plan_stale_cleared  # observable via pending_plan_cleared event
 
     actor_fetch_attempted = False
     actor_fetch_skipped_reason: str | None = None
@@ -308,6 +580,15 @@ def dispatch_pre_planning_phase(
         # dropped — forcing the LangGraph `classify_intent` node to re-call
         # the LLM. Carry it across the rebuild so the cache hits.
         session_context['_classifier_result'] = cached_classifier_result
+    if plan_answers_submitted:
+        # Seed the classifier cache so the LangGraph classify_intent node
+        # stays on the plan lane rather than running a fresh classification
+        # on the synthesized replay prompt.
+        session_context['_classifier_result'] = {
+            'intent_type': 'roadmap_plan',
+            'source': 'plan_answers_replay',
+            'rationale': 'user answered plan clarifier; replaying plan lane',
+        }
     if actor_fetch_future is not None:
         session_context['_actor_fetch_future'] = actor_fetch_future
 
@@ -346,7 +627,9 @@ def dispatch_pre_planning_phase(
     if should_force_edit_preview:
         session_context['force_edit_continuation'] = True
         session_context['force_edit_continuation_reason'] = (
-            edit_continuation_trigger or 'pending_context'
+            'pending_plan_confirm'
+            if plan_confirmation_requested
+            else (edit_continuation_trigger or 'pending_context')
         )
     deictic_resolution = self._resolve_deictic_parent_reference(
         session=session,

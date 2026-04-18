@@ -245,6 +245,7 @@ async def send_message_flow(
                 else outcome.active_draft_version
             ),
             artifacts=response_artifacts or artifacts,
+            plan_proposal=outcome.plan_proposal_payload,
             provider_used=outcome.provider_used,
             fallback_used=outcome.fallback_used,
             provider_error_code=outcome.provider_error_code,
@@ -571,6 +572,7 @@ async def commit_session_flow(
 
     session.metadata.pending_context_resolution = None
     session.metadata.pending_edit_context = None
+    session.metadata.pending_plan = None
     await run_store_call(store.update, session)
 
     log_event_fn(
@@ -680,6 +682,7 @@ async def discard_session_flow(
 
     session.metadata.pending_context_resolution = None
     session.metadata.pending_edit_context = None
+    session.metadata.pending_plan = None
     await run_store_call(store.update, session)
 
     staged_operations_count = len(session.operations)

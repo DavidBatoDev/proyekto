@@ -28,7 +28,7 @@ IntentType = Literal[
     'unclear',
     'question',
 ]
-ResponseMode = Literal['chat', 'edit_plan']
+ResponseMode = Literal['chat', 'edit_plan', 'plan_proposal']
 ArtifactType = Literal['roadmap_commit']
 ProviderUsed = Literal['openai', 'rule_based']
 DraftMode = Literal['append', 'revise', 'branch']
@@ -244,10 +244,107 @@ class ActorContext(BaseModel):
     fetched_at: datetime = Field(default_factory=_utcnow)
 
 
+PendingPlanStatus = Literal[
+    'awaiting_answers',
+    'proposed',
+    'confirmed',
+    'discarded',
+    'superseded',
+]
+
+
+class PendingPlanQuestion(BaseModel):
+    """One clarifier question the plan lane asked the user.
+
+    `allow_custom` is True by default so the web UI always renders a free-form
+    "Other..." input alongside the predefined `options`. Mirrors how Claude
+    Code / Copilot ask one question at a time with a mix of multiple choice
+    and custom answers.
+    """
+
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    question: str
+    options: list[str] = Field(default_factory=list)
+    allow_custom: bool = True
+    asked_at: datetime = Field(default_factory=_utcnow)
+
+
+class PendingPlanAnswer(BaseModel):
+    """User's response to a `PendingPlanQuestion`. Exactly one of
+    `selected_option` or `custom_answer` is populated.
+    """
+
+    question_id: str
+    question_text: str | None = None
+    selected_option: str | None = None
+    custom_answer: str | None = None
+    answered_at: datetime = Field(default_factory=_utcnow)
+
+
+class ProposedTask(BaseModel):
+    title: str
+    description: str | None = None
+    status: str | None = None
+    assignee_label: str | None = None
+    target_feature_title: str | None = None
+
+
+class ProposedFeature(BaseModel):
+    title: str
+    description: str | None = None
+    target_epic_title: str | None = None
+    tasks: list[ProposedTask] = Field(default_factory=list)
+
+
+class ProposedEpic(BaseModel):
+    title: str
+    description: str | None = None
+    features: list[ProposedFeature] = Field(default_factory=list)
+
+
+class PendingPlan(BaseModel):
+    """A strategic plan proposed to the user, awaiting confirmation.
+
+    Mirrors `PendingEditContext` in shape: persisted in `SessionMetadata` across
+    turns so that a later `confirm_action` can reference the structured proposal
+    and convert it into concrete operations via the edit lane.
+
+    The plan carries no node ids — only titles. The confirm bridge resolves
+    existing titles → ids (via the edit lane's resolver) or issues creates.
+    `base_revision` and `roadmap_overview_hash` let the confirm bridge detect
+    drift and refuse to apply a stale plan.
+    """
+
+    plan_id: str = Field(default_factory=lambda: str(uuid4()))
+    planning_turn_id: str | None = None
+    summary: str = ''
+    goal: str = ''
+    rationale: str | None = None
+    proposed_hierarchy: list[ProposedEpic] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    next_steps: list[str] = Field(default_factory=list)
+    open_questions: list[str] = Field(default_factory=list)
+    source_user_message: str
+    base_revision: int | None = None
+    revision_token: str | None = None
+    roadmap_overview_hash: str | None = None
+    status: PendingPlanStatus = 'proposed'
+    # Multi-turn clarifier machinery: when the plan lane decides it needs
+    # more info before drafting, it emits `status='awaiting_answers'` with
+    # `current_question` populated. Each user answer is appended to `answers`;
+    # the pre-dispatcher synthesizes a new prompt that replays the original
+    # request plus all accumulated answers and re-enters the plan lane.
+    current_question: PendingPlanQuestion | None = None
+    answers: list[PendingPlanAnswer] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
 class SessionMetadata(BaseModel):
     model_config = ConfigDict(extra='allow')
     pending_context_resolution: PendingContextResolution | None = None
     pending_edit_context: PendingEditContext | None = None
+    pending_plan: PendingPlan | None = None
     recent_resolved_targets: list[RecentResolvedTarget] = Field(default_factory=list)
     actor_context: ActorContext | None = None
     applied_change_ids: list[str] = Field(default_factory=list)
@@ -322,6 +419,7 @@ class MessageResponse(BaseModel):
     active_draft_id: str | None = None
     active_draft_version: int | None = None
     artifacts: list[RoadmapCommitArtifact] = Field(default_factory=list)
+    plan_proposal: dict[str, Any] | None = None
     provider_used: ProviderUsed = 'rule_based'
     fallback_used: bool = False
     provider_error_code: str | None = None

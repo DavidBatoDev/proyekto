@@ -41,38 +41,51 @@ class Settings(BaseSettings):
             'OPENAI_MAX_TOKENS',
         ),
     )
-    # Default output budget for the planner when no narrower profile
-    # applies. Legacy alias: OPENAI_PLANNER_MAX_TOKENS.
-    openai_planner_default_max_tokens: int | None = Field(
+    # Default output budget for the EDIT lane's operation-staging planner
+    # when no narrower profile applies. Renamed from OPENAI_PLANNER_DEFAULT_MAX_TOKENS
+    # to disambiguate from the new plan-mode lane (`OPENAI_PLAN_MAX_TOKENS`).
+    # Legacy aliases: OPENAI_PLANNER_DEFAULT_MAX_TOKENS, OPENAI_PLANNER_MAX_TOKENS.
+    openai_edit_default_max_tokens: int | None = Field(
         default=2000,
-        alias='OPENAI_PLANNER_DEFAULT_MAX_TOKENS',
+        alias='OPENAI_EDIT_DEFAULT_MAX_TOKENS',
         validation_alias=AliasChoices(
+            'OPENAI_EDIT_DEFAULT_MAX_TOKENS',
             'OPENAI_PLANNER_DEFAULT_MAX_TOKENS',
             'OPENAI_PLANNER_MAX_TOKENS',
         ),
     )
-    # Expanded budget used for the `repair_retry` profile when the
-    # previous planner attempt truncated or missed its tool call. Legacy
-    # alias: OPENAI_PLANNER_RETRY_MAX_TOKENS.
-    openai_planner_repair_max_tokens: int | None = Field(
+    # Expanded budget used for the `repair_retry` profile when the previous
+    # edit-lane attempt truncated or missed its tool call. Legacy aliases:
+    # OPENAI_PLANNER_REPAIR_MAX_TOKENS, OPENAI_PLANNER_RETRY_MAX_TOKENS.
+    openai_edit_repair_max_tokens: int | None = Field(
         default=3000,
-        alias='OPENAI_PLANNER_REPAIR_MAX_TOKENS',
+        alias='OPENAI_EDIT_REPAIR_MAX_TOKENS',
         validation_alias=AliasChoices(
+            'OPENAI_EDIT_REPAIR_MAX_TOKENS',
             'OPENAI_PLANNER_REPAIR_MAX_TOKENS',
             'OPENAI_PLANNER_RETRY_MAX_TOKENS',
         ),
     )
     # Tighter budget used when the sub-intent classifier identifies the
     # turn as a narrow single-dimension edit (rename_only, delete_only,
-    # status_change_only, move_only). Legacy alias:
-    # OPENAI_PLANNER_SCOPED_MAX_TOKENS.
-    openai_planner_narrow_edit_max_tokens: int | None = Field(
+    # status_change_only, move_only). Legacy aliases:
+    # OPENAI_PLANNER_NARROW_EDIT_MAX_TOKENS, OPENAI_PLANNER_SCOPED_MAX_TOKENS.
+    openai_edit_narrow_max_tokens: int | None = Field(
         default=800,
-        alias='OPENAI_PLANNER_NARROW_EDIT_MAX_TOKENS',
+        alias='OPENAI_EDIT_NARROW_MAX_TOKENS',
         validation_alias=AliasChoices(
+            'OPENAI_EDIT_NARROW_MAX_TOKENS',
             'OPENAI_PLANNER_NARROW_EDIT_MAX_TOKENS',
             'OPENAI_PLANNER_SCOPED_MAX_TOKENS',
         ),
+    )
+    # Plan-mode phase needs headroom for reasoning tokens PLUS a full JSON
+    # envelope (summary, goal, rationale, proposed_hierarchy). Without an
+    # explicit cap GPT-5 reasoning models default to ~900 tokens, which the
+    # model exhausts on reasoning alone — leaving empty surface content.
+    openai_plan_max_tokens: int | None = Field(
+        default=4000,
+        alias='OPENAI_PLAN_MAX_TOKENS',
     )
     openai_classifier_model: str = Field(
         default='gpt-4o-mini',
@@ -140,6 +153,15 @@ class Settings(BaseSettings):
     agent_async_auto_commit_enabled: bool = Field(
         default=True,
         alias='AGENT_ASYNC_AUTO_COMMIT_ENABLED',
+    )
+    # When True the `roadmap_plan` intent routes to the plan_proposal lane —
+    # the agent produces a structured plan without staging ops; a follow-up
+    # confirm_action triggers the edit lane with a synthesized plan prompt.
+    # Default False preserves the current behavior (plan_only routes through
+    # the edit lane and stages ops immediately).
+    agent_plan_proposal_enabled: bool = Field(
+        default=False,
+        alias='AGENT_PLAN_PROPOSAL_ENABLED',
     )
     # Keep disabled by default to preserve hybrid behavior; enable for strict planner authority.
     agent_strict_mutation_authority_enabled: bool = Field(
@@ -212,9 +234,9 @@ class Settings(BaseSettings):
             return 4096
         return value
 
-    @field_validator('openai_planner_default_max_tokens')
+    @field_validator('openai_edit_default_max_tokens')
     @classmethod
-    def normalize_openai_planner_default_max_tokens(cls, value: int | None) -> int | None:
+    def normalize_openai_edit_default_max_tokens(cls, value: int | None) -> int | None:
         if value is None:
             return None
         if value < 64:
@@ -223,9 +245,9 @@ class Settings(BaseSettings):
             return 4096
         return value
 
-    @field_validator('openai_planner_repair_max_tokens')
+    @field_validator('openai_edit_repair_max_tokens')
     @classmethod
-    def normalize_openai_planner_repair_max_tokens(cls, value: int | None) -> int | None:
+    def normalize_openai_edit_repair_max_tokens(cls, value: int | None) -> int | None:
         if value is None:
             return None
         if value < 64:
@@ -234,15 +256,26 @@ class Settings(BaseSettings):
             return 4096
         return value
 
-    @field_validator('openai_planner_narrow_edit_max_tokens')
+    @field_validator('openai_edit_narrow_max_tokens')
     @classmethod
-    def normalize_openai_planner_narrow_edit_max_tokens(cls, value: int | None) -> int | None:
+    def normalize_openai_edit_narrow_max_tokens(cls, value: int | None) -> int | None:
         if value is None:
             return None
         if value < 64:
             return 64
         if value > 4096:
             return 4096
+        return value
+
+    @field_validator('openai_plan_max_tokens')
+    @classmethod
+    def normalize_openai_plan_max_tokens(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if value < 256:
+            return 256
+        if value > 8192:
+            return 8192
         return value
 
     @field_validator('openai_classifier_max_tokens')

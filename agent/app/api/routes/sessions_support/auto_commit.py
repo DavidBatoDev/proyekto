@@ -14,6 +14,7 @@ from app.core.orchestration.agent_service import AgentService
 from app.core.orchestration.context.applied_changes_log import (
     record_applied_changes_from_commit,
 )
+from app.core.orchestration.context.pending_plan_manager import clear_pending_plan
 from app.core.session_store import SessionStore
 from app.core.uuid_utils import is_uuid_like
 
@@ -408,6 +409,16 @@ async def execute_auto_commit(
     # Record the committed changes onto the session so the planner's prompt
     # can reference them (enables deterministic undo/revert reasoning).
     record_applied_changes_from_commit(session, commit_result)
+    # A successful commit implicitly resolves any pending plan the commit was
+    # confirming — mark the plan confirmed via the cleared-event reason, then
+    # drop it so the next turn doesn't replay the confirmation synthesizer.
+    clear_pending_plan(
+        session,
+        reason='confirm_committed',
+        logger=_commit_diagnostic_logger,
+        settings=None,
+        final_status='confirmed',
+    )
 
     artifact = build_commit_artifact(
         session,

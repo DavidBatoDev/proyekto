@@ -63,6 +63,19 @@ const classifierOffModules = [
   "tests.test_planner_max_tokens_profile",
 ];
 
+const planProposalEnv = {
+  AGENT_HYBRID_REACT_ENABLED: "true",
+  AGENT_DRAFT_GRAPH_ENABLED: "true",
+  AGENT_STRICT_PREVIEW_FINGERPRINT: "true",
+  AGENT_PLAN_PROPOSAL_ENABLED: "true",
+};
+
+const planProposalModules = [
+  "tests.test_pending_plan_manager",
+  "tests.test_plan_proposal_routing",
+  "tests.test_plan_confirm_bridge",
+];
+
 function loadEnvFiles() {
   const cwd = process.cwd();
   const candidates = [
@@ -161,10 +174,16 @@ function main() {
     classifierOffEnv,
     classifierOffModules,
   );
+  const planProposalOk = runProfile(
+    py,
+    "plan-proposal",
+    planProposalEnv,
+    planProposalModules,
+  );
 
-  if (strictOk && compatOk && classifierOffOk) {
+  if (strictOk && compatOk && classifierOffOk && planProposalOk) {
     console.log(
-      "Canary matrix validation passed for strict, react-compat, and llm-classifier-off profiles.",
+      "Canary matrix validation passed for strict, react-compat, llm-classifier-off, and plan-proposal profiles.",
     );
     process.exit(0);
   }

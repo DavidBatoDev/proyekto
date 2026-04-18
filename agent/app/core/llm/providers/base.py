@@ -84,6 +84,8 @@ class LLMProviderAdapter(ABC):
         system_prompt: str,
         user_message: str,
         history_messages: list[Any],
+        *,
+        max_tokens: int | None = None,
     ) -> str:
         raise NotImplementedError
 
@@ -110,6 +112,8 @@ class LLMProviderAdapter(ABC):
         tools: list[dict[str, Any]],
         tool_executor: Callable[[str, dict[str, Any]], dict[str, Any]],
         max_tool_turns: int,
+        *,
+        max_tokens: int | None = None,
     ) -> str:
         raise NotImplementedError
 

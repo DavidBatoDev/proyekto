@@ -75,6 +75,7 @@ class PlannerState(TypedDict, total=False):
     stop_reason: str | None
     llm_calls_used: int | None
     react_tool_observation_summary: list[dict[str, Any]] | None
+    plan_proposal_payload: dict[str, Any] | None
     classifier_sub_intent: Literal[
         'rename_only',
         'delete_only',
@@ -162,6 +163,7 @@ class PlanningResult:
     stop_reason: str | None = None
     llm_calls_used: int | None = None
     react_tool_observation_summary: list[dict[str, Any]] | None = None
+    plan_proposal_payload: dict[str, Any] | None = None
 
 
 class LLMPlanner:
@@ -326,6 +328,7 @@ class LLMPlanner:
         graph.add_node('compose_dynamic_system_prompt', self._compose_dynamic_system_prompt)
         graph.add_node('generate_chat_reply', self._generate_chat_reply)
         graph.add_node('generate_context_answer', self._generate_context_answer)
+        graph.add_node('generate_plan_proposal', self._generate_plan_proposal)
         graph.add_node('plan_operations', self._plan_operations)
         graph.add_node('persist_session_state', self._persist_session_state)
 
@@ -337,11 +340,13 @@ class LLMPlanner:
             {
                 'generate_chat_reply': 'generate_chat_reply',
                 'generate_context_answer': 'generate_context_answer',
+                'generate_plan_proposal': 'generate_plan_proposal',
                 'plan_operations': 'plan_operations',
             },
         )
         graph.add_edge('generate_chat_reply', 'persist_session_state')
         graph.add_edge('generate_context_answer', 'persist_session_state')
+        graph.add_edge('generate_plan_proposal', 'persist_session_state')
         graph.add_edge('plan_operations', 'persist_session_state')
         graph.add_edge('persist_session_state', END)
         return graph.compile()
@@ -374,6 +379,9 @@ class LLMPlanner:
 
     def _generate_context_answer(self, state: PlannerState) -> PlannerState:
         return planner_execution_flow.generate_context_answer(self, state)
+
+    def _generate_plan_proposal(self, state: PlannerState) -> PlannerState:
+        return planner_execution_flow.generate_plan_proposal(self, state)
 
     def _get_context_answer_service(self) -> ContextAnswerService:
         return planner_execution_flow.get_context_answer_service(self)

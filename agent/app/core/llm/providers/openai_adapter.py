@@ -143,10 +143,17 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
         system_prompt: str,
         user_message: str,
         history_messages: list[Any],
+        *,
+        max_tokens: int | None = None,
     ) -> str:
         try:
             self._last_usage = None
             model = self._chat_model()
+            if max_tokens is not None:
+                # Per-call override — preserves the cached singleton while
+                # giving the plan phase enough budget for reasoning + JSON
+                # output. See `openai_plan_max_tokens` in config.
+                model = model.bind(max_tokens=max_tokens)
             ai_message = model.invoke(
                 [
                     SystemMessage(content=system_prompt),
@@ -157,10 +164,14 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
             self._last_usage = self._extract_usage(ai_message)
             content = self._extract_text(ai_message.content)
             if not content:
+                usage = self._last_usage or {}
                 raise ProviderAdapterError(
                     provider=self.provider_name,
                     code='empty_response',
                     message='OpenAI returned an empty chat response.',
+                    tokens_input=usage.get('tokens_input'),
+                    tokens_output=usage.get('tokens_output'),
+                    tokens_total=usage.get('tokens_total'),
                 )
             return content
         except ProviderAdapterError:
@@ -361,6 +372,8 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
         tools: list[dict[str, Any]],
         tool_executor: Callable[[str, dict[str, Any]], dict[str, Any]],
         max_tool_turns: int,
+        *,
+        max_tokens: int | None = None,
     ) -> str:
         try:
             self._last_usage = None
@@ -370,7 +383,17 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                     code='tooling_not_supported',
                     message='ToolMessage is unavailable in this runtime; tool loop cannot execute.',
                 )
-            tool_model = self._chat_model().bind_tools(tools)
+            # Some LangChain-OpenAI versions reject `bind_tools([])`. When the
+            # caller passes no tools we just use the raw chat model — the
+            # bounded-tool-loop sees no tool_calls on the first response and
+            # emits the content via `_on_no_tool_calls`.
+            tool_model = (
+                self._chat_model().bind_tools(tools) if tools else self._chat_model()
+            )
+            if max_tokens is not None:
+                # Per-call max_tokens override for phases (e.g. plan_proposal)
+                # that need more headroom than the provider default.
+                tool_model = tool_model.bind(max_tokens=max_tokens)
             initial_messages: list[Any] = [
                 SystemMessage(content=system_prompt),
                 *history_messages,
@@ -491,15 +514,15 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
         """
         normalized_profile = str(planner_profile or '').strip().lower()
         if normalized_profile == 'repair_retry':
-            profile_tokens = self._settings.openai_planner_repair_max_tokens
+            profile_tokens = self._settings.openai_edit_repair_max_tokens
             if profile_tokens is not None:
                 return profile_tokens
-            return self._settings.openai_planner_default_max_tokens
+            return self._settings.openai_edit_default_max_tokens
         if normalized_profile == 'scoped_edit':
-            profile_tokens = self._settings.openai_planner_narrow_edit_max_tokens
+            profile_tokens = self._settings.openai_edit_narrow_max_tokens
             if profile_tokens is not None:
                 return profile_tokens
-        return self._settings.openai_planner_default_max_tokens
+        return self._settings.openai_edit_default_max_tokens
 
     def _bind_tools_for_planning(
         self,

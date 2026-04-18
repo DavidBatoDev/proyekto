@@ -6103,6 +6103,10 @@ class PlannerContextSafetyTests(unittest.TestCase):
 
     def test_compose_dynamic_system_prompt_routes_roadmap_plan_mode(self) -> None:
         planner = self._planner()
+        # Pin the plan-proposal flag off so this legacy-routing assertion is
+        # deterministic regardless of local .env. The plan-proposal routing is
+        # covered separately in test_plan_proposal_routing.py.
+        planner._settings.agent_plan_proposal_enabled = False
         state = planner._compose_dynamic_system_prompt(
             {
                 'intent_type': 'roadmap_plan',

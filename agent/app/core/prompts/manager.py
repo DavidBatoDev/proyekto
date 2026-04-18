@@ -147,10 +147,18 @@ class PromptManager:
             context.get('recent_applied_changes'),
         )
 
+        pending_plan_section = _format_pending_plan_section(
+            context.get('pending_plan'),
+        )
+
         context_for_json = {
             key: value
             for key, value in context.items()
-            if key not in {'roadmap_overview_summary', 'recent_applied_changes'}
+            if key not in {
+                'roadmap_overview_summary',
+                'recent_applied_changes',
+                'pending_plan',
+            }
         }
         context_payload = _format_context(context_for_json)
 
@@ -159,6 +167,8 @@ class PromptManager:
             parts.append(overview_section)
         if recent_changes_section is not None:
             parts.append(recent_changes_section)
+        if pending_plan_section is not None:
+            parts.append(pending_plan_section)
         parts.append(f'Runtime context:\n{context_payload}')
         rendered = '\n\n'.join(parts).strip()
         overview_text_for_log = (
@@ -191,6 +201,33 @@ class PromptManager:
 
     def intent_classifier_prompt(self, *, session_id: str | None = None) -> str:
         return self.render('intent_classifier', session_id=session_id)
+
+
+def _format_pending_plan_section(value: Any) -> str | None:
+    """Render `session_context['pending_plan']` as a prose section so a
+    follow-up `confirm_action` turn sees the plan verbatim and can convert it
+    into operations via the edit lane.
+    """
+    if not isinstance(value, dict) or not value:
+        return None
+    from app.core.contracts.sessions import PendingPlan
+    from app.core.orchestration.context.pending_plan_manager import (
+        format_pending_plan_section,
+    )
+
+    try:
+        plan = PendingPlan.model_validate(value)
+    except Exception:
+        return None
+    body = format_pending_plan_section(plan)
+    if not body:
+        return None
+    header = (
+        'Pending plan awaiting user confirmation (if the user affirms, convert '
+        'this plan into concrete operations via the edit lane — resolve existing '
+        'nodes by title and create missing ones; do not ask for re-confirmation):'
+    )
+    return f'{header}\n{body}'
 
 
 def _format_recent_changes_section(value: Any) -> str | None:
