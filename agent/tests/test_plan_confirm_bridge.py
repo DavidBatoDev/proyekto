@@ -104,6 +104,66 @@ class PlanConfirmBridgeTests(unittest.TestCase):
         session.metadata.pending_plan = plan or _plan(base_revision=base_revision)
         return session
 
+    def test_retry_with_pending_plan_fires_confirm_bridge(self) -> None:
+        """Regression: user's previous confirm crashed mid-apply; they send
+        "Try again" to re-run it. The retry heuristic detects trigger='retry'
+        but the original code required `has_staged_operations` for force-edit.
+        With a pending plan present, retry should replay the confirm bridge.
+        """
+        session = self._session_with_plan()
+        service = _build_service_double(edit_continuation_trigger='retry')
+        # Classifier might see "Try again" as roadmap_query; bridge should
+        # still fire because the retry heuristic + pending_plan is enough.
+        service._planner.preview_intent_classification.return_value = (
+            'roadmap_query',
+            True,
+        )
+        result = dispatch_pre_planning_phase(
+            service=service,
+            session=session,
+            user_message='Try again',
+            auth_header=None,
+            trace_id='trace-retry-with-plan',
+            staged_operations=[],
+            phase_timings={},
+        )
+        self.assertTrue(result.session_context.get('force_edit_continuation'))
+        self.assertEqual(
+            result.session_context.get('force_edit_continuation_reason'),
+            'pending_plan_confirm',
+        )
+        self.assertIn('Plan summary: Ship a travel booking MVP', result.planning_user_message)
+
+    def test_confirm_via_classifier_forces_bridge_when_heuristic_misses(self) -> None:
+        """Regression: the heuristic regex misses phrasing like "Yes, apply
+        this plan." because `fullmatch` doesn't accept the trailing "plan"
+        token. The classifier later returns `confirm_action`; we rely on the
+        post-classification pass to fire the plan-confirm bridge anyway.
+        """
+        session = self._session_with_plan()
+        service = _build_service_double(edit_continuation_trigger=None)
+        # Classifier returns confirm_action.
+        service._planner.preview_intent_classification.return_value = (
+            'confirm_action',
+            False,
+        )
+        result = dispatch_pre_planning_phase(
+            service=service,
+            session=session,
+            user_message='Yes, apply this plan.',
+            auth_header=None,
+            trace_id='trace-classifier-confirm',
+            staged_operations=[],
+            phase_timings={},
+        )
+        self.assertTrue(result.session_context.get('force_edit_continuation'))
+        self.assertEqual(
+            result.session_context.get('force_edit_continuation_reason'),
+            'pending_plan_confirm',
+        )
+        # Synthesized prompt must include the plan summary (bridge fired).
+        self.assertIn('Plan summary: Ship a travel booking MVP', result.planning_user_message)
+
     def test_confirm_with_fresh_plan_forces_edit_continuation_and_synthesizes_prompt(
         self,
     ) -> None:
@@ -199,12 +259,12 @@ class PlanAnswerSentinelTests(unittest.TestCase):
             goal='',
             source_user_message='Plan the travel app',
             status='awaiting_answers',
-            current_question=PendingPlanQuestion(
+            current_questions=[PendingPlanQuestion(
                 id='scope',
                 question='MVP only, MVP + 2 phases, or full roadmap?',
                 options=['MVP only', 'MVP + 2 phases', 'Full roadmap'],
                 allow_custom=True,
-            ),
+            )],
             base_revision=3,
         )
         return session
@@ -299,6 +359,246 @@ class PlanAnswerSentinelTests(unittest.TestCase):
         assert plan is not None
         self.assertEqual(len(plan.answers), 0)
         self.assertEqual(result.planning_user_message, sentinel_message)
+
+
+class EditClarifierAnswerSentinelTests(unittest.TestCase):
+    """Generic `__clarifier_answer__` sentinel with lane='edit' routes the
+    user's answer into PendingEditContext and forces the edit continuation.
+    """
+
+    def _session_with_edit_clarifier(
+        self,
+        *,
+        question_id: str = 'qid-1',
+        awaiting_field: str = 'target_label',
+    ) -> AgentSession:
+        from app.core.contracts.sessions import PendingEditContext
+
+        session = AgentSession(roadmap_id='roadmap-1', base_revision=3)
+        session.metadata.pending_edit_context = PendingEditContext(
+            intent_family='rename_node',
+            source_user_message='rename the payments feature',
+            awaiting_field=awaiting_field,
+            pending_clarifier_question_id=question_id,
+        )
+        return session
+
+    def test_selected_option_writes_to_target_hint(self) -> None:
+        session = self._session_with_edit_clarifier(awaiting_field='target_label')
+        service = _build_service_double(edit_continuation_trigger=None)
+        sentinel_message = (
+            '__clarifier_answer__\n'
+            '{"lane": "edit", "question_id": "qid-1", '
+            '"selected_option": "Payments — Stripe"}'
+        )
+        result = dispatch_pre_planning_phase(
+            service=service,
+            session=session,
+            user_message=sentinel_message,
+            auth_header=None,
+            trace_id='trace-edit-clarifier-1',
+            staged_operations=[],
+            phase_timings={},
+        )
+        pending = session.metadata.pending_edit_context
+        self.assertIsNotNone(pending)
+        assert pending is not None
+        self.assertEqual(pending.target_hint, 'Payments — Stripe')
+        self.assertIsNone(pending.pending_clarifier_question_id)
+        # Replay prompt carries the original request + the picked answer.
+        self.assertIn('Original request: rename the payments feature', result.planning_user_message)
+        self.assertIn('Payments — Stripe', result.planning_user_message)
+        # Force edit continuation engaged.
+        self.assertTrue(result.session_context.get('force_edit_continuation'))
+        self.assertEqual(
+            result.session_context.get('force_edit_continuation_reason'),
+            'edit_clarifier_answer',
+        )
+
+    def test_custom_answer_writes_to_default_title_for_rename(self) -> None:
+        session = self._session_with_edit_clarifier(awaiting_field='rename_title')
+        service = _build_service_double(edit_continuation_trigger=None)
+        sentinel_message = (
+            '__clarifier_answer__\n'
+            '{"lane": "edit", "question_id": "qid-1", '
+            '"custom_answer": "Checkout"}'
+        )
+        dispatch_pre_planning_phase(
+            service=service,
+            session=session,
+            user_message=sentinel_message,
+            auth_header=None,
+            trace_id=None,
+            staged_operations=[],
+            phase_timings={},
+        )
+        pending = session.metadata.pending_edit_context
+        assert pending is not None
+        self.assertEqual(pending.default_title, 'Checkout')
+
+    def test_mismatched_question_id_drops_answer(self) -> None:
+        session = self._session_with_edit_clarifier(question_id='qid-correct')
+        service = _build_service_double(edit_continuation_trigger=None)
+        sentinel_message = (
+            '__clarifier_answer__\n'
+            '{"lane": "edit", "question_id": "qid-different", '
+            '"selected_option": "A"}'
+        )
+        result = dispatch_pre_planning_phase(
+            service=service,
+            session=session,
+            user_message=sentinel_message,
+            auth_header=None,
+            trace_id=None,
+            staged_operations=[],
+            phase_timings={},
+        )
+        pending = session.metadata.pending_edit_context
+        assert pending is not None
+        # Nothing was written.
+        self.assertIsNone(pending.target_hint)
+        self.assertIsNone(pending.default_title)
+        # Still has its own question_id (untouched).
+        self.assertEqual(pending.pending_clarifier_question_id, 'qid-correct')
+        # No force continuation triggered.
+        self.assertFalse(result.session_context.get('force_edit_continuation'))
+
+    def test_replay_prompt_includes_prior_tool_observations(self) -> None:
+        """When turn 1 resolved a target, the snapshot on pending is
+        replayed to the planner on turn 2 so it skips redundant
+        resolve_node_reference calls.
+        """
+        from app.core.orchestration.planning.planning_pre_dispatcher import (
+            _compose_edit_clarifier_replay_prompt,
+        )
+
+        session = self._session_with_edit_clarifier(awaiting_field='rename_title')
+        pending = session.metadata.pending_edit_context
+        assert pending is not None
+        pending.prior_tool_observations = [
+            {
+                'tool_name': 'resolve_node_reference',
+                'args': {
+                    'label': 'Job readiness & interview prep',
+                    'node_type': 'epic',
+                },
+                'result_summary': {
+                    'matches_count': 1,
+                    'item_titles': ['Job readiness & interview prep'],
+                    'result_type': 'dict',
+                },
+            },
+        ]
+        prompt = _compose_edit_clarifier_replay_prompt(
+            pending=pending,
+            user_answer_value='Interview Prep & Career Materials',
+        )
+        self.assertIn('already done', prompt)
+        self.assertIn('resolve_node_reference', prompt)
+        self.assertIn('Job readiness & interview prep', prompt)
+        # Original user request + picked answer still present.
+        self.assertIn('Original request: rename the payments feature', prompt)
+        self.assertIn('Interview Prep & Career Materials', prompt)
+
+    def test_replay_prompt_surfaces_matched_node_ids(self) -> None:
+        """Regression: the LLM needs the concrete resolved node_id in the
+        replay prompt — without it, the planner re-calls
+        resolve_node_reference on turn 2 just to retrieve the id before
+        staging an op. The matched_nodes segment on the observation must
+        be rendered verbatim with the id.
+        """
+        from app.core.orchestration.planning.planning_pre_dispatcher import (
+            _compose_edit_clarifier_replay_prompt,
+        )
+
+        session = self._session_with_edit_clarifier(awaiting_field='rename_title')
+        pending = session.metadata.pending_edit_context
+        assert pending is not None
+        pending.prior_tool_observations = [
+            {
+                'tool_name': 'resolve_node_reference',
+                'args': {
+                    'label': 'Career Launch: Interview Skills & Portfolio',
+                    'node_type': 'epic',
+                },
+                'result_summary': {'matches_count': 1, 'result_type': 'dict'},
+                'matched_nodes': [
+                    {
+                        'id': 'epic-uuid-abc',
+                        'title': 'Career Launch: Interview Skills & Portfolio',
+                        'type': 'epic',
+                    },
+                ],
+            },
+        ]
+        prompt = _compose_edit_clarifier_replay_prompt(
+            pending=pending,
+            user_answer_value='Interview Skills',
+        )
+        self.assertIn('epic-uuid-abc', prompt)
+        self.assertIn('matched:', prompt)
+
+    def test_replay_prompt_with_empty_observations_matches_original_shape(self) -> None:
+        """Sessions rehydrated before this field existed (or where the
+        clarifier turn made no tool calls) have empty prior_tool_observations.
+        The replay prompt must fall through to the pre-existing shape
+        exactly — no stray 'Context from prior turn' header.
+        """
+        from app.core.orchestration.planning.planning_pre_dispatcher import (
+            _compose_edit_clarifier_replay_prompt,
+        )
+
+        session = self._session_with_edit_clarifier(awaiting_field='rename_title')
+        pending = session.metadata.pending_edit_context
+        assert pending is not None
+        pending.prior_tool_observations = []
+        prompt = _compose_edit_clarifier_replay_prompt(
+            pending=pending,
+            user_answer_value='Checkout',
+        )
+        self.assertNotIn('already done', prompt)
+        self.assertNotIn('Context from the prior turn', prompt)
+        self.assertTrue(prompt.startswith('Continuing the edit clarifier.'))
+
+    def test_lane_plan_still_routes_through_plan_ingest(self) -> None:
+        # Sanity: the generic sentinel with lane='plan' should still feed
+        # the plan answers path (so we don't regress plan-mode behaviour
+        # when the web migrates from __plan_answers__ to __clarifier_answer__).
+        from app.core.contracts.sessions import PendingPlanQuestion
+
+        session = AgentSession(roadmap_id='roadmap-1', base_revision=3)
+        session.metadata.pending_plan = PendingPlan(
+            summary='',
+            goal='',
+            source_user_message='Plan the app',
+            status='awaiting_answers',
+            current_questions=[PendingPlanQuestion(
+                id='plan-q1',
+                question='MVP or full?',
+                options=['MVP', 'Full'],
+                allow_custom=True,
+            )],
+            base_revision=3,
+        )
+        service = _build_service_double(edit_continuation_trigger=None)
+        sentinel_message = (
+            '__clarifier_answer__\n'
+            '{"lane": "plan", "question_id": "plan-q1", '
+            '"selected_option": "MVP"}'
+        )
+        dispatch_pre_planning_phase(
+            service=service,
+            session=session,
+            user_message=sentinel_message,
+            auth_header=None,
+            trace_id=None,
+            staged_operations=[],
+            phase_timings={},
+        )
+        plan = session.metadata.pending_plan
+        assert plan is not None
+        self.assertEqual(len(plan.answers), 1)
+        self.assertEqual(plan.answers[0].selected_option, 'MVP')
 
 
 if __name__ == '__main__':

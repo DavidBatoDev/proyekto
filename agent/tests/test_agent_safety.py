@@ -7492,6 +7492,9 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(result.get('stop_reason'), 'awaiting_user_input')
 
     def test_plan_operations_react_tuple_wrong_arity_retries_then_clarifies(self) -> None:
+        # 3-tuples carrying (assistant_message, operations, clarifier_options)
+        # are now the legitimate planner output shape. This test exercises a
+        # truly malformed arity (4-tuple) that still must trigger a retry.
         planner = self._planner()
         planner._settings = planner._settings.model_copy(
             update={'agent_edit_planner_max_attempts': 2}
@@ -7503,7 +7506,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
                 call_count['value'] += 1
                 if call_count['value'] == 1:
                     return ProviderCallOutcome(
-                        value=('oops', [], 'unexpected-third-item'),
+                        value=('oops', [], [], 'unexpected-fourth-item'),
                         provider_used='openai',
                         fallback_used=False,
                         provider_error_code=None,
@@ -7533,6 +7536,57 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(result.get('planned_operations'), [])
         self.assertEqual(result.get('planner_schema_invalid_attempts'), 1)
         self.assertTrue(result.get('planner_repair_attempted'))
+
+    def test_plan_operations_react_three_tuple_with_clarifier_options_is_accepted(self) -> None:
+        """Regression: the arity gate at planner_operation_flow.py used to
+        reject 3-tuples even though the consumer already unpacked them.
+        That caused the vague-value preflight clarifier flow to fail
+        schema-validation twice and return a generic provider_outage
+        message to the user. The 3-tuple must be accepted on the first
+        attempt without any schema_invalid retry.
+        """
+        planner = self._planner()
+        planner._settings = planner._settings.model_copy(
+            update={'agent_edit_planner_max_attempts': 2}
+        )
+        call_count = {'value': 0}
+
+        class _FakeOrchestrator:
+            def call(self, operation, trace_context=None):
+                call_count['value'] += 1
+                return ProviderCallOutcome(
+                    value=(
+                        'What should the new title be?',
+                        [],
+                        [
+                            'Career readiness & interview skills',
+                            'Interview & job application toolkit',
+                            'Career readiness, portfolio & interviews',
+                            'Technical interview and career prep',
+                        ],
+                    ),
+                    provider_used='openai',
+                    fallback_used=False,
+                    provider_error_code=None,
+                )
+
+        planner._provider_orchestrator = _FakeOrchestrator()
+        result = planner._plan_operations(
+            {
+                'user_message': 'Rename my last epic to something better',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': {
+                    'roadmap_id': '55e431e2-e416-468c-a973-94d97280e97d',
+                    'trace_id': 'trace-react-three-tuple',
+                },
+            }
+        )
+
+        self.assertEqual(call_count['value'], 1)
+        self.assertEqual(result.get('planned_operations'), [])
+        self.assertEqual(result.get('planner_schema_invalid_attempts'), 0)
+        self.assertFalse(bool(result.get('planner_repair_attempted')))
 
     def test_plan_operations_react_max_tool_turns_exceeded_returns_replan_state(self) -> None:
         planner = self._planner()

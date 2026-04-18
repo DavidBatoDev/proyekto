@@ -74,6 +74,9 @@ const planProposalModules = [
   "tests.test_pending_plan_manager",
   "tests.test_plan_proposal_routing",
   "tests.test_plan_confirm_bridge",
+  "tests.test_edit_clarifier_card",
+  "tests.test_prior_tool_observations_snapshot",
+  "tests.test_edit_hallucination_detector",
 ];
 
 function loadEnvFiles() {

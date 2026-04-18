@@ -39,7 +39,6 @@ def _valid_payload() -> dict:
         ],
         'risks': ['Payment compliance'],
         'next_steps': ['Review with design'],
-        'open_questions': ['Support group bookings?'],
         'user_message': 'Plan a travel booking app',
     }
 
@@ -229,7 +228,6 @@ class FormatPlanSectionTests(unittest.TestCase):
                 }
             ],
             risks=['payment compliance'],
-            open_questions=['group bookings?'],
         )
         rendered = format_pending_plan_section(plan)
         self.assertIsNotNone(rendered)
@@ -269,11 +267,10 @@ class RecordNeedsAnswerEnvelopeTests(unittest.TestCase):
         self.assertIsNotNone(plan)
         assert plan is not None
         self.assertEqual(plan.status, 'awaiting_answers')
-        self.assertIsNotNone(plan.current_question)
-        assert plan.current_question is not None
-        self.assertEqual(plan.current_question.id, 'scope')
-        self.assertEqual(len(plan.current_question.options), 3)
-        self.assertTrue(plan.current_question.allow_custom)
+        self.assertEqual(len(plan.current_questions), 1)
+        self.assertEqual(plan.current_questions[0].id, 'scope')
+        self.assertEqual(len(plan.current_questions[0].options), 3)
+        self.assertTrue(plan.current_questions[0].allow_custom)
         self.assertEqual(plan.source_user_message, 'Plan the travel app')
         self.assertEqual(len(plan.answers), 0)
 
@@ -343,8 +340,160 @@ class RecordNeedsAnswerEnvelopeTests(unittest.TestCase):
         self.assertEqual(len(plan.answers), 1)
         self.assertEqual(plan.answers[0].question_id, 'scope')
         # New question set.
-        assert plan.current_question is not None
-        self.assertEqual(plan.current_question.id, 'payments')
+        self.assertEqual(len(plan.current_questions), 1)
+        self.assertEqual(plan.current_questions[0].id, 'payments')
+
+
+class MultiQuestionClarifierTests(unittest.TestCase):
+    """Multi-question clarifier: 1-4 questions per turn, hard cap 10 total."""
+
+    def setUp(self) -> None:
+        self._logger = logging.getLogger('test.pending_plan_manager.multi_question')
+
+    def test_questions_plural_list_is_stored(self) -> None:
+        session = _session()
+        payload = {
+            'status': 'needs_answer',
+            'questions': [
+                {'id': 'scope', 'question': 'MVP?', 'options': ['Yes', 'No'], 'allow_custom': True},
+                {'id': 'segment', 'question': 'Consumer or B2B?', 'options': ['Consumer', 'B2B'], 'allow_custom': True},
+                {'id': 'flow', 'question': 'Primary flow?', 'options': ['Search', 'Book'], 'allow_custom': True},
+            ],
+        }
+        plan = record_pending_plan_from_planner_output(
+            session,
+            payload=payload,
+            user_message='Plan the app',
+            trace_id=None,
+            logger=self._logger,
+            settings=None,
+        )
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        self.assertEqual(len(plan.current_questions), 3)
+        self.assertEqual([q.id for q in plan.current_questions], ['scope', 'segment', 'flow'])
+
+    def test_legacy_singular_question_is_coerced_to_list(self) -> None:
+        session = _session()
+        payload = {
+            'status': 'needs_answer',
+            'question': {'id': 'scope', 'question': 'MVP?', 'options': ['Yes', 'No'], 'allow_custom': True},
+        }
+        plan = record_pending_plan_from_planner_output(
+            session,
+            payload=payload,
+            user_message='Plan the app',
+            trace_id=None,
+            logger=self._logger,
+            settings=None,
+        )
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        self.assertEqual(len(plan.current_questions), 1)
+        self.assertEqual(plan.current_questions[0].id, 'scope')
+
+    def test_per_turn_batch_truncated_at_four(self) -> None:
+        session = _session()
+        payload = {
+            'status': 'needs_answer',
+            'questions': [
+                {'id': f'q{i}', 'question': f'Q{i}?', 'options': ['a', 'b'], 'allow_custom': True}
+                for i in range(7)
+            ],
+        }
+        plan = record_pending_plan_from_planner_output(
+            session,
+            payload=payload,
+            user_message='Plan',
+            trace_id=None,
+            logger=self._logger,
+            settings=None,
+        )
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        self.assertEqual(len(plan.current_questions), 4)
+
+    def test_session_cap_of_ten_blocks_overflow(self) -> None:
+        from app.core.contracts.sessions import PendingPlanAnswer
+
+        session = _session()
+        # Simulate 8 prior answers already stored.
+        session.metadata.pending_plan = None
+        # First record a small initial batch so answers can accrue.
+        record_pending_plan_from_planner_output(
+            session,
+            payload={
+                'status': 'needs_answer',
+                'questions': [{'id': 'q0', 'question': '?', 'options': ['a', 'b'], 'allow_custom': True}],
+            },
+            user_message='Plan',
+            trace_id=None,
+            logger=self._logger,
+            settings=None,
+        )
+        # Manually seed 8 answers (bypassing append helper for speed).
+        session.metadata.pending_plan.answers = [
+            PendingPlanAnswer(question_id=f'prior-{i}', selected_option='v')
+            for i in range(8)
+        ]
+        # Now ask 4 more — but cap is 10, so only 2 more are allowed (8 answered + 2 new = 10).
+        plan = record_pending_plan_from_planner_output(
+            session,
+            payload={
+                'status': 'needs_answer',
+                'questions': [
+                    {'id': f'new-{i}', 'question': '?', 'options': ['a', 'b'], 'allow_custom': True}
+                    for i in range(4)
+                ],
+            },
+            user_message='(preserved)',
+            trace_id=None,
+            logger=self._logger,
+            settings=None,
+        )
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        # Only 2 of the 4 new questions accepted (cap = 10 total).
+        self.assertEqual(len(plan.current_questions), 2)
+
+    def test_cap_fully_exhausted_returns_none(self) -> None:
+        from app.core.contracts.sessions import PendingPlanAnswer
+
+        session = _session()
+        record_pending_plan_from_planner_output(
+            session,
+            payload={
+                'status': 'needs_answer',
+                'questions': [{'id': 'q0', 'question': '?', 'options': ['a', 'b'], 'allow_custom': True}],
+            },
+            user_message='Plan',
+            trace_id=None,
+            logger=self._logger,
+            settings=None,
+        )
+        # Seed exactly 10 answers — no budget left.
+        session.metadata.pending_plan.answers = [
+            PendingPlanAnswer(question_id=f'prior-{i}', selected_option='v')
+            for i in range(10)
+        ]
+        plan = record_pending_plan_from_planner_output(
+            session,
+            payload={
+                'status': 'needs_answer',
+                'questions': [{'id': 'overflow', 'question': '?', 'options': ['a'], 'allow_custom': True}],
+            },
+            user_message='ignored',
+            trace_id=None,
+            logger=self._logger,
+            settings=None,
+        )
+        # Record call returned None because cap exhausted.
+        self.assertIsNone(plan)
+        # Session's prior plan is untouched (cap path doesn't overwrite).
+        self.assertEqual(
+            session.metadata.pending_plan.current_questions[0].id,
+            'q0',
+        )
 
 
 class TerminalEnvelopeRejectionsTests(unittest.TestCase):
