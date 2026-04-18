@@ -96,7 +96,8 @@ export interface RoadmapAiChatMessage {
     | "confirm_action"
     | "question"
     | "unclear";
-  responseMode?: "chat" | "edit_plan";
+  responseMode?: "chat" | "edit_plan" | "plan_proposal";
+  planProposal?: import("@/services/roadmap-agent.service").AgentPlanProposal;
   artifacts?: RoadmapArtifactPreview[];
   attachments?: RoadmapAiChatAttachment[];
   activityTimeline?: RoadmapAiActivityTimeline;
@@ -200,6 +201,10 @@ function dbRowToClientMessage(row: RoadmapAiMessage): RoadmapAiChatMessage {
     base.commitLifecycle =
       row.commit_lifecycle as unknown as RoadmapAiCommitLifecycle;
   }
+  const metadataPlan = (row.metadata as Record<string, unknown> | null)?.plan_proposal;
+  if (metadataPlan && typeof metadataPlan === "object") {
+    base.planProposal = metadataPlan as RoadmapAiChatMessage["planProposal"];
+  }
   return base;
 }
 
@@ -228,7 +233,7 @@ export interface UseRoadmapAiAssistantSessionResult {
     content: string,
     extras?: {
       intentType?: string;
-      responseMode?: "chat" | "edit_plan";
+      responseMode?: "chat" | "edit_plan" | "plan_proposal";
       parseMode?: string;
       artifacts?: Array<Record<string, unknown>>;
       activityTimeline?: Record<string, unknown>;

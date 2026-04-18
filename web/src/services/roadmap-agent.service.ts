@@ -115,15 +115,71 @@ export interface AgentMessageResponse {
     | "confirm_action"
     | "question"
     | "unclear";
-  response_mode: "chat" | "edit_plan";
+  response_mode: "chat" | "edit_plan" | "plan_proposal";
   operations: AgentOperation[];
   staged_operations_version: number;
   staged_operations_count: number;
   artifacts: AgentRoadmapCommitArtifact[];
+  plan_proposal?: AgentPlanProposal | null;
   provider_used?: "openai" | "rule_based";
   fallback_used?: boolean;
   provider_error_code?: string | null;
   debug_trace_id?: string | null;
+}
+
+export interface AgentPlanProposalTask {
+  title: string;
+  description?: string | null;
+  status?: string | null;
+  assignee_label?: string | null;
+  target_feature_title?: string | null;
+}
+
+export interface AgentPlanProposalFeature {
+  title: string;
+  description?: string | null;
+  target_epic_title?: string | null;
+  tasks?: AgentPlanProposalTask[];
+}
+
+export interface AgentPlanProposalEpic {
+  title: string;
+  description?: string | null;
+  features?: AgentPlanProposalFeature[];
+}
+
+export interface AgentPlanProposalQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  allow_custom: boolean;
+}
+
+export interface AgentPlanProposalAnswer {
+  question_id: string;
+  question_text?: string | null;
+  selected_option?: string | null;
+  custom_answer?: string | null;
+}
+
+export interface AgentPlanProposal {
+  plan_id: string;
+  planning_turn_id?: string | null;
+  summary: string;
+  goal: string;
+  rationale?: string | null;
+  proposed_hierarchy: AgentPlanProposalEpic[];
+  risks?: string[];
+  next_steps?: string[];
+  open_questions?: string[];
+  status?:
+    | "awaiting_answers"
+    | "proposed"
+    | "confirmed"
+    | "discarded"
+    | "superseded";
+  current_question?: AgentPlanProposalQuestion | null;
+  answers?: AgentPlanProposalAnswer[];
 }
 
 export type AgentTraceEventStatus = "running" | "success" | "error";

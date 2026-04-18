@@ -13,7 +13,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-export const AI_SESSION_MODES = ['chat', 'edit_plan'] as const;
+export const AI_SESSION_MODES = ['chat', 'edit_plan', 'plan_proposal'] as const;
 export type RoadmapAiSessionMode = (typeof AI_SESSION_MODES)[number];
 
 export const AI_MESSAGE_ROLES = ['user', 'assistant', 'system'] as const;

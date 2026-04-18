@@ -1,7 +1,7 @@
 import { isAxiosError } from "axios";
 import { apiClient } from "@/api";
 
-export type RoadmapAiSessionMode = "chat" | "edit_plan";
+export type RoadmapAiSessionMode = "chat" | "edit_plan" | "plan_proposal";
 export type RoadmapAiMessageRole = "user" | "assistant" | "system";
 
 export interface RoadmapAiSession {
