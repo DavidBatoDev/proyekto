@@ -463,10 +463,11 @@ class EditClarifierAnswerSentinelTests(unittest.TestCase):
         # No force continuation triggered.
         self.assertFalse(result.session_context.get('force_edit_continuation'))
 
-    def test_replay_prompt_includes_prior_tool_observations(self) -> None:
-        """When turn 1 resolved a target, the snapshot on pending is
-        replayed to the planner on turn 2 so it skips redundant
-        resolve_node_reference calls.
+    def test_replay_prompt_reverts_to_pre_bandaid_shape(self) -> None:
+        """Prior tool calls now ride on session.messages as structured
+        AIMessage(tool_calls=...) + ToolMessage pairs replayed via
+        _build_history_messages. The replay prompt no longer injects any
+        user-role "Context from the prior turn" hint — that block is gone.
         """
         from app.core.orchestration.planning.planning_pre_dispatcher import (
             _compose_edit_clarifier_replay_prompt,
@@ -475,90 +476,15 @@ class EditClarifierAnswerSentinelTests(unittest.TestCase):
         session = self._session_with_edit_clarifier(awaiting_field='rename_title')
         pending = session.metadata.pending_edit_context
         assert pending is not None
-        pending.prior_tool_observations = [
-            {
-                'tool_name': 'resolve_node_reference',
-                'args': {
-                    'label': 'Job readiness & interview prep',
-                    'node_type': 'epic',
-                },
-                'result_summary': {
-                    'matches_count': 1,
-                    'item_titles': ['Job readiness & interview prep'],
-                    'result_type': 'dict',
-                },
-            },
-        ]
         prompt = _compose_edit_clarifier_replay_prompt(
             pending=pending,
             user_answer_value='Interview Prep & Career Materials',
         )
-        self.assertIn('already done', prompt)
-        self.assertIn('resolve_node_reference', prompt)
-        self.assertIn('Job readiness & interview prep', prompt)
-        # Original user request + picked answer still present.
-        self.assertIn('Original request: rename the payments feature', prompt)
-        self.assertIn('Interview Prep & Career Materials', prompt)
-
-    def test_replay_prompt_surfaces_matched_node_ids(self) -> None:
-        """Regression: the LLM needs the concrete resolved node_id in the
-        replay prompt — without it, the planner re-calls
-        resolve_node_reference on turn 2 just to retrieve the id before
-        staging an op. The matched_nodes segment on the observation must
-        be rendered verbatim with the id.
-        """
-        from app.core.orchestration.planning.planning_pre_dispatcher import (
-            _compose_edit_clarifier_replay_prompt,
-        )
-
-        session = self._session_with_edit_clarifier(awaiting_field='rename_title')
-        pending = session.metadata.pending_edit_context
-        assert pending is not None
-        pending.prior_tool_observations = [
-            {
-                'tool_name': 'resolve_node_reference',
-                'args': {
-                    'label': 'Career Launch: Interview Skills & Portfolio',
-                    'node_type': 'epic',
-                },
-                'result_summary': {'matches_count': 1, 'result_type': 'dict'},
-                'matched_nodes': [
-                    {
-                        'id': 'epic-uuid-abc',
-                        'title': 'Career Launch: Interview Skills & Portfolio',
-                        'type': 'epic',
-                    },
-                ],
-            },
-        ]
-        prompt = _compose_edit_clarifier_replay_prompt(
-            pending=pending,
-            user_answer_value='Interview Skills',
-        )
-        self.assertIn('epic-uuid-abc', prompt)
-        self.assertIn('matched:', prompt)
-
-    def test_replay_prompt_with_empty_observations_matches_original_shape(self) -> None:
-        """Sessions rehydrated before this field existed (or where the
-        clarifier turn made no tool calls) have empty prior_tool_observations.
-        The replay prompt must fall through to the pre-existing shape
-        exactly — no stray 'Context from prior turn' header.
-        """
-        from app.core.orchestration.planning.planning_pre_dispatcher import (
-            _compose_edit_clarifier_replay_prompt,
-        )
-
-        session = self._session_with_edit_clarifier(awaiting_field='rename_title')
-        pending = session.metadata.pending_edit_context
-        assert pending is not None
-        pending.prior_tool_observations = []
-        prompt = _compose_edit_clarifier_replay_prompt(
-            pending=pending,
-            user_answer_value='Checkout',
-        )
         self.assertNotIn('already done', prompt)
         self.assertNotIn('Context from the prior turn', prompt)
         self.assertTrue(prompt.startswith('Continuing the edit clarifier.'))
+        self.assertIn('Original request: rename the payments feature', prompt)
+        self.assertIn('Interview Prep & Career Materials', prompt)
 
     def test_lane_plan_still_routes_through_plan_ingest(self) -> None:
         # Sanity: the generic sentinel with lane='plan' should still feed

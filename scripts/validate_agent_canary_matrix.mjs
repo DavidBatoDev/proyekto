@@ -75,7 +75,7 @@ const planProposalModules = [
   "tests.test_plan_proposal_routing",
   "tests.test_plan_confirm_bridge",
   "tests.test_edit_clarifier_card",
-  "tests.test_prior_tool_observations_snapshot",
+  "tests.test_tool_message_history",
   "tests.test_edit_hallucination_detector",
 ];
 

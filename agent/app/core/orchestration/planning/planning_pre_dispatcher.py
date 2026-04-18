@@ -349,102 +349,6 @@ def _ingest_edit_clarifier_answer(
     return True
 
 
-_PRIOR_TOOL_OBSERVATION_MAX_ENTRIES = 3
-_PRIOR_TOOL_OBSERVATION_BLOCK_CAP_CHARS = 500
-
-
-def _format_matched_nodes_inline(matched_nodes: list[dict[str, Any]]) -> str:
-    """Render matched nodes as `type id=<id> title="<title>"` segments.
-
-    Keeps the id verbatim so the LLM can stage operations against it
-    without re-resolving. Caller inlines this into the observation line.
-    """
-
-    if not matched_nodes:
-        return ''
-    parts: list[str] = []
-    for node in matched_nodes:
-        if not isinstance(node, dict):
-            continue
-        node_id = node.get('id')
-        if not isinstance(node_id, str):
-            continue
-        title = node.get('title')
-        node_type = node.get('type') or 'node'
-        title_segment = f' title="{title}"' if isinstance(title, str) else ''
-        parts.append(f'{node_type} id={node_id}{title_segment}')
-    return '; '.join(parts)
-
-
-def _format_prior_tool_observation_line(entry: Any) -> str | None:
-    if not isinstance(entry, dict):
-        return None
-    tool_name = entry.get('tool_name')
-    if not isinstance(tool_name, str) or not tool_name.strip():
-        return None
-    args = entry.get('args') or {}
-    if isinstance(args, dict) and args:
-        key_args_parts = []
-        for key in sorted(args.keys()):
-            value = args[key]
-            if isinstance(value, str):
-                value = value[:60]
-            key_args_parts.append(f'{key}={value}')
-        key_args_text = ', '.join(key_args_parts)
-    else:
-        key_args_text = ''
-    # Prefer the concrete matched_nodes segment (includes ids the LLM
-    # needs to stage operations); fall back to the textual summary.
-    matched_nodes = entry.get('matched_nodes')
-    if isinstance(matched_nodes, list) and matched_nodes:
-        matched_segment = _format_matched_nodes_inline(matched_nodes)
-        if matched_segment:
-            return f'- {tool_name}({key_args_text}) → matched: {matched_segment}'
-    result_summary = entry.get('result_summary') or {}
-    if isinstance(result_summary, dict) and result_summary:
-        summary_parts = []
-        for key in sorted(result_summary.keys()):
-            value = result_summary[key]
-            if isinstance(value, list):
-                value = value[:3]
-            summary_parts.append(f'{key}={value}')
-        summary_text = ', '.join(summary_parts)
-    else:
-        summary_text = '(no result)'
-    return f'- {tool_name}({key_args_text}) → {summary_text}'
-
-
-def _compose_prior_tool_observation_block(
-    observations: list[dict[str, Any]] | None,
-) -> str:
-    """Format a compact 'already done' block listing prior tool calls.
-
-    Returns '' when there's nothing meaningful to show. Caps at the 3 most
-    recent entries and ~500 chars total so the injected block stays
-    within budget.
-    """
-
-    if not observations:
-        return ''
-    # Most recent first (react-loop appends chronologically, so flip).
-    recent = list(reversed(observations))[:_PRIOR_TOOL_OBSERVATION_MAX_ENTRIES]
-    lines: list[str] = []
-    for entry in recent:
-        line = _format_prior_tool_observation_line(entry)
-        if line:
-            lines.append(line)
-    if not lines:
-        return ''
-    header = (
-        'Context from the prior turn (already done — do NOT repeat these '
-        'tool calls; reuse the resolved targets below):'
-    )
-    block = '\n'.join([header, *lines])
-    if len(block) > _PRIOR_TOOL_OBSERVATION_BLOCK_CAP_CHARS:
-        block = block[: _PRIOR_TOOL_OBSERVATION_BLOCK_CAP_CHARS - 3] + '...'
-    return block
-
-
 def _compose_edit_clarifier_replay_prompt(
     *,
     pending: Any,
@@ -452,20 +356,20 @@ def _compose_edit_clarifier_replay_prompt(
 ) -> str:
     """Synthesize the user-side prompt after an edit-clarifier answer.
     The edit planner sees the answer in context and continues staging.
+
+    Prior turn's tool calls + results ride authoritatively on
+    `session.messages` as `AIMessage(tool_calls=...)` + `ToolMessage(...)`
+    pairs, replayed by `_build_history_messages`. This prompt no longer
+    injects a user-role hint about them — the LangChain conversation
+    already carries that context.
     """
 
-    parts: list[str] = []
-    prior_observations = getattr(pending, 'prior_tool_observations', None) or []
-    prior_block = _compose_prior_tool_observation_block(prior_observations)
-    if prior_block:
-        parts.append(prior_block)
-        parts.append('')
-    parts.append(
+    parts: list[str] = [
         'Continuing the edit clarifier. The user picked their answer via '
-        'the clarifier card — proceed with the edit, do not ask again.'
-    )
-    parts.append('')
-    parts.append(f'Original request: {pending.source_user_message}')
+        'the clarifier card — proceed with the edit, do not ask again.',
+        '',
+        f'Original request: {pending.source_user_message}',
+    ]
     field = pending.awaiting_field or 'the field'
     parts.append(f'User answer for `{field}`: {user_answer_value}')
     return '\n'.join(parts)

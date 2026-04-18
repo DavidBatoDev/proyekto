@@ -159,8 +159,23 @@ class SessionStore:
         )
         return session
 
-    def append_message(self, session: AgentSession, role: str, content: str) -> AgentSession:
-        session.messages.append(Message(role=role, content=content))
+    def append_message(
+        self,
+        session: AgentSession,
+        role: str,
+        content: str,
+        *,
+        tool_calls: list[dict[str, Any]] | None = None,
+        tool_call_id: str | None = None,
+    ) -> AgentSession:
+        session.messages.append(
+            Message(
+                role=role,
+                content=content,
+                tool_calls=tool_calls,
+                tool_call_id=tool_call_id,
+            )
+        )
         return self.update(session)
 
     def _save(self, session: AgentSession) -> None:

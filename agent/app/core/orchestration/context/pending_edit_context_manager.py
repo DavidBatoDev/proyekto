@@ -8,130 +8,7 @@ from typing import Any, Callable
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import AgentSession, PendingEditContext, PendingEditResolvedReferences
 from app.core.llm.client import PlanningResult
-from app.core.logging_utils import log_event, summarize_tool_result
-
-
-# Cap the persisted snapshot so the session payload stays bounded. 10 is
-# generous — a clarifier-emitting turn typically produces 1-3 observations.
-_MAX_PRIOR_TOOL_OBSERVATIONS = 10
-# Arg keys we strip from persisted observations. roadmap_id is redundant
-# (pending context already knows it); auth keys should never appear in a
-# planner tool call args dict, but gate defensively.
-_PRIOR_TOOL_OBSERVATION_SENSITIVE_ARG_KEYS = frozenset({
-    'auth_header',
-    'authorization',
-    'roadmap_id',
-})
-
-
-# Cap matched-node identifiers per observation. Enough for the replay
-# prompt to unambiguously reference the target; beyond this we'd bloat
-# the prompt with low-signal context.
-_MAX_MATCHED_NODES_PER_OBSERVATION = 3
-
-
-def _extract_matched_nodes(raw_result: Any) -> list[dict[str, Any]]:
-    """Pull {id, title, type} identity triples from a raw resolver result.
-
-    This is what the LLM actually needs to skip re-calling the tool —
-    `summarize_tool_result` intentionally strips IDs for log compactness,
-    so we extract them here for the persisted snapshot instead.
-    """
-
-    if not isinstance(raw_result, dict):
-        return []
-    matches = raw_result.get('matches')
-    if not isinstance(matches, list):
-        return []
-    extracted: list[dict[str, Any]] = []
-    for match in matches:
-        if not isinstance(match, dict):
-            continue
-        node_id = match.get('id')
-        if not isinstance(node_id, str) or not node_id.strip():
-            continue
-        node_record: dict[str, Any] = {'id': node_id}
-        title = match.get('title')
-        if isinstance(title, str) and title.strip():
-            node_record['title'] = title.strip()
-        node_type = match.get('type') or match.get('node_type')
-        if isinstance(node_type, str) and node_type.strip():
-            node_record['type'] = node_type.strip()
-        extracted.append(node_record)
-        if len(extracted) >= _MAX_MATCHED_NODES_PER_OBSERVATION:
-            break
-    return extracted
-
-
-def _trim_prior_tool_observation(raw: Any) -> dict[str, Any] | None:
-    """Project a raw tool_observations entry onto the compact shape we
-    persist on `PendingEditContext.prior_tool_observations`. Reuses
-    `summarize_tool_result` for the text summary, but additionally
-    carries `matched_nodes` (id + title + type) when the tool is a
-    resolver — the LLM needs the concrete id to stage operations and
-    would otherwise re-call the tool just to retrieve it.
-    """
-
-    if not isinstance(raw, dict):
-        return None
-    tool_name = raw.get('tool_name') or raw.get('name')
-    if not isinstance(tool_name, str) or not tool_name.strip():
-        return None
-    raw_args = raw.get('tool_args') or raw.get('args') or {}
-    if isinstance(raw_args, dict):
-        args = {
-            key: value
-            for key, value in raw_args.items()
-            if key not in _PRIOR_TOOL_OBSERVATION_SENSITIVE_ARG_KEYS
-        }
-    else:
-        args = {}
-    result_summary: dict[str, Any] | None = None
-    matched_nodes: list[dict[str, Any]] = []
-    raw_result = raw.get('result') or raw.get('tool_result')
-    if isinstance(raw_result, dict):
-        result_summary = summarize_tool_result(raw_result)
-        matched_nodes = _extract_matched_nodes(raw_result)
-    elif isinstance(raw.get('result_summary'), dict):
-        result_summary = raw['result_summary']
-    # Back-compat: if the raw entry already carried `matched_nodes`
-    # (e.g. rehydrated session from a future version or a test fixture),
-    # prefer the explicit field.
-    if isinstance(raw.get('matched_nodes'), list) and not matched_nodes:
-        matched_nodes = [
-            node for node in raw['matched_nodes']
-            if isinstance(node, dict) and isinstance(node.get('id'), str)
-        ][:_MAX_MATCHED_NODES_PER_OBSERVATION]
-    snapshot: dict[str, Any] = {
-        'tool_name': tool_name,
-        'args': args,
-        'result_summary': result_summary or {},
-    }
-    if matched_nodes:
-        snapshot['matched_nodes'] = matched_nodes
-    return snapshot
-
-
-def build_prior_tool_observations_snapshot(
-    planning: PlanningResult,
-) -> list[dict[str, Any]]:
-    """Build the compact snapshot to stamp onto `PendingEditContext`.
-
-    Pulled upstream of the card builder so the snapshot is part of the
-    pending context's initial state — the existing post-execution save
-    picks it up automatically, no extra Redis write needed.
-    """
-
-    raw = getattr(planning, 'tool_observations', None) or []
-    trimmed: list[dict[str, Any]] = []
-    for entry in raw:
-        compact = _trim_prior_tool_observation(entry)
-        if compact is None:
-            continue
-        trimmed.append(compact)
-        if len(trimmed) >= _MAX_PRIOR_TOOL_OBSERVATIONS:
-            break
-    return trimmed
+from app.core.logging_utils import log_event
 
 
 def infer_last_staged_create_title(
@@ -163,11 +40,6 @@ def set_pending_edit_context(
     if context is not None:
         context.intent_family = normalize_intent_family(context.intent_family)
     session.metadata.pending_edit_context = context
-    prior_tool_observations_count: int | None = None
-    if context is not None:
-        raw_observations = getattr(context, 'prior_tool_observations', None)
-        if isinstance(raw_observations, list):
-            prior_tool_observations_count = len(raw_observations)
     log_event(
         logger,
         'pending_edit_context_event',
@@ -179,7 +51,6 @@ def set_pending_edit_context(
         pending_edit_context_present=context is not None,
         intent_family=(context.intent_family if context is not None else None),
         confirmation_mode=(context.confirmation_mode if context is not None else None),
-        prior_tool_observations_count=prior_tool_observations_count,
     )
 
 
@@ -369,7 +240,6 @@ def sync_pending_edit_context(
                 confirmation_mode='awaiting_clarification',
                 source_user_message=user_message,
                 last_followup_kind=edit_continuation_trigger,
-                prior_tool_observations=build_prior_tool_observations_snapshot(planning),
                 created_at=utcnow(),
                 updated_at=utcnow(),
             )
@@ -554,7 +424,6 @@ def sync_pending_edit_context(
         last_retry_blocked_intent_family=(
             existing.last_retry_blocked_intent_family if existing is not None else None
         ),
-        prior_tool_observations=build_prior_tool_observations_snapshot(planning),
         created_at=(existing.created_at if existing is not None else utcnow()),
         updated_at=utcnow(),
     )

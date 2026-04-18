@@ -30,11 +30,12 @@ from app.core.prompts import PromptRepository
 from app.core.response_cache import ContextAnswerCache
 
 try:
-    from langchain_core.messages import AIMessage, HumanMessage
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
     from langgraph.graph import END, StateGraph
 except Exception:  # pragma: no cover
     AIMessage = None  # type: ignore[assignment]
     HumanMessage = None  # type: ignore[assignment]
+    ToolMessage = None  # type: ignore[assignment]
     StateGraph = None  # type: ignore[assignment]
     END = None  # type: ignore[assignment]
 
@@ -662,6 +663,7 @@ class LLMPlanner:
             max_messages=max_messages,
             ai_message_cls=AIMessage,
             human_message_cls=HumanMessage,
+            tool_message_cls=ToolMessage,
         )
 
     def _history_messages_cache_key(

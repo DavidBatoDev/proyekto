@@ -109,8 +109,12 @@ class Settings(BaseSettings):
     upstash_redis_rest_token: str | None = Field(default=None, alias='UPSTASH_REDIS_REST_TOKEN')
     redis_session_key_prefix: str = Field(default='roadmap:ai:session', alias='REDIS_SESSION_KEY_PREFIX')
     max_operations_per_request: int = Field(default=90, alias='MAX_OPERATIONS_PER_REQUEST')
-    max_chat_history_messages: int = Field(default=8, alias='MAX_CHAT_HISTORY_MESSAGES')
-    max_edit_history_messages: int = Field(default=4, alias='MAX_EDIT_HISTORY_MESSAGES')
+    # Both caps count `Message` rows including structured tool-call
+    # pairs (assistant(tool_calls=...) + tool(tool_call_id=...)). A
+    # single resolver call is 2 messages, so these need more headroom
+    # than a pure text-chat default would suggest.
+    max_chat_history_messages: int = Field(default=30, alias='MAX_CHAT_HISTORY_MESSAGES')
+    max_edit_history_messages: int = Field(default=30, alias='MAX_EDIT_HISTORY_MESSAGES')
     max_edit_tool_turns: int = Field(default=4, alias='MAX_EDIT_TOOL_TURNS')
     max_context_tool_turns: int = Field(default=4, alias='MAX_CONTEXT_TOOL_TURNS')
     max_discovery_tool_calls: int = Field(default=6, alias='MAX_DISCOVERY_TOOL_CALLS')

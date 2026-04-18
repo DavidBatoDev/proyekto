@@ -240,6 +240,44 @@ class DetectUnverifiedValuesTests(unittest.TestCase):
         )
         self.assertEqual(records, [])
 
+    def test_staged_value_verified_via_prior_tool_message(self) -> None:
+        """Tool-result content in a prior `role='tool'` message counts as
+        ground-truth the LLM can legitimately stage against. The title
+        "Career Launch" was returned by a resolver in turn 1; staging it
+        in turn 2 should not trigger the unverified event even though
+        the user's current message is a clarifier sentinel that doesn't
+        contain the string.
+        """
+        session = AgentSession(roadmap_id='roadmap-1', base_revision=3)
+        session.messages = [
+            Message(role='user', content='rename my last epic'),
+            Message(
+                role='assistant',
+                content='',
+                tool_calls=[{
+                    'id': 'call_1',
+                    'name': 'resolve_node_reference',
+                    'args': {'label': 'last epic'},
+                }],
+            ),
+            Message(
+                role='tool',
+                content='{"matches":[{"id":"epic-x","title":"Career Launch"}]}',
+                tool_call_id='call_1',
+            ),
+        ]
+        planning = _planning([_rename_op('Career Launch')])
+        logger, records = _capturing_logger()
+        _detect_unverified_values(
+            planning=planning,
+            session=session,
+            user_message='__clarifier_answer__ {"selected_option":"Career Launch"}',
+            logger=logger,
+            settings=_settings(),
+            trace_id=None,
+        )
+        self.assertEqual(records, [])
+
     def test_multiple_operations_one_unverified(self) -> None:
         # Two ops staged; one title matches user input, the other is
         # fabricated. Event fires with unverified_count=1.

@@ -21,7 +21,12 @@ def build_session_context(
         else len(session.operations)
     )
     recent_messages = [
-        {'role': item.role, 'content': item.content}
+        {
+            'role': item.role,
+            'content': item.content,
+            'tool_calls': getattr(item, 'tool_calls', None),
+            'tool_call_id': getattr(item, 'tool_call_id', None),
+        }
         for item in session.messages[-settings.max_chat_history_messages :]
     ]
     recent_resolved_targets = [

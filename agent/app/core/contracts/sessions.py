@@ -13,9 +13,20 @@ def _utcnow() -> datetime:
 
 
 class Message(BaseModel):
+    # Extra fields are allowed so Redis rehydration remains forward-compatible
+    # across version bumps (e.g. the tool_calls / tool_call_id additions below).
+    model_config = ConfigDict(extra='allow')
+
     role: str
     content: str
     created_at: datetime = Field(default_factory=_utcnow)
+    # For role='assistant' messages that requested tool calls. Shape mirrors
+    # OpenAI / LangChain tool_calls: list of {id, type='function',
+    # function: {name, arguments}}. None on pure-text assistant messages.
+    tool_calls: list[dict[str, Any]] | None = None
+    # Set on role='tool' messages; binds the result to the assistant's
+    # tool_calls[*].id from the preceding turn.
+    tool_call_id: str | None = None
 
 
 IntentType = Literal[
@@ -169,13 +180,6 @@ class PendingEditContext(BaseModel):
     # pre-dispatcher uses this to verify that an incoming `__clarifier_answer__`
     # sentinel is routed to the correct pending context.
     pending_clarifier_question_id: str | None = None
-    # Tool observations snapshot from the turn that emitted this clarifier.
-    # Replayed into the next turn's planner prompt so the LLM skips
-    # redundant tool calls (e.g. re-resolving an already-resolved target).
-    # Each entry is a compact dict: {tool_name, args, result_summary}. Cap
-    # 10 entries. Cleared with the rest of pending_edit_context on commit/
-    # cancel/supersede.
-    prior_tool_observations: list[dict[str, Any]] = Field(default_factory=list)
     staging_validation_errors: list[dict[str, Any]] = Field(
         default_factory=list,
         alias='preview_validation_errors',
