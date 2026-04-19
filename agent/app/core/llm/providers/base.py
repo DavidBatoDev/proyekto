@@ -28,8 +28,11 @@ class IntentClassificationResult:
     """Structured output of an LLM intent classification call.
 
     `sub_intent` is only meaningful when `intent_type == 'roadmap_edit'`;
-    callers use it to pick a scoped tool manifest. `model` records which
-    model produced the result so telemetry can track adoption per SKU.
+    callers use it to pick a scoped tool manifest. `bulk_scope` is set
+    when the user targets multiple nodes at once — the estimator uses
+    it to size the plan-tool output budget correctly up-front instead
+    of starting narrow and retrying. `model` records which model
+    produced the result so telemetry can track adoption per SKU.
     """
     intent_type: IntentType
     sub_intent: Literal[
@@ -41,6 +44,7 @@ class IntentClassificationResult:
     ]
     rationale: str
     model: str
+    bulk_scope: str = 'none'
 
 
 class ProviderAdapterError(RuntimeError):

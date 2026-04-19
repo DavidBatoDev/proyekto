@@ -35,6 +35,7 @@ class _FakeOrchestrator:
                     for tool in tools
                     if isinstance(tool, dict)
                 ]
+                self._captured['planner_profile'] = planner_profile
                 return (
                     'Prepared operation.',
                     [
@@ -80,6 +81,8 @@ class _FakePlanner:
             agent_progress_events_enabled=False,
             agent_progress_events_allow_verbose=False,
             openai_edit_default_max_tokens=openai_edit_default_max_tokens,
+            openai_edit_narrow_max_tokens=800,
+            openai_edit_repair_max_tokens=3000,
         )
         self._logger = logging.getLogger('planner-operation-flow-tools-tests')
         self._provider_orchestrator = _FakeOrchestrator(captured)
@@ -1062,11 +1065,13 @@ class PlannerOperationFlowToolsTests(unittest.TestCase):
         )
 
         self.assertEqual(call_count['value'], 2)
-        # "Mark all tasks ... as in review" now classifies as the
-        # `status_change_only` sub-intent, so the first call starts on
-        # the scoped profile rather than the default. After the missing-
-        # tool-call retry triggers, profile widens to repair_retry.
-        self.assertEqual(observed_profiles, ['scoped_edit', 'repair_retry'])
+        # "Mark all tasks ... as in review" is a bulk-scope status
+        # change. The pre-call estimator now routes the FIRST call to
+        # `repair_retry` directly because the bulk intent signal fires
+        # (without a known task_count we assume a safe default of ~50
+        # targets, which already exceeds the `default` profile ceiling).
+        # The missing-tool-call retry then stays at `repair_retry`.
+        self.assertEqual(observed_profiles, ['repair_retry', 'repair_retry'])
         self.assertEqual(len(observed_args), 2)
         self.assertTrue(all('node_type' not in args for args in observed_args))
         self.assertTrue(
@@ -2158,6 +2163,77 @@ class PlannerPreflightPreflightBudgetTests(unittest.TestCase):
         assert isinstance(metrics, dict)
         self.assertEqual(metrics.get('planner_preflight_widened'), 1)
         self.assertGreater(int(metrics.get('planner_preflight_estimate') or 0), 500)
+
+
+class PlannerCommitOutputEstimatorRoutingTests(unittest.TestCase):
+    """The pre-call estimator picks the profile that fits the upcoming
+    output, so truncation-then-retry stops being the primary way we
+    find the right ceiling."""
+
+    def test_bulk_assign_intent_with_known_task_count_routes_to_default(self) -> None:
+        # The exact scenario from the production log: "assign all tasks
+        # to me" on a 25-task roadmap. Must pick `default` (2000-token
+        # ceiling) on the first call — not `scoped_edit` (800) — so the
+        # ~1500-token bulk plan doesn't truncate.
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+        session_context: dict[str, object] = {
+            'roadmap_id': 'r1',
+            'trace_id': 'trace-bulk-assign-estimator',
+            'roadmap_overview_summary': (
+                'Roadmap: "Untitled Roadmap" (status: draft)\n'
+                '6 epics · 12 features · 25 tasks'
+            ),
+        }
+        plan_operations(
+            planner,
+            {
+                'user_message': 'Assign all tasks to me',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': session_context,
+            },
+        )
+        self.assertIsNone(
+            captured.get('planner_profile'),
+            msg='bulk assign must not be under-budgeted into scoped_edit',
+        )
+        metrics = session_context.get('_phase_metrics') or {}
+        assert isinstance(metrics, dict)
+        self.assertEqual(metrics.get('planner_output_selected_profile'), 'default')
+        self.assertEqual(
+            metrics.get('planner_output_estimate_signal'), 'bulk_intent'
+        )
+        self.assertNotIn(
+            'planner_repair_retry_fired',
+            metrics,
+            msg='retry safety net must not fire when the estimator routes correctly',
+        )
+
+    def test_estimator_emits_metrics_for_every_commit_call(self) -> None:
+        captured: dict[str, object] = {}
+        planner = _FakePlanner(captured)
+        session_context: dict[str, object] = {
+            'roadmap_id': 'r1',
+            'trace_id': 'trace-estimator-metrics',
+        }
+        plan_operations(
+            planner,
+            {
+                'user_message': 'rename Authentication to Auth Flows',
+                'intent_type': 'roadmap_edit',
+                'existing_operations': [],
+                'system_prompt': 'system',
+                'session_context': session_context,
+            },
+        )
+        metrics = session_context.get('_phase_metrics') or {}
+        assert isinstance(metrics, dict)
+        self.assertIn('planner_output_estimated_tokens', metrics)
+        self.assertIn('planner_output_estimate_signal', metrics)
+        self.assertIn('planner_output_selected_profile', metrics)
+        self.assertGreater(int(metrics.get('planner_output_estimated_tokens') or 0), 0)
 
 
 if __name__ == '__main__':

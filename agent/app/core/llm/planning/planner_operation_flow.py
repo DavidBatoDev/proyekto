@@ -8,6 +8,13 @@ from typing import Any
 from app.core.contracts.operations import NodeType, RoadmapOperation
 from app.core.llm.contracts.clarifier_contract import build_clarifier_contract
 from app.core.llm.outage import build_outage_clarifier_message
+from app.core.llm.planning.planner_output_estimator import (
+    CommitEstimate,
+    estimate_commit_output_tokens,
+    extract_task_count_from_overview_summary,
+    profile_ceiling_tokens,
+    select_profile_for_estimate,
+)
 from app.core.llm.providers import ProviderAdapterError
 from app.core.logging_utils import log_event
 from app.core.tools.registry import (
@@ -1544,21 +1551,69 @@ def plan_operations(
             ]
         edit_turns = max(1, min(edit_turns, 2))
 
-    # When the sub-intent classifier matched a narrow edit (rename_only,
-    # delete_only, status_change_only, move_only), use the reduced
-    # `scoped_edit` planner profile so the model call is budgeted against
-    # `openai_planner_narrow_edit_max_tokens` (default 800) rather than
-    # the full default ceiling. On the rare truncation
-    # (finish_reason=='length'), the retry block below widens the budget
-    # by switching to the `repair_retry` profile
-    # (openai_planner_repair_max_tokens, default 3000).
-    planner_profile: str | None = 'scoped_edit' if edit_sub_intent else None
+    # Pre-call estimator: use signals we already have (prior ReAct tool
+    # observations, bulk-intent classifiers, sub-intent class, roadmap
+    # task count) to predict the plan-tool output size, then pick the
+    # profile whose ceiling covers the estimate. Previously the default
+    # was `scoped_edit` (800) whenever a narrow sub_intent matched, which
+    # truncated on bulk ops that happened to look narrow (e.g. "assign
+    # all tasks to me" → one update_node with targets[N]). The estimator
+    # + selector route to the right profile up-front; the
+    # `planner_output_truncated → repair_retry` block below stays in
+    # place as a safety net.
+    # Prefer the LLM classifier's `bulk_scope` signal — it catches
+    # paraphrases and i18n variants the regex helpers miss. Fall back
+    # to the regex helpers when the classifier didn't emit one (older
+    # prompt, classifier outage, cached payload pre-dating the rollout).
+    classifier_bulk_scope = state.get('classifier_bulk_scope')
+    if isinstance(classifier_bulk_scope, str) and classifier_bulk_scope != 'none' and classifier_bulk_scope:
+        bulk_intent_signals = True
+    else:
+        bulk_intent_signals = (
+            _is_bulk_task_scope_update_intent(user_message)
+            or _is_parent_scoped_bulk_status_intent(user_message)
+            or _is_global_bulk_filter_update_intent(user_message)
+            or _is_assign_me_bulk_update_intent(user_message)
+        )
+    roadmap_task_count = extract_task_count_from_overview_summary(
+        session_context.get('roadmap_overview_summary')
+    )
+    if (
+        bulk_intent_signals
+        and roadmap_task_count is None
+        and session_context.get('_roadmap_overview_fetch_future') is not None
+    ):
+        # Overview fetch was attempted (future present) but the summary
+        # didn't yield a parseable task count. Estimator falls through
+        # to its safe default — surface this loudly so we notice if the
+        # summary format changes or the backend starts returning an
+        # unexpected shape.
+        planner._logger.error(
+            'roadmap_overview_summary had no parseable task count; '
+            'estimator falling back to bulk default. trace_id=%s',
+            trace_id,
+        )
+    staged_operation_count = (
+        len(existing_operations) if isinstance(existing_operations, list) else 0
+    )
+    commit_estimate: CommitEstimate = estimate_commit_output_tokens(
+        effective_tool_summary=effective_tool_summary,
+        edit_sub_intent=edit_sub_intent,
+        bulk_intent_detected=bulk_intent_signals,
+        roadmap_task_count=roadmap_task_count,
+        staged_operation_count=staged_operation_count,
+    )
+    planner_profile: str | None = select_profile_for_estimate(
+        commit_estimate,
+        edit_sub_intent=edit_sub_intent,
+        settings=planner._settings,
+    )
 
     # Preflight for roadmap_plan: if the user prompt obviously asks for
     # more ops than the default budget can fit, start at the repair_retry
     # budget instead of paying for a guaranteed-to-truncate first call.
-    # The heuristic is intentionally coarse — we'd rather oversize a few
-    # plans than retry on every big one.
+    # Handled separately from the edit-commit estimator because
+    # roadmap_plan is a different phase with its own op-shape.
     if intent_type == 'roadmap_plan':
         planner_default_budget = planner._settings.openai_edit_default_max_tokens or 2000
         estimated_output = estimate_plan_output_tokens(user_message)
@@ -1577,6 +1632,31 @@ def plan_operations(
                 planner_default_max_tokens=planner_default_budget,
                 planner_profile_selected=planner_profile,
             )
+
+    commit_estimator_metrics = session_context.setdefault('_phase_metrics', {})
+    if isinstance(commit_estimator_metrics, dict):
+        commit_estimator_metrics['planner_output_estimated_tokens'] = commit_estimate.tokens
+        commit_estimator_metrics['planner_output_estimate_signal'] = commit_estimate.signal
+        commit_estimator_metrics['planner_output_selected_profile'] = (
+            planner_profile or 'default'
+        )
+    log_event(
+        planner._logger,
+        'planner_output_estimated',
+        settings=planner._settings,
+        trace_id=trace_id,
+        estimated_tokens=commit_estimate.tokens,
+        estimated_op_count=commit_estimate.op_count,
+        estimated_target_count=commit_estimate.target_count,
+        estimate_signal=commit_estimate.signal,
+        selected_profile=planner_profile or 'default',
+        selected_ceiling=profile_ceiling_tokens(
+            planner_profile, settings=planner._settings
+        ),
+        edit_sub_intent=edit_sub_intent,
+        bulk_intent_detected=bulk_intent_signals,
+        roadmap_task_count=roadmap_task_count,
+    )
 
     if intent_type == 'roadmap_plan':
         planner_prompt = (

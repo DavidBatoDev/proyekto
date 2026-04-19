@@ -9,6 +9,7 @@ from typing import Any, Callable, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import Settings
+from app.core.contracts.intents import BulkScope, EditSubIntent
 from app.core.contracts.operations import (
     PARENT_REQUIRING_OPS,
     RoadmapOperation,
@@ -50,13 +51,8 @@ logger = logging.getLogger(__name__)
 
 class _IntentClassification(BaseModel):
     intent_type: IntentType
-    sub_intent: Literal[
-        'rename_only',
-        'delete_only',
-        'status_change_only',
-        'move_only',
-        None,
-    ] = Field(default=None)
+    sub_intent: EditSubIntent | None = Field(default=None)
+    bulk_scope: BulkScope = Field(default=BulkScope.NONE)
     rationale: str = Field(default='')
 
     @field_validator('sub_intent', mode='before')
@@ -67,6 +63,22 @@ class _IntentClassification(BaseModel):
         # instead of JSON null. Coerce those to None so validation succeeds.
         if isinstance(value, str) and value.strip().lower() in {'null', 'none', ''}:
             return None
+        return value
+
+    @field_validator('bulk_scope', mode='before')
+    @classmethod
+    def _coerce_unknown_bulk_scope(cls, value: Any) -> Any:
+        # Older classifier builds may omit bulk_scope entirely; treat
+        # missing/null/unknown strings as NONE so callers get a stable
+        # enum value instead of a ValidationError.
+        if value is None:
+            return BulkScope.NONE
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {'', 'null', 'none'}:
+                return BulkScope.NONE
+            if normalized not in {m.value for m in BulkScope}:
+                return BulkScope.NONE
         return value
 
 
@@ -138,6 +150,7 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
             return IntentClassificationResult(
                 intent_type=parsed.intent_type,
                 sub_intent=parsed.sub_intent,
+                bulk_scope=parsed.bulk_scope,
                 rationale=parsed.rationale or '',
                 model=self._settings.openai_classifier_model,
             )

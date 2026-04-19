@@ -315,6 +315,7 @@ class LLMPlanner:
         return {
             'intent_type': normalized_intent,
             'sub_intent': classification.sub_intent,
+            'bulk_scope': getattr(classification, 'bulk_scope', 'none'),
             'rationale': classification.rationale,
             'model': classification.model,
             'source': 'llm',

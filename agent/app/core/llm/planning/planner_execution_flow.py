@@ -159,6 +159,7 @@ def classify_intent(
 
     classifier_intent = classifier_payload.get('intent_type', 'unclear')
     classifier_sub_intent = classifier_payload.get('sub_intent')
+    classifier_bulk_scope = classifier_payload.get('bulk_scope') or 'none'
     classifier_source = classifier_payload.get('source')
     classifier_model = classifier_payload.get('model')
     classifier_rationale = classifier_payload.get('rationale') or None
@@ -218,6 +219,7 @@ def classify_intent(
         'is_roadmap_question': is_roadmap_question,
         'question_style_edit_promoted': question_style_edit_promoted,
         'classifier_sub_intent': classifier_sub_intent,
+        'classifier_bulk_scope': classifier_bulk_scope,
         'classifier_source': classifier_source,
         'classifier_model': classifier_model,
         'classifier_fallback_reason': classifier_fallback_reason,
