@@ -415,6 +415,7 @@ def plan_message(
         trace_id=trace_id,
         session_context=session_context,
         phase_timings=phase_timings,
+        synthesized_plan_confirmation=pre_dispatch_result.synthesized_plan_confirmation,
     )
     planning = planning_dispatch_result.planning
     route_lane = planning_dispatch_result.route_lane

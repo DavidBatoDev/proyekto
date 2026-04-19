@@ -243,6 +243,83 @@ class PlanConfirmBridgeTests(unittest.TestCase):
         self.assertEqual(result.planning_user_message, 'yes')
         self.assertIsNotNone(session.metadata.pending_plan)
 
+    def test_confirm_with_fresh_plan_surfaces_synthesized_operations(self) -> None:
+        """Regression for logs.txt:1009 — confirming a pure-create plan must
+        short-circuit the LLM edit turn by returning pre-synthesized ops on
+        the dispatch result, so the truncation-prone LLM call is skipped.
+        """
+        session = self._session_with_plan()
+        service = _build_service_double(edit_continuation_trigger='confirm')
+        result = dispatch_pre_planning_phase(
+            service=service,
+            session=session,
+            user_message='yes, apply this plan',
+            auth_header=None,
+            trace_id='trace-synth',
+            staged_operations=[],
+            phase_timings={},
+        )
+        self.assertIsNotNone(result.synthesized_plan_confirmation)
+        synth = result.synthesized_plan_confirmation
+        assert synth is not None
+        # 1 epic + 1 feature + 1 task from the default _plan() fixture.
+        self.assertEqual(len(synth.operations), 3)
+        self.assertEqual(synth.epics_count, 1)
+        self.assertEqual(synth.features_count, 1)
+        self.assertEqual(synth.tasks_count, 1)
+        self.assertIsNone(synth.synthesis_skipped_reason)
+        self.assertIn('1 epic', synth.assistant_message)
+
+    def test_confirm_with_anchored_plan_falls_back_to_llm_path(self) -> None:
+        """When the plan references existing nodes via target_*_title, the
+        v1 synthesizer refuses and the caller must fall back to the LLM
+        path. Dispatch still composes the LLM prompt.
+        """
+        plan = _plan(
+            proposed_hierarchy=[
+                {
+                    'title': 'Wrapper',
+                    'features': [
+                        {
+                            'title': 'Anchored feature',
+                            'target_epic_title': 'Existing Epic',
+                            'tasks': [],
+                        }
+                    ],
+                }
+            ],
+        )
+        session = self._session_with_plan(plan=plan)
+        service = _build_service_double(edit_continuation_trigger='confirm')
+        result = dispatch_pre_planning_phase(
+            service=service,
+            session=session,
+            user_message='yes, apply it',
+            auth_header=None,
+            trace_id='trace-anchor',
+            staged_operations=[],
+            phase_timings={},
+        )
+        # Synthesis refused; planning_user_message still contains the LLM
+        # prompt composed from the hierarchy.
+        self.assertIsNone(result.synthesized_plan_confirmation)
+        self.assertIn('Plan summary', result.planning_user_message)
+
+    def test_confirm_with_empty_hierarchy_falls_back_to_llm_path(self) -> None:
+        plan = _plan(proposed_hierarchy=[])
+        session = self._session_with_plan(plan=plan)
+        service = _build_service_double(edit_continuation_trigger='confirm')
+        result = dispatch_pre_planning_phase(
+            service=service,
+            session=session,
+            user_message='yes',
+            auth_header=None,
+            trace_id='trace-empty',
+            staged_operations=[],
+            phase_timings={},
+        )
+        self.assertIsNone(result.synthesized_plan_confirmation)
+
 
 class PlanAnswerSentinelTests(unittest.TestCase):
     """The pre-dispatcher parses a `__plan_answers__\\n{json}` sentinel to

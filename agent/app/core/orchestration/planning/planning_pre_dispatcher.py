@@ -23,6 +23,10 @@ from app.core.orchestration.context.pending_plan_manager import (
     clear_pending_plan,
     is_plan_stale,
 )
+from app.core.orchestration.planning.pending_plan_materializer import (
+    SynthesisResult,
+    synthesize_operations_from_pending_plan,
+)
 
 _PLAN_ANSWER_SENTINEL = '__plan_answers__'
 _CLARIFIER_ANSWER_SENTINEL = '__clarifier_answer__'
@@ -440,6 +444,7 @@ class PrePlanningDispatchResult:
     actor_fetch_attempted: bool
     actor_fetch_skipped_reason: str | None
     actor_fetch_ms: int | None
+    synthesized_plan_confirmation: SynthesisResult | None = None
 
 
 def dispatch_pre_planning_phase(
@@ -732,6 +737,7 @@ def dispatch_pre_planning_phase(
             plan_id=pending_plan.plan_id,
             answer_count=len(pending_plan.answers),
         )
+    synthesized_plan_confirmation: SynthesisResult | None = None
     if plan_confirmation_requested and pending_plan is not None:
         planning_user_message = _compose_plan_confirmation_prompt(
             original_user_message=user_message,
@@ -746,6 +752,43 @@ def dispatch_pre_planning_phase(
             roadmap_id=session.roadmap_id,
             plan_id=pending_plan.plan_id,
         )
+        synthesis_started = perf_counter()
+        synthesis = synthesize_operations_from_pending_plan(
+            pending_plan,
+            actor_context=session.metadata.actor_context,
+        )
+        synthesis_elapsed_ms = int((perf_counter() - synthesis_started) * 1000)
+        if synthesis.synthesis_skipped_reason is None and synthesis.operations:
+            synthesized_plan_confirmation = synthesis
+            log_event(
+                self._logger,
+                'plan_confirmation_synthesized',
+                settings=self._settings,
+                trace_id=trace_id,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                plan_id=pending_plan.plan_id,
+                epics_count=synthesis.epics_count,
+                features_count=synthesis.features_count,
+                tasks_count=synthesis.tasks_count,
+                operations_count=len(synthesis.operations),
+                statuses_dropped=synthesis.statuses_dropped,
+                assignees_resolved=synthesis.assignees_resolved,
+                assignees_dropped=synthesis.assignees_dropped,
+                elapsed_ms=synthesis_elapsed_ms,
+            )
+        else:
+            log_event(
+                self._logger,
+                'plan_confirmation_synthesis_skipped',
+                settings=self._settings,
+                trace_id=trace_id,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                plan_id=pending_plan.plan_id,
+                reason=synthesis.synthesis_skipped_reason or 'empty_operations',
+                elapsed_ms=synthesis_elapsed_ms,
+            )
     if edit_clarifier_answer_submitted:
         pending_ctx = session.metadata.pending_edit_context
         if pending_ctx is not None:
@@ -922,4 +965,5 @@ def dispatch_pre_planning_phase(
         actor_fetch_attempted=actor_fetch_attempted,
         actor_fetch_skipped_reason=actor_fetch_skipped_reason,
         actor_fetch_ms=actor_fetch_ms,
+        synthesized_plan_confirmation=synthesized_plan_confirmation,
     )
