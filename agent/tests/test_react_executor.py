@@ -36,7 +36,7 @@ class ReactExecutorTests(unittest.TestCase):
                 value=message.content,
                 usage_totals=usage,
             ),
-            on_tool_call=lambda _name, _args, _tool_call, _turn, _index, _usage: None,
+            on_tool_call=lambda _name, _args, _tool_call, _turn, _index, _usage, _prior: None,
             max_tool_turns=3,
             max_turns_error_code='max_turns',
             max_turns_error_message='Loop exhausted',
@@ -81,7 +81,7 @@ class ReactExecutorTests(unittest.TestCase):
                 value='missing',
                 usage_totals=usage,
             ),
-            on_tool_call=lambda name, args, _tool_call, _turn, _index, usage: (
+            on_tool_call=lambda name, args, _tool_call, _turn, _index, usage, _prior: (
                 BoundedToolLoopOutcome(
                     value=(name, args),
                     usage_totals=usage,
@@ -122,7 +122,7 @@ class ReactExecutorTests(unittest.TestCase):
                     value=message.content,
                     usage_totals=usage,
                 ),
-                on_tool_call=lambda _name, _args, _tool_call, _turn, _index, _usage: None,
+                on_tool_call=lambda _name, _args, _tool_call, _turn, _index, _usage, _prior: None,
                 max_tool_turns=2,
                 max_turns_error_code='max_turns_exhausted',
                 max_turns_error_message='Loop exhausted',
@@ -171,7 +171,7 @@ class ReactExecutorTests(unittest.TestCase):
                 value=message.content,
                 usage_totals=usage,
             ),
-            on_tool_call=lambda _name, _args, _tool_call, _turn, _index, _usage: None,
+            on_tool_call=lambda _name, _args, _tool_call, _turn, _index, _usage, _prior: None,
             max_tool_turns=3,
             max_turns_error_code='max_turns',
             max_turns_error_message='Loop exhausted',
@@ -222,7 +222,7 @@ class ReactExecutorTests(unittest.TestCase):
             on_no_tool_calls=lambda message, usage: BoundedToolLoopOutcome(
                 value=message.content, usage_totals=usage
             ),
-            on_tool_call=lambda name, args, _tc, _turn, _index, usage: (
+            on_tool_call=lambda name, args, _tc, _turn, _index, usage, _prior: (
                 BoundedToolLoopOutcome(value=('planned', args), usage_totals=usage)
                 if name == 'plan_roadmap_operations'
                 else None
@@ -270,7 +270,7 @@ class ReactExecutorTests(unittest.TestCase):
             on_no_tool_calls=lambda message, usage: BoundedToolLoopOutcome(
                 value=message.content, usage_totals=usage
             ),
-            on_tool_call=lambda name, _args, _tc, _turn, _index, usage: (
+            on_tool_call=lambda name, _args, _tc, _turn, _index, usage, _prior: (
                 BoundedToolLoopOutcome(value='planned', usage_totals=usage)
                 if name == 'plan_roadmap_operations'
                 else None

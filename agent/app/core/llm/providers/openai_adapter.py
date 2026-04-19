@@ -239,9 +239,11 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                 _turn: int,
                 _index: int,
                 usage_totals: dict[str, int],
+                prior_tool_messages: list[dict[str, Any]],
             ) -> BoundedToolLoopOutcome | None:
                 if name != PLANNING_TOOL_NAME:
                     return None
+                args = _strip_nulls_from_plan_args(args)
                 try:
                     assistant_message, operations = parse_plan_tool_args(args)
                 except ValueError as exc:
@@ -278,6 +280,65 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                             return BoundedToolLoopOutcome(
                                 value=(assistant_message, operations, clarifier_options),
                                 usage_totals=usage_totals,
+                            )
+                    if _is_missing_target_validation_failure(error_message):
+                        recovery_args, recovery_report = _rewrite_missing_target_from_resolver(
+                            args=args,
+                            error_message=error_message,
+                            prior_tool_messages=prior_tool_messages,
+                        )
+                        if recovery_args is not None:
+                            try:
+                                assistant_message, operations = parse_plan_tool_args(recovery_args)
+                            except ValueError as recovery_exc:
+                                log_event(
+                                    logger,
+                                    'planner_target_recovery_autofix',
+                                    settings=self._settings,
+                                    provider=self.provider_name,
+                                    autofix_attempted=True,
+                                    autofix_applied=False,
+                                    autofix_failure_reason='reparse_failed',
+                                    offending_op_count=recovery_report.get('offending_op_count'),
+                                    candidates_count=recovery_report.get('candidates_count'),
+                                    autofix_strategy=recovery_report.get('autofix_strategy'),
+                                    resolver_turn_age=recovery_report.get('resolver_turn_age'),
+                                )
+                                error_message = str(recovery_exc)
+                            else:
+                                log_event(
+                                    logger,
+                                    'planner_target_recovery_autofix',
+                                    settings=self._settings,
+                                    provider=self.provider_name,
+                                    autofix_attempted=True,
+                                    autofix_applied=True,
+                                    autofix_failure_reason=None,
+                                    offending_op_count=recovery_report.get('offending_op_count'),
+                                    candidates_count=recovery_report.get('candidates_count'),
+                                    autofix_strategy=recovery_report.get('autofix_strategy'),
+                                    resolver_turn_age=recovery_report.get('resolver_turn_age'),
+                                )
+                                if not assistant_message.strip():
+                                    assistant_message = 'Prepared roadmap operations.'
+                                clarifier_options = parse_plan_tool_clarifier_options(recovery_args)
+                                return BoundedToolLoopOutcome(
+                                    value=(assistant_message, operations, clarifier_options),
+                                    usage_totals=usage_totals,
+                                )
+                        else:
+                            log_event(
+                                logger,
+                                'planner_target_recovery_autofix',
+                                settings=self._settings,
+                                provider=self.provider_name,
+                                autofix_attempted=True,
+                                autofix_applied=False,
+                                autofix_failure_reason=recovery_report.get('failure_reason'),
+                                offending_op_count=recovery_report.get('offending_op_count'),
+                                candidates_count=recovery_report.get('candidates_count'),
+                                autofix_strategy=recovery_report.get('autofix_strategy'),
+                                resolver_turn_age=recovery_report.get('resolver_turn_age'),
                             )
                     log_event(
                         logger,
@@ -540,6 +601,36 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
         planner_profile: str | None = None,
     ) -> Any:
         normalized_profile = str(planner_profile or '').strip() or 'default'
+        # Strict structured outputs are the default: LangChain/OpenAI enforce
+        # the tool schema at token-sampling when accepted. If the runtime
+        # version or the current schema shape triggers validation errors at
+        # bind time, we gracefully fall back to non-strict binding — the
+        # tool-call layer then catches any residual shape issues via the
+        # planner_target_recovery autofix + repair-retry prompt.
+        try:
+            bound_model = model.bind_tools(
+                tools, tool_choice='required', strict=True
+            )
+            log_event(
+                logger,
+                'planner_tool_choice_binding',
+                settings=self._settings,
+                provider=self.provider_name,
+                planner_profile=normalized_profile,
+                tool_choice_requested='required',
+                tool_choice_mode='required_strict',
+                tool_choice_supported=True,
+                strict_mode_supported=True,
+                strict_mode_fallback_reason=None,
+                tools_count=len(tools),
+            )
+            return bound_model
+        except TypeError as exc:
+            strict_fallback_reason = f'type_error:{exc!s}'[:160]
+        except Exception as exc:  # noqa: BLE001 — broad catch is intentional
+            strict_fallback_reason = (
+                f'{exc.__class__.__name__.lower()}:{exc!s}'[:160]
+            )
         try:
             bound_model = model.bind_tools(tools, tool_choice='required')
             log_event(
@@ -551,6 +642,8 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                 tool_choice_requested='required',
                 tool_choice_mode='required',
                 tool_choice_supported=True,
+                strict_mode_supported=False,
+                strict_mode_fallback_reason=strict_fallback_reason,
                 tools_count=len(tools),
             )
             return bound_model
@@ -565,6 +658,8 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                 tool_choice_requested='required',
                 tool_choice_mode='fallback_legacy',
                 tool_choice_supported=False,
+                strict_mode_supported=False,
+                strict_mode_fallback_reason=strict_fallback_reason,
                 tools_count=len(tools),
             )
             return model.bind_tools(tools)
@@ -787,6 +882,271 @@ def _rewrite_assignee_payload_to_actor_id(
     rewritten_args = dict(args)
     rewritten_args['operations'] = rewritten_operations
     return rewritten_args, None
+
+
+_TARGET_TAKING_OPS: frozenset[str] = frozenset(
+    {'update_node', 'delete_node', 'move_node', 'mark_status', 'shift_dates'}
+)
+_PARENT_REQUIRING_OPS: frozenset[str] = frozenset({'add_feature', 'add_task'})
+
+
+def _strip_nulls_from_plan_args(args: Any) -> Any:
+    # OpenAI strict structured outputs force every schema property to appear
+    # in `required`, with optional fields modeled as `["T", "null"]`. The LLM
+    # then emits JSON null for absent fields — but the Python
+    # `RoadmapOperation` Pydantic model runs with `extra='forbid'` and
+    # certain fields (e.g., `patch`) reject null. Strip keys whose value is
+    # None at the top level and per-operation level so the downstream parser
+    # sees the same shape it saw in non-strict mode.
+    if not isinstance(args, dict):
+        return args
+    cleaned: dict[str, Any] = {}
+    for key, value in args.items():
+        if value is None:
+            continue
+        if key == 'operations' and isinstance(value, list):
+            cleaned_operations: list[Any] = []
+            for operation in value:
+                if isinstance(operation, dict):
+                    cleaned_op = {k: v for k, v in operation.items() if v is not None}
+                    cleaned_operations.append(cleaned_op)
+                else:
+                    cleaned_operations.append(operation)
+            cleaned[key] = cleaned_operations
+        else:
+            cleaned[key] = value
+    return cleaned
+
+
+def _is_missing_target_validation_failure(error_message: str | None) -> bool:
+    detail = str(error_message or '').strip().lower()
+    if not detail:
+        return False
+    return 'target missing' in detail
+
+
+def _extract_offending_op_and_index(detail: str) -> tuple[str | None, int | None]:
+    match = re.search(r'at index (\d+) \(op=([a-zA-Z_]+)\)', detail)
+    if match is None:
+        return None, None
+    try:
+        return match.group(2).strip() or None, int(match.group(1))
+    except (TypeError, ValueError):
+        return match.group(2).strip() or None, None
+
+
+def _collect_offending_target_ops(
+    operations: list[Any],
+) -> tuple[list[int], list[int]]:
+    target_indices: list[int] = []
+    parent_indices: list[int] = []
+    for index, operation in enumerate(operations):
+        if not isinstance(operation, dict):
+            continue
+        op_kind = str(operation.get('op') or '').strip()
+        node_id = operation.get('node_id')
+        node_ref = operation.get('node_ref')
+        has_target = (isinstance(node_id, str) and bool(node_id.strip())) or (
+            isinstance(node_ref, str) and bool(node_ref.strip())
+        )
+        parent_id = operation.get('parent_id')
+        parent_ref = operation.get('parent_ref')
+        has_parent = (isinstance(parent_id, str) and bool(parent_id.strip())) or (
+            isinstance(parent_ref, str) and bool(parent_ref.strip())
+        )
+        if op_kind in _TARGET_TAKING_OPS and not has_target:
+            target_indices.append(index)
+        if op_kind in _PARENT_REQUIRING_OPS and not has_parent:
+            parent_indices.append(index)
+    return target_indices, parent_indices
+
+
+def _extract_resolver_candidates(
+    prior_tool_messages: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int | None]:
+    if not prior_tool_messages:
+        return [], None
+    for reverse_offset, entry in enumerate(reversed(prior_tool_messages)):
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get('name') or '').strip() != 'resolve_node_reference':
+            continue
+        result = entry.get('result')
+        if not isinstance(result, dict):
+            continue
+        candidates: list[dict[str, Any]] = []
+        matches = result.get('matches')
+        if isinstance(matches, list):
+            for match in matches:
+                if not isinstance(match, dict):
+                    continue
+                candidate_id = match.get('id')
+                if not isinstance(candidate_id, str) or not candidate_id.strip():
+                    continue
+                candidates.append(
+                    {
+                        'id': candidate_id.strip(),
+                        'type': str(
+                            match.get('type') or match.get('node_type') or ''
+                        ).strip().lower(),
+                        'parent_id': (
+                            match.get('parent_id').strip()
+                            if isinstance(match.get('parent_id'), str)
+                            else None
+                        ),
+                    }
+                )
+        selected = result.get('selected')
+        if isinstance(selected, dict):
+            selected_id = selected.get('id')
+            if isinstance(selected_id, str) and selected_id.strip() and not candidates:
+                candidates.append(
+                    {
+                        'id': selected_id.strip(),
+                        'type': str(
+                            selected.get('type') or selected.get('node_type') or ''
+                        ).strip().lower(),
+                        'parent_id': (
+                            selected.get('parent_id').strip()
+                            if isinstance(selected.get('parent_id'), str)
+                            else None
+                        ),
+                    }
+                )
+        node_id = result.get('id')
+        if isinstance(node_id, str) and node_id.strip() and not candidates:
+            candidates.append(
+                {
+                    'id': node_id.strip(),
+                    'type': str(
+                        result.get('type') or result.get('node_type') or ''
+                    ).strip().lower(),
+                    'parent_id': (
+                        result.get('parent_id').strip()
+                        if isinstance(result.get('parent_id'), str)
+                        else None
+                    ),
+                }
+            )
+        if candidates:
+            return candidates, reverse_offset
+    return [], None
+
+
+def _rewrite_missing_target_from_resolver(
+    *,
+    args: dict[str, Any],
+    error_message: str,
+    prior_tool_messages: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    report: dict[str, Any] = {
+        'failure_reason': None,
+        'offending_op_count': 0,
+        'candidates_count': 0,
+        'autofix_strategy': None,
+        'resolver_turn_age': None,
+    }
+    detail = str(error_message or '').strip()
+    offending_op, _offending_index = _extract_offending_op_and_index(detail)
+    if offending_op is None:
+        report['failure_reason'] = 'unparseable_error_message'
+        return None, report
+    raw_operations = args.get('operations')
+    if not isinstance(raw_operations, list):
+        report['failure_reason'] = 'operations_not_list'
+        return None, report
+    target_missing_indices, parent_missing_indices = _collect_offending_target_ops(raw_operations)
+    is_target_scope = offending_op in _TARGET_TAKING_OPS
+    is_parent_scope = offending_op in _PARENT_REQUIRING_OPS
+    offending_indices = (
+        target_missing_indices
+        if is_target_scope
+        else (parent_missing_indices if is_parent_scope else [])
+    )
+    report['offending_op_count'] = len(offending_indices)
+    if not offending_indices:
+        report['failure_reason'] = 'no_offending_ops_detected'
+        return None, report
+    offending_ops_kind = {
+        str(raw_operations[index].get('op') or '').strip()
+        for index in offending_indices
+    }
+    if len(offending_ops_kind) != 1 or offending_op not in offending_ops_kind:
+        report['failure_reason'] = 'op_kind_mismatch'
+        return None, report
+    if len(offending_indices) != len(
+        [
+            index
+            for index, operation in enumerate(raw_operations)
+            if isinstance(operation, dict)
+            and str(operation.get('op') or '').strip() == offending_op
+        ]
+    ):
+        report['failure_reason'] = 'mixed_operation_shapes'
+        return None, report
+    candidates, resolver_turn_age = _extract_resolver_candidates(prior_tool_messages)
+    report['candidates_count'] = len(candidates)
+    report['resolver_turn_age'] = resolver_turn_age
+    if not candidates:
+        report['failure_reason'] = 'no_resolver_context'
+        return None, report
+    target_field = 'node_id' if is_target_scope else 'parent_id'
+    expected_type_for_op: dict[str, str] = {
+        'add_feature': 'epic',
+        'add_task': 'feature',
+    }
+    expected_type = expected_type_for_op.get(offending_op)
+    strategy: str
+    filled: list[tuple[int, str]]
+    if len(offending_indices) == 1 and (
+        len(candidates) == 1
+        or (
+            expected_type is not None
+            and sum(1 for c in candidates if c.get('type') == expected_type) == 1
+        )
+    ):
+        if len(candidates) == 1:
+            selected_candidate = candidates[0]
+        else:
+            selected_candidate = next(
+                c for c in candidates if c.get('type') == expected_type
+            )
+        if is_parent_scope and expected_type is not None:
+            candidate_type = selected_candidate.get('type') or ''
+            if candidate_type and candidate_type != expected_type:
+                report['failure_reason'] = 'op_incompatible'
+                return None, report
+        filled = [(offending_indices[0], selected_candidate['id'])]
+        strategy = 'single_candidate'
+    elif len(candidates) == len(offending_indices):
+        if is_parent_scope and expected_type is not None:
+            for candidate in candidates:
+                candidate_type = candidate.get('type') or ''
+                if candidate_type and candidate_type != expected_type:
+                    report['failure_reason'] = 'op_incompatible'
+                    return None, report
+        filled = [
+            (offending_indices[position], candidates[position]['id'])
+            for position in range(len(offending_indices))
+        ]
+        strategy = 'positional'
+    else:
+        report['failure_reason'] = 'count_mismatch'
+        return None, report
+    rewritten_operations = [
+        dict(operation) if isinstance(operation, dict) else operation
+        for operation in raw_operations
+    ]
+    for offending_index, candidate_id in filled:
+        operation = rewritten_operations[offending_index]
+        if not isinstance(operation, dict):
+            report['failure_reason'] = 'operation_not_dict'
+            return None, report
+        operation[target_field] = candidate_id
+    rewritten_args = dict(args)
+    rewritten_args['operations'] = rewritten_operations
+    report['autofix_strategy'] = strategy
+    return rewritten_args, report
 
 
 def _is_assignee_validation_failure(error_message: str | None) -> bool:

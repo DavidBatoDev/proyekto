@@ -2,12 +2,39 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 
 from app.core.contracts.operations import OperationType, RoadmapOperation
 from app.core.uuid_utils import normalize_uuid
+
+
+def _load_canonical_operation_requirements() -> dict[str, dict[str, Any]]:
+    schema_path = (
+        Path(__file__).resolve().parents[4]
+        / 'schemas'
+        / 'roadmap-ai-operations.schema.json'
+    )
+    with schema_path.open('r', encoding='utf-8') as handle:
+        document = json.load(handle)
+    requirements = (
+        document.get('definitions', {})
+        .get('operation_requirements', {})
+        .get('properties', {})
+    )
+    if not isinstance(requirements, dict):
+        raise RuntimeError(
+            'Canonical operation requirements missing from '
+            'schemas/roadmap-ai-operations.schema.json',
+        )
+    return requirements
+
+
+_CANONICAL_OPERATION_REQUIREMENTS: dict[str, dict[str, Any]] = (
+    _load_canonical_operation_requirements()
+)
 
 TASK_STATUS_VALUES = ['todo', 'in_progress', 'in_review', 'done', 'blocked']
 FEATURE_STATUS_VALUES = [
@@ -644,6 +671,173 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
     ]
 
 
+_CREATE_STATUS_ENUMS: dict[str, list[str]] = {
+    'add_epic': EPIC_STATUS_VALUES,
+    'add_feature': FEATURE_STATUS_VALUES,
+    'add_task': TASK_STATUS_VALUES,
+}
+
+_ALL_OPERATION_FIELDS: list[str] = [
+    'op',
+    'node_type',
+    'node_id',
+    'node_ref',
+    'parent_id',
+    'parent_ref',
+    'new_parent_id',
+    'new_parent_ref',
+    'temp_id',
+    'position',
+    'patch',
+    'status',
+    'delta_days',
+    'scope',
+    'data',
+]
+
+
+def _base_operation_properties(op_name: str) -> dict[str, Any]:
+    return {
+        'op': {'type': 'string', 'const': op_name},
+        'node_type': {
+            'type': ['string', 'null'],
+            'enum': ['roadmap', 'epic', 'feature', 'task', None],
+        },
+        'node_id': {'type': ['string', 'null']},
+        'node_ref': {'type': ['string', 'null']},
+        'parent_id': {'type': ['string', 'null']},
+        'parent_ref': {'type': ['string', 'null']},
+        'new_parent_id': {'type': ['string', 'null']},
+        'new_parent_ref': {'type': ['string', 'null']},
+        'temp_id': {'type': ['string', 'null']},
+        'position': {'type': ['integer', 'null']},
+        'patch': {
+            'type': ['object', 'null'],
+            'properties': {
+                'status': {
+                    'type': ['string', 'null'],
+                    'enum': [*ALL_STATUS_VALUES, None],
+                },
+            },
+        },
+        'status': {
+            'type': ['string', 'null'],
+            'enum': [*ALL_STATUS_VALUES, None],
+        },
+        'delta_days': {'type': ['integer', 'null']},
+        'scope': {'type': ['object', 'null']},
+        'data': {'type': ['object', 'null']},
+    }
+
+
+def _promote_field_to_required_non_null(
+    properties: dict[str, Any],
+    field: str,
+) -> None:
+    spec = properties.get(field)
+    if not isinstance(spec, dict):
+        return
+    spec = dict(spec)
+    existing_type = spec.get('type')
+    if isinstance(existing_type, list):
+        spec['type'] = next(
+            (candidate for candidate in existing_type if candidate != 'null'),
+            existing_type[0] if existing_type else 'string',
+        )
+    existing_enum = spec.get('enum')
+    if isinstance(existing_enum, list):
+        spec['enum'] = [value for value in existing_enum if value is not None]
+    properties[field] = spec
+
+
+def _force_field_to_null(properties: dict[str, Any], field: str) -> None:
+    spec = properties.get(field)
+    if not isinstance(spec, dict):
+        return
+    properties[field] = {'type': 'null'}
+
+
+_XOR_SIBLINGS: dict[str, str] = {
+    'node_id': 'node_ref',
+    'node_ref': 'node_id',
+    'parent_id': 'parent_ref',
+    'parent_ref': 'parent_id',
+}
+
+
+def _attach_create_data_shape(
+    properties: dict[str, Any],
+    op_name: str,
+) -> None:
+    status_enum = _CREATE_STATUS_ENUMS.get(op_name, ALL_STATUS_VALUES)
+    properties['data'] = {
+        'type': 'object',
+        'required': ['title'],
+        'properties': {
+            'title': {'type': 'string'},
+            'status': {'type': 'string', 'enum': status_enum},
+        },
+    }
+
+
+def _build_operation_anyof_branches() -> list[dict[str, Any]]:
+    """Per-op discriminated schema branches.
+
+    Each branch is a complete, closed object schema: full property set,
+    every field in `required`, optional fields modeled as nullable so the
+    model emits them as JSON null when not in use. Target/parent XOR is
+    encoded as two sibling branches per op (one per identifier variant).
+    This shape is OpenAI strict-mode compatible at the top level; inner
+    `patch`/`data`/`scope` remain loose objects so the binder falls back
+    to non-strict if the current LangChain/OpenAI runtime rejects them.
+    """
+    branches: list[dict[str, Any]] = []
+    for op_name, policy in _CANONICAL_OPERATION_REQUIREMENTS.items():
+        if not isinstance(policy, dict):
+            continue
+        if policy.get('parent'):
+            for identifier in ('parent_id', 'parent_ref'):
+                properties = _base_operation_properties(op_name)
+                _promote_field_to_required_non_null(properties, identifier)
+                _force_field_to_null(properties, _XOR_SIBLINGS[identifier])
+                if policy.get('data_title'):
+                    _attach_create_data_shape(properties, op_name)
+                branches.append(
+                    {
+                        'type': 'object',
+                        'additionalProperties': False,
+                        'required': list(_ALL_OPERATION_FIELDS),
+                        'properties': properties,
+                    }
+                )
+        elif policy.get('target'):
+            for identifier in ('node_id', 'node_ref'):
+                properties = _base_operation_properties(op_name)
+                _promote_field_to_required_non_null(properties, identifier)
+                _force_field_to_null(properties, _XOR_SIBLINGS[identifier])
+                branches.append(
+                    {
+                        'type': 'object',
+                        'additionalProperties': False,
+                        'required': list(_ALL_OPERATION_FIELDS),
+                        'properties': properties,
+                    }
+                )
+        else:
+            properties = _base_operation_properties(op_name)
+            if policy.get('data_title'):
+                _attach_create_data_shape(properties, op_name)
+            branches.append(
+                {
+                    'type': 'object',
+                    'additionalProperties': False,
+                    'required': list(_ALL_OPERATION_FIELDS),
+                    'properties': properties,
+                }
+            )
+    return branches
+
+
 def get_planning_tool() -> dict[str, Any]:
     return {
         'type': 'function',
@@ -685,132 +879,7 @@ def get_planning_tool() -> dict[str, Any]:
                     },
                     'operations': {
                         'type': 'array',
-                        'items': {
-                            'type': 'object',
-                            'required': ['op'],
-                            'properties': {
-                                'op': {
-                                    'type': 'string',
-                                    'enum': [item.value for item in OperationType],
-                                },
-                                'node_type': {
-                                    'type': 'string',
-                                    'enum': ['roadmap', 'epic', 'feature', 'task'],
-                                },
-                                'node_id': {'type': 'string'},
-                                'node_ref': {'type': 'string'},
-                                'parent_id': {'type': 'string'},
-                                'parent_ref': {'type': 'string'},
-                                'new_parent_id': {'type': 'string'},
-                                'new_parent_ref': {'type': 'string'},
-                                'temp_id': {'type': 'string'},
-                                'position': {'type': 'integer', 'minimum': 0},
-                                'patch': {
-                                    'type': 'object',
-                                    'properties': {
-                                        'status': {
-                                            'type': 'string',
-                                            'enum': ALL_STATUS_VALUES,
-                                        },
-                                    },
-                                },
-                                'status': {
-                                    'type': 'string',
-                                    'enum': ALL_STATUS_VALUES,
-                                },
-                                'delta_days': {'type': 'integer'},
-                                'scope': {'type': 'object'},
-                                'data': {'type': 'object'},
-                            },
-                            'allOf': [
-                                {
-                                    'if': {
-                                        'properties': {
-                                            'op': {'const': 'add_epic'},
-                                        }
-                                    },
-                                    'then': {
-                                        'required': ['data'],
-                                        'properties': {
-                                            'data': {
-                                                'type': 'object',
-                                                'required': ['title'],
-                                                'properties': {
-                                                    'title': {
-                                                        'type': 'string',
-                                                        'minLength': 1,
-                                                    },
-                                                    'status': {
-                                                        'type': 'string',
-                                                        'enum': EPIC_STATUS_VALUES,
-                                                    },
-                                                },
-                                            }
-                                        },
-                                    },
-                                },
-                                {
-                                    'if': {
-                                        'properties': {
-                                            'op': {'const': 'add_feature'},
-                                        }
-                                    },
-                                    'then': {
-                                        'required': ['data'],
-                                        'properties': {
-                                            'data': {
-                                                'type': 'object',
-                                                'required': ['title'],
-                                                'properties': {
-                                                    'title': {
-                                                        'type': 'string',
-                                                        'minLength': 1,
-                                                    },
-                                                    'status': {
-                                                        'type': 'string',
-                                                        'enum': FEATURE_STATUS_VALUES,
-                                                    },
-                                                },
-                                            }
-                                        },
-                                        'oneOf': [
-                                            {'required': ['parent_id']},
-                                            {'required': ['parent_ref']},
-                                        ],
-                                    },
-                                },
-                                {
-                                    'if': {
-                                        'properties': {
-                                            'op': {'const': 'add_task'},
-                                        }
-                                    },
-                                    'then': {
-                                        'required': ['data'],
-                                        'properties': {
-                                            'data': {
-                                                'type': 'object',
-                                                'required': ['title'],
-                                                'properties': {
-                                                    'title': {
-                                                        'type': 'string',
-                                                        'minLength': 1,
-                                                    },
-                                                    'status': {
-                                                        'type': 'string',
-                                                        'enum': TASK_STATUS_VALUES,
-                                                    },
-                                                },
-                                            }
-                                        },
-                                        'oneOf': [
-                                            {'required': ['parent_id']},
-                                            {'required': ['parent_ref']},
-                                        ],
-                                    },
-                                },
-                            ],
-                        },
+                        'items': {'anyOf': _build_operation_anyof_branches()},
                     },
                 },
             },

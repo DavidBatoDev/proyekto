@@ -24,46 +24,61 @@ class ToolRegistryParsePlanTests(unittest.TestCase):
             .get('items', {})
         )
 
-        all_of = operations_item.get('allOf')
-        self.assertIsInstance(all_of, list)
-        assert isinstance(all_of, list)
+        any_of = operations_item.get('anyOf')
+        self.assertIsInstance(any_of, list)
+        assert isinstance(any_of, list)
 
-        def _rule_for(op_name: str) -> dict[str, object] | None:
-            for rule in all_of:
-                if not isinstance(rule, dict):
-                    continue
-                if_op = (
-                    rule.get('if', {})
-                    .get('properties', {})
-                    .get('op', {})
-                    .get('const')
-                )
-                if if_op == op_name:
-                    return rule
-            return None
+        def _branches_for(op_name: str) -> list[dict[str, object]]:
+            return [
+                branch
+                for branch in any_of
+                if isinstance(branch, dict)
+                and branch.get('properties', {}).get('op', {}).get('const') == op_name
+            ]
 
         for op_name in ('add_epic', 'add_feature', 'add_task'):
-            op_rule = _rule_for(op_name)
-            self.assertIsNotNone(op_rule)
-            assert isinstance(op_rule, dict)
-            then_block = op_rule.get('then', {})
-            self.assertIn('data', then_block.get('required', []))
-            data_schema = then_block.get('properties', {}).get('data', {})
-            self.assertIn('title', data_schema.get('required', []))
+            branches = _branches_for(op_name)
+            self.assertTrue(branches, f'{op_name} must have at least one branch')
+            for branch in branches:
+                self.assertIn('data', branch.get('required', []))
+                data_schema = branch.get('properties', {}).get('data', {})
+                self.assertEqual(data_schema.get('type'), 'object')
+                self.assertIn('title', data_schema.get('required', []))
 
-        add_feature_rule = _rule_for('add_feature')
-        self.assertIsNotNone(add_feature_rule)
-        assert isinstance(add_feature_rule, dict)
-        add_feature_parent_one_of = add_feature_rule.get('then', {}).get('oneOf', [])
-        self.assertIn({'required': ['parent_id']}, add_feature_parent_one_of)
-        self.assertIn({'required': ['parent_ref']}, add_feature_parent_one_of)
+        add_feature_branches = _branches_for('add_feature')
+        parent_id_variants = [
+            b for b in add_feature_branches
+            if b['properties']['parent_id'].get('type') == 'string'
+        ]
+        parent_ref_variants = [
+            b for b in add_feature_branches
+            if b['properties']['parent_ref'].get('type') == 'string'
+        ]
+        self.assertEqual(len(parent_id_variants), 1)
+        self.assertEqual(len(parent_ref_variants), 1)
+        # The XOR sibling must be forced to null in the promoted branch.
+        self.assertEqual(
+            parent_id_variants[0]['properties']['parent_ref'].get('type'), 'null'
+        )
+        self.assertEqual(
+            parent_ref_variants[0]['properties']['parent_id'].get('type'), 'null'
+        )
 
-        add_task_rule = _rule_for('add_task')
-        self.assertIsNotNone(add_task_rule)
-        assert isinstance(add_task_rule, dict)
-        add_task_parent_one_of = add_task_rule.get('then', {}).get('oneOf', [])
-        self.assertIn({'required': ['parent_id']}, add_task_parent_one_of)
-        self.assertIn({'required': ['parent_ref']}, add_task_parent_one_of)
+        add_task_branches = _branches_for('add_task')
+        self.assertEqual(
+            sum(
+                1 for b in add_task_branches
+                if b['properties']['parent_id'].get('type') == 'string'
+            ),
+            1,
+        )
+        self.assertEqual(
+            sum(
+                1 for b in add_task_branches
+                if b['properties']['parent_ref'].get('type') == 'string'
+            ),
+            1,
+        )
 
     def test_parse_add_feature_normalizes_title_aliases(self) -> None:
         _, operations = parse_plan_tool_args(
@@ -566,56 +581,66 @@ class PlanToolStatusEnumSchemaTests(unittest.TestCase):
     way to prevent that class of 400s.
     """
 
-    def _operation_item_schema(self) -> dict[str, object]:
+    def _operation_branches(self) -> list[dict[str, object]]:
         tool = get_planning_tool()
         return (
-            tool['function']['parameters']['properties']['operations']['items']  # type: ignore[index]
+            tool['function']['parameters']['properties']['operations']['items']['anyOf']  # type: ignore[index]
         )
 
-    def test_top_level_status_enforces_full_enum_union(self) -> None:
-        item = self._operation_item_schema()
-        status_schema = item['properties']['status']  # type: ignore[index]
-        self.assertEqual(status_schema['enum'], ALL_STATUS_VALUES)  # type: ignore[index]
+    def _any_branch(self) -> dict[str, object]:
+        # In the anyOf layout, common nullable field shapes (type, enum) are
+        # identical across every branch — pick the first to inspect.
+        branches = self._operation_branches()
+        self.assertTrue(branches)
+        return branches[0]
+
+    def test_top_level_status_allows_null_string(self) -> None:
+        branch = self._any_branch()
+        status_schema = branch['properties']['status']  # type: ignore[index]
+        self.assertEqual(status_schema.get('type'), ['string', 'null'])
+        self.assertEqual(
+            status_schema.get('enum'), [*ALL_STATUS_VALUES, None]
+        )
 
     def test_patch_status_enforces_full_enum_union(self) -> None:
-        item = self._operation_item_schema()
-        patch_schema = item['properties']['patch']  # type: ignore[index]
+        branch = self._any_branch()
+        patch_schema = branch['properties']['patch']  # type: ignore[index]
         patch_status = patch_schema['properties']['status']  # type: ignore[index]
-        self.assertEqual(patch_status['enum'], ALL_STATUS_VALUES)
+        self.assertEqual(patch_status.get('enum'), [*ALL_STATUS_VALUES, None])
 
     def test_add_epic_data_status_enforces_epic_enum(self) -> None:
-        item = self._operation_item_schema()
-        all_of = item['allOf']  # type: ignore[index]
-        epic_rule = next(
-            rule for rule in all_of
-            if rule.get('if', {}).get('properties', {}).get('op', {}).get('const') == 'add_epic'
-        )
+        branches = self._operation_branches()
+        epic_branches = [
+            b for b in branches
+            if b.get('properties', {}).get('op', {}).get('const') == 'add_epic'
+        ]
+        self.assertTrue(epic_branches)
         epic_status = (
-            epic_rule['then']['properties']['data']['properties']['status']
+            epic_branches[0]['properties']['data']['properties']['status']  # type: ignore[index]
         )
         self.assertEqual(epic_status['enum'], EPIC_STATUS_VALUES)
 
     def test_add_feature_data_status_enforces_feature_enum(self) -> None:
-        item = self._operation_item_schema()
-        all_of = item['allOf']  # type: ignore[index]
-        feature_rule = next(
-            rule for rule in all_of
-            if rule.get('if', {}).get('properties', {}).get('op', {}).get('const') == 'add_feature'
-        )
+        branches = self._operation_branches()
+        feature_branches = [
+            b for b in branches
+            if b.get('properties', {}).get('op', {}).get('const') == 'add_feature'
+        ]
+        self.assertTrue(feature_branches)
         feature_status = (
-            feature_rule['then']['properties']['data']['properties']['status']
+            feature_branches[0]['properties']['data']['properties']['status']  # type: ignore[index]
         )
         self.assertEqual(feature_status['enum'], FEATURE_STATUS_VALUES)
 
     def test_add_task_data_status_enforces_task_enum(self) -> None:
-        item = self._operation_item_schema()
-        all_of = item['allOf']  # type: ignore[index]
-        task_rule = next(
-            rule for rule in all_of
-            if rule.get('if', {}).get('properties', {}).get('op', {}).get('const') == 'add_task'
-        )
+        branches = self._operation_branches()
+        task_branches = [
+            b for b in branches
+            if b.get('properties', {}).get('op', {}).get('const') == 'add_task'
+        ]
+        self.assertTrue(task_branches)
         task_status = (
-            task_rule['then']['properties']['data']['properties']['status']
+            task_branches[0]['properties']['data']['properties']['status']  # type: ignore[index]
         )
         self.assertEqual(task_status['enum'], TASK_STATUS_VALUES)
 
@@ -648,6 +673,100 @@ class PlanToolStatusEnumSchemaTests(unittest.TestCase):
             {*EPIC_STATUS_VALUES, *FEATURE_STATUS_VALUES, *TASK_STATUS_VALUES}
         )
         self.assertEqual(ALL_STATUS_VALUES, expected)
+
+    def test_planning_tool_requires_target_for_target_taking_ops(self) -> None:
+        from app.core.tools.registry import get_planning_tool
+
+        tool = get_planning_tool()
+        branches = tool['function']['parameters']['properties']['operations']['items'][
+            'anyOf'
+        ]
+        by_op: dict[str, list[dict]] = {}
+        for branch in branches:
+            op_const = branch['properties']['op']['const']
+            by_op.setdefault(op_const, []).append(branch)
+        for op_name in (
+            'update_node',
+            'delete_node',
+            'move_node',
+            'mark_status',
+            'shift_dates',
+        ):
+            op_branches = by_op.get(op_name, [])
+            has_node_id_branch = any(
+                'node_id' in branch.get('required', [])
+                and branch['properties']['node_id'].get('type') == 'string'
+                for branch in op_branches
+            )
+            has_node_ref_branch = any(
+                'node_ref' in branch.get('required', [])
+                and branch['properties']['node_ref'].get('type') == 'string'
+                for branch in op_branches
+            )
+            self.assertTrue(
+                has_node_id_branch and has_node_ref_branch,
+                f'{op_name} must have branches for node_id and node_ref',
+            )
+
+    def test_planning_tool_requires_parent_for_parent_requiring_ops(self) -> None:
+        from app.core.tools.registry import get_planning_tool
+
+        tool = get_planning_tool()
+        branches = tool['function']['parameters']['properties']['operations']['items'][
+            'anyOf'
+        ]
+        by_op: dict[str, list[dict]] = {}
+        for branch in branches:
+            op_const = branch['properties']['op']['const']
+            by_op.setdefault(op_const, []).append(branch)
+        for op_name in ('add_feature', 'add_task'):
+            op_branches = by_op.get(op_name, [])
+            has_parent_id_branch = any(
+                'parent_id' in branch.get('required', [])
+                and branch['properties']['parent_id'].get('type') == 'string'
+                for branch in op_branches
+            )
+            has_parent_ref_branch = any(
+                'parent_ref' in branch.get('required', [])
+                and branch['properties']['parent_ref'].get('type') == 'string'
+                for branch in op_branches
+            )
+            self.assertTrue(
+                has_parent_id_branch and has_parent_ref_branch,
+                f'{op_name} must have branches for parent_id and parent_ref',
+            )
+
+    def test_planning_tool_schema_has_additional_properties_false_on_branches(
+        self,
+    ) -> None:
+        from app.core.tools.registry import get_planning_tool
+
+        tool = get_planning_tool()
+        branches = tool['function']['parameters']['properties']['operations']['items'][
+            'anyOf'
+        ]
+        self.assertEqual(len(branches), 15)
+        for branch in branches:
+            self.assertFalse(
+                branch.get('additionalProperties', True),
+                f'branch for {branch["properties"]["op"]["const"]} must be closed',
+            )
+
+    def test_planning_tool_schema_closes_every_property_as_required(self) -> None:
+        from app.core.tools.registry import get_planning_tool
+
+        tool = get_planning_tool()
+        branches = tool['function']['parameters']['properties']['operations']['items'][
+            'anyOf'
+        ]
+        for branch in branches:
+            prop_names = set(branch['properties'].keys())
+            required = set(branch['required'])
+            self.assertEqual(
+                prop_names,
+                required,
+                f'branch {branch["properties"]["op"]["const"]} must require every property',
+            )
 
 
 if __name__ == '__main__':

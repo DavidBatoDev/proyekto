@@ -1898,6 +1898,8 @@ def plan_operations(
                     planner_prompt=planner_prompt,
                     error_code=exc.code,
                     error_message=exc.message,
+                    raw_tool_args=exc.raw_tool_args,
+                    tool_observations=tool_observations,
                 )
                 if exc.code == 'missing_tool_call' or enum_op_payload:
                     # Retry in planning-only mode to avoid rediscovery churn.

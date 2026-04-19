@@ -1,4 +1,5 @@
 {
+  "schema_ref": "./roadmap-ai-operations.schema.json",
   "operation_types": [
     "add_epic",
     "add_feature",

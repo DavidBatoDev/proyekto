@@ -8,8 +8,9 @@ from app.core.llm.providers.base import ProviderAdapterError
 
 UsageTotals = dict[str, int]
 NoToolCallsHandler = Callable[[Any, UsageTotals], 'BoundedToolLoopOutcome']
+PriorToolMessages = list[dict[str, Any]]
 TerminalToolCallHandler = Callable[
-    [str, dict[str, Any], dict[str, Any], int, int, UsageTotals],
+    [str, dict[str, Any], dict[str, Any], int, int, UsageTotals, PriorToolMessages],
     'BoundedToolLoopOutcome | None',
 ]
 ParallelToolExecutor = Callable[
@@ -43,7 +44,21 @@ def run_bounded_tool_loop(
 ) -> BoundedToolLoopOutcome:
     usage_totals: UsageTotals = {'tokens_input': 0, 'tokens_output': 0, 'tokens_total': 0}
     messages = list(initial_messages)
+    tool_message_history: PriorToolMessages = []
     safe_set = frozenset(parallel_safe_tools or ())
+
+    def _record_tool_message(
+        tool_name: str,
+        tool_args: dict[str, Any],
+        result_payload: dict[str, Any],
+    ) -> None:
+        tool_message_history.append(
+            {
+                'name': tool_name,
+                'args': tool_args if isinstance(tool_args, dict) else {},
+                'result': result_payload if isinstance(result_payload, dict) else {},
+            }
+        )
 
     usage_totals.setdefault('tokens_cached', 0)
     for turn in range(max(1, int(max_tool_turns))):
@@ -72,7 +87,9 @@ def run_bounded_tool_loop(
             tool_call = tool_calls[index]
             name = str(tool_call.get('name', '')).strip()
             args = normalize_tool_args(tool_call.get('args'))
-            terminal_outcome = on_tool_call(name, args, tool_call, turn, index, usage_totals)
+            terminal_outcome = on_tool_call(
+                name, args, tool_call, turn, index, usage_totals, tool_message_history
+            )
             if terminal_outcome is not None:
                 return terminal_outcome
 
@@ -95,7 +112,13 @@ def run_bounded_tool_loop(
                         break
                     peek_args = normalize_tool_args(peek.get('args'))
                     peek_terminal = on_tool_call(
-                        peek_name, peek_args, peek, turn, lookahead, usage_totals
+                        peek_name,
+                        peek_args,
+                        peek,
+                        turn,
+                        lookahead,
+                        usage_totals,
+                        tool_message_history,
                     )
                     if peek_terminal is not None:
                         return peek_terminal
@@ -105,7 +128,7 @@ def run_bounded_tool_loop(
 
                 if len(group) > 1:
                     results = parallel_tool_executor(group)
-                    for offset, (grp_name, _grp_args) in enumerate(group):
+                    for offset, (grp_name, grp_args) in enumerate(group):
                         gcall = group_calls[offset]
                         gresult = results[offset] if offset < len(results) else {}
                         tool_call_id = str(
@@ -117,6 +140,7 @@ def run_bounded_tool_loop(
                                 tool_call_id,
                             )
                         )
+                        _record_tool_message(grp_name, grp_args, gresult)
                     index = lookahead
                     continue
 
@@ -128,6 +152,7 @@ def run_bounded_tool_loop(
                     tool_call_id,
                 )
             )
+            _record_tool_message(name, args, tool_result)
             index += 1
 
     raise ProviderAdapterError(

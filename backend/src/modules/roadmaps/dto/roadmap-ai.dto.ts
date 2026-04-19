@@ -11,8 +11,61 @@ import {
   IsString,
   IsUUID,
   Min,
+  Validate,
   ValidateNested,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+  ValidationArguments,
 } from 'class-validator';
+
+const TARGET_TAKING_OPS: ReadonlySet<string> = new Set([
+  'update_node',
+  'move_node',
+  'delete_node',
+  'mark_status',
+  'shift_dates',
+]);
+const PARENT_REQUIRING_OPS: ReadonlySet<string> = new Set([
+  'add_feature',
+  'add_task',
+]);
+
+function hasNonEmptyString(value: unknown): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+@ValidatorConstraint({ name: 'RoadmapAiOperationShape', async: false })
+class RoadmapAiOperationShapeConstraint
+  implements ValidatorConstraintInterface
+{
+  validate(_value: unknown, args: ValidationArguments): boolean {
+    const op = (args.object as RoadmapAiOperationDto).op;
+    const hasTarget =
+      hasNonEmptyString((args.object as RoadmapAiOperationDto).node_id) ||
+      hasNonEmptyString((args.object as RoadmapAiOperationDto).node_ref);
+    const hasParent =
+      hasNonEmptyString((args.object as RoadmapAiOperationDto).parent_id) ||
+      hasNonEmptyString((args.object as RoadmapAiOperationDto).parent_ref);
+    if (TARGET_TAKING_OPS.has(op) && !hasTarget) {
+      return false;
+    }
+    if (PARENT_REQUIRING_OPS.has(op) && !hasParent) {
+      return false;
+    }
+    return true;
+  }
+
+  defaultMessage(args: ValidationArguments): string {
+    const op = (args.object as RoadmapAiOperationDto).op;
+    if (TARGET_TAKING_OPS.has(op)) {
+      return `Operation op=${op} requires either node_id or node_ref.`;
+    }
+    if (PARENT_REQUIRING_OPS.has(op)) {
+      return `Operation op=${op} requires either parent_id or parent_ref.`;
+    }
+    return 'Invalid operation shape.';
+  }
+}
 
 export type RoadmapAiOperationType =
   | 'add_epic'
@@ -37,6 +90,7 @@ export class RoadmapAiOperationDto {
     'mark_status',
     'shift_dates',
   ])
+  @Validate(RoadmapAiOperationShapeConstraint)
   op: RoadmapAiOperationType;
 
   @IsOptional()

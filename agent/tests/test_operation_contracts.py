@@ -7,6 +7,7 @@ from app.core.orchestration.shared.operation_contracts import (
     operation_validation_guidance,
     validate_operation_contract,
 )
+from app.core.tools.registry import parse_plan_tool_args
 from app.core.uuid_utils import is_uuid_like
 
 
@@ -404,6 +405,18 @@ class OperationContractsTests(unittest.TestCase):
         )
         issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
         self.assertIn('move_node.new_parent_target_conflict', issues)
+
+
+    def test_delete_node_missing_target_raises(self) -> None:
+        args = {
+            'assistant_message': 'delete epic',
+            'operations': [{'op': 'delete_node'}],
+        }
+        with self.assertRaises(ValueError) as context:
+            parse_plan_tool_args(args)
+        message = str(context.exception)
+        self.assertIn('delete_node', message)
+        self.assertIn('target missing', message)
 
 
 if __name__ == '__main__':

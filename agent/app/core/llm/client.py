@@ -513,17 +513,22 @@ class LLMPlanner:
     def _normalize_label_for_matching(value: str) -> str:
         return planner_react_helpers.normalize_label_for_matching(value)
 
-    @staticmethod
     def _augment_repair_planner_prompt(
+        self,
         *,
         planner_prompt: str,
         error_code: str,
         error_message: str | None = None,
+        raw_tool_args: Any = None,
+        tool_observations: list[dict[str, Any]] | None = None,
     ) -> str:
         return planner_react_helpers.augment_repair_planner_prompt(
             planner_prompt=planner_prompt,
             error_code=error_code,
             error_message=error_message,
+            raw_tool_args=raw_tool_args,
+            tool_observations=tool_observations,
+            planner=self,
         )
 
     @staticmethod

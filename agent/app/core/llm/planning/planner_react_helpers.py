@@ -649,11 +649,92 @@ def is_invalid_operation_enum_payload(error_message: str | None) -> bool:
     return has_op_loc and has_enum_hint
 
 
+_TARGET_TAKING_OPS: frozenset[str] = frozenset(
+    {'update_node', 'delete_node', 'move_node', 'mark_status', 'shift_dates'}
+)
+_PARENT_REQUIRING_OPS: frozenset[str] = frozenset({'add_feature', 'add_task'})
+_REPAIR_CONTEXT_ENTRY_CAP: int = 1500
+_REPAIR_OFFENDING_OP_LIMIT: int = 5
+_REPAIR_RESOLVER_SUMMARY_LIMIT: int = 10
+
+
+def _extract_offending_op_from_detail(detail: str) -> str | None:
+    match = re.search(r'\(op=([a-zA-Z_]+)\)', detail)
+    if match is None:
+        return None
+    return match.group(1).strip() or None
+
+
+def _truncate_json_block(payload: str, limit: int) -> str:
+    if len(payload) <= limit:
+        return payload
+    return payload[: max(0, limit - len(' ... [truncated]'))] + ' ... [truncated]'
+
+
+def _render_offending_ops_block(raw_tool_args: Any) -> str | None:
+    if not isinstance(raw_tool_args, dict):
+        return None
+    operations = raw_tool_args.get('operations')
+    if not isinstance(operations, list):
+        return None
+    offenders: list[dict[str, Any]] = []
+    for index, operation in enumerate(operations):
+        if not isinstance(operation, dict):
+            continue
+        node_id = operation.get('node_id')
+        node_ref = operation.get('node_ref')
+        parent_id = operation.get('parent_id')
+        parent_ref = operation.get('parent_ref')
+        has_target = (isinstance(node_id, str) and bool(node_id.strip())) or (
+            isinstance(node_ref, str) and bool(node_ref.strip())
+        )
+        has_parent = (isinstance(parent_id, str) and bool(parent_id.strip())) or (
+            isinstance(parent_ref, str) and bool(parent_ref.strip())
+        )
+        op_kind = str(operation.get('op') or '').strip()
+        target_missing = op_kind in _TARGET_TAKING_OPS and not has_target
+        parent_missing = op_kind in _PARENT_REQUIRING_OPS and not has_parent
+        if not (target_missing or parent_missing):
+            continue
+        offenders.append({'index': index, 'operation': operation})
+        if len(offenders) >= _REPAIR_OFFENDING_OP_LIMIT:
+            break
+    if not offenders:
+        return None
+    payload = json.dumps(offenders, ensure_ascii=True, separators=(',', ':'))
+    return _truncate_json_block(payload, _REPAIR_CONTEXT_ENTRY_CAP)
+
+
+def _render_resolver_summary_block(
+    planner: Any,
+    tool_observations: list[dict[str, Any]] | None,
+) -> str | None:
+    if not tool_observations:
+        return None
+    resolver_observations = [
+        observation
+        for observation in tool_observations
+        if isinstance(observation, dict)
+        and str(observation.get('tool_name') or '').strip() == 'resolve_node_reference'
+    ]
+    if not resolver_observations:
+        return None
+    summary = summarize_react_tool_observations(planner, resolver_observations)
+    if not summary:
+        return None
+    capped = summary[-_REPAIR_RESOLVER_SUMMARY_LIMIT:]
+    payload = json.dumps(capped, ensure_ascii=True, separators=(',', ':'))
+    return _truncate_json_block(payload, _REPAIR_CONTEXT_ENTRY_CAP)
+
+
 def augment_repair_planner_prompt(
     *,
     planner_prompt: str,
     error_code: str,
     error_message: str | None = None,
+    raw_tool_args: Any = None,
+    tool_observations: list[dict[str, Any]] | None = None,
+    planner: Any = None,
 ) -> str:
     if error_code == 'missing_tool_call':
         guidance = (
@@ -664,10 +745,16 @@ def augment_repair_planner_prompt(
         )
     elif error_code == 'invalid_operation_payload':
         detail = str(error_message or '').strip()
+        detail_lower = detail.lower()
         enum_payload_failure = is_invalid_operation_enum_payload(detail)
+        offending_op = _extract_offending_op_from_detail(detail)
         target_missing_failure = (
-            '(op=update_node)' in detail
-            and 'target missing' in detail.lower()
+            offending_op in _TARGET_TAKING_OPS
+            and 'target missing' in detail_lower
+        )
+        parent_missing_failure = (
+            offending_op in _PARENT_REQUIRING_OPS
+            and 'parent target missing' in detail_lower
         )
         detail_suffix = f' Validation detail: {detail}' if detail else ''
         allowed_ops = ', '.join(item.value for item in OperationType)
@@ -678,9 +765,35 @@ def augment_repair_planner_prompt(
             else ''
         )
         target_guardrail = (
-            ' For update_node operations, you MUST include exactly one target identifier: '
+            f' For {offending_op} operations, you MUST include exactly one target identifier: '
             'node_id (UUID) or node_ref (valid temp ref). Do not omit both.'
             if target_missing_failure
+            else ''
+        )
+        parent_guardrail = (
+            f' For {offending_op} operations, you MUST include exactly one parent identifier: '
+            'parent_id (UUID) or parent_ref (valid temp ref). Do not omit both.'
+            if parent_missing_failure
+            else ''
+        )
+        offending_block = (
+            _render_offending_ops_block(raw_tool_args)
+            if (target_missing_failure or parent_missing_failure)
+            else None
+        )
+        offending_suffix = (
+            f'\nOFFENDING OPERATIONS: {offending_block}'
+            if offending_block
+            else ''
+        )
+        resolver_block = (
+            _render_resolver_summary_block(planner, tool_observations)
+            if (target_missing_failure or parent_missing_failure)
+            else None
+        )
+        resolver_suffix = (
+            f'\nRESOLVED NODES FROM THIS TURN: {resolver_block}'
+            if resolver_block
             else ''
         )
         guidance = (
@@ -694,7 +807,10 @@ def augment_repair_planner_prompt(
             'When assigning to "me", use actor_context.actor_id from runtime context.'
             f'{enum_guardrail}'
             f'{target_guardrail}'
+            f'{parent_guardrail}'
             f'{detail_suffix}'
+            f'{offending_suffix}'
+            f'{resolver_suffix}'
         )
     else:
         return planner_prompt

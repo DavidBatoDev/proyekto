@@ -7,6 +7,11 @@ const __dirname = path.dirname(__filename);
 const root = path.resolve(__dirname, '..');
 
 const schemaPath = path.join(root, 'schemas', 'roadmap-ai-operations.json');
+const canonicalSchemaPath = path.join(
+  root,
+  'schemas',
+  'roadmap-ai-operations.schema.json',
+);
 const backendDtoPath = path.join(
   root,
   'backend',
@@ -113,12 +118,29 @@ function compare(label, expected, actual) {
 
 function main() {
   const schema = JSON.parse(readUtf8(schemaPath));
+  const canonicalSchema = JSON.parse(readUtf8(canonicalSchemaPath));
   const backendContent = readUtf8(backendDtoPath);
   const agentContent = readUtf8(agentOpsPath);
   const registryContent = readUtf8(agentRegistryPath);
 
   const failures = [];
+  const canonicalOps = Object.keys(
+    canonicalSchema?.definitions?.operation_requirements?.properties ?? {},
+  );
+  const schemaRef = schema.schema_ref ?? null;
+  const canonicalOpRequirements =
+    canonicalSchema?.definitions?.operation_requirements?.properties ?? {};
   const checks = [
+    compare(
+      'registry.schema_ref',
+      './roadmap-ai-operations.schema.json',
+      schemaRef,
+    ),
+    compare(
+      'canonical.operation_types',
+      schema.operation_types ?? [],
+      canonicalOps,
+    ),
     compare(
       'backend.operation_types',
       schema.operation_types ?? [],
@@ -164,6 +186,30 @@ function main() {
     ),
   ];
 
+  for (const opName of canonicalOps) {
+    const policy = canonicalOpRequirements[opName] ?? {};
+    if (policy.target) {
+      const canonicalRequires = canonicalOpRequiresTarget(canonicalSchema, opName);
+      checks.push(
+        compare(
+          `canonical.${opName}.requires_target`,
+          true,
+          canonicalRequires,
+        ),
+      );
+    }
+    if (policy.parent) {
+      const canonicalRequires = canonicalOpRequiresParent(canonicalSchema, opName);
+      checks.push(
+        compare(
+          `canonical.${opName}.requires_parent`,
+          true,
+          canonicalRequires,
+        ),
+      );
+    }
+  }
+
   for (const check of checks) {
     if (check) failures.push(check);
   }
@@ -177,6 +223,40 @@ function main() {
   }
 
   console.log('Roadmap AI operation schema check passed.');
+}
+
+function canonicalOpRequiresTarget(canonicalSchema, opName) {
+  const branches =
+    canonicalSchema?.properties?.operations?.items?.allOf ?? [];
+  for (const branch of branches) {
+    if (branch?.if?.properties?.op?.const !== opName) continue;
+    const oneOf = branch?.then?.oneOf ?? [];
+    const hasNodeId = oneOf.some((entry) =>
+      Array.isArray(entry?.required) && entry.required.includes('node_id'),
+    );
+    const hasNodeRef = oneOf.some((entry) =>
+      Array.isArray(entry?.required) && entry.required.includes('node_ref'),
+    );
+    return hasNodeId && hasNodeRef;
+  }
+  return false;
+}
+
+function canonicalOpRequiresParent(canonicalSchema, opName) {
+  const branches =
+    canonicalSchema?.properties?.operations?.items?.allOf ?? [];
+  for (const branch of branches) {
+    if (branch?.if?.properties?.op?.const !== opName) continue;
+    const oneOf = branch?.then?.oneOf ?? [];
+    const hasParentId = oneOf.some((entry) =>
+      Array.isArray(entry?.required) && entry.required.includes('parent_id'),
+    );
+    const hasParentRef = oneOf.some((entry) =>
+      Array.isArray(entry?.required) && entry.required.includes('parent_ref'),
+    );
+    return hasParentId && hasParentRef;
+  }
+  return false;
 }
 
 function extractRegistryToolRequiredArgs(content, toolName) {

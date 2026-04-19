@@ -106,6 +106,8 @@ class _FakePlanner:
         planner_prompt,
         error_code,
         error_message=None,
+        raw_tool_args=None,
+        tool_observations=None,
     ):  # noqa: ANN001
         return planner_prompt
 
