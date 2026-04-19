@@ -1991,6 +1991,11 @@ export function RoadmapAiAssistantPanel({
   };
 
   const pendingAutoSubmitRef = useRef<string | null>(null);
+  // Optional display override for programmatic sends: when the wire payload
+  // is a structured sentinel (e.g. `__plan_decision__\n{...}`), we still want
+  // the chat bubble + DB persistence to carry the friendly human label
+  // instead of leaking the raw JSON. Cleared alongside the auto-submit ref.
+  const pendingAutoSubmitDisplayRef = useRef<string | null>(null);
 
   const handleSend = async () => {
     const trimmedMessage = input.trim();
@@ -2014,6 +2019,14 @@ export function RoadmapAiAssistantPanel({
             .join("\n")}`
         : "";
     const agentMessage = `${trimmedMessage || "Please review the attached files."}${attachmentContext}`;
+    // Structured sends (e.g. `__plan_decision__\n{...}`) set a display label
+    // via submitProgrammaticMessage so the chat bubble + DB history carry the
+    // human-readable version. Plain-text sends fall back to the wire payload,
+    // same as before.
+    const displayOverride = pendingAutoSubmitDisplayRef.current;
+    pendingAutoSubmitDisplayRef.current = null;
+    const userFacingContent =
+      displayOverride ?? (trimmedMessage || "Attached files");
 
     setInput("");
     setAttachments([]);
@@ -2035,7 +2048,7 @@ export function RoadmapAiAssistantPanel({
       appendMessage({
         id: crypto.randomUUID(),
         role: "user",
-        content: trimmedMessage || "Attached files",
+        content: userFacingContent,
         timestamp: new Date().toISOString(),
         attachments: attachmentMetadata,
       });
@@ -2043,9 +2056,12 @@ export function RoadmapAiAssistantPanel({
       // Persist the user turn BEFORE calling the agent so it survives an
       // agent failure (matches ChatGPT retry UX). The response includes the
       // last N messages we can replay if the agent's Redis session expired.
+      // Note: we persist the friendly text (not the sentinel) so reloading
+      // history doesn't show raw JSON, and agent session rehydration replays
+      // the same human-readable turn the UI already shows.
       const { seed_messages: seedMessagesForRetry } = await persistTurn(
         "user",
-        agentMessage,
+        userFacingContent,
       );
       startTracePolling(activeSessionId, traceId);
 
@@ -2235,9 +2251,13 @@ export function RoadmapAiAssistantPanel({
     }
   }, [input, isSending]);
 
-  const submitProgrammaticMessage = (content: string) => {
+  const submitProgrammaticMessage = (
+    content: string,
+    options?: { displayLabel?: string },
+  ) => {
     if (isSending) return;
     pendingAutoSubmitRef.current = content;
+    pendingAutoSubmitDisplayRef.current = options?.displayLabel ?? null;
     setInput(content);
   };
 
@@ -2792,14 +2812,22 @@ export function RoadmapAiAssistantPanel({
                     <RoadmapAiClarifierCard
                       card={message.clarifier}
                       disabled={isSending}
-                      onSubmit={(answer) =>
+                      onSubmit={(answer) => {
+                        const lane = message.clarifier!.lane;
+                        const friendly =
+                          (answer as { custom_answer?: string | null })
+                            .custom_answer ||
+                          (answer as { selected_option?: string | null })
+                            .selected_option ||
+                          "Submitted answer.";
                         submitProgrammaticMessage(
                           `__clarifier_answer__\n${JSON.stringify({
-                            lane: message.clarifier!.lane,
+                            lane,
                             ...answer,
                           })}`,
-                        )
-                      }
+                          { displayLabel: friendly },
+                        );
+                      }}
                     />
                   )}
 
@@ -2815,13 +2843,37 @@ export function RoadmapAiAssistantPanel({
                         // ...}` still works for single-question clarifiers
                         // because the pre-dispatcher's plan-answer ingest
                         // accepts both `{answers: [...]}` and a bare dict.
+                        const answerSummary = answers
+                          .map((a) => {
+                            const value = a.custom_answer || a.selected_option;
+                            return value ? `• ${value}` : null;
+                          })
+                          .filter((entry): entry is string => entry !== null)
+                          .join("\n");
                         submitProgrammaticMessage(
                           `__plan_answers__\n${JSON.stringify({ answers })}`,
+                          {
+                            displayLabel:
+                              answerSummary.length > 0
+                                ? `Submitted plan answers:\n${answerSummary}`
+                                : "Submitted plan answers.",
+                          },
                         );
                       }}
-                      onDiscard={() =>
-                        submitProgrammaticMessage("Cancel this plan.")
-                      }
+                      onDiscard={() => {
+                        const planId = message.planProposal?.plan_id;
+                        if (planId) {
+                          submitProgrammaticMessage(
+                            `__plan_decision__\n${JSON.stringify({
+                              decision: "reject",
+                              plan_id: planId,
+                            })}`,
+                            { displayLabel: "Cancel this plan." },
+                          );
+                        } else {
+                          submitProgrammaticMessage("Cancel this plan.");
+                        }
+                      }}
                     />
                   )}
 
@@ -2831,12 +2883,40 @@ export function RoadmapAiAssistantPanel({
                     <RoadmapAiPlanProposalCard
                       plan={message.planProposal}
                       disabled={isSending}
-                      onApply={() =>
-                        submitProgrammaticMessage("Yes, apply this plan.")
-                      }
-                      onDiscard={() =>
-                        submitProgrammaticMessage("Cancel this plan.")
-                      }
+                      onApply={() => {
+                        // Structured decision bypasses the regex + classifier
+                        // path in the agent — deterministically fires the
+                        // plan-confirm bridge instead of relying on NLP to
+                        // interpret "Yes, apply this plan." The plain-text
+                        // fallback is kept only for clients that can't include
+                        // a plan_id.
+                        const planId = message.planProposal?.plan_id;
+                        if (planId) {
+                          submitProgrammaticMessage(
+                            `__plan_decision__\n${JSON.stringify({
+                              decision: "confirm",
+                              plan_id: planId,
+                            })}`,
+                            { displayLabel: "Apply this plan." },
+                          );
+                        } else {
+                          submitProgrammaticMessage("Yes, apply this plan.");
+                        }
+                      }}
+                      onDiscard={() => {
+                        const planId = message.planProposal?.plan_id;
+                        if (planId) {
+                          submitProgrammaticMessage(
+                            `__plan_decision__\n${JSON.stringify({
+                              decision: "reject",
+                              plan_id: planId,
+                            })}`,
+                            { displayLabel: "Cancel this plan." },
+                          );
+                        } else {
+                          submitProgrammaticMessage("Cancel this plan.");
+                        }
+                      }}
                     />
                   )}
 
