@@ -12,7 +12,12 @@ def has_rename_shape_operation(operations: list[RoadmapOperation]) -> bool:
         op_name = operation.op.value if hasattr(operation.op, 'value') else str(operation.op)
         if op_name != 'update_node':
             continue
-        if not operation.node_id:
+        has_identity = bool(
+            operation.node_id
+            or operation.node_ref
+            or (isinstance(operation.targets, list) and operation.targets)
+        )
+        if not has_identity:
             continue
         if isinstance(operation.patch, dict):
             title = operation.patch.get('title')

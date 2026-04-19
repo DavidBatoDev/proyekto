@@ -17,14 +17,19 @@ export interface AgentOperation {
   op: AgentOperationType;
   node_type?: AgentNodeType;
   node_id?: string;
+  node_ref?: string;
   parent_id?: string;
+  parent_ref?: string;
   new_parent_id?: string;
+  new_parent_ref?: string;
+  temp_id?: string;
   position?: number;
   patch?: Record<string, unknown>;
   status?: string;
   delta_days?: number;
   scope?: Record<string, unknown>;
   data?: Record<string, unknown>;
+  targets?: string[];
 }
 
 export interface AgentValidationIssue {

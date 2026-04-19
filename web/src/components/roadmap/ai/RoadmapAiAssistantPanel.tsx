@@ -603,9 +603,24 @@ export const parseCommitImpactedItemsFromOperations = (
 
     const operationData = toRecord(operation.data);
     const operationPatch = toRecord(operation.patch);
-    const nodeId =
+
+    // Bulk ops (update_node / mark_status / shift_dates / delete_node /
+    // move_node with targets[]) address N nodes with one operation — emit
+    // one impacted item per target so the commit preview reflects every
+    // affected node, not just the first.
+    const rawTargets = Array.isArray(operation.targets)
+      ? operation.targets
+          .map((entry) => toStringValue(entry))
+          .filter((entry): entry is string => Boolean(entry))
+      : [];
+    const singleNodeId =
       toStringValue(operation.node_id) || toStringValue(operationData?.id);
-    if (!nodeId) return [];
+    const nodeIds = rawTargets.length > 0
+      ? rawTargets
+      : singleNodeId
+        ? [singleNodeId]
+        : [];
+    if (nodeIds.length === 0) return [];
 
     let kind: RoadmapAiCommitImpactedItemKind = "modified";
     if (op === "add_epic" || op === "add_feature" || op === "add_task") {
@@ -629,15 +644,14 @@ export const parseCommitImpactedItemsFromOperations = (
       changeType = "NODE_UPDATED";
     }
 
-    return [
-      {
-        nodeId,
-        nodeType: nodeTypeCandidate,
-        title: pickCommitItemTitle(operationPatch, operationData),
-        kind,
-        changeType,
-      },
-    ];
+    const title = pickCommitItemTitle(operationPatch, operationData);
+    return nodeIds.map((nodeId) => ({
+      nodeId,
+      nodeType: nodeTypeCandidate,
+      title,
+      kind,
+      changeType,
+    }));
   });
 
   return mergeCommitImpactedItems(parsed);

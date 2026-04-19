@@ -358,6 +358,30 @@ describe("assistant progress timeline logic", () => {
     expect(impactedItems[0]?.title).toBe("PM Module");
   });
 
+  it("expands bulk update_node operations with targets[] into one impacted item per target", () => {
+    const impactedItems = parseCommitImpactedItemsFromOperations([
+      {
+        op: "update_node",
+        node_type: "task",
+        targets: ["task-1", "task-2", "task-3"],
+        patch: {
+          assignee_id: "user-42",
+        },
+      },
+    ]);
+
+    expect(impactedItems).toHaveLength(3);
+    expect(impactedItems.map((item) => item.nodeId).sort()).toEqual([
+      "task-1",
+      "task-2",
+      "task-3",
+    ]);
+    for (const item of impactedItems) {
+      expect(item.nodeType).toBe("task");
+      expect(item.kind).toBe("modified");
+    }
+  });
+
   it("normalizes previously saved technical timeline rows at render time", () => {
     const normalized = normalizeTimelineForDisplay(
       {

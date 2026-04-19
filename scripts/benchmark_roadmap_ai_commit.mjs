@@ -412,6 +412,22 @@ function buildNoopUpdateOperation(seed) {
   };
 }
 
+// Emits a single update_node op that fans out to every provided id via
+// the targets[] field. Used to benchmark the bulk path that replaced the
+// per-id op expansion (see "Assign all tasks to me" regression fix).
+function buildBulkNoopUpdateOperation(seeds) {
+  if (!Array.isArray(seeds) || seeds.length === 0) {
+    throw new Error("buildBulkNoopUpdateOperation requires at least one seed.");
+  }
+  const head = seeds[0];
+  return {
+    op: "update_node",
+    node_type: head.nodeType,
+    targets: seeds.map((seed) => seed.nodeId),
+    patch: head.patch,
+  };
+}
+
 function summarizeDurations({ label, durations, okCount, failCount }) {
   const p50 = percentile(durations, 50);
   const p95 = percentile(durations, 95);
