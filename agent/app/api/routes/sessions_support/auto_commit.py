@@ -8,8 +8,10 @@ from typing import Any, Awaitable, Callable
 
 from fastapi.exceptions import HTTPException
 
+from app.api.routes.sessions_support.common import extract_upstream_error_code
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import AgentSession, AppliedDraftCommit, RoadmapCommitArtifact
+from app.core.logging_utils import log_event
 from app.core.orchestration.agent_service import AgentService
 from app.core.orchestration.context.applied_changes_log import (
     record_applied_changes_from_commit,
@@ -19,6 +21,51 @@ from app.core.session_store import SessionStore
 from app.core.uuid_utils import is_uuid_like
 
 _commit_diagnostic_logger = logging.getLogger(__name__)
+
+
+async def _refresh_revision_token_from_summary(
+    *,
+    nest_client: Any,
+    session: AgentSession,
+    auth_header: str,
+    trace_id: str | None,
+) -> str | None:
+    try:
+        payload = await nest_client.context_summary(
+            roadmap_id=session.roadmap_id,
+            preview_id=None,
+            auth_header=auth_header,
+            trace_id=trace_id,
+        )
+    except Exception:  # noqa: BLE001 — refresh is best-effort
+        return None
+    if not isinstance(payload, dict):
+        return None
+    token = payload.get('revision_token')
+    if isinstance(token, str) and token.strip():
+        return token.strip()
+    return None
+
+
+def _log_stale_revision_retry(
+    *,
+    session: AgentSession,
+    trace_id: str | None,
+    stale_token: str | None,
+    fresh_token: str | None,
+    retry_outcome: str,
+) -> None:
+    log_event(
+        _commit_diagnostic_logger,
+        'auto_commit_stale_revision_retry',
+        settings=None,
+        trace_id=trace_id,
+        session_id=session.session_id,
+        roadmap_id=session.roadmap_id,
+        stale_token=stale_token,
+        fresh_token=fresh_token,
+        retry_outcome=retry_outcome,
+    )
 
 
 @dataclass
@@ -283,20 +330,38 @@ async def execute_auto_commit(
     )
 
     commit_started = perf_counter()
-    commit_payload = {
-        'base_revision': session.base_revision,
-        'revision_token': session.revision_token,
-        'include_roadmap': False,
-        'include_timeline': False,
-        'operations': [
-            operation.model_dump(exclude_none=True)
-            for operation in draft_operations
-        ],
-    }
+
+    def _build_commit_payload() -> dict[str, Any]:
+        return {
+            'base_revision': session.base_revision,
+            'revision_token': session.revision_token,
+            'include_roadmap': False,
+            'include_timeline': False,
+            'operations': [
+                operation.model_dump(exclude_none=True)
+                for operation in draft_operations
+            ],
+        }
+
+    def _is_stale_revision_409(exc: HTTPException) -> bool:
+        if exc.status_code != 409:
+            return False
+        code = extract_upstream_error_code(exc.detail)
+        if code == 'STALE_REVISION':
+            return True
+        if isinstance(exc.detail, dict):
+            message = exc.detail.get('message')
+            if (
+                isinstance(message, str)
+                and 'revision token' in message.lower()
+            ):
+                return True
+        return False
+
     try:
         commit_result = await nest_client.commit(
             roadmap_id=session.roadmap_id,
-            payload=commit_payload,
+            payload=_build_commit_payload(),
             auth_header=auth_header,
             trace_id=trace_id,
         )
@@ -321,7 +386,63 @@ async def execute_auto_commit(
                     detail=enriched_detail,
                     headers=getattr(exc, 'headers', None),
                 ) from exc
-        raise
+        if _is_stale_revision_409(exc):
+            # Defense-in-depth against cross-request revision drift
+            # (another client commit, a backend-side updated_at bump that
+            # outran our session refresh). Re-fetch the authoritative
+            # token via the same summary path the pre-dispatcher uses, and
+            # retry the commit exactly once. With Prongs 1+2 in place this
+            # should essentially never fire; if it does, the telemetry
+            # exposes it.
+            stale_token = session.revision_token
+            fresh_token = await _refresh_revision_token_from_summary(
+                nest_client=nest_client,
+                session=session,
+                auth_header=auth_header,
+                trace_id=trace_id,
+            )
+            if fresh_token and fresh_token != stale_token:
+                session.revision_token = fresh_token
+                try:
+                    commit_result = await nest_client.commit(
+                        roadmap_id=session.roadmap_id,
+                        payload=_build_commit_payload(),
+                        auth_header=auth_header,
+                        trace_id=trace_id,
+                    )
+                except HTTPException as retry_exc:
+                    _log_stale_revision_retry(
+                        session=session,
+                        trace_id=trace_id,
+                        stale_token=stale_token,
+                        fresh_token=fresh_token,
+                        retry_outcome='still_stale',
+                    )
+                    raise retry_exc from exc
+                _log_stale_revision_retry(
+                    session=session,
+                    trace_id=trace_id,
+                    stale_token=stale_token,
+                    fresh_token=fresh_token,
+                    retry_outcome='success',
+                )
+                _log_commit_response_shape(
+                    commit_result=commit_result,
+                    session_id=session.session_id,
+                    roadmap_id=session.roadmap_id,
+                    trace_id=trace_id,
+                )
+            else:
+                _log_stale_revision_retry(
+                    session=session,
+                    trace_id=trace_id,
+                    stale_token=stale_token,
+                    fresh_token=fresh_token,
+                    retry_outcome='no_fresh_token',
+                )
+                raise
+        else:
+            raise
     auto_commit_ms = int((perf_counter() - commit_started) * 1000)
 
     change_id_raw = commit_result.get('change_id')

@@ -17,6 +17,7 @@ describe('RoadmapAiService search scoring', () => {
       {
         findById: jest.fn(),
         findFull: jest.fn(),
+        findUpdatedAt: jest.fn().mockResolvedValue('2026-04-02T11:00:00.000Z'),
       } as never,
       {} as never,
       { assertRoadmapPermission: jest.fn() } as never,
@@ -189,6 +190,7 @@ describe('RoadmapAiService actor + assignee context', () => {
         id: ROADMAP_ID,
         owner_id: USER_ID,
       }),
+      findUpdatedAt: jest.fn().mockResolvedValue('2026-04-02T11:00:00.000Z'),
       findFull: jest.fn().mockResolvedValue({
         id: ROADMAP_ID,
         name: 'Q2 SaaS Platform Development',
@@ -409,6 +411,7 @@ describe('RoadmapAiService context timing logs', () => {
           id: ROADMAP_ID,
           owner_id: USER_ID,
         }),
+        findUpdatedAt: jest.fn().mockResolvedValue('2026-04-02T11:00:00.000Z'),
         findFull: jest.fn().mockResolvedValue(fullRoadmap),
         searchContextCandidates: jest.fn(),
       } as never,
@@ -549,6 +552,7 @@ describe('RoadmapAiService context search lookup', () => {
         id: ROADMAP_ID,
         owner_id: USER_ID,
       }),
+      findUpdatedAt: jest.fn().mockResolvedValue('2026-04-02T11:00:00.000Z'),
       searchContextCandidates: jest.fn().mockResolvedValue([
         {
           id: 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
@@ -826,6 +830,7 @@ describe('RoadmapAiService resolve cache invalidation on commit', () => {
         owner_id: USER_ID,
         updated_at: REVISION_TOKEN,
       }),
+      findUpdatedAt: jest.fn().mockResolvedValue(REVISION_TOKEN),
       findFull: jest.fn().mockResolvedValue({
         id: ROADMAP_ID,
         name: 'Q2 SaaS Platform Development',
@@ -964,6 +969,7 @@ describe('RoadmapAiService preview durability', () => {
         owner_id: USER_ID,
         updated_at: '2026-04-02T16:00:00.000Z',
       }),
+      findUpdatedAt: jest.fn().mockResolvedValue('2026-04-02T16:00:00.000Z'),
       findFull: jest.fn().mockResolvedValue({
         id: ROADMAP_ID,
         name: 'Q2 SaaS Platform Development',

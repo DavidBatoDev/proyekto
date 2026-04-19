@@ -204,6 +204,21 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     return data;
   }
 
+  async findUpdatedAt(id: string): Promise<string | null> {
+    // Narrow PK-only lookup used by the AI commit path to derive the
+    // authoritative post-upsert revision token. Must NOT be served from
+    // the authz decision cache (which holds the *pre-commit* row) — this
+    // method hits the DB directly every call.
+    const { data, error } = await this.db
+      .from('roadmaps')
+      .select('updated_at')
+      .eq('id', id)
+      .single();
+    if (error && error.code !== 'PGRST116') throw new Error(error.message);
+    if (!data || typeof data.updated_at !== 'string') return null;
+    return data.updated_at;
+  }
+
   async findFull(
     id: string,
     userId?: string,

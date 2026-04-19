@@ -494,6 +494,9 @@ export class RoadmapAiContextSummaryResponseDto {
   @IsString()
   status?: string;
 
+  @IsString()
+  revision_token: string;
+
   @IsInt()
   epic_count: number;
 

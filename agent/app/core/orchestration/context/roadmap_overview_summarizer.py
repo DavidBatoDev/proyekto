@@ -26,9 +26,16 @@ async def build_roadmap_overview_summary(
     trace_id: str | None = None,
     max_epics: int = DEFAULT_MAX_EPICS,
     max_features_per_epic: int = DEFAULT_MAX_FEATURES_PER_EPIC,
-) -> str | None:
+) -> tuple[str | None, str | None]:
+    """Fetch the roadmap's compact overview summary.
+
+    Returns `(summary, revision_token)`. The revision_token is the backend's
+    current authoritative value for this roadmap; callers should refresh
+    `session.revision_token` from it so subsequent commits see a fresh token
+    even if another client mutated the roadmap between turns.
+    """
     if not roadmap_id or not auth_header:
-        return None
+        return None, None
     try:
         payload = await nest_client.context_summary(
             roadmap_id=roadmap_id,
@@ -38,14 +45,21 @@ async def build_roadmap_overview_summary(
         )
     except Exception:
         # Degrade gracefully — a missing overview is better than a failed turn.
-        return None
+        return None, None
     if not isinstance(payload, dict) or isinstance(payload.get('error'), dict):
-        return None
-    return format_overview_summary(
+        return None, None
+    summary = format_overview_summary(
         payload,
         max_epics=max_epics,
         max_features_per_epic=max_features_per_epic,
     )
+    revision_token_raw = payload.get('revision_token')
+    revision_token = (
+        revision_token_raw.strip()
+        if isinstance(revision_token_raw, str) and revision_token_raw.strip()
+        else None
+    )
+    return summary, revision_token
 
 
 def format_overview_summary(

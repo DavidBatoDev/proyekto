@@ -770,7 +770,7 @@ class AgentService:
             return
         if not auth_header or not session.roadmap_id:
             return
-        summary = self._run_async_call(
+        summary, fresh_revision_token = self._run_async_call(
             build_roadmap_overview_summary_helper(
                 nest_client=self._nest_client,
                 roadmap_id=session.roadmap_id,
@@ -803,6 +803,25 @@ class AgentService:
                 roadmap_id=session.roadmap_id,
                 session_id=session.session_id,
                 reason='backend_returned_no_summary',
+            )
+        # Refresh the preflight revision_token every time we fetch the
+        # summary — the backend derives it from the latest `updated_at` on
+        # the roadmap, so it captures any out-of-band writes (timeline
+        # append, cache invalidation, another client, etc.) that would
+        # otherwise trigger 409 STALE_REVISION on the next commit.
+        if fresh_revision_token and session.revision_token != fresh_revision_token:
+            previous_token = session.revision_token
+            session.revision_token = fresh_revision_token
+            log_event(
+                self._logger,
+                'roadmap_revision_token_refreshed',
+                settings=self._settings,
+                trace_id=trace_id,
+                roadmap_id=session.roadmap_id,
+                session_id=session.session_id,
+                source='context_summary',
+                previous_token=previous_token,
+                current_token=fresh_revision_token,
             )
 
     def _clear_actor_context_for_missing_auth(

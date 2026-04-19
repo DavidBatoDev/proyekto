@@ -178,49 +178,54 @@ class FormatOverviewSummaryTests(unittest.TestCase):
 class BuildRoadmapOverviewSummaryTests(unittest.IsolatedAsyncioTestCase):
     async def test_returns_none_when_auth_header_missing(self) -> None:
         client = AsyncMock()
-        result = await build_roadmap_overview_summary(
+        summary, token = await build_roadmap_overview_summary(
             nest_client=client,
             roadmap_id='r',
             auth_header=None,
         )
-        self.assertIsNone(result)
+        self.assertIsNone(summary)
+        self.assertIsNone(token)
         client.context_summary.assert_not_awaited()
 
     async def test_returns_none_when_roadmap_id_empty(self) -> None:
         client = AsyncMock()
-        result = await build_roadmap_overview_summary(
+        summary, token = await build_roadmap_overview_summary(
             nest_client=client,
             roadmap_id='',
             auth_header='Bearer token',
         )
-        self.assertIsNone(result)
+        self.assertIsNone(summary)
+        self.assertIsNone(token)
         client.context_summary.assert_not_awaited()
 
     async def test_returns_none_when_backend_raises(self) -> None:
         client = AsyncMock()
         client.context_summary.side_effect = RuntimeError('boom')
-        result = await build_roadmap_overview_summary(
+        summary, token = await build_roadmap_overview_summary(
             nest_client=client,
             roadmap_id='r',
             auth_header='Bearer token',
         )
-        self.assertIsNone(result)
+        self.assertIsNone(summary)
+        self.assertIsNone(token)
 
     async def test_returns_none_on_error_payload(self) -> None:
         client = AsyncMock()
         client.context_summary.return_value = {'error': {'status_code': 500}}
-        result = await build_roadmap_overview_summary(
+        summary, token = await build_roadmap_overview_summary(
             nest_client=client,
             roadmap_id='r',
             auth_header='Bearer token',
         )
-        self.assertIsNone(result)
+        self.assertIsNone(summary)
+        self.assertIsNone(token)
 
     async def test_returns_formatted_summary_on_success(self) -> None:
         client = AsyncMock()
         client.context_summary.return_value = {
             'title': 'Demo',
             'status': 'draft',
+            'revision_token': '2026-04-19T12:00:00.000Z',
             'epic_count': 2,
             'feature_count': 3,
             'task_count': 10,
@@ -229,17 +234,36 @@ class BuildRoadmapOverviewSummaryTests(unittest.IsolatedAsyncioTestCase):
                 _epic('Beta', feature_count=1, status='todo'),
             ],
         }
-        result = await build_roadmap_overview_summary(
+        summary, token = await build_roadmap_overview_summary(
             nest_client=client,
             roadmap_id='roadmap-1',
             auth_header='Bearer token',
             trace_id='trace-1',
         )
-        assert result is not None
-        self.assertIn('Roadmap: "Demo" (status: draft)', result)
-        self.assertIn('2 epics · 3 features · 10 tasks', result)
-        self.assertIn('1. Alpha — 2 features, status: in_progress', result)
-        self.assertIn('2. Beta — 1 feature, status: todo', result)
+        assert summary is not None
+        self.assertIn('Roadmap: "Demo" (status: draft)', summary)
+        self.assertIn('2 epics · 3 features · 10 tasks', summary)
+        self.assertIn('1. Alpha — 2 features, status: in_progress', summary)
+        self.assertIn('2. Beta — 1 feature, status: todo', summary)
+        self.assertEqual(token, '2026-04-19T12:00:00.000Z')
+
+    async def test_returns_none_token_when_backend_omits_field(self) -> None:
+        client = AsyncMock()
+        client.context_summary.return_value = {
+            'title': 'Demo',
+            'status': 'draft',
+            'epic_count': 0,
+            'feature_count': 0,
+            'task_count': 0,
+            'epics': [],
+        }
+        summary, token = await build_roadmap_overview_summary(
+            nest_client=client,
+            roadmap_id='roadmap-1',
+            auth_header='Bearer token',
+        )
+        self.assertIsNotNone(summary)
+        self.assertIsNone(token)
 
     def test_default_max_epics_constant(self) -> None:
         self.assertEqual(DEFAULT_MAX_EPICS, 15)

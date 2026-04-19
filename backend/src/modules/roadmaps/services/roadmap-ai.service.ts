@@ -412,6 +412,16 @@ export class RoadmapAiService {
     const state = contextState.state;
     const roadmapNodeId = this.requireNodeId(state.id, 'roadmap');
 
+    // Fetch the roadmap's current `updated_at` so the summary response
+    // carries a fresh revision_token. The agent reads this every edit
+    // turn and refreshes its cached session.revision_token, preventing
+    // 409 STALE_REVISION on the next commit when anything (timeline
+    // append, cache invalidation, another client) bumped `updated_at`
+    // after our previous commit returned.
+    const persistedUpdatedAt = await this.roadmapsRepo.findUpdatedAt(
+      roadmapId,
+    );
+
     const epicCount = state.roadmap_epics?.length ?? 0;
     const featureCount = (state.roadmap_epics ?? []).reduce(
       (total, epic) => total + (epic.roadmap_features?.length ?? 0),
@@ -433,6 +443,7 @@ export class RoadmapAiService {
       title: state.name,
       description: state.description,
       status: state.status,
+      revision_token: this.requireRevisionToken(persistedUpdatedAt ?? undefined),
       epic_count: epicCount,
       feature_count: featureCount,
       task_count: taskCount,
@@ -1613,11 +1624,32 @@ export class RoadmapAiService {
       stateAfter = this.clone(candidate);
     }
 
-    // Use the updated_at returned by the upsert RPC to derive the revision
-    // token without an extra findById round trip.
-    const revisionTokenLookupMs = 0;
+    // Derive the revision token from the authoritative post-upsert
+    // `updated_at` SELECT rather than the RPC's returned timestamp.
+    // The RPC value disagrees with later reads of the same row under
+    // Postgres microsecond precision vs JS millisecond ISO formatting,
+    // and under any post-upsert DB trigger that bumps `updated_at`. The
+    // drift caused `409 STALE_REVISION` on the very next commit from the
+    // same client (see logs.txt:2540). The lean SELECT below is ~1ms on
+    // the primary-key index and runs only when `includeRoadmap` is false
+    // — the full reload at line 1591 already carries an authoritative
+    // `updated_at` when enabled.
+    const revisionTokenLookupStartedAt = Date.now();
+    let persistedUpdatedAt: string | null = null;
+    if (includeRoadmap) {
+      const raw = (candidateSnapshotRecord as Record<string, unknown>)
+        .updated_at;
+      if (typeof raw === 'string') {
+        persistedUpdatedAt = raw;
+      }
+    }
+    if (persistedUpdatedAt === null) {
+      persistedUpdatedAt = await this.roadmapsRepo.findUpdatedAt(roadmapId);
+    }
+    const revisionTokenLookupMs = Date.now() - revisionTokenLookupStartedAt;
+    const upsertReportedUpdatedAt = upsertedAt?.toISOString() ?? null;
     const revisionTokenAfter = this.requireRevisionToken(
-      upsertedAt?.toISOString() ?? currentRevisionToken,
+      persistedUpdatedAt ?? upsertReportedUpdatedAt ?? currentRevisionToken,
     );
     const committedAt = new Date().toISOString();
     const changeId = randomUUID();
@@ -1660,12 +1692,17 @@ export class RoadmapAiService {
       Date.now() - resolveCacheInvalidateStartedAt;
     const totalElapsedMs = Date.now() - startedAt;
 
+    const revisionTokenDrifted =
+      upsertReportedUpdatedAt !== null &&
+      upsertReportedUpdatedAt !== revisionTokenAfter;
     this.logger.log(
       [
         'event=roadmap_ai_commit_success',
         `roadmap_id=${roadmapId}`,
         `change_id=${changeId}`,
         `revision_token=${revisionTokenAfter}`,
+        `upsert_reported_updated_at=${upsertReportedUpdatedAt ?? 'null'}`,
+        `revision_token_drifted=${revisionTokenDrifted}`,
         `elapsed_ms=${totalElapsedMs}`,
         `authz_ms=${authzMs}`,
         `repo_lookup_ms=${repoLookupMs}`,
