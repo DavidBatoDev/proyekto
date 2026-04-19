@@ -22,7 +22,10 @@ from app.core.orchestration.context.pending_plan_manager import (
     record_pending_plan_from_planner_output,
 )
 from app.core.orchestration.planning.planning_post_execution import run_post_execution_phase
-from app.core.orchestration.planning.planning_pre_dispatcher import dispatch_pre_planning_phase
+from app.core.orchestration.planning.planning_pre_dispatcher import (
+    dispatch_pre_planning_phase,
+    resolve_deferred_actor_context,
+)
 from app.core.orchestration.planning.planning_result_dispatcher import dispatch_planning_result
 from app.core.orchestration.planning.staged_operations_applier import apply_planned_operations
 
@@ -455,6 +458,16 @@ def plan_message(
             parse_mode=planning.parse_mode,
             validation_error=operation_validation_error,
         )
+
+    # Safety-net join for the speculative actor-fetch future. Every
+    # production planner path already calls resolve_deferred_actor_context
+    # at one of its consumer sites, but callers that bypass the real
+    # planner (e.g. tests injecting a fake PlanningResult) would otherwise
+    # leak the thread and return outcomes where the actor fetch hasn't
+    # landed yet. Idempotent: returns None when there's nothing to join.
+    actor_fetch_join_ms = resolve_deferred_actor_context(session_context)
+    if actor_fetch_ms is None and isinstance(actor_fetch_join_ms, int):
+        actor_fetch_ms = actor_fetch_join_ms
 
     record_context_tool_phase_metrics(
         phase_timings=phase_timings,

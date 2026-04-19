@@ -11,8 +11,19 @@ import asyncio
 from fastapi import HTTPException
 
 from app.api.routes import sessions as sessions_routes
-os.environ.setdefault('AGENT_HYBRID_REACT_ENABLED', 'false')
-os.environ.setdefault('AGENT_DRAFT_GRAPH_ENABLED', 'false')
+
+# These tests exercise the legacy (pre-draft-graph) staging flow: they set
+# up `session.operations` / `session.staged_operations_version` directly
+# and assert on the same fields after `plan_message`. The production
+# default and repo `.env` both enable draft-graph mode, which would
+# silently redirect staged ops into `session.metadata.drafts[*]` and
+# also raise `LEGACY_SESSION_UNSUPPORTED` on any pre-populated
+# `session.operations`. Force the flags off here so the tests run in the
+# mode they were authored for — using `os.environ[...] = ...` instead of
+# `setdefault` because the test runner loads the repo `.env` first and
+# `setdefault` would be a no-op against values already set there.
+os.environ['AGENT_HYBRID_REACT_ENABLED'] = 'false'
+os.environ['AGENT_DRAFT_GRAPH_ENABLED'] = 'false'
 
 from app.core.config import get_settings, reload_settings
 from app.core.contracts.operations import RoadmapOperation
