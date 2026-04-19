@@ -234,6 +234,13 @@ export class RoadmapAiService {
     string,
     AuthzDecisionCacheValue
   >();
+  // Scoped to a single state tree. Built lazily on first findNodeById miss,
+  // invalidated by any structural mutation (add/move/delete). Makes bulk
+  // fan-out over targets[] O(N + M) instead of O(N × M).
+  private readonly nodeIndexCache = new WeakMap<
+    FullRoadmapState,
+    Map<string, NodeLocator>
+  >();
 
   constructor(
     @Inject(SUPABASE_ADMIN)
@@ -2330,19 +2337,29 @@ export class RoadmapAiService {
           );
           break;
         case 'update_node':
-          this.applyUpdateNode(state, operation, opPath, issues, tempIdMap);
+          this.applyToTargets(operation, opPath, (op, path) =>
+            this.applyUpdateNode(state, op, path, issues, tempIdMap),
+          );
           break;
         case 'move_node':
-          this.applyMoveNode(state, operation, opPath, issues, tempIdMap);
+          this.applyToTargets(operation, opPath, (op, path) =>
+            this.applyMoveNode(state, op, path, issues, tempIdMap),
+          );
           break;
         case 'delete_node':
-          this.applyDeleteNode(state, operation, opPath, issues, tempIdMap);
+          this.applyToTargets(operation, opPath, (op, path) =>
+            this.applyDeleteNode(state, op, path, issues, tempIdMap),
+          );
           break;
         case 'mark_status':
-          this.applyMarkStatus(state, operation, opPath, issues, tempIdMap);
+          this.applyToTargets(operation, opPath, (op, path) =>
+            this.applyMarkStatus(state, op, path, issues, tempIdMap),
+          );
           break;
         case 'shift_dates':
-          this.applyShiftDates(state, operation, opPath, issues, tempIdMap);
+          this.applyToTargets(operation, opPath, (op, path) =>
+            this.applyShiftDates(state, op, path, issues, tempIdMap),
+          );
           break;
       }
     });
@@ -2353,6 +2370,31 @@ export class RoadmapAiService {
       tempIdMap,
       operationResults,
     };
+  }
+
+  private applyToTargets(
+    operation: RoadmapAiOperationDto,
+    path: string,
+    apply: (op: RoadmapAiOperationDto, path: string) => void,
+  ) {
+    const targets = operation.targets;
+    if (!Array.isArray(targets) || targets.length === 0) {
+      apply(operation, path);
+      return;
+    }
+    targets.forEach((entry, index) => {
+      const trimmed = typeof entry === 'string' ? entry.trim() : '';
+      const synthetic: RoadmapAiOperationDto = { ...operation };
+      delete synthetic.targets;
+      if (trimmed && this.isUuid(trimmed)) {
+        synthetic.node_id = trimmed;
+        synthetic.node_ref = undefined;
+      } else {
+        synthetic.node_ref = trimmed;
+        synthetic.node_id = undefined;
+      }
+      apply(synthetic, `${path}/targets/${index}`);
+    });
   }
 
   private applyAddEpic(
@@ -2424,6 +2466,7 @@ export class RoadmapAiService {
       state.roadmap_epics?.length ?? 0,
     );
     (state.roadmap_epics ??= []).splice(targetPosition, 0, epic);
+    this.invalidateNodeIndex(state);
   }
 
   private applyAddFeature(
@@ -2522,6 +2565,7 @@ export class RoadmapAiService {
       parent.epic.roadmap_features?.length ?? 0,
     );
     (parent.epic.roadmap_features ??= []).splice(targetPosition, 0, feature);
+    this.invalidateNodeIndex(state);
   }
 
   private applyAddTask(
@@ -2618,6 +2662,7 @@ export class RoadmapAiService {
       parent.feature.roadmap_tasks?.length ?? 0,
     );
     (parent.feature.roadmap_tasks ??= []).splice(targetPosition, 0, task);
+    this.invalidateNodeIndex(state);
   }
 
   private applyUpdateNode(
@@ -2732,6 +2777,7 @@ export class RoadmapAiService {
         state.roadmap_epics?.length ?? 0,
       );
       (state.roadmap_epics ?? []).splice(targetIndex, 0, item);
+      this.invalidateNodeIndex(state);
       return;
     }
 
@@ -2787,6 +2833,7 @@ export class RoadmapAiService {
         newParent.epic.roadmap_features?.length ?? 0,
       );
       (newParent.epic.roadmap_features ?? []).splice(targetIndex, 0, item);
+      this.invalidateNodeIndex(state);
       return;
     }
 
@@ -2842,6 +2889,7 @@ export class RoadmapAiService {
       newParent.feature.roadmap_tasks?.length ?? 0,
     );
     (newParent.feature.roadmap_tasks ?? []).splice(targetIndex, 0, item);
+    this.invalidateNodeIndex(state);
   }
 
   private applyDeleteNode(
@@ -2881,15 +2929,18 @@ export class RoadmapAiService {
 
     if (locator.type === 'epic') {
       (state.roadmap_epics ?? []).splice(locator.epicIndex, 1);
+      this.invalidateNodeIndex(state);
       return;
     }
 
     if (locator.type === 'feature') {
       (locator.epic.roadmap_features ?? []).splice(locator.featureIndex, 1);
+      this.invalidateNodeIndex(state);
       return;
     }
 
     (locator.feature.roadmap_tasks ?? []).splice(locator.taskIndex, 1);
+    this.invalidateNodeIndex(state);
   }
 
   private applyMarkStatus(
@@ -3613,48 +3664,56 @@ export class RoadmapAiService {
     state: FullRoadmapState,
     nodeId: string,
   ): NodeLocator | null {
-    if (state.id === nodeId) {
-      return { type: 'roadmap', roadmap: state };
+    let index = this.nodeIndexCache.get(state);
+    if (!index) {
+      index = this.buildNodeIndex(state);
+      this.nodeIndexCache.set(state, index);
     }
+    return index.get(nodeId) ?? null;
+  }
 
-    for (
-      let epicIndex = 0;
-      epicIndex < (state.roadmap_epics ?? []).length;
-      epicIndex++
-    ) {
-      const epic = state.roadmap_epics?.[epicIndex];
+  private invalidateNodeIndex(state: FullRoadmapState): void {
+    this.nodeIndexCache.delete(state);
+  }
+
+  private buildNodeIndex(
+    state: FullRoadmapState,
+  ): Map<string, NodeLocator> {
+    const index = new Map<string, NodeLocator>();
+    if (state.id) {
+      index.set(state.id, { type: 'roadmap', roadmap: state });
+    }
+    const epics = state.roadmap_epics ?? [];
+    for (let epicIndex = 0; epicIndex < epics.length; epicIndex++) {
+      const epic = epics[epicIndex];
       if (!epic) continue;
-      if (epic.id === nodeId) {
-        return { type: 'epic', epic, epicIndex, roadmap: state };
+      if (epic.id) {
+        index.set(epic.id, { type: 'epic', epic, epicIndex, roadmap: state });
       }
-
+      const features = epic.roadmap_features ?? [];
       for (
         let featureIndex = 0;
-        featureIndex < (epic.roadmap_features ?? []).length;
+        featureIndex < features.length;
         featureIndex++
       ) {
-        const feature = epic.roadmap_features?.[featureIndex];
+        const feature = features[featureIndex];
         if (!feature) continue;
-        if (feature.id === nodeId) {
-          return {
+        if (feature.id) {
+          index.set(feature.id, {
             type: 'feature',
             feature,
             featureIndex,
             epic,
             epicIndex,
             roadmap: state,
-          };
+          });
         }
-
-        for (
-          let taskIndex = 0;
-          taskIndex < (feature.roadmap_tasks ?? []).length;
-          taskIndex++
-        ) {
-          const task = feature.roadmap_tasks?.[taskIndex];
+        const tasks = feature.roadmap_tasks ?? [];
+        for (let taskIndex = 0; taskIndex < tasks.length; taskIndex++) {
+          const task = tasks[taskIndex];
           if (!task) continue;
-          if (task.id === nodeId) {
-            return {
+          if (task.id) {
+            index.set(task.id, {
               type: 'task',
               task,
               taskIndex,
@@ -3663,13 +3722,12 @@ export class RoadmapAiService {
               epic,
               epicIndex,
               roadmap: state,
-            };
+            });
           }
         }
       }
     }
-
-    return null;
+    return index;
   }
 
   private getMutableNode(locator: NodeLocator): Record<string, unknown> {

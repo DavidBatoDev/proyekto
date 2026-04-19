@@ -1879,10 +1879,6 @@ def plan_operations(
                 planner_profile = 'repair_retry'
                 continue
             if exc.code in {'invalid_operation_payload', 'missing_tool_call'} and attempt + 1 < max_attempts:
-                enum_op_payload = (
-                    exc.code == 'invalid_operation_payload'
-                    and planner._is_invalid_operation_enum_payload(exc.message)
-                )
                 schema_invalid_attempts += 1
                 _log_planner_schema_invalid(
                     planner=planner,
@@ -1901,26 +1897,25 @@ def plan_operations(
                     raw_tool_args=exc.raw_tool_args,
                     tool_observations=tool_observations,
                 )
-                if exc.code == 'missing_tool_call' or enum_op_payload:
+                if exc.code == 'missing_tool_call':
                     # Retry in planning-only mode to avoid rediscovery churn.
                     tool_definitions = get_operation_tools()
-                    if exc.code == 'missing_tool_call':
-                        missing_tool_metrics = session_context.setdefault('_phase_metrics', {})
-                        if isinstance(missing_tool_metrics, dict):
-                            missing_tool_metrics['planner_repair_retry_fired'] = 1
-                            missing_tool_metrics['planner_repair_retry_reason'] = 'missing_tool_call'
-                        log_event(
-                            planner._logger,
-                            'planner_repair_retry_fired',
-                            settings=planner._settings,
-                            trace_id=trace_id,
-                            reason='missing_tool_call',
-                            previous_profile=planner_profile,
-                            tokens_input=exc.tokens_input,
-                            tokens_output=exc.tokens_output,
-                            tokens_total=exc.tokens_total,
-                        )
-                        planner_profile = 'repair_retry'
+                    missing_tool_metrics = session_context.setdefault('_phase_metrics', {})
+                    if isinstance(missing_tool_metrics, dict):
+                        missing_tool_metrics['planner_repair_retry_fired'] = 1
+                        missing_tool_metrics['planner_repair_retry_reason'] = 'missing_tool_call'
+                    log_event(
+                        planner._logger,
+                        'planner_repair_retry_fired',
+                        settings=planner._settings,
+                        trace_id=trace_id,
+                        reason='missing_tool_call',
+                        previous_profile=planner_profile,
+                        tokens_input=exc.tokens_input,
+                        tokens_output=exc.tokens_output,
+                        tokens_total=exc.tokens_total,
+                    )
+                    planner_profile = 'repair_retry'
                     planner_prompt = planner._augment_missing_tool_call_retry_prompt(
                         planner_prompt=planner_prompt,
                         user_message=user_message,

@@ -31,7 +31,8 @@
     "status",
     "delta_days",
     "scope",
-    "data"
+    "data",
+    "targets"
   ],
   "resolver_tool": {
     "name": "resolve_node_reference",

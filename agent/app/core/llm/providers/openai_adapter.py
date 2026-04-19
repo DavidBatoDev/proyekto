@@ -9,7 +9,11 @@ from typing import Any, Callable, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import Settings
-from app.core.contracts.operations import RoadmapOperation
+from app.core.contracts.operations import (
+    PARENT_REQUIRING_OPS,
+    RoadmapOperation,
+    TARGET_TAKING_OPS,
+)
 from app.core.llm.react.react_executor import BoundedToolLoopOutcome, run_bounded_tool_loop
 from app.core.contracts.sessions import IntentType
 from app.core.logging_utils import log_event
@@ -631,6 +635,18 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
             strict_fallback_reason = (
                 f'{exc.__class__.__name__.lower()}:{exc!s}'[:160]
             )
+        # Strict-mode is the load-bearing defense against the planner
+        # emitting a helper-tool name as an `op` value — a silent degrade
+        # means that defense is gone and we're back to post-hoc Pydantic
+        # validation only. Surface at ERROR so it's paged, not buried in an
+        # event log.
+        logger.error(
+            'Strict-mode tool binding failed, degrading to non-strict. '
+            'reason=%s tools=%d profile=%s',
+            strict_fallback_reason,
+            len(tools),
+            normalized_profile,
+        )
         try:
             bound_model = model.bind_tools(tools, tool_choice='required')
             log_event(
@@ -648,7 +664,6 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
             )
             return bound_model
         except TypeError:
-            # Backward compatibility for runtimes that do not support tool_choice.
             log_event(
                 logger,
                 'planner_tool_choice_binding',
@@ -884,10 +899,8 @@ def _rewrite_assignee_payload_to_actor_id(
     return rewritten_args, None
 
 
-_TARGET_TAKING_OPS: frozenset[str] = frozenset(
-    {'update_node', 'delete_node', 'move_node', 'mark_status', 'shift_dates'}
-)
-_PARENT_REQUIRING_OPS: frozenset[str] = frozenset({'add_feature', 'add_task'})
+_TARGET_TAKING_OPS = TARGET_TAKING_OPS
+_PARENT_REQUIRING_OPS = PARENT_REQUIRING_OPS
 
 
 def _strip_nulls_from_plan_args(args: Any) -> Any:

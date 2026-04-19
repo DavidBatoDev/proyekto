@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -18,14 +20,36 @@ import {
   ValidationArguments,
 } from 'class-validator';
 
-const TARGET_TAKING_OPS: ReadonlySet<string> = new Set([
+export const ROADMAP_AI_OPERATION_TYPES = [
+  'add_epic',
+  'add_feature',
+  'add_task',
+  'update_node',
+  'move_node',
+  'delete_node',
+  'mark_status',
+  'shift_dates',
+] as const;
+
+export type RoadmapAiOperationType = (typeof ROADMAP_AI_OPERATION_TYPES)[number];
+
+export const ROADMAP_NODE_TYPES = [
+  'roadmap',
+  'epic',
+  'feature',
+  'task',
+] as const;
+
+export type RoadmapNodeType = (typeof ROADMAP_NODE_TYPES)[number];
+
+const TARGET_TAKING_OPS: ReadonlySet<RoadmapAiOperationType> = new Set([
   'update_node',
   'move_node',
   'delete_node',
   'mark_status',
   'shift_dates',
 ]);
-const PARENT_REQUIRING_OPS: ReadonlySet<string> = new Set([
+const PARENT_REQUIRING_OPS: ReadonlySet<RoadmapAiOperationType> = new Set([
   'add_feature',
   'add_task',
 ]);
@@ -34,20 +58,27 @@ function hasNonEmptyString(value: unknown): boolean {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function inspectOperationShape(args: ValidationArguments) {
+  const o = args.object as RoadmapAiOperationDto;
+  return {
+    op: o.op,
+    hasTarget: hasNonEmptyString(o.node_id) || hasNonEmptyString(o.node_ref),
+    hasTargets: Array.isArray(o.targets) && o.targets.length > 0,
+    hasParent:
+      hasNonEmptyString(o.parent_id) || hasNonEmptyString(o.parent_ref),
+  };
+}
+
 @ValidatorConstraint({ name: 'RoadmapAiOperationShape', async: false })
 class RoadmapAiOperationShapeConstraint
   implements ValidatorConstraintInterface
 {
   validate(_value: unknown, args: ValidationArguments): boolean {
-    const op = (args.object as RoadmapAiOperationDto).op;
-    const hasTarget =
-      hasNonEmptyString((args.object as RoadmapAiOperationDto).node_id) ||
-      hasNonEmptyString((args.object as RoadmapAiOperationDto).node_ref);
-    const hasParent =
-      hasNonEmptyString((args.object as RoadmapAiOperationDto).parent_id) ||
-      hasNonEmptyString((args.object as RoadmapAiOperationDto).parent_ref);
-    if (TARGET_TAKING_OPS.has(op) && !hasTarget) {
-      return false;
+    const { op, hasTarget, hasTargets, hasParent } =
+      inspectOperationShape(args);
+    if (TARGET_TAKING_OPS.has(op)) {
+      if (hasTargets && hasTarget) return false;
+      if (!hasTargets && !hasTarget) return false;
     }
     if (PARENT_REQUIRING_OPS.has(op) && !hasParent) {
       return false;
@@ -56,9 +87,12 @@ class RoadmapAiOperationShapeConstraint
   }
 
   defaultMessage(args: ValidationArguments): string {
-    const op = (args.object as RoadmapAiOperationDto).op;
+    const { op, hasTarget, hasTargets } = inspectOperationShape(args);
     if (TARGET_TAKING_OPS.has(op)) {
-      return `Operation op=${op} requires either node_id or node_ref.`;
+      if (hasTargets && hasTarget) {
+        return `Operation op=${op} cannot combine targets[] with node_id or node_ref.`;
+      }
+      return `Operation op=${op} requires node_id, node_ref, or a non-empty targets[].`;
     }
     if (PARENT_REQUIRING_OPS.has(op)) {
       return `Operation op=${op} requires either parent_id or parent_ref.`;
@@ -67,34 +101,13 @@ class RoadmapAiOperationShapeConstraint
   }
 }
 
-export type RoadmapAiOperationType =
-  | 'add_epic'
-  | 'add_feature'
-  | 'add_task'
-  | 'update_node'
-  | 'move_node'
-  | 'delete_node'
-  | 'mark_status'
-  | 'shift_dates';
-
-export type RoadmapNodeType = 'roadmap' | 'epic' | 'feature' | 'task';
-
 export class RoadmapAiOperationDto {
-  @IsEnum([
-    'add_epic',
-    'add_feature',
-    'add_task',
-    'update_node',
-    'move_node',
-    'delete_node',
-    'mark_status',
-    'shift_dates',
-  ])
+  @IsEnum(ROADMAP_AI_OPERATION_TYPES)
   @Validate(RoadmapAiOperationShapeConstraint)
   op: RoadmapAiOperationType;
 
   @IsOptional()
-  @IsEnum(['roadmap', 'epic', 'feature', 'task'])
+  @IsEnum(ROADMAP_NODE_TYPES)
   node_type?: RoadmapNodeType;
 
   @IsOptional()
@@ -149,6 +162,13 @@ export class RoadmapAiOperationDto {
   @IsOptional()
   @IsObject()
   data?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  targets?: string[];
 }
 
 export class RoadmapAiPreviewDto {

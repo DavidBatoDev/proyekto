@@ -89,79 +89,14 @@
           "status": { "type": "string" },
           "delta_days": { "type": "integer" },
           "scope": { "type": "object" },
-          "data": { "type": "object" }
-        },
-        "allOf": [
-          {
-            "if": { "properties": { "op": { "const": "add_epic" } }, "required": ["op"] },
-            "then": { "required": ["data"] }
-          },
-          {
-            "if": { "properties": { "op": { "const": "add_feature" } }, "required": ["op"] },
-            "then": {
-              "required": ["data"],
-              "oneOf": [
-                { "required": ["parent_id"] },
-                { "required": ["parent_ref"] }
-              ]
-            }
-          },
-          {
-            "if": { "properties": { "op": { "const": "add_task" } }, "required": ["op"] },
-            "then": {
-              "required": ["data"],
-              "oneOf": [
-                { "required": ["parent_id"] },
-                { "required": ["parent_ref"] }
-              ]
-            }
-          },
-          {
-            "if": { "properties": { "op": { "const": "update_node" } }, "required": ["op"] },
-            "then": {
-              "oneOf": [
-                { "required": ["node_id"] },
-                { "required": ["node_ref"] }
-              ]
-            }
-          },
-          {
-            "if": { "properties": { "op": { "const": "delete_node" } }, "required": ["op"] },
-            "then": {
-              "oneOf": [
-                { "required": ["node_id"] },
-                { "required": ["node_ref"] }
-              ]
-            }
-          },
-          {
-            "if": { "properties": { "op": { "const": "move_node" } }, "required": ["op"] },
-            "then": {
-              "oneOf": [
-                { "required": ["node_id"] },
-                { "required": ["node_ref"] }
-              ]
-            }
-          },
-          {
-            "if": { "properties": { "op": { "const": "mark_status" } }, "required": ["op"] },
-            "then": {
-              "oneOf": [
-                { "required": ["node_id"] },
-                { "required": ["node_ref"] }
-              ]
-            }
-          },
-          {
-            "if": { "properties": { "op": { "const": "shift_dates" } }, "required": ["op"] },
-            "then": {
-              "oneOf": [
-                { "required": ["node_id"] },
-                { "required": ["node_ref"] }
-              ]
-            }
+          "data": { "type": "object" },
+          "targets": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1,
+            "maxItems": 500
           }
-        ]
+        }
       }
     }
   }

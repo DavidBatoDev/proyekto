@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,6 +48,27 @@ function extractTsUnion(content, aliasName) {
   const match = content.match(pattern);
   if (!match) {
     throw new Error(`Could not find TypeScript alias: ${aliasName}`);
+  }
+  const direct = [...match[1].matchAll(/'([^']+)'/g)].map((item) => item[1]);
+  if (direct.length > 0) return direct;
+  // Alias derived from an `as const` array — e.g.
+  //   export type X = (typeof ARRAY_NAME)[number];
+  // Resolve through the referenced array.
+  const arrayRef = match[1].match(/typeof\s+([A-Z_][A-Z0-9_]*)/);
+  if (!arrayRef) {
+    throw new Error(`Alias ${aliasName} has no literal values or array ref`);
+  }
+  return extractTsConstArray(content, arrayRef[1]);
+}
+
+function extractTsConstArray(content, arrayName) {
+  const pattern = new RegExp(
+    `export const ${arrayName}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*as\\s+const`,
+    'm',
+  );
+  const match = content.match(pattern);
+  if (!match) {
+    throw new Error(`Could not find TypeScript const array: ${arrayName}`);
   }
   return [...match[1].matchAll(/'([^']+)'/g)].map((item) => item[1]);
 }
@@ -128,8 +150,6 @@ function main() {
     canonicalSchema?.definitions?.operation_requirements?.properties ?? {},
   );
   const schemaRef = schema.schema_ref ?? null;
-  const canonicalOpRequirements =
-    canonicalSchema?.definitions?.operation_requirements?.properties ?? {};
   const checks = [
     compare(
       'registry.schema_ref',
@@ -186,29 +206,36 @@ function main() {
     ),
   ];
 
-  for (const opName of canonicalOps) {
-    const policy = canonicalOpRequirements[opName] ?? {};
-    if (policy.target) {
-      const canonicalRequires = canonicalOpRequiresTarget(canonicalSchema, opName);
-      checks.push(
-        compare(
-          `canonical.${opName}.requires_target`,
-          true,
-          canonicalRequires,
-        ),
-      );
-    }
-    if (policy.parent) {
-      const canonicalRequires = canonicalOpRequiresParent(canonicalSchema, opName);
-      checks.push(
-        compare(
-          `canonical.${opName}.requires_parent`,
-          true,
-          canonicalRequires,
-        ),
-      );
-    }
+  // Strict-mode compatibility guard: OpenAI's strict tool schema cannot
+  // enforce conditional sub-schemas (allOf/if/then, oneOf, anyOf) inside
+  // operation items, so their presence silently degrades the op-enum
+  // constraint to post-hoc Pydantic validation. Per-op required-field
+  // rules live in RoadmapOperation.semantic_contract_issues and the
+  // NestJS RoadmapAiOperationShapeConstraint; the JSON schema must stay
+  // flat so sampling-time enforcement actually fires.
+  const strictCompatViolation = findStrictModeViolation(canonicalSchema);
+  if (strictCompatViolation) {
+    failures.push(
+      `canonical.operations.strict_mode_incompatible: ${strictCompatViolation}`,
+    );
   }
+
+  if (!Array.isArray(schema.operation_fields) || !schema.operation_fields.includes('targets')) {
+    failures.push('registry.operation_fields missing "targets"');
+  }
+  const canonicalOpProps =
+    canonicalSchema?.properties?.operations?.items?.properties ?? {};
+  if (!canonicalOpProps.targets || canonicalOpProps.targets.type !== 'array') {
+    failures.push('canonical.operations.items.properties.targets missing or not array');
+  }
+
+  // Runtime tool schema drift: the JSON the LLM actually sees when it
+  // calls plan_roadmap_operations. Previously this surface drifted from
+  // the canonical contract silently (missed `targets`) and caused a
+  // 182-second provider-outage regression. Invoke the Python entry point
+  // if available and assert field parity with the Pydantic model.
+  const runtimeDrift = checkRuntimeToolSchema();
+  if (runtimeDrift) failures.push(runtimeDrift);
 
   for (const check of checks) {
     if (check) failures.push(check);
@@ -225,38 +252,90 @@ function main() {
   console.log('Roadmap AI operation schema check passed.');
 }
 
-function canonicalOpRequiresTarget(canonicalSchema, opName) {
-  const branches =
-    canonicalSchema?.properties?.operations?.items?.allOf ?? [];
-  for (const branch of branches) {
-    if (branch?.if?.properties?.op?.const !== opName) continue;
-    const oneOf = branch?.then?.oneOf ?? [];
-    const hasNodeId = oneOf.some((entry) =>
-      Array.isArray(entry?.required) && entry.required.includes('node_id'),
-    );
-    const hasNodeRef = oneOf.some((entry) =>
-      Array.isArray(entry?.required) && entry.required.includes('node_ref'),
-    );
-    return hasNodeId && hasNodeRef;
-  }
-  return false;
+function resolveAgentPython() {
+  const envBin = process.env.AGENT_PYTHON_BIN;
+  if (envBin && fs.existsSync(envBin)) return envBin;
+  const candidates = [
+    path.join(root, 'agent', 'venv', 'Scripts', 'python.exe'),
+    path.join(root, 'agent', 'venv', 'bin', 'python'),
+    path.join(root, 'agent', '.venv', 'Scripts', 'python.exe'),
+    path.join(root, 'agent', '.venv', 'bin', 'python'),
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 }
 
-function canonicalOpRequiresParent(canonicalSchema, opName) {
-  const branches =
-    canonicalSchema?.properties?.operations?.items?.allOf ?? [];
-  for (const branch of branches) {
-    if (branch?.if?.properties?.op?.const !== opName) continue;
-    const oneOf = branch?.then?.oneOf ?? [];
-    const hasParentId = oneOf.some((entry) =>
-      Array.isArray(entry?.required) && entry.required.includes('parent_id'),
+function checkRuntimeToolSchema() {
+  const python = resolveAgentPython();
+  if (!python) {
+    console.warn(
+      'Runtime tool-schema drift check skipped: no agent Python found. '
+      + 'Set AGENT_PYTHON_BIN to enforce in CI.',
     );
-    const hasParentRef = oneOf.some((entry) =>
-      Array.isArray(entry?.required) && entry.required.includes('parent_ref'),
-    );
-    return hasParentId && hasParentRef;
+    return null;
   }
-  return false;
+  const pythonCode = [
+    'import json',
+    'from app.core.contracts.operations import RoadmapOperation',
+    'from app.core.tools.registry import get_planning_tool',
+    'out = {',
+    '    "pydantic_fields": list(RoadmapOperation.model_json_schema()["properties"].keys()),',
+    '    "tool": get_planning_tool(),',
+    '}',
+    'print(json.dumps(out))',
+  ].join('\n');
+  const result = spawnSync(python, ['-c', pythonCode], {
+    cwd: path.join(root, 'agent'),
+    encoding: 'utf8',
+  });
+  if (result.status !== 0) {
+    return `runtime_tool_schema: python probe failed (status=${result.status}) stderr=${result.stderr?.slice(0, 400)}`;
+  }
+  let payload;
+  try {
+    payload = JSON.parse(result.stdout);
+  } catch (err) {
+    return `runtime_tool_schema: unparseable python output: ${err.message}`;
+  }
+  const pydanticFields = new Set(payload.pydantic_fields ?? []);
+  const branches =
+    payload.tool?.function?.parameters?.properties?.operations?.items?.anyOf ?? [];
+  if (!Array.isArray(branches) || branches.length === 0) {
+    return 'runtime_tool_schema: no anyOf branches found in plan_roadmap_operations';
+  }
+  for (const branch of branches) {
+    const op = branch?.properties?.op?.const ?? '?';
+    const branchFields = new Set(Object.keys(branch?.properties ?? {}));
+    const missing = [...pydanticFields].filter((f) => !branchFields.has(f));
+    if (missing.length > 0) {
+      return `runtime_tool_schema: op=${op} branch missing fields ${JSON.stringify(missing)}`;
+    }
+    const extra = [...branchFields].filter((f) => !pydanticFields.has(f));
+    if (extra.length > 0) {
+      return `runtime_tool_schema: op=${op} branch has extra fields ${JSON.stringify(extra)}`;
+    }
+  }
+  return null;
+}
+
+function findStrictModeViolation(canonicalSchema) {
+  const item = canonicalSchema?.properties?.operations?.items;
+  if (!item || typeof item !== 'object') return null;
+  const forbidden = ['allOf', 'anyOf', 'oneOf', 'if', 'then', 'else'];
+  for (const key of forbidden) {
+    if (key in item) {
+      return `operations.items contains "${key}" — not permitted in strict-mode schema`;
+    }
+  }
+  const itemProps = item.properties ?? {};
+  for (const [propName, propSchema] of Object.entries(itemProps)) {
+    if (!propSchema || typeof propSchema !== 'object') continue;
+    for (const key of forbidden) {
+      if (key in propSchema) {
+        return `operations.items.properties.${propName} contains "${key}"`;
+      }
+    }
+  }
+  return null;
 }
 
 function extractRegistryToolRequiredArgs(content, toolName) {

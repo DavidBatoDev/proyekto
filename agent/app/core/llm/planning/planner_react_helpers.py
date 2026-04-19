@@ -4,7 +4,12 @@ import json
 import re
 from typing import Any
 
-from app.core.contracts.operations import OperationType, RoadmapOperation
+from app.core.contracts.operations import (
+    OperationType,
+    PARENT_REQUIRING_OPS,
+    RoadmapOperation,
+    TARGET_TAKING_OPS,
+)
 from app.core.llm.contracts.clarifier_contract import build_clarifier_contract
 from app.core.llm.react.react_executor import map_provider_error_to_stop_reason
 from app.core.llm.providers import ProviderAdapterError
@@ -649,10 +654,8 @@ def is_invalid_operation_enum_payload(error_message: str | None) -> bool:
     return has_op_loc and has_enum_hint
 
 
-_TARGET_TAKING_OPS: frozenset[str] = frozenset(
-    {'update_node', 'delete_node', 'move_node', 'mark_status', 'shift_dates'}
-)
-_PARENT_REQUIRING_OPS: frozenset[str] = frozenset({'add_feature', 'add_task'})
+_TARGET_TAKING_OPS = TARGET_TAKING_OPS
+_PARENT_REQUIRING_OPS = PARENT_REQUIRING_OPS
 _REPAIR_CONTEXT_ENTRY_CAP: int = 1500
 _REPAIR_OFFENDING_OP_LIMIT: int = 5
 _REPAIR_RESOLVER_SUMMARY_LIMIT: int = 10

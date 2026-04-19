@@ -6795,7 +6795,7 @@ class PlannerContextSafetyTests(unittest.TestCase):
         self.assertEqual(result.get('response_mode'), 'chat')
         self.assertEqual(result.get('parse_mode'), 'openai_tool_calling_clarifier')
 
-    def test_plan_operations_invalid_enum_payload_retry_forces_planning_only_tools(self) -> None:
+    def test_plan_operations_invalid_enum_payload_retries_without_narrowing_tools(self) -> None:
         planner = self._planner()
         planner._settings = planner._settings.model_copy(
             update={'agent_edit_planner_max_attempts': 2}
@@ -6860,10 +6860,17 @@ class PlannerContextSafetyTests(unittest.TestCase):
         )
 
         self.assertEqual(call_count['value'], 2)
-        self.assertEqual(captured_tool_names, [['plan_roadmap_operations']])
+        self.assertEqual(len(captured_tool_names), 1)
+        retry_tool_names = captured_tool_names[0]
+        self.assertIn('plan_roadmap_operations', retry_tool_names)
+        self.assertGreater(
+            len(retry_tool_names),
+            1,
+            'retry should keep the full tool envelope; enum violations are '
+            'prevented at sampling by strict-mode, not by runtime narrowing.',
+        )
         self.assertEqual(len(captured_prompts), 1)
         self.assertIn('Allowed operation op values:', captured_prompts[0])
-        self.assertIn('Helper tool names are never valid operation op values.', captured_prompts[0])
         self.assertEqual(result.get('response_mode'), 'chat')
         self.assertEqual(result.get('parse_mode'), 'openai_tool_calling_clarifier')
 

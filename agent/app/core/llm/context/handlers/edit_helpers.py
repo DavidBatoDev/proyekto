@@ -458,10 +458,9 @@ class EditHelperHandler(ToolHandlerBase):
                 {
                     'op': 'mark_status',
                     'node_type': 'task',
-                    'node_id': task_id,
+                    'targets': list(task_ids),
                     'status': status,
                 }
-                for task_id in task_ids
             ]
             result = self._build_operation_result(tool_name=tool_name, operations=operations)
             log_event(
@@ -600,7 +599,7 @@ class EditHelperHandler(ToolHandlerBase):
             seen_task_ids: set[str] = set()
             matched_task_ids: list[str] = []
             matched_tasks: list[dict[str, Any]] = []
-            operations: list[dict[str, Any]] = []
+            status_change_ids: list[str] = []
             total_child_task_count = 0
             excluded_completed_count = 0
             already_target_status_count = 0
@@ -630,11 +629,15 @@ class EditHelperHandler(ToolHandlerBase):
                 if current_status == target_status:
                     already_target_status_count += 1
                     continue
+                status_change_ids.append(task_id)
+
+            operations: list[dict[str, Any]] = []
+            if status_change_ids:
                 operations.append(
                     {
                         'op': 'mark_status',
                         'node_type': 'task',
-                        'node_id': task_id,
+                        'targets': status_change_ids,
                         'status': target_status,
                     }
                 )
@@ -647,7 +650,7 @@ class EditHelperHandler(ToolHandlerBase):
             result['task_ids'] = matched_task_ids
             result['tasks'] = matched_tasks
             result['matched_task_count'] = len(matched_task_ids)
-            result['updated_task_count'] = len(operations)
+            result['updated_task_count'] = len(status_change_ids)
             result['total_child_task_count'] = total_child_task_count
             result['excluded_completed_count'] = excluded_completed_count
             result['already_target_status_count'] = already_target_status_count
@@ -954,7 +957,9 @@ class EditHelperHandler(ToolHandlerBase):
 
             matched_task_ids: list[str] = []
             matched_tasks: list[dict[str, Any]] = []
-            operations: list[dict[str, Any]] = []
+            status_change_ids: list[str] = []
+            priority_change_ids: list[str] = []
+            assignee_change_ids: list[str] = []
 
             for task in tasks:
                 if len(matched_task_ids) >= limit:
@@ -1011,36 +1016,49 @@ class EditHelperHandler(ToolHandlerBase):
                 if update_status is not None:
                     normalized_current_status = self._normalize_task_status_input(task_status)
                     if normalized_current_status != update_status:
-                        operations.append(
-                            {
-                                'op': 'mark_status',
-                                'node_type': 'task',
-                                'node_id': task_id,
-                                'status': update_status,
-                            }
-                        )
+                        status_change_ids.append(task_id)
 
                 if update_priority:
-                    operations.append(
-                        {
-                            'op': 'update_node',
-                            'node_type': 'task',
-                            'node_id': task_id,
-                            'patch': {'priority': update_priority},
-                        }
-                    )
+                    priority_change_ids.append(task_id)
 
                 if has_update_assignee:
                     current_assignee = str(task.get('assignee_id') or '').strip() or None
                     if current_assignee != update_assignee_id:
-                        operations.append(
-                            {
-                                'op': 'update_node',
-                                'node_type': 'task',
-                                'node_id': task_id,
-                                'patch': {'assignee_id': update_assignee_id},
-                            }
-                        )
+                        assignee_change_ids.append(task_id)
+
+            # Emit at most one op per mutation dimension. Each carries the
+            # collected target ids as `targets[]`, so the planner round-trip
+            # stays O(1) in op count regardless of N. Without this, a 25-
+            # task bulk assign produced 25 ops and blew the planner's
+            # output-token budget.
+            operations: list[dict[str, Any]] = []
+            if status_change_ids:
+                operations.append(
+                    {
+                        'op': 'mark_status',
+                        'node_type': 'task',
+                        'targets': status_change_ids,
+                        'status': update_status,
+                    }
+                )
+            if priority_change_ids:
+                operations.append(
+                    {
+                        'op': 'update_node',
+                        'node_type': 'task',
+                        'targets': priority_change_ids,
+                        'patch': {'priority': update_priority},
+                    }
+                )
+            if assignee_change_ids:
+                operations.append(
+                    {
+                        'op': 'update_node',
+                        'node_type': 'task',
+                        'targets': assignee_change_ids,
+                        'patch': {'assignee_id': update_assignee_id},
+                    }
+                )
 
             result = self._build_operation_result(tool_name=tool_name, operations=operations)
             result['filters'] = {
@@ -1059,7 +1077,10 @@ class EditHelperHandler(ToolHandlerBase):
             result['task_ids'] = matched_task_ids
             result['tasks'] = matched_tasks
             result['matched_task_count'] = len(matched_task_ids)
-            result['updated_task_count'] = len(operations)
+            result['updated_task_count'] = sum(
+                len(ids)
+                for ids in (status_change_ids, priority_change_ids, assignee_change_ids)
+            )
             log_event(
                 self._logger,
                 'tool_call_result',
@@ -1095,10 +1116,9 @@ class EditHelperHandler(ToolHandlerBase):
                 {
                     'op': 'update_node',
                     'node_type': 'task',
-                    'node_id': task_id,
+                    'targets': list(task_ids),
                     'patch': {'assignee_id': assignee_id},
                 }
-                for task_id in task_ids
             ]
             result = self._build_operation_result(tool_name=tool_name, operations=operations)
             log_event(
@@ -1120,8 +1140,7 @@ class EditHelperHandler(ToolHandlerBase):
                     message='task_ids is required for bulk_delete_tasks.',
                 )
             operations = [
-                {'op': 'delete_node', 'node_type': 'task', 'node_id': task_id}
-                for task_id in task_ids
+                {'op': 'delete_node', 'node_type': 'task', 'targets': list(task_ids)}
             ]
             result = self._build_operation_result(tool_name=tool_name, operations=operations)
             log_event(
@@ -1188,10 +1207,9 @@ class EditHelperHandler(ToolHandlerBase):
                 {
                     'op': 'mark_status',
                     'node_type': node_type,
-                    'node_id': node_id,
+                    'targets': list(ids),
                     'status': status,
                 }
-                for node_id in ids
             ]
             result = self._build_operation_result(tool_name=tool_name, operations=operations)
             log_event(

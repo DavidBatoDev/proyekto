@@ -418,6 +418,104 @@ class OperationContractsTests(unittest.TestCase):
         self.assertIn('delete_node', message)
         self.assertIn('target missing', message)
 
+    def test_parse_plan_tool_accepts_bulk_update_with_only_targets(self) -> None:
+        # Regression: "Assign all tasks to me" was rejected by the
+        # identity payload validator even though targets[] was populated,
+        # because the validator only knew about node_id/node_ref. Make
+        # sure a bulk payload passes through cleanly end-to-end.
+        target_ids = [f'{i:08x}-1111-1111-1111-111111111111' for i in range(25)]
+        args = {
+            'assistant_message': 'Assigning all 25 tasks to the current user.',
+            'operations': [
+                {
+                    'op': 'update_node',
+                    'node_type': 'task',
+                    'targets': target_ids,
+                    'patch': {'assignee_id': '9cdd95e6-f0eb-411f-941d-647d3061e0f2'},
+                }
+            ],
+        }
+        assistant_message, operations = parse_plan_tool_args(args)
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].targets, target_ids)
+        self.assertIsNone(operations[0].node_id)
+        self.assertIsNone(operations[0].node_ref)
+        self.assertTrue(assistant_message)
+
+    def test_parse_plan_tool_rejects_targets_mixed_with_node_id(self) -> None:
+        args = {
+            'assistant_message': 'invalid',
+            'operations': [
+                {
+                    'op': 'update_node',
+                    'node_id': '11111111-1111-1111-1111-111111111111',
+                    'targets': ['22222222-2222-2222-2222-222222222222'],
+                    'patch': {'assignee_id': '33333333-3333-3333-3333-333333333333'},
+                }
+            ],
+        }
+        with self.assertRaises(ValueError) as context:
+            parse_plan_tool_args(args)
+        self.assertIn('target conflict', str(context.exception))
+
+    def test_update_node_accepts_targets_without_single_target(self) -> None:
+        operation = RoadmapOperation(
+            op='update_node',
+            targets=[
+                '123e4567-e89b-12d3-a456-426614174000',
+                '123e4567-e89b-12d3-a456-426614174001',
+                'task_assign_me_1',
+            ],
+            patch={'assignee_id': '123e4567-e89b-12d3-a456-426614174222'},
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertEqual(issues, [])
+
+    def test_update_node_targets_rejects_invalid_entries(self) -> None:
+        operation = RoadmapOperation(
+            op='update_node',
+            targets=['not-a-uuid-and-not-a-ref'],
+            patch={'title': 'X'},
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertIn('update_node.targets[0].invalid', issues)
+
+    def test_mark_status_targets_conflict_with_node_id(self) -> None:
+        operation = RoadmapOperation(
+            op='mark_status',
+            node_type='task',
+            node_id='123e4567-e89b-12d3-a456-426614174000',
+            targets=['123e4567-e89b-12d3-a456-426614174001'],
+            status='done',
+        )
+        issues = operation.semantic_contract_issues(is_uuid=self._is_uuid)
+        self.assertIn('mark_status.target_conflict', issues)
+
+    def test_empty_targets_array_rejected_by_pydantic(self) -> None:
+        from pydantic import ValidationError
+
+        with self.assertRaises(ValidationError):
+            RoadmapOperation(
+                op='update_node',
+                targets=[],
+                patch={'title': 'Y'},
+            )
+
+    def test_model_json_schema_exposes_targets_bounds(self) -> None:
+        # Guards against an accidental Field(...) tweak silently dropping the
+        # targets[] min/max that the runtime tool schema relies on.
+        schema = RoadmapOperation.model_json_schema()
+        targets_spec = schema['properties']['targets']
+        variants = targets_spec.get('anyOf', [])
+        array_variant = next(
+            (v for v in variants if v.get('type') == 'array'), None
+        )
+        self.assertIsNotNone(array_variant)
+        assert array_variant is not None
+        self.assertEqual(array_variant.get('items'), {'type': 'string'})
+        self.assertEqual(array_variant.get('minItems'), 1)
+        self.assertEqual(array_variant.get('maxItems'), 500)
+
 
 if __name__ == '__main__':
     unittest.main()

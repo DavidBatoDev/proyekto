@@ -1,8 +1,10 @@
 from enum import Enum
-import re
 from typing import Any, Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.core.contracts.statuses import ALL_STATUS_VALUES
+from app.core.uuid_utils import is_valid_temp_ref
 
 _TASK_MARK_STATUS_VALUES = {'todo', 'in_progress', 'in_review', 'done', 'blocked'}
 _EPIC_MARK_STATUS_VALUES = {
@@ -33,6 +35,22 @@ class OperationType(str, Enum):
     SHIFT_DATES = 'shift_dates'
 
 
+TARGET_TAKING_OPS: frozenset[str] = frozenset(
+    op.value
+    for op in (
+        OperationType.UPDATE_NODE,
+        OperationType.DELETE_NODE,
+        OperationType.MOVE_NODE,
+        OperationType.MARK_STATUS,
+        OperationType.SHIFT_DATES,
+    )
+)
+
+PARENT_REQUIRING_OPS: frozenset[str] = frozenset(
+    op.value for op in (OperationType.ADD_FEATURE, OperationType.ADD_TASK)
+)
+
+
 class NodeType(str, Enum):
     ROADMAP = 'roadmap'
     EPIC = 'epic'
@@ -54,10 +72,14 @@ class RoadmapOperation(BaseModel):
     temp_id: str | None = None
     position: int | None = Field(default=None, ge=0)
     patch: dict[str, Any] | None = None
-    status: str | None = None
+    status: str | None = Field(
+        default=None,
+        json_schema_extra={'enum': [*ALL_STATUS_VALUES, None]},
+    )
     delta_days: int | None = None
     scope: dict[str, Any] | None = None
     data: dict[str, Any] | None = None
+    targets: list[str] | None = Field(default=None, min_length=1, max_length=500)
 
     def semantic_contract_issues(
         self,
@@ -66,19 +88,6 @@ class RoadmapOperation(BaseModel):
     ) -> list[str]:
         op_name = self.op.value
         issues: list[str] = []
-
-        def _is_valid_ref(value: str | None) -> bool:
-            if not isinstance(value, str):
-                return False
-            normalized = value.strip()
-            if not normalized:
-                return False
-            return bool(
-                re.fullmatch(
-                    r'(?i)(?:tmp|t|temp|epic|feature|feat|task)[_-][a-z0-9][a-z0-9_-]{0,63}',
-                    normalized,
-                )
-            )
 
         def _has_identity_conflict(id_value: str | None, ref_value: str | None) -> bool:
             return bool(
@@ -89,22 +98,22 @@ class RoadmapOperation(BaseModel):
             )
 
         def _is_valid_target(id_value: str | None, ref_value: str | None) -> bool:
-            return bool(is_uuid(id_value) or _is_valid_ref(ref_value))
+            return bool(is_uuid(id_value) or is_valid_temp_ref(ref_value))
 
         if op_name == 'add_epic':
             if self._read_title() is None:
                 issues.append('add_epic.data.title_missing')
             if _has_identity_conflict(self._read_data_id(), self.temp_id):
                 issues.append('add_epic.identity_conflict')
-            elif self.temp_id is not None and not _is_valid_ref(self.temp_id):
+            elif self.temp_id is not None and not is_valid_temp_ref(self.temp_id):
                 issues.append('add_epic.temp_id_invalid_ref')
             elif self._read_data_id() is not None and not is_uuid(self._read_data_id()):
                 issues.append('add_epic.data.id_invalid_uuid')
 
-        if op_name in {'add_feature', 'add_task'}:
+        if op_name in PARENT_REQUIRING_OPS:
             if _has_identity_conflict(self._read_data_id(), self.temp_id):
                 issues.append(f'{op_name}.identity_conflict')
-            elif self.temp_id is not None and not _is_valid_ref(self.temp_id):
+            elif self.temp_id is not None and not is_valid_temp_ref(self.temp_id):
                 issues.append(f'{op_name}.temp_id_invalid_ref')
             elif self._read_data_id() is not None and not is_uuid(self._read_data_id()):
                 issues.append(f'{op_name}.data.id_invalid_uuid')
@@ -121,8 +130,18 @@ class RoadmapOperation(BaseModel):
             if self._read_title() is None:
                 issues.append(f'{op_name}.data.title_missing')
 
-        if op_name in {'update_node', 'delete_node', 'move_node', 'mark_status', 'shift_dates'}:
-            if _has_identity_conflict(self.node_id, self.node_ref):
+        if op_name in TARGET_TAKING_OPS:
+            has_targets = isinstance(self.targets, list) and len(self.targets) > 0
+            has_single_target = self.node_id is not None or self.node_ref is not None
+            if has_targets and has_single_target:
+                issues.append(f'{op_name}.target_conflict')
+            elif has_targets:
+                for index, entry in enumerate(self.targets or []):
+                    if not isinstance(entry, str) or not entry.strip():
+                        issues.append(f'{op_name}.targets[{index}].empty')
+                    elif not (is_uuid(entry) or is_valid_temp_ref(entry)):
+                        issues.append(f'{op_name}.targets[{index}].invalid')
+            elif _has_identity_conflict(self.node_id, self.node_ref):
                 issues.append(f'{op_name}.target_conflict')
             elif self.node_id is None and self.node_ref is None:
                 issues.append(f'{op_name}.target_missing')

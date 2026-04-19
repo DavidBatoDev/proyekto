@@ -745,11 +745,78 @@ class PlanToolStatusEnumSchemaTests(unittest.TestCase):
         branches = tool['function']['parameters']['properties']['operations']['items'][
             'anyOf'
         ]
-        self.assertEqual(len(branches), 15)
+        # 1 (add_epic) + 2×2 (add_feature/add_task parent variants) +
+        # 5×3 (update_node, move_node, delete_node, mark_status, shift_dates
+        # with node_id/node_ref/targets variants) = 20.
+        self.assertEqual(len(branches), 20)
         for branch in branches:
             self.assertFalse(
                 branch.get('additionalProperties', True),
                 f'branch for {branch["properties"]["op"]["const"]} must be closed',
+            )
+
+    def test_planning_tool_exposes_bulk_targets_for_every_target_taking_op(
+        self,
+    ) -> None:
+        from app.core.tools.registry import get_planning_tool
+
+        tool = get_planning_tool()
+        branches = tool['function']['parameters']['properties']['operations']['items'][
+            'anyOf'
+        ]
+        by_op: dict[str, list[dict]] = {}
+        for branch in branches:
+            by_op.setdefault(branch['properties']['op']['const'], []).append(branch)
+        for op_name in (
+            'update_node',
+            'delete_node',
+            'move_node',
+            'mark_status',
+            'shift_dates',
+        ):
+            op_branches = by_op.get(op_name, [])
+            targets_branch = next(
+                (
+                    b
+                    for b in op_branches
+                    if 'targets' in b.get('required', [])
+                    and b['properties']['targets'].get('type') == 'array'
+                ),
+                None,
+            )
+            self.assertIsNotNone(
+                targets_branch,
+                f'{op_name} must expose a bulk targets[] branch to the LLM',
+            )
+            assert targets_branch is not None
+            targets_spec = targets_branch['properties']['targets']
+            self.assertEqual(targets_spec.get('items'), {'type': 'string'})
+            self.assertEqual(targets_spec.get('minItems'), 1)
+            self.assertEqual(targets_spec.get('maxItems'), 500)
+            # The targets branch must force node_id/node_ref to null so the
+            # LLM cannot mix bulk and single-target identifiers.
+            self.assertEqual(
+                targets_branch['properties']['node_id'].get('type'), 'null'
+            )
+            self.assertEqual(
+                targets_branch['properties']['node_ref'].get('type'), 'null'
+            )
+
+    def test_planning_tool_fields_match_pydantic_model(self) -> None:
+        from app.core.contracts.operations import RoadmapOperation
+        from app.core.tools.registry import get_planning_tool
+
+        pydantic_fields = set(RoadmapOperation.model_json_schema()['properties'].keys())
+        tool = get_planning_tool()
+        branches = tool['function']['parameters']['properties']['operations']['items'][
+            'anyOf'
+        ]
+        for branch in branches:
+            self.assertEqual(
+                set(branch['properties'].keys()),
+                pydantic_fields,
+                f'runtime tool schema drifted from Pydantic for op='
+                f'{branch["properties"]["op"]["const"]}',
             )
 
     def test_planning_tool_schema_closes_every_property_as_required(self) -> None:

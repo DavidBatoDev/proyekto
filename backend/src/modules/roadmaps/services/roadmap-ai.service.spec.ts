@@ -1284,4 +1284,122 @@ describe('RoadmapAiService operation semantics parity', () => {
     expect(result.issues[0].code).toBe('BROKEN_RELATIONSHIP');
     expect(state.roadmap_epics).toHaveLength(0);
   });
+
+  it('keeps the node index consistent when a bulk update is followed by a delete', () => {
+    const service = createService() as unknown as {
+      applyOperations: (
+        state: Record<string, unknown>,
+        operations: any[],
+      ) => { issues: Array<{ code: string }> };
+    };
+
+    const taskA = '44444444-4444-4444-4444-444444444444';
+    const taskB = '55555555-5555-5555-5555-555555555555';
+    const state: any = {
+      id: '55e431e2-e416-468c-a973-94d97280e97d',
+      name: 'Roadmap',
+      status: 'active',
+      roadmap_epics: [
+        {
+          id: 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+          title: 'Epic',
+          status: 'in_progress',
+          roadmap_features: [
+            {
+              id: '60bcab3f-3989-448d-9c84-3261cf38685b',
+              title: 'Feature',
+              status: 'in_progress',
+              roadmap_tasks: [
+                { id: taskA, title: 'A', status: 'todo' },
+                { id: taskB, title: 'B', status: 'todo' },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const result = service.applyOperations(state as any, [
+      {
+        op: 'update_node',
+        targets: [taskA, taskB],
+        patch: { priority: 'high' },
+      },
+      { op: 'delete_node', node_id: taskA },
+      { op: 'mark_status', node_id: taskB, status: 'done' },
+    ]);
+
+    expect(result.issues).toEqual([]);
+    const tasks =
+      state.roadmap_epics[0].roadmap_features[0].roadmap_tasks as Array<{
+        id: string;
+        status: string;
+        priority?: string;
+      }>;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].id).toBe(taskB);
+    expect(tasks[0].status).toBe('done');
+    expect(tasks[0].priority).toBe('high');
+  });
+
+  it('fans out a single update_node op across targets[] within one pass', () => {
+    const service = createService() as unknown as {
+      applyOperations: (
+        state: Record<string, unknown>,
+        operations: any[],
+      ) => {
+        issues: Array<{ code: string }>;
+      };
+    };
+
+    const assignee = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+    const taskIds = [
+      '11111111-1111-1111-1111-111111111111',
+      '22222222-2222-2222-2222-222222222222',
+      '33333333-3333-3333-3333-333333333333',
+    ];
+    const state: any = {
+      id: '55e431e2-e416-468c-a973-94d97280e97d',
+      name: 'Roadmap',
+      status: 'active',
+      roadmap_epics: [
+        {
+          id: 'dad5697a-8962-4f80-8bc3-8a964edd8e56',
+          title: 'Epic',
+          status: 'in_progress',
+          roadmap_features: [
+            {
+              id: '60bcab3f-3989-448d-9c84-3261cf38685b',
+              title: 'Feature',
+              status: 'in_progress',
+              roadmap_tasks: taskIds.map((id, index) => ({
+                id,
+                title: `Task ${index + 1}`,
+                status: 'todo',
+                assignee_id: null,
+              })),
+            },
+          ],
+        },
+      ],
+    };
+
+    const result = service.applyOperations(state as any, [
+      {
+        op: 'update_node',
+        targets: taskIds,
+        patch: { assignee_id: assignee },
+      },
+    ]);
+
+    expect(result.issues).toEqual([]);
+    const tasks =
+      state.roadmap_epics[0].roadmap_features[0].roadmap_tasks as Array<{
+        assignee_id: string | null;
+      }>;
+    expect(tasks).toHaveLength(3);
+    for (const task of tasks) {
+      expect(task.assignee_id).toBe(assignee);
+    }
+  });
 });

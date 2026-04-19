@@ -3,12 +3,16 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from pydantic import ValidationError
 
-from app.core.contracts.operations import OperationType, RoadmapOperation
-from app.core.uuid_utils import normalize_uuid
+from app.core.contracts.operations import (
+    OperationType,
+    RoadmapOperation,
+    TARGET_TAKING_OPS,
+)
+from app.core.uuid_utils import TEMP_REF_PATTERN, is_uuid_like, normalize_uuid
 
 
 def _load_canonical_operation_requirements() -> dict[str, dict[str, Any]]:
@@ -36,28 +40,11 @@ _CANONICAL_OPERATION_REQUIREMENTS: dict[str, dict[str, Any]] = (
     _load_canonical_operation_requirements()
 )
 
-TASK_STATUS_VALUES = ['todo', 'in_progress', 'in_review', 'done', 'blocked']
-FEATURE_STATUS_VALUES = [
-    'not_started',
-    'in_progress',
-    'in_review',
-    'completed',
-    'blocked',
-]
-EPIC_STATUS_VALUES = [
-    'backlog',
-    'planned',
-    'in_progress',
-    'in_review',
-    'completed',
-    'on_hold',
-]
-# Union of every accepted status string across node types. Used when the
-# JSON schema cannot cheaply branch on `node_type` (top-level `status` for
-# mark_status, and `patch.status` for update_node). The planner's
-# semantic validator still enforces the per-type enum on the server side.
-ALL_STATUS_VALUES = sorted(
-    {*TASK_STATUS_VALUES, *FEATURE_STATUS_VALUES, *EPIC_STATUS_VALUES}
+from app.core.contracts.statuses import (  # noqa: E402
+    ALL_STATUS_VALUES,
+    EPIC_STATUS_VALUES,
+    FEATURE_STATUS_VALUES,
+    TASK_STATUS_VALUES,
 )
 TASK_STATUS_FILTER_VALUES = [*TASK_STATUS_VALUES, 'all']
 FEATURE_STATUS_FILTER_VALUES = [
@@ -133,9 +120,7 @@ _UNASSIGN_ASSIGNEE_TOKENS = {
     'clear assignee',
 }
 
-_VALID_TEMP_REF_PATTERN = re.compile(
-    r'(?i)^(?:tmp|t|temp|epic|feature|feat|task)[_-][a-z0-9][a-z0-9_-]{0,63}$'
-)
+_VALID_TEMP_REF_PATTERN = TEMP_REF_PATTERN
 _TEMP_REF_ALIAS_PATTERN = re.compile(
     r'(?i)^(?P<prefix>[a-z]+)(?P<sep>[_-])(?P<suffix>[a-z0-9][a-z0-9_-]{0,63})$'
 )
@@ -677,57 +662,111 @@ _CREATE_STATUS_ENUMS: dict[str, list[str]] = {
     'add_task': TASK_STATUS_VALUES,
 }
 
-_ALL_OPERATION_FIELDS: list[str] = [
-    'op',
-    'node_type',
-    'node_id',
-    'node_ref',
-    'parent_id',
-    'parent_ref',
-    'new_parent_id',
-    'new_parent_ref',
-    'temp_id',
-    'position',
-    'patch',
-    'status',
-    'delta_days',
-    'scope',
-    'data',
-]
+# Derive the operation property shape once from the Pydantic model so the
+# runtime tool schema, the Pydantic validator, and the canonical JSON schema
+# stay in lockstep. Adding a field to RoadmapOperation automatically flows
+# into the tool the LLM sees; there is no second hand-rolled list to keep
+# in sync.
+_OPERATION_SCHEMA_SOURCE: dict[str, Any] = RoadmapOperation.model_json_schema()
 
 
-def _base_operation_properties(op_name: str) -> dict[str, Any]:
-    return {
-        'op': {'type': 'string', 'const': op_name},
-        'node_type': {
-            'type': ['string', 'null'],
-            'enum': ['roadmap', 'epic', 'feature', 'task', None],
-        },
-        'node_id': {'type': ['string', 'null']},
-        'node_ref': {'type': ['string', 'null']},
-        'parent_id': {'type': ['string', 'null']},
-        'parent_ref': {'type': ['string', 'null']},
-        'new_parent_id': {'type': ['string', 'null']},
-        'new_parent_ref': {'type': ['string', 'null']},
-        'temp_id': {'type': ['string', 'null']},
-        'position': {'type': ['integer', 'null']},
-        'patch': {
-            'type': ['object', 'null'],
-            'properties': {
-                'status': {
-                    'type': ['string', 'null'],
-                    'enum': [*ALL_STATUS_VALUES, None],
-                },
-            },
-        },
-        'status': {
-            'type': ['string', 'null'],
-            'enum': [*ALL_STATUS_VALUES, None],
-        },
-        'delta_days': {'type': ['integer', 'null']},
-        'scope': {'type': ['object', 'null']},
-        'data': {'type': ['object', 'null']},
+def _resolve_schema_ref(ref: str, defs: dict[str, Any]) -> dict[str, Any]:
+    prefix = '#/$defs/'
+    if not ref.startswith(prefix):
+        raise ValueError(f'Unsupported schema ref: {ref!r}')
+    name = ref[len(prefix):]
+    target = defs.get(name)
+    if not isinstance(target, dict):
+        raise ValueError(f'Unresolvable schema ref: {ref!r}')
+    resolved = dict(target)
+    resolved.pop('title', None)
+    return resolved
+
+
+def _pydantic_field_to_strict(
+    spec: dict[str, Any], defs: dict[str, Any]
+) -> dict[str, Any]:
+    """Rewrite one Pydantic-emitted property spec for OpenAI strict mode.
+
+    - Inlines `$ref` to enum definitions.
+    - Collapses Pydantic's `anyOf: [{type: T}, {type: null}]` nullable idiom
+      to the strict-mode-friendly `type: [T, null]` form, preserving
+      sibling keywords (items, minItems, maxItems, ...).
+    - Recurses into nested object `properties` (for the `patch` status hint).
+    """
+    spec = dict(spec)
+    spec.pop('title', None)
+    spec.pop('default', None)
+    if '$ref' in spec:
+        resolved = _resolve_schema_ref(spec.pop('$ref'), defs)
+        resolved.update(spec)
+        spec = resolved
+    if 'anyOf' in spec:
+        variants = spec.pop('anyOf')
+        non_null: list[dict[str, Any]] = []
+        has_null = False
+        for variant in variants:
+            if not isinstance(variant, dict):
+                continue
+            if variant.get('type') == 'null':
+                has_null = True
+                continue
+            resolved_variant = (
+                _resolve_schema_ref(variant['$ref'], defs)
+                if '$ref' in variant
+                else dict(variant)
+            )
+            resolved_variant.pop('title', None)
+            non_null.append(resolved_variant)
+        if len(non_null) != 1:
+            raise ValueError(
+                f'Cannot flatten anyOf with {len(non_null)} non-null variants: {variants!r}'
+            )
+        variant = non_null[0]
+        base_type = variant.pop('type', None)
+        if isinstance(base_type, str):
+            spec['type'] = [base_type, 'null'] if has_null else base_type
+        elif isinstance(base_type, list):
+            spec['type'] = (
+                [*base_type, 'null'] if has_null and 'null' not in base_type else base_type
+            )
+        for key, value in variant.items():
+            spec.setdefault(key, value)
+    if 'enum' in spec and isinstance(spec.get('type'), list) and 'null' in spec['type']:
+        enum_values = spec['enum']
+        if isinstance(enum_values, list) and None not in enum_values:
+            spec['enum'] = [*enum_values, None]
+    if 'properties' in spec and isinstance(spec['properties'], dict):
+        spec['properties'] = {
+            name: _pydantic_field_to_strict(child, defs)
+            for name, child in spec['properties'].items()
+        }
+    return spec
+
+
+def _derive_base_operation_properties() -> dict[str, Any]:
+    defs = _OPERATION_SCHEMA_SOURCE.get('$defs', {})
+    raw_properties = _OPERATION_SCHEMA_SOURCE.get('properties', {})
+    properties: dict[str, Any] = {
+        name: _pydantic_field_to_strict(spec, defs)
+        for name, spec in raw_properties.items()
     }
+    # Pydantic doesn't encode the per-node-type `patch.status` enum hint —
+    # apply it here so the LLM still sees valid status values when updating.
+    patch_spec = properties.get('patch')
+    if isinstance(patch_spec, dict):
+        patch_spec = dict(patch_spec)
+        patch_spec['properties'] = {
+            'status': {
+                'type': ['string', 'null'],
+                'enum': [*ALL_STATUS_VALUES, None],
+            },
+        }
+        properties['patch'] = patch_spec
+    return properties
+
+
+_ALL_OPERATION_FIELDS: list[str] = list(_OPERATION_SCHEMA_SOURCE.get('properties', {}).keys())
 
 
 def _promote_field_to_required_non_null(
@@ -757,12 +796,18 @@ def _force_field_to_null(properties: dict[str, Any], field: str) -> None:
     properties[field] = {'type': 'null'}
 
 
-_XOR_SIBLINGS: dict[str, str] = {
-    'node_id': 'node_ref',
-    'node_ref': 'node_id',
-    'parent_id': 'parent_ref',
-    'parent_ref': 'parent_id',
-}
+_TARGET_IDENTIFIER_SIBLINGS: tuple[str, ...] = ('node_id', 'node_ref', 'targets')
+_PARENT_IDENTIFIER_SIBLINGS: tuple[str, ...] = ('parent_id', 'parent_ref')
+
+
+def _force_siblings_to_null(
+    properties: dict[str, Any],
+    chosen: str,
+    group: tuple[str, ...],
+) -> None:
+    for sibling in group:
+        if sibling != chosen:
+            _force_field_to_null(properties, sibling)
 
 
 def _attach_create_data_shape(
@@ -780,61 +825,59 @@ def _attach_create_data_shape(
     }
 
 
+def _make_branch(
+    op_name: str,
+    policy: dict[str, Any],
+    identifier: str | None,
+) -> dict[str, Any]:
+    properties = _derive_base_operation_properties()
+    properties['op'] = {'type': 'string', 'const': op_name}
+    if identifier is not None:
+        _promote_field_to_required_non_null(properties, identifier)
+        if policy.get('target'):
+            _force_siblings_to_null(
+                properties, identifier, _TARGET_IDENTIFIER_SIBLINGS
+            )
+        elif policy.get('parent'):
+            _force_siblings_to_null(
+                properties, identifier, _PARENT_IDENTIFIER_SIBLINGS
+            )
+    else:
+        # add_epic etc. — neither target nor parent identifier applies.
+        _force_siblings_to_null(properties, '', _TARGET_IDENTIFIER_SIBLINGS)
+        _force_siblings_to_null(properties, '', _PARENT_IDENTIFIER_SIBLINGS)
+    if policy.get('data_title'):
+        _attach_create_data_shape(properties, op_name)
+    return {
+        'type': 'object',
+        'additionalProperties': False,
+        'required': list(properties.keys()),
+        'properties': properties,
+    }
+
+
 def _build_operation_anyof_branches() -> list[dict[str, Any]]:
     """Per-op discriminated schema branches.
 
-    Each branch is a complete, closed object schema: full property set,
-    every field in `required`, optional fields modeled as nullable so the
-    model emits them as JSON null when not in use. Target/parent XOR is
-    encoded as two sibling branches per op (one per identifier variant).
-    This shape is OpenAI strict-mode compatible at the top level; inner
-    `patch`/`data`/`scope` remain loose objects so the binder falls back
-    to non-strict if the current LangChain/OpenAI runtime rejects them.
+    Shared property shape comes from RoadmapOperation via
+    `_derive_base_operation_properties`; per-op differences are applied as
+    overlays (op discriminator, XOR identifier group, create-op data
+    requirements). Target-taking ops have three branches — one each for
+    `node_id`, `node_ref`, and bulk `targets[]`. Parent-requiring ops have
+    two branches. Pure creates without a parent (add_epic) have one.
     """
     branches: list[dict[str, Any]] = []
     for op_name, policy in _CANONICAL_OPERATION_REQUIREMENTS.items():
         if not isinstance(policy, dict):
             continue
         if policy.get('parent'):
-            for identifier in ('parent_id', 'parent_ref'):
-                properties = _base_operation_properties(op_name)
-                _promote_field_to_required_non_null(properties, identifier)
-                _force_field_to_null(properties, _XOR_SIBLINGS[identifier])
-                if policy.get('data_title'):
-                    _attach_create_data_shape(properties, op_name)
-                branches.append(
-                    {
-                        'type': 'object',
-                        'additionalProperties': False,
-                        'required': list(_ALL_OPERATION_FIELDS),
-                        'properties': properties,
-                    }
-                )
+            for identifier in _PARENT_IDENTIFIER_SIBLINGS:
+                branches.append(_make_branch(op_name, policy, identifier))
         elif policy.get('target'):
-            for identifier in ('node_id', 'node_ref'):
-                properties = _base_operation_properties(op_name)
-                _promote_field_to_required_non_null(properties, identifier)
-                _force_field_to_null(properties, _XOR_SIBLINGS[identifier])
-                branches.append(
-                    {
-                        'type': 'object',
-                        'additionalProperties': False,
-                        'required': list(_ALL_OPERATION_FIELDS),
-                        'properties': properties,
-                    }
-                )
+            for identifier in _TARGET_IDENTIFIER_SIBLINGS:
+                branches.append(_make_branch(op_name, policy, identifier))
         else:
-            properties = _base_operation_properties(op_name)
-            if policy.get('data_title'):
-                _attach_create_data_shape(properties, op_name)
-            branches.append(
-                {
-                    'type': 'object',
-                    'additionalProperties': False,
-                    'required': list(_ALL_OPERATION_FIELDS),
-                    'properties': properties,
-                }
-            )
+            branches.append(_make_branch(op_name, policy, identifier=None))
     return branches
 
 
@@ -991,11 +1034,8 @@ def parse_plan_tool_args(raw_args: Any) -> tuple[str, list[RoadmapOperation]]:
         normalized = _normalize_operation_payload(item)
         if isinstance(normalized, dict):
             _infer_mark_status_node_type(normalized, temp_ref_node_types)
-        _validate_operation_identity_payload(normalized, index=index)
         try:
             operation = RoadmapOperation.model_validate(normalized)
-            operations.append(operation)
-            _register_created_temp_ref_type(operation, temp_ref_node_types)
         except ValidationError as exc:
             op_value = ''
             if isinstance(normalized, dict):
@@ -1004,6 +1044,15 @@ def parse_plan_tool_args(raw_args: Any) -> tuple[str, list[RoadmapOperation]]:
             raise ValueError(
                 f'Invalid operation payload at index {index}{op_suffix}: {exc.errors(include_url=False)}'
             ) from exc
+        identity_issue = _parse_time_identity_issue(operation, is_uuid=is_uuid_like)
+        if identity_issue is not None:
+            _, message = identity_issue
+            raise ValueError(
+                f'Invalid operation payload at index {index} (op={operation.op.value}): '
+                f'{message}'
+            )
+        operations.append(operation)
+        _register_created_temp_ref_type(operation, temp_ref_node_types)
     assistant_message = str(args.get('assistant_message', 'Prepared roadmap operations.'))
     return assistant_message, operations
 
@@ -1277,46 +1326,43 @@ def _is_non_empty_string(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
-def _validate_operation_identity_payload(payload: Any, *, index: int) -> None:
-    if not isinstance(payload, dict):
-        raise ValueError(f'Invalid operation payload at index {index}: operation must be an object.')
+# Parse-time identity checks. These are the only reasons surfaced at
+# `parse_plan_tool_args` time — they mirror the scope of the hand-rolled
+# identity validator this replaced (presence + XOR + targets entry
+# non-emptiness). Heavier semantic checks (UUID validity, status enum,
+# delta bounds, mutation payload, mark_status legality) are run later by
+# `apply_operation_contract_guard`, because downstream repair paths
+# (deictic parent hints, target-recovery autofix) need to see the raw
+# invalid operation to fix it up.
+_SEMANTIC_REASON_MESSAGES: dict[str, str] = {
+    'identity_conflict': 'creation identity conflict: provide either data.id or temp_id, not both.',
+    'parent_target_missing': 'parent target missing: add_feature/add_task require parent_id or parent_ref.',
+    'parent_target_conflict': 'parent target conflict: provide either parent_id or parent_ref, not both.',
+    'target_missing': 'target missing: operation requires node_id, node_ref, or a non-empty targets[].',
+    'target_conflict': 'target conflict: provide either targets[] or node_id/node_ref (exclusive).',
+    'new_parent_target_conflict': 'move destination conflict: provide either new_parent_id or new_parent_ref, not both.',
+}
 
-    op = str(payload.get('op') or '').strip()
-    if not op:
-        raise ValueError(f'Invalid operation payload at index {index}: missing op value.')
 
-    data = payload.get('data') if isinstance(payload.get('data'), dict) else {}
-    data_id = data.get('id') if isinstance(data, dict) else None
-    temp_id = payload.get('temp_id')
-
-    def _raise(reason: str) -> None:
-        raise ValueError(f'Invalid operation payload at index {index} (op={op}): {reason}')
-
-    if op in {'add_epic', 'add_feature', 'add_task'}:
-        if _is_non_empty_string(data_id) and _is_non_empty_string(temp_id):
-            _raise('creation identity conflict: provide either data.id or temp_id, not both.')
-
-    if op in {'add_feature', 'add_task'}:
-        parent_id = payload.get('parent_id')
-        parent_ref = payload.get('parent_ref')
-        if _is_non_empty_string(parent_id) and _is_non_empty_string(parent_ref):
-            _raise('parent target conflict: provide either parent_id or parent_ref, not both.')
-        if not _is_non_empty_string(parent_id) and not _is_non_empty_string(parent_ref):
-            _raise('parent target missing: add_feature/add_task require parent_id or parent_ref.')
-
-    if op in {'update_node', 'delete_node', 'move_node', 'mark_status', 'shift_dates'}:
-        node_id = payload.get('node_id')
-        node_ref = payload.get('node_ref')
-        if _is_non_empty_string(node_id) and _is_non_empty_string(node_ref):
-            _raise('target conflict: provide either node_id or node_ref, not both.')
-        if not _is_non_empty_string(node_id) and not _is_non_empty_string(node_ref):
-            _raise('target missing: operation requires node_id or node_ref.')
-
-    if op == 'move_node':
-        new_parent_id = payload.get('new_parent_id')
-        new_parent_ref = payload.get('new_parent_ref')
-        if _is_non_empty_string(new_parent_id) and _is_non_empty_string(new_parent_ref):
-            _raise('move destination conflict: provide either new_parent_id or new_parent_ref, not both.')
+def _parse_time_identity_issue(
+    operation: RoadmapOperation, *, is_uuid: Callable[[str | None], bool]
+) -> tuple[str, str] | None:
+    issues = operation.semantic_contract_issues(is_uuid=is_uuid)
+    for issue in issues:
+        _, _, detail = issue.partition('.')
+        if detail in _SEMANTIC_REASON_MESSAGES:
+            return issue, _SEMANTIC_REASON_MESSAGES[detail]
+        # `targets[i].empty` should abort at parse time — an empty entry
+        # cannot be recovered downstream because there is no value to
+        # re-resolve. `targets[i].invalid` (non-uuid, non-ref string) is
+        # left for the downstream target-recovery autofix to map via the
+        # resolver cache, mirroring how single-target invalid ids flow.
+        if detail.endswith('.empty'):
+            return issue, (
+                f'{detail} — every entry in targets[] must be a non-empty '
+                f'string id or ref.'
+            )
+    return None
 
 
 def _sanitize_op_value(value: Any) -> str:

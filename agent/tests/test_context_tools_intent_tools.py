@@ -303,8 +303,9 @@ class ContextToolIntentTests(unittest.TestCase):
         bulk_ops = bulk_result.get('operations')
         self.assertIsInstance(bulk_ops, list)
         assert isinstance(bulk_ops, list)
-        self.assertEqual(len(bulk_ops), 3)
-        self.assertTrue(all(op.get('op') == 'mark_status' for op in bulk_ops))
+        self.assertEqual(len(bulk_ops), 1)
+        self.assertEqual(bulk_ops[0].get('op'), 'mark_status')
+        self.assertEqual(bulk_ops[0].get('targets'), ['t1', 't2', 't3'])
 
         reorder_result = self.executor.execute(
             'reorder_tasks',
@@ -334,8 +335,9 @@ class ContextToolIntentTests(unittest.TestCase):
         operations = result.get('operations')
         self.assertIsInstance(operations, list)
         assert isinstance(operations, list)
-        self.assertEqual(len(operations), 2)
-        self.assertTrue(all(op.get('status') == 'in_review' for op in operations))
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].get('status'), 'in_review')
+        self.assertEqual(operations[0].get('targets'), ['t1', 't2'])
 
     def test_bulk_update_task_status_rejects_invalid_status(self) -> None:
         result = self.executor.execute(
@@ -369,7 +371,7 @@ class ContextToolIntentTests(unittest.TestCase):
         self.assertIsInstance(operations, list)
         assert isinstance(operations, list)
         self.assertEqual(len(operations), 1)
-        self.assertEqual(operations[0].get('node_id'), 't1')
+        self.assertEqual(operations[0].get('targets'), ['t1'])
         self.assertEqual(result.get('parent_type'), 'feature')
         self.assertEqual(result.get('matched_task_count'), 2)
         self.assertEqual(result.get('updated_task_count'), 1)
@@ -393,11 +395,8 @@ class ContextToolIntentTests(unittest.TestCase):
         operations = result.get('operations')
         self.assertIsInstance(operations, list)
         assert isinstance(operations, list)
-        self.assertEqual(len(operations), 3)
-        self.assertEqual(
-            [op.get('node_id') for op in operations],
-            ['t1', 't2', 't3'],
-        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].get('targets'), ['t1', 't2', 't3'])
         self.assertEqual(result.get('matched_task_count'), 3)
         self.assertEqual(result.get('updated_task_count'), 3)
 
@@ -415,7 +414,8 @@ class ContextToolIntentTests(unittest.TestCase):
         operations = result.get('operations')
         self.assertIsInstance(operations, list)
         assert isinstance(operations, list)
-        self.assertEqual([op.get('node_id') for op in operations], ['t1'])
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].get('targets'), ['t1'])
         self.assertEqual(result.get('matched_task_count'), 1)
         self.assertEqual(result.get('total_child_task_count'), 2)
         self.assertEqual(result.get('eligible_task_count'), 1)
@@ -437,7 +437,8 @@ class ContextToolIntentTests(unittest.TestCase):
         operations = result.get('operations')
         self.assertIsInstance(operations, list)
         assert isinstance(operations, list)
-        self.assertEqual([op.get('node_id') for op in operations], ['t1', 't2'])
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].get('targets'), ['t1', 't2'])
         self.assertEqual(result.get('matched_task_count'), 2)
         self.assertEqual(result.get('total_child_task_count'), 2)
         self.assertEqual(result.get('eligible_task_count'), 2)
@@ -480,7 +481,7 @@ class ContextToolIntentTests(unittest.TestCase):
         assert isinstance(operations, list)
         self.assertEqual(len(operations), 1)
         self.assertEqual(operations[0].get('op'), 'mark_status')
-        self.assertEqual(operations[0].get('node_id'), 't1')
+        self.assertEqual(operations[0].get('targets'), ['t1'])
 
     def test_bulk_update_tasks_by_filter_defaults_to_excluding_completed(self) -> None:
         result = self.executor.execute(
@@ -499,7 +500,7 @@ class ContextToolIntentTests(unittest.TestCase):
         assert isinstance(operations, list)
         self.assertEqual(len(operations), 1)
         self.assertEqual(operations[0].get('op'), 'update_node')
-        self.assertEqual(operations[0].get('node_id'), 't1')
+        self.assertEqual(operations[0].get('targets'), ['t1'])
         self.assertEqual((operations[0].get('patch') or {}).get('priority'), 'high')
         self.assertFalse((result.get('filters') or {}).get('include_completed'))
 
@@ -519,8 +520,9 @@ class ContextToolIntentTests(unittest.TestCase):
         operations = result.get('operations')
         self.assertIsInstance(operations, list)
         assert isinstance(operations, list)
-        self.assertEqual([op.get('node_id') for op in operations], ['t2', 't3'])
-        self.assertTrue(all(op.get('op') == 'mark_status' for op in operations))
+        self.assertEqual(len(operations), 1)
+        self.assertEqual(operations[0].get('op'), 'mark_status')
+        self.assertEqual(operations[0].get('targets'), ['t2', 't3'])
         self.assertTrue((result.get('filters') or {}).get('include_completed'))
 
     def test_bulk_update_tasks_by_filter_supports_combined_status_and_assignee_update(self) -> None:
@@ -542,7 +544,10 @@ class ContextToolIntentTests(unittest.TestCase):
         operations = result.get('operations')
         self.assertIsInstance(operations, list)
         assert isinstance(operations, list)
-        self.assertEqual(len(operations), 3)
+        # One op per mutation dimension: status-change for tasks that
+        # differ, plus assignee-change for tasks where the assignee isn't
+        # already u1. No more O(N) expansion.
+        self.assertEqual(len(operations), 2)
         mark_status_ops = [op for op in operations if op.get('op') == 'mark_status']
         assign_ops = [
             op
@@ -551,9 +556,10 @@ class ContextToolIntentTests(unittest.TestCase):
             and isinstance(op.get('patch'), dict)
             and op.get('patch', {}).get('assignee_id') == 'u1'
         ]
-        self.assertEqual([op.get('node_id') for op in mark_status_ops], ['t2', 't3'])
+        self.assertEqual(len(mark_status_ops), 1)
+        self.assertEqual(mark_status_ops[0].get('targets'), ['t2', 't3'])
         self.assertEqual(len(assign_ops), 1)
-        self.assertEqual(assign_ops[0].get('node_id'), 't3')
+        self.assertEqual(assign_ops[0].get('targets'), ['t3'])
         update_payload = result.get('update')
         self.assertIsInstance(update_payload, dict)
         assert isinstance(update_payload, dict)
@@ -624,7 +630,7 @@ class ContextToolIntentTests(unittest.TestCase):
         assert isinstance(operations, list)
         self.assertEqual(len(operations), 1)
         self.assertEqual(operations[0].get('op'), 'update_node')
-        self.assertEqual(operations[0].get('node_id'), 'tm1')
+        self.assertEqual(operations[0].get('targets'), ['tm1'])
         self.assertEqual((operations[0].get('patch') or {}).get('priority'), 'high')
         self.assertEqual(call_counts['tasks_filtered'], 1)
         self.assertEqual(call_counts['summary'], 0)
@@ -690,10 +696,9 @@ class ContextToolIntentTests(unittest.TestCase):
         operations = result.get('operations')
         self.assertIsInstance(operations, list)
         assert isinstance(operations, list)
-        self.assertEqual(len(operations), 2)
-        self.assertTrue(
-            all((op.get('patch') or {}).get('assignee_id') is None for op in operations)
-        )
+        self.assertEqual(len(operations), 1)
+        self.assertEqual((operations[0].get('patch') or {}).get('assignee_id'), None)
+        self.assertEqual(operations[0].get('targets'), ['t1', 't2'])
 
     def test_get_tasks_by_status_filters_tasks(self) -> None:
         result = self.executor.execute(
@@ -1197,7 +1202,7 @@ class ContextToolIntentTests(unittest.TestCase):
             (
                 'create_feature',
                 {'roadmap_id': 'r1', 'epic_id': 'e1', 'title': 'Auth Flows'},
-                [('add_feature', 'feature')],
+                [('add_feature', 'feature', None)],
             ),
             (
                 'create_task',
@@ -1207,12 +1212,12 @@ class ContextToolIntentTests(unittest.TestCase):
                     'title': 'Add MFA',
                     'priority': 'high',
                 },
-                [('add_task', 'task')],
+                [('add_task', 'task', None)],
             ),
             (
                 'update_task_priority',
                 {'roadmap_id': 'r1', 'task_id': 't1', 'priority': 'high'},
-                [('update_node', 'task')],
+                [('update_node', 'task', None)],
             ),
             (
                 'update_task_assignee',
@@ -1221,17 +1226,17 @@ class ContextToolIntentTests(unittest.TestCase):
                     'task_id': 't1',
                     'assignee_id': 'u1',
                 },
-                [('update_node', 'task')],
+                [('update_node', 'task', None)],
             ),
             (
                 'update_feature_status',
                 {'roadmap_id': 'r1', 'feature_id': 'f1', 'status': 'blocked'},
-                [('mark_status', 'feature')],
+                [('mark_status', 'feature', None)],
             ),
             (
                 'update_epic_status',
                 {'roadmap_id': 'r1', 'epic_id': 'e1', 'status': 'in_progress'},
-                [('mark_status', 'epic')],
+                [('mark_status', 'epic', None)],
             ),
             (
                 'update_titles',
@@ -1241,22 +1246,22 @@ class ContextToolIntentTests(unittest.TestCase):
                     'node_id': 't1',
                     'title': 'Rename Task',
                 },
-                [('update_node', 'task')],
+                [('update_node', 'task', None)],
             ),
             (
                 'delete_task',
                 {'roadmap_id': 'r1', 'task_id': 't1'},
-                [('delete_node', 'task')],
+                [('delete_node', 'task', None)],
             ),
             (
                 'delete_feature',
                 {'roadmap_id': 'r1', 'feature_id': 'f1'},
-                [('delete_node', 'feature')],
+                [('delete_node', 'feature', None)],
             ),
             (
                 'delete_epic',
                 {'roadmap_id': 'r1', 'epic_id': 'e1'},
-                [('delete_node', 'epic')],
+                [('delete_node', 'epic', None)],
             ),
             (
                 'move_task_to_feature',
@@ -1266,7 +1271,7 @@ class ContextToolIntentTests(unittest.TestCase):
                     'feature_id': 'f2',
                     'position': 2,
                 },
-                [('move_node', 'task')],
+                [('move_node', 'task', None)],
             ),
             (
                 'move_feature_to_epic',
@@ -1275,7 +1280,7 @@ class ContextToolIntentTests(unittest.TestCase):
                     'feature_id': 'f2',
                     'epic_id': 'e1',
                 },
-                [('move_node', 'feature')],
+                [('move_node', 'feature', None)],
             ),
             (
                 'reorder_features',
@@ -1284,12 +1289,12 @@ class ContextToolIntentTests(unittest.TestCase):
                     'epic_id': 'e1',
                     'feature_ids': ['f2', 'f1'],
                 },
-                [('move_node', 'feature'), ('move_node', 'feature')],
+                [('move_node', 'feature', None), ('move_node', 'feature', None)],
             ),
             (
                 'reorder_epics',
                 {'roadmap_id': 'r1', 'epic_ids': ['e2', 'e1']},
-                [('move_node', 'epic'), ('move_node', 'epic')],
+                [('move_node', 'epic', None), ('move_node', 'epic', None)],
             ),
             (
                 'bulk_assign_tasks',
@@ -1298,7 +1303,7 @@ class ContextToolIntentTests(unittest.TestCase):
                     'task_ids': ['t1', 't2'],
                     'assignee_id': 'u1',
                 },
-                [('update_node', 'task'), ('update_node', 'task')],
+                [('update_node', 'task', ['t1', 't2'])],
             ),
             (
                 'bulk_update_tasks_by_parent',
@@ -1309,7 +1314,7 @@ class ContextToolIntentTests(unittest.TestCase):
                     'status': 'in_review',
                     'include_completed': True,
                 },
-                [('mark_status', 'task'), ('mark_status', 'task')],
+                [('mark_status', 'task', ['t1', 't2'])],
             ),
             (
                 'bulk_update_tasks_by_filter',
@@ -1322,12 +1327,12 @@ class ContextToolIntentTests(unittest.TestCase):
                     },
                     'update': {'status': 'in_review'},
                 },
-                [('mark_status', 'task')],
+                [('mark_status', 'task', ['t1'])],
             ),
             (
                 'bulk_delete_tasks',
                 {'roadmap_id': 'r1', 'task_ids': ['t1', 't2']},
-                [('delete_node', 'task'), ('delete_node', 'task')],
+                [('delete_node', 'task', ['t1', 't2'])],
             ),
             (
                 'bulk_move_tasks_to_feature',
@@ -1337,7 +1342,7 @@ class ContextToolIntentTests(unittest.TestCase):
                     'feature_id': 'f2',
                     'start_position': 1,
                 },
-                [('move_node', 'task'), ('move_node', 'task')],
+                [('move_node', 'task', None), ('move_node', 'task', None)],
             ),
             (
                 'bulk_update_feature_status',
@@ -1346,7 +1351,7 @@ class ContextToolIntentTests(unittest.TestCase):
                     'feature_ids': ['f1', 'f2'],
                     'status': 'completed',
                 },
-                [('mark_status', 'feature'), ('mark_status', 'feature')],
+                [('mark_status', 'feature', ['f1', 'f2'])],
             ),
             (
                 'bulk_update_epic_status',
@@ -1355,7 +1360,7 @@ class ContextToolIntentTests(unittest.TestCase):
                     'epic_ids': ['e1', 'e2'],
                     'status': 'completed',
                 },
-                [('mark_status', 'epic'), ('mark_status', 'epic')],
+                [('mark_status', 'epic', ['e1', 'e2'])],
             ),
         ]
 
@@ -1366,8 +1371,62 @@ class ContextToolIntentTests(unittest.TestCase):
                 self.assertIsInstance(operations, list)
                 assert isinstance(operations, list)
                 self.assertEqual(len(operations), len(expected))
-                observed = [(op.get('op'), op.get('node_type')) for op in operations]
+                observed = [
+                    (op.get('op'), op.get('node_type'), op.get('targets'))
+                    for op in operations
+                ]
                 self.assertEqual(observed, expected)
+
+    def test_bulk_helpers_emit_constant_op_count_at_scale(self) -> None:
+        # Regression for "Assign all tasks to me" hitting planner_output_truncated
+        # on 25 tasks. The helpers now collapse each mutation dimension to a
+        # single op with targets[], so the planner round-trip is O(1) in op
+        # count regardless of N. 100 ids must still yield ≤ 3 ops.
+        many_ids = [f'task_id_{i:04d}' for i in range(100)]
+        cases = [
+            (
+                'bulk_update_task_status',
+                {'roadmap_id': 'r1', 'task_ids': many_ids, 'status': 'done'},
+            ),
+            (
+                'bulk_assign_tasks',
+                {'roadmap_id': 'r1', 'task_ids': many_ids, 'assignee_id': 'u1'},
+            ),
+            (
+                'bulk_delete_tasks',
+                {'roadmap_id': 'r1', 'task_ids': many_ids},
+            ),
+            (
+                'bulk_update_feature_status',
+                {
+                    'roadmap_id': 'r1',
+                    'feature_ids': many_ids,
+                    'status': 'completed',
+                },
+            ),
+            (
+                'bulk_update_epic_status',
+                {
+                    'roadmap_id': 'r1',
+                    'epic_ids': many_ids,
+                    'status': 'completed',
+                },
+            ),
+        ]
+        for tool_name, args in cases:
+            with self.subTest(tool_name=tool_name):
+                result = self.executor.execute(tool_name, args, self.session_context)
+                operations = result.get('operations')
+                self.assertIsInstance(operations, list)
+                assert isinstance(operations, list)
+                self.assertLessEqual(
+                    len(operations),
+                    3,
+                    f'{tool_name} must emit O(1) ops, got {len(operations)}',
+                )
+                for op in operations:
+                    self.assertEqual(op.get('targets'), many_ids)
+                    self.assertIsNone(op.get('node_id'))
 
     def test_helper_tools_return_invalid_argument_for_missing_required_input(self) -> None:
         result = self.executor.execute(
