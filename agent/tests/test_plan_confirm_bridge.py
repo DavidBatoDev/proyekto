@@ -604,5 +604,209 @@ class EditClarifierAnswerSentinelTests(unittest.TestCase):
         self.assertEqual(plan.answers[0].selected_option, 'MVP')
 
 
+class PlanDecisionSentinelTests(unittest.TestCase):
+    """The `__plan_decision__` sentinel is how the web's Apply/Reject card
+    buttons signal a structured decision. It must bypass the regex + classifier
+    heuristics — those paths are unreliable for plain-text confirms and were
+    the root cause of the confirmation loop we saw in logs (image1/image2):
+    user clicks Apply → plain "Yes, apply this plan." → regex misses → plan
+    stays `proposed` → agent re-asks to confirm forever.
+    """
+
+    def _session_with_plan(
+        self, *, base_revision: int = 3, plan: PendingPlan | None = None
+    ) -> AgentSession:
+        session = AgentSession(roadmap_id='roadmap-1', base_revision=base_revision)
+        session.metadata.pending_plan = plan or _plan(base_revision=base_revision)
+        return session
+
+    def test_confirm_sentinel_fires_bridge_even_when_heuristic_and_classifier_fail(
+        self,
+    ) -> None:
+        """The scalable fix: regex misses AND classifier returns an unrelated
+        intent, yet the structured sentinel still deterministically fires the
+        confirm bridge. This is the case the prior loop was stuck in.
+        """
+        session = self._session_with_plan()
+        plan_id = session.metadata.pending_plan.plan_id  # type: ignore[union-attr]
+        service = _build_service_double(edit_continuation_trigger=None)
+        # Classifier returns something that would NOT otherwise fire the
+        # post-classification bridge (not `confirm_action`, not a retry). The
+        # sentinel must carry the signal on its own.
+        service._planner.preview_intent_classification.return_value = (
+            'roadmap_query',
+            False,
+        )
+        import json
+
+        sentinel_message = (
+            '__plan_decision__\n'
+            + json.dumps({'decision': 'confirm', 'plan_id': plan_id})
+        )
+        result = dispatch_pre_planning_phase(
+            service=service,
+            session=session,
+            user_message=sentinel_message,
+            auth_header=None,
+            trace_id='trace-decision-confirm',
+            staged_operations=[],
+            phase_timings={},
+        )
+        self.assertTrue(result.session_context.get('force_edit_continuation'))
+        self.assertEqual(
+            result.session_context.get('force_edit_continuation_reason'),
+            'pending_plan_confirm',
+        )
+        # Synthesized prompt replaces the sentinel — no raw JSON reaches the LLM.
+        self.assertNotIn('__plan_decision__', result.planning_user_message)
+        self.assertIn('Plan summary: Ship a travel booking MVP', result.planning_user_message)
+
+    def test_reject_sentinel_clears_pending_plan_and_breaks_loop(self) -> None:
+        session = self._session_with_plan()
+        plan_id = session.metadata.pending_plan.plan_id  # type: ignore[union-attr]
+        service = _build_service_double(edit_continuation_trigger=None)
+        import json
+
+        sentinel_message = (
+            '__plan_decision__\n'
+            + json.dumps({'decision': 'reject', 'plan_id': plan_id})
+        )
+        result = dispatch_pre_planning_phase(
+            service=service,
+            session=session,
+            user_message=sentinel_message,
+            auth_header=None,
+            trace_id='trace-decision-reject',
+            staged_operations=[],
+            phase_timings={},
+        )
+        # Plan was dropped — nothing left for the agent to re-ask about.
+        self.assertIsNone(session.metadata.pending_plan)
+        # No raw sentinel into the LLM.
+        self.assertNotIn('__plan_decision__', result.planning_user_message)
+        self.assertIn('rejected the proposed plan', result.planning_user_message)
+        # Pinned to smalltalk — skipping classification saves an LLM call.
+        self.assertEqual(result.preview_intent, 'smalltalk')
+        # No force-edit: we want a chat acknowledgment, not an edit turn.
+        self.assertFalse(result.session_context.get('force_edit_continuation'))
+
+    def test_mismatched_plan_id_does_not_apply_wrong_plan(self) -> None:
+        """If the sentinel references a different plan_id than what's pending
+        (e.g. a superseded card the user clicked from scrollback), we must
+        drop the decision rather than confirm/reject the wrong plan.
+        """
+        session = self._session_with_plan()
+        service = _build_service_double(edit_continuation_trigger=None)
+        import json
+
+        sentinel_message = (
+            '__plan_decision__\n'
+            + json.dumps({'decision': 'confirm', 'plan_id': 'some-other-id'})
+        )
+        result = dispatch_pre_planning_phase(
+            service=service,
+            session=session,
+            user_message=sentinel_message,
+            auth_header=None,
+            trace_id='trace-decision-mismatch',
+            staged_operations=[],
+            phase_timings={},
+        )
+        # Plan is untouched — still pending, still `proposed`.
+        self.assertIsNotNone(session.metadata.pending_plan)
+        # Confirm bridge was NOT fired for the wrong plan.
+        self.assertFalse(result.session_context.get('force_edit_continuation'))
+        # Agent gets a human-readable explanation — no raw sentinel.
+        self.assertNotIn('__plan_decision__', result.planning_user_message)
+        self.assertIn('no longer current', result.planning_user_message)
+
+    def test_malformed_sentinel_body_falls_through_to_legacy_path(self) -> None:
+        """Malformed sentinels don't block — we fall through to the regex +
+        classifier path. Plain `"Yes, apply this plan."` clients still work.
+        """
+        session = self._session_with_plan()
+        service = _build_service_double(edit_continuation_trigger='confirm')
+        # Decision is missing → parser returns None → legacy bridge fires
+        # because edit_continuation_trigger='confirm' is set.
+        sentinel_message = '__plan_decision__\n{"plan_id": "whatever"}'
+        result = dispatch_pre_planning_phase(
+            service=service,
+            session=session,
+            user_message=sentinel_message,
+            auth_header=None,
+            trace_id='trace-decision-malformed',
+            staged_operations=[],
+            phase_timings={},
+        )
+        # Legacy bridge fired — same as before this feature existed.
+        self.assertTrue(result.session_context.get('force_edit_continuation'))
+        self.assertEqual(
+            result.session_context.get('force_edit_continuation_reason'),
+            'pending_plan_confirm',
+        )
+
+    def test_confirm_sentinel_with_stale_plan_clears_without_firing_bridge(
+        self,
+    ) -> None:
+        session = self._session_with_plan(
+            base_revision=9, plan=_plan(base_revision=3)
+        )
+        plan_id = session.metadata.pending_plan.plan_id  # type: ignore[union-attr]
+        service = _build_service_double(edit_continuation_trigger=None)
+        import json
+
+        sentinel_message = (
+            '__plan_decision__\n'
+            + json.dumps({'decision': 'confirm', 'plan_id': plan_id})
+        )
+        result = dispatch_pre_planning_phase(
+            service=service,
+            session=session,
+            user_message=sentinel_message,
+            auth_header=None,
+            trace_id='trace-decision-stale',
+            staged_operations=[],
+            phase_timings={},
+        )
+        # Stale plan cleared, bridge NOT fired (user needs to re-propose).
+        self.assertIsNone(session.metadata.pending_plan)
+        self.assertFalse(result.session_context.get('force_edit_continuation'))
+
+    def test_confirm_sentinel_embeds_optional_note_instead_of_sentinel_blob(
+        self,
+    ) -> None:
+        """The composed confirmation prompt's "Original user confirmation:"
+        line should carry the friendly `note` (if provided) rather than the
+        raw sentinel JSON.
+        """
+        session = self._session_with_plan()
+        plan_id = session.metadata.pending_plan.plan_id  # type: ignore[union-attr]
+        service = _build_service_double(edit_continuation_trigger=None)
+        import json
+
+        sentinel_message = (
+            '__plan_decision__\n'
+            + json.dumps(
+                {
+                    'decision': 'confirm',
+                    'plan_id': plan_id,
+                    'note': 'Apply this plan.',
+                }
+            )
+        )
+        result = dispatch_pre_planning_phase(
+            service=service,
+            session=session,
+            user_message=sentinel_message,
+            auth_header=None,
+            trace_id='trace-decision-note',
+            staged_operations=[],
+            phase_timings={},
+        )
+        self.assertIn('Apply this plan.', result.planning_user_message)
+        self.assertNotIn('__plan_decision__', result.planning_user_message)
+        self.assertNotIn('"plan_id":', result.planning_user_message)
+
+
 if __name__ == '__main__':
     unittest.main()

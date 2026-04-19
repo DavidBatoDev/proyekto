@@ -30,6 +30,7 @@ from app.core.orchestration.planning.pending_plan_materializer import (
 
 _PLAN_ANSWER_SENTINEL = '__plan_answers__'
 _CLARIFIER_ANSWER_SENTINEL = '__clarifier_answer__'
+_PLAN_DECISION_SENTINEL = '__plan_decision__'
 
 
 def _parse_plan_answer_sentinel(user_message: str) -> list[dict[str, Any]] | None:
@@ -88,6 +89,48 @@ def _parse_clarifier_answer_sentinel(user_message: str) -> dict[str, Any] | None
     if not isinstance(question_id, str) or not question_id.strip():
         return None
     return parsed
+
+
+def _parse_plan_decision_sentinel(user_message: str) -> dict[str, Any] | None:
+    """Detect the `__plan_decision__\\n{json}` sentinel the web emits when the
+    user clicks Apply/Reject on a `plan_proposal` card. Structured decisions
+    bypass the NLP path entirely — the pre-dispatcher can fire the confirm
+    bridge (or clear the pending plan) deterministically instead of relying
+    on regex heuristics or the LLM classifier to interpret phrases like
+    "Yes, apply this plan." Those paths remain as fallbacks for typed free
+    text, but the card-driven action is now a structured signal.
+
+    Required body shape:
+      `{"decision": "confirm"|"reject", "plan_id": "<uuid>"}`
+    Optional: `note` (free-text user annotation, ignored by the dispatcher
+    today but preserved for future planner context).
+
+    Returns the parsed dict on match, or None for non-matching/malformed
+    payloads (caller falls through to the regex + classifier path, which
+    preserves backwards compatibility with clients that still send plain
+    "Yes, apply this plan." text).
+    """
+
+    stripped = user_message.strip()
+    if not stripped.startswith(_PLAN_DECISION_SENTINEL):
+        return None
+    body = stripped[len(_PLAN_DECISION_SENTINEL):].strip()
+    if not body:
+        return None
+    try:
+        parsed = json.loads(body)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    decision = parsed.get('decision')
+    if decision not in {'confirm', 'reject'}:
+        return None
+    plan_id = parsed.get('plan_id')
+    if not isinstance(plan_id, str) or not plan_id.strip():
+        return None
+    return parsed
+
 
 _ACTOR_FETCH_EXECUTOR: ThreadPoolExecutor | None = None
 _overview_join_logger = logging.getLogger(__name__)
@@ -495,12 +538,22 @@ def dispatch_pre_planning_phase(
     plan_flag_enabled = bool(
         getattr(self._settings, 'agent_plan_proposal_enabled', False)
     )
+    # Structured plan-proposal decision (Apply/Reject) takes precedence over
+    # regex + classifier — a hit here fires the confirm bridge deterministically
+    # so the user can't get stuck in a "please confirm" loop when the card
+    # button's plain-text fallback ("Yes, apply this plan.") fails to match
+    # the heuristic regex and the classifier mis-classifies it. Plain text
+    # keeps working for typed messages; this is purely an additional
+    # structured path for card-driven actions.
+    plan_decision_sentinel: dict[str, Any] | None = (
+        _parse_plan_decision_sentinel(user_message) if plan_flag_enabled else None
+    )
     # Detect a clarifier answer payload BEFORE we classify. Two sentinels:
     #  - new `__clarifier_answer__` — lane-aware, any lane (preferred)
     #  - legacy `__plan_answers__`  — plan lane only, kept one release
     plan_answers_submitted = False
     edit_clarifier_answer_submitted = False
-    if plan_flag_enabled:
+    if plan_flag_enabled and plan_decision_sentinel is None:
         clarifier_answer = _parse_clarifier_answer_sentinel(user_message)
         if clarifier_answer is not None:
             lane = clarifier_answer.get('lane')
@@ -551,12 +604,73 @@ def dispatch_pre_planning_phase(
     )
     plan_confirmation_requested = False
     plan_stale_cleared = False
+    plan_decision_rejected = False
+    plan_decision_mismatch_reason: str | None = None
+    # Structured plan-decision first: deterministic, bypasses regex + classifier.
+    # `plan_id` on the sentinel must match the session's pending plan — if it
+    # doesn't, the decision is for a different (likely superseded) proposal
+    # and we drop it rather than applying the wrong plan.
+    if plan_decision_sentinel is not None:
+        decision = plan_decision_sentinel.get('decision')
+        decision_plan_id = plan_decision_sentinel.get('plan_id')
+        if not pending_plan_present or pending_plan is None:
+            plan_decision_mismatch_reason = 'no_pending_plan'
+        elif decision_plan_id != pending_plan.plan_id:
+            plan_decision_mismatch_reason = 'plan_id_mismatch'
+        elif decision == 'reject':
+            clear_pending_plan(
+                session,
+                reason='user_reject_decision',
+                logger=self._logger,
+                settings=self._settings,
+                trace_id=trace_id,
+            )
+            plan_decision_rejected = True
+        elif decision == 'confirm':
+            if is_plan_stale(session, pending_plan):
+                clear_pending_plan(
+                    session,
+                    reason='stale_base_revision',
+                    logger=self._logger,
+                    settings=self._settings,
+                    trace_id=trace_id,
+                )
+                plan_stale_cleared = True
+            else:
+                plan_confirmation_requested = True
+        if plan_decision_mismatch_reason is not None:
+            log_event(
+                self._logger,
+                'plan_decision_sentinel_dropped',
+                settings=self._settings,
+                level=logging.WARNING,
+                trace_id=trace_id,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                reason=plan_decision_mismatch_reason,
+                incoming_plan_id=decision_plan_id,
+                pending_plan_id=(pending_plan.plan_id if pending_plan else None),
+                decision=decision,
+            )
+        else:
+            log_event(
+                self._logger,
+                'plan_decision_sentinel_accepted',
+                settings=self._settings,
+                trace_id=trace_id,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                decision=decision,
+                plan_id=decision_plan_id,
+                stale_cleared=plan_stale_cleared,
+            )
     # Plan-confirm bridge fires for explicit confirms AND for 'retry' when a
     # pending plan exists — that covers the "apply crashed mid-flow, user
     # hit retry" case where the pending_plan is still in session but the
     # edit-lane apply never committed.
     if (
-        plan_flag_enabled
+        plan_decision_sentinel is None
+        and plan_flag_enabled
         and pending_plan_present
         and pending_plan is not None
         and edit_continuation_trigger in {'confirm', 'retry'}
@@ -574,7 +688,8 @@ def dispatch_pre_planning_phase(
         else:
             plan_confirmation_requested = True
     elif (
-        plan_flag_enabled
+        plan_decision_sentinel is None
+        and plan_flag_enabled
         and pending_plan_present
         and edit_continuation_trigger == 'cancel'
     ):
@@ -657,12 +772,23 @@ def dispatch_pre_planning_phase(
 
     session_context = self._build_session_context(session, auth_header, trace_id)
     cached_classifier_result: dict[str, Any] | None = None
+    plan_decision_is_non_confirm = plan_decision_sentinel is not None and (
+        plan_decision_rejected or plan_decision_mismatch_reason is not None
+    )
     if plan_answers_submitted:
         # Skip classification — we know we're re-entering the plan lane with
         # new answers accumulated on the pending plan.
         preview_intent: IntentType = 'roadmap_plan'
         phase_timings['intent_classification_ms'] = 0
         phase_timings['plan_answers_replay'] = 1
+    elif plan_decision_is_non_confirm:
+        # Reject / superseded-plan paths replaced planning_user_message with
+        # a deterministic template — classifying the raw sentinel would waste
+        # an LLM call and risk mis-routing. Pin to smalltalk so the downstream
+        # lane just acknowledges.
+        preview_intent = 'smalltalk'
+        phase_timings['intent_classification_ms'] = 0
+        phase_timings['plan_decision_non_confirm'] = 1
     elif should_force_edit_preview:
         preview_intent = 'roadmap_edit'
         phase_timings['intent_classification_ms'] = 0
@@ -723,6 +849,36 @@ def dispatch_pre_planning_phase(
     # orchestrator is the observability layer that tells us if the LLM
     # ever slips.
     planning_user_message = user_message
+    # Strip the raw sentinel blob from the message the LLM sees. The confirm
+    # branch overrides planning_user_message with the synthesized prompt below
+    # (which embeds `user_message_for_prompt` as the trailing "Original user
+    # confirmation" line); the reject and mismatch branches need a plain-text
+    # fallback so the agent can acknowledge without the JSON leaking into its
+    # reasoning.
+    user_message_for_prompt = user_message
+    if plan_decision_sentinel is not None:
+        decision = plan_decision_sentinel.get('decision')
+        note_raw = plan_decision_sentinel.get('note')
+        note = note_raw.strip() if isinstance(note_raw, str) else ''
+        if plan_decision_mismatch_reason is not None:
+            planning_user_message = (
+                'The user attempted to act on a plan proposal that is no '
+                "longer current — the proposal they saw has been superseded. "
+                'Briefly let them know and ask if they want to continue.'
+            )
+        elif decision == 'reject':
+            planning_user_message = (
+                'The user rejected the proposed plan. Acknowledge briefly '
+                'and invite them to refine what they want next.'
+            )
+            if note:
+                planning_user_message += f' User note: "{note}"'
+        elif decision == 'confirm':
+            # Composition below overrides planning_user_message, but we need a
+            # clean user_message_for_prompt so "Original user confirmation:"
+            # doesn't render the raw sentinel JSON.
+            user_message_for_prompt = note or 'Yes, apply this plan.'
+            planning_user_message = user_message_for_prompt
     if plan_answers_submitted and pending_plan is not None:
         # Replay the original request plus the freshly-appended answer(s) so
         # the plan lane can finalize (or ask the next question).
@@ -740,7 +896,7 @@ def dispatch_pre_planning_phase(
     synthesized_plan_confirmation: SynthesisResult | None = None
     if plan_confirmation_requested and pending_plan is not None:
         planning_user_message = _compose_plan_confirmation_prompt(
-            original_user_message=user_message,
+            original_user_message=user_message_for_prompt,
             pending_plan=pending_plan,
         )
         log_event(
