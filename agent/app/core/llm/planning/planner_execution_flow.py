@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -431,12 +432,63 @@ def generate_context_answer(
     )
 
 
+_PLAN_ENVELOPE_MARKERS: tuple[str, ...] = (
+    '"assistant_message"',
+    '"proposed_hierarchy"',
+    '"plan_ready"',
+    '"needs_answer"',
+)
+
+_ASSISTANT_MESSAGE_REGEX = re.compile(
+    r'"assistant_message"\s*:\s*"((?:\\.|[^"\\])*)"',
+    re.DOTALL,
+)
+_SUMMARY_REGEX = re.compile(
+    r'"summary"\s*:\s*"((?:\\.|[^"\\])*)"',
+    re.DOTALL,
+)
+_STATUS_REGEX = re.compile(
+    r'"status"\s*:\s*"(plan_ready|needs_answer|proposed)"',
+)
+
+
+def _looks_like_plan_envelope(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped.startswith('{'):
+        return False
+    return any(marker in stripped for marker in _PLAN_ENVELOPE_MARKERS)
+
+
+def _decode_json_string_literal(value: str) -> str:
+    # Undo JSON string escapes so the extracted assistant_message renders
+    # cleanly (e.g. \n, \", \\). Fall back to the raw captured value if
+    # decoding fails — we'd rather keep the user-facing text than raise.
+    try:
+        return json.loads(f'"{value}"')
+    except (ValueError, TypeError):
+        return value
+
+
+def _regex_extract_envelope_assistant_message(raw_text: str) -> str:
+    match = _ASSISTANT_MESSAGE_REGEX.search(raw_text)
+    if match is not None:
+        recovered = _decode_json_string_literal(match.group(1)).strip()
+        if recovered:
+            return recovered
+    summary_match = _SUMMARY_REGEX.search(raw_text)
+    if summary_match is not None:
+        recovered = _decode_json_string_literal(summary_match.group(1)).strip()
+        if recovered:
+            return recovered
+    return ''
+
+
 def _parse_plan_proposal_envelope(raw_text: str) -> tuple[str, dict[str, Any] | None]:
     # The plan_mode template instructs the LLM to emit a JSON object with an
-    # `assistant_message` key plus the structured plan fields. If the model
-    # honors it, split out the user-facing prose and the payload. If parsing
-    # fails, return the raw prose and no payload; the orchestrator will log the
-    # skip and the user still sees a chat response.
+    # `assistant_message` key plus the structured plan fields. When parsing
+    # succeeds we split out the user-facing prose and the payload. When the
+    # model emits malformed JSON we fall back to regex extraction of the
+    # assistant_message so the raw envelope never leaks into the chat bubble.
     if not isinstance(raw_text, str) or not raw_text.strip():
         return '', None
     candidates: list[str] = []
@@ -460,10 +512,20 @@ def _parse_plan_proposal_envelope(raw_text: str) -> tuple[str, dict[str, Any] | 
             continue
         if not isinstance(parsed, dict):
             continue
+        parsed.pop('user_message', None)
         assistant_message = parsed.pop('assistant_message', None)
         if not isinstance(assistant_message, str) or not assistant_message.strip():
             assistant_message = parsed.get('summary') or ''
         return str(assistant_message).strip(), parsed
+    # JSON parse failed. If the text clearly *is* an envelope (starts with
+    # `{` and contains envelope markers), regex-extract the assistant text
+    # so the raw JSON-shaped blob never leaks into the chat bubble. We
+    # intentionally don't try to recover the structured plan payload —
+    # without valid JSON the hierarchy/risks/next_steps can't be trusted,
+    # so the caller will show the recovered message as chat and log an
+    # envelope_unparsed event.
+    if _looks_like_plan_envelope(stripped):
+        return _regex_extract_envelope_assistant_message(stripped), None
     return stripped, None
 
 
