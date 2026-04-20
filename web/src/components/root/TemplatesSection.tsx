@@ -73,25 +73,30 @@ export const TemplatesSection = () => {
   );
 
   return (
-    <section id="templates" className="mt-14 lg:mt-16">
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+    <section id="templates" className="relative mt-14 lg:mt-16">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[62%] bg-[radial-gradient(75%_95%_at_50%_100%,rgba(37,99,235,0.26),rgba(37,99,235,0)_72%)]" />
+      <div className="pointer-events-none absolute -left-28 bottom-10 z-0 h-64 w-64 rounded-full bg-blue-400/30 blur-3xl" />
+      <div className="pointer-events-none absolute left-1/2 bottom-8 z-0 h-80 w-80 -translate-x-1/2 rounded-full bg-blue-500/22 blur-3xl" />
+      <div className="pointer-events-none absolute -right-28 bottom-10 z-0 h-64 w-64 rounded-full bg-indigo-400/30 blur-3xl" />
+
+      <div className="relative z-10 mb-6">
+        <div className="pr-0 sm:pr-[320px]">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Roadmap Templates</p>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-            Start with a proven roadmap
+            Start your project with just a few clicks
           </h2>
           <p className="mt-2 max-w-2xl text-sm text-slate-600 sm:text-base">
-            Skip the guesswork. Use structured plans designed for real projects.
+            Choose a template or create your own — Proyekto helps you get started without the hassle.
           </p>
         </div>
 
-        <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm">
+        <div className="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm sm:absolute sm:right-0 sm:top-0 sm:mt-0">
           <Sparkles className="h-4 w-4 text-cyan-600" />
           Templates as execution entry points
         </div>
       </div>
 
-      <div className="mb-6 flex flex-wrap gap-2">
+      <div className="relative z-10 mb-6 flex flex-wrap gap-2">
         {categories.map((category) => {
           const isActive = category === activeCategory;
           return (
@@ -111,10 +116,12 @@ export const TemplatesSection = () => {
         })}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {filteredTemplates.map((template, index) => (
-          <TemplateEntryCard key={template.id} template={template} index={index} />
-        ))}
+      <div className="relative z-10 rounded-3xl bg-white/55 p-1 backdrop-blur-[1px]">
+        <div className="grid items-center gap-x-3 gap-y-7 sm:grid-cols-2 xl:grid-cols-3">
+          {filteredTemplates.map((template, index) => (
+            <TemplateEntryCard key={template.id} template={template} index={index} />
+          ))}
+        </div>
       </div>
     </section>
   );

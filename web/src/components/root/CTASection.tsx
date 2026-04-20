@@ -1,38 +1,51 @@
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/ui/button";
-import { TrendingUp } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 export const CTASection = () => {
   return (
-    <section className="mt-20 text-center">
-      <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 p-10 text-white shadow-[0_22px_40px_rgba(15,23,42,0.28)] sm:p-14">
-        <div className="pointer-events-none absolute -left-10 top-0 h-40 w-40 rounded-full bg-sky-400/25 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-10 right-0 h-44 w-44 rounded-full bg-amber-400/20 blur-3xl" />
+    <section className="mt-20">
+      <div className="relative overflow-hidden rounded-3xl bg-[#2f5cff] p-6 [box-shadow:inset_0_0_140px_rgba(255,255,255,0.34),inset_0_0_56px_rgba(255,255,255,0.26),0_18px_40px_rgba(47,92,255,0.3)] sm:p-8 lg:p-10">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_16%_28%,rgba(255,255,255,0.52),transparent_35%),radial-gradient(circle_at_86%_70%,rgba(255,255,255,0.36),transparent_42%),linear-gradient(120deg,rgba(255,255,255,0.12)_0%,rgba(255,255,255,0)_36%,rgba(255,255,255,0.12)_100%)]" />
+        <div className="pointer-events-none absolute inset-[1px] rounded-[calc(theme(borderRadius.3xl)-1px)] border border-white/28" />
+        <div className="pointer-events-none absolute left-28 top-0 h-6 w-24 border border-white/35 bg-white/10 backdrop-blur-[1px] [clip-path:polygon(8%_0,92%_0,84%_100%,16%_100%)]" />
+        <div className="pointer-events-none absolute bottom-0 right-24 h-8 w-36 border border-white/35 bg-white/10 backdrop-blur-[1px] [clip-path:polygon(0_100%,14%_0,86%_0,100%_100%)]" />
 
-        <TrendingUp className="mx-auto mb-4 h-12 w-12 text-amber-300" />
-        <h2 className="mx-auto max-w-3xl text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
-          Stop guessing. Start building.
-        </h2>
-        <p className="mx-auto mt-4 max-w-2xl text-sm text-slate-300 sm:text-base">
-          Turn ideas into an execution-ready roadmap, align expert talent, and deliver faster with confidence.
-        </p>
+        <div className="relative grid items-center gap-6 lg:grid-cols-[164px_1fr]">
+          <div className="flex h-28 w-28 items-center justify-center rounded-3xl border border-white/40 bg-white/90 shadow-[0_10px_24px_rgba(15,23,42,0.15)] sm:h-32 sm:w-32">
+            <Sparkles className="h-10 w-10 text-slate-700" />
+          </div>
 
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <Link
-            to="/auth/signup"
-            search={{ redirect: window.location.pathname }}
-          >
-            <Button variant="contained" colorScheme="primary" size="lg" className="rounded-xl bg-white text-slate-900 hover:bg-slate-100">
-              Start Your Project
-            </Button>
-          </Link>
+          <div>
+            <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+              Ready to get started?
+            </h2>
+            <p className="mt-3 max-w-3xl text-base leading-relaxed text-blue-50/95">
+              Create your project plan in minutes and start moving forward.
+            </p>
 
-          <button
-            type="button"
-            className="inline-flex items-center justify-center rounded-xl border border-slate-500 px-6 py-3 text-lg font-semibold text-white transition-all hover:border-white hover:bg-white hover:text-slate-900"
-          >
-            Browse Templates
-          </button>
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <Link
+                to="/auth/signup"
+                search={{ redirect: window.location.pathname }}
+              >
+                <Button
+                  variant="contained"
+                  colorScheme="primary"
+                  className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800"
+                >
+                  Create Your Project Plan
+                </Button>
+              </Link>
+
+              <a
+                href="#templates"
+                className="inline-flex items-center justify-center rounded-xl border border-white/55 bg-white/95 px-5 py-3 text-sm font-semibold text-slate-700 transition-all hover:border-white hover:text-slate-900"
+              >
+                Explore Templates
+              </a>
+            </div>
+          </div>
         </div>
       </div>
     </section>

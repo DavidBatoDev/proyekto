@@ -72,6 +72,8 @@ export interface ProjectMemberTimeRate {
 export interface ProjectTaskOption {
   id: string;
   title: string;
+  feature_id: string;
+  roadmap_id: string;
   feature_title?: string;
   epic_title?: string;
   feature_position?: number;

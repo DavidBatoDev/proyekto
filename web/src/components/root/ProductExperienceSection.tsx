@@ -1,221 +1,208 @@
-import { type ComponentType, useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { Workflow, ListChecks, UserRoundSearch } from "lucide-react";
+import type { ComponentType } from "react";
+import {
+  Bell,
+  BellRing,
+  BriefcaseBusiness,
+  CheckCircle2,
+  Clock3,
+  CreditCard,
+  FileCheck2,
+  FileText,
+  FolderOpen,
+  Gauge,
+  LayoutDashboard,
+  ListTodo,
+  Map,
+  MessageCircle,
+  Route,
+  Settings,
+  Share2,
+  ShieldAlert,
+  Store,
+  Target,
+  UserRoundSearch,
+  Users,
+  UsersRound,
+  Workflow,
+} from "lucide-react";
 
-type ProductTab = "roadmap" | "tasks" | "matching";
-
-const tabs: Array<{
-  id: ProductTab;
-  label: string;
-  icon: ComponentType<{ className?: string }>;
-  title: string;
-  copy: string;
-  chips: string[];
-}> = [
+const coreFeatures = [
   {
-    id: "roadmap",
-    label: "Roadmap Studio",
-    icon: Workflow,
-    title: "Build a roadmap with strategic clarity.",
+    title: "Roadmap Studio",
     copy:
       "Convert a raw concept into milestones, dependencies, and execution lanes your whole team can align around.",
     chips: ["Milestone sequencing", "Risk flags", "Owner mapping"],
+    tone: "from-blue-50 to-cyan-50",
   },
   {
-    id: "tasks",
-    label: "Task Flow",
-    icon: ListChecks,
-    title: "Move from planning to execution without context loss.",
+    title: "Task Flow",
     copy:
       "Every milestone creates actionable workstreams, handoffs, and progress tracking across consultants and freelancers.",
     chips: ["Task readiness", "Delivery health", "Automated updates"],
+    tone: "from-indigo-50 to-blue-50",
   },
   {
-    id: "matching",
-    label: "Expert Matching",
-    icon: UserRoundSearch,
-    title: "Match the right people to the right milestone.",
+    title: "Expert Matching",
     copy:
       "Get consultant recommendations first, then staff the execution layer with freelancers tailored to project phase and domain.",
     chips: ["Skill scoring", "Budget-aware", "Execution-fit ranking"],
+    tone: "from-sky-50 to-indigo-50",
   },
 ];
 
-function ProductPreview({ active }: { active: ProductTab }) {
-  if (active === "tasks") {
-    return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Delivery Board</p>
-          <p className="text-xs text-emerald-600">78% done</p>
-        </div>
-        <div className="grid gap-3 md:grid-cols-3">
-          {["Now", "Next", "Blocked"].map((lane) => (
-            <div key={lane} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-semibold text-slate-700">{lane}</p>
-              <div className="mt-2 space-y-2">
-                <div className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-700">
-                  API contract review
-                </div>
-                <div className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-700">
-                  Onboarding flow polish
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+const topRowTiles = [
+  { label: "Dashboard", icon: LayoutDashboard },
+  { label: "Project Posting", icon: FileText },
+  { label: "Roadmap Views", icon: Map },
+  { label: "Work Items", icon: ListTodo },
+  { label: "Team Management", icon: UsersRound },
+  { label: "Project Chat", icon: MessageCircle },
+  { label: "Notifications", icon: Bell },
+  { label: "Consultant Marketplace", icon: Store },
+  { label: "Consultant Browse", icon: UserRoundSearch },
+  { label: "Freelancer Invites", icon: Users },
+  { label: "Template Roadmaps", icon: FileCheck2 },
+  { label: "Shared With Me", icon: Share2 },
+];
 
-  if (active === "matching") {
-    return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Matching Engine</p>
-          <p className="text-xs text-slate-500">Phase: Build Sprint</p>
-        </div>
-        <div className="space-y-3">
-          {[
-            { name: "Maya Santos", role: "Product Consultant", fit: "97% fit" },
-            { name: "Jordan Lee", role: "Frontend Freelancer", fit: "94% fit" },
-            { name: "Nina Patel", role: "Backend Freelancer", fit: "92% fit" },
-          ].map((person) => (
-            <div key={person.name} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-full bg-slate-200" />
-                <div>
-                  <p className="text-sm font-medium text-slate-900">{person.name}</p>
-                  <p className="text-xs text-slate-600">{person.role}</p>
-                </div>
-              </div>
-              <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
-                {person.fit}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+const middleSideLeftTiles = [
+  { label: "Time Logs", icon: Clock3 },
+  { label: "Team Logs", icon: Clock3 },
+  { label: "Payments", icon: CreditCard },
+  { label: "Project Logs", icon: FileText },
+  { label: "Project Overview", icon: LayoutDashboard },
+  { label: "Roadmap Create", icon: Workflow },
+  { label: "Roadmap Share", icon: Share2 },
+  { label: "Resource Hub", icon: FolderOpen },
+  { label: "Project Settings", icon: Settings },
+  { label: "Team Settings", icon: Settings },
+  { label: "Profile", icon: Users },
+  { label: "Shared Roadmap Link", icon: Share2 },
+];
 
+const middleSideRightTiles = [
+  { label: "Consultant Apply", icon: BriefcaseBusiness },
+  { label: "Freelancer Go Live", icon: UsersRound },
+  { label: "Consultant Templates", icon: FileCheck2 },
+  { label: "Admin Applications", icon: FileText },
+  { label: "Admin Match", icon: Target },
+  { label: "Admin Settings", icon: Settings },
+  { label: "Onboarding", icon: CheckCircle2 },
+  { label: "Project Team", icon: UsersRound },
+  { label: "Project Resources", icon: FolderOpen },
+  { label: "Roadmap Editor", icon: Map },
+  { label: "Task Boards", icon: ListTodo },
+  { label: "Project Payments", icon: CreditCard },
+];
+
+const bottomRowTiles = [
+  { label: "Milestone sequencing", icon: Route },
+  { label: "Risk flags", icon: ShieldAlert },
+  { label: "Owner mapping", icon: Users },
+  { label: "Task readiness", icon: CheckCircle2 },
+  { label: "Delivery health", icon: Gauge },
+  { label: "Automated updates", icon: BellRing },
+  { label: "Dependencies", icon: Workflow },
+  { label: "Milestone tracking", icon: Target },
+  { label: "Skill scoring", icon: Target },
+  { label: "Budget-aware", icon: BriefcaseBusiness },
+  { label: "Execution-fit ranking", icon: UsersRound },
+  { label: "Timeline visibility", icon: Clock3 },
+];
+
+function SmallFeatureTile({
+  label,
+  Icon,
+  className,
+}: {
+  label: string;
+  Icon: ComponentType<{ className?: string }>;
+  className?: string;
+}) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-3 flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Roadmap Studio</p>
-        <p className="text-xs text-slate-500">Q2 Product Launch</p>
-      </div>
-      <div className="space-y-2">
-        {[
-          { name: "Foundation", progress: "Done" },
-          { name: "Core Workflows", progress: "In review" },
-          { name: "Team Matching", progress: "In progress" },
-          { name: "Launch Readiness", progress: "Pending" },
-        ].map((row, idx) => (
-          <div key={row.name} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-semibold text-slate-600">
-                {idx + 1}
-              </span>
-              <span className="text-sm text-slate-800">{row.name}</span>
-            </div>
-            <span className="text-xs text-slate-500">{row.progress}</span>
-          </div>
-        ))}
-      </div>
+    <div
+      className={`bg-white/80 px-3 py-6 text-center shadow-[inset_0_0_0_1px_rgba(59,130,246,0.14)] transition-all duration-200 hover:bg-white hover:shadow-[inset_0_0_0_1px_rgba(59,130,246,0.42)] ${className ?? ""}`}
+    >
+      <Icon className="mx-auto h-5 w-5 text-slate-500" />
+      <p className="mt-2 text-sm font-medium text-slate-700">{label}</p>
     </div>
   );
 }
 
 export function ProductExperienceSection() {
-  const [activeTab, setActiveTab] = useState<ProductTab>("roadmap");
-  const activeConfig = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setActiveTab((prev) => {
-        const currentIndex = tabs.findIndex((tab) => tab.id === prev);
-        const nextIndex = (currentIndex + 1) % tabs.length;
-        return tabs[nextIndex]?.id ?? tabs[0].id;
-      });
-    }, 2600);
-
-    return () => window.clearInterval(timer);
-  }, []);
-
   return (
-    <section id="product-experience" className="mt-16 lg:mt-20">
-      <div className="rounded-3xl border border-slate-200 bg-linear-to-br from-white to-slate-50 p-6 shadow-[0_16px_32px_rgba(15,23,42,0.08)] sm:p-8">
-        <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-              Product Experience
-            </p>
-            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
-              See how Proyekto moves your project from concept to completion.
-            </h2>
-            <p className="mt-3 text-sm text-slate-600 sm:text-base">
-              Not just a landing page promise. This is the actual workflow layer your team uses daily.
-            </p>
+    <section id="features" className="relative mt-16 lg:mt-20">
+      <div className="text-center">
+        <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+          Proyekto Feature
+        </h2>
+        <p className="mx-auto mt-3 max-w-3xl text-sm text-slate-600 sm:text-base">
+          Plan, execute, and run delivery with roadmap, collaboration, operations, and marketplace tools in one connected system.
+        </p>
+      </div>
 
-            <div className="mt-6 space-y-2">
-              {tabs.map((tab) => {
-                const Icon = tab.icon;
-                const isActive = tab.id === activeTab;
-                return (
-                  <motion.button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setActiveTab(tab.id)}
-                    whileTap={{ scale: 0.99 }}
-                    className={`relative w-full overflow-hidden rounded-2xl border px-4 py-3 text-left transition-all duration-200 ${
-                      isActive
-                        ? "border-slate-900 bg-slate-900 text-white shadow-lg"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:shadow-sm"
-                    }`}
-                  >
-                    {isActive ? (
-                      <motion.span
-                        layoutId="product-experience-active"
-                        className="pointer-events-none absolute inset-0 rounded-2xl bg-slate-900"
-                        transition={{ type: "spring", stiffness: 500, damping: 34 }}
-                      />
-                    ) : null}
+      <div className="relative mt-10 overflow-hidden">
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-36 bg-[linear-gradient(to_right,rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(to_bottom,rgba(59,130,246,0.12)_1px,transparent_1px)] bg-[size:100%_92px]" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-36 bg-[linear-gradient(to_right,rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(to_bottom,rgba(59,130,246,0.12)_1px,transparent_1px)] bg-[size:100%_92px]" />
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-20 w-44 bg-linear-to-r from-[#fcfcfd] via-[#fcfcfd]/84 to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-44 bg-linear-to-l from-[#fcfcfd] via-[#fcfcfd]/84 to-transparent" />
 
-                    <div className="relative flex items-center gap-2">
-                      <Icon className="h-4 w-4" />
-                      <span className="text-sm font-semibold">{tab.label}</span>
-                    </div>
-                    <p className={`relative mt-1 text-xs ${isActive ? "text-slate-300" : "text-slate-500"}`}>
-                      {tab.copy}
-                    </p>
-                  </motion.button>
-                );
-              })}
-            </div>
+        <div className="relative grid md:grid-cols-12">
+          {topRowTiles.map((tile) => (
+            <SmallFeatureTile key={tile.label} label={tile.label} Icon={tile.icon} />
+          ))}
+        </div>
+
+        <div className="relative mt-px grid md:grid-cols-12">
+          <div className="grid md:col-span-3 md:auto-rows-[104px] md:grid-cols-3">
+            {middleSideLeftTiles.map((tile) => (
+              <SmallFeatureTile
+                key={tile.label}
+                label={tile.label}
+                Icon={tile.icon}
+                className="md:min-h-[104px]"
+              />
+            ))}
           </div>
 
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.28 }}
-          >
-            <div className="mb-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-900">{activeConfig.title}</h3>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {activeConfig.chips.map((chip) => (
+          {coreFeatures.map((feature) => (
+            <div
+              key={feature.title}
+              className={`flex flex-col justify-center bg-linear-to-br ${feature.tone} p-5 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.14)] md:col-span-2 md:min-h-[416px]`}
+            >
+              <h3 className="text-2xl font-semibold tracking-tight text-slate-900">
+                {feature.title}
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-700">{feature.copy}</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {feature.chips.map((chip) => (
                   <span
                     key={chip}
-                    className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600"
+                    className="rounded-full border border-blue-200 bg-white/80 px-2.5 py-1 text-xs font-medium text-slate-700"
                   >
                     {chip}
                   </span>
                 ))}
               </div>
             </div>
-            <ProductPreview active={activeTab} />
-          </motion.div>
+          ))}
+
+          <div className="grid md:col-span-3 md:auto-rows-[104px] md:grid-cols-3">
+            {middleSideRightTiles.map((tile) => (
+              <SmallFeatureTile
+                key={tile.label}
+                label={tile.label}
+                Icon={tile.icon}
+                className="md:min-h-[104px]"
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="relative mt-px grid md:grid-cols-12">
+          {bottomRowTiles.map((tile) => (
+            <SmallFeatureTile key={tile.label} label={tile.label} Icon={tile.icon} />
+          ))}
         </div>
       </div>
     </section>

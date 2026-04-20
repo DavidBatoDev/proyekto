@@ -23,16 +23,16 @@ export function ChatProfilePanel({
 }) {
   return (
     <div className="h-full flex flex-col">
-      <div className="sticky top-0 z-10 border-b border-gray-200 bg-white/90 backdrop-blur px-3 py-3">
+      <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 px-3 py-3 backdrop-blur">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Member Details
           </p>
           <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={onToggle}
-              className="hidden xl:inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50"
+              className="hidden h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100 xl:inline-flex"
               aria-label={isOpen ? "Collapse member panel" : "Expand member panel"}
             >
               {isOpen ? (
@@ -44,7 +44,7 @@ export function ChatProfilePanel({
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex xl:hidden h-8 w-8 items-center justify-center rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100 xl:hidden"
               aria-label="Close member panel"
             >
               <X className="w-4 h-4" />
@@ -61,15 +61,15 @@ export function ChatProfilePanel({
       >
         {mode === "channel" ? (
           <div className="px-3 pt-3 pb-2">
-            <p className="px-1 text-xs uppercase tracking-wide text-gray-400 font-semibold mb-2">
+            <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Project Members
             </p>
-            <div className="rounded-xl border border-gray-200 bg-white p-1.5 max-h-64 overflow-y-auto">
+            <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5">
               {projectMembers.map((projectMember) => {
                 return (
                   <div
                     key={projectMember.userId}
-                    className="w-full rounded-lg px-2 py-2 text-left text-gray-800"
+                    className="w-full rounded-lg px-2 py-2 text-left text-slate-800"
                   >
                     <div className="flex items-center gap-2">
                       <ChatAvatar
@@ -79,7 +79,7 @@ export function ChatProfilePanel({
                       />
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">{projectMember.name}</p>
-                        <p className="text-xs text-gray-500 truncate">
+                        <p className="truncate text-xs text-slate-500">
                           {projectMember.positionLabel}
                         </p>
                       </div>

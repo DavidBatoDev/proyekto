@@ -1,13 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Header } from "@/components/root/Header";
 import { HeroSection } from "@/components/root/HeroSection";
-import { TrustSection } from "@/components/root/TrustSection";
 import { HowItWorks } from "@/components/root/HowItWorks";
 import { ProductExperienceSection } from "@/components/root/ProductExperienceSection";
 import { TemplatesSection } from "@/components/root/TemplatesSection";
-import { YourRoadmapSection } from "@/components/root/YourRoadmapSection";
 import { CTASection } from "@/components/root/CTASection";
 import { RootFooter } from "@/components/root/RootFooter";
+import { UseItYourWaySection } from "@/components/root/UseItYourWaySection";
+import { WhyProyektoSection } from "@/components/root/WhyProyektoSection";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -21,11 +21,11 @@ function Index() {
       <main className="pb-20 pt-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10">
           <HeroSection />
-          <TemplatesSection />
-          <TrustSection />
+          <UseItYourWaySection />
           <HowItWorks />
+          <WhyProyektoSection />
+          <TemplatesSection />
           <ProductExperienceSection />
-          <YourRoadmapSection />
           <CTASection />
         </div>
       </main>

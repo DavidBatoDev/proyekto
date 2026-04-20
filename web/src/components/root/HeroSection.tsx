@@ -6,7 +6,7 @@ import { HeroLivePreview } from "./HeroLivePreview";
 
 export const HeroSection = () => {
   return (
-    <section className="relative overflow-hidden pt-6 sm:pt-10">
+    <section className="relative pt-6 sm:pt-10">
       <div className="pointer-events-none absolute -top-20 left-[14%] h-72 w-72 rounded-full bg-cyan-200/40 blur-3xl" />
       <div className="pointer-events-none absolute -right-14 top-1/3 h-72 w-72 rounded-full bg-indigo-200/50 blur-3xl" />
 
@@ -28,10 +28,7 @@ export const HeroSection = () => {
             transition={{ duration: 0.35, delay: 0.06 }}
             className="mt-5 text-4xl font-semibold leading-[1.05] tracking-tight text-slate-900 sm:text-5xl lg:text-6xl"
           >
-            Turn ideas into
-            <span className="block bg-linear-to-r from-slate-900 via-slate-700 to-slate-400 bg-clip-text text-transparent">
-              structured execution.
-            </span>
+            Turn your project idea into action — easily
           </motion.h1>
 
           <motion.p
@@ -40,7 +37,7 @@ export const HeroSection = () => {
             transition={{ duration: 0.35, delay: 0.12 }}
             className="mt-4 max-w-xl text-sm leading-relaxed text-slate-600 sm:text-base"
           >
-            Plan your project, match with experts, and execute in one system.
+            Start planning your project step-by-step and invite your team. No complex setups, no guesswork — just clarity from the get-go.
           </motion.p>
 
           <motion.div
@@ -55,7 +52,7 @@ export const HeroSection = () => {
                 colorScheme="primary"
                 className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800"
               >
-                Create Your Roadmap
+                Create Your Project Plan
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>
@@ -68,14 +65,6 @@ export const HeroSection = () => {
             </a>
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.26 }}
-            className="mt-7 max-w-xl rounded-2xl border border-slate-200 bg-white/85 px-4 py-3 text-sm text-slate-600 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
-          >
-            Built for immediate clarity: frame scope, validate milestones, and start execution without switching tools.
-          </motion.div>
         </div>
 
         <motion.div

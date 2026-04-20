@@ -547,18 +547,18 @@ export function RoadmapViewContent({
   // Error state
   if (roadmapError || !roadmap || roadmap.id !== roadmapId) {
     return (
-      <div className="flex-1 min-h-full bg-[#f6f7f8] flex items-center justify-center">
+      <div className="app-shell-bg flex min-h-full flex-1 items-center justify-center">
         <div className="text-center max-w-md">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+          <h2 className="mb-2 text-2xl font-bold text-slate-900">
             Roadmap Not Found
           </h2>
-          <p className="text-gray-600 mb-6">
+          <p className="mb-6 text-slate-600">
             {roadmapError ||
               "The roadmap you're looking for doesn't exist or you don't have access to it."}
           </p>
           <Link
             to="/"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+            className="app-cta inline-flex items-center gap-2 rounded-lg px-6 py-3 text-white transition-colors"
           >
             Go to Home
           </Link>
@@ -568,7 +568,7 @@ export function RoadmapViewContent({
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#f6f7f8] overflow-hidden">
+    <div className="app-shell-bg flex h-full flex-col overflow-hidden">
       <style>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -592,7 +592,7 @@ export function RoadmapViewContent({
         {canvasViewMode !== "milestones" && (
           <motion.div
             id="roadmap-left-panel"
-            className="relative h-full border-r border-gray-200 bg-white"
+            className="relative h-full border-r border-slate-200 bg-white/95 backdrop-blur"
             initial={false}
             animate={{
               width: 320,
@@ -693,7 +693,7 @@ export function RoadmapViewContent({
       />
 
       {showReadOnlyPermissionNote && (
-        <div className="fixed right-5 bottom-5 z-40 max-w-sm rounded-lg border border-amber-200 bg-amber-50/95 px-4 py-3 shadow-lg backdrop-blur-sm">
+        <div className="fixed bottom-5 right-5 z-40 max-w-sm rounded-lg border border-amber-200 bg-amber-50/95 px-4 py-3 shadow-lg backdrop-blur-sm">
           <div className="flex items-start gap-2.5">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
             <p className="text-sm font-medium text-amber-900">

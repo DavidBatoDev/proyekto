@@ -84,18 +84,18 @@ export function ChatSidebar({
       <aside
         className={`${
           show ? "translate-x-0" : "-translate-x-full"
-        } md:translate-x-0 fixed md:static z-40 top-0 left-0 h-full w-[320px] border-r border-gray-200 bg-[#f8f8f9] transition-transform duration-200 ease-out`}
+        } fixed left-0 top-0 z-40 h-full w-[320px] border-r border-slate-200 bg-slate-50 transition-transform duration-200 ease-out md:static md:translate-x-0`}
       >
         <div className="h-full overflow-y-auto">
-          <div className="px-4 py-3 border-b border-gray-200 bg-[#f8f8f9]">
+          <div className="border-b border-slate-200 bg-white/70 px-4 py-3">
             <div className="flex items-center justify-between gap-2">
-              <h1 className="text-[23px] leading-none font-semibold text-gray-900">
+              <h1 className="text-[23px] font-semibold leading-none text-slate-900">
                 Direct messages
               </h1>
               <button
                 type="button"
                 onClick={onTogglePeoplePicker}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-200/70"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-200"
                 aria-label="Compose message"
               >
                 <SquarePen className="w-4 h-4" />
@@ -103,14 +103,14 @@ export function ChatSidebar({
             </div>
 
             <div className="mt-3 flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-500">Unread</span>
+              <span className="text-xs font-medium text-slate-500">Unread</span>
               <button
                 type="button"
                 role="switch"
                 aria-checked={showUnreadOnly}
                 onClick={() => setShowUnreadOnly((value) => !value)}
                 className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                  showUnreadOnly ? "bg-[#ff9933]" : "bg-gray-300"
+                  showUnreadOnly ? "bg-slate-900" : "bg-slate-300"
                 }`}
               >
                 <span
@@ -126,7 +126,7 @@ export function ChatSidebar({
             <button
               type="button"
               onClick={onTogglePeoplePicker}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
             >
               <Plus className="w-4 h-4" />
               New Message
@@ -135,7 +135,7 @@ export function ChatSidebar({
 
           {showPeoplePicker && (
             <div className="px-4 pb-2">
-              <div className="rounded-xl border border-gray-200 bg-white max-h-56 overflow-y-auto">
+              <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white">
                 {members.map((member) => {
                   const label =
                     member.user?.display_name || member.user?.email || member.user_id;
@@ -144,10 +144,10 @@ export function ChatSidebar({
                       key={member.user_id}
                       type="button"
                       onClick={() => onSelectMember(member.user_id, null)}
-                      className="w-full px-3 py-2 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                      className="w-full border-b border-slate-100 px-3 py-2 text-left hover:bg-slate-50 last:border-b-0"
                     >
-                      <p className="text-sm font-medium text-gray-900">{label}</p>
-                      <p className="text-xs text-gray-500 uppercase">{member.role}</p>
+                      <p className="text-sm font-medium text-slate-900">{label}</p>
+                      <p className="text-xs uppercase text-slate-500">{member.role}</p>
                     </button>
                   );
                 })}
@@ -155,8 +155,8 @@ export function ChatSidebar({
             </div>
           )}
 
-          <div className="px-4 pt-2 pb-5 border-t border-gray-200/80">
-            <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-2">
+          <div className="border-t border-slate-200/80 px-4 pb-5 pt-2">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Channels
             </p>
             <button
@@ -164,26 +164,26 @@ export function ChatSidebar({
               onClick={onSelectGeneral}
               className={`w-full rounded-lg px-3 py-2 text-left inline-flex items-center gap-2 transition-colors ${
                 activeChannel
-                  ? "bg-orange-100/80 text-gray-900"
-                  : "text-gray-700 hover:bg-gray-200/70"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-700 hover:bg-slate-200/80"
               }`}
             >
               <Hash className="w-4 h-4" />
               <span
                 className={`font-medium ${
-                  !activeChannel && generalHasUnread ? "font-bold text-gray-900" : ""
+                  !activeChannel && generalHasUnread ? "font-bold text-slate-900" : ""
                 }`}
               >
                 general
               </span>
               {!activeChannel && generalHasUnread ? (
-                <span className="ml-auto h-2.5 w-2.5 rounded-full bg-[#ff9933]" />
+                <span className="ml-auto h-2.5 w-2.5 rounded-full bg-slate-900" />
               ) : null}
             </button>
           </div>
 
           <div className="px-3 pb-4">
-            <p className="px-1 text-xs uppercase tracking-wide text-gray-400 font-semibold mb-1.5">
+            <p className="mb-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Direct Messages
             </p>
             <div className="space-y-0.5">
@@ -210,8 +210,8 @@ export function ChatSidebar({
                     onClick={() => onSelectMember(entry.member.user_id, entry.roomId)}
                     className={`w-full rounded-lg px-2.5 py-2 text-left transition-colors ${
                       isActive
-                        ? "bg-orange-100/80 text-gray-900"
-                        : "text-gray-800 hover:bg-gray-200/70"
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-800 hover:bg-slate-200/70"
                     }`}
                   >
                     <div className="flex gap-2 items-start">
@@ -220,14 +220,24 @@ export function ChatSidebar({
                         <div className="flex items-center justify-between gap-2">
                           <p
                             className={`text-[15px] truncate ${
-                              isUnread ? "font-bold text-gray-900" : "font-semibold"
+                              isUnread
+                                ? isActive
+                                  ? "font-bold text-white"
+                                  : "font-bold text-slate-900"
+                                : "font-semibold"
                             }`}
                           >
                             {label}
                           </p>
                           <span
                             className={`text-[12px] shrink-0 ${
-                              isUnread ? "font-semibold text-gray-700" : "text-gray-500"
+                              isUnread
+                                ? isActive
+                                  ? "font-semibold text-white/80"
+                                  : "font-semibold text-slate-700"
+                                : isActive
+                                  ? "text-white/70"
+                                  : "text-slate-500"
                             }`}
                           >
                             {formatRowTime(entry.lastAt)}
@@ -235,7 +245,13 @@ export function ChatSidebar({
                         </div>
                         <p
                           className={`text-[14px] truncate mt-0.5 ${
-                            isUnread ? "font-semibold text-gray-700" : "text-gray-500"
+                            isUnread
+                              ? isActive
+                                ? "font-semibold text-white/90"
+                                : "font-semibold text-slate-700"
+                              : isActive
+                                ? "text-white/70"
+                                : "text-slate-500"
                           }`}
                         >
                           {previewText}
@@ -243,7 +259,9 @@ export function ChatSidebar({
                       </div>
                       <span className="h-5 w-5 shrink-0 inline-flex items-center justify-center" aria-hidden="true">
                         {isUnread ? (
-                          <span className="h-2.5 w-2.5 rounded-full bg-[#ff9933]" />
+                          <span
+                            className={`h-2.5 w-2.5 rounded-full ${isActive ? "bg-white" : "bg-slate-900"}`}
+                          />
                         ) : null}
                       </span>
                     </div>

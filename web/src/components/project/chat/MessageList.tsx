@@ -40,7 +40,7 @@ export function MessageList({
   if (isLoading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-[#ff9933]" />
+        <Loader2 className="h-8 w-8 animate-spin text-slate-700" />
       </div>
     );
   }
@@ -48,8 +48,8 @@ export function MessageList({
   if (!hasMessages) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-center px-6">
-        <h3 className="text-xl font-semibold text-gray-900">{emptyTitle}</h3>
-        <p className="mt-2 text-sm text-gray-500">{emptySubtitle}</p>
+        <h3 className="text-xl font-semibold text-slate-900">{emptyTitle}</h3>
+        <p className="mt-2 text-sm text-slate-500">{emptySubtitle}</p>
       </div>
     );
   }
@@ -62,10 +62,10 @@ export function MessageList({
         <div className="space-y-3 pb-2">
           {Array.from({ length: 6 }).map((_, index) => (
             <div key={`thread-skeleton-${index}`} className="flex items-start gap-3 px-1">
-              <div className="h-10 w-10 rounded-full bg-gray-200 animate-pulse shrink-0" />
+              <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-slate-200" />
               <div className="flex-1 min-w-0 space-y-2 pt-1">
-                <div className="h-3 w-36 rounded bg-gray-200 animate-pulse" />
-                <div className="h-3 w-[78%] rounded bg-gray-200 animate-pulse" />
+                <div className="h-3 w-36 animate-pulse rounded bg-slate-200" />
+                <div className="h-3 w-[78%] animate-pulse rounded bg-slate-200" />
               </div>
             </div>
           ))}

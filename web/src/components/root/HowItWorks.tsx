@@ -1,90 +1,102 @@
-import { motion } from "framer-motion";
-import { ClipboardPen, UserRoundSearch, Map, Wrench } from "lucide-react";
+import { ClipboardPen, Users, Gauge } from "lucide-react";
 
 const steps = [
   {
-    number: "01",
-    title: "Describe your project",
-    description: "Share your goal, scope, and constraints in a guided brief.",
+    number: "1",
+    title: "Start with a Roadmap",
+    description:
+      "Use a roadmap template or create a plan from scratch — break it down into steps, add deadlines, and visualize the entire process.",
     icon: ClipboardPen,
   },
   {
-    number: "02",
-    title: "Match with consultants",
-    description: "Get expert recommendations aligned to your domain and budget.",
-    icon: UserRoundSearch,
+    number: "2",
+    title: "Add people to your project",
+    description:
+      "Bring in your clients, team, or collaborators — so everyone knows what's happening and what's next.",
+    icon: Users,
   },
   {
-    number: "03",
-    title: "Get your roadmap",
-    description: "Receive a milestone-based plan with dependencies and timelines.",
-    icon: Map,
-  },
-  {
-    number: "04",
-    title: "Execute with freelancers",
-    description: "Launch delivery with talent matched to each milestone phase.",
-    icon: Wrench,
+    number: "3",
+    title: "Stay on Track",
+    description:
+      "From timelines to tasks, conversations to payments — everything is organized in one place so your project keeps moving.",
+    icon: Gauge,
   },
 ];
 
 export const HowItWorks = () => {
+  const FirstIcon = steps[0].icon;
+  const SecondIcon = steps[1].icon;
+  const ThirdIcon = steps[2].icon;
+
   return (
-    <section id="how-it-works" className="mt-16 lg:mt-20">
-      <div className="text-center">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+    <section id="how-it-works" className="relative mt-16 lg:mt-20">
+      <div className="pointer-events-none absolute -left-16 top-12 h-40 w-40 rounded-full bg-cyan-200/25 blur-3xl" />
+      <div className="pointer-events-none absolute left-1/2 top-24 h-44 w-44 -translate-x-1/2 rounded-full bg-sky-200/20 blur-3xl" />
+      <div className="pointer-events-none absolute -right-16 top-20 h-44 w-44 rounded-full bg-indigo-200/25 blur-3xl" />
+
+      <div className="relative text-center">
+        <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
           How It Works
-        </p>
-        <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-          One flow from concept to delivery.
         </h2>
-        <p className="mx-auto mt-3 max-w-2xl text-sm text-slate-600 sm:text-base">
-          Proyekto orchestrates planning, matching, and execution so momentum never breaks between phases.
+        <p className="mt-3 text-sm text-slate-600 sm:text-base">
+          Plan your project in minutes, not weeks.
         </p>
       </div>
 
-      <div className="relative mt-10 grid gap-4 lg:grid-cols-4">
-        <div className="pointer-events-none absolute left-[12.5%] right-[12.5%] top-7 hidden h-px bg-linear-to-r from-slate-200 via-slate-300 to-slate-200 lg:block" />
+      <div className="relative mt-10 hidden lg:block">
+        <svg
+          viewBox="0 0 1200 210"
+          preserveAspectRatio="none"
+          className="h-[165px] w-full"
+          aria-hidden
+        >
+          <path
+            d="M 0 130 C 150 190, 250 190, 390 105 C 495 35, 650 35, 760 104 C 880 180, 1000 180, 1200 108"
+            fill="none"
+            stroke="rgba(148, 163, 184, 0.28)"
+            strokeWidth="6"
+            strokeLinecap="round"
+          />
+          <path
+            d="M 0 130 C 150 190, 250 190, 390 105 C 495 35, 650 35, 760 104 C 880 180, 1000 180, 1200 108"
+            fill="none"
+            stroke="rgba(59, 130, 246, 0.9)"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+        </svg>
 
-        {steps.map((step, index) => {
-          const Icon = step.icon;
-          return (
-            <motion.div
-              key={step.number}
-              initial={{ opacity: 0, y: 16 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-40px" }}
-              transition={{ duration: 0.35, delay: index * 0.08 }}
-              className="relative rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-[0_8px_18px_rgba(15,23,42,0.05)]"
-            >
-              <div className="mb-4 flex items-center justify-between">
-                <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700">
-                  <Icon className="h-5 w-5" />
-                </span>
-                <span className="text-xs font-semibold tracking-[0.14em] text-slate-400">
-                  {step.number}
-                </span>
-              </div>
+        <div className="pointer-events-none absolute left-[12%] top-[132px] h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-200/30 blur-2xl" />
+        <div className="pointer-events-none absolute left-1/2 top-[28px] h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-200/30 blur-2xl" />
+        <div className="pointer-events-none absolute right-[12%] top-[94px] h-16 w-16 translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-200/30 blur-2xl" />
 
-              <h3 className="text-lg font-semibold text-slate-900">{step.title}</h3>
-              <p className="mt-2 text-sm text-slate-600">{step.description}</p>
-
-              <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                <motion.div
-                  initial={{ width: "0%" }}
-                  whileInView={{ width: "100%" }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.5, delay: index * 0.08 }}
-                  className="h-full rounded-full bg-linear-to-r from-slate-400 to-slate-700"
-                />
-              </div>
-            </motion.div>
-          );
-        })}
+        <div className="absolute left-[12%] top-[132px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <FirstIcon className="h-5 w-5 text-blue-600" />
+        </div>
+        <div className="absolute left-1/2 top-[28px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <SecondIcon className="h-5 w-5 text-blue-600" />
+        </div>
+        <div className="absolute right-[12%] top-[94px] translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <ThirdIcon className="h-5 w-5 text-blue-600" />
+        </div>
       </div>
 
-      <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center text-sm text-slate-600 sm:text-base">
-        Result: a roadmap-driven operating system, not disconnected tools.
+      <div className="mt-4 grid gap-5 lg:grid-cols-3">
+        {steps.map((step, index) => (
+          <article
+            key={step.title}
+            className={`text-left ${index === 1 ? "lg:pl-6" : ""} ${index === 2 ? "lg:pl-10" : ""}`}
+          >
+            <p className="text-6xl font-semibold leading-none text-slate-300">{step.number}</p>
+            <h3 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+              {step.title}
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600 sm:text-base">
+              {step.description}
+            </p>
+          </article>
+        ))}
       </div>
     </section>
   );

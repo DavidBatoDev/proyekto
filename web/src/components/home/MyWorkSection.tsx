@@ -26,26 +26,33 @@ export function MyWorkSection() {
           : "Complete activation details to unlock matching and daily work.";
 
   return (
-    <section className="bg-white rounded-xl shadow-sm p-6" data-tutorial="freelancer-my-work-section">
+    <section
+      className="app-surface-card app-slide-up p-6"
+      data-tutorial="freelancer-my-work-section"
+    >
       <div className="mb-3">
-        <h2 className="text-[20px] font-semibold text-[#333438]">My Work</h2>
-        <p className="text-xs text-[#61636c]">
+        <h2 className="text-[20px] font-semibold tracking-tight text-slate-900">
+          My Work
+        </h2>
+        <p className="text-xs text-slate-600">
           Assigned execution tasks and milestone responsibilities
         </p>
       </div>
 
-      <div className="bg-[#f6f7f8] rounded-lg p-4 mb-3">
-        <p className="text-xs font-semibold text-[#61636c] mb-1">TODAY'S FOCUS</p>
-        <p className="text-sm font-semibold text-[#333438]">{topFocus}</p>
+      <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <p className="mb-1 text-xs font-semibold text-slate-600">TODAY'S FOCUS</p>
+        <p className="text-sm font-semibold text-slate-900">{topFocus}</p>
       </div>
 
       {items.length === 0 ? (
-        <div className="bg-[#f6f7f8] rounded-lg p-4">
-          <p className="text-sm font-semibold text-[#333438] mb-1">Your first assignment is in motion</p>
-          <p className="text-xs text-[#61636c]">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="mb-1 text-sm font-semibold text-slate-900">
+            Your first assignment is in motion
+          </p>
+          <p className="text-xs text-slate-600">
             Consultant matching is currently staffing roadmap roles. As soon as you are placed, tasks and milestone responsibilities appear here in real time.
           </p>
-          <p className="text-[11px] text-[#61636c] mt-2">Matching in progress...</p>
+          <p className="mt-2 text-[11px] text-slate-600">Matching in progress...</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -53,13 +60,13 @@ export function MyWorkSection() {
             <button
               key={item.id}
               type="button"
-              className="w-full text-left bg-[#f6f7f8] rounded-lg p-3 flex items-center justify-between gap-2"
+              className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-left"
             >
               <div>
-                <p className="text-sm font-medium text-[#333438]">{item.title}</p>
-                <p className="text-xs text-[#61636c]">{item.type}</p>
+                <p className="text-sm font-medium text-slate-900">{item.title}</p>
+                <p className="text-xs text-slate-600">{item.type}</p>
               </div>
-              <span className="text-[11px] text-[#61636c]">{item.dueLabel}</span>
+              <span className="text-[11px] text-slate-600">{item.dueLabel}</span>
             </button>
           ))}
         </div>

@@ -22,19 +22,20 @@ export function OverviewBanner({
 }: OverviewBannerProps) {
   return (
     <>
-      <div className="relative w-full h-40 bg-linear-to-br from-gray-800 via-gray-700 to-gray-900 overflow-hidden rounded-xl mb-8">
+      <div className="app-surface-card-strong relative mb-6 h-48 w-full overflow-hidden rounded-2xl">
+        <div className="absolute inset-0 bg-linear-to-br from-slate-900 via-slate-800 to-slate-700" />
         {bannerUrl && (
           <img
             src={bannerUrl}
             alt="Project banner"
-            className="w-full h-full object-cover"
+            className="relative h-full w-full object-cover"
           />
         )}
         {canEdit && (
           <button
             type="button"
             onClick={onOpenModal}
-            className="absolute bottom-3 right-3 flex items-center gap-1.5 text-xs font-medium bg-black/50 hover:bg-black/70 text-white px-3 py-1.5 rounded-full backdrop-blur-sm transition-colors"
+            className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-slate-900/55 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-slate-900/70"
           >
             <ImagePlus className="w-3.5 h-3.5" />
             {bannerUrl ? "Change banner" : "Add banner"}

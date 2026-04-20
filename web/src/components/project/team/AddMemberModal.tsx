@@ -67,7 +67,7 @@ export function AddMemberModal({ projectId, onClose }: AddMemberModalProps) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="member@example.com"
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#ff9933]/30 focus:border-[#ff9933] placeholder:text-gray-300"
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-500 placeholder:text-gray-300"
             />
             <p className="mt-1.5 text-[11px] text-gray-400">
               If they already have an account they'll be notified right away. If
@@ -87,7 +87,7 @@ export function AddMemberModal({ projectId, onClose }: AddMemberModalProps) {
                 if (e.key === "Enter") void submit();
               }}
               placeholder="e.g. Backend Developer"
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#ff9933]/30 focus:border-[#ff9933] placeholder:text-gray-300"
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-500 placeholder:text-gray-300"
             />
           </div>
 
@@ -111,7 +111,7 @@ export function AddMemberModal({ projectId, onClose }: AddMemberModalProps) {
             type="button"
             onClick={() => void submit()}
             disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#ff9933] hover:bg-[#ff9933]/90 rounded-lg transition-colors disabled:opacity-50 shadow-sm shadow-[#ff9933]/20"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-50 shadow-sm shadow-slate-900/20"
           >
             {saving ? (
               <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
@@ -125,3 +125,4 @@ export function AddMemberModal({ projectId, onClose }: AddMemberModalProps) {
     </div>
   );
 }
+

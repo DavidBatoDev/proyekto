@@ -72,18 +72,18 @@ function SettingsPageSkeleton({ projectId }: { projectId: string }) {
       <div className="animate-pulse space-y-8">
         <section className="space-y-3">
           <div className="h-10 w-72 rounded-md bg-gray-200" />
-          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-            <div className="flex items-center justify-end border-b border-gray-200 bg-[#f8f8f8] px-5 py-4">
+          <div className="app-surface-card-strong overflow-hidden rounded-2xl">
+            <div className="flex items-center justify-end border-b border-slate-200 bg-slate-50/80 px-5 py-4">
               <div className="h-10 w-32 rounded-md bg-gray-200" />
             </div>
             <div className="space-y-5 px-5 py-5">
               <div className="space-y-2">
                 <div className="h-3 w-28 rounded bg-gray-200" />
-                <div className="h-11 w-full rounded-lg bg-gray-100" />
+                <div className="h-11 w-full rounded-lg bg-slate-100" />
               </div>
               <div className="space-y-2">
                 <div className="h-3 w-36 rounded bg-gray-200" />
-                <div className="h-32 w-full rounded-lg bg-gray-100" />
+                <div className="h-32 w-full rounded-lg bg-slate-100" />
               </div>
             </div>
           </div>
@@ -91,8 +91,8 @@ function SettingsPageSkeleton({ projectId }: { projectId: string }) {
 
         <section className="space-y-3">
           <div className="h-10 w-64 rounded-md bg-gray-200" />
-          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-            <div className="flex items-center justify-between border-b border-gray-200 bg-[#f8f8f8] px-5 py-4">
+          <div className="app-surface-card-strong overflow-hidden rounded-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-5 py-4">
               <div className="h-4 w-64 rounded bg-gray-200" />
               <div className="h-9 w-32 rounded-md bg-gray-200" />
             </div>
@@ -104,9 +104,9 @@ function SettingsPageSkeleton({ projectId }: { projectId: string }) {
                 >
                   <div className="min-w-0 flex-1 space-y-2">
                     <div className="h-4 w-48 rounded bg-gray-200" />
-                    <div className="h-3 w-64 rounded bg-gray-100" />
+                    <div className="h-3 w-64 rounded bg-slate-100" />
                   </div>
-                  <div className="h-7 w-24 rounded-full bg-gray-100" />
+                  <div className="h-7 w-24 rounded-full bg-slate-100" />
                 </div>
               ))}
             </div>
@@ -115,8 +115,8 @@ function SettingsPageSkeleton({ projectId }: { projectId: string }) {
 
         <section className="space-y-3">
           <div className="h-10 w-64 rounded-md bg-gray-200" />
-          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-            <div className="flex items-center justify-between border-b border-gray-200 bg-[#f8f8f8] px-5 py-4">
+          <div className="app-surface-card-strong overflow-hidden rounded-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-5 py-4">
               <div className="h-4 w-64 rounded bg-gray-200" />
               <div className="h-9 w-36 rounded-md bg-gray-200" />
             </div>
@@ -467,24 +467,24 @@ function SettingsGeneralPage() {
       <div className="space-y-10">
         <section className="space-y-3">
           <div className="flex items-center gap-2">
-            <Settings className="w-5 h-5 text-[#ff9933]" />
-            <h2 className="text-[30px] leading-none font-semibold text-gray-900">
+            <Settings className="w-5 h-5 text-slate-700" />
+            <h2 className="text-[30px] leading-none font-semibold text-slate-900">
               General settings
             </h2>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+          <div className="app-surface-card-strong overflow-hidden rounded-2xl">
             <div className="px-5 py-5 space-y-7">
-              <section className="pb-6 border-b border-gray-200">
+              <section className="pb-6 border-b border-slate-200">
                 <div className="flex items-center justify-between gap-2 mb-2.5">
-                  <h3 className="text-[18px] font-semibold text-gray-900">
+                  <h3 className="text-[18px] font-semibold text-slate-900">
                     Project Title
                   </h3>
                   {!isEditingTitle && (
                     <button
                       type="button"
                       onClick={() => setIsEditingTitle(true)}
-                      className="inline-flex items-center gap-1.5 text-sm font-medium text-[#ff9933] hover:text-[#ea8b25]"
+                      className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-slate-900"
                     >
                       <Edit2 className="w-4 h-4" />
                       Edit
@@ -500,14 +500,14 @@ function SettingsGeneralPage() {
                       onChange={(e) => setTitleDraft(e.target.value)}
                       placeholder="Write the project title..."
                       disabled={isSavingTitle}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#ff9933]/30 focus:border-[#ff9933]"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:border-slate-500 focus:ring-slate-400/30"
                     />
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => void saveTitle()}
                         disabled={isSavingTitle}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-[#ff9933] rounded-md hover:bg-[#ea8b25] disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white app-cta rounded-md disabled:opacity-50"
                       >
                         {isSavingTitle ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
@@ -523,7 +523,7 @@ function SettingsGeneralPage() {
                           setIsEditingTitle(false);
                         }}
                         disabled={isSavingTitle}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 disabled:opacity-50"
                       >
                         <X className="w-4 h-4" />
                         Cancel
@@ -531,7 +531,7 @@ function SettingsGeneralPage() {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-[14px] text-gray-700 leading-6">
+                  <p className="text-[14px] text-slate-700 leading-6">
                     {(project?.title || "").trim() || "No title added yet."}
                   </p>
                 )}
@@ -539,14 +539,14 @@ function SettingsGeneralPage() {
 
               <section>
                 <div className="flex items-center justify-between gap-2 mb-2.5">
-                  <h3 className="text-[18px] font-semibold text-gray-900">
+                  <h3 className="text-[18px] font-semibold text-slate-900">
                     Project Summary
                   </h3>
                   {!isEditingSummary && (
                     <button
                       type="button"
                       onClick={() => setIsEditingSummary(true)}
-                      className="inline-flex items-center gap-1.5 text-sm font-medium text-[#ff9933] hover:text-[#ea8b25]"
+                      className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-slate-900"
                     >
                       <Edit2 className="w-4 h-4" />
                       Edit
@@ -581,7 +581,7 @@ function SettingsGeneralPage() {
                         type="button"
                         onClick={() => void saveSummary()}
                         disabled={isSavingSummary}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-[#ff9933] rounded-md hover:bg-[#ea8b25] disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white app-cta rounded-md disabled:opacity-50"
                       >
                         {isSavingSummary ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
@@ -597,7 +597,7 @@ function SettingsGeneralPage() {
                           setIsEditingSummary(false);
                         }}
                         disabled={isSavingSummary}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 disabled:opacity-50"
                       >
                         <X className="w-4 h-4" />
                         Cancel
@@ -606,11 +606,11 @@ function SettingsGeneralPage() {
                   </div>
                 ) : (
                   <div
-                    className="text-[13px] text-gray-600 leading-6 max-w-none wrap-break-word [&_p]:my-0 [&_p+_p]:mt-3 [&_a]:text-blue-600 [&_a]:underline [&_strong]:font-semibold [&_b]:font-semibold [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1"
+                    className="text-[13px] text-slate-600 leading-6 max-w-none wrap-break-word [&_p]:my-0 [&_p+_p]:mt-3 [&_a]:text-blue-600 [&_a]:underline [&_strong]:font-semibold [&_b]:font-semibold [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1"
                     dangerouslySetInnerHTML={{
                       __html:
                         summaryValue ||
-                        "<p class='text-gray-500'>No summary added yet.</p>",
+                        "<p class='text-slate-500'>No summary added yet.</p>",
                     }}
                   />
                 )}
@@ -620,18 +620,18 @@ function SettingsGeneralPage() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-[30px] leading-none font-semibold text-gray-900">
+          <h2 className="text-[30px] leading-none font-semibold text-slate-900">
             Project access
           </h2>
-          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-            <header className="px-5 py-4 border-b border-gray-200 bg-[#f8f8f8] flex items-center justify-between">
-              <p className="text-sm text-gray-600">
+          <div className="app-surface-card-strong overflow-hidden rounded-2xl">
+            <header className="px-5 py-4 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between">
+              <p className="text-sm text-slate-600">
                 Team members with access to this project.
               </p>
               <Link
                 to="/project/$projectId/settings/team"
                 params={{ projectId }}
-                className="px-3 py-1.5 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100"
+                className="px-3 py-1.5 text-sm font-medium border border-gray-300 rounded-md hover:bg-slate-100"
               >
                 Manage members
               </Link>
@@ -639,11 +639,11 @@ function SettingsGeneralPage() {
 
             <div className="divide-y divide-gray-100">
               {isLoading ? (
-                <div className="px-5 py-6 text-sm text-gray-500">
+                <div className="px-5 py-6 text-sm text-slate-500">
                   Loading members...
                 </div>
               ) : members.length === 0 ? (
-                <div className="px-5 py-6 text-sm text-gray-500">
+                <div className="px-5 py-6 text-sm text-slate-500">
                   No members found.
                 </div>
               ) : (
@@ -664,19 +664,19 @@ function SettingsGeneralPage() {
                       className="px-5 py-3.5 flex items-center justify-between gap-3"
                     >
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
+                        <p className="text-sm font-medium text-slate-900 truncate">
                           {displayName}
                           {isCurrentOwner ? (
-                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-700 border border-gray-200">
+                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
                               Owner
                             </span>
                           ) : null}
                         </p>
-                        <p className="text-xs text-gray-500 truncate">
+                        <p className="text-xs text-slate-500 truncate">
                           {member.user?.email || "No email"}
                         </p>
                       </div>
-                      <span className="shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                      <span className="shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
                         {member.position?.trim() || "Member"}
                       </span>
                     </div>
@@ -690,18 +690,18 @@ function SettingsGeneralPage() {
         {isOwner && (
           <>
             <section className="space-y-3">
-              <h2 className="text-[30px] leading-none font-semibold text-gray-900">
+              <h2 className="text-[30px] leading-none font-semibold text-slate-900">
                 Transfer project
               </h2>
-              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-                <header className="px-5 py-4 border-b border-gray-200 bg-[#f8f8f8] flex items-center justify-between">
-                  <p className="text-sm text-gray-600">
+              <div className="app-surface-card-strong overflow-hidden rounded-2xl">
+                <header className="px-5 py-4 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between">
+                  <p className="text-sm text-slate-600">
                     Transfer ownership to another project member.
                   </p>
                   <button
                     type="button"
                     onClick={() => setIsTransferSelectOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-gray-300 rounded-md hover:bg-slate-100"
                   >
                     <RefreshCcw className="w-3.5 h-3.5" />
                     Transfer project
@@ -711,7 +711,7 @@ function SettingsGeneralPage() {
             </section>
 
             <section className="space-y-3">
-              <h2 className="text-[30px] leading-none font-semibold text-gray-900">
+              <h2 className="text-[30px] leading-none font-semibold text-slate-900">
                 Delete project
               </h2>
               <div className="rounded-xl border border-red-200 bg-white overflow-hidden">
@@ -739,18 +739,18 @@ function SettingsGeneralPage() {
 
         {canReassignConsultant && (
           <section className="space-y-3">
-            <h2 className="text-[30px] leading-none font-semibold text-gray-900">
+            <h2 className="text-[30px] leading-none font-semibold text-slate-900">
               Reassign consultant
             </h2>
-            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-              <header className="px-5 py-4 border-b border-gray-200 bg-[#f8f8f8] flex items-center justify-between">
-                <p className="text-sm text-gray-600">
+            <div className="app-surface-card-strong overflow-hidden rounded-2xl">
+              <header className="px-5 py-4 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between">
+                <p className="text-sm text-slate-600">
                   Reassign consultant to another verified project member.
                 </p>
                 <button
                   type="button"
                   onClick={() => setIsConsultantSelectOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-gray-300 rounded-md hover:bg-slate-100"
                 >
                   <RefreshCcw className="w-3.5 h-3.5" />
                   Reassign consultant
@@ -762,7 +762,7 @@ function SettingsGeneralPage() {
 
         {canLeaveProject && (
           <section className="space-y-3">
-            <h2 className="text-[30px] leading-none font-semibold text-gray-900">
+            <h2 className="text-[30px] leading-none font-semibold text-slate-900">
               Leave project
             </h2>
             <div className="rounded-xl border border-amber-200 bg-white overflow-hidden">
@@ -794,14 +794,14 @@ function SettingsGeneralPage() {
           }`}
         >
           <div
-            className={`w-full max-w-xl rounded-2xl bg-white border border-[#ffd8b3] shadow-2xl overflow-hidden transition-all duration-200 ${
+            className={`w-full max-w-xl rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden transition-all duration-200 ${
               transferSelectEntered
                 ? "translate-y-0 scale-100 opacity-100"
                 : "translate-y-3 scale-[0.98] opacity-0"
             }`}
           >
-            <div className="px-6 py-4 border-b border-[#ffe8d1] bg-linear-to-r from-[#fff7ed] to-[#fffaf6] flex items-center justify-between">
-              <h3 className="text-[16px] font-semibold text-gray-900">
+            <div className="px-6 py-4 border-b border-slate-200 bg-linear-to-r from-[#fff7ed] to-[#fffaf6] flex items-center justify-between">
+              <h3 className="text-[16px] font-semibold text-slate-900">
                 Select new project owner
               </h3>
               <button
@@ -810,15 +810,15 @@ function SettingsGeneralPage() {
                   setIsTransferSelectOpen(false);
                   setSelectedOwnerId("");
                 }}
-                className="p-1.5 rounded-md hover:bg-[#fff0df] text-gray-500"
+                className="p-1.5 rounded-md hover:bg-[#fff0df] text-slate-500"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="px-6 py-4 space-y-3 max-h-[380px] overflow-y-auto bg-[#fffefd]">
+            <div className="px-6 py-4 space-y-3 max-h-[380px] overflow-y-auto bg-slate-50">
               {transferrableMembers.length === 0 ? (
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-slate-500">
                   No eligible members available for transfer.
                 </p>
               ) : (
@@ -834,13 +834,13 @@ function SettingsGeneralPage() {
                       onClick={() => setSelectedOwnerId(member.user_id || "")}
                       className={`w-full text-left px-3.5 py-3 rounded-xl border transition-all ${
                         selected
-                          ? "border-[#ff9933] bg-[#fff3e8] shadow-[0_4px_14px_rgba(255,153,51,0.12)]"
-                          : "border-[#ffe7cf] bg-white hover:bg-[#fffaf4] hover:border-[#ffd3a4]"
+                          ? "border-slate-500 bg-slate-100 shadow-[0_4px_14px_rgba(15,23,42,0.12)]"
+                          : "border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0 flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full overflow-hidden border border-[#ffd8b3] bg-[#ffecd6] shrink-0 flex items-center justify-center">
+                          <div className="h-10 w-10 rounded-full overflow-hidden border border-slate-200 bg-slate-200 shrink-0 flex items-center justify-center">
                             {member.user?.avatar_url ? (
                               <img
                                 src={member.user.avatar_url}
@@ -848,22 +848,22 @@ function SettingsGeneralPage() {
                                 className="h-full w-full object-cover"
                               />
                             ) : (
-                              <span className="text-[11px] font-bold text-[#b45f06]">
+                              <span className="text-[11px] font-bold text-slate-700">
                                 {memberInitials || "?"}
                               </span>
                             )}
                           </div>
                           <div className="min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">
+                            <p className="text-sm font-medium text-slate-900 truncate">
                               {memberName}
                             </p>
-                            <div className="text-xs text-gray-500 truncate">
+                            <div className="text-xs text-slate-500 truncate">
                               {member.user?.email || "No email"}
                             </div>
                           </div>
                         </div>
                         {selected ? (
-                          <Check className="w-4 h-4 text-[#b45f06]" />
+                          <Check className="w-4 h-4 text-slate-700" />
                         ) : null}
                       </div>
                     </button>
@@ -872,14 +872,14 @@ function SettingsGeneralPage() {
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-[#ffe8d1] flex items-center justify-end gap-2 bg-[#fff9f2]">
+            <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-end gap-2 bg-slate-50">
               <button
                 type="button"
                 onClick={() => {
                   setIsTransferSelectOpen(false);
                   setSelectedOwnerId("");
                 }}
-                className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-md"
+                className="px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-md"
                 disabled={isTransferSaving || isConsultantTransferSaving}
               >
                 Cancel
@@ -891,7 +891,7 @@ function SettingsGeneralPage() {
                   setIsTransferConfirmOpen(true);
                 }}
                 disabled={!selectedOwnerId || isTransferSaving || isConsultantTransferSaving}
-                className="px-3 py-2 text-sm font-semibold text-white bg-[#ff9933] hover:bg-[#ea8b25] rounded-md disabled:opacity-50"
+                className="px-3 py-2 text-sm font-semibold text-white app-cta rounded-md disabled:opacity-50"
               >
                 Continue
               </button>
@@ -902,25 +902,25 @@ function SettingsGeneralPage() {
 
       {isTransferConfirmOpen && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white border border-gray-200 shadow-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-[16px] font-semibold text-gray-900">
+          <div className="w-full max-w-lg rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="text-[16px] font-semibold text-slate-900">
                 Confirm ownership transfer
               </h3>
               <button
                 type="button"
                 onClick={() => setIsTransferConfirmOpen(false)}
-                className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500"
+                className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="px-6 py-4 space-y-2">
-              <p className="text-sm text-gray-700">
+              <p className="text-sm text-slate-700">
                 You are about to transfer project ownership to:
               </p>
-              <p className="text-sm font-semibold text-gray-900">
+              <p className="text-sm font-semibold text-slate-900">
                 {selectedOwnerMember?.user?.display_name ||
                   [selectedOwnerMember?.user?.first_name, selectedOwnerMember?.user?.last_name]
                     .filter(Boolean)
@@ -928,16 +928,16 @@ function SettingsGeneralPage() {
                   selectedOwnerMember?.user?.email ||
                   "Selected member"}
               </p>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-slate-500">
                 {selectedOwnerMember?.user?.email || "No email"}
               </p>
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-2 bg-gray-50">
+            <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-2 bg-gray-50">
               <button
                 type="button"
                 onClick={() => setIsTransferConfirmOpen(false)}
-                className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-md"
+                className="px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-md"
                 disabled={isTransferSaving}
               >
                 Cancel
@@ -946,7 +946,7 @@ function SettingsGeneralPage() {
                 type="button"
                 onClick={() => void submitTransfer()}
                 disabled={!selectedOwnerId || isTransferSaving}
-                className="px-3 py-2 text-sm font-semibold text-white bg-[#ff9933] hover:bg-[#ea8b25] rounded-md disabled:opacity-50"
+                className="px-3 py-2 text-sm font-semibold text-white app-cta rounded-md disabled:opacity-50"
               >
                 {isTransferSaving ? "Transferring..." : "Confirm transfer"}
               </button>
@@ -964,14 +964,14 @@ function SettingsGeneralPage() {
           }`}
         >
           <div
-            className={`w-full max-w-xl rounded-2xl bg-white border border-[#ffd8b3] shadow-2xl overflow-hidden transition-all duration-200 ${
+            className={`w-full max-w-xl rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden transition-all duration-200 ${
               consultantSelectEntered
                 ? "translate-y-0 scale-100 opacity-100"
                 : "translate-y-3 scale-[0.98] opacity-0"
             }`}
           >
-            <div className="px-6 py-4 border-b border-[#ffe8d1] bg-linear-to-r from-[#fff7ed] to-[#fffaf6] flex items-center justify-between">
-              <h3 className="text-[16px] font-semibold text-gray-900">
+            <div className="px-6 py-4 border-b border-slate-200 bg-linear-to-r from-[#fff7ed] to-[#fffaf6] flex items-center justify-between">
+              <h3 className="text-[16px] font-semibold text-slate-900">
                 Select new consultant
               </h3>
               <button
@@ -980,15 +980,15 @@ function SettingsGeneralPage() {
                   setIsConsultantSelectOpen(false);
                   setSelectedConsultantId("");
                 }}
-                className="p-1.5 rounded-md hover:bg-[#fff0df] text-gray-500"
+                className="p-1.5 rounded-md hover:bg-[#fff0df] text-slate-500"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="px-6 py-4 space-y-3 max-h-[380px] overflow-y-auto bg-[#fffefd]">
+            <div className="px-6 py-4 space-y-3 max-h-[380px] overflow-y-auto bg-slate-50">
               {reassignableConsultantMembers.length === 0 ? (
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-slate-500">
                   No verified project members available for consultant reassignment.
                 </p>
               ) : (
@@ -1004,13 +1004,13 @@ function SettingsGeneralPage() {
                       onClick={() => setSelectedConsultantId(member.user_id || "")}
                       className={`w-full text-left px-3.5 py-3 rounded-xl border transition-all ${
                         selected
-                          ? "border-[#ff9933] bg-[#fff3e8] shadow-[0_4px_14px_rgba(255,153,51,0.12)]"
-                          : "border-[#ffe7cf] bg-white hover:bg-[#fffaf4] hover:border-[#ffd3a4]"
+                          ? "border-slate-500 bg-slate-100 shadow-[0_4px_14px_rgba(15,23,42,0.12)]"
+                          : "border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0 flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full overflow-hidden border border-[#ffd8b3] bg-[#ffecd6] shrink-0 flex items-center justify-center">
+                          <div className="h-10 w-10 rounded-full overflow-hidden border border-slate-200 bg-slate-200 shrink-0 flex items-center justify-center">
                             {member.user?.avatar_url ? (
                               <img
                                 src={member.user.avatar_url}
@@ -1018,22 +1018,22 @@ function SettingsGeneralPage() {
                                 className="h-full w-full object-cover"
                               />
                             ) : (
-                              <span className="text-[11px] font-bold text-[#b45f06]">
+                              <span className="text-[11px] font-bold text-slate-700">
                                 {memberInitials || "?"}
                               </span>
                             )}
                           </div>
                           <div className="min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">
+                            <p className="text-sm font-medium text-slate-900 truncate">
                               {memberName}
                             </p>
-                            <div className="text-xs text-gray-500 truncate">
+                            <div className="text-xs text-slate-500 truncate">
                               {member.user?.email || "No email"}
                             </div>
                           </div>
                         </div>
                         {selected ? (
-                          <Check className="w-4 h-4 text-[#b45f06]" />
+                          <Check className="w-4 h-4 text-slate-700" />
                         ) : null}
                       </div>
                     </button>
@@ -1042,14 +1042,14 @@ function SettingsGeneralPage() {
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-[#ffe8d1] flex items-center justify-end gap-2 bg-[#fff9f2]">
+            <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-end gap-2 bg-slate-50">
               <button
                 type="button"
                 onClick={() => {
                   setIsConsultantSelectOpen(false);
                   setSelectedConsultantId("");
                 }}
-                className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-md"
+                className="px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-md"
                 disabled={isConsultantTransferSaving || isTransferSaving}
               >
                 Cancel
@@ -1065,7 +1065,7 @@ function SettingsGeneralPage() {
                   isConsultantTransferSaving ||
                   isTransferSaving
                 }
-                className="px-3 py-2 text-sm font-semibold text-white bg-[#ff9933] hover:bg-[#ea8b25] rounded-md disabled:opacity-50"
+                className="px-3 py-2 text-sm font-semibold text-white app-cta rounded-md disabled:opacity-50"
               >
                 Continue
               </button>
@@ -1076,25 +1076,25 @@ function SettingsGeneralPage() {
 
       {isConsultantConfirmOpen && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white border border-gray-200 shadow-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-[16px] font-semibold text-gray-900">
+          <div className="w-full max-w-lg rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="text-[16px] font-semibold text-slate-900">
                 Confirm consultant reassignment
               </h3>
               <button
                 type="button"
                 onClick={() => setIsConsultantConfirmOpen(false)}
-                className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500"
+                className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="px-6 py-4 space-y-2">
-              <p className="text-sm text-gray-700">
+              <p className="text-sm text-slate-700">
                 You are about to reassign consultant to:
               </p>
-              <p className="text-sm font-semibold text-gray-900">
+              <p className="text-sm font-semibold text-slate-900">
                 {selectedConsultantMember?.user?.display_name ||
                   [
                     selectedConsultantMember?.user?.first_name,
@@ -1105,16 +1105,16 @@ function SettingsGeneralPage() {
                   selectedConsultantMember?.user?.email ||
                   "Selected member"}
               </p>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-slate-500">
                 {selectedConsultantMember?.user?.email || "No email"}
               </p>
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-2 bg-gray-50">
+            <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-2 bg-gray-50">
               <button
                 type="button"
                 onClick={() => setIsConsultantConfirmOpen(false)}
-                className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-md"
+                className="px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-md"
                 disabled={isConsultantTransferSaving}
               >
                 Cancel
@@ -1123,7 +1123,7 @@ function SettingsGeneralPage() {
                 type="button"
                 onClick={() => void submitConsultantReassign()}
                 disabled={!selectedConsultantId || isConsultantTransferSaving}
-                className="px-3 py-2 text-sm font-semibold text-white bg-[#ff9933] hover:bg-[#ea8b25] rounded-md disabled:opacity-50"
+                className="px-3 py-2 text-sm font-semibold text-white app-cta rounded-md disabled:opacity-50"
               >
                 {isConsultantTransferSaving
                   ? "Reassigning..."
@@ -1164,7 +1164,7 @@ function SettingsGeneralPage() {
                   setIsDeleteOpen(false);
                   setDeleteText("");
                 }}
-                className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-md"
+                className="px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-md"
                 disabled={isDeleteSaving}
               >
                 Cancel
@@ -1199,7 +1199,7 @@ function SettingsGeneralPage() {
               <button
                 type="button"
                 onClick={() => setIsLeaveOpen(false)}
-                className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-md"
+                className="px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-md"
                 disabled={isLeaveSaving}
               >
                 Cancel
@@ -1224,3 +1224,5 @@ function SettingsGeneralPage() {
     </ProjectSettingsLayout>
   );
 }
+
+

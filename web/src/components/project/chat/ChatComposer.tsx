@@ -82,8 +82,8 @@ export function ChatComposer({
   };
 
   return (
-    <footer className="sticky bottom-0 border-t border-gray-200 bg-white px-3 py-3 md:px-6">
-      <div className="relative rounded-3xl border border-gray-300 bg-[#f6f7f8] pl-3 pr-28 py-2">
+    <footer className="sticky bottom-0 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur md:px-6">
+      <div className="relative rounded-3xl border border-slate-300 bg-slate-50 pl-3 pr-28 py-2">
         <textarea
           ref={textareaRef}
           value={value}
@@ -97,7 +97,7 @@ export function ChatComposer({
           }}
           placeholder={placeholder}
           rows={1}
-          className="w-full resize-none bg-transparent px-1 py-1 text-sm leading-6 text-gray-900 placeholder:text-gray-500 focus:outline-none"
+          className="w-full resize-none bg-transparent px-1 py-1 text-sm leading-6 text-slate-900 placeholder:text-slate-500 focus:outline-none"
         />
 
         <div className="absolute right-3 top-2 inline-flex items-center gap-1">
@@ -105,14 +105,14 @@ export function ChatComposer({
             <button
               type="button"
               onClick={() => setShowEmojiPicker((current) => !current)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 hover:text-slate-700"
               aria-label="Open emoji picker"
             >
               <Smile className="w-5 h-5" />
             </button>
 
             {showEmojiPicker && (
-              <div className="absolute bottom-10 right-0 z-30 rounded-xl border border-gray-200 bg-white shadow-xl overflow-hidden">
+              <div className="absolute bottom-10 right-0 z-30 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
                 <EmojiPicker
                   lazyLoadEmojis
                   searchDisabled={false}
@@ -131,7 +131,7 @@ export function ChatComposer({
             type="button"
             onClick={onSend}
             disabled={disabled}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#ff9933] text-white hover:bg-[#e68829] disabled:opacity-55"
+            className="app-cta inline-flex h-9 w-9 items-center justify-center rounded-full text-white disabled:opacity-55"
           >
             {isSending ? (
               <Loader2 className="w-4 h-4 animate-spin" />

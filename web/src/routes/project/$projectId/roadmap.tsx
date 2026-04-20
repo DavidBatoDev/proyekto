@@ -10,6 +10,11 @@ import { Map, ExternalLink } from "lucide-react";
 import { LinkRoadmapModal } from "@/components/roadmap/modals/LinkRoadmapModal";
 import { RoadmapPageSkeleton } from "@/components/roadmap/views/RoadmapPageSkeleton";
 import {
+  AppEmptyState,
+  AppSectionHeader,
+  AppSurfaceCard,
+} from "@/components/common/AppPrimitives";
+import {
   useInvalidateProjectQueries,
   useLinkedRoadmapQuery,
 } from "@/hooks/useProjectQueries";
@@ -46,44 +51,40 @@ function RoadmapPage() {
   }
 
   return (
-    <div className="p-8 max-w-3xl mx-auto w-full">
-      <div className="mb-8">
-        <div className="flex items-center gap-2 mb-1">
-          <Map className="w-5 h-5 text-[#ff9933]" />
-          <h1 className="text-2xl font-bold text-gray-900">Roadmap</h1>
-        </div>
-        <p className="text-gray-500 text-sm">
-          View and manage this project's roadmap, milestones, and epics.
-        </p>
-      </div>
+    <div className="app-shell-bg h-full w-full overflow-y-auto">
+      <div className="mx-auto w-full max-w-4xl px-5 py-6 md:px-8 md:py-8">
+        <AppSurfaceCard strong className="mb-6 p-6">
+          <AppSectionHeader
+            kicker="Planning"
+            title="Roadmap"
+            subtitle="View and manage this project's roadmap, milestones, and epics."
+          />
+        </AppSurfaceCard>
 
-      <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-16 text-center">
-        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#ff9933]/10 flex items-center justify-center">
-          <Map className="w-8 h-8 text-[#ff9933]" />
-        </div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-2">
-          No roadmap linked
-        </h2>
-        <p className="text-gray-500 text-sm mb-6 max-w-md mx-auto">
-          This project doesn't have a roadmap yet. Create a new roadmap to start
-          planning milestones, epics, and features.
-        </p>
-        <div className="flex items-center justify-center gap-3">
-          <Link
-            to="/project/$projectId/roadmap/create"
-            params={{ projectId }}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#ff9933] text-white rounded-lg text-sm font-semibold hover:bg-[#e68829] transition-colors"
-          >
-            <ExternalLink className="w-4 h-4" />
-            Create a Roadmap
-          </Link>
-          <button
-            onClick={() => setIsLinkModalOpen(true)}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors"
-          >
-            Link Existing Roadmap
-          </button>
-        </div>
+        <AppEmptyState
+          icon={Map}
+          title="No roadmap linked"
+          description="This project doesn't have a roadmap yet. Create a new roadmap to start planning milestones, epics, and features."
+          className="app-surface-card-strong border-dashed py-16"
+          action={
+            <div className="flex items-center justify-center gap-3">
+              <Link
+                to="/project/$projectId/roadmap/create"
+                params={{ projectId }}
+                className="app-cta inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Create a Roadmap
+              </Link>
+              <button
+                onClick={() => setIsLinkModalOpen(true)}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+              >
+                Link Existing Roadmap
+              </button>
+            </div>
+          }
+        />
       </div>
 
       <LinkRoadmapModal

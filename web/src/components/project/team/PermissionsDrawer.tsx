@@ -242,7 +242,7 @@ export function PermissionsDrawer({
           entered ? "translate-x-0 opacity-100" : "translate-x-8 opacity-0"
         }`}
       >
-        <div className="px-5 py-4 border-b border-[#ff9933]/25 bg-linear-to-r from-[#fff7ed] to-[#fff3e0]">
+        <div className="px-5 py-4 border-b border-slate-200 bg-linear-to-r from-slate-50 to-white">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[11px] uppercase tracking-[0.12em] font-semibold text-[#b45f06]">
@@ -267,7 +267,7 @@ export function PermissionsDrawer({
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-50/40">
           {!loading && (
-            <section className="rounded-xl border border-[#ff9933]/25 bg-white overflow-hidden">
+            <section className="rounded-xl border border-slate-200 bg-white overflow-hidden">
               <header className="px-4 py-3 border-b border-slate-100 bg-[#fffaf2]">
                 <h3 className="text-[13px] font-semibold text-slate-800">
                   Role
@@ -284,7 +284,7 @@ export function PermissionsDrawer({
                   onChange={(e) => setPositionDraft(e.target.value)}
                   placeholder="e.g. Backend Developer"
                   disabled={saving}
-                  className="w-full text-[13px] border border-slate-200 rounded-md px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#ff9933]/30 focus:border-[#ff9933]"
+                  className="w-full text-[13px] border border-slate-200 rounded-md px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-500"
                 />
               </div>
             </section>
@@ -385,7 +385,7 @@ export function PermissionsDrawer({
                               e.target.checked,
                             )
                           }
-                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#ff9933] focus:ring-[#ff9933]"
+                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-700 focus:ring-slate-400"
                         />
                       </label>
                     );
@@ -408,7 +408,7 @@ export function PermissionsDrawer({
             type="button"
             onClick={() => void handleSave()}
             disabled={saving || !permissions}
-            className="px-3 py-2 text-sm font-semibold text-white bg-[#ff9933] hover:bg-[#e98a25] rounded-md disabled:opacity-50"
+            className="px-3 py-2 text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-md disabled:opacity-50"
           >
             {saving ? "Saving..." : "Save Changes"}
           </button>
@@ -417,3 +417,4 @@ export function PermissionsDrawer({
     </div>
   );
 }
+
