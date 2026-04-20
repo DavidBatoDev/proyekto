@@ -891,7 +891,14 @@ def get_planning_tool() -> dict[str, Any]:
                 'For add_epic/add_feature/add_task, include data.title. '
                 'For add_feature/add_task, include a valid parent_id or parent_ref. '
                 'For transactional creation chains, use temp_id on created nodes and *_ref fields to point to those temp IDs. '
-                'CLARIFIER CONTRACT — when you return operations=[] AND assistant_message contains a question, you MUST '
+                'DUAL-TARGET CONTRACT — this tool can stage changes against TWO sources. Use `operations` for '
+                'live-roadmap changes (most common: the user targets a committed epic/feature/task). Use '
+                '`revision_operations` INSTEAD when the user targets an item that exists only in the pending plan '
+                '(shown in "Pending plan awaiting user confirmation"): emit a compact list of plan-level ops such '
+                'as {"op": "rename_epic", "epic_title": "...", "new_title": "..."} and leave `operations=[]`. The '
+                'system applies revision_operations against the pending plan — do not invent live-roadmap ops for '
+                'plan-only titles. At most one of the two arrays should be non-empty per turn. '
+                'CLARIFIER CONTRACT — when you return operations=[] AND revision_operations=[] AND assistant_message contains a question, you MUST '
                 'include `clarifier_options` with 3 concrete answer strings the user can click. Omit `clarifier_options` '
                 'ONLY when the question is genuinely open-ended and no answer could be predicted from context. '
                 'For rename/retitle questions, suggest 3 plausible new titles derived from the target\'s existing title, '
@@ -908,7 +915,7 @@ def get_planning_tool() -> dict[str, Any]:
                     'clarifier_options': {
                         'type': 'array',
                         'description': (
-                            'REQUIRED whenever operations=[] AND assistant_message contains a '
+                            'REQUIRED whenever operations=[] AND revision_operations=[] AND assistant_message contains a '
                             'clarifier question. Provide 3 concrete full-answer strings the user '
                             'could select as-is (suggested new titles, candidate target names, '
                             'valid enum values, etc.). Derive them from context the tools returned '
@@ -923,6 +930,20 @@ def get_planning_tool() -> dict[str, Any]:
                     'operations': {
                         'type': 'array',
                         'items': {'anyOf': _build_operation_anyof_branches()},
+                    },
+                    'revision_operations': {
+                        'type': 'array',
+                        'description': (
+                            'Plan-level ops against the pending plan (NOT the live roadmap). '
+                            'Use when the target title is present only in the "Pending plan" '
+                            'prompt section. Supported op names (see plan_mode/v1.md Envelope C '
+                            'for field shapes): rename_epic, rename_feature, rename_task, '
+                            'remove_epic, remove_feature, remove_task, add_epic, add_feature, '
+                            'add_task, reorder_epics, update_metadata. Leave empty when editing '
+                            'the live roadmap via `operations`.'
+                        ),
+                        'items': {'type': 'object'},
+                        'minItems': 0,
                     },
                 },
             },
@@ -1055,6 +1076,37 @@ def parse_plan_tool_args(raw_args: Any) -> tuple[str, list[RoadmapOperation]]:
         _register_created_temp_ref_type(operation, temp_ref_node_types)
     assistant_message = str(args.get('assistant_message', 'Prepared roadmap operations.'))
     return assistant_message, operations
+
+
+def parse_plan_tool_revision_operations(raw_args: Any) -> list[dict[str, Any]]:
+    """Extract `revision_operations` from the `plan_roadmap_operations` tool
+    args. Returns [] when the field is missing or malformed. Each entry must
+    be a dict with a string `op` field; others are filtered out. Semantic
+    validation (known op names, required fields per op) happens downstream
+    in `pending_plan_revision_applier.apply_revision_operations` — this
+    parser only handles the transport envelope.
+    """
+
+    args = raw_args
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(args, dict):
+        return []
+    raw = args.get('revision_operations')
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        op_value = item.get('op')
+        if not isinstance(op_value, str) or not op_value.strip():
+            continue
+        out.append(item)
+    return out
 
 
 def parse_plan_tool_clarifier_options(raw_args: Any) -> list[str]:

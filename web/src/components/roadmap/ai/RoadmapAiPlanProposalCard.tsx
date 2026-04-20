@@ -1,10 +1,6 @@
 import type { FC } from "react";
-import type {
-  AgentPlanProposal,
-  AgentPlanProposalEpic,
-  AgentPlanProposalFeature,
-  AgentPlanProposalTask,
-} from "@/services/roadmap-agent.service";
+import type { AgentPlanProposal } from "@/services/roadmap-agent.service";
+import { RoadmapAiPlanProposalGraph } from "./RoadmapAiPlanProposalGraph";
 
 export interface RoadmapAiPlanProposalCardProps {
   plan: AgentPlanProposal;
@@ -17,57 +13,6 @@ const SectionTitle: FC<{ children: React.ReactNode }> = ({ children }) => (
   <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
     {children}
   </div>
-);
-
-const TaskRow: FC<{ task: AgentPlanProposalTask }> = ({ task }) => (
-  <li className="ml-4 list-disc text-sm text-neutral-700 dark:text-neutral-300">
-    <span className="font-medium">{task.title}</span>
-    {task.target_feature_title ? (
-      <span className="text-neutral-500"> (under existing "{task.target_feature_title}")</span>
-    ) : null}
-    {task.description ? (
-      <span className="text-neutral-500"> — {task.description}</span>
-    ) : null}
-  </li>
-);
-
-const FeatureRow: FC<{ feature: AgentPlanProposalFeature }> = ({ feature }) => (
-  <li className="ml-3 list-disc text-sm text-neutral-800 dark:text-neutral-200">
-    <div>
-      <span className="font-medium">{feature.title}</span>
-      {feature.target_epic_title ? (
-        <span className="text-neutral-500"> (under existing "{feature.target_epic_title}")</span>
-      ) : null}
-      {feature.description ? (
-        <span className="text-neutral-500"> — {feature.description}</span>
-      ) : null}
-    </div>
-    {feature.tasks && feature.tasks.length > 0 ? (
-      <ul className="mt-1 space-y-0.5">
-        {feature.tasks.map((task, idx) => (
-          <TaskRow key={`${feature.title}-task-${idx}`} task={task} />
-        ))}
-      </ul>
-    ) : null}
-  </li>
-);
-
-const EpicRow: FC<{ epic: AgentPlanProposalEpic }> = ({ epic }) => (
-  <li className="list-disc text-sm text-neutral-900 dark:text-neutral-100">
-    <div>
-      <span className="font-semibold">{epic.title}</span>
-      {epic.description ? (
-        <span className="text-neutral-500"> — {epic.description}</span>
-      ) : null}
-    </div>
-    {epic.features && epic.features.length > 0 ? (
-      <ul className="mt-1 space-y-1">
-        {epic.features.map((feature, idx) => (
-          <FeatureRow key={`${epic.title}-feature-${idx}`} feature={feature} />
-        ))}
-      </ul>
-    ) : null}
-  </li>
 );
 
 export const RoadmapAiPlanProposalCard: FC<RoadmapAiPlanProposalCardProps> = ({
@@ -112,11 +57,9 @@ export const RoadmapAiPlanProposalCard: FC<RoadmapAiPlanProposalCardProps> = ({
         {plan.proposed_hierarchy && plan.proposed_hierarchy.length > 0 ? (
           <div>
             <SectionTitle>Proposed structure</SectionTitle>
-            <ul className="mt-1 space-y-1.5 pl-5">
-              {plan.proposed_hierarchy.map((epic, idx) => (
-                <EpicRow key={`epic-${idx}`} epic={epic} />
-              ))}
-            </ul>
+            <div className="mt-1">
+              <RoadmapAiPlanProposalGraph epics={plan.proposed_hierarchy} />
+            </div>
           </div>
         ) : null}
 

@@ -2044,9 +2044,10 @@ def plan_operations(
             )
             return failure_state
 
-        # Accept both 2-tuples (legacy adapters) and 3-tuples (current: adds
-        # `clarifier_options`). The unpacking block below handles both.
-        if not isinstance(result.value, tuple) or len(result.value) not in (2, 3):
+        # Accept 2-, 3-, or 4-tuples. Legacy adapters may still emit 2- or
+        # 3-tuples (pre-revision-ops); the current adapter returns a 4-tuple
+        # adding `revision_operations` for the plan-revision handoff path.
+        if not isinstance(result.value, tuple) or len(result.value) not in (2, 3, 4):
             if attempt + 1 < max_attempts:
                 schema_invalid_attempts += 1
                 _log_planner_schema_invalid(
@@ -2055,7 +2056,7 @@ def plan_operations(
                     attempt_index=attempt,
                     error_code='unexpected_result_shape',
                     error_message=(
-                        f'expected 2- or 3-tuple, got '
+                        f'expected 2-, 3-, or 4-tuple, got '
                         f'{type(result.value).__name__}'
                         + (
                             f' of length {len(result.value)}'
@@ -2070,12 +2071,23 @@ def plan_operations(
                 continue
             break
 
-        # Tuple widened to 3-elements to carry LLM-provided `clarifier_options`
-        # alongside the assistant message and operations. Older adapters that
-        # still return 2-tuples are tolerated: default clarifier_options to [].
+        # Tuple widens gracefully: 2-tuple (legacy) → +clarifier_options
+        # (3) → +revision_operations (4). Older adapters that still return
+        # shorter tuples are tolerated with sensible empty defaults.
         result_value = result.value
         llm_clarifier_options: list[str] = []
-        if isinstance(result_value, tuple) and len(result_value) >= 3:
+        llm_revision_operations: list[dict[str, Any]] = []
+        if isinstance(result_value, tuple) and len(result_value) >= 4:
+            assistant_message, raw_operations, llm_clarifier_options, revision_ops_raw = (
+                result_value[0],
+                result_value[1],
+                result_value[2] if isinstance(result_value[2], list) else [],
+                result_value[3] if isinstance(result_value[3], list) else [],
+            )
+            llm_revision_operations = [
+                op for op in revision_ops_raw if isinstance(op, dict)
+            ]
+        elif isinstance(result_value, tuple) and len(result_value) == 3:
             assistant_message, raw_operations, llm_clarifier_options = (
                 result_value[0],
                 result_value[1],
@@ -2091,7 +2103,71 @@ def plan_operations(
             'operations_count': len(raw_operations) if isinstance(raw_operations, list) else 0,
             'clarifier_options_count': len(llm_clarifier_options),
             'clarifier_options_preview': list(llm_clarifier_options)[:5],
+            'revision_operations_count': len(llm_revision_operations),
         }
+
+        # Plan-revision handoff: when the LLM emits `revision_operations`
+        # from the edit lane, short-circuit the usual edit-plan path and
+        # return a plan_proposal-shaped state so the orchestrator routes
+        # the turn through `record_pending_plan_from_planner_output`. This
+        # is the "unified planner output" structural fix — the edit lane
+        # can now directly patch the pending plan instead of punting back
+        # to the user to re-send through the plan lane.
+        if llm_revision_operations and not (
+            isinstance(raw_operations, list) and raw_operations
+        ):
+            log_event(
+                planner._logger,
+                'plan_revision_ops_emitted_from_edit_lane',
+                settings=planner._settings,
+                trace_id=trace_id,
+                tool_name=PLANNING_TOOL_NAME,
+                roadmap_id=roadmap_id_value,
+                revision_operations_count=len(llm_revision_operations),
+            )
+            plan_proposal_payload: dict[str, Any] = {
+                'status': 'plan_ready',
+                'assistant_message': (
+                    assistant_message.strip()
+                    if assistant_message.strip()
+                    else 'Revised the pending plan.'
+                ),
+                'revision_operations': llm_revision_operations,
+                'user_message': user_message,
+            }
+            return _finalize_state(
+                {
+                    'assistant_message': (
+                        assistant_message.strip()
+                        if assistant_message.strip()
+                        else 'Revised the pending plan.'
+                    ),
+                    'planned_operations': [],
+                    'response_mode': 'plan_proposal',
+                    'intent_type': 'plan_revision',
+                    'preview_recommended': False,
+                    'parse_mode': f'{result.provider_used}_plan_revision_from_edit_lane',
+                    'provider_used': result.provider_used,
+                    'fallback_used': result.fallback_used,
+                    'provider_error_code': result.provider_error_code,
+                    'tokens_input': result.tokens_input,
+                    'tokens_output': result.tokens_output,
+                    'tokens_total': result.tokens_total,
+                    'pending_context_resolution': None,
+                    'clear_pending_context_resolution': False,
+                    'clarifier_action': None,
+                    'clarifier_reason': None,
+                    'clarifier_options': None,
+                    'clarifier_schema_retries': schema_invalid_attempts,
+                    'planner_schema_invalid_attempts': schema_invalid_attempts,
+                    'planner_repair_attempted': repair_attempted,
+                    'draft_action': None,
+                    'tool_plan': [],
+                    'needs_more_info': False,
+                    'stop_reason': 'plan_ready_for_confirmation',
+                    'plan_proposal_payload': plan_proposal_payload,
+                }
+            )
         log_event(
             planner._logger,
             'tool_call_requested',

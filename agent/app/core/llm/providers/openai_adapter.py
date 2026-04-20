@@ -27,6 +27,7 @@ from app.core.tools.registry import (
     PLANNING_TOOL_NAME,
     parse_plan_tool_args,
     parse_plan_tool_clarifier_options,
+    parse_plan_tool_revision_operations,
 )
 
 try:
@@ -294,8 +295,14 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                             if not assistant_message.strip():
                                 assistant_message = 'Prepared roadmap operations.'
                             clarifier_options = parse_plan_tool_clarifier_options(rewritten_args)
+                            revision_operations = parse_plan_tool_revision_operations(rewritten_args)
                             return BoundedToolLoopOutcome(
-                                value=(assistant_message, operations, clarifier_options),
+                                value=(
+                                    assistant_message,
+                                    operations,
+                                    clarifier_options,
+                                    revision_operations,
+                                ),
                                 usage_totals=usage_totals,
                             )
                     if _is_missing_target_validation_failure(error_message):
@@ -339,8 +346,14 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                                 if not assistant_message.strip():
                                     assistant_message = 'Prepared roadmap operations.'
                                 clarifier_options = parse_plan_tool_clarifier_options(recovery_args)
+                                revision_operations = parse_plan_tool_revision_operations(recovery_args)
                                 return BoundedToolLoopOutcome(
-                                    value=(assistant_message, operations, clarifier_options),
+                                    value=(
+                                        assistant_message,
+                                        operations,
+                                        clarifier_options,
+                                        revision_operations,
+                                    ),
                                     usage_totals=usage_totals,
                                 )
                         else:
@@ -394,8 +407,14 @@ class OpenAILangChainAdapter(LLMProviderAdapter):
                 if not assistant_message.strip():
                     assistant_message = 'Prepared roadmap operations.'
                 clarifier_options = parse_plan_tool_clarifier_options(args)
+                revision_operations = parse_plan_tool_revision_operations(args)
                 return BoundedToolLoopOutcome(
-                    value=(assistant_message, operations, clarifier_options),
+                    value=(
+                        assistant_message,
+                        operations,
+                        clarifier_options,
+                        revision_operations,
+                    ),
                     usage_totals=usage_totals,
                 )
 
