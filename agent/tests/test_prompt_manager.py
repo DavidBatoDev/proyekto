@@ -132,6 +132,16 @@ class PromptManagerRenderTests(unittest.TestCase):
             'Recent committed changes (most recent first', prompt,
         )
 
+    def test_edit_mode_template_teaches_overview_handles(self) -> None:
+        # Guards against the handle-addressing guidance silently drifting out
+        # of the template. Without these instructions the planner falls back
+        # to per-label resolve calls for bulk ops (the failure mode this
+        # change fixes).
+        prompt = self.manager.build_system_prompt('edit', {'foo': 'bar'})
+        self.assertIn('Addressing roadmap nodes', prompt)
+        self.assertIn('E1', prompt)
+        self.assertIn('targets', prompt)
+
 
 class ChooseVersionTests(unittest.TestCase):
     def setUp(self) -> None:

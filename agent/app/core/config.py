@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     nest_timeout_seconds: float = Field(default=20.0, alias='NEST_TIMEOUT_SECONDS')
 
     openai_api_key: str | None = Field(default=None, alias='OPENAI_API_KEY')
-    openai_model: str = Field(default='gpt-5.3-mini', alias='OPENAI_MODEL')
+    openai_model: str = Field(default='gpt-5-mini', alias='OPENAI_MODEL')
     openai_temperature: float = Field(default=0.2, alias='OPENAI_TEMPERATURE')
     openai_reasoning_effort: str | None = Field(
         default='low',

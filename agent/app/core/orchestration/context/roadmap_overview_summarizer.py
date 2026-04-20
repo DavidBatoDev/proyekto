@@ -5,6 +5,13 @@ status, epic list with counts) without spending discovery tool-calls on
 each turn. We intentionally fetch only what `GET /ai/context/summary`
 already returns — no drill-down into feature titles — to keep the
 payload size and backend cost small.
+
+Each rendered node is tagged with a short, stable handle (``E1``, ``E1.F2``)
+so the planner can reference it directly in ``targets[]`` instead of round-
+tripping through ``resolve_node_reference``. The formatter also returns a
+``handle_map`` mapping each handle to the node's real UUID; the op-emission
+path expands handles back to UUIDs before dispatch, so full IDs never enter
+the prompt.
 """
 
 from __future__ import annotations
@@ -14,8 +21,10 @@ from typing import Any
 from app.core.nest_client import NestRoadmapClient
 
 
-DEFAULT_MAX_EPICS = 15
-DEFAULT_MAX_FEATURES_PER_EPIC = 6
+DEFAULT_MAX_EPICS = 25
+DEFAULT_MAX_FEATURES_PER_EPIC = 8
+
+HandleMap = dict[str, dict[str, str]]
 
 
 async def build_roadmap_overview_summary(
@@ -26,16 +35,19 @@ async def build_roadmap_overview_summary(
     trace_id: str | None = None,
     max_epics: int = DEFAULT_MAX_EPICS,
     max_features_per_epic: int = DEFAULT_MAX_FEATURES_PER_EPIC,
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, HandleMap]:
     """Fetch the roadmap's compact overview summary.
 
-    Returns `(summary, revision_token)`. The revision_token is the backend's
-    current authoritative value for this roadmap; callers should refresh
-    `session.revision_token` from it so subsequent commits see a fresh token
-    even if another client mutated the roadmap between turns.
+    Returns ``(summary, revision_token, handle_map)``. The revision_token
+    is the backend's current authoritative value for this roadmap; callers
+    should refresh ``session.revision_token`` from it so subsequent commits
+    see a fresh token even if another client mutated the roadmap between
+    turns. ``handle_map`` maps each handle in ``summary`` to the
+    corresponding node (id, type, title) and is empty when there is no
+    summary.
     """
     if not roadmap_id or not auth_header:
-        return None, None
+        return None, None, {}
     try:
         payload = await nest_client.context_summary(
             roadmap_id=roadmap_id,
@@ -45,10 +57,10 @@ async def build_roadmap_overview_summary(
         )
     except Exception:
         # Degrade gracefully — a missing overview is better than a failed turn.
-        return None, None
+        return None, None, {}
     if not isinstance(payload, dict) or isinstance(payload.get('error'), dict):
-        return None, None
-    summary = format_overview_summary(
+        return None, None, {}
+    summary, handle_map = format_overview_summary(
         payload,
         max_epics=max_epics,
         max_features_per_epic=max_features_per_epic,
@@ -59,7 +71,7 @@ async def build_roadmap_overview_summary(
         if isinstance(revision_token_raw, str) and revision_token_raw.strip()
         else None
     )
-    return summary, revision_token
+    return summary, revision_token, handle_map
 
 
 def format_overview_summary(
@@ -67,7 +79,8 @@ def format_overview_summary(
     *,
     max_epics: int = DEFAULT_MAX_EPICS,
     max_features_per_epic: int = DEFAULT_MAX_FEATURES_PER_EPIC,
-) -> str | None:
+) -> tuple[str | None, HandleMap]:
+    handle_map: HandleMap = {}
     title = _clean_str(payload.get('title')) or 'Untitled roadmap'
     status = _clean_str(payload.get('status'))
     epic_count = _as_int(payload.get('epic_count'))
@@ -107,7 +120,11 @@ def format_overview_summary(
         if epic_status:
             bits.append(f'status: {epic_status}')
         suffix = f' — {", ".join(bits)}' if bits else ''
-        epic_lines.append(f'{index}. {epic_title}{suffix}')
+        epic_handle = f'E{index}'
+        epic_id = _clean_str(epic.get('id'))
+        if epic_id:
+            handle_map[epic_handle] = {'id': epic_id, 'type': 'epic', 'title': epic_title}
+        epic_lines.append(f'{epic_handle}. {epic_title}{suffix}')
 
         # Render feature titles as a bulleted sublist so the LLM can reference
         # them by name without needing a drill-down tool call.
@@ -116,13 +133,21 @@ def format_overview_summary(
         if features and capped_features > 0:
             shown_features = features[:capped_features]
             remaining_features = max(0, len(features) - len(shown_features))
-            for feature in shown_features:
+            for feature_index, feature in enumerate(shown_features, start=1):
                 feature_title = _clean_str(feature.get('title')) or 'Untitled feature'
                 feature_status = _clean_str(feature.get('status'))
+                feature_handle = f'{epic_handle}.F{feature_index}'
+                feature_id = _clean_str(feature.get('id'))
+                if feature_id:
+                    handle_map[feature_handle] = {
+                        'id': feature_id,
+                        'type': 'feature',
+                        'title': feature_title,
+                    }
                 if feature_status:
-                    epic_lines.append(f'   · {feature_title} (status: {feature_status})')
+                    epic_lines.append(f'   {feature_handle} · {feature_title} (status: {feature_status})')
                 else:
-                    epic_lines.append(f'   · {feature_title}')
+                    epic_lines.append(f'   {feature_handle} · {feature_title}')
             if remaining_features > 0:
                 epic_lines.append(
                     f'   · …and {remaining_features} more '
@@ -137,7 +162,7 @@ def format_overview_summary(
     if epic_lines:
         sections.append('\n'.join(epic_lines))
     rendered = '\n'.join(sections).strip()
-    return rendered or None
+    return (rendered or None), handle_map
 
 
 def _clean_str(value: Any) -> str | None:

@@ -523,6 +523,7 @@ async def execute_auto_commit(
     # the overview via the speculative path.
     session.metadata.roadmap_overview_summary = None
     session.metadata.roadmap_overview_summary_fetched_at = None
+    session.metadata.roadmap_handle_map = {}
     # Keep recent_resolved_targets in sync with committed renames so the LLM
     # doesn't see a stale pre-rename title for an epic/feature/task it just
     # renamed in a previous turn.

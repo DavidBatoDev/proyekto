@@ -399,6 +399,12 @@ class SessionMetadata(BaseModel):
     applied_draft_commits: list[AppliedDraftCommit] = Field(default_factory=list)
     roadmap_overview_summary: str | None = None
     roadmap_overview_summary_fetched_at: datetime | None = None
+    # Maps each rendered handle (e.g. "E1", "E1.F2") in
+    # ``roadmap_overview_summary`` to the underlying node: ``{"id", "type",
+    # "title"}``. Used by the op-emission path to expand planner-emitted
+    # handles back to real UUIDs before dispatch. Invalidated together with
+    # ``roadmap_overview_summary`` on auto-commit.
+    roadmap_handle_map: dict[str, dict[str, str]] = Field(default_factory=dict)
     recent_applied_changes: list[AppliedChange] = Field(default_factory=list)
 
 

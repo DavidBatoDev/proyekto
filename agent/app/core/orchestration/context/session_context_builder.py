@@ -83,6 +83,7 @@ def build_session_context(
             else None
         ),
         'roadmap_overview_summary': session.metadata.roadmap_overview_summary,
+        'roadmap_handle_map': dict(session.metadata.roadmap_handle_map),
         'recent_applied_changes': [
             change.model_dump(mode='json', exclude_none=True)
             for change in session.metadata.recent_applied_changes

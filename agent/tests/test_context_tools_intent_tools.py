@@ -1019,6 +1019,130 @@ class ContextToolIntentTests(unittest.TestCase):
         self.assertNotIn('children', result)
         self.assertEqual(call_counts, {'children': 0, 'features': 0, 'details': 0})
 
+    def test_resolve_attaches_overview_handle_when_id_matches_handle_map(self) -> None:
+        # Phase 2: when the backend resolves to a node that the agent has
+        # already rendered in the "Current roadmap" overview, surface the
+        # node's handle (e.g. ``E1.F1``) on the result so the planner learns
+        # the stable shorthand for future turns and can skip resolve.
+        async def _context_search(
+            roadmap_id: str,
+            query: str,
+            node_type: str | None,
+            limit: int | None,
+            auth_header: str | None,
+            trace_id: str | None = None,
+        ) -> dict:
+            return {
+                'matches': [
+                    {
+                        'id': 'f1',
+                        'type': 'feature',
+                        'title': 'Authentication System',
+                        'parent_id': 'e1',
+                        'parent_title': 'User Management',
+                        'score': 0.99,
+                    }
+                ]
+            }
+
+        executor = ContextToolsExecutor(
+            settings=get_settings().model_copy(
+                update={'agent_resolve_parallel_variants_enabled': False}
+            ),
+            logger=logging.getLogger(
+                'context-tools-intent-tests-overview-handle-attach'
+            ),
+            nest_client=SimpleNamespace(
+                context_search=_context_search,
+                context_children=lambda **_kwargs: {'children': []},
+                context_node_details=lambda **_kwargs: {'id': 'unused'},
+                context_features=lambda **_kwargs: {'children': []},
+            ),
+            run_async_context_call=self._run_async,
+        )
+        session_context = {
+            **self.session_context,
+            'roadmap_handle_map': {
+                'E1': {'id': 'e1', 'type': 'epic', 'title': 'User Management'},
+                'E1.F1': {
+                    'id': 'f1',
+                    'type': 'feature',
+                    'title': 'Authentication System',
+                },
+            },
+        }
+        result = executor.execute(
+            'resolve_node_reference',
+            {
+                'roadmap_id': 'r1',
+                'label': 'Authentication System',
+                'auto_correct': False,
+                'fuzzy': False,
+                'limit': 5,
+            },
+            session_context,
+        )
+
+        self.assertEqual(result.get('status'), 'unique')
+        self.assertEqual(result.get('node_id'), 'f1')
+        self.assertEqual(result.get('overview_handle'), 'E1.F1')
+
+    def test_resolve_omits_overview_handle_when_id_not_in_map(self) -> None:
+        # Sanity: an empty or non-matching handle_map leaves the result shape
+        # untouched so callers that never hydrated the map don't see a new
+        # field appear in their tool results.
+        async def _context_search(
+            roadmap_id: str,
+            query: str,
+            node_type: str | None,
+            limit: int | None,
+            auth_header: str | None,
+            trace_id: str | None = None,
+        ) -> dict:
+            return {
+                'matches': [
+                    {
+                        'id': 'f1',
+                        'type': 'feature',
+                        'title': 'Authentication System',
+                        'parent_id': 'e1',
+                        'parent_title': 'User Management',
+                        'score': 0.99,
+                    }
+                ]
+            }
+
+        executor = ContextToolsExecutor(
+            settings=get_settings().model_copy(
+                update={'agent_resolve_parallel_variants_enabled': False}
+            ),
+            logger=logging.getLogger(
+                'context-tools-intent-tests-overview-handle-absent'
+            ),
+            nest_client=SimpleNamespace(
+                context_search=_context_search,
+                context_children=lambda **_kwargs: {'children': []},
+                context_node_details=lambda **_kwargs: {'id': 'unused'},
+                context_features=lambda **_kwargs: {'children': []},
+            ),
+            run_async_context_call=self._run_async,
+        )
+        result = executor.execute(
+            'resolve_node_reference',
+            {
+                'roadmap_id': 'r1',
+                'label': 'Authentication System',
+                'auto_correct': False,
+                'fuzzy': False,
+                'limit': 5,
+            },
+            self.session_context,  # no roadmap_handle_map key
+        )
+
+        self.assertEqual(result.get('status'), 'unique')
+        self.assertEqual(result.get('node_id'), 'f1')
+        self.assertNotIn('overview_handle', result)
+
     def test_get_tasks_by_parent_for_feature_filters_by_status(self) -> None:
         result = self.executor.execute(
             'get_tasks_by_parent',

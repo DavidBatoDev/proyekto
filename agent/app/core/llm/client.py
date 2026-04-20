@@ -28,6 +28,7 @@ from app.core.llm.providers import (
 from app.core.nest_client import NestRoadmapClient
 from app.core.prompts import PromptRepository
 from app.core.response_cache import ContextAnswerCache
+from app.core.tools.registry import reset_active_handle_map, set_active_handle_map
 
 try:
     from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -397,7 +398,18 @@ class LLMPlanner:
         return planner_execution_flow.get_context_answer_service(self)
 
     def _plan_operations(self, state: PlannerState) -> PlannerState:
-        return plan_operations_helper(self, state)
+        session_context = state.get('session_context') or {}
+        handle_map_raw = session_context.get('roadmap_handle_map')
+        handle_map = (
+            handle_map_raw
+            if isinstance(handle_map_raw, dict) and handle_map_raw
+            else None
+        )
+        token = set_active_handle_map(handle_map)
+        try:
+            return plan_operations_helper(self, state)
+        finally:
+            reset_active_handle_map(token)
 
     def _summarize_react_tool_observations(
         self,

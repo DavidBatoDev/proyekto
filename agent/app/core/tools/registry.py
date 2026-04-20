@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextvars
 import json
 import re
 from pathlib import Path
@@ -13,6 +14,84 @@ from app.core.contracts.operations import (
     TARGET_TAKING_OPS,
 )
 from app.core.uuid_utils import TEMP_REF_PATTERN, is_uuid_like, normalize_uuid
+
+
+# Handle scheme: E<n> / E<n>.F<m> — emitted by the roadmap overview summarizer
+# and referenced by the planner in place of full UUIDs. This regex is a
+# cheap pre-filter; the actual substitution only happens when the value is a
+# key in the active handle_map, so a coincidental user-supplied string that
+# matches the shape but isn't in the map is left untouched (and will fail
+# normal UUID/temp_ref validation downstream, as intended).
+_HANDLE_TOKEN_PATTERN = re.compile(r'^E\d+(?:\.F\d+)?$')
+
+# Set by the planning flow for the duration of a single planner turn. Scoped
+# to a ContextVar rather than threaded through every adapter/parser kwarg
+# because several adapter implementations share the same parse entry point
+# and backward-compat fallback paths would otherwise need the kwarg
+# replicated across each.
+_ACTIVE_HANDLE_MAP: contextvars.ContextVar[dict[str, dict[str, str]] | None] = (
+    contextvars.ContextVar('roadmap_active_handle_map', default=None)
+)
+
+
+def set_active_handle_map(
+    handle_map: dict[str, dict[str, str]] | None,
+) -> contextvars.Token:
+    """Install ``handle_map`` as the active map for this planning turn.
+
+    Call ``reset_active_handle_map(token)`` (or use contextvars reset) when
+    the turn ends so expansion doesn't leak across sessions.
+    """
+
+    return _ACTIVE_HANDLE_MAP.set(handle_map or None)
+
+
+def reset_active_handle_map(token: contextvars.Token) -> None:
+    _ACTIVE_HANDLE_MAP.reset(token)
+
+
+def _lookup_handle_id(
+    handle: str,
+    handle_map: dict[str, dict[str, str]],
+) -> str | None:
+    entry = handle_map.get(handle)
+    if not isinstance(entry, dict):
+        return None
+    node_id = entry.get('id')
+    return node_id if isinstance(node_id, str) and node_id else None
+
+
+def _expand_handles_in_op_dict(
+    op_dict: dict[str, Any],
+    handle_map: dict[str, dict[str, str]],
+) -> None:
+    """Substitute handle strings (e.g. ``E1``, ``E3.F2``) with their UUIDs.
+
+    Mutates ``op_dict`` in place. Only fields declared to carry a node
+    reference are touched; everything else is left alone. Unknown handles
+    (shape-matches but not in the map) are left as-is so downstream
+    validation still produces a precise error message (``node_id_invalid_uuid``
+    vs. a vague "unknown handle"), and so a coincidental non-handle string
+    that happens to match the pattern isn't silently rewritten.
+    """
+
+    for field in ('node_id', 'parent_id', 'new_parent_id'):
+        value = op_dict.get(field)
+        if isinstance(value, str) and _HANDLE_TOKEN_PATTERN.match(value):
+            resolved = _lookup_handle_id(value, handle_map)
+            if resolved is not None:
+                op_dict[field] = resolved
+
+    targets = op_dict.get('targets')
+    if isinstance(targets, list):
+        expanded: list[Any] = []
+        for entry in targets:
+            if isinstance(entry, str) and _HANDLE_TOKEN_PATTERN.match(entry):
+                resolved = _lookup_handle_id(entry, handle_map)
+                expanded.append(resolved if resolved is not None else entry)
+            else:
+                expanded.append(entry)
+        op_dict['targets'] = expanded
 
 
 def _load_canonical_operation_requirements() -> dict[str, dict[str, Any]]:
@@ -1049,11 +1128,14 @@ def parse_plan_tool_args(raw_args: Any) -> tuple[str, list[RoadmapOperation]]:
     if not isinstance(raw_operations, list):
         raise ValueError('Plan tool operations must be an array.')
 
+    active_handle_map = _ACTIVE_HANDLE_MAP.get()
     operations: list[RoadmapOperation] = []
     temp_ref_node_types: dict[str, str] = {}
     for index, item in enumerate(raw_operations):
         normalized = _normalize_operation_payload(item)
         if isinstance(normalized, dict):
+            if active_handle_map:
+                _expand_handles_in_op_dict(normalized, active_handle_map)
             _infer_mark_status_node_type(normalized, temp_ref_node_types)
         try:
             operation = RoadmapOperation.model_validate(normalized)

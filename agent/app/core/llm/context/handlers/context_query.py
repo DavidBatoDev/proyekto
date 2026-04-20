@@ -333,6 +333,47 @@ class ContextQueryHandler(ToolHandlerBase):
             fuzzy_enabled = bool(args.get('fuzzy', True))
             limit_raw = args.get('limit')
             limit = int(limit_raw) if isinstance(limit_raw, int) else 20
+
+            # Phase 2 observability: the planner is expected to use overview
+            # handles (E1, E1.F2) for any node already rendered in "Current
+            # roadmap". A resolve call for such a node is redundant — log it
+            # so we can tell whether the prompt guidance is being followed.
+            # The resolve still runs; future work can decide whether to
+            # short-circuit once we see how often this fires.
+            handle_map_raw = session_context.get('roadmap_handle_map')
+            handle_map: dict[str, dict[str, str]] = (
+                handle_map_raw if isinstance(handle_map_raw, dict) else {}
+            )
+            handle_by_id: dict[str, str] = {}
+            redundant_handle: str | None = None
+            if handle_map:
+                normalized_label_lower = normalized_label.lower()
+                for handle_key, entry in handle_map.items():
+                    if not isinstance(entry, dict):
+                        continue
+                    entry_id = entry.get('id')
+                    if isinstance(entry_id, str) and entry_id:
+                        handle_by_id[entry_id] = handle_key
+                    entry_title = entry.get('title')
+                    entry_type = entry.get('type')
+                    if not isinstance(entry_title, str):
+                        continue
+                    if node_type is not None and entry_type != node_type:
+                        continue
+                    if self._normalize_query_text(entry_title).lower() == normalized_label_lower:
+                        redundant_handle = handle_key
+                        # Keep scanning so handle_by_id is fully populated.
+                if redundant_handle is not None:
+                    log_event(
+                        self._logger,
+                        'resolve_redundant_with_overview',
+                        settings=self._settings,
+                        trace_id=trace_id,
+                        tool_name=tool_name,
+                        overview_handle=redundant_handle,
+                        node_type=node_type,
+                        label_chars=len(label),
+                    )
             request_cache_key = self._build_resolve_request_cache_key(
                 roadmap_id=roadmap_id,
                 node_type=node_type,
@@ -704,6 +745,12 @@ class ContextQueryHandler(ToolHandlerBase):
                 result['matches'].append(payload)
             if selected_id:
                 result['node_id'] = selected_id
+                # Phase 2: if the resolved node is already in the roadmap
+                # overview, include its handle so the planner can reference it
+                # directly in future turns (and ideally skip resolve next time).
+                overview_handle = handle_by_id.get(selected_id)
+                if overview_handle is not None:
+                    result['overview_handle'] = overview_handle
             if selected_type:
                 result['node_type'] = selected_type
             if selected_title:

@@ -770,7 +770,7 @@ class AgentService:
             return
         if not auth_header or not session.roadmap_id:
             return
-        summary, fresh_revision_token = self._run_async_call(
+        summary, fresh_revision_token, handle_map = self._run_async_call(
             build_roadmap_overview_summary_helper(
                 nest_client=self._nest_client,
                 roadmap_id=session.roadmap_id,
@@ -781,6 +781,7 @@ class AgentService:
         if summary:
             session.metadata.roadmap_overview_summary = summary
             session.metadata.roadmap_overview_summary_fetched_at = _utcnow()
+            session.metadata.roadmap_handle_map = handle_map
             log_event(
                 self._logger,
                 'roadmap_overview_summary_loaded',
@@ -790,6 +791,7 @@ class AgentService:
                 session_id=session.session_id,
                 summary_chars=len(summary),
                 summary_lines=summary.count('\n') + 1,
+                handle_map_size=len(handle_map),
                 # Emit full summary so we can confirm post-commit freshness
                 # end-to-end without guessing from a 240-char preview.
                 summary_full=summary,

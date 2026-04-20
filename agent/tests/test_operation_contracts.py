@@ -7,7 +7,11 @@ from app.core.orchestration.shared.operation_contracts import (
     operation_validation_guidance,
     validate_operation_contract,
 )
-from app.core.tools.registry import parse_plan_tool_args
+from app.core.tools.registry import (
+    parse_plan_tool_args,
+    reset_active_handle_map,
+    set_active_handle_map,
+)
 from app.core.uuid_utils import is_uuid_like
 
 
@@ -515,6 +519,127 @@ class OperationContractsTests(unittest.TestCase):
         self.assertEqual(array_variant.get('items'), {'type': 'string'})
         self.assertEqual(array_variant.get('minItems'), 1)
         self.assertEqual(array_variant.get('maxItems'), 500)
+
+
+class HandleExpansionTests(unittest.TestCase):
+    """Verify that roadmap-overview handles (E1, E3.F2) are expanded to real
+    UUIDs before `RoadmapOperation` validation runs. Expansion is gated on the
+    ``_ACTIVE_HANDLE_MAP`` contextvar installed by the planner flow."""
+
+    _EPIC_1 = '123e4567-e89b-12d3-a456-426614174001'
+    _EPIC_2 = '123e4567-e89b-12d3-a456-426614174002'
+    _FEATURE_1 = '123e4567-e89b-12d3-a456-426614174101'
+    _FEATURE_2 = '123e4567-e89b-12d3-a456-426614174102'
+
+    def setUp(self) -> None:
+        self._handle_map = {
+            'E1': {'id': self._EPIC_1, 'type': 'epic', 'title': 'Alpha'},
+            'E2': {'id': self._EPIC_2, 'type': 'epic', 'title': 'Beta'},
+            'E1.F1': {'id': self._FEATURE_1, 'type': 'feature', 'title': 'Login'},
+            'E1.F2': {'id': self._FEATURE_2, 'type': 'feature', 'title': 'Signup'},
+        }
+        self._token = set_active_handle_map(self._handle_map)
+
+    def tearDown(self) -> None:
+        reset_active_handle_map(self._token)
+
+    def test_expands_single_node_id_handle(self) -> None:
+        args = {
+            'assistant_message': 'Delete epic.',
+            'operations': [
+                {'op': 'delete_node', 'node_type': 'epic', 'node_id': 'E1'},
+            ],
+        }
+        _, ops = parse_plan_tool_args(args)
+        self.assertEqual(ops[0].node_id, self._EPIC_1)
+
+    def test_expands_targets_bulk_delete(self) -> None:
+        args = {
+            'assistant_message': 'Delete all epics.',
+            'operations': [
+                {
+                    'op': 'delete_node',
+                    'node_type': 'epic',
+                    'targets': ['E1', 'E2'],
+                },
+            ],
+        }
+        _, ops = parse_plan_tool_args(args)
+        self.assertEqual(ops[0].targets, [self._EPIC_1, self._EPIC_2])
+
+    def test_expands_mixed_handles_and_uuids_in_targets(self) -> None:
+        # A raw UUID passes through untouched — this is the compatibility hinge
+        # that lets resolve_node_reference continue to work for nodes that
+        # aren't in the overview (truncated, large roadmaps).
+        args = {
+            'assistant_message': 'Delete mixed.',
+            'operations': [
+                {
+                    'op': 'delete_node',
+                    'node_type': 'epic',
+                    'targets': ['E1', self._EPIC_2],
+                },
+            ],
+        }
+        _, ops = parse_plan_tool_args(args)
+        self.assertEqual(ops[0].targets, [self._EPIC_1, self._EPIC_2])
+
+    def test_expands_feature_handle_in_parent_id(self) -> None:
+        args = {
+            'assistant_message': 'Add task under feature.',
+            'operations': [
+                {
+                    'op': 'add_task',
+                    'node_type': 'task',
+                    'parent_id': 'E1.F1',
+                    'temp_id': 'tmp-task-1',
+                    'data': {'title': 'New task'},
+                },
+            ],
+        }
+        _, ops = parse_plan_tool_args(args)
+        self.assertEqual(ops[0].parent_id, self._FEATURE_1)
+
+    def test_unknown_handle_is_left_unchanged_for_downstream_validation(self) -> None:
+        # Shape matches (E99 looks like a handle) but no such entry exists.
+        # Expander deliberately leaves the value unchanged so downstream
+        # ``validate_operation_contract`` surfaces a precise UUID-invalid
+        # reason, and so a coincidental user-supplied string that happens to
+        # match the handle shape isn't silently rewritten.
+        args = {
+            'assistant_message': 'Delete unknown.',
+            'operations': [
+                {'op': 'delete_node', 'node_type': 'epic', 'node_id': 'E99'},
+            ],
+        }
+        _, ops = parse_plan_tool_args(args)
+        self.assertEqual(ops[0].node_id, 'E99')
+        validation_error = validate_operation_contract(
+            ops,
+            is_uuid=lambda v: is_uuid_like(v),
+        )
+        self.assertIsNotNone(validation_error)
+        assert validation_error is not None
+        self.assertEqual(
+            validation_error.get('reason'),
+            'delete_node.node_id_invalid_uuid',
+        )
+
+    def test_no_handle_map_installed_is_passthrough(self) -> None:
+        # Guards against accidental cross-turn leakage: when no handle_map is
+        # active, a value that happens to match the handle shape is passed
+        # through so downstream validation (not the expander) decides its
+        # legitimacy.
+        reset_active_handle_map(self._token)  # undo setUp's set
+        self._token = set_active_handle_map(None)
+        args = {
+            'assistant_message': 'Delete.',
+            'operations': [
+                {'op': 'delete_node', 'node_type': 'epic', 'node_id': 'E1'},
+            ],
+        }
+        _, ops = parse_plan_tool_args(args)
+        self.assertEqual(ops[0].node_id, 'E1')
 
 
 if __name__ == '__main__':
