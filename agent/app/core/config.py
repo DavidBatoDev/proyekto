@@ -87,6 +87,14 @@ class Settings(BaseSettings):
         default=4000,
         alias='OPENAI_PLAN_MAX_TOKENS',
     )
+    # Plan-revision output is a tiny `revision_operations` patch, not a full
+    # proposed_hierarchy. The tighter ceiling is both a telemetry signal and
+    # a hard backstop: if the model forgets to emit ops and regresses to a
+    # full envelope, truncation kicks in before it burns 4000 tokens.
+    openai_plan_revision_max_tokens: int | None = Field(
+        default=1500,
+        alias='OPENAI_PLAN_REVISION_MAX_TOKENS',
+    )
     openai_classifier_model: str = Field(
         default='gpt-4o-mini',
         alias='OPENAI_CLASSIFIER_MODEL',

@@ -35,6 +35,7 @@ IntentType = Literal[
     'roadmap_query',
     'roadmap_plan',
     'roadmap_edit',
+    'plan_revision',
     'confirm_action',
     'unclear',
     'question',
@@ -374,6 +375,12 @@ class PendingPlan(BaseModel):
     # session — past that, the replay prompt forces `plan_ready`.
     current_questions: list[PendingPlanQuestion] = Field(default_factory=list)
     answers: list[PendingPlanAnswer] = Field(default_factory=list)
+    # Revision counter: 0 on initial proposal, incremented each time the user
+    # asks the planner to revise the same plan. Plan_id is preserved across
+    # revisions so the web can re-render the same card rather than spawning a
+    # new one; revision_count lets telemetry and the prompt distinguish
+    # "revision 3 of the same plan" from "three unrelated plans".
+    revision_count: int = 0
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 

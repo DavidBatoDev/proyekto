@@ -26,6 +26,10 @@ from app.core.contracts.sessions import (
     PendingPlanQuestion,
 )
 from app.core.logging_utils import log_event
+from app.core.orchestration.context.pending_plan_revision_applier import (
+    apply_revision_operations,
+    extract_metadata_updates,
+)
 
 
 def _utcnow() -> datetime:
@@ -48,10 +52,17 @@ def record_pending_plan_from_planner_output(
     logger: logging.Logger,
     settings: Any,
     planning_turn_id: str | None = None,
+    intent_type: str | None = None,
 ) -> PendingPlan | None:
     """Dispatch on the planner envelope's `status` key:
       - `needs_answer` → store the clarifier question, status='awaiting_answers'
       - `plan_ready` (or legacy envelopes without status) → store the plan
+
+    When `intent_type == 'plan_revision'` and a prior proposed plan exists,
+    the new plan inherits its `plan_id`, bumps `revision_count`, and emits a
+    `pending_plan_revised` telemetry event — distinguishing a user-requested
+    revision from the natural `awaiting_answers → proposed` transition that
+    happens when a multi-turn clarifier finally produces a final plan.
 
     Returns the persisted `PendingPlan` on success, `None` when the payload is
     missing or fails validation.
@@ -90,6 +101,7 @@ def record_pending_plan_from_planner_output(
         logger=logger,
         settings=settings,
         planning_turn_id=planning_turn_id,
+        intent_type=intent_type,
     )
 
 
@@ -247,6 +259,7 @@ def _record_pending_plan_final(
     logger: logging.Logger,
     settings: Any,
     planning_turn_id: str | None,
+    intent_type: str | None = None,
 ) -> PendingPlan | None:
     payload_for_model = dict(payload)
     payload_for_model.pop('status', None)
@@ -255,12 +268,92 @@ def _record_pending_plan_final(
     payload_for_model.setdefault('goal', payload_for_model.get('goal') or user_message)
     if planning_turn_id is not None:
         payload_for_model.setdefault('planning_turn_id', planning_turn_id)
+
+    existing = session.metadata.pending_plan
+    # Compact-revision path: when the planner emits `revision_operations`
+    # against a prior proposed plan, merge them into that plan's hierarchy
+    # server-side instead of relying on the LLM to regurgitate the full
+    # proposed_hierarchy. This is the structural optimization for the
+    # plan_revision lane (see agent/logs.txt turn 3 for the baseline —
+    # 3340 output tokens to rename one epic). The ops path is an
+    # optimization, not a replacement: if ops fail to resolve the payload
+    # MUST still carry a full proposed_hierarchy as ground truth.
+    revision_ops_raw = payload_for_model.pop('revision_operations', None)
+    revision_ops_applied = False
+    revision_ops_metadata: dict[str, Any] = {}
+    if (
+        isinstance(revision_ops_raw, list)
+        and revision_ops_raw
+        and existing is not None
+        and existing.status == 'proposed'
+        and intent_type == 'plan_revision'
+    ):
+        new_hierarchy, unresolved = apply_revision_operations(
+            prior_hierarchy=existing.proposed_hierarchy,
+            operations=revision_ops_raw,
+        )
+        total_ops = len(revision_ops_raw)
+        unresolved_count = len(unresolved)
+        if new_hierarchy and unresolved_count < total_ops:
+            payload_for_model['proposed_hierarchy'] = [
+                epic.model_dump(mode='json', exclude_none=True)
+                for epic in new_hierarchy
+            ]
+            revision_ops_metadata = extract_metadata_updates(revision_ops_raw)
+            for field in ('summary', 'goal', 'rationale', 'risks', 'next_steps'):
+                if field in revision_ops_metadata:
+                    payload_for_model[field] = revision_ops_metadata[field]
+            revision_ops_applied = True
+            log_event(
+                logger,
+                'pending_plan_revision_ops_applied',
+                settings=settings,
+                trace_id=trace_id,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                plan_id=existing.plan_id,
+                ops_count=total_ops,
+                unresolved_count=unresolved_count,
+                prior_epic_count=len(existing.proposed_hierarchy),
+            )
+        else:
+            log_event(
+                logger,
+                'pending_plan_revision_ops_fell_back',
+                settings=settings,
+                level=logging.WARNING,
+                trace_id=trace_id,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                plan_id=existing.plan_id,
+                ops_count=total_ops,
+                unresolved_count=unresolved_count,
+                reason='all_ops_unresolved',
+            )
+    elif (
+        isinstance(revision_ops_raw, list)
+        and revision_ops_raw
+        and intent_type == 'plan_revision'
+    ):
+        log_event(
+            logger,
+            'pending_plan_revision_ops_fell_back',
+            settings=settings,
+            level=logging.WARNING,
+            trace_id=trace_id,
+            session_id=session.session_id,
+            roadmap_id=session.roadmap_id,
+            plan_id=existing.plan_id if existing is not None else None,
+            ops_count=len(revision_ops_raw),
+            unresolved_count=len(revision_ops_raw),
+            reason='no_prior_proposed_plan',
+        )
+
     allowed_keys = set(PendingPlan.model_fields.keys())
     payload_for_model = {
         key: value for key, value in payload_for_model.items() if key in allowed_keys
     }
     # Preserve accumulated answers so the UI can keep showing the Q&A trail.
-    existing = session.metadata.pending_plan
     if existing is not None and existing.answers and not payload_for_model.get('answers'):
         payload_for_model['answers'] = [
             answer.model_dump(mode='json', exclude_none=True)
@@ -305,18 +398,35 @@ def _record_pending_plan_final(
     plan.status = 'proposed'
     plan.updated_at = _utcnow()
 
+    # Plan continuity across turns splits into two cases, both of which
+    # preserve `plan_id` so the web re-renders the same card:
+    #   1. awaiting_answers → proposed: the clarifier finished and produced
+    #      the final plan. Not a revision — revision_count stays at 0.
+    #   2. proposed → proposed with intent_type == 'plan_revision': the user
+    #      asked to change the finalized plan. Bump revision_count and fire
+    #      the `pending_plan_revised` telemetry event so downstream metrics
+    #      can distinguish "rev 3 of plan X" from "three unrelated plans".
     if existing is not None and existing.status in {'proposed', 'awaiting_answers'}:
-        log_event(
-            logger,
-            'pending_plan_superseded',
-            settings=settings,
-            trace_id=trace_id,
-            session_id=session.session_id,
-            roadmap_id=session.roadmap_id,
-            previous_plan_id=existing.plan_id,
-            previous_status=existing.status,
-            new_plan_id=plan.plan_id,
+        plan.plan_id = existing.plan_id
+        is_user_requested_revision = (
+            existing.status == 'proposed'
+            and intent_type == 'plan_revision'
         )
+        if is_user_requested_revision:
+            plan.revision_count = (existing.revision_count or 0) + 1
+            log_event(
+                logger,
+                'pending_plan_revised',
+                settings=settings,
+                trace_id=trace_id,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                plan_id=plan.plan_id,
+                previous_status=existing.status,
+                revision_count=plan.revision_count,
+            )
+        else:
+            plan.revision_count = existing.revision_count or 0
 
     session.metadata.pending_plan = plan
     log_event(
@@ -336,6 +446,8 @@ def _record_pending_plan_final(
         ),
         answers_incorporated=len(plan.answers),
         base_revision=plan.base_revision,
+        revision_count=plan.revision_count,
+        revision_ops_applied=revision_ops_applied,
     )
     return plan
 

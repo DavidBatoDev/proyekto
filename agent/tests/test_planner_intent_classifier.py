@@ -80,5 +80,47 @@ class PlannerIntentClassifierTests(unittest.TestCase):
         )
 
 
+class IsPlanRevisionMessageTests(unittest.TestCase):
+    def test_rename_verb_counts(self) -> None:
+        self.assertTrue(
+            planner_intent_classifier.is_plan_revision_message(
+                'rename the last epic to something better'
+            )
+        )
+
+    def test_add_verb_counts(self) -> None:
+        self.assertTrue(
+            planner_intent_classifier.is_plan_revision_message(
+                'add a devops epic before the last one'
+            )
+        )
+
+    def test_reorder_verb_counts(self) -> None:
+        self.assertTrue(
+            planner_intent_classifier.is_plan_revision_message(
+                'reorder the epics so onboarding comes first'
+            )
+        )
+
+    def test_plain_chat_does_not_count(self) -> None:
+        self.assertFalse(
+            planner_intent_classifier.is_plan_revision_message(
+                'thanks, this looks good'
+            )
+        )
+
+    def test_empty_message_does_not_count(self) -> None:
+        self.assertFalse(planner_intent_classifier.is_plan_revision_message(''))
+
+    def test_confirm_phrase_does_not_count_without_edit_verb(self) -> None:
+        # Confirmation is handled upstream by `looks_like_confirm_action`; this
+        # detector only looks at whether the user wants to *change* something.
+        self.assertFalse(
+            planner_intent_classifier.is_plan_revision_message(
+                'yes go ahead'
+            )
+        )
+
+
 if __name__ == '__main__':
     unittest.main()

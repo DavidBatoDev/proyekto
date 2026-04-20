@@ -77,6 +77,43 @@ def looks_like_roadmap_plan_request(normalized_text: str) -> bool:
     )
 
 
+# Verbs that unambiguously target a plan's structure rather than the live
+# roadmap — either they're structural (add/remove/rename/reorder/merge/split)
+# or they explicitly reference the plan itself. Kept in sync with
+# `_HEURISTIC_ACTION_VERB_PATTERN` where they overlap.
+_PLAN_REVISION_VERB_PATTERN = (
+    r'(?:add|create|insert|append|include|remove|drop|delete|'
+    r'rename|retitle|change|update|edit|revise|modify|tweak|adjust|swap|'
+    r'replace|merge|split|break(?:\s+down)?|combine|consolidate|reorder|'
+    r'move|shift|reorganize|reorganise|simplify|shorten|expand|extend|'
+    r'shrink|tighten)'
+)
+
+_PLAN_REFERENCE_PATTERN = (
+    r'\b(?:the\s+)?(?:plan|proposal|proposed|draft|outline|roadmap)\b'
+)
+
+
+def is_plan_revision_message(normalized_text: str) -> bool:
+    """Return True when the message reads like a request to modify an
+    existing plan (as opposed to confirming it or creating a brand-new one).
+
+    This is a syntactic signal only — the caller must also verify a pending
+    plan exists in the session before promoting the intent. Confirmation
+    phrases are excluded upstream by `looks_like_confirm_action`.
+    """
+
+    text = normalized_text.strip().lower()
+    if not text:
+        return False
+    if not re.search(rf'\b{_PLAN_REVISION_VERB_PATTERN}\b', text):
+        return False
+    # Short edit messages without explicit plan references still count — when
+    # a pending plan exists the caller uses that as the disambiguator. We
+    # keep this helper permissive on purpose.
+    return True
+
+
 def is_roadmap_question(
     *,
     intent_type: IntentType,

@@ -149,6 +149,7 @@ class PromptManager:
 
         pending_plan_section = _format_pending_plan_section(
             context.get('pending_plan'),
+            intent_type=context.get('intent_type'),
         )
 
         context_for_json = {
@@ -203,10 +204,17 @@ class PromptManager:
         return self.render('intent_classifier', session_id=session_id)
 
 
-def _format_pending_plan_section(value: Any) -> str | None:
+def _format_pending_plan_section(
+    value: Any,
+    *,
+    intent_type: Any = None,
+) -> str | None:
     """Render `session_context['pending_plan']` as a prose section so a
     follow-up `confirm_action` turn sees the plan verbatim and can convert it
-    into operations via the edit lane.
+    into operations via the edit lane. When the current turn is a
+    `plan_revision`, the header switches to a revision-specific instruction
+    so the LLM re-emits a full plan envelope with the user's changes folded
+    in instead of trying to route the edit through the live-roadmap lane.
     """
     if not isinstance(value, dict) or not value:
         return None
@@ -222,11 +230,24 @@ def _format_pending_plan_section(value: Any) -> str | None:
     body = format_pending_plan_section(plan)
     if not body:
         return None
-    header = (
-        'Pending plan awaiting user confirmation (if the user affirms, convert '
-        'this plan into concrete operations via the edit lane — resolve existing '
-        'nodes by title and create missing ones; do not ask for re-confirmation):'
-    )
+    if intent_type == 'plan_revision':
+        header = (
+            "Plan revision in progress — the user's current message is a "
+            "requested change to THIS prior proposal (the live roadmap is "
+            "not yet involved). **STRONGLY PREFER Envelope C (`plan_ready` "
+            "with `revision_operations`) over restating the full "
+            "`proposed_hierarchy`.** Reference nodes by the exact titles "
+            "shown below; the server merges your ops into this plan. Only "
+            "fall back to Envelope B (full hierarchy) when the change is "
+            "so sweeping that ops would outnumber the unchanged nodes. Do "
+            "not re-ask clarifier questions already answered above:"
+        )
+    else:
+        header = (
+            'Pending plan awaiting user confirmation (if the user affirms, convert '
+            'this plan into concrete operations via the edit lane — resolve existing '
+            'nodes by title and create missing ones; do not ask for re-confirmation):'
+        )
     return f'{header}\n{body}'
 
 

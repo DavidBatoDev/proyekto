@@ -7,10 +7,31 @@ from typing import Any, Callable
 
 from app.core.llm.context.context_answer_service import ContextAnswerService
 from app.core.llm.outage import build_outage_clarifier_message
+from app.core.llm.planning import planner_intent_classifier
 from app.core.llm.providers import ProviderAdapterError
 from app.core.llm.react.react_executor import map_provider_error_to_stop_reason
 from app.core.logging_utils import log_event
 from app.core.tools.registry import get_context_tools
+
+
+# Matches the totals line of the roadmap overview summary, e.g.
+# "0 epics · 0 features · 0 tasks". Stable format produced by
+# `format_overview_summary` in context/roadmap_overview_summarizer.py.
+_OVERVIEW_EMPTY_RE = re.compile(r'\b0\s+epics?\b', re.IGNORECASE)
+
+
+def _live_roadmap_is_empty(summary: Any) -> bool:
+    """True when the live roadmap has 0 epics (or when we have no overview
+    at all — a missing overview is treated as "no targets yet" for the
+    purposes of plan-revision promotion). Used by the classifier to decide
+    whether a pending plan is the only plausible target for an edit
+    request, or whether the live roadmap also has candidates that would
+    make the user's message genuinely ambiguous.
+    """
+
+    if not isinstance(summary, str) or not summary.strip():
+        return True
+    return bool(_OVERVIEW_EMPTY_RE.search(summary))
 
 
 def plan_with_langgraph(
@@ -183,7 +204,48 @@ def classify_intent(
     if classifier_intent in {'general_question', 'question', 'unclear'} and is_roadmap_question:
         routed_intent = 'roadmap_query'
 
-    if routed_intent != 'roadmap_edit':
+    # Plan-revision promotion: only fires when the pending plan is the ONLY
+    # plausible target for the user's edit — i.e. the live roadmap is empty.
+    # When the live roadmap is populated too, we intentionally stay on
+    # `roadmap_edit` so the LLM can see BOTH sources (live roadmap overview
+    # + pending plan section, both already injected into the edit prompt)
+    # and either pick the unambiguous match or emit a disambiguation
+    # clarifier. That's the "LLM-driven disambiguation" path — it avoids
+    # forcing a choice from a heuristic that can't actually tell which
+    # "second epic" the user meant.
+    #
+    # Exclusions — these LOOK edit-shaped but are plan-completion flows, not
+    # revisions:
+    #   - Sentinel messages (`__plan_answers__`, `__clarifier_answer__`,
+    #     `__plan_decision__`). The pre-dispatcher routes these to their own
+    #     state machines; classifying them as plan_revision steals the turn.
+    #   - `classifier_source == 'plan_answers_replay'`: the pre-dispatcher
+    #     synthesized this classification as part of multi-turn clarifier
+    #     replay. The replayed user message often contains edit verbs (e.g.
+    #     "change", "update") that came from the clarifier answers themselves,
+    #     not from the user's original phrasing.
+    #   - Mid-clarifier plans (status=='awaiting_answers'): there is no
+    #     finalized hierarchy to revise yet; let the plan lane finish first.
+    pending_plan_summary = session_context.get('pending_plan')
+    plan_revision_promoted = False
+    is_sentinel_message = isinstance(user_message, str) and user_message.startswith('__')
+    live_roadmap_empty = _live_roadmap_is_empty(
+        session_context.get('roadmap_overview_summary'),
+    )
+    if (
+        isinstance(pending_plan_summary, dict)
+        and pending_plan_summary.get('status') == 'proposed'
+        and routed_intent in {'roadmap_edit', 'roadmap_plan', 'roadmap_query'}
+        and classifier_source != 'plan_answers_replay'
+        and not is_sentinel_message
+        and live_roadmap_empty
+        and planner_intent_classifier.is_plan_revision_message(user_message)
+    ):
+        routed_intent = 'plan_revision'
+        plan_revision_promoted = True
+        is_roadmap_question = False
+
+    if routed_intent not in {'roadmap_edit', 'plan_revision'}:
         classifier_sub_intent = None
 
     if question_style_edit_promoted:
@@ -202,6 +264,7 @@ def classify_intent(
         is_roadmap_question=is_roadmap_question,
         parse_mode=parse_mode,
         question_style_edit_promoted=question_style_edit_promoted,
+        plan_revision_promoted=plan_revision_promoted,
         classifier_source=classifier_source,
         classifier_model=classifier_model,
         classifier_sub_intent=classifier_sub_intent,
@@ -218,6 +281,7 @@ def classify_intent(
         'provider_error_code': None,
         'is_roadmap_question': is_roadmap_question,
         'question_style_edit_promoted': question_style_edit_promoted,
+        'plan_revision_promoted': plan_revision_promoted,
         'classifier_sub_intent': classifier_sub_intent,
         'classifier_bulk_scope': classifier_bulk_scope,
         'classifier_source': classifier_source,
@@ -253,7 +317,13 @@ def compose_dynamic_system_prompt(
         mode = 'edit'
         response_mode = 'edit_plan'
         tool_mode = 'edit_plan'
-    elif intent_type == 'roadmap_plan':
+    elif intent_type in {'roadmap_plan', 'plan_revision'}:
+        # plan_revision reuses the plan lane so the planner re-emits a full
+        # envelope via `record_pending_plan_from_planner_output`, which
+        # already supports plan_id preservation + revision_count bumps
+        # downstream. The pending plan is injected into the system prompt
+        # via `_format_pending_plan_section`, giving the LLM the prior
+        # hierarchy to revise against.
         mode = 'plan'
         tool_mode = 'plan_only'
         plan_proposal_flag = bool(
@@ -749,8 +819,30 @@ def generate_plan_proposal(
             'plan_proposal_payload': payload,
         }
 
+    # Revision turns emit a compact `revision_operations` patch, not a full
+    # proposed_hierarchy. Tighten the ceiling both as a signal to the model
+    # ("keep your output small") and as a hard backstop: if it regresses to
+    # a full envelope the response is truncated before it burns 4000 tokens.
+    #
+    # Defense-in-depth: only engage the tighter ceiling when there is an
+    # actual proposed plan to diff against. Earlier traces showed the
+    # classifier misfiring on `__plan_answers__` replays (no prior proposed
+    # plan in context) — the tighter ceiling then truncated the natural
+    # plan-finalization output at 1500 tokens, producing `empty_response`.
+    _session_ctx_for_tokens = state.get('session_context') or {}
+    _pending_for_tokens = _session_ctx_for_tokens.get('pending_plan')
+    _prior_proposed_plan_present = (
+        isinstance(_pending_for_tokens, dict)
+        and _pending_for_tokens.get('status') == 'proposed'
+    )
+    is_plan_revision_turn = (
+        state.get('intent_type') == 'plan_revision'
+        and _prior_proposed_plan_present
+    )
     plan_max_tokens = getattr(
-        planner._settings, 'openai_plan_max_tokens', None
+        planner._settings,
+        'openai_plan_revision_max_tokens' if is_plan_revision_turn else 'openai_plan_max_tokens',
+        None,
     )
     try:
         # Both paths go through answer_with_tools — same battle-tested

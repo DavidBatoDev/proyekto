@@ -582,5 +582,126 @@ class TerminalEnvelopeRejectionsTests(unittest.TestCase):
         self.assertEqual(plan.answers[0].selected_option, 'A')
 
 
+class PlanRevisionContinuityTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._logger = logging.getLogger('test.pending_plan_manager.revision')
+
+    def _seed_proposed_plan(self, session: AgentSession) -> PendingPlan:
+        plan = record_pending_plan_from_planner_output(
+            session,
+            payload=_valid_payload(),
+            user_message='Plan a travel booking app',
+            trace_id='trace-revision',
+            logger=self._logger,
+            settings=None,
+        )
+        assert plan is not None
+        self.assertEqual(plan.revision_count, 0)
+        return plan
+
+    def test_plan_revision_preserves_plan_id_and_bumps_revision_count(self) -> None:
+        session = _session()
+        original = self._seed_proposed_plan(session)
+
+        revised_payload = _valid_payload()
+        # Rename an epic to simulate "revise the last epic" instruction.
+        revised_payload['proposed_hierarchy'][-1] = {'title': 'Post-booking support'}
+
+        revised = record_pending_plan_from_planner_output(
+            session,
+            payload=revised_payload,
+            user_message='Rename the last epic to Post-booking support',
+            trace_id='trace-revision-2',
+            logger=self._logger,
+            settings=None,
+            intent_type='plan_revision',
+        )
+        self.assertIsNotNone(revised)
+        assert revised is not None
+        self.assertEqual(revised.plan_id, original.plan_id)
+        self.assertEqual(revised.revision_count, 1)
+        self.assertEqual(revised.proposed_hierarchy[-1].title, 'Post-booking support')
+
+    def test_plan_revision_bumps_revision_count_monotonically(self) -> None:
+        session = _session()
+        original = self._seed_proposed_plan(session)
+        first_revision = record_pending_plan_from_planner_output(
+            session,
+            payload=_valid_payload(),
+            user_message='revise 1',
+            trace_id=None,
+            logger=self._logger,
+            settings=None,
+            intent_type='plan_revision',
+        )
+        assert first_revision is not None
+        second_revision = record_pending_plan_from_planner_output(
+            session,
+            payload=_valid_payload(),
+            user_message='revise 2',
+            trace_id=None,
+            logger=self._logger,
+            settings=None,
+            intent_type='plan_revision',
+        )
+        assert second_revision is not None
+        self.assertEqual(first_revision.revision_count, 1)
+        self.assertEqual(second_revision.revision_count, 2)
+        self.assertEqual(second_revision.plan_id, original.plan_id)
+
+    def test_awaiting_answers_to_proposed_does_not_bump_revision_count(self) -> None:
+        """A clarifier finishing is not a revision — preserve plan_id but
+        leave revision_count at zero so telemetry does not double-count."""
+        session = _session()
+        needs_answer_payload = {
+            'status': 'needs_answer',
+            'questions': [
+                {
+                    'id': 'scope',
+                    'question': 'What scope?',
+                    'options': ['A', 'B'],
+                }
+            ],
+        }
+        original = record_pending_plan_from_planner_output(
+            session,
+            payload=needs_answer_payload,
+            user_message='Plan a travel booking app',
+            trace_id=None,
+            logger=self._logger,
+            settings=None,
+        )
+        assert original is not None
+        self.assertEqual(original.status, 'awaiting_answers')
+
+        finalized = record_pending_plan_from_planner_output(
+            session,
+            payload=_valid_payload(),
+            user_message='Plan a travel booking app',
+            trace_id=None,
+            logger=self._logger,
+            settings=None,
+            intent_type='roadmap_plan',
+        )
+        assert finalized is not None
+        self.assertEqual(finalized.status, 'proposed')
+        self.assertEqual(finalized.plan_id, original.plan_id)
+        self.assertEqual(finalized.revision_count, 0)
+
+    def test_no_prior_plan_starts_revision_count_at_zero(self) -> None:
+        session = _session()
+        plan = record_pending_plan_from_planner_output(
+            session,
+            payload=_valid_payload(),
+            user_message='fresh plan',
+            trace_id=None,
+            logger=self._logger,
+            settings=None,
+            intent_type='plan_revision',  # user-requested revision, but no prior plan
+        )
+        assert plan is not None
+        self.assertEqual(plan.revision_count, 0)
+
+
 if __name__ == '__main__':
     unittest.main()

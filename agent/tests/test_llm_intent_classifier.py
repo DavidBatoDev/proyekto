@@ -336,6 +336,85 @@ class ClassifyIntentNodeTests(unittest.TestCase):
         self.assertEqual(result['parse_mode'], 'deterministic_edit_continuation_override')
         self.assertEqual(planner._classify_calls, 0)
 
+    def test_edit_with_pending_plan_is_promoted_to_plan_revision(self) -> None:
+        """Regression for the "rename the last epic" log trace: when a
+        pending plan is in status `proposed` and the user sends an
+        edit-shaped message, the classifier must route to plan_revision
+        instead of running the edit lane against an empty live roadmap."""
+        planner = _LangGraphPlannerStub()
+        cached = {
+            'intent_type': 'roadmap_edit',
+            'sub_intent': 'rename_only',
+            'rationale': '',
+            'model': 'gpt-4o-mini',
+            'source': 'llm',
+            'fallback_reason': None,
+            'tokens_input': 5,
+            'tokens_output': 1,
+            'tokens_total': 6,
+            'elapsed_ms': 42,
+        }
+        state = {
+            'user_message': 'rename the last epic to something better',
+            'session_context': {
+                '_classifier_result': cached,
+                'pending_plan': {'status': 'proposed', 'plan_id': 'plan-1'},
+            },
+        }
+        result = planner_execution_flow.classify_intent(planner, state)
+        self.assertEqual(result['intent_type'], 'plan_revision')
+        self.assertTrue(result['plan_revision_promoted'])
+        # Sub-intent is retained on the revision lane so downstream telemetry
+        # and any scoped-tool logic can still see the RENAME flavor.
+        self.assertEqual(result['classifier_sub_intent'], 'rename_only')
+
+    def test_plan_revision_promotion_skipped_without_pending_plan(self) -> None:
+        planner = _LangGraphPlannerStub()
+        state = {
+            'user_message': 'rename the last epic to something better',
+            'session_context': {},
+        }
+        result = planner_execution_flow.classify_intent(planner, state)
+        self.assertEqual(result['intent_type'], 'roadmap_edit')
+        self.assertFalse(result.get('plan_revision_promoted', False))
+
+    def test_plan_revision_promotion_skipped_when_plan_already_confirmed(self) -> None:
+        planner = _LangGraphPlannerStub()
+        state = {
+            'user_message': 'rename the last epic',
+            'session_context': {
+                'pending_plan': {'status': 'confirmed', 'plan_id': 'plan-1'},
+            },
+        }
+        result = planner_execution_flow.classify_intent(planner, state)
+        self.assertEqual(result['intent_type'], 'roadmap_edit')
+
+    def test_confirm_action_is_not_promoted_to_plan_revision(self) -> None:
+        """A confirmation turn is the opposite of a revision — even with a
+        pending plan present it must not be promoted."""
+        planner = _LangGraphPlannerStub()
+        cached = {
+            'intent_type': 'confirm_action',
+            'sub_intent': None,
+            'rationale': '',
+            'model': 'gpt-4o-mini',
+            'source': 'llm',
+            'fallback_reason': None,
+            'tokens_input': 5,
+            'tokens_output': 1,
+            'tokens_total': 6,
+            'elapsed_ms': 10,
+        }
+        state = {
+            'user_message': 'yes go ahead',
+            'session_context': {
+                '_classifier_result': cached,
+                'pending_plan': {'status': 'proposed', 'plan_id': 'plan-1'},
+            },
+        }
+        result = planner_execution_flow.classify_intent(planner, state)
+        self.assertEqual(result['intent_type'], 'confirm_action')
+
 
 if __name__ == '__main__':
     unittest.main()

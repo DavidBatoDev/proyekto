@@ -13,6 +13,9 @@ from fastapi import HTTPException, status
 from app.core.contracts.sessions import AgentSession, PendingContextResolution
 from app.core.logging_utils import log_event
 from app.core.orchestration.shared.outcomes import MessagePlanningOutcome
+from app.core.orchestration.shared.tool_message_persistence import (
+    persist_tool_observations_as_messages,
+)
 from app.core.orchestration.planning.planning_phase_metrics import (
     read_react_loop_metrics,
     read_resolve_cache_metrics,
@@ -28,81 +31,6 @@ from app.core.orchestration.planning.planning_pre_dispatcher import (
 )
 from app.core.orchestration.planning.planning_result_dispatcher import dispatch_planning_result
 from app.core.orchestration.planning.staged_operations_applier import apply_planned_operations
-
-
-# Max bytes per persisted tool-result content. Keeps Redis payload growth
-# bounded on chatty tools (large resolver result sets). Truncation is
-# signaled with a trailing `...(+N)` marker so the LLM knows the content
-# was clipped.
-_TOOL_MESSAGE_CONTENT_MAX_BYTES = 4000
-
-
-def _truncate_tool_content(content: str) -> str:
-    if len(content) <= _TOOL_MESSAGE_CONTENT_MAX_BYTES:
-        return content
-    overflow = len(content) - _TOOL_MESSAGE_CONTENT_MAX_BYTES
-    return f'{content[: _TOOL_MESSAGE_CONTENT_MAX_BYTES]}...(+{overflow} bytes truncated)'
-
-
-def _persist_tool_observations_as_messages(
-    *,
-    store: Any,
-    session: AgentSession,
-    observations: list[dict[str, Any]],
-) -> None:
-    """Append the react-loop's tool calls + results to `session.messages`
-    as structured LangChain-shaped pairs: one assistant message carrying
-    `tool_calls=[{id, name, args}]` (LangChain's canonical shape, not the
-    OpenAI wire shape) followed by one `role='tool'` message with the
-    serialized result and matching `tool_call_id`.
-
-    The LangChain `AIMessage.tool_calls` validator expects
-    `{name, args, id}` — not `{id, type, function: {...}}`. LangChain
-    converts to the OpenAI wire shape internally when the message is
-    serialized for the provider. This is what replaces the
-    `prior_tool_observations` band-aid — the history builder now
-    reconstructs the full prior conversation rather than a user-role
-    text hint.
-
-    Synthetic uuid ids are fine: OpenAI's only constraint is that each
-    `tool_call_id` in the conversation matches an id in a preceding
-    assistant `tool_calls` list. We emit both sides so the invariant holds.
-    """
-
-    if not observations:
-        return
-    for observation in observations:
-        if not isinstance(observation, dict):
-            continue
-        tool_name = observation.get('tool_name')
-        if not isinstance(tool_name, str) or not tool_name.strip():
-            continue
-        raw_args = observation.get('args') or {}
-        args = raw_args if isinstance(raw_args, dict) else {}
-        result = observation.get('result')
-        tool_call_id = f'call_{uuid.uuid4().hex[:12]}'
-        store.append_message(
-            session,
-            'assistant',
-            '',
-            tool_calls=[
-                {
-                    'id': tool_call_id,
-                    'name': tool_name,
-                    'args': args,
-                }
-            ],
-        )
-        try:
-            result_json = json.dumps(result, default=str)
-        except (TypeError, ValueError):
-            result_json = '{}'
-        store.append_message(
-            session,
-            'tool',
-            _truncate_tool_content(result_json),
-            tool_call_id=tool_call_id,
-        )
 
 
 # Clarifier reasons where the user MUST pick an existing option (resolver
@@ -527,7 +455,7 @@ def plan_message(
     deterministic_create_fastpath_skipped = False
 
     self._store.append_message(session, 'user', user_message)
-    _persist_tool_observations_as_messages(
+    persist_tool_observations_as_messages(
         store=self._store,
         session=session,
         observations=getattr(planning, 'tool_observations', None) or [],
@@ -543,6 +471,7 @@ def plan_message(
             trace_id=trace_id,
             logger=self._logger,
             settings=self._settings,
+            intent_type=planning.intent_type,
         )
     else:
         apply_result = apply_planned_operations(

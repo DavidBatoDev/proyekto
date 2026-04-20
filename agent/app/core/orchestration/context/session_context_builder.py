@@ -91,7 +91,8 @@ def build_session_context(
             session.metadata.pending_plan.model_dump(mode='json', exclude_none=True)
             if (
                 session.metadata.pending_plan is not None
-                and session.metadata.pending_plan.status == 'proposed'
+                and session.metadata.pending_plan.status
+                in {'proposed', 'awaiting_answers'}
             )
             else None
         ),
