@@ -137,6 +137,10 @@ class AppliedChange(BaseModel):
     change_to: dict[str, Any] = Field(default_factory=dict)
     title: str | None = None
     committed_at: datetime = Field(default_factory=_utcnow)
+    # Backend change_id the entry was produced by. Lets discard_session_flow
+    # drop entries whose commit was reverted instead of leaving the prompt's
+    # "recent changes" section misrepresenting roadmap state.
+    change_id: str | None = None
 
 
 class PendingEditContext(BaseModel):

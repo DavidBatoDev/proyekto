@@ -33,10 +33,17 @@ def record_applied_changes_from_commit(
     if not isinstance(changes_raw, list):
         return 0
 
+    change_id_raw = commit_result.get('change_id')
+    change_id = (
+        change_id_raw.strip()
+        if isinstance(change_id_raw, str) and change_id_raw.strip()
+        else None
+    )
+
     committed_at = datetime.now(timezone.utc).replace(tzinfo=None)
     new_entries: list[AppliedChange] = []
     for change in changes_raw:
-        entry = _parse_change_entry(change, committed_at)
+        entry = _parse_change_entry(change, committed_at, change_id=change_id)
         if entry is not None:
             new_entries.append(entry)
 
@@ -50,7 +57,7 @@ def record_applied_changes_from_commit(
 
 
 def _parse_change_entry(
-    change: Any, committed_at: datetime,
+    change: Any, committed_at: datetime, *, change_id: str | None = None,
 ) -> AppliedChange | None:
     if not isinstance(change, dict):
         return None
@@ -91,6 +98,7 @@ def _parse_change_entry(
         change_to=dict(change_to),
         title=title,
         committed_at=committed_at,
+        change_id=change_id,
     )
 
 

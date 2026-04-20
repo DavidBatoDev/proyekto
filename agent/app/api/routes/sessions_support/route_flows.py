@@ -22,6 +22,9 @@ from app.core.contracts.sessions import (
     RollbackRequest,
 )
 from app.core.orchestration.agent_service import AgentService
+from app.core.orchestration.shared.tool_message_persistence import (
+    persist_tool_observations_as_messages,
+)
 from app.core.session_store import SessionStore
 from app.core.trace_context import bind as bind_trace_context_values
 
@@ -684,6 +687,58 @@ async def discard_session_flow(
     session.metadata.pending_context_resolution = None
     session.metadata.pending_edit_context = None
     session.metadata.pending_plan = None
+
+    # Drop recent_applied_changes entries that belong to any now-discarded
+    # commit. Without this, the system-prompt "recent changes" section would
+    # keep advertising nodes that were just reverted, confusing follow-up
+    # turns. Fall back to matching the primary discarded_change_id when
+    # the backend timeline does not echo cascade info.
+    discarded_change_ids: set[str] = {change_id}
+    for tl_change_id, tl_status in timeline_status.items():
+        if tl_status == 'discarded' and isinstance(tl_change_id, str) and tl_change_id.strip():
+            discarded_change_ids.add(tl_change_id)
+    reverted_changes_snapshot: list[dict[str, Any]] = []
+    remaining_recent_changes = []
+    for applied_change in session.metadata.recent_applied_changes or []:
+        applied_change_id = getattr(applied_change, 'change_id', None)
+        if isinstance(applied_change_id, str) and applied_change_id in discarded_change_ids:
+            reverted_changes_snapshot.append({
+                'node_id': applied_change.node_id,
+                'node_type': applied_change.node_type,
+                'change_type': applied_change.change_type,
+                'title': applied_change.title,
+            })
+            continue
+        remaining_recent_changes.append(applied_change)
+    session.metadata.recent_applied_changes = remaining_recent_changes
+
+    # Record the discard as a synthetic tool invocation on session.messages so
+    # the next LLM turn sees a structured "you undid change X" entry in prior
+    # history — the recent_applied_changes prompt section alone does not make
+    # the intent explicit enough for the model to always reason about it.
+    persist_tool_observations_as_messages(
+        store=store,
+        session=session,
+        observations=[
+            {
+                'tool_name': 'discard_commit',
+                'args': {
+                    'change_id': change_id,
+                    'source': 'user_discard',
+                },
+                'result': {
+                    'status': 'success',
+                    'discarded_change_id': change_id,
+                    'discarded_at': discarded_at.isoformat(),
+                    'also_discarded_change_ids': sorted(
+                        cid for cid in discarded_change_ids if cid != change_id
+                    ),
+                    'reverted_changes': reverted_changes_snapshot,
+                },
+            }
+        ],
+    )
+
     await run_store_call(store.update, session)
 
     staged_operations_count = len(session.operations)

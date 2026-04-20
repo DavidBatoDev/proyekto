@@ -102,6 +102,35 @@ class RecordAppliedChangesFromCommitTests(unittest.TestCase):
         )
         self.assertEqual(session.metadata.recent_applied_changes, [])
 
+    def test_populates_change_id_from_commit_result(self) -> None:
+        session = _session()
+        commit_result = {
+            'change_id': 'chg-abc-123',
+            'semantic_diff': {
+                'changes': [
+                    _title_change('epic-1', 'Old', 'New'),
+                    _title_change('epic-2', 'A', 'B'),
+                ],
+            },
+        }
+        record_applied_changes_from_commit(session, commit_result)
+        entries = session.metadata.recent_applied_changes
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[0].change_id, 'chg-abc-123')
+        self.assertEqual(entries[1].change_id, 'chg-abc-123')
+
+    def test_change_id_is_none_when_commit_result_omits_it(self) -> None:
+        session = _session()
+        commit_result = {
+            'semantic_diff': {
+                'changes': [_title_change('epic-1', 'Old', 'New')],
+            },
+        }
+        record_applied_changes_from_commit(session, commit_result)
+        self.assertIsNone(
+            session.metadata.recent_applied_changes[0].change_id,
+        )
+
     def test_normalizes_change_type_casing(self) -> None:
         session = _session()
         commit_result = {
