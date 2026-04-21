@@ -32,6 +32,7 @@ import {
   hasPermission,
   isPermissionsEmpty,
   normalizePermissions,
+  type PermissionPath,
   type ProjectMemberLike,
   type ProjectPermissions,
   resolvePermissionTemplateKey,
@@ -96,12 +97,14 @@ export class ProjectsService {
       templateKey === 'consultant_incubation'
     ) {
       normalized.time = {
+        view: true,
+        view_financial: true,
         log: true,
         edit_own: true,
         edit_team: true,
         approve: true,
         manage_rates: true,
-        view: true,
+        delete_logs: true,
       };
     }
 
@@ -197,20 +200,7 @@ export class ProjectsService {
   async assertProjectPermission(
     projectId: string,
     userId: string,
-    permission:
-      | 'members.manage'
-      | 'members.view'
-      | 'project.settings'
-      | 'roadmap.edit'
-      | 'roadmap.view_internal'
-      | 'roadmap.comment'
-      | 'roadmap.promote'
-      | 'time.log'
-      | 'time.edit_own'
-      | 'time.edit_team'
-      | 'time.approve'
-      | 'time.manage_rates'
-      | 'time.view',
+    permission: PermissionPath,
   ): Promise<void> {
     const project = await this.getProjectOrThrow(projectId);
 
@@ -236,21 +226,7 @@ export class ProjectsService {
   async assertProjectAnyPermission(
     projectId: string,
     userId: string,
-    permissionsToCheck: Array<
-      | 'members.manage'
-      | 'members.view'
-      | 'project.settings'
-      | 'roadmap.edit'
-      | 'roadmap.view_internal'
-      | 'roadmap.comment'
-      | 'roadmap.promote'
-      | 'time.log'
-      | 'time.edit_own'
-      | 'time.edit_team'
-      | 'time.approve'
-      | 'time.manage_rates'
-      | 'time.view'
-    >,
+    permissionsToCheck: Array<PermissionPath>,
   ): Promise<void> {
     const project = await this.getProjectOrThrow(projectId);
 

@@ -70,26 +70,70 @@ export interface ProjectMember {
 }
 
 export interface ProjectPermissions {
+  access: {
+    roadmap: boolean;
+    work_items: boolean;
+    team: boolean;
+    time: boolean;
+    chat: boolean;
+    resources: boolean;
+    project_settings: boolean;
+  };
   roadmap: {
     edit: boolean;
-    view_internal: boolean;
     comment: boolean;
     promote: boolean;
+    assign: boolean;
+    edit_metadata: boolean;
+    view_internal: boolean;
+    create_tasks: boolean;
+    edit_tasks: boolean;
+    share: boolean;
+    export: boolean;
+    dev_mode: boolean;
   };
   members: {
-    manage: boolean;
     view: boolean;
+    manage: boolean;
+    edit_permissions: boolean;
   };
   project: {
     settings: boolean;
+    edit_content: boolean;
+    view_internal_content: boolean;
   };
   time: {
+    view: boolean;
+    view_financial: boolean;
     log: boolean;
     edit_own: boolean;
     edit_team: boolean;
     approve: boolean;
     manage_rates: boolean;
+    delete_logs: boolean;
+  };
+  chat: {
+    view_channels: boolean;
+    send_messages: boolean;
+    create_channels: boolean;
+    manage_channels: boolean;
+    view_internal_channels: boolean;
+    mention_members: boolean;
+    share_files: boolean;
+    start_dm: boolean;
+    send_dm: boolean;
+    message_clients: boolean;
+    message_consultants: boolean;
+    message_freelancers: boolean;
+  };
+  resources: {
     view: boolean;
+    upload: boolean;
+    delete: boolean;
+  };
+  logs: {
+    view: boolean;
+    view_sensitive: boolean;
   };
 }
 

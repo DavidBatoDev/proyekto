@@ -122,12 +122,14 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     return {
       ...permissions,
       time: {
+        view: true,
+        view_financial: true,
         log: true,
         edit_own: true,
         edit_team: true,
         approve: true,
         manage_rates: true,
-        view: true,
+        delete_logs: true,
       },
     };
   }

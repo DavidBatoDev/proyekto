@@ -44,11 +44,17 @@ interface RowPermissions {
 function deriveViewerRole(
   userId: string | undefined,
   project: Project | null,
+  viewerMember?: ProjectMember | null,
 ): ViewerRole {
   if (!userId || !project) return "freelancer";
   // Edge-case: consultant === client → treat as consultant (full power)
   if (userId === project.consultant_id) return "consultant";
   if (userId === project.client_id) return "client";
+  // Fall back to the member record role for non-principal members who were
+  // explicitly promoted to consultant or client at the project level.
+  const memberRole = viewerMember?.role;
+  if (memberRole === "consultant") return "consultant";
+  if (memberRole === "client") return "client";
   return "freelancer";
 }
 
@@ -422,7 +428,8 @@ export function TeamPage({ projectId }: TeamPageProps) {
     );
   }
 
-  const viewerRole = deriveViewerRole(user?.id, project);
+  const viewerMember = members?.find((m) => m.user_id === user?.id) ?? null;
+  const viewerRole = deriveViewerRole(user?.id, project, viewerMember);
   const canManageMembers = Boolean(myPermissionsQuery.data?.members.manage);
   const canViewMembers = Boolean(
     myPermissionsQuery.data?.members.view || myPermissionsQuery.data?.members.manage,
