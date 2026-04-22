@@ -54,8 +54,11 @@ async function bootstrap() {
   // Global response interceptor (wraps all successful responses in { data: ... })
   app.useGlobalInterceptors(new ResponseInterceptor());
 
+  // Let Cloud Run's SIGTERM drain in-flight requests via Nest's shutdown hooks.
+  app.enableShutdownHooks();
+
   const port = config.get<number>('PORT', 3001);
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   console.log(`🚀 Backend running on http://localhost:${port}/api`);
 }
 bootstrap();
