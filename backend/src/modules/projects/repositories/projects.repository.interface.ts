@@ -73,6 +73,7 @@ export interface ProjectsRepository {
     userId: string,
     query?: ProjectInviteQueryDto,
   ): Promise<unknown[]>;
+  listProjectInvites(projectId: string): Promise<unknown[]>;
   respondInvite(
     userId: string,
     inviteId: string,
@@ -117,6 +118,11 @@ export interface ProjectsRepository {
     memberId: string,
     dto: UpdateProjectMemberPermissionsDto,
   ): Promise<unknown>;
+  updateRoleMemberPermissions(
+    projectId: string,
+    role: string,
+    permissions: ProjectPermissions,
+  ): Promise<void>;
   listProjectResources(projectId: string): Promise<ProjectResourcesPayload>;
   createProjectResourceFolder(
     projectId: string,

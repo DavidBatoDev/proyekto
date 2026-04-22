@@ -34,6 +34,7 @@ import {
   UpdateProjectMemberPermissionsDto,
   UpdateProjectResourceFolderDto,
   UpdateProjectResourceLinkDto,
+  UpdateRolePermissionsDto,
 } from './dto/project.dto';
 
 @Controller('projects')
@@ -236,6 +237,23 @@ export class ProjectsController {
     @Body() dto: RespondProjectInviteDto,
   ) {
     return this.projectsService.respondInvite(user.id, inviteId, dto);
+  }
+
+  @Get(':id/invites')
+  listProjectInvites(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.projectsService.listProjectInvites(user.id, id);
+  }
+
+  @Patch(':id/permissions/role')
+  updateRolePermissions(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateRolePermissionsDto,
+  ) {
+    return this.projectsService.updateRolePermissions(user.id, id, dto);
   }
 
   @Patch(':id/members/:memberId')

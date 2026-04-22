@@ -6,6 +6,7 @@ import {
   IsEnum,
   IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   IsUrl,
@@ -102,6 +103,14 @@ export class ProjectInviteQueryDto {
   @IsOptional()
   @IsUUID()
   project_id?: string;
+}
+
+export class UpdateRolePermissionsDto {
+  @IsIn(['consultant', 'client', 'member'])
+  role: string;
+
+  @IsObject()
+  permissions: Record<string, unknown>;
 }
 
 type ProjectStatus =

@@ -53,6 +53,7 @@ import { Route as ProjectProjectIdWorkItemsRoadmapIdRouteImport } from './routes
 import { Route as ProjectProjectIdTimeTeamLogsRouteImport } from './routes/project/$projectId/time/team-logs'
 import { Route as ProjectProjectIdTimeMyLogsRouteImport } from './routes/project/$projectId/time/my-logs'
 import { Route as ProjectProjectIdSettingsTeamRouteImport } from './routes/project/$projectId/settings/team'
+import { Route as ProjectProjectIdSettingsPermissionsRouteImport } from './routes/project/$projectId/settings/permissions'
 import { Route as ProjectProjectIdSettingsGeneralRouteImport } from './routes/project/$projectId/settings/general'
 import { Route as ProjectProjectIdRoadmapCreateRouteImport } from './routes/project/$projectId/roadmap/create'
 import { Route as ProjectProjectIdRoadmapRoadmapIdRouteImport } from './routes/project/$projectId/roadmap/$roadmapId'
@@ -289,6 +290,12 @@ const ProjectProjectIdSettingsTeamRoute =
     path: '/settings/team',
     getParentRoute: () => ProjectProjectIdRoute,
   } as any)
+const ProjectProjectIdSettingsPermissionsRoute =
+  ProjectProjectIdSettingsPermissionsRouteImport.update({
+    id: '/settings/permissions',
+    path: '/settings/permissions',
+    getParentRoute: () => ProjectProjectIdRoute,
+  } as any)
 const ProjectProjectIdSettingsGeneralRoute =
   ProjectProjectIdSettingsGeneralRouteImport.update({
     id: '/settings/general',
@@ -363,6 +370,7 @@ export interface FileRoutesByFullPath {
   '/project/$projectId/roadmap/$roadmapId': typeof ProjectProjectIdRoadmapRoadmapIdRoute
   '/project/$projectId/roadmap/create': typeof ProjectProjectIdRoadmapCreateRoute
   '/project/$projectId/settings/general': typeof ProjectProjectIdSettingsGeneralRoute
+  '/project/$projectId/settings/permissions': typeof ProjectProjectIdSettingsPermissionsRoute
   '/project/$projectId/settings/team': typeof ProjectProjectIdSettingsTeamRoute
   '/project/$projectId/time/my-logs': typeof ProjectProjectIdTimeMyLogsRoute
   '/project/$projectId/time/team-logs': typeof ProjectProjectIdTimeTeamLogsRouteWithChildren
@@ -413,6 +421,7 @@ export interface FileRoutesByTo {
   '/project/$projectId/roadmap/$roadmapId': typeof ProjectProjectIdRoadmapRoadmapIdRoute
   '/project/$projectId/roadmap/create': typeof ProjectProjectIdRoadmapCreateRoute
   '/project/$projectId/settings/general': typeof ProjectProjectIdSettingsGeneralRoute
+  '/project/$projectId/settings/permissions': typeof ProjectProjectIdSettingsPermissionsRoute
   '/project/$projectId/settings/team': typeof ProjectProjectIdSettingsTeamRoute
   '/project/$projectId/time/my-logs': typeof ProjectProjectIdTimeMyLogsRoute
   '/project/$projectId/time/team-logs': typeof ProjectProjectIdTimeTeamLogsRouteWithChildren
@@ -465,6 +474,7 @@ export interface FileRoutesById {
   '/project/$projectId/roadmap/$roadmapId': typeof ProjectProjectIdRoadmapRoadmapIdRoute
   '/project/$projectId/roadmap/create': typeof ProjectProjectIdRoadmapCreateRoute
   '/project/$projectId/settings/general': typeof ProjectProjectIdSettingsGeneralRoute
+  '/project/$projectId/settings/permissions': typeof ProjectProjectIdSettingsPermissionsRoute
   '/project/$projectId/settings/team': typeof ProjectProjectIdSettingsTeamRoute
   '/project/$projectId/time/my-logs': typeof ProjectProjectIdTimeMyLogsRoute
   '/project/$projectId/time/team-logs': typeof ProjectProjectIdTimeTeamLogsRouteWithChildren
@@ -518,6 +528,7 @@ export interface FileRouteTypes {
     | '/project/$projectId/roadmap/$roadmapId'
     | '/project/$projectId/roadmap/create'
     | '/project/$projectId/settings/general'
+    | '/project/$projectId/settings/permissions'
     | '/project/$projectId/settings/team'
     | '/project/$projectId/time/my-logs'
     | '/project/$projectId/time/team-logs'
@@ -568,6 +579,7 @@ export interface FileRouteTypes {
     | '/project/$projectId/roadmap/$roadmapId'
     | '/project/$projectId/roadmap/create'
     | '/project/$projectId/settings/general'
+    | '/project/$projectId/settings/permissions'
     | '/project/$projectId/settings/team'
     | '/project/$projectId/time/my-logs'
     | '/project/$projectId/time/team-logs'
@@ -619,6 +631,7 @@ export interface FileRouteTypes {
     | '/project/$projectId/roadmap/$roadmapId'
     | '/project/$projectId/roadmap/create'
     | '/project/$projectId/settings/general'
+    | '/project/$projectId/settings/permissions'
     | '/project/$projectId/settings/team'
     | '/project/$projectId/time/my-logs'
     | '/project/$projectId/time/team-logs'
@@ -967,6 +980,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectProjectIdSettingsTeamRouteImport
       parentRoute: typeof ProjectProjectIdRoute
     }
+    '/project/$projectId/settings/permissions': {
+      id: '/project/$projectId/settings/permissions'
+      path: '/settings/permissions'
+      fullPath: '/project/$projectId/settings/permissions'
+      preLoaderRoute: typeof ProjectProjectIdSettingsPermissionsRouteImport
+      parentRoute: typeof ProjectProjectIdRoute
+    }
     '/project/$projectId/settings/general': {
       id: '/project/$projectId/settings/general'
       path: '/settings/general'
@@ -1080,6 +1100,7 @@ interface ProjectProjectIdRouteChildren {
   ProjectProjectIdWorkItemsRoute: typeof ProjectProjectIdWorkItemsRouteWithChildren
   ProjectProjectIdChatChatRefRoute: typeof ProjectProjectIdChatChatRefRoute
   ProjectProjectIdSettingsGeneralRoute: typeof ProjectProjectIdSettingsGeneralRoute
+  ProjectProjectIdSettingsPermissionsRoute: typeof ProjectProjectIdSettingsPermissionsRoute
   ProjectProjectIdSettingsTeamRoute: typeof ProjectProjectIdSettingsTeamRoute
   ProjectProjectIdTimeMyLogsRoute: typeof ProjectProjectIdTimeMyLogsRoute
   ProjectProjectIdTimeTeamLogsRoute: typeof ProjectProjectIdTimeTeamLogsRouteWithChildren
@@ -1097,6 +1118,8 @@ const ProjectProjectIdRouteChildren: ProjectProjectIdRouteChildren = {
   ProjectProjectIdWorkItemsRoute: ProjectProjectIdWorkItemsRouteWithChildren,
   ProjectProjectIdChatChatRefRoute: ProjectProjectIdChatChatRefRoute,
   ProjectProjectIdSettingsGeneralRoute: ProjectProjectIdSettingsGeneralRoute,
+  ProjectProjectIdSettingsPermissionsRoute:
+    ProjectProjectIdSettingsPermissionsRoute,
   ProjectProjectIdSettingsTeamRoute: ProjectProjectIdSettingsTeamRoute,
   ProjectProjectIdTimeMyLogsRoute: ProjectProjectIdTimeMyLogsRoute,
   ProjectProjectIdTimeTeamLogsRoute:

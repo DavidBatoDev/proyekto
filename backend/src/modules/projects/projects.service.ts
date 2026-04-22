@@ -15,6 +15,7 @@ import {
   InviteProjectByEmailDto,
   ProjectInviteQueryDto,
   ReassignProjectConsultantDto,
+  UpdateRolePermissionsDto,
   ReorderProjectResourceFoldersDto,
   ReorderProjectResourceLinksDto,
   RespondProjectInviteDto,
@@ -28,6 +29,7 @@ import {
 import { Project } from '../../common/entities';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
+  enforceDependencies,
   getTemplateByKey,
   hasPermission,
   isPermissionsEmpty,
@@ -582,6 +584,69 @@ export class ProjectsService {
     }
 
     return result;
+  }
+
+  async listProjectInvites(
+    callerId: string,
+    projectId: string,
+  ): Promise<unknown[]> {
+    await this.assertProjectPermission(projectId, callerId, 'members.view');
+    return this.projectsRepo.listProjectInvites(projectId);
+  }
+
+  async updateRolePermissions(
+    callerId: string,
+    projectId: string,
+    dto: UpdateRolePermissionsDto,
+  ): Promise<void> {
+    await this.assertProjectPermission(
+      projectId,
+      callerId,
+      'members.edit_permissions',
+    );
+
+    const roleKey =
+      dto.role === 'member' ? 'freelancer' : (dto.role as Parameters<typeof getTemplateByKey>[0]);
+    const defaults = getTemplateByKey(roleKey);
+    let normalized = normalizePermissions(
+      dto.permissions as unknown as Record<string, unknown>,
+      defaults,
+    );
+    normalized = enforceDependencies(normalized);
+
+    if (dto.role === 'consultant' || dto.role === 'consultant_incubation') {
+      normalized.time = {
+        view: true,
+        view_financial: true,
+        log: true,
+        edit_own: true,
+        edit_team: true,
+        approve: true,
+        manage_rates: true,
+        delete_logs: true,
+      };
+      normalized.chat = {
+        view_channels: true,
+        send_messages: true,
+        create_channels: true,
+        manage_channels: true,
+        view_internal_channels: true,
+        mention_members: true,
+        share_files: true,
+        start_dm: true,
+        send_dm: true,
+        message_clients: true,
+        message_consultants: true,
+        message_freelancers: true,
+      };
+      normalized.logs = { view: true, view_sensitive: true };
+    }
+
+    await this.projectsRepo.updateRoleMemberPermissions(
+      projectId,
+      dto.role,
+      normalized,
+    );
   }
 
   async listProjectResources(

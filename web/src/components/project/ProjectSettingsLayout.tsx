@@ -24,10 +24,11 @@ export function ProjectSettingsLayout({
       active: currentPath === `/project/${projectId}/settings/general`,
     },
     {
-      label: "Team",
+      label: "Roles & Permissions",
       to: `/project/${projectId}/settings/team`,
       icon: Users,
-      active: currentPath === `/project/${projectId}/settings/team`,
+      active: currentPath.startsWith(`/project/${projectId}/settings/team`) ||
+        currentPath.startsWith(`/project/${projectId}/settings/permissions`),
     },
   ];
 

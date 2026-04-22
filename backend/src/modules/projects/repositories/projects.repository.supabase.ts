@@ -645,6 +645,53 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     return data;
   }
 
+  async listProjectInvites(projectId: string): Promise<unknown[]> {
+    const { data, error } = await this.supabase
+      .from('project_invites')
+      .select(
+        'id, project_id, invited_by, invitee_id, invitee_email, status, invited_position, created_at, inviter:profiles!project_invites_invited_by_fkey(id, display_name, avatar_url)',
+      )
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw new BadRequestException(error.message);
+    return data ?? [];
+  }
+
+  async updateRoleMemberPermissions(
+    projectId: string,
+    role: string,
+    permissions: ProjectPermissions,
+  ): Promise<void> {
+    const { data: members, error: fetchError } = await this.supabase
+      .from('project_members')
+      .select('id, permissions_json')
+      .eq('project_id', projectId)
+      .eq('role', role);
+
+    if (fetchError) throw new BadRequestException(fetchError.message);
+    if (!members?.length) return;
+
+    // Union merge: preserve any permission a member already has true.
+    // New role permissions that are true are applied; existing true values
+    // for keys the new role sets to false are kept (protected individual grants).
+    for (const member of members) {
+      const existing = (member.permissions_json as Record<string, Record<string, boolean>> | null) ?? {};
+      const merged = structuredClone(permissions) as unknown as Record<string, Record<string, boolean>>;
+      for (const section of Object.keys(merged)) {
+        const existingSection = existing[section] ?? {};
+        for (const key of Object.keys(merged[section])) {
+          merged[section][key] = merged[section][key] || (existingSection[key] === true);
+        }
+      }
+      const { error } = await this.supabase
+        .from('project_members')
+        .update({ permissions_json: merged as unknown as Record<string, unknown> })
+        .eq('id', member.id);
+      if (error) throw new BadRequestException(error.message);
+    }
+  }
+
   async listInvitesForUser(
     userId: string,
     query?: ProjectInviteQueryDto,

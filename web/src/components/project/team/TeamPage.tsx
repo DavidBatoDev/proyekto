@@ -3,14 +3,12 @@ import {
   Search,
   ChevronDown,
   Plus,
-  Edit2,
   Trash2,
 } from "lucide-react";
 import type { Project, ProjectMember } from "@/services/project.service";
 import { useUser } from "@/stores/authStore";
 import { TeamSkeleton } from "./TeamSkeleton";
 import { AddMemberModal } from "./AddMemberModal";
-import { PermissionsDrawer } from "./PermissionsDrawer";
 import { RemoveMemberModal } from "./RemoveMemberModal";
 import { memberDisplayName } from "./utils";
 import {
@@ -195,7 +193,6 @@ function TeamRow({
   isSelf,
   permissions,
   showActions,
-  onEdit,
   onRemove,
   removing,
 }: {
@@ -207,7 +204,6 @@ function TeamRow({
   isSelf: boolean;
   permissions: RowPermissions;
   showActions: boolean;
-  onEdit?: () => void;
   onRemove?: () => void;
   removing?: boolean;
 }) {
@@ -247,16 +243,6 @@ function TeamRow({
 
       {showActions && (
         <div className="flex items-center justify-end gap-1">
-          {permissions.canEdit && onEdit && (
-            <button
-              type="button"
-              onClick={onEdit}
-              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-              title="Edit member"
-            >
-              <Edit2 className="w-3.5 h-3.5" />
-            </button>
-          )}
           {permissions.canRemove && onRemove && (
             <button
               type="button"
@@ -283,7 +269,6 @@ function MemberSection({
   viewerRole,
   canManageMembers,
   currentUserId,
-  onEdit,
   onRemove,
   removingId,
   showActions,
@@ -294,7 +279,6 @@ function MemberSection({
   viewerRole: ViewerRole;
   canManageMembers: boolean;
   currentUserId?: string;
-  onEdit: (m: ProjectMember) => void;
   onRemove: (m: ProjectMember) => void;
   removingId: string | null;
   showActions: boolean;
@@ -328,7 +312,6 @@ function MemberSection({
               isSelf={isSelf}
               permissions={perms}
               showActions={showActions}
-              onEdit={() => onEdit(m)}
               onRemove={() => onRemove(m)}
               removing={removingId === m.id}
             />
@@ -351,8 +334,6 @@ export function TeamPage({ projectId }: TeamPageProps) {
   const project = (projectQuery.data as Project | undefined) ?? null;
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [permissionMember, setPermissionMember] =
-    useState<ProjectMember | null>(null);
   const [removeCandidate, setRemoveCandidate] = useState<ProjectMember | null>(
     null,
   );
@@ -372,9 +353,6 @@ export function TeamPage({ projectId }: TeamPageProps) {
     setMembers(filteredMembers);
   }, [membersQuery.data, project?.client_id, project?.consultant_id]);
 
-  const handleUpdate = useCallback((updated: ProjectMember) => {
-    setMembers((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
-  }, []);
 
   const handleRemove = useCallback(
     (member: ProjectMember) => {
@@ -612,7 +590,6 @@ export function TeamPage({ projectId }: TeamPageProps) {
             viewerRole={viewerRole}
             canManageMembers={canManageMembers}
             currentUserId={user?.id}
-            onEdit={setPermissionMember}
             onRemove={handleRemove}
             removingId={removingId}
             showActions={canManageMembers}
@@ -623,15 +600,6 @@ export function TeamPage({ projectId }: TeamPageProps) {
       {showModal && (
         <AddMemberModal projectId={projectId} onClose={() => setShowModal(false)} />
       )}
-
-      <PermissionsDrawer
-        open={permissionMember !== null}
-        member={permissionMember}
-        projectId={projectId}
-        canEditPermissions={canManageMembers && viewerRole !== "client"}
-        onMemberUpdated={handleUpdate}
-        onClose={() => setPermissionMember(null)}
-      />
 
       <RemoveMemberModal
         open={removeCandidate !== null}

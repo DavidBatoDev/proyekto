@@ -710,6 +710,60 @@ class ProjectService {
     return (payload.permissions_json ?? payload) as ProjectPermissions;
   }
 
+  async getProjectInvites(projectId: string): Promise<ProjectInvite[]> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) throw new Error("Authentication required");
+
+    const response = await fetch(
+      `${import.meta.env.VITE_API_URL}/api/projects/${projectId}/invites`,
+      {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      },
+    );
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(
+        err.message || err.error?.message || "Failed to load project invites",
+      );
+    }
+
+    const result = await response.json();
+    return (result.data ?? result) as ProjectInvite[];
+  }
+
+  async updateRolePermissions(
+    projectId: string,
+    role: string,
+    permissions: ProjectPermissions,
+  ): Promise<void> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) throw new Error("Authentication required");
+
+    const response = await fetch(
+      `${import.meta.env.VITE_API_URL}/api/projects/${projectId}/permissions/role`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ role, permissions }),
+      },
+    );
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(
+        err.message || err.error?.message || "Failed to update role permissions",
+      );
+    }
+  }
+
   async transferOwner(projectId: string, newOwnerId: string): Promise<Project> {
     const {
       data: { session },
