@@ -149,6 +149,8 @@ In the GitHub repo → **Settings → Secrets and variables → Actions → Vari
 | `GCP_RUNTIME_SA` | `proyekto-backend-sa@planar-rarity-494104-n4.iam.gserviceaccount.com` |
 | `GCP_AR_REPO` | `proyekto` |
 | `GCP_SERVICE_NAME` | `proyekto-backend` |
+| `GCP_AGENT_SERVICE_NAME` | `proyekto-agent` *(only needed for agent deploy)* |
+| `GCP_AGENT_RUNTIME_SA` | `proyekto-agent-sa@planar-rarity-494104-n4.iam.gserviceaccount.com` *(only needed for agent deploy)* |
 
 ## 7. First deploy
 
@@ -167,6 +169,34 @@ curl -s "$SERVICE_URL/" | jq .
 gcloud run services describe "$SERVICE_NAME" --region="$REGION" \
   --format='value(spec.template.spec.containers[0].env)'
 ```
+
+## 8. Agent bootstrap (run after backend is live)
+
+The Python agent at [agent/](../../agent/) deploys to the same project as a second Cloud Run service (`proyekto-agent`) with its own runtime service account. It reuses the existing `proyekto-deployer` SA, Artifact Registry repo, WIF provider, and 3 of the existing Secret Manager entries (`OPENAI_API_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`) — no new secrets to create.
+
+Runs browser-facing (`ingress=all`, `--allow-unauthenticated`) because the web client calls the agent directly via `VITE_AGENT_API_URL`.
+
+```powershell
+# Agent runtime SA — what Cloud Run runs as
+gcloud iam service-accounts create proyekto-agent-sa --display-name="Proyekto agent runtime"
+
+# Grant access to fetch secrets at cold start
+gcloud projects add-iam-policy-binding planar-rarity-494104-n4 `
+  --member="serviceAccount:proyekto-agent-sa@planar-rarity-494104-n4.iam.gserviceaccount.com" `
+  --role="roles/secretmanager.secretAccessor" --condition=None
+```
+
+Then add the two new GitHub Actions variables (listed in section 6 above): `GCP_AGENT_SERVICE_NAME` and `GCP_AGENT_RUNTIME_SA`.
+
+Trigger the first deploy via **Actions → Agent — Deploy to Cloud Run → Run workflow** (branch: `main`). After it lands, the agent URL is printed in the job summary and follows the shape `https://proyekto-agent-<hash>.us-central1.run.app`.
+
+**Public-invoker binding (same org-policy dance as backend):** the first deploy will log a warning `Setting IAM Policy failed` because `--allow-unauthenticated` can't grant `allUsers` until you apply the invoker binding explicitly. Run once after the first successful deploy:
+
+```powershell
+gcloud run services add-iam-policy-binding proyekto-agent --region=us-central1 --member=allUsers --role=roles/run.invoker
+```
+
+The project-level `iam.allowedPolicyMemberDomains` override (set during the backend bootstrap) is what makes this succeed without needing another org policy patch.
 
 ## Free-tier extras (recommended after first deploy)
 
