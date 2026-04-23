@@ -247,6 +247,24 @@ export class ProjectsController {
     return this.projectsService.listProjectInvites(user.id, id);
   }
 
+  @Delete(':id/invites/:inviteId')
+  cancelInvite(
+    @Param('id') id: string,
+    @Param('inviteId') inviteId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.projectsService.cancelInvite(user.id, id, inviteId);
+  }
+
+  @Get(':id/permissions/role')
+  getRolePermissions(
+    @Param('id') id: string,
+    @Query('role') role: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.projectsService.getRolePermissions(user.id, id, role);
+  }
+
   @Patch(':id/permissions/role')
   updateRolePermissions(
     @Param('id') id: string,

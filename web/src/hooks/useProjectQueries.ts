@@ -104,15 +104,53 @@ export function useRoadmapFullLiveQuery(roadmapId: string) {
   });
 }
 
+export function useProjectCancelInviteMutation(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (inviteId: string) =>
+      projectService.cancelInvite(projectId, inviteId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: projectKeys.invites(projectId) });
+    },
+  });
+}
+
+export function useProjectInvitesQuery(projectId: string) {
+  return useQuery({
+    queryKey: projectKeys.invites(projectId),
+    queryFn: () => projectService.getProjectInvites(projectId),
+    enabled: Boolean(projectId),
+    staleTime: STALE_30S,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  });
+}
+
+export function useProjectRolePermissionsQuery(
+  projectId: string,
+  role: "consultant" | "client" | "freelancer",
+) {
+  return useQuery({
+    queryKey: projectKeys.rolePermissions(projectId, role),
+    queryFn: () => projectService.getRolePermissions(projectId, role),
+    enabled: Boolean(projectId),
+    staleTime: STALE_60S,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  });
+}
+
 export function useProjectInviteMemberMutation(projectId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (payload: { email: string; position: string; message?: string }) =>
+    mutationFn: (payload: { email: string; role?: string; position?: string; message?: string }) =>
       projectService.inviteByEmail(projectId, payload),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: projectKeys.members(projectId) });
       await queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+      await queryClient.invalidateQueries({ queryKey: projectKeys.invites(projectId) });
     },
   });
 }

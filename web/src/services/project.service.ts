@@ -465,7 +465,8 @@ class ProjectService {
     projectId: string,
     data: {
       email: string;
-      position: string;
+      role?: string;
+      position?: string;
       message?: string;
     },
   ): Promise<ProjectInvite> {
@@ -732,6 +733,50 @@ class ProjectService {
 
     const result = await response.json();
     return (result.data ?? result) as ProjectInvite[];
+  }
+
+  async cancelInvite(projectId: string, inviteId: string): Promise<void> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) throw new Error("Authentication required");
+
+    const response = await fetch(
+      `${import.meta.env.VITE_API_URL}/api/projects/${projectId}/invites/${inviteId}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      },
+    );
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(
+        err.message || err.error?.message || "Failed to cancel invite",
+      );
+    }
+  }
+
+  async getRolePermissions(
+    projectId: string,
+    role: string,
+  ): Promise<ProjectPermissions | null> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) return null;
+
+    const apiRole = role === "freelancer" ? "member" : role;
+    const response = await fetch(
+      `${import.meta.env.VITE_API_URL}/api/projects/${projectId}/permissions/role?role=${apiRole}`,
+      {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      },
+    );
+    if (!response.ok) return null;
+    const result = await response.json();
+    const payload = result.data ?? result;
+    return (payload ?? null) as ProjectPermissions | null;
   }
 
   async updateRolePermissions(

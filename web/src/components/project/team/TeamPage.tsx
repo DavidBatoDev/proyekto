@@ -1,18 +1,25 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Search,
   ChevronDown,
   Plus,
   Trash2,
+  MessageSquare,
+  MoreHorizontal,
+  Clock,
 } from "lucide-react";
-import type { Project, ProjectMember } from "@/services/project.service";
+import { useNavigate } from "@tanstack/react-router";
+import type { Project, ProjectMember, ProjectInvite } from "@/services/project.service";
 import { useUser } from "@/stores/authStore";
 import { TeamSkeleton } from "./TeamSkeleton";
 import { AddMemberModal } from "./AddMemberModal";
 import { RemoveMemberModal } from "./RemoveMemberModal";
 import { memberDisplayName } from "./utils";
+import { toDmRef } from "@/components/project/chat/chatRef";
 import {
+  useProjectCancelInviteMutation,
   useProjectDetailQuery,
+  useProjectInvitesQuery,
   useProjectMembersQuery,
   useProjectMyPermissionsQuery,
   useProjectRemoveMemberMutation,
@@ -20,18 +27,7 @@ import {
 
 // ─── Permission System ────────────────────────────────────────────────────────
 
-/**
- * The role of the currently logged-in viewer.
- * - consultant: has the consultant_id (even if also the client → treated as consultant)
- * - client:     has client_id but NOT consultant_id
- * - freelancer: any project member who isn't a principal
- */
 type ViewerRole = "consultant" | "client" | "freelancer";
-
-/**
- * The type of the row being rendered — used together with ViewerRole
- * to compute per-row permissions.
- */
 type TargetType = "client" | "consultant" | "member";
 
 interface RowPermissions {
@@ -45,21 +41,14 @@ function deriveViewerRole(
   viewerMember?: ProjectMember | null,
 ): ViewerRole {
   if (!userId || !project) return "freelancer";
-  // Edge-case: consultant === client → treat as consultant (full power)
   if (userId === project.consultant_id) return "consultant";
   if (userId === project.client_id) return "client";
-  // Fall back to the member record role for non-principal members who were
-  // explicitly promoted to consultant or client at the project level.
   const memberRole = viewerMember?.role;
   if (memberRole === "consultant") return "consultant";
   if (memberRole === "client") return "client";
   return "freelancer";
 }
 
-/**
- * Encodes the full interaction matrix from the spec.
- * isSelf always wins: no message, no edit, no remove for your own row.
- */
 function getRowPermissions(
   viewerRole: ViewerRole,
   targetType: TargetType,
@@ -71,36 +60,46 @@ function getRowPermissions(
 
   switch (viewerRole) {
     case "consultant":
-      if (targetType === "client")
-        return { canEdit: false, canRemove: false };
-      if (targetType === "consultant")
-        return { canEdit: false, canRemove: false };
-      // member / freelancer
-      return {
-        canEdit: canManageTarget,
-        canRemove: canManageTarget,
-      };
-
+      if (targetType === "client") return { canEdit: false, canRemove: false };
+      if (targetType === "consultant") return { canEdit: false, canRemove: false };
+      return { canEdit: canManageTarget, canRemove: canManageTarget };
     case "client":
-      if (targetType === "consultant")
-        return { canEdit: false, canRemove: false };
-      // members and other clients: can see, but no edit
-      return {
-        canEdit: canManageTarget,
-        canRemove: canManageTarget,
-      };
-
+      if (targetType === "consultant") return { canEdit: false, canRemove: false };
+      return { canEdit: canManageTarget, canRemove: canManageTarget };
     case "freelancer":
-      if (targetType === "client")
-        return { canEdit: false, canRemove: false };
-      // consultant or other members
-      return {
-        canEdit: canManageTarget,
-        canRemove: canManageTarget,
-      };
+      if (targetType === "client") return { canEdit: false, canRemove: false };
+      return { canEdit: canManageTarget, canRemove: canManageTarget };
   }
 }
 
+// ─── Role filter labels ───────────────────────────────────────────────────────
+
+const ROLE_LABELS: Record<string, string> = {
+  consultant: "Consultant",
+  client: "Client",
+  member: "Freelancer",
+};
+
+const ROLE_COLORS: Record<string, string> = {
+  consultant: "bg-violet-100 text-violet-700",
+  client: "bg-blue-100 text-blue-700",
+  member: "bg-emerald-100 text-emerald-700",
+};
+
+function inviteRole(invite: ProjectInvite): "consultant" | "client" | "member" {
+  const pos = invite.invited_position ?? "";
+  if (pos === "consultant") return "consultant";
+  if (pos === "client") return "client";
+  return "member";
+}
+
+function formatInviteDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 interface TeamPageProps {
   projectId: string;
@@ -108,13 +107,7 @@ interface TeamPageProps {
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
-function Avatar({
-  name,
-  avatarUrl,
-}: {
-  name: string;
-  avatarUrl?: string;
-}) {
+function Avatar({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
   const initials = name
     .split(" ")
     .map((n) => n[0])
@@ -125,11 +118,7 @@ function Avatar({
   return (
     <div className="w-8 h-8 rounded-full shrink-0 overflow-hidden flex items-center justify-center bg-slate-100 font-semibold text-slate-600 text-xs">
       {avatarUrl ? (
-        <img
-          src={avatarUrl}
-          alt={name}
-          className="w-full h-full object-cover object-top"
-        />
+        <img src={avatarUrl} alt={name} className="w-full h-full object-cover object-top" />
       ) : (
         <span>{initials || "?"}</span>
       )}
@@ -160,18 +149,12 @@ function ColumnHeaders({ showActions }: { showActions: boolean }) {
   return (
     <div
       className={`grid gap-4 items-center px-4 mb-2 ${
-        showActions ? "grid-cols-[2fr_1fr_1fr_80px]" : "grid-cols-[2fr_1fr_1fr]"
+        showActions ? "grid-cols-[2fr_1fr_1fr_100px]" : "grid-cols-[2fr_1fr_1fr]"
       }`}
     >
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-        Name
-      </span>
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-        Role
-      </span>
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-        Status
-      </span>
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Name</span>
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Role</span>
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</span>
       {showActions && (
         <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 text-right">
           Actions
@@ -181,8 +164,58 @@ function ColumnHeaders({ showActions }: { showActions: boolean }) {
   );
 }
 
+// ─── More Dropdown (delete) ───────────────────────────────────────────────────
+
+function MoreDropdown({
+  onRemove,
+  removing,
+}: {
+  onRemove: () => void;
+  removing?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handle = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors"
+        title="More actions"
+      >
+        <MoreHorizontal className="w-3.5 h-3.5" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg py-1 w-48">
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onRemove();
+            }}
+            disabled={removing}
+            className="w-full px-3 py-2 text-sm text-left text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-40"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Remove from project
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Generic Team Row ─────────────────────────────────────────────────────────
-// Used for both principal rows and member rows.
 
 function TeamRow({
   name,
@@ -194,6 +227,7 @@ function TeamRow({
   permissions,
   showActions,
   onRemove,
+  onChat,
   removing,
 }: {
   name: string;
@@ -205,33 +239,28 @@ function TeamRow({
   permissions: RowPermissions;
   showActions: boolean;
   onRemove?: () => void;
+  onChat?: () => void;
   removing?: boolean;
 }) {
   return (
     <div
       className={`grid gap-4 items-center px-4 py-3 ${
-        showActions ? "grid-cols-[2fr_1fr_1fr_80px]" : "grid-cols-[2fr_1fr_1fr]"
-      } ${
-        !isLast ? "border-b border-slate-100" : ""
-      } hover:bg-slate-50 transition-colors`}
+        showActions ? "grid-cols-[2fr_1fr_1fr_100px]" : "grid-cols-[2fr_1fr_1fr]"
+      } ${!isLast ? "border-b border-slate-100" : ""} hover:bg-slate-50 transition-colors`}
     >
       {/* Col 1: Avatar + Name */}
       <div className="flex items-center gap-2.5 min-w-0">
         <Avatar name={name} avatarUrl={avatarUrl} />
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 min-w-0">
-            <p className="text-sm font-semibold text-slate-900 truncate">
-              {name}
-            </p>
+            <p className="text-sm font-semibold text-slate-900 truncate">{name}</p>
             {isSelf && (
               <span className="text-[10px] font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full shrink-0">
                 You
               </span>
             )}
           </div>
-          {email && (
-            <p className="text-[11px] text-slate-500 truncate">{email}</p>
-          )}
+          {email && <p className="text-[11px] text-slate-500 truncate">{email}</p>}
         </div>
       </div>
 
@@ -241,18 +270,21 @@ function TeamRow({
       {/* Col 3: Status */}
       <StatusBadge status="Active" />
 
+      {/* Col 4: Actions */}
       {showActions && (
         <div className="flex items-center justify-end gap-1">
-          {permissions.canRemove && onRemove && (
+          {onChat && (
             <button
               type="button"
-              onClick={onRemove}
-              disabled={removing}
-              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-30"
-              title="Remove member"
+              onClick={onChat}
+              title="Send message"
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-500 transition-colors"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <MessageSquare className="w-3.5 h-3.5" />
             </button>
+          )}
+          {permissions.canRemove && onRemove && (
+            <MoreDropdown onRemove={onRemove} removing={removing} />
           )}
         </div>
       )}
@@ -272,6 +304,7 @@ function MemberSection({
   onRemove,
   removingId,
   showActions,
+  projectId,
 }: {
   title: string;
   members: ProjectMember[];
@@ -282,7 +315,9 @@ function MemberSection({
   onRemove: (m: ProjectMember) => void;
   removingId: string | null;
   showActions: boolean;
+  projectId: string;
 }) {
+  const navigate = useNavigate();
   if (members.length === 0) return null;
 
   return (
@@ -294,12 +329,7 @@ function MemberSection({
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         {members.map((m, idx) => {
           const isSelf = !!currentUserId && m.user_id === currentUserId;
-          const perms = getRowPermissions(
-            viewerRole,
-            "member",
-            isSelf,
-            canManageMembers,
-          );
+          const perms = getRowPermissions(viewerRole, "member", isSelf, canManageMembers);
           const name = memberDisplayName(m);
           return (
             <TeamRow
@@ -314,6 +344,15 @@ function MemberSection({
               showActions={showActions}
               onRemove={() => onRemove(m)}
               removing={removingId === m.id}
+              onChat={
+                !isSelf && m.user_id
+                  ? () =>
+                      void navigate({
+                        to: "/project/$projectId/chat/$chatRef",
+                        params: { projectId, chatRef: toDmRef(m.user_id!) },
+                      })
+                  : undefined
+              }
             />
           );
         })}
@@ -322,21 +361,173 @@ function MemberSection({
   );
 }
 
+// ─── Role Filter Dropdown ─────────────────────────────────────────────────────
+
+// ─── Pending Invites Section ──────────────────────────────────────────────────
+
+function PendingInvitesSection({
+  invites,
+  canManage,
+  onCancel,
+  cancellingId,
+}: {
+  invites: ProjectInvite[];
+  canManage: boolean;
+  onCancel: (inviteId: string) => void;
+  cancellingId: string | null;
+}) {
+  if (invites.length === 0) return null;
+
+  return (
+    <div className="app-surface-card p-4 md:p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <Clock className="w-3.5 h-3.5 text-amber-500" />
+        <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">
+          Pending Invites ({invites.length})
+        </p>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
+        {invites.map((inv) => {
+          const role = inviteRole(inv);
+          const roleLabel = ROLE_LABELS[role];
+          const colorClass = ROLE_COLORS[role];
+          const position =
+            role === "member" && inv.invited_position
+              ? inv.invited_position
+              : null;
+          const initials = (inv.invitee_email ?? "?")[0]?.toUpperCase() ?? "?";
+          const inviterName = inv.inviter?.display_name ?? null;
+          const cancelling = cancellingId === inv.id;
+
+          return (
+            <div
+              key={inv.id}
+              className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-slate-50 transition-colors"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center bg-amber-100 text-amber-700 text-xs font-semibold">
+                  {initials}
+                </div>
+
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-semibold text-slate-900 truncate">
+                      {inv.invitee_email}
+                    </p>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                      <Clock className="w-2.5 h-2.5" />
+                      Pending
+                    </span>
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${colorClass}`}>
+                      {roleLabel}
+                    </span>
+                    {position && (
+                      <span className="text-[11px] text-slate-400">{position}</span>
+                    )}
+                    <span className="text-[11px] text-slate-400">
+                      Invited {formatInviteDate(inv.created_at)}
+                      {inviterName ? ` by ${inviterName}` : ""}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={() => onCancel(inv.id)}
+                  disabled={cancelling}
+                  title="Revoke invite"
+                  className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-500 border border-slate-200 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-40"
+                >
+                  {cancelling ? "Revoking…" : "Revoke"}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+type RoleFilter = "all" | "consultant" | "client" | "member";
+
+function RoleFilterDropdown({
+  value,
+  onChange,
+}: {
+  value: RoleFilter;
+  onChange: (v: RoleFilter) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handle = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  const label = value === "all" ? "All Roles" : ROLE_LABELS[value];
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 transition-all hover:bg-slate-50 hover:border-slate-400"
+      >
+        {label}
+        <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg py-1 w-40">
+          {(["all", "consultant", "client", "member"] as RoleFilter[]).map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => {
+                onChange(r);
+                setOpen(false);
+              }}
+              className={`w-full px-3 py-2 text-sm text-left hover:bg-slate-50 transition-colors ${
+                value === r ? "font-semibold text-slate-900" : "text-slate-600"
+              }`}
+            >
+              {r === "all" ? "All Roles" : ROLE_LABELS[r]}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export function TeamPage({ projectId }: TeamPageProps) {
   const user = useUser();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
 
   const projectQuery = useProjectDetailQuery(projectId);
   const membersQuery = useProjectMembersQuery(projectId);
+  const invitesQuery = useProjectInvitesQuery(projectId);
   const myPermissionsQuery = useProjectMyPermissionsQuery(projectId);
   const removeMemberMutation = useProjectRemoveMemberMutation(projectId);
+  const cancelInviteMutation = useProjectCancelInviteMutation(projectId);
+  const [cancellingInviteId, setCancellingInviteId] = useState<string | null>(null);
   const project = (projectQuery.data as Project | undefined) ?? null;
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [removeCandidate, setRemoveCandidate] = useState<ProjectMember | null>(
-    null,
-  );
+  const [removeCandidate, setRemoveCandidate] = useState<ProjectMember | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -353,17 +544,12 @@ export function TeamPage({ projectId }: TeamPageProps) {
     setMembers(filteredMembers);
   }, [membersQuery.data, project?.client_id, project?.consultant_id]);
 
-
-  const handleRemove = useCallback(
-    (member: ProjectMember) => {
-      setRemoveCandidate(member);
-    },
-    [],
-  );
+  const handleRemove = useCallback((member: ProjectMember) => {
+    setRemoveCandidate(member);
+  }, []);
 
   const handleConfirmRemove = useCallback(async () => {
     if (!removeCandidate) return;
-
     setRemovingId(removeCandidate.id);
     try {
       await removeMemberMutation.mutateAsync(removeCandidate.id);
@@ -379,10 +565,17 @@ export function TeamPage({ projectId }: TeamPageProps) {
     setRemoveCandidate(null);
   }, [removingId]);
 
+  const handleCancelInvite = useCallback(async (inviteId: string) => {
+    setCancellingInviteId(inviteId);
+    try {
+      await cancelInviteMutation.mutateAsync(inviteId);
+    } finally {
+      setCancellingInviteId(null);
+    }
+  }, [cancelInviteMutation]);
+
   const isLoading =
-    projectQuery.isPending ||
-    membersQuery.isPending ||
-    myPermissionsQuery.isPending;
+    projectQuery.isPending || membersQuery.isPending || myPermissionsQuery.isPending;
   const error =
     projectQuery.error instanceof Error
       ? projectQuery.error.message
@@ -454,7 +647,6 @@ export function TeamPage({ projectId }: TeamPageProps) {
   const stakeholders: Stakeholder[] = [];
 
   if (isSamePrincipal && client) {
-    const isSelf = user?.id === client.id;
     stakeholders.push({
       id: client.id,
       name: client.display_name || client.email || "Client",
@@ -463,7 +655,6 @@ export function TeamPage({ projectId }: TeamPageProps) {
       roleLabel: "Client & Consultant",
       targetType: "consultant",
     });
-    void isSelf;
   } else {
     if (client) {
       stakeholders.push({
@@ -491,16 +682,23 @@ export function TeamPage({ projectId }: TeamPageProps) {
 
   const filteredStakeholders = stakeholders.filter(
     (s) =>
-      !q ||
-      s.name.toLowerCase().includes(q) ||
-      s.roleLabel.toLowerCase().includes(q),
+      (roleFilter === "all" || s.targetType === roleFilter) &&
+      (!q || s.name.toLowerCase().includes(q) || s.roleLabel.toLowerCase().includes(q)),
   );
 
   const filteredMembers = members.filter(
     (m) =>
-      !q ||
-      memberDisplayName(m).toLowerCase().includes(q) ||
-      (m.position ?? "").toLowerCase().includes(q),
+      (roleFilter === "all" || roleFilter === "member") &&
+      (!q ||
+        memberDisplayName(m).toLowerCase().includes(q) ||
+        (m.position ?? "").toLowerCase().includes(q)),
+  );
+
+  const allInvites = (invitesQuery.data as ProjectInvite[] | undefined) ?? [];
+  const pendingInvites = allInvites.filter(
+    (inv) =>
+      inv.status === "pending" &&
+      (roleFilter === "all" || inviteRole(inv) === roleFilter),
   );
 
   return (
@@ -528,13 +726,7 @@ export function TeamPage({ projectId }: TeamPageProps) {
               />
             </div>
 
-            <button
-              type="button"
-              className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 transition-all hover:bg-slate-50 hover:border-slate-400"
-            >
-              All Roles
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-            </button>
+            <RoleFilterDropdown value={roleFilter} onChange={setRoleFilter} />
           </div>
 
           {canAddMembers && (
@@ -559,12 +751,7 @@ export function TeamPage({ projectId }: TeamPageProps) {
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 {filteredStakeholders.map((s, idx) => {
                   const isSelf = !!user?.id && s.id === user.id;
-                  const perms = getRowPermissions(
-                    viewerRole,
-                    s.targetType,
-                    isSelf,
-                    canManageMembers,
-                  );
+                  const perms = getRowPermissions(viewerRole, s.targetType, isSelf, canManageMembers);
                   return (
                     <TeamRow
                       key={s.id}
@@ -576,6 +763,15 @@ export function TeamPage({ projectId }: TeamPageProps) {
                       isSelf={isSelf}
                       permissions={perms}
                       showActions={canManageMembers}
+                      onChat={
+                        !isSelf && s.id
+                          ? () =>
+                              void navigate({
+                                to: "/project/$projectId/chat/$chatRef",
+                                params: { projectId, chatRef: toDmRef(s.id) },
+                              })
+                          : undefined
+                      }
                     />
                   );
                 })}
@@ -593,6 +789,14 @@ export function TeamPage({ projectId }: TeamPageProps) {
             onRemove={handleRemove}
             removingId={removingId}
             showActions={canManageMembers}
+            projectId={projectId}
+          />
+
+          <PendingInvitesSection
+            invites={pendingInvites}
+            canManage={canManageMembers}
+            onCancel={(id) => void handleCancelInvite(id)}
+            cancellingId={cancellingInviteId}
           />
         </div>
       </div>
@@ -613,5 +817,3 @@ export function TeamPage({ projectId }: TeamPageProps) {
     </div>
   );
 }
-
-

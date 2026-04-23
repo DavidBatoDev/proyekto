@@ -25,43 +25,38 @@ export enum ProjectMemberRole {
   MEMBER = 'member',
 }
 
-class RoadmapPermissionsDto {
-  @IsBoolean() edit: boolean;
-  @IsBoolean() view_internal: boolean;
-  @IsBoolean() comment: boolean;
-  @IsBoolean() promote: boolean;
-}
-
-class MembersPermissionsDto {
-  @IsBoolean() manage: boolean;
-  @IsBoolean() view: boolean;
-}
-
-class ProjectPermissionsDto {
-  @IsBoolean() settings: boolean;
-}
-
-class TimePermissionsDto {
-  @IsBoolean() log: boolean;
-  @IsBoolean() edit_own: boolean;
-  @IsBoolean() edit_team: boolean;
-  @IsBoolean() approve: boolean;
-  @IsBoolean() manage_rates: boolean;
-  @IsBoolean() view: boolean;
-}
-
 export class UpdateProjectMemberPermissionsDto {
   @IsOptional()
-  roadmap?: RoadmapPermissionsDto;
+  @IsObject()
+  access?: Record<string, boolean>;
 
   @IsOptional()
-  members?: MembersPermissionsDto;
+  @IsObject()
+  roadmap?: Record<string, boolean>;
 
   @IsOptional()
-  project?: ProjectPermissionsDto;
+  @IsObject()
+  members?: Record<string, boolean>;
 
   @IsOptional()
-  time?: TimePermissionsDto;
+  @IsObject()
+  project?: Record<string, boolean>;
+
+  @IsOptional()
+  @IsObject()
+  time?: Record<string, boolean>;
+
+  @IsOptional()
+  @IsObject()
+  chat?: Record<string, boolean>;
+
+  @IsOptional()
+  @IsObject()
+  resources?: Record<string, boolean>;
+
+  @IsOptional()
+  @IsObject()
+  logs?: Record<string, boolean>;
 }
 
 export class AddProjectMemberDto {
@@ -85,8 +80,13 @@ export class InviteProjectByEmailDto {
   email: string;
 
   @IsString()
+  @IsOptional()
   @MaxLength(100)
-  position: string;
+  position?: string;
+
+  @IsIn(['consultant', 'client', 'member'])
+  @IsOptional()
+  role?: string;
 
   @IsOptional()
   @IsString()

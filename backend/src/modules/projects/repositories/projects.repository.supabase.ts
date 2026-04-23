@@ -603,7 +603,11 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     dto: InviteProjectByEmailDto,
   ): Promise<unknown> {
     const normalizedEmail = dto.email.trim().toLowerCase();
-    const invitedPosition = dto.position.trim();
+    const memberRole = dto.role ?? 'member';
+    const invitedPosition =
+      memberRole === 'consultant' || memberRole === 'client'
+        ? memberRole
+        : dto.position?.trim() || 'Member';
     const inviteMessage = dto.message?.trim();
 
     if (!normalizedEmail) {
@@ -658,11 +662,42 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     return data ?? [];
   }
 
+  async cancelInvite(projectId: string, inviteId: string): Promise<void> {
+    const { error } = await this.supabase
+      .from('project_invites')
+      .delete()
+      .eq('id', inviteId)
+      .eq('project_id', projectId)
+      .eq('status', 'pending');
+
+    if (error) throw new BadRequestException(error.message);
+  }
+
   async updateRoleMemberPermissions(
     projectId: string,
     role: string,
     permissions: ProjectPermissions,
   ): Promise<void> {
+    // Persist the role template on the project so it can be reloaded later.
+    // Falls back gracefully if the column isn't in the schema cache yet.
+    const { data: projectData, error: selectErr } = await this.supabase
+      .from('projects')
+      .select('role_permissions_json')
+      .eq('id', projectId)
+      .single();
+    if (!selectErr && projectData !== null) {
+      const existingTemplates = (projectData.role_permissions_json as Record<string, unknown>) ?? {};
+      const { error: updateErr } = await this.supabase
+        .from('projects')
+        .update({ role_permissions_json: { ...existingTemplates, [role]: permissions } })
+        .eq('id', projectId);
+      if (updateErr) {
+        // Column not in schema cache yet (migration just applied). Non-fatal.
+        console.warn('[updateRoleMemberPermissions] role template not stored:', updateErr.message);
+      }
+    }
+
+    // Apply to existing members via union merge.
     const { data: members, error: fetchError } = await this.supabase
       .from('project_members')
       .select('id, permissions_json')
@@ -673,8 +708,6 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     if (!members?.length) return;
 
     // Union merge: preserve any permission a member already has true.
-    // New role permissions that are true are applied; existing true values
-    // for keys the new role sets to false are kept (protected individual grants).
     for (const member of members) {
       const existing = (member.permissions_json as Record<string, Record<string, boolean>> | null) ?? {};
       const merged = structuredClone(permissions) as unknown as Record<string, Record<string, boolean>>;
@@ -689,6 +722,24 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         .update({ permissions_json: merged as unknown as Record<string, unknown> })
         .eq('id', member.id);
       if (error) throw new BadRequestException(error.message);
+    }
+  }
+
+  async getRolePermissions(
+    projectId: string,
+    role: string,
+  ): Promise<ProjectPermissions | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from('projects')
+        .select('role_permissions_json')
+        .eq('id', projectId)
+        .single();
+      if (error || !data) return null;
+      const stored = data.role_permissions_json as Record<string, unknown> | null;
+      return (stored?.[role] ?? null) as ProjectPermissions | null;
+    } catch {
+      return null;
     }
   }
 
@@ -821,17 +872,35 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         throw new NotFoundException('Project not found.');
       }
 
+      const invitedPosition = (invite.invited_position as string | null) ?? '';
+      const memberRole =
+        invitedPosition === 'consultant'
+          ? ProjectMemberRole.CONSULTANT
+          : invitedPosition === 'client'
+            ? ProjectMemberRole.CLIENT
+            : ProjectMemberRole.MEMBER;
+
+      const displayPosition =
+        memberRole === ProjectMemberRole.CONSULTANT
+          ? 'Consultant'
+          : memberRole === ProjectMemberRole.CLIENT
+            ? 'Client'
+            : invitedPosition || 'Member';
+
       const defaultPermissions = this.getDefaultPermissionsForMember({
         projectId: invite.project_id as string,
         clientId: projectRow.client_id as string,
         consultantId: (projectRow.consultant_id as string | null) || null,
         member: {
           user_id: userId,
-          role: ProjectMemberRole.MEMBER,
+          role: memberRole,
         },
       });
       const invitedByClient =
         String(invite.invited_by || '') === String(projectRow.client_id || '');
+      const finalPermissions = memberRole === ProjectMemberRole.MEMBER
+        ? applyClientInviteRestrictions(defaultPermissions, invitedByClient)
+        : defaultPermissions;
 
       const { error: memberError } = await this.supabase
         .from('project_members')
@@ -839,12 +908,9 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
           {
             project_id: invite.project_id,
             user_id: userId,
-            role: ProjectMemberRole.MEMBER,
-            position: invite.invited_position || 'Member',
-            permissions_json: applyClientInviteRestrictions(
-              defaultPermissions,
-              invitedByClient,
-            ),
+            role: memberRole,
+            position: displayPosition,
+            permissions_json: finalPermissions,
           },
           { onConflict: 'project_id,user_id' },
         );
@@ -1096,10 +1162,14 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     dto: UpdateProjectMemberPermissionsDto,
   ): Promise<unknown> {
     const patch: Record<string, unknown> = {};
+    if (dto.access !== undefined) patch.access = dto.access;
     if (dto.roadmap !== undefined) patch.roadmap = dto.roadmap;
     if (dto.members !== undefined) patch.members = dto.members;
     if (dto.project !== undefined) patch.project = dto.project;
     if (dto.time !== undefined) patch.time = dto.time;
+    if (dto.chat !== undefined) patch.chat = dto.chat;
+    if (dto.resources !== undefined) patch.resources = dto.resources;
+    if (dto.logs !== undefined) patch.logs = dto.logs;
 
     const existing = await this.getMemberPermissions(projectId, memberId);
     const member = await this.getMemberById(projectId, memberId);

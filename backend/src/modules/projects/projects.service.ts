@@ -594,6 +594,24 @@ export class ProjectsService {
     return this.projectsRepo.listProjectInvites(projectId);
   }
 
+  async cancelInvite(
+    callerId: string,
+    projectId: string,
+    inviteId: string,
+  ): Promise<void> {
+    await this.assertProjectPermission(projectId, callerId, 'members.manage');
+    await this.projectsRepo.cancelInvite(projectId, inviteId);
+  }
+
+  async getRolePermissions(
+    callerId: string,
+    projectId: string,
+    role: string,
+  ): Promise<unknown> {
+    await this.assertProjectPermission(projectId, callerId, 'members.edit_permissions');
+    return this.projectsRepo.getRolePermissions(projectId, role);
+  }
+
   async updateRolePermissions(
     callerId: string,
     projectId: string,
@@ -908,7 +926,10 @@ export class ProjectsService {
   ): Promise<unknown> {
     const project = await this.getProjectOrThrow(projectId);
     await this.assertCanManageMembers(project, callerId);
-    if (callerId === project.client_id) {
+    if (
+      callerId === project.client_id &&
+      callerId !== project.consultant_id
+    ) {
       throw new ForbiddenException(
         'Project clients cannot modify member permissions.',
       );

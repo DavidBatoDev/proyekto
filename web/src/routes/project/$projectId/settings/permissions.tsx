@@ -1,8 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { ProjectSettingsLayout } from "@/components/project/ProjectSettingsLayout";
+import { projectKeys } from "@/queries/project";
 import { useToast } from "@/hooks/useToast";
 import {
   projectService,
@@ -23,6 +25,28 @@ export const Route = createFileRoute("/project/$projectId/settings/permissions")
 // ─── Dependency enforcement (mirrors PermissionsDrawer) ────────────────────
 
 type SectionKey = keyof ProjectPermissions;
+type AccessGateKey = keyof ProjectPermissions["access"];
+
+const SECTION_ACCESS_REQUIREMENTS: Partial<Record<SectionKey, AccessGateKey>> = {
+  roadmap: "roadmap",
+  members: "team",
+  project: "project_settings",
+  time: "time",
+  chat: "chat",
+  resources: "resources",
+  // Logs are part of project settings access.
+  logs: "project_settings",
+};
+
+const ACCESS_GATE_LABELS: Record<AccessGateKey, string> = {
+  roadmap: "Access Roadmap",
+  work_items: "Access Work Items",
+  team: "Access Team",
+  time: "Access Time",
+  chat: "Access Chat",
+  resources: "Access Resources",
+  project_settings: "Access Project Settings",
+};
 
 const DEPENDENCIES: Array<[SectionKey, string, SectionKey, string]> = [
   ["access", "work_items", "access", "roadmap"],
@@ -74,6 +98,16 @@ const DEPENDENCIES: Array<[SectionKey, string, SectionKey, string]> = [
   ["logs", "view_sensitive", "logs", "view"],
 ];
 
+function isValidPermissions(obj: unknown): obj is ProjectPermissions {
+  return (
+    typeof obj === "object" &&
+    obj !== null &&
+    "access" in obj &&
+    "roadmap" in obj &&
+    typeof (obj as Record<string, unknown>).access === "object"
+  );
+}
+
 function enforceDeps(permissions: ProjectPermissions): ProjectPermissions {
   const result = structuredClone(permissions) as unknown as Record<string, Record<string, boolean>>;
   let changed = true;
@@ -82,6 +116,7 @@ function enforceDeps(permissions: ProjectPermissions): ProjectPermissions {
     for (const [cs, ck, ps, pk] of DEPENDENCIES) {
       const parent = result[ps as string];
       const child = result[cs as string];
+      if (!parent || !child) continue;
       if (!parent[pk] && child[ck]) {
         child[ck] = false;
         changed = true;
@@ -97,6 +132,7 @@ function propagateEnable(
   key: string,
 ): ProjectPermissions {
   const result = structuredClone(permissions) as unknown as Record<string, Record<string, boolean>>;
+  if (!result[section as string]) return permissions;
   result[section as string][key] = true;
   let changed = true;
   while (changed) {
@@ -104,6 +140,7 @@ function propagateEnable(
     for (const [cs, ck, ps, pk] of DEPENDENCIES) {
       const child = result[cs as string];
       const parent = result[ps as string];
+      if (!child || !parent) continue;
       if (child[ck] && !parent[pk]) {
         parent[pk] = true;
         changed = true;
@@ -272,9 +309,11 @@ function PermissionsSettingsPage() {
   const { role, memberId } = Route.useSearch();
   const navigate = useNavigate();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   const [permissions, setPermissions] = useState<ProjectPermissions | null>(null);
   const [initialPermissions, setInitialPermissions] = useState<ProjectPermissions | null>(null);
+  const [defaultPermissions, setDefaultPermissions] = useState<ProjectPermissions | null>(null);
   const [member, setMember] = useState<ProjectMember | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -291,30 +330,59 @@ function PermissionsSettingsPage() {
       setError(null);
       setPermissions(null);
       setInitialPermissions(null);
+      setDefaultPermissions(null);
       setMember(null);
 
       try {
         if (isRoleMode && role) {
-          const template = ROLE_TEMPLATES[role];
-          if (!template) throw new Error(`Unknown role: ${role}`);
-          // Enforce dependency cascade on load so the baseline matches runtime behaviour
-          const normalized = enforceDeps(structuredClone(template));
+          const hardcoded = ROLE_TEMPLATES[role];
+          if (!hardcoded) throw new Error(`Unknown role: ${role}`);
+          const hardcodedNorm = enforceDeps(structuredClone(hardcoded));
+
+          // Fetch any saved overrides for this role from the backend.
+          const saved = await projectService.getRolePermissions(projectId, role);
+          const loaded = isValidPermissions(saved)
+            ? enforceDeps(structuredClone(saved))
+            : structuredClone(hardcodedNorm);
+
           if (!cancelled) {
-            setPermissions(normalized);
-            setInitialPermissions(structuredClone(normalized));
+            setPermissions(loaded);
+            setInitialPermissions(structuredClone(loaded));
+            setDefaultPermissions(structuredClone(hardcodedNorm));
           }
         } else if (isMemberMode && memberId) {
           const [perms, members] = await Promise.all([
             projectService.getMemberPermissions(projectId, memberId),
             projectService.getMembers(projectId),
           ]);
+          const found = members.find((m) => m.id === memberId) ?? null;
+          let resolvedDefaultTemplate: ProjectPermissions | null = null;
+
+          if (found) {
+            const templateKey =
+              found.role === "consultant"
+                ? "consultant"
+                : found.role === "client"
+                  ? "client"
+                  : "freelancer";
+            const fallbackTemplate = ROLE_TEMPLATES[templateKey];
+            const savedRoleTemplate = await projectService.getRolePermissions(
+              projectId,
+              templateKey,
+            );
+            resolvedDefaultTemplate = isValidPermissions(savedRoleTemplate)
+              ? enforceDeps(structuredClone(savedRoleTemplate))
+              : enforceDeps(structuredClone(fallbackTemplate));
+          }
+
           if (!cancelled) {
-            // Normalize on load so cascade behaviour is consistent with runtime toggles
             const normalized = enforceDeps(structuredClone(perms));
             setPermissions(normalized);
             setInitialPermissions(structuredClone(normalized));
-            const found = members.find((m) => m.id === memberId) ?? null;
             setMember(found);
+            if (resolvedDefaultTemplate) {
+              setDefaultPermissions(resolvedDefaultTemplate);
+            }
           }
         } else {
           throw new Error("No role or member specified.");
@@ -336,6 +404,13 @@ function PermissionsSettingsPage() {
   const setPermission = (section: SectionKey, key: string, checked: boolean) => {
     setPermissions((prev) => {
       if (!prev) return prev;
+      const requiredAccessGate = SECTION_ACCESS_REQUIREMENTS[section];
+      if (
+        requiredAccessGate &&
+        prev.access[requiredAccessGate] !== true
+      ) {
+        return prev;
+      }
       if (checked) return propagateEnable(prev, section, key);
       const next = structuredClone(prev) as unknown as Record<string, Record<string, boolean>>;
       next[section as string][key] = false;
@@ -355,6 +430,14 @@ function PermissionsSettingsPage() {
     return cur !== init;
   };
 
+  // True when the saved value differs from the role default template.
+  const isModifiedFromDefault = (section: SectionKey, key: string): boolean => {
+    if (!initialPermissions || !defaultPermissions) return false;
+    const saved = (initialPermissions[section] as Record<string, boolean>)[key];
+    const def = (defaultPermissions[section] as Record<string, boolean>)[key];
+    return saved !== def;
+  };
+
   const handleDiscard = () => {
     if (initialPermissions) setPermissions(structuredClone(initialPermissions));
   };
@@ -365,7 +448,18 @@ function PermissionsSettingsPage() {
     setError(null);
     try {
       if (isRoleMode && role) {
-        await projectService.updateRolePermissions(projectId, role, permissions);
+        const apiRole = role === "freelancer" ? "member" : role;
+        await projectService.updateRolePermissions(projectId, apiRole, permissions);
+        queryClient.setQueryData(
+          projectKeys.rolePermissions(projectId, role),
+          structuredClone(permissions),
+        );
+        void queryClient.invalidateQueries({
+          queryKey: projectKeys.rolePermissions(projectId, role),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: projectKeys.members(projectId),
+        });
         toast.success(
           `${ROLE_DISPLAY[role] ?? role} permissions updated for all members.`,
         );
@@ -430,6 +524,12 @@ function PermissionsSettingsPage() {
           {allSections.map((section) => {
             const isLockedSection =
               isConsultantRole && CONSULTANT_LOCKED_SECTIONS.includes(section.key);
+            const requiredAccessGate = SECTION_ACCESS_REQUIREMENTS[section.key];
+            const isAccessBlocked =
+              !section.isAccessGate &&
+              !!requiredAccessGate &&
+              permissions.access[requiredAccessGate] !== true;
+            const isSectionDisabled = isLockedSection || isAccessBlocked;
 
             return (
               <section
@@ -460,33 +560,51 @@ function PermissionsSettingsPage() {
                     </p>
                   </div>
                 )}
+                {!section.isAccessGate && isAccessBlocked && requiredAccessGate && (
+                  <div className="border-b border-slate-200 bg-slate-50/80 px-5 py-2">
+                    <p className="text-[11px] text-slate-500">
+                      Enable {ACCESS_GATE_LABELS[requiredAccessGate]} in Access Control to edit this section.
+                    </p>
+                  </div>
+                )}
 
                 <div className="divide-y divide-slate-100">
                   {section.items.map((item) => {
                     const group = permissions[section.key] as Record<string, boolean>;
                     const checked = isLockedSection ? true : (group[item.key] === true);
-                    const changed = !isLockedSection && isPermissionChanged(section.key, item.key);
+                    const changed = !isSectionDisabled && isPermissionChanged(section.key, item.key);
+                    const modified = !isSectionDisabled && isModifiedFromDefault(section.key, item.key);
 
                     return (
                       <label
                         key={item.key}
                         className={`relative flex items-start justify-between gap-4 py-3.5 pr-5 transition-colors ${
-                          isLockedSection
+                          isSectionDisabled
                             ? "cursor-not-allowed bg-slate-50/50 opacity-70 pl-5"
                             : changed
                               ? "cursor-pointer bg-amber-50/60 pl-4 hover:bg-amber-50"
-                              : "cursor-pointer pl-5 hover:bg-slate-50"
+                              : modified
+                                ? "cursor-pointer bg-indigo-50/40 pl-4 hover:bg-indigo-50/60"
+                                : "cursor-pointer pl-5 hover:bg-slate-50"
                         }`}
                       >
-                        {/* Changed indicator — left border accent */}
+                        {/* Left border accent */}
                         {changed && (
                           <span className="absolute inset-y-0 left-0 w-[3px] rounded-r-full bg-amber-400" />
+                        )}
+                        {!changed && modified && (
+                          <span className="absolute inset-y-0 left-0 w-[3px] rounded-r-full bg-indigo-400" />
                         )}
                         <div className="min-w-0">
                           <p className={`text-[13px] font-medium ${changed ? "text-amber-900" : "text-slate-800"}`}>
                             {item.label}
+                            {modified && (
+                              <span className="ml-2 inline-flex items-center rounded-full bg-indigo-100 border border-indigo-200 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
+                                modified
+                              </span>
+                            )}
                             {changed && (
-                              <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                              <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
                                 edited
                               </span>
                             )}
@@ -494,13 +612,15 @@ function PermissionsSettingsPage() {
                           <p className="mt-0.5 text-[11px] text-slate-500">
                             {isLockedSection
                               ? "Always enabled for consultants."
+                              : isAccessBlocked && requiredAccessGate
+                                ? `Enable ${ACCESS_GATE_LABELS[requiredAccessGate]} first.`
                               : item.hint}
                           </p>
                         </div>
                         <input
                           type="checkbox"
                           checked={checked}
-                          disabled={isLockedSection || saving}
+                          disabled={isSectionDisabled || saving}
                           onChange={(e) =>
                             setPermission(section.key, item.key, e.target.checked)
                           }

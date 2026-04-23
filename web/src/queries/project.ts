@@ -30,6 +30,9 @@ export const projectKeys = {
   all: ["project"] as const,
   detail: (projectId: string) => ["project", "detail", projectId] as const,
   members: (projectId: string) => ["project", "members", projectId] as const,
+  invites: (projectId: string) => ["project", "invites", projectId] as const,
+  rolePermissions: (projectId: string, role: string) =>
+    ["project", "role-permissions", projectId, role] as const,
   myPermissions: (projectId: string) =>
     ["project", "my-permissions", projectId] as const,
   resources: (projectId: string) => ["project", "resources", projectId] as const,

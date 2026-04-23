@@ -1,10 +1,12 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { ProjectSettingsLayout } from "@/components/project/ProjectSettingsLayout";
-import { useToast } from "@/hooks/useToast";
-import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
 import {
-  projectService,
+  useProjectInvitesQuery,
+  useProjectMembersQuery,
+  useProjectRolePermissionsQuery,
+} from "@/hooks/useProjectQueries";
+import {
   type ProjectMember,
   type ProjectInvite,
   type ProjectPermissions,
@@ -48,6 +50,18 @@ const ROLE_TEMPLATES: Record<"consultant" | "client" | "freelancer", ProjectPerm
     logs: { view: false, view_sensitive: false },
   },
 };
+
+type RoleTemplateKey = keyof typeof ROLE_TEMPLATES;
+
+function isValidPermissions(obj: unknown): obj is ProjectPermissions {
+  return (
+    typeof obj === "object" &&
+    obj !== null &&
+    "access" in obj &&
+    "roadmap" in obj &&
+    typeof (obj as Record<string, unknown>).access === "object"
+  );
+}
 
 const ROLE_LABELS: Record<string, string> = {
   consultant: "Consultant",
@@ -129,7 +143,13 @@ function hasCustomGrants(
   return false;
 }
 
-function PermissionSummary({ template }: { template: ProjectPermissions }) {
+function PermissionSummary({
+  template,
+  loading = false,
+}: {
+  template: ProjectPermissions;
+  loading?: boolean;
+}) {
   return (
     <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
       {PERM_SECTIONS.map(({ key, label }) => {
@@ -137,19 +157,22 @@ function PermissionSummary({ template }: { template: ProjectPermissions }) {
         const [on, total] = countEnabled(section);
         const all = on === total;
         const none = on === 0;
+        const badgeText = loading ? "..." : `${on}/${total}`;
         return (
           <div key={key} className="flex items-center justify-between gap-2">
             <span className="text-xs text-slate-500">{label}</span>
             <span
               className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                all
+                loading
+                  ? "bg-slate-100 text-slate-400"
+                  : all
                   ? "bg-emerald-100 text-emerald-700"
                   : none
                     ? "bg-slate-100 text-slate-400"
                     : "bg-amber-100 text-amber-700"
               }`}
             >
-              {on}/{total}
+              {badgeText}
             </span>
           </div>
         );
@@ -163,14 +186,22 @@ interface RoleGroupProps {
   members: ProjectMember[];
   inviteMap: Map<string, ProjectInvite>;
   projectId: string;
+  template: ProjectPermissions;
+  templateLoading?: boolean;
 }
 
-function RoleGroup({ role, members, inviteMap, projectId }: RoleGroupProps) {
+function RoleGroup({
+  role,
+  members,
+  inviteMap,
+  projectId,
+  template,
+  templateLoading = false,
+}: RoleGroupProps) {
   const navigate = useNavigate();
   const label = ROLE_LABELS[role];
   const colorClass = ROLE_COLORS[role];
   const templateKey = role === "member" ? "freelancer" : role;
-  const template = ROLE_TEMPLATES[templateKey];
 
   return (
     <section className="app-surface-card-strong overflow-hidden rounded-2xl">
@@ -295,7 +326,7 @@ function RoleGroup({ role, members, inviteMap, projectId }: RoleGroupProps) {
             Edit Permissions
           </button>
         </div>
-        <PermissionSummary template={template} />
+        <PermissionSummary template={template} loading={templateLoading} />
       </div>
     </section>
   );
@@ -303,35 +334,49 @@ function RoleGroup({ role, members, inviteMap, projectId }: RoleGroupProps) {
 
 function TeamSettingsPage() {
   const { projectId } = Route.useParams();
-  const toast = useToast();
 
   // Use cached TanStack Query for instant loads on revisit
   const membersQuery = useProjectMembersQuery(projectId);
   const members = (membersQuery.data as ProjectMember[] | undefined) ?? [];
   const isLoading = membersQuery.isLoading;
 
-  const [inviteMap, setInviteMap] = useState<Map<string, ProjectInvite>>(new Map());
+  const invitesQuery = useProjectInvitesQuery(projectId);
+  const invites = (invitesQuery.data as ProjectInvite[] | undefined) ?? [];
+  const inviteMap = useMemo(() => {
+    const map = new Map<string, ProjectInvite>();
+    for (const inv of invites) {
+      if (inv.invitee_id) map.set(inv.invitee_id, inv);
+    }
+    return map;
+  }, [invites]);
 
-  useEffect(() => {
-    let cancelled = false;
-    projectService
-      .getProjectInvites(projectId)
-      .then((invites) => {
-        if (cancelled) return;
-        const map = new Map<string, ProjectInvite>();
-        for (const inv of invites) {
-          if (inv.invitee_id) map.set(inv.invitee_id, inv);
-        }
-        setInviteMap(map);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled)
-          toast.error(err instanceof Error ? err.message : "Failed to load invite data.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]);
+  const consultantRoleQuery = useProjectRolePermissionsQuery(
+    projectId,
+    "consultant",
+  );
+  const clientRoleQuery = useProjectRolePermissionsQuery(projectId, "client");
+  const freelancerRoleQuery = useProjectRolePermissionsQuery(
+    projectId,
+    "freelancer",
+  );
+
+  const roleTemplates: Record<RoleTemplateKey, ProjectPermissions> = {
+    consultant: isValidPermissions(consultantRoleQuery.data)
+      ? consultantRoleQuery.data
+      : ROLE_TEMPLATES.consultant,
+    client: isValidPermissions(clientRoleQuery.data)
+      ? clientRoleQuery.data
+      : ROLE_TEMPLATES.client,
+    freelancer: isValidPermissions(freelancerRoleQuery.data)
+      ? freelancerRoleQuery.data
+      : ROLE_TEMPLATES.freelancer,
+  };
+
+  const roleTemplateLoading: Record<RoleTemplateKey, boolean> = {
+    consultant: consultantRoleQuery.isLoading && !consultantRoleQuery.data,
+    client: clientRoleQuery.isLoading && !clientRoleQuery.data,
+    freelancer: freelancerRoleQuery.isLoading && !freelancerRoleQuery.data,
+  };
 
   const consultants = members.filter((m) => m.role === "consultant");
   const clients = members.filter((m) => m.role === "client");
@@ -368,18 +413,24 @@ function TeamSettingsPage() {
             members={consultants}
             inviteMap={inviteMap}
             projectId={projectId}
+            template={roleTemplates.consultant}
+            templateLoading={roleTemplateLoading.consultant}
           />
           <RoleGroup
             role="client"
             members={clients}
             inviteMap={inviteMap}
             projectId={projectId}
+            template={roleTemplates.client}
+            templateLoading={roleTemplateLoading.client}
           />
           <RoleGroup
             role="member"
             members={freelancers}
             inviteMap={inviteMap}
             projectId={projectId}
+            template={roleTemplates.freelancer}
+            templateLoading={roleTemplateLoading.freelancer}
           />
         </div>
       )}
