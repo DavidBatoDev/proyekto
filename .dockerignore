@@ -17,9 +17,11 @@ agent/*.log
 agent/.pytest_cache/
 agent/.mypy_cache/
 agent/.ruff_cache/
-agent/.env
-agent/.env.*
-!agent/.env.example
+
+# Env files — gitignored anyway, but defensive-exclude from build context too.
+**/.env
+**/.env.*
+!**/.env.example
 
 supabase/
 infra/
