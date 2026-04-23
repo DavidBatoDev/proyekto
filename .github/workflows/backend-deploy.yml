@@ -1,0 +1,95 @@
+name: Backend — Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: backend-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_AR_REPO }}/backend:${{ github.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build image
+        run: docker build -t "$IMAGE" .
+
+      - name: Push image
+        run: docker push "$IMAGE"
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "${{ vars.GCP_SERVICE_NAME }}" \
+            --image="$IMAGE" \
+            --region="${{ vars.GCP_REGION }}" \
+            --platform=managed \
+            --execution-environment=gen2 \
+            --cpu-boost \
+            --service-account="${{ vars.GCP_RUNTIME_SA }}" \
+            --allow-unauthenticated \
+            --port=8080 \
+            --memory=1Gi \
+            --cpu=1 \
+            --min-instances=0 \
+            --max-instances=10 \
+            --concurrency=80 \
+            --timeout=300 \
+            --set-env-vars="NODE_ENV=production" \
+            --set-secrets="SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_ANON_KEY=SUPABASE_ANON_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,CLIENT_URL=CLIENT_URL:latest,CORS_ORIGINS=CORS_ORIGINS:latest,UPSTASH_REDIS_REST_URL=UPSTASH_REDIS_REST_URL:latest,UPSTASH_REDIS_REST_TOKEN=UPSTASH_REDIS_REST_TOKEN:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest" \
+            --quiet
+
+      - name: Print service URL
+        run: |
+          URL=$(gcloud run services describe "${{ vars.GCP_SERVICE_NAME }}" \
+            --region="${{ vars.GCP_REGION }}" --format='value(status.url)')
+          echo "Service URL: $URL"
+          echo "### Deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: \`$IMAGE\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- URL: $URL" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke test health endpoint
+        run: |
+          URL=$(gcloud run services describe "${{ vars.GCP_SERVICE_NAME }}" \
+            --region="${{ vars.GCP_REGION }}" --format='value(status.url)')
+          for i in 1 2 3 4 5; do
+            if curl -fsS "$URL/" | grep -q '"status":"ok"'; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying in 3s..."
+            sleep 3
+          done
+          echo "Health check did not return status:ok within 5 attempts"
+          exit 1
