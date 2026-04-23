@@ -6,7 +6,7 @@ One-time setup for hosting [backend/](../../backend/) on Cloud Run. Run these co
 
 - `gcloud` CLI authenticated against an account with `roles/owner` or equivalent on the target project.
 - Target region chosen (default: `us-central1` — pick the region closest to the Supabase project to minimise DB egress latency).
-- GitHub repo slug known (used for OIDC binding). All examples below use `DavidBatoDev/prdigy`.
+- GitHub repo slug known (used for OIDC binding). All examples below use `DavidBatoDev/proyekto`.
 
 ## Variables used below
 
@@ -17,7 +17,7 @@ export AR_REPO="proyekto"
 export SERVICE_NAME="proyekto-backend"
 export DEPLOYER_SA="proyekto-deployer"
 export RUNTIME_SA="proyekto-backend-sa"
-export GH_REPO="DavidBatoDev/prdigy"
+export GH_REPO="DavidBatoDev/proyekto"
 export WIF_POOL="github-pool"
 export WIF_PROVIDER="github-provider"
 
