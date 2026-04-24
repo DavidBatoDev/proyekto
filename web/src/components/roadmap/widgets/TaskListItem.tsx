@@ -1,7 +1,44 @@
-import { memo, useState, useRef, useEffect } from "react";
+import { memo, useMemo, useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Check, Trash2, ChevronDown } from "lucide-react";
+import { useDroppable } from "@dnd-kit/core";
+import { Check, Trash2, ChevronDown, Search, UserPlus } from "lucide-react";
 import type { RoadmapTask, TaskStatus } from "@/types/roadmap";
+import { useRoadmapStore } from "@/stores/roadmapStore";
+import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
+import { recordRecentAssignment } from "@/hooks/useRecentAssignees";
+import { useToast } from "@/contexts/ToastContext";
+import type { ProjectMember } from "@/services/project.service";
+
+const getInitials = (name: string) =>
+  name
+    .split(/\s+/)
+    .map((part) => part[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "?";
+
+const getMemberDisplayName = (member: ProjectMember): string => {
+  const u = member.user;
+  if (!u) return member.position ?? "Member";
+  if (u.display_name && u.display_name.trim()) return u.display_name;
+  const full = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
+  if (full) return full;
+  return u.email ?? "Member";
+};
+
+const resolveAssigneeName = (
+  assignee: NonNullable<RoadmapTask["assignee"]> | undefined,
+): string | null => {
+  if (!assignee) return null;
+  if (assignee.display_name && assignee.display_name.trim())
+    return assignee.display_name;
+  const full = [assignee.first_name, assignee.last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  if (full) return full;
+  return assignee.email ?? null;
+};
 
 interface TaskListItemProps {
   task: RoadmapTask;
@@ -109,6 +146,126 @@ export const TaskListItem = memo(
 
     const checkboxStyle = getCheckboxStyle(task.status);
 
+    const toast = useToast();
+    const projectId = useRoadmapStore(
+      (state) => state.roadmap?.project_id ?? "",
+    );
+    const membersQuery = useProjectMembersQuery(projectId);
+    const members = useMemo<ProjectMember[]>(
+      () => membersQuery.data ?? [],
+      [membersQuery.data],
+    );
+
+    const [isAssigneeMenuOpen, setIsAssigneeMenuOpen] = useState(false);
+    const [assigneeSearch, setAssigneeSearch] = useState("");
+    const [assigneeMenuPosition, setAssigneeMenuPosition] = useState({
+      top: 0,
+      left: 0,
+    });
+    const [isSavingAssignee, setIsSavingAssignee] = useState(false);
+    const assigneeTriggerRef = useRef<HTMLButtonElement>(null);
+    const assigneeMenuRef = useRef<HTMLDivElement>(null);
+
+    const ASSIGNEE_MENU_WIDTH = 240;
+
+    const updateAssigneeMenuPosition = () => {
+      const rect = assigneeTriggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const preferredLeft = rect.right - ASSIGNEE_MENU_WIDTH;
+      const clampedLeft = Math.max(
+        8,
+        Math.min(preferredLeft, window.innerWidth - ASSIGNEE_MENU_WIDTH - 8),
+      );
+      setAssigneeMenuPosition({
+        top: rect.bottom + 6,
+        left: clampedLeft,
+      });
+    };
+
+    const filteredMembers = useMemo(() => {
+      const q = assigneeSearch.trim().toLowerCase();
+      if (!q) return members;
+      return members.filter((member) => {
+        const name = member.user?.display_name ?? "";
+        const email = member.user?.email ?? "";
+        const role = member.role ?? "";
+        const first = member.user?.first_name ?? "";
+        const last = member.user?.last_name ?? "";
+        return (
+          name.toLowerCase().includes(q) ||
+          email.toLowerCase().includes(q) ||
+          role.toLowerCase().includes(q) ||
+          first.toLowerCase().includes(q) ||
+          last.toLowerCase().includes(q)
+        );
+      });
+    }, [assigneeSearch, members]);
+
+    const currentAssigneeId = task.assignee_id ?? task.assignee?.id ?? null;
+
+    const applyAssignment = async (member: ProjectMember | null) => {
+      if (isSavingAssignee) return;
+      const latestEpics = useRoadmapStore.getState().epics;
+      const currentTask = latestEpics
+        .flatMap((epic) => epic.features ?? [])
+        .flatMap((feature) => feature.tasks ?? [])
+        .find((candidate) => candidate.id === task.id);
+      if (!currentTask) return;
+
+      const nextAssigneeId = member?.user_id ?? undefined;
+      if ((currentTask.assignee_id ?? null) === (nextAssigneeId ?? null)) {
+        setIsAssigneeMenuOpen(false);
+        return;
+      }
+
+      const nextTask: RoadmapTask = {
+        ...currentTask,
+        assignee_id: nextAssigneeId,
+        assignee: member?.user
+          ? {
+              id: member.user.id,
+              display_name: member.user.display_name,
+              avatar_url: member.user.avatar_url,
+              email: member.user.email,
+              first_name: member.user.first_name,
+              last_name: member.user.last_name,
+            }
+          : undefined,
+      };
+
+      setIsSavingAssignee(true);
+      try {
+        await useRoadmapStore.getState().updateTask(nextTask);
+        if (nextAssigneeId) {
+          recordRecentAssignment(projectId, nextAssigneeId);
+          const name =
+            (member?.user?.display_name && member.user.display_name.trim()) ||
+            member?.user?.email ||
+            "member";
+          toast.success(`Assigned ${name} to "${currentTask.title}"`);
+        } else {
+          toast.success(`Unassigned "${currentTask.title}"`);
+        }
+      } catch {
+        toast.error("Failed to update task assignee");
+      } finally {
+        setIsSavingAssignee(false);
+        setIsAssigneeMenuOpen(false);
+      }
+    };
+
+    const { setNodeRef: setDropRef, isOver, active } = useDroppable({
+      id: `task-drop-${task.id}`,
+      data: {
+        type: "task-assignee",
+        taskId: task.id,
+        currentAssigneeId: task.assignee_id ?? null,
+        currentAssigneeName: resolveAssigneeName(task.assignee),
+      },
+    });
+    const isAssigneeDragOver =
+      isOver && active?.data.current?.type === "assignee";
+
     const updateDropdownPosition = () => {
       if (!statusDropdownRef.current) return;
       const rect = statusDropdownRef.current.getBoundingClientRect();
@@ -128,20 +285,37 @@ export const TaskListItem = memo(
         const isInCheckbox = checkboxButtonRef.current?.contains(target);
         const isInCheckboxMenu = checkboxMenuRef.current?.contains(target);
         if (!isInCheckbox && !isInCheckboxMenu) setIsCheckboxMenuOpen(false);
+
+        const isInAssigneeTrigger =
+          assigneeTriggerRef.current?.contains(target);
+        const isInAssigneeMenu = assigneeMenuRef.current?.contains(target);
+        if (!isInAssigneeTrigger && !isInAssigneeMenu) {
+          setIsAssigneeMenuOpen(false);
+        }
       };
 
-      if (isStatusOpen || isCheckboxMenuOpen) {
+      const handleEscape = (event: KeyboardEvent) => {
+        if (event.key !== "Escape") return;
+        setIsStatusOpen(false);
+        setIsCheckboxMenuOpen(false);
+        setIsAssigneeMenuOpen(false);
+      };
+
+      if (isStatusOpen || isCheckboxMenuOpen || isAssigneeMenuOpen) {
         if (isStatusOpen) updateDropdownPosition();
+        if (isAssigneeMenuOpen) updateAssigneeMenuPosition();
         document.addEventListener("mousedown", handleClickOutside);
+        document.addEventListener("keydown", handleEscape);
         return () => {
           document.removeEventListener("mousedown", handleClickOutside);
+          document.removeEventListener("keydown", handleEscape);
         };
       }
-    }, [isStatusOpen, isCheckboxMenuOpen]);
+    }, [isStatusOpen, isCheckboxMenuOpen, isAssigneeMenuOpen]);
 
     // Reposition dropdown on scroll
     useEffect(() => {
-      if (!isStatusOpen && !isCheckboxMenuOpen) return;
+      if (!isStatusOpen && !isCheckboxMenuOpen && !isAssigneeMenuOpen) return;
 
       const handleReposition = () => {
         updateDropdownPosition();
@@ -153,6 +327,8 @@ export const TaskListItem = memo(
             left: rect.left,
           });
         }
+
+        if (isAssigneeMenuOpen) updateAssigneeMenuPosition();
       };
 
       window.addEventListener("scroll", handleReposition, true);
@@ -161,7 +337,7 @@ export const TaskListItem = memo(
         window.removeEventListener("scroll", handleReposition, true);
         window.removeEventListener("resize", handleReposition);
       };
-    }, [isStatusOpen, isCheckboxMenuOpen]);
+    }, [isStatusOpen, isCheckboxMenuOpen, isAssigneeMenuOpen]);
 
     useEffect(() => {
       if (!pulseToken) return;
@@ -176,11 +352,16 @@ export const TaskListItem = memo(
 
     return (
       <div
+        ref={setDropRef}
         data-task-id={task.id}
-        className={`flex items-center transition-colors border border-transparent hover:border-gray-200 group ${
+        className={`nodrag flex items-center transition-colors border group ${
           isCompact ? "gap-2 px-0 py-0" : "gap-3 px-4 py-3"
-        } hover:bg-gray-50 ${isPulsing ? "roadmap-task-row-pulse" : ""} ${
+        } ${isPulsing ? "roadmap-task-row-pulse" : ""} ${
           isOptimisticTask ? "opacity-75" : ""
+        } ${
+          isAssigneeDragOver
+            ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-300"
+            : "border-transparent hover:border-gray-200 hover:bg-gray-50"
         }`}
         onClick={() => onClick?.(task)}
       >
@@ -270,6 +451,151 @@ export const TaskListItem = memo(
             {categoryLabel}
           </span>
         )}
+
+        {/* Assignee avatar (click to open picker) */}
+        <button
+          ref={assigneeTriggerRef}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!isAssigneeMenuOpen) {
+              setAssigneeSearch("");
+              updateAssigneeMenuPosition();
+            }
+            setIsAssigneeMenuOpen((prev) => !prev);
+          }}
+          disabled={isSavingAssignee}
+          title={
+            task.assignee
+              ? `Assigned to ${resolveAssigneeName(task.assignee) ?? "member"} — click to change`
+              : "Click to assign a member"
+          }
+          className={`shrink-0 rounded-full transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 disabled:opacity-60 ${
+            isCompact ? "w-5 h-5" : "w-6 h-6"
+          } ${
+            isSavingAssignee ? "animate-pulse" : "hover:ring-2 hover:ring-orange-200"
+          }`}
+        >
+          {task.assignee?.avatar_url ? (
+            <img
+              src={task.assignee.avatar_url}
+              alt=""
+              draggable={false}
+              className={`rounded-full object-cover ring-1 ring-white shadow-sm ${
+                isCompact ? "w-5 h-5" : "w-6 h-6"
+              }`}
+            />
+          ) : task.assignee ? (
+            <div
+              className={`rounded-full flex items-center justify-center font-semibold bg-linear-to-br from-slate-200 to-slate-300 text-slate-700 ring-1 ring-white shadow-sm ${
+                isCompact ? "w-5 h-5 text-[9px]" : "w-6 h-6 text-[10px]"
+              }`}
+            >
+              {getInitials(resolveAssigneeName(task.assignee) ?? "?")}
+            </div>
+          ) : (
+            <div
+              className={`rounded-full flex items-center justify-center border border-dashed border-gray-300 text-gray-400 bg-white hover:text-gray-600 hover:border-gray-400 ${
+                isCompact ? "w-5 h-5" : "w-6 h-6"
+              }`}
+            >
+              <UserPlus className={isCompact ? "w-2.5 h-2.5" : "w-3 h-3"} />
+            </div>
+          )}
+        </button>
+
+        {isAssigneeMenuOpen &&
+          createPortal(
+            <div
+              ref={assigneeMenuRef}
+              className="fixed z-80 bg-white border border-gray-200 rounded-lg shadow-lg p-2"
+              style={{
+                top: assigneeMenuPosition.top,
+                left: assigneeMenuPosition.left,
+                width: ASSIGNEE_MENU_WIDTH,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="relative mb-2">
+                <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={assigneeSearch}
+                  onChange={(e) => setAssigneeSearch(e.target.value)}
+                  placeholder="Search members..."
+                  className="w-full pl-8 pr-2 py-1.5 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-400/30"
+                  autoFocus
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void applyAssignment(null);
+                }}
+                disabled={isSavingAssignee}
+                className="w-full px-2 py-2 text-left text-sm rounded-md hover:bg-gray-50 flex items-center justify-between disabled:opacity-60"
+              >
+                <span className="flex items-center gap-2 text-gray-700">
+                  <span className="w-6 h-6 rounded-full flex items-center justify-center border border-dashed border-gray-300 text-gray-400 bg-white">
+                    <UserPlus className="w-3 h-3" />
+                  </span>
+                  Unassigned
+                </span>
+                {!currentAssigneeId && (
+                  <Check className="w-4 h-4 text-orange-500" />
+                )}
+              </button>
+
+              <div className="max-h-56 overflow-y-auto mt-1">
+                {filteredMembers.map((member) => {
+                  const isSelected = member.user_id === currentAssigneeId;
+                  const memberName = getMemberDisplayName(member);
+                  const avatarUrl = member.user?.avatar_url ?? null;
+                  return (
+                    <button
+                      key={member.id}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void applyAssignment(member);
+                      }}
+                      disabled={isSavingAssignee}
+                      className="w-full px-2 py-2 text-left text-sm rounded-md hover:bg-gray-50 flex items-center justify-between gap-2 disabled:opacity-60"
+                    >
+                      <span className="flex items-center gap-2 min-w-0">
+                        {avatarUrl ? (
+                          <img
+                            src={avatarUrl}
+                            alt=""
+                            draggable={false}
+                            className="w-6 h-6 rounded-full object-cover shrink-0"
+                          />
+                        ) : (
+                          <span className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[10px] font-semibold bg-linear-to-br from-slate-200 to-slate-300 text-slate-700">
+                            {getInitials(memberName)}
+                          </span>
+                        )}
+                        <span className="truncate text-gray-700">
+                          {memberName}
+                        </span>
+                      </span>
+                      {isSelected && (
+                        <Check className="w-4 h-4 text-orange-500 shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
+                {filteredMembers.length === 0 && (
+                  <p className="px-2 py-2 text-xs text-gray-400">
+                    No members found
+                  </p>
+                )}
+              </div>
+            </div>,
+            document.body,
+          )}
 
         {/* Status Dropdown */}
         <div className="relative shrink-0" ref={statusDropdownRef}>
