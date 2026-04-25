@@ -179,7 +179,7 @@ const DashboardHeader = () => {
 		<div className="z-10 flex h-full w-full items-center justify-between px-4 sm:px-6">
 			<div className="flex min-w-0 items-center gap-3 sm:gap-4">
 				<Link
-					to="/dashboard"
+					to="/"
 					className="flex shrink-0 items-center border-r border-slate-200 pr-3 sm:pr-4"
 				>
 					<img src={Logo} alt="Prodigy Logo" className="h-6 w-auto" />

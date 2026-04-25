@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     # planner, NOT the classifier). Legacy alias kept one release:
     # OPENAI_MAX_TOKENS.
     openai_chat_max_tokens: int | None = Field(
-        default=None,
+        default=1200,
         alias='OPENAI_CHAT_MAX_TOKENS',
         validation_alias=AliasChoices(
             'OPENAI_CHAT_MAX_TOKENS',
@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     # to disambiguate from the new plan-mode lane (`OPENAI_PLAN_MAX_TOKENS`).
     # Legacy aliases: OPENAI_PLANNER_DEFAULT_MAX_TOKENS, OPENAI_PLANNER_MAX_TOKENS.
     openai_edit_default_max_tokens: int | None = Field(
-        default=2000,
+        default=3000,
         alias='OPENAI_EDIT_DEFAULT_MAX_TOKENS',
         validation_alias=AliasChoices(
             'OPENAI_EDIT_DEFAULT_MAX_TOKENS',
@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     # edit-lane attempt truncated or missed its tool call. Legacy aliases:
     # OPENAI_PLANNER_REPAIR_MAX_TOKENS, OPENAI_PLANNER_RETRY_MAX_TOKENS.
     openai_edit_repair_max_tokens: int | None = Field(
-        default=3000,
+        default=6000,
         alias='OPENAI_EDIT_REPAIR_MAX_TOKENS',
         validation_alias=AliasChoices(
             'OPENAI_EDIT_REPAIR_MAX_TOKENS',
@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     # status_change_only, move_only). Legacy aliases:
     # OPENAI_PLANNER_NARROW_EDIT_MAX_TOKENS, OPENAI_PLANNER_SCOPED_MAX_TOKENS.
     openai_edit_narrow_max_tokens: int | None = Field(
-        default=800,
+        default=2000,
         alias='OPENAI_EDIT_NARROW_MAX_TOKENS',
         validation_alias=AliasChoices(
             'OPENAI_EDIT_NARROW_MAX_TOKENS',
@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     # explicit cap GPT-5 reasoning models default to ~900 tokens, which the
     # model exhausts on reasoning alone — leaving empty surface content.
     openai_plan_max_tokens: int | None = Field(
-        default=4000,
+        default=8000,
         alias='OPENAI_PLAN_MAX_TOKENS',
     )
     # Plan-revision output is a tiny `revision_operations` patch, not a full
@@ -155,7 +155,7 @@ class Settings(BaseSettings):
         alias='AGENT_HYBRID_REACT_ENABLED',
     )
     agent_edit_actionable_failure_clarifier_enabled: bool = Field(
-        default=False,
+        default=True,
         alias='AGENT_EDIT_ACTIONABLE_FAILURE_CLARIFIER_ENABLED',
     )
     agent_draft_graph_enabled: bool = Field(
@@ -172,12 +172,11 @@ class Settings(BaseSettings):
     # Default False preserves the current behavior (plan_only routes through
     # the edit lane and stages ops immediately).
     agent_plan_proposal_enabled: bool = Field(
-        default=False,
+        default=True,
         alias='AGENT_PLAN_PROPOSAL_ENABLED',
     )
-    # Keep disabled by default to preserve hybrid behavior; enable for strict planner authority.
     agent_strict_mutation_authority_enabled: bool = Field(
-        default=False,
+        default=True,
         alias='AGENT_STRICT_MUTATION_AUTHORITY_ENABLED',
     )
     inline_preview_max_bytes: int = Field(
@@ -186,7 +185,7 @@ class Settings(BaseSettings):
     )
 
     agent_log_level: str = Field(default='DEBUG', alias='AGENT_LOG_LEVEL')
-    agent_log_json: bool = Field(default=True, alias='AGENT_LOG_JSON')
+    agent_log_json: bool = Field(default=False, alias='AGENT_LOG_JSON')
     agent_log_color: str = Field(default='auto', alias='AGENT_LOG_COLOR')
     agent_log_include_content: bool = Field(default=False, alias='AGENT_LOG_INCLUDE_CONTENT')
     agent_log_file: str | None = Field(default=None, alias='AGENT_LOG_FILE')
@@ -244,8 +243,8 @@ class Settings(BaseSettings):
             return None
         if value < 64:
             return 64
-        if value > 4096:
-            return 4096
+        if value > 8192:
+            return 8192
         return value
 
     @field_validator('openai_edit_default_max_tokens')
@@ -255,8 +254,8 @@ class Settings(BaseSettings):
             return None
         if value < 64:
             return 64
-        if value > 4096:
-            return 4096
+        if value > 8192:
+            return 8192
         return value
 
     @field_validator('openai_edit_repair_max_tokens')
@@ -266,8 +265,8 @@ class Settings(BaseSettings):
             return None
         if value < 64:
             return 64
-        if value > 4096:
-            return 4096
+        if value > 8192:
+            return 8192
         return value
 
     @field_validator('openai_edit_narrow_max_tokens')
@@ -277,8 +276,8 @@ class Settings(BaseSettings):
             return None
         if value < 64:
             return 64
-        if value > 4096:
-            return 4096
+        if value > 8192:
+            return 8192
         return value
 
     @field_validator('openai_plan_max_tokens')

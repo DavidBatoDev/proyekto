@@ -1,0 +1,36 @@
+# Repo-root .dockerignore — applies to agent builds that use repo root as context.
+# (The backend build uses ./backend as context and reads backend/.dockerignore
+# independently, so entries here do not affect it.)
+
+web/
+backend/node_modules/
+backend/dist/
+backend/coverage/
+backend/test/
+
+agent/venv/
+agent/__pycache__/
+agent/**/__pycache__/
+agent/tests/
+agent/logs.txt
+agent/*.log
+agent/.pytest_cache/
+agent/.mypy_cache/
+agent/.ruff_cache/
+
+# Env files — gitignored anyway, but defensive-exclude from build context too.
+**/.env
+**/.env.*
+!**/.env.example
+
+supabase/
+infra/
+scripts/
+docs/
+
+.git
+.github/
+.vscode/
+.idea/
+
+*.md

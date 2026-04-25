@@ -15,6 +15,7 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { useDraggable } from "@dnd-kit/core";
 import { GripHorizontal, Layers3, ListTodo } from "lucide-react";
 import { EpicWidget, type EpicWidgetData } from "../../widgets/EpicWidget";
 import {
@@ -28,6 +29,64 @@ import type {
   RoadmapTask,
 } from "@/types/roadmap";
 import type { RoadmapPerformanceMode } from "./models/types";
+import {
+  useRecentAssignees,
+  type DockAvatar,
+} from "@/hooks/useRecentAssignees";
+
+const getAvatarInitials = (name: string) =>
+  name
+    .split(/\s+/)
+    .map((part) => part[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "?";
+
+function ToolbarAssigneeChip({ avatar }: { avatar: DockAvatar }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `dock-avatar-${avatar.userId}`,
+    data: {
+      type: "assignee",
+      userId: avatar.userId,
+      displayName: avatar.displayName,
+      avatarUrl: avatar.avatarUrl,
+    },
+  });
+
+  const tooltip = avatar.isSelf
+    ? `${avatar.displayName} (you)`
+    : avatar.displayName;
+  const ringClass = avatar.isSelf ? "ring-orange-400" : "ring-white";
+
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      {...attributes}
+      {...listeners}
+      title={`Drag to assign ${tooltip}`}
+      aria-label={`Drag to assign ${tooltip}`}
+      className={`relative shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 transition-opacity cursor-grab active:cursor-grabbing ${
+        isDragging ? "opacity-40" : "opacity-100"
+      }`}
+    >
+      {avatar.avatarUrl ? (
+        <img
+          src={avatar.avatarUrl}
+          alt=""
+          draggable={false}
+          className={`w-7 h-7 rounded-full object-cover ring-2 ${ringClass} shadow-sm`}
+        />
+      ) : (
+        <div
+          className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold bg-linear-to-br from-slate-200 to-slate-300 text-slate-700 ring-2 ${ringClass} shadow-sm`}
+        >
+          {getAvatarInitials(avatar.displayName)}
+        </div>
+      )}
+    </button>
+  );
+}
 
 interface RoadmapViewProps {
   roadmap: Roadmap;
@@ -235,7 +294,7 @@ const getLayoutedElements = (
 };
 
 export const RoadmapView = ({
-  roadmap: _roadmap,
+  roadmap,
   epics,
   showMiniMap = true,
   minZoom = 0.4,
@@ -282,6 +341,10 @@ export const RoadmapView = ({
   const isReducedMotion = performanceMode === "reducedMotion";
   const [toolbarDraggingType, setToolbarDraggingType] =
     useState<ToolbarItemType | null>(null);
+
+  const { avatars: assigneeAvatars } = useRecentAssignees(
+    roadmap?.project_id ?? "",
+  );
 
   const nodeTypes: NodeTypes = useMemo(
     () => ({
@@ -696,7 +759,7 @@ export const RoadmapView = ({
       <div className="absolute bottom-4 right-4 bg-white/90 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-700 shadow-sm">
         Zoom {Math.round(zoom * 100)}%
       </div>
-      <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-2xl border border-gray-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur">
+      <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-2xl border border-gray-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur select-none">
         <div className="flex items-center gap-2">
           <div className="mr-1 inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-gray-500">
             <GripHorizontal className="h-3 w-3" />
@@ -747,6 +810,20 @@ export const RoadmapView = ({
             <ListTodo className="h-3.5 w-3.5" />
             Task
           </button>
+          {assigneeAvatars.length > 0 && (
+            <>
+              <span
+                aria-hidden="true"
+                className="mx-1 h-5 w-px shrink-0 bg-gray-200"
+              />
+              <span className="mr-1 inline-flex items-center text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                Assignee
+              </span>
+              {assigneeAvatars.map((avatar) => (
+                <ToolbarAssigneeChip key={avatar.userId} avatar={avatar} />
+              ))}
+            </>
+          )}
         </div>
       </div>
     </div>

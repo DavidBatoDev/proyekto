@@ -1,0 +1,91 @@
+name: Agent — Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'agent/**'
+      - '.github/workflows/agent-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: agent-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_AR_REPO }}/agent:${{ github.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build image
+        run: docker build -t "$IMAGE" -f agent/Dockerfile .
+
+      - name: Push image
+        run: docker push "$IMAGE"
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "${{ vars.GCP_AGENT_SERVICE_NAME }}" \
+            --image="$IMAGE" \
+            --region="${{ vars.GCP_REGION }}" \
+            --platform=managed \
+            --execution-environment=gen2 \
+            --cpu-boost \
+            --service-account="${{ vars.GCP_AGENT_RUNTIME_SA }}" \
+            --allow-unauthenticated \
+            --port=8080 \
+            --memory=1Gi \
+            --cpu=1 \
+            --min-instances=0 \
+            --max-instances=3 \
+            --concurrency=10 \
+            --timeout=300 \
+            --set-env-vars="^##^APP_ENV=production##AGENT_LOG_JSON=true##NEST_API_BASE_URL=https://api.proyekto.tech/api##AGENT_CORS_ORIGINS=https://proyekto.tech,https://www.proyekto.tech,http://localhost:3000,http://localhost:5173" \
+            --set-secrets="OPENAI_API_KEY=OPENAI_API_KEY:latest,UPSTASH_REDIS_REST_URL=UPSTASH_REDIS_REST_URL:latest,UPSTASH_REDIS_REST_TOKEN=UPSTASH_REDIS_REST_TOKEN:latest" \
+            --quiet
+
+      - name: Print service URL
+        run: |
+          URL=$(gcloud run services describe "${{ vars.GCP_AGENT_SERVICE_NAME }}" \
+            --region="${{ vars.GCP_REGION }}" --format='value(status.url)')
+          echo "Service URL: $URL"
+          echo "### Deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: \`$IMAGE\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- URL: $URL" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke test health endpoint
+        run: |
+          URL=$(gcloud run services describe "${{ vars.GCP_AGENT_SERVICE_NAME }}" \
+            --region="${{ vars.GCP_REGION }}" --format='value(status.url)')
+          for i in 1 2 3 4 5; do
+            if curl -fsS "$URL/health" | grep -q '"status":"ok"'; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying in 3s..."
+            sleep 3
+          done
+          echo "Health check did not return status:ok within 5 attempts"
+          exit 1

@@ -10,6 +10,15 @@ import { AlertTriangle } from "lucide-react";
 import { motion } from "framer-motion";
 import { Link } from "@tanstack/react-router";
 import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
   RoadmapLeftSidePanel,
   JSONRoadmapSidePanel,
   RoadmapCanvas,
@@ -18,6 +27,7 @@ import {
   RoadmapAiAssistantPanel,
   type RoadmapMetadataFormData,
 } from "@/components/roadmap";
+import { ConfirmAssigneeOverwriteDialog } from "@/components/roadmap/widgets/ConfirmAssigneeOverwriteDialog";
 import { RoadmapTopBar } from "../../RoadmapTopBar";
 import { RoadmapPageSkeleton } from "../../RoadmapPageSkeleton";
 import { useProjectSettingsStore } from "@/stores/projectSettingsStore";
@@ -25,12 +35,23 @@ import {
   roadmapService,
   type UpsertFullRoadmapDto,
 } from "@/services/roadmap.service";
-import type { Roadmap } from "@/types/roadmap";
+import type { Roadmap, RoadmapTask } from "@/types/roadmap";
 import { useToast } from "@/contexts/ToastContext";
 import { useRoadmapFullLiveQuery } from "@/hooks/useProjectQueries";
+import {
+  useRecentAssignees,
+  type DockAvatar,
+} from "@/hooks/useRecentAssignees";
 import { useRoadmapStore, type CanvasViewMode } from "@/stores/roadmapStore";
 import { useShallow } from "zustand/react/shallow";
+import { findTaskById } from "@/routes/project/$projectId/work-items/workItemsOptimistic";
 import type { RoadmapPerformanceMode } from "../models/types";
+
+interface PendingAssignment {
+  taskId: string;
+  newAvatar: DockAvatar;
+  currentAssigneeName: string;
+}
 
 interface RoadmapViewContentProps {
   roadmapId: string;
@@ -167,6 +188,7 @@ export function RoadmapViewContent({
     openTaskDetail,
     canvasViewMode,
     setCanvasViewMode,
+    updateTask,
   } = useRoadmapStore(
     useShallow((state) => ({
       roadmap: state.roadmap,
@@ -182,6 +204,7 @@ export function RoadmapViewContent({
       openTaskDetail: state.openTaskDetail,
       canvasViewMode: state.canvasViewMode,
       setCanvasViewMode: state.setCanvasViewMode,
+      updateTask: state.updateTask,
     })),
   );
   const resolveCanonicalNodeId = useRoadmapStore(
@@ -536,6 +559,127 @@ export function RoadmapViewContent({
     }
   };
 
+  // Quick-assign dock state
+  const { recordAssignment } = useRecentAssignees(projectId);
+  const [pendingAssignment, setPendingAssignment] =
+    useState<PendingAssignment | null>(null);
+  const [isSavingAssignment, setIsSavingAssignment] = useState(false);
+  const [activeDragAvatar, setActiveDragAvatar] =
+    useState<DockAvatar | null>(null);
+
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
+  const applyAssignment = useCallback(
+    async (taskId: string, avatar: DockAvatar) => {
+      const latestEpics = useRoadmapStore.getState().epics;
+      const currentTask = findTaskById(latestEpics, taskId);
+      if (!currentTask) return;
+
+      const nextTask: RoadmapTask = {
+        ...currentTask,
+        assignee_id: avatar.userId,
+        assignee: {
+          id: avatar.userId,
+          display_name: avatar.displayName,
+          avatar_url: avatar.avatarUrl ?? undefined,
+        },
+      };
+
+      try {
+        await updateTask(nextTask);
+        recordAssignment(avatar.userId);
+        toast.success(
+          `Assigned ${avatar.displayName} to "${currentTask.title}"`,
+        );
+      } catch {
+        toast.error("Failed to update task assignee");
+      }
+    },
+    [recordAssignment, toast, updateTask],
+  );
+
+  const handleDockDragStart = useCallback((event: DragStartEvent) => {
+    const data = event.active.data.current;
+    if (data?.type !== "assignee") return;
+    setActiveDragAvatar({
+      userId: (data.userId as string) ?? "",
+      displayName: (data.displayName as string) ?? "",
+      avatarUrl: (data.avatarUrl as string | null | undefined) ?? null,
+      isSelf: false,
+    });
+  }, []);
+
+  const handleDockDragCancel = useCallback(() => {
+    setActiveDragAvatar(null);
+  }, []);
+
+  const handleDockDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      setActiveDragAvatar(null);
+      const { active, over } = event;
+      if (!over) return;
+
+      const activeData = active.data.current;
+      const overData = over.data.current;
+      if (activeData?.type !== "assignee") return;
+      if (overData?.type !== "task-assignee") return;
+
+      const userId = activeData.userId as string | undefined;
+      const displayName = activeData.displayName as string | undefined;
+      const avatarUrl = (activeData.avatarUrl as string | null | undefined) ?? null;
+      const taskId = overData.taskId as string | undefined;
+      const currentAssigneeId = overData.currentAssigneeId as
+        | string
+        | null
+        | undefined;
+      const currentAssigneeName =
+        (overData.currentAssigneeName as string | null | undefined) ?? null;
+
+      if (!userId || !displayName || !taskId) return;
+      if (currentAssigneeId === userId) return;
+
+      const avatar: DockAvatar = {
+        userId,
+        displayName,
+        avatarUrl,
+        isSelf: false,
+      };
+
+      if (!currentAssigneeId) {
+        void applyAssignment(taskId, avatar);
+        return;
+      }
+
+      setPendingAssignment({
+        taskId,
+        newAvatar: avatar,
+        currentAssigneeName: currentAssigneeName ?? "the current assignee",
+      });
+    },
+    [applyAssignment],
+  );
+
+  const handleConfirmAssignment = useCallback(async () => {
+    if (!pendingAssignment) return;
+    setIsSavingAssignment(true);
+    try {
+      await applyAssignment(
+        pendingAssignment.taskId,
+        pendingAssignment.newAvatar,
+      );
+      setPendingAssignment(null);
+    } finally {
+      setIsSavingAssignment(false);
+    }
+  }, [applyAssignment, pendingAssignment]);
+
+  const handleCancelAssignment = useCallback(() => {
+    if (isSavingAssignment) return;
+    setPendingAssignment(null);
+  }, [isSavingAssignment]);
+
   // Loading roadmap data
   if (
     (isLoadingRoadmap || roadmapLiveQuery.isPending) &&
@@ -568,7 +712,17 @@ export function RoadmapViewContent({
   }
 
   return (
-    <div className="app-shell-bg flex h-full flex-col overflow-hidden">
+    <DndContext
+      sensors={dndSensors}
+      onDragStart={handleDockDragStart}
+      onDragEnd={handleDockDragEnd}
+      onDragCancel={handleDockDragCancel}
+    >
+    <div
+      className={`app-shell-bg flex h-full flex-col overflow-hidden ${
+        activeDragAvatar ? "select-none" : ""
+      }`}
+    >
       <style>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -703,6 +857,37 @@ export function RoadmapViewContent({
           </div>
         </div>
       )}
+
+      <ConfirmAssigneeOverwriteDialog
+        isOpen={pendingAssignment !== null}
+        isSaving={isSavingAssignment}
+        currentAssigneeName={pendingAssignment?.currentAssigneeName ?? null}
+        newAssigneeName={pendingAssignment?.newAvatar.displayName ?? null}
+        onCancel={handleCancelAssignment}
+        onConfirm={handleConfirmAssignment}
+      />
     </div>
+      <DragOverlay dropAnimation={null}>
+        {activeDragAvatar ? (
+          activeDragAvatar.avatarUrl ? (
+            <img
+              src={activeDragAvatar.avatarUrl}
+              alt=""
+              draggable={false}
+              className="pointer-events-none w-8 h-8 rounded-full object-cover ring-2 ring-orange-300 shadow-lg"
+            />
+          ) : (
+            <div className="pointer-events-none w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold bg-linear-to-br from-slate-200 to-slate-300 text-slate-700 ring-2 ring-orange-300 shadow-lg">
+              {activeDragAvatar.displayName
+                .split(/\s+/)
+                .map((part) => part[0] ?? "")
+                .join("")
+                .slice(0, 2)
+                .toUpperCase() || "?"}
+            </div>
+          )
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   );
 }
