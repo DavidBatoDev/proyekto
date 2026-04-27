@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles } from "lucide-react";
 import { TemplateEntryCard, type TemplateEntry } from "./TemplateEntryCard";
 
@@ -117,11 +118,27 @@ export const TemplatesSection = () => {
       </div>
 
       <div className="relative z-10 rounded-3xl bg-white/55 p-1 backdrop-blur-[1px]">
-        <div className="grid items-center gap-x-3 gap-y-7 sm:grid-cols-2 xl:grid-cols-3">
-          {filteredTemplates.map((template, index) => (
-            <TemplateEntryCard key={template.id} template={template} index={index} />
-          ))}
-        </div>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeCategory}
+            className="grid items-center gap-x-3 gap-y-7 sm:grid-cols-2 xl:grid-cols-3"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+          >
+            {filteredTemplates.map((template, index) => (
+              <motion.div
+                key={template.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.22, delay: index * 0.07, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <TemplateEntryCard template={template} index={index} />
+              </motion.div>
+            ))}
+          </motion.div>
+        </AnimatePresence>
       </div>
     </section>
   );

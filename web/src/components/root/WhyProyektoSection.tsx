@@ -1,27 +1,38 @@
-import { Layers3, Sparkles, TimerReset } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { ArrowRight } from "lucide-react";
 
-const cards = [
+const testimonials = [
   {
-    title: "You know the work — Proyekto helps you run it",
-    description:
-      "Turn your ideas into clear steps, align your team, and keep projects moving forward.",
-    icon: Sparkles,
+    quote:
+      "Finally a project tool built for consultants, not enterprise teams. Setting up my first client roadmap took minutes.",
+    name: "Alex R.",
+    role: "Independent Web Consultant",
+    badge: "Early Access",
+    initials: "AR",
   },
   {
-    title: "Everything stays in one place",
-    description:
-      "Your plan, your people, your tasks — all in one easy-to-use tool.",
-    icon: Layers3,
+    quote:
+      "I used to dread client onboarding. Now I share the roadmap link and clients can see exactly what's happening at every step.",
+    name: "Maria S.",
+    role: "Freelance UX Designer",
+    badge: "Beta User",
+    initials: "MS",
   },
   {
-    title: "Projects move forward, automatically",
-    description:
-      "Proyekto helps you track progress, send reminders, and keep everyone on the same page. No more falling behind.",
-    icon: TimerReset,
+    quote:
+      "The AI roadmap feature drafted a full delivery plan from a 3-sentence brief. Saved me hours on a new project.",
+    name: "Chris T.",
+    role: "Product Consultant",
+    badge: "Early Access",
+    initials: "CT",
   },
 ];
 
-const loopCards = [...cards, ...cards];
+const trustSignals = [
+  "50+ Project Templates",
+  "AI-Powered Planning",
+  "Client-Ready Sharing",
+];
 
 export function WhyProyektoSection() {
   return (
@@ -29,91 +40,79 @@ export function WhyProyektoSection() {
       <div className="pointer-events-none absolute -left-12 top-8 h-40 w-40 rounded-full bg-cyan-200/25 blur-3xl" />
       <div className="pointer-events-none absolute right-0 top-12 h-44 w-44 rounded-full bg-indigo-200/25 blur-3xl" />
 
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_12px_30px_rgba(16,24,40,0.06)] sm:p-8">
+      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_12px_30px_rgba(16,24,40,0.06)] sm:p-8">
+        {/* Header */}
         <div className="text-center">
           <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-            WHY PROYEKTO
+            What Early Users Say
           </h2>
           <p className="mt-3 text-sm text-slate-600 sm:text-base">
-            The easiest way to get your project across the finish line
+            Trusted by freelancers, consultants, and early-stage teams.
           </p>
         </div>
 
-        <div className="mt-6 border-t border-slate-200 pt-6">
-          <div className="relative overflow-hidden">
-            <div className="why-carousel-track flex w-max gap-4 pr-4">
-              {loopCards.map((card, index) => {
-                const Icon = card.icon;
-                const tone = index % cards.length;
-
-                return (
-                  <article
-                    key={`${card.title}-${index}`}
-                    className={`w-[330px] shrink-0 rounded-2xl border p-5 shadow-[0_8px_18px_rgba(15,23,42,0.05)] md:w-[380px] ${
-                      tone === 0
-                        ? "border-blue-200 bg-linear-to-br from-blue-500 to-blue-600 text-white"
-                        : tone === 1
-                          ? "border-blue-200 bg-linear-to-br from-blue-300 to-blue-400 text-slate-900"
-                          : "border-slate-200 bg-slate-50"
-                    }`}
-                  >
-                    <span
-                      className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border ${
-                        tone === 0
-                          ? "border-blue-200/70 bg-white/15 text-white"
-                          : tone === 1
-                            ? "border-blue-200/80 bg-white/60 text-blue-700"
-                            : "border-slate-200 bg-white text-slate-700"
-                      }`}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </span>
-
-                    <h3
-                      className={`mt-3 text-lg font-semibold ${
-                        tone === 0 ? "text-white" : "text-slate-900"
-                      }`}
-                    >
-                      {card.title}
-                    </h3>
-                    <p
-                      className={`mt-2 text-sm leading-relaxed ${
-                        tone === 0
-                          ? "text-blue-50"
-                          : tone === 1
-                            ? "text-blue-900/85"
-                            : "text-slate-600"
-                      }`}
-                    >
-                      {card.description}
+        {/* Testimonials — horizontal scroll strip */}
+        <div className="-mx-6 mt-8 sm:-mx-8">
+          <div
+            className="flex gap-4 overflow-x-auto scroll-smooth snap-x snap-mandatory px-6 pb-3 sm:px-8 scroll-px-6 sm:scroll-px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {testimonials.map((t) => (
+              <article
+                key={t.name}
+                className="flex w-[82%] min-w-[260px] shrink-0 snap-center flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md sm:w-[46%] lg:w-[calc(33.333%-11px)]"
+              >
+                <span className="inline-flex w-fit items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                  {t.badge}
+                </span>
+                <p className="mt-4 flex-1 text-sm leading-relaxed text-slate-600">
+                  <span className="mr-0.5 font-serif text-2xl font-bold leading-none text-slate-200">
+                    "
+                  </span>
+                  {t.quote}
+                </p>
+                <div className="mt-5 flex items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">
+                    {t.initials}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">
+                      {t.name}
                     </p>
-                  </article>
-                );
-              })}
-            </div>
-
-            <div className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-linear-to-r from-white to-transparent" />
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-linear-to-l from-white to-transparent" />
+                    <p className="text-xs text-slate-500">{t.role}</p>
+                  </div>
+                </div>
+              </article>
+            ))}
+            {/* Right breathing room so last card doesn't flush to edge on mobile */}
+            <div className="w-2 shrink-0 lg:hidden" />
           </div>
         </div>
-      </div>
 
-      <style>{`
-        .why-carousel-track {
-          animation: why-carousel-loop 26s linear infinite;
-        }
-        .why-carousel-track:hover {
-          animation-play-state: paused;
-        }
-        @keyframes why-carousel-loop {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(calc(-50% - 0.5rem));
-          }
-        }
-      `}</style>
+        {/* Trust signals */}
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+          {trustSignals.map((signal) => (
+            <span
+              key={signal}
+              className="whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium text-slate-500"
+            >
+              {signal}
+            </span>
+          ))}
+        </div>
+
+        {/* CTA */}
+        <div className="mt-6 flex items-center justify-center gap-2">
+          <p className="text-sm text-slate-500">Ready to try it?</p>
+          <Link
+            to="/auth/signup"
+            search={{ redirect: undefined }}
+            className="inline-flex items-center gap-1 text-sm font-semibold text-slate-900 transition-colors hover:text-blue-600"
+          >
+            Get Early Access
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      </div>
     </section>
   );
 }

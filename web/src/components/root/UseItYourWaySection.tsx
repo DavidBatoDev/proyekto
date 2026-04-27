@@ -123,8 +123,25 @@ const slideVariants = {
 };
 
 export function UseItYourWaySection() {
-  // Desktop: hover-driven left panel flip
+  // Desktop: hover overrides auto-scroll
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [desktopIndex, setDesktopIndex] = useState(0);
+  const desktopTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isHoveringRef = useRef(false);
+
+  const startDesktopScroll = useCallback(() => {
+    if (desktopTimerRef.current) clearInterval(desktopTimerRef.current);
+    desktopTimerRef.current = setInterval(() => {
+      if (!isHoveringRef.current) {
+        setDesktopIndex((prev) => (prev + 1) % TOTAL);
+      }
+    }, AUTO_SCROLL_MS);
+  }, []);
+
+  useEffect(() => {
+    startDesktopScroll();
+    return () => { if (desktopTimerRef.current) clearInterval(desktopTimerRef.current); };
+  }, [startDesktopScroll]);
 
   // Mobile: swipeable infinite carousel
   const [mobileIndex, setMobileIndex] = useState(0);
@@ -144,7 +161,6 @@ export function UseItYourWaySection() {
     }, AUTO_SCROLL_MS);
   }, []);
 
-  // Start auto-scroll on mount, clean up on unmount
   useEffect(() => {
     startAutoScroll();
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
@@ -163,8 +179,9 @@ export function UseItYourWaySection() {
     startAutoScroll();
   };
 
-  const activeCard = hoveredIndex !== null ? leftPanelCards[hoveredIndex] : null;
-  const activeUseCase = hoveredIndex !== null ? useCases[hoveredIndex] : null;
+  const effectiveDesktopIndex = hoveredIndex ?? desktopIndex;
+  const activeCard = leftPanelCards[effectiveDesktopIndex];
+  const activeUseCase = useCases[effectiveDesktopIndex];
   const mobileCard = leftPanelCards[mobileIndex];
   const mobileUseCase = useCases[mobileIndex];
 
@@ -286,7 +303,7 @@ export function UseItYourWaySection() {
         <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-[0_12px_30px_rgba(16,24,40,0.06)] lg:h-[calc(100vh-8rem)]">
           <div className="grid h-full grid-cols-[0.55fr_1fr] gap-8">
 
-            {/* Left panel — flips on right-panel hover */}
+            {/* Left panel — flips via auto-scroll or hover */}
             <div className="relative h-full overflow-hidden rounded-3xl border border-slate-200/70 bg-linear-to-br from-slate-100 to-slate-200 p-6">
               <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-cyan-100/80 blur-2xl" />
               <div className="pointer-events-none absolute -bottom-14 -left-14 h-40 w-40 rounded-full bg-indigo-100/70 blur-3xl" />
@@ -294,7 +311,7 @@ export function UseItYourWaySection() {
               <div className="relative z-10 h-full" style={{ perspective: "1200px" }}>
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.div
-                    key={hoveredIndex ?? "default"}
+                    key={effectiveDesktopIndex}
                     initial={{ rotateY: 90, opacity: 0 }}
                     animate={{ rotateY: 0, opacity: 1 }}
                     exit={{ rotateY: -90, opacity: 0 }}
@@ -302,114 +319,76 @@ export function UseItYourWaySection() {
                     style={{ backfaceVisibility: "hidden" }}
                     className="flex h-full flex-col"
                   >
-                    {activeCard === null ? (
-                      <>
-                        <span className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/90 px-3 py-1 text-xs font-semibold text-slate-700">
-                          <BriefcaseBusiness className="h-3.5 w-3.5" />
-                          Flexible Project Modes
-                        </span>
+                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 bg-white/90 text-xs font-bold text-slate-700">
+                      {String(effectiveDesktopIndex + 1).padStart(2, "0")}
+                    </span>
 
-                        <div className="mt-6">
-                          <h2 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
-                            Use it your way — from simple projects to ongoing work
-                          </h2>
-                          <p className="mt-3 text-sm leading-relaxed text-slate-600">
-                            Your project isn't always the same. Sometimes it's a one-time build. Sometimes it keeps evolving.
-                          </p>
-                          <p className="mt-3 text-sm leading-relaxed text-slate-600">
-                            Proyekto adapts to how you work — not the other way around.
-                          </p>
-                        </div>
+                    <div className="mt-6 flex flex-1 flex-col">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm">
+                        <activeCard.Icon className="h-6 w-6 text-slate-700" />
+                      </div>
 
-                        <div className="mt-auto pt-8">
-                          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
-                            Works for every mode
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {modePills.map(({ icon: Icon, label }) => (
-                              <span
-                                key={label}
-                                className="inline-flex items-center gap-1.5 rounded-full border border-slate-300/80 bg-white/70 px-3 py-1.5 text-xs font-semibold text-slate-600 backdrop-blur-sm"
-                              >
-                                <Icon className="h-3 w-3 text-slate-400" />
-                                {label}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 bg-white/90 text-xs font-bold text-slate-700">
-                          {String(hoveredIndex! + 1).padStart(2, "0")}
-                        </span>
+                      <h3 className="mt-5 text-2xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-3xl">
+                        {activeCard.tagline}
+                      </h3>
 
-                        <div className="mt-6 flex flex-1 flex-col">
-                          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm">
-                            <activeCard.Icon className="h-6 w-6 text-slate-700" />
-                          </div>
+                      <ul className="mt-5 space-y-3">
+                        {activeCard.bullets.map((bullet) => (
+                          <li key={bullet} className="flex items-center gap-2.5 text-sm text-slate-600">
+                            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white/80">
+                              <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
+                            </span>
+                            {bullet}
+                          </li>
+                        ))}
+                      </ul>
 
-                          <h3 className="mt-5 text-2xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-3xl">
-                            {activeCard.tagline}
-                          </h3>
-
-                          <ul className="mt-5 space-y-3">
-                            {activeCard.bullets.map((bullet) => (
-                              <li key={bullet} className="flex items-center gap-2.5 text-sm text-slate-600">
-                                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white/80">
-                                  <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
-                                </span>
-                                {bullet}
-                              </li>
-                            ))}
-                          </ul>
-
-                          <div className="mt-auto pt-6">
-                            <p className="text-xs text-slate-400">{activeUseCase!.examples}</p>
-                          </div>
-                        </div>
-                      </>
-                    )}
+                      <div className="mt-auto pt-6">
+                        <p className="text-xs text-slate-400">{activeUseCase.examples}</p>
+                      </div>
+                    </div>
                   </motion.div>
                 </AnimatePresence>
               </div>
             </div>
 
-            {/* Right panel */}
+            {/* Right panel — flex column so items fill height with no gap below #7 */}
             <div
-              className="hide-scrollbar overflow-y-auto rounded-2xl border border-slate-200 bg-white"
-              onMouseLeave={() => setHoveredIndex(null)}
+              className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white"
+              onMouseEnter={() => { isHoveringRef.current = true; }}
+              onMouseLeave={() => { isHoveringRef.current = false; setHoveredIndex(null); }}
             >
-              {useCases.map((useCase, index) => (
-                <motion.article
-                  key={useCase.title}
-                  onMouseEnter={() => setHoveredIndex(index)}
-                  whileHover={{ x: 6 }}
-                  transition={{ duration: 0.2, ease: "easeOut" }}
-                  className={`group relative overflow-hidden px-4 py-4 sm:px-5 ${
-                    index < useCases.length - 1 ? "border-b border-slate-200" : ""
-                  }`}
-                >
-                  <span className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                    <span className="absolute -right-10 top-1/2 h-24 w-24 -translate-y-1/2 rounded-full bg-cyan-200/40 blur-2xl" />
-                    <span className="absolute -left-10 top-1/2 h-24 w-24 -translate-y-1/2 rounded-full bg-indigo-200/35 blur-2xl" />
-                  </span>
-                  <div className="flex items-start gap-3">
-                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-slate-50 text-xs font-semibold text-slate-700 transition-all duration-200 group-hover:border-slate-500 group-hover:bg-white group-hover:text-slate-900">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                    <div>
-                      <h3 className="text-base font-semibold text-slate-900">{useCase.title}</h3>
-                      <p className="mt-1 text-sm leading-relaxed text-slate-600">{useCase.description}</p>
-                      {useCase.examples ? (
-                        <p className="mt-2 text-xs font-medium text-slate-500 transition-colors duration-200 group-hover:text-slate-600">
-                          {useCase.examples}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                </motion.article>
-              ))}
+              {useCases.map((useCase, index) => {
+                const isActive = effectiveDesktopIndex === index;
+                return (
+                  <article
+                    key={useCase.title}
+                    onMouseEnter={() => setHoveredIndex(index)}
+                    className={`relative flex flex-1 items-center px-4 sm:px-5 transition-colors duration-200 ${
+                      isActive ? "bg-slate-50" : ""
+                    } ${index < useCases.length - 1 ? "border-b border-slate-200" : ""}`}
+                  >
+                    <span className={`absolute left-0 inset-y-2 w-0.5 rounded-full bg-slate-600 transition-opacity duration-200 ${isActive ? "opacity-100" : "opacity-0"}`} />
+                    <motion.div
+                      animate={{ x: isActive ? 6 : 0 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      className="flex w-full items-start gap-3"
+                    >
+                      <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xs font-semibold transition-all duration-200 ${
+                        isActive
+                          ? "border-slate-500 bg-white text-slate-900"
+                          : "border-slate-300 bg-slate-50 text-slate-700"
+                      }`}>
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <div>
+                        <h3 className="text-base font-semibold text-slate-900">{useCase.title}</h3>
+                        <p className="mt-1 text-sm leading-relaxed text-slate-600">{useCase.description}</p>
+                      </div>
+                    </motion.div>
+                  </article>
+                );
+              })}
             </div>
 
           </div>

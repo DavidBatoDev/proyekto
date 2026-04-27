@@ -1,40 +1,30 @@
-import { ClipboardPen, Users, Gauge } from "lucide-react";
+import { Users, Gauge } from "lucide-react";
+import { HowItWorksAIDemo } from "./HowItWorksAIDemo";
 
-const steps = [
+const laterSteps = [
   {
-    number: "1",
-    title: "Start with a Roadmap",
-    description:
-      "Use a roadmap template or create a plan from scratch — break it down into steps, add deadlines, and visualize the entire process.",
-    icon: ClipboardPen,
-  },
-  {
-    number: "2",
+    number: "02",
+    Icon: Users,
     title: "Add people to your project",
     description:
       "Bring in your clients, team, or collaborators — so everyone knows what's happening and what's next.",
-    icon: Users,
   },
   {
-    number: "3",
+    number: "03",
+    Icon: Gauge,
     title: "Stay on Track",
     description:
       "From timelines to tasks, conversations to payments — everything is organized in one place so your project keeps moving.",
-    icon: Gauge,
   },
 ];
 
 export const HowItWorks = () => {
-  const FirstIcon = steps[0].icon;
-  const SecondIcon = steps[1].icon;
-  const ThirdIcon = steps[2].icon;
-
   return (
     <section id="how-it-works" className="relative mt-16 lg:mt-20">
       <div className="pointer-events-none absolute -left-16 top-12 h-40 w-40 rounded-full bg-cyan-200/25 blur-3xl" />
-      <div className="pointer-events-none absolute left-1/2 top-24 h-44 w-44 -translate-x-1/2 rounded-full bg-sky-200/20 blur-3xl" />
       <div className="pointer-events-none absolute -right-16 top-20 h-44 w-44 rounded-full bg-indigo-200/25 blur-3xl" />
 
+      {/* Section header */}
       <div className="relative text-center">
         <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
           How It Works
@@ -44,58 +34,73 @@ export const HowItWorks = () => {
         </p>
       </div>
 
-      <div className="relative mt-10 hidden lg:block">
-        <svg
-          viewBox="0 0 1200 210"
-          preserveAspectRatio="none"
-          className="h-[165px] w-full"
-          aria-hidden
-        >
-          <path
-            d="M 0 130 C 150 190, 250 190, 390 105 C 495 35, 650 35, 760 104 C 880 180, 1000 180, 1200 108"
-            fill="none"
-            stroke="rgba(148, 163, 184, 0.28)"
-            strokeWidth="6"
-            strokeLinecap="round"
-          />
-          <path
-            d="M 0 130 C 150 190, 250 190, 390 105 C 495 35, 650 35, 760 104 C 880 180, 1000 180, 1200 108"
-            fill="none"
-            stroke="rgba(59, 130, 246, 0.9)"
-            strokeWidth="3"
-            strokeLinecap="round"
-          />
-        </svg>
+      {/* Step 1 — AI showcase card */}
+      <div className="relative mt-10 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_12px_30px_rgba(16,24,40,0.06)]">
 
-        <div className="pointer-events-none absolute left-[12%] top-[132px] h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-200/30 blur-2xl" />
-        <div className="pointer-events-none absolute left-1/2 top-[28px] h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-200/30 blur-2xl" />
-        <div className="pointer-events-none absolute right-[12%] top-[94px] h-16 w-16 translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-200/30 blur-2xl" />
+        {/* Desktop: text header on top, full-width demo below */}
+        <div className="hidden lg:flex lg:flex-col">
+          <div className="flex items-center gap-5 border-b border-slate-100 px-8 py-5">
+            <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold tracking-wide text-slate-500">
+              Step 01
+            </span>
+            <div>
+              <h3 className="text-lg font-semibold leading-tight tracking-tight text-slate-900">
+                AI builds your roadmap instantly
+              </h3>
+              <p className="mt-0.5 text-sm leading-relaxed text-slate-500">
+                Describe your project goal and the AI assistant creates a complete roadmap — epics, features, and tasks — in seconds.
+              </p>
+            </div>
+          </div>
 
-        <div className="absolute left-[12%] top-[132px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <FirstIcon className="h-5 w-5 text-blue-600" />
+          <div className="bg-slate-50 p-5">
+            <HowItWorksAIDemo />
+          </div>
         </div>
-        <div className="absolute left-1/2 top-[28px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <SecondIcon className="h-5 w-5 text-blue-600" />
-        </div>
-        <div className="absolute right-[12%] top-[94px] translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <ThirdIcon className="h-5 w-5 text-blue-600" />
+
+        {/* Mobile: stacked */}
+        <div className="lg:hidden">
+          <div className="px-5 pt-6 pb-4">
+            <span className="inline-flex w-fit items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold tracking-wide text-slate-500">
+              Step 01
+            </span>
+            <h3 className="mt-3 text-xl font-semibold tracking-tight text-slate-900">
+              AI builds your roadmap instantly
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">
+              Describe your project goal and the AI assistant creates a complete
+              roadmap — epics, features, and tasks — in seconds. No setup
+              required.
+            </p>
+          </div>
+          <div className="bg-slate-50 px-4 pb-5 pt-1">
+            <HowItWorksAIDemo compact />
+          </div>
         </div>
       </div>
 
-      <div className="mt-4 grid gap-5 lg:grid-cols-3">
-        {steps.map((step, index) => (
-          <article
-            key={step.title}
-            className={`text-left ${index === 1 ? "lg:pl-6" : ""} ${index === 2 ? "lg:pl-10" : ""}`}
+      {/* Steps 2 & 3 */}
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        {laterSteps.map((step) => (
+          <div
+            key={step.number}
+            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_4px_12px_rgba(16,24,40,0.04)]"
           >
-            <p className="text-6xl font-semibold leading-none text-slate-300">{step.number}</p>
-            <h3 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
+                <step.Icon className="h-5 w-5 text-slate-600" />
+              </div>
+              <span className="text-sm font-semibold text-slate-400">
+                Step {step.number}
+              </span>
+            </div>
+            <h3 className="mt-3 text-lg font-semibold tracking-tight text-slate-900">
               {step.title}
             </h3>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600 sm:text-base">
+            <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
               {step.description}
             </p>
-          </article>
+          </div>
         ))}
       </div>
     </section>
