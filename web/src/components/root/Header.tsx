@@ -35,13 +35,13 @@ export const Header = () => {
   }, []);
 
   return (
-    <header className="fixed left-0 right-0 top-0 z-50 border-b border-slate-200/70 bg-white/85 backdrop-blur-xl">
+    <header className="fixed left-0 right-0 top-0 z-50 overflow-x-hidden border-b border-slate-200/70 bg-white/85 backdrop-blur-xl">
       <nav className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-10">
         <div className="flex h-20 items-center justify-between">
-          <div className="flex items-center gap-6 lg:gap-10">
+          <div className="flex min-w-0 items-center gap-6 lg:gap-10">
             <motion.div whileTap={{ scale: 0.97 }} transition={{ duration: 0.15 }}>
               <Link to="/" className="flex shrink-0 items-center">
-                <img src={Logo} alt="Proyekto" className="h-11 sm:h-12" />
+                <img src={Logo} alt="Proyekto" className="h-10 w-auto sm:h-12" />
               </Link>
             </motion.div>
 
@@ -69,7 +69,7 @@ export const Header = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3">
             <div className="hidden md:flex items-center gap-3">
               {isAuthenticated ? (
                 <>
@@ -99,6 +99,39 @@ export const Header = () => {
                     <Link to="/auth/signup" search={{ redirect: undefined }}>
                       <Button variant="contained" colorScheme="primary" className="h-11 rounded-xl bg-slate-900 px-5 text-white hover:bg-slate-800">
                         Get Started
+                      </Button>
+                    </Link>
+                  </motion.div>
+                </>
+              )}
+            </div>
+
+            {/* Mobile auth buttons — visible directly in header bar */}
+            <div className="flex shrink-0 items-center gap-1.5 md:hidden">
+              {isAuthenticated ? (
+                <>
+                  <UserMenu />
+                  <motion.div whileTap={{ scale: 0.97 }} transition={{ duration: 0.15 }}>
+                    <Link to="/dashboard">
+                      <Button variant="contained" colorScheme="primary" className="h-9 rounded-xl bg-slate-900 px-3 text-xs text-white hover:bg-slate-800">
+                        Dashboard
+                      </Button>
+                    </Link>
+                  </motion.div>
+                </>
+              ) : (
+                <>
+                  <motion.div whileTap={{ scale: 0.97 }} transition={{ duration: 0.15 }}>
+                    <Link to="/auth/login">
+                      <Button variant="outlined" colorScheme="primary" className="h-9 rounded-xl border-slate-300 px-2.5 text-[11px] text-slate-700 hover:border-slate-900 hover:bg-slate-900 hover:text-white">
+                        Log in
+                      </Button>
+                    </Link>
+                  </motion.div>
+                  <motion.div whileTap={{ scale: 0.97 }} transition={{ duration: 0.15 }}>
+                    <Link to="/auth/signup" search={{ redirect: undefined }}>
+                      <Button variant="contained" colorScheme="primary" className="h-9 rounded-xl bg-slate-900 px-2.5 text-[11px] text-white hover:bg-slate-800">
+                        Sign up
                       </Button>
                     </Link>
                   </motion.div>
