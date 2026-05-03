@@ -16,6 +16,7 @@ import { Route as LandingRouteImport } from './routes/landing'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ConsultantIndexRouteImport } from './routes/consultant/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as RoadmapSharedWithMeRouteImport } from './routes/roadmap/shared-with-me'
 import { Route as ProjectProjectIdRouteImport } from './routes/project/$projectId'
@@ -93,6 +94,11 @@ const AdminRoute = AdminRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConsultantIndexRoute = ConsultantIndexRouteImport.update({
+  id: '/consultant/',
+  path: '/consultant/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -355,6 +361,7 @@ export interface FileRoutesByFullPath {
   '/project/$projectId': typeof ProjectProjectIdRouteWithChildren
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
   '/admin/': typeof AdminIndexRoute
+  '/consultant': typeof ConsultantIndexRoute
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
@@ -406,6 +413,7 @@ export interface FileRoutesByTo {
   '/project/$projectId': typeof ProjectProjectIdRouteWithChildren
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
   '/admin': typeof AdminIndexRoute
+  '/consultant': typeof ConsultantIndexRoute
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
@@ -459,6 +467,7 @@ export interface FileRoutesById {
   '/project/$projectId': typeof ProjectProjectIdRouteWithChildren
   '/roadmap/shared-with-me': typeof RoadmapSharedWithMeRoute
   '/admin/': typeof AdminIndexRoute
+  '/consultant/': typeof ConsultantIndexRoute
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
   '/project/$projectId/logs': typeof ProjectProjectIdLogsRoute
@@ -513,6 +522,7 @@ export interface FileRouteTypes {
     | '/project/$projectId'
     | '/roadmap/shared-with-me'
     | '/admin/'
+    | '/consultant'
     | '/auth/admin/login'
     | '/auth/admin/signin'
     | '/project/$projectId/logs'
@@ -564,6 +574,7 @@ export interface FileRouteTypes {
     | '/project/$projectId'
     | '/roadmap/shared-with-me'
     | '/admin'
+    | '/consultant'
     | '/auth/admin/login'
     | '/auth/admin/signin'
     | '/project/$projectId/logs'
@@ -616,6 +627,7 @@ export interface FileRouteTypes {
     | '/project/$projectId'
     | '/roadmap/shared-with-me'
     | '/admin/'
+    | '/consultant/'
     | '/auth/admin/login'
     | '/auth/admin/signin'
     | '/project/$projectId/logs'
@@ -664,6 +676,7 @@ export interface RootRouteChildren {
   ProfileProfileIdRoute: typeof ProfileProfileIdRoute
   ProjectProjectIdRoute: typeof ProjectProjectIdRouteWithChildren
   RoadmapSharedWithMeRoute: typeof RoadmapSharedWithMeRoute
+  ConsultantIndexRoute: typeof ConsultantIndexRoute
   AuthAdminLoginRoute: typeof AuthAdminLoginRoute
   AuthAdminSigninRoute: typeof AuthAdminSigninRoute
   RoadmapSharedTokenRoute: typeof RoadmapSharedTokenRoute
@@ -719,6 +732,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/consultant/': {
+      id: '/consultant/'
+      path: '/consultant'
+      fullPath: '/consultant'
+      preLoaderRoute: typeof ConsultantIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -1154,6 +1174,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfileProfileIdRoute: ProfileProfileIdRoute,
   ProjectProjectIdRoute: ProjectProjectIdRouteWithChildren,
   RoadmapSharedWithMeRoute: RoadmapSharedWithMeRoute,
+  ConsultantIndexRoute: ConsultantIndexRoute,
   AuthAdminLoginRoute: AuthAdminLoginRoute,
   AuthAdminSigninRoute: AuthAdminSigninRoute,
   RoadmapSharedTokenRoute: RoadmapSharedTokenRoute,

@@ -39,7 +39,7 @@ export const RootFooter = () => {
             <ul className="space-y-2 text-sm text-slate-600">
               <li>
                 <Link
-                  to="/consultant/apply"
+                  to="/consultant"
                   className="font-semibold text-slate-700 transition-colors hover:text-slate-900"
                 >
                   Apply to lead

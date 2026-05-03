@@ -76,7 +76,7 @@ export const HeroSection = () => {
           >
             Free to plan. 10% platform fee on hired work.{" "}
             <Link
-              to="/consultant/apply"
+              to="/consultant"
               className="font-semibold text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-slate-900 hover:decoration-slate-700"
             >
               Consultants — run client teams on Proyekto →

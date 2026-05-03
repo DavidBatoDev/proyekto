@@ -39,7 +39,7 @@ export const CTASection = () => {
               </Link>
 
               <Link
-                to="/consultant/apply"
+                to="/consultant"
                 className="inline-flex items-center justify-center rounded-xl border border-white/55 bg-white/95 px-5 py-3 text-sm font-semibold text-slate-700 transition-all hover:border-white hover:text-slate-900"
               >
                 Apply to lead on Proyekto
