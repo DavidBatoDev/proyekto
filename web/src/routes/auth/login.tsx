@@ -10,6 +10,7 @@ import { supabase } from "../../lib/supabase";
 import { useToast } from "../../hooks/useToast";
 import { Eye, EyeOff } from "lucide-react";
 import { SignupLayout } from "../../components/auth/signup/SignupLayout";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 export const Route = createFileRoute("/auth/login")({
   beforeLoad: () => {
@@ -227,23 +228,10 @@ function RouteComponent() {
           return;
         }
 
-        // Check onboarding status and route lane-aware.
-        // Consultant-lane users skip /welcome and go straight to their
-        // application form; everyone else lands on /welcome (which itself
-        // redirects to /consultant/apply if a consultant arrives via this
-        // path with stale state).
+        // Both lanes route through /welcome on first login — the welcome
+        // route renders a lane-specific deck.
         if (!profile?.has_completed_onboarding) {
-          const lane = (
-            profile?.settings as
-              | { onboarding?: { lane?: string } }
-              | null
-              | undefined
-          )?.onboarding?.lane;
-          if (lane === "consultant") {
-            navigate({ to: "/consultant/apply" });
-          } else {
-            navigate({ to: "/welcome" });
-          }
+          navigate({ to: "/welcome" });
         } else {
           navigate({ to: "/dashboard" });
         }
@@ -286,11 +274,7 @@ function RouteComponent() {
     return (
       <SignupLayout>
         <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
-          <img
-            src="/prodigylogos/light/logo1.svg"
-            alt="Proyekto"
-            style={{ height: "32px", objectFit: "contain", objectPosition: "left" }}
-          />
+          <BrandMark className="h-8 text-slate-900" />
 
           <div>
             <h1
@@ -491,11 +475,7 @@ function RouteComponent() {
     <SignupLayout>
       <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
         {/* Logo */}
-        <img
-          src="/prodigylogos/light/logo1.svg"
-          alt="Proyekto"
-          style={{ height: "32px", objectFit: "contain", objectPosition: "left" }}
-        />
+        <BrandMark className="h-8 text-slate-900" />
 
         {/* Header */}
         <div>

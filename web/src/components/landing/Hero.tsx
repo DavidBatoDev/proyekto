@@ -1,5 +1,5 @@
 import { Button } from "../../ui/button";
-import Logo from "/prodigylogos/light/logovector.svg";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 const Hero = () => {
   return (
@@ -34,10 +34,10 @@ const Hero = () => {
           {/* Left content */}
           <div className="sm:col-span-7">
             <h1 className="text-start text-4xl md:text-6xl lg:text-7xl font-extrabold leading-tight tracking-tight text-gray-900">
-              Turn your project idea into action — easily
+              Turn your project idea into action ï¿½ easily
             </h1>
             <p className="text-start mt-4 text-lg md:text-xl text-gray-600 max-w-2xl">
-              Start planning your project step-by-step and invite your team. No complex setups, no guesswork — just clarity from the get-go.
+              Start planning your project step-by-step and invite your team. No complex setups, no guesswork ï¿½ just clarity from the get-go.
             </p>
             <div className="flex gap-4 mt-6">
               <Button variant="contained" colorScheme="primary" size="lg">
@@ -51,11 +51,9 @@ const Hero = () => {
 
           {/* Right illustration */}
           <div className="sm:col-span-5 flex justify-center sm:justify-end">
-            <img
-              src={Logo}
-              alt="Prodigy Mark"
-              className="w-72 sm:w-80 md:w-96 lg:w-[520px]"
-              style={{ filter: "drop-shadow(0px 10px 30px rgba(0,0,0,0.08))" }}
+            <BrandMark
+              variant="mark"
+              className="h-72 sm:h-80 md:h-96 lg:h-[520px]"
             />
           </div>
         </div>

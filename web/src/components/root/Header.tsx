@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/ui/button";
-import Logo from "/prodigylogos/light/logo1.svg";
+import { BrandMark } from "@/components/brand/BrandMark";
 import { useAuthStore } from "@/stores/authStore";
 import UserMenu from "../auth/UserMenu";
 import { Menu, Sparkles } from "lucide-react";
@@ -41,7 +41,7 @@ export const Header = () => {
           <div className="flex items-center gap-6 lg:gap-10">
             <motion.div whileTap={{ scale: 0.97 }} transition={{ duration: 0.15 }}>
               <Link to="/" className="flex shrink-0 items-center">
-                <img src={Logo} alt="Proyekto" className="h-11 sm:h-12" />
+                <BrandMark className="h-11 sm:h-12 text-slate-900" />
               </Link>
             </motion.div>
 

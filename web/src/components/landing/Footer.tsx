@@ -1,4 +1,4 @@
-import Logo from "/prodigylogos/light/logo1.svg";
+import { BrandMark } from "@/components/brand/BrandMark";
 import FacebookIcon from "@mui/icons-material/Facebook";
 import InstagramIcon from "@mui/icons-material/Instagram";
 import LinkedInIcon from "@mui/icons-material/LinkedIn";
@@ -10,7 +10,7 @@ const Footer = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-16">
           {/* Brand and socials */}
           <div className="space-y-4">
-            <img src={Logo} alt="Prodigy Logo" className="h-12 w-auto" />
+            <BrandMark className="h-12 text-slate-900" />
             <div className="flex items-center gap-4 text-gray-800">
               <a
                 aria-label="Facebook"

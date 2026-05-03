@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useProjectDetailQuery } from "@/hooks/useProjectQueries";
 import { useUser } from "@/stores/authStore";
-import Logo from "/prodigylogos/light/logovector.svg";
+import { BrandMark } from "@/components/brand/BrandMark";
 import ProjectUserMenu from "./ProjectUserMenu";
 
 const roleBadgeColor: Record<string, string> = {
@@ -92,7 +92,7 @@ export function ProjectHeader() {
 					to="/dashboard"
 					className="flex shrink-0 items-center border-r border-slate-200 pr-3 sm:pr-4"
 				>
-					<img src={Logo} alt="Prodigy Logo" className="h-6 w-auto" />
+					<BrandMark variant="mark" className="h-6 text-white" />
 				</Link>
 
 				<div className="flex min-w-0 items-center gap-1 text-sm font-medium text-slate-900">

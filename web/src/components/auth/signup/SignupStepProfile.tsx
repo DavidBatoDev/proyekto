@@ -3,7 +3,7 @@ import { CountrySelect } from "./CountrySelect";
 import { PhoneField } from "./PhoneField";
 import { CitySelect } from "./CitySelect";
 import { ZipInput } from "./ZipInput";
-import { PrimaryButton, SecondaryButton } from "./SignupButtons";
+import { WizardNav } from "./WizardNav";
 
 interface SignupStepProfileProps {
   gender: string;
@@ -49,6 +49,31 @@ export function SignupStepProfile({
 }: SignupStepProfileProps) {
   return (
     <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <div>
+        <h2
+          style={{
+            fontFamily: "'Sora', 'Manrope', sans-serif",
+            fontSize: "1.4rem",
+            fontWeight: 700,
+            color: "#0F172A",
+            margin: "0 0 4px",
+            lineHeight: 1.25,
+          }}
+        >
+          Tell us a bit about you
+        </h2>
+        <p
+          style={{
+            fontSize: "13px",
+            color: "#64748B",
+            margin: 0,
+            fontFamily: "'Manrope', sans-serif",
+          }}
+        >
+          Helps us personalize your workspace and meet local requirements.
+        </p>
+      </div>
+
       {/* Gender */}
       <div>
         <p
@@ -200,15 +225,13 @@ export function SignupStepProfile({
         </span>
       </label>
 
-      {/* Submit */}
-      <PrimaryButton
-        type="submit"
+      {/* Back + Submit */}
+      <WizardNav
+        onBack={onBack}
+        primaryLabel="Create Account"
         isLoading={isLoading}
-        loadingText="Creating account…"
-        style={{ marginTop: "4px" }}
-      >
-        Create Account
-      </PrimaryButton>
+        loadingLabel="Creating account…"
+      />
       <p
         style={{
           textAlign: "center",
@@ -221,11 +244,6 @@ export function SignupStepProfile({
       >
         Takes less than 3 minutes
       </p>
-
-      {/* Back */}
-      <SecondaryButton type="button" onClick={onBack}>
-        ← Back
-      </SecondaryButton>
     </form>
   );
 }

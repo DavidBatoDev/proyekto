@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { AppBar, Toolbar, Box, Typography, Stack } from "@mui/material";
 import clsx from "clsx";
 import { Button } from "../../ui/button";
-import Logo from "/prodigylogos/light/logo1.svg";
+import { BrandMark } from "@/components/brand/BrandMark";
 import { useAuthStore } from "@/stores/authStore";
 import UserMenu from "../auth/UserMenu";
 
@@ -56,7 +56,7 @@ const Header = () => {
           <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 2, md: 3, lg: 4 } }}>
             {/* Logo */}
             <Box sx={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
-              <img src={Logo} alt="Prodigy Logo" style={{ height: "60px" }} />
+              <BrandMark className="h-[60px] text-slate-900" />
             </Box>
 
             {/* Navigation Items */}

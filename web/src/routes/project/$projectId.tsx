@@ -20,7 +20,7 @@ import {
 } from "@/hooks/useProjectQueries";
 import { useAuthStore } from "@/stores/authStore";
 import { useProjectSettingsStore } from "@/stores/projectSettingsStore";
-import Logo from "/prodigylogos/light/logovector.svg";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 export const Route = createFileRoute("/project/$projectId")({
 	beforeLoad: () => {
@@ -88,7 +88,7 @@ function ProjectLayout() {
 					<div className="relative flex h-full items-center justify-center px-6 py-8">
 						<div className="app-surface-card-strong w-full max-w-3xl p-8 md:p-10">
 							<div className="flex flex-col items-center text-center">
-								<img src={Logo} alt="Prodigy" className="h-8 mb-6" />
+								<BrandMark variant="mark" className="h-8 mb-6 text-slate-900" />
 
 								<div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100">
 									<UserCheck className="h-8 w-8 text-slate-700" />

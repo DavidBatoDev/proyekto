@@ -4,11 +4,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight,
   ArrowLeft,
+  BookOpen,
   CheckCircle2,
+  Clock,
+  Crown,
   Plus,
   Sparkles,
   Trash2,
+  UserCheck,
   Users,
+  Wallet,
   Workflow,
   X,
 } from "lucide-react";
@@ -28,6 +33,26 @@ export const Route = createFileRoute("/welcome")({
   component: WelcomePage,
 });
 
+// ─── Page shell — branches on lane ──────────────────────────────────────────
+
+function WelcomePage() {
+  const profile = useAuthStore((s) => s.profile);
+  const lane =
+    (profile?.settings as { onboarding?: { lane?: string } } | null)?.onboarding
+      ?.lane ?? "client_freelancer";
+  const firstName =
+    (profile?.first_name as string | undefined) ||
+    profile?.display_name ||
+    "there";
+
+  if (lane === "consultant") {
+    return <ConsultantWelcomeDeck firstName={firstName} />;
+  }
+  return <ClientFreelancerWelcomeDeck firstName={firstName} />;
+}
+
+// ─── Client/Freelancer 4-slide deck ─────────────────────────────────────────
+
 type InviteRole = "editor" | "viewer";
 
 interface InviteRow {
@@ -44,22 +69,10 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
-function WelcomePage() {
+function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
   const navigate = useNavigate();
   const toast = useToast();
-  const profile = useAuthStore((s) => s.profile);
   const user = useAuthStore((s) => s.user);
-
-  // Lane-aware redirect: consultants don't get the welcome deck.
-  const lane =
-    (profile?.settings as { onboarding?: { lane?: string } } | null)?.onboarding
-      ?.lane ?? "client_freelancer";
-
-  useEffect(() => {
-    if (lane === "consultant") {
-      navigate({ to: "/consultant/apply" });
-    }
-  }, [lane, navigate]);
 
   // ── Workspace lookup ─────────────────────────────────────────────────────
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -67,7 +80,7 @@ function WelcomePage() {
   const [workspaceLoadFailed, setWorkspaceLoadFailed] = useState(false);
 
   useEffect(() => {
-    if (!user?.id || lane === "consultant") return;
+    if (!user?.id) return;
     let cancelled = false;
     (async () => {
       const { data, error } = await supabase
@@ -87,7 +100,7 @@ function WelcomePage() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, lane]);
+  }, [user?.id]);
 
   // ── Slide state ──────────────────────────────────────────────────────────
   const [slide, setSlide] = useState<1 | 2 | 3 | 4>(1);
@@ -133,8 +146,7 @@ function WelcomePage() {
   const [invites, setInvites] = useState<InviteRow[]>(() => [newInviteRow()]);
   const [submittingInvites, setSubmittingInvites] = useState(false);
 
-  const addInviteRow = () =>
-    setInvites((prev) => [...prev, newInviteRow()]);
+  const addInviteRow = () => setInvites((prev) => [...prev, newInviteRow()]);
   const removeInviteRow = (id: string) =>
     setInvites((prev) =>
       prev.length === 1 ? [newInviteRow()] : prev.filter((r) => r.id !== id),
@@ -186,73 +198,11 @@ function WelcomePage() {
     else goBack();
   };
 
-  const firstName =
-    (profile?.first_name as string | undefined) ||
-    profile?.display_name ||
-    "there";
-
   return (
-    <div className="min-h-screen bg-[#fcfcfd]">
-      <div className="pointer-events-none absolute -top-20 left-[10%] h-72 w-72 rounded-full bg-cyan-200/35 blur-3xl" />
-      <div className="pointer-events-none absolute -right-12 top-1/3 h-72 w-72 rounded-full bg-indigo-200/40 blur-3xl" />
-
-      <div className="relative mx-auto flex min-h-screen max-w-3xl flex-col px-4 py-8 sm:px-6 lg:px-10">
-        <Stepper current={slide} onClose={handleClose} />
-
-        <div className="relative mt-12 flex-1">
-          <AnimatePresence mode="wait" initial={false} custom={direction}>
-            {slide === 1 && (
-              <SlideOne
-                key="slide-1"
-                firstName={firstName}
-                onNext={goNext}
-                direction={direction}
-              />
-            )}
-            {slide === 2 && (
-              <SlideTwo
-                key="slide-2"
-                onBack={goBack}
-                onNext={goNext}
-                direction={direction}
-              />
-            )}
-            {slide === 3 && (
-              <SlideThree
-                key="slide-3"
-                draftTitle={draftTitle}
-                setDraftTitle={setDraftTitle}
-                onBack={goBack}
-                onNext={async () => {
-                  try {
-                    await persistTitleIfChanged();
-                    goNext();
-                  } catch {
-                    /* toast already shown */
-                  }
-                }}
-                workspaceLoadFailed={workspaceLoadFailed}
-                direction={direction}
-              />
-            )}
-            {slide === 4 && (
-              <SlideFour
-                key="slide-4"
-                invites={invites}
-                addInviteRow={addInviteRow}
-                removeInviteRow={removeInviteRow}
-                updateInviteRow={updateInviteRow}
-                onBack={goBack}
-                onSkip={skipInvitesAndFinish}
-                onFinish={sendInvitesAndFinish}
-                submittingInvites={submittingInvites}
-                direction={direction}
-              />
-            )}
-          </AnimatePresence>
-        </div>
-
-        <p className="mt-8 text-center text-xs text-slate-500">
+    <DeckShell
+      stepper={<Stepper current={slide} total={4} onClose={handleClose} />}
+      footer={
+        <>
           Considering becoming a consultant?{" "}
           <a
             href="/consultant"
@@ -260,15 +210,177 @@ function WelcomePage() {
           >
             Apply to lead →
           </a>
-        </p>
-      </div>
+        </>
+      }
+    >
+      <AnimatePresence mode="wait" initial={false} custom={direction}>
+        {slide === 1 && (
+          <SlideOneCF
+            key="cf-1"
+            firstName={firstName}
+            onNext={goNext}
+            direction={direction}
+          />
+        )}
+        {slide === 2 && (
+          <SlideTwoCF
+            key="cf-2"
+            onBack={goBack}
+            onNext={goNext}
+            direction={direction}
+          />
+        )}
+        {slide === 3 && (
+          <SlideThreeCF
+            key="cf-3"
+            draftTitle={draftTitle}
+            setDraftTitle={setDraftTitle}
+            onBack={goBack}
+            onNext={async () => {
+              try {
+                await persistTitleIfChanged();
+                goNext();
+              } catch {
+                /* toast already shown */
+              }
+            }}
+            workspaceLoadFailed={workspaceLoadFailed}
+            direction={direction}
+          />
+        )}
+        {slide === 4 && (
+          <SlideFourCF
+            key="cf-4"
+            invites={invites}
+            addInviteRow={addInviteRow}
+            removeInviteRow={removeInviteRow}
+            updateInviteRow={updateInviteRow}
+            onBack={goBack}
+            onSkip={skipInvitesAndFinish}
+            onFinish={sendInvitesAndFinish}
+            submittingInvites={submittingInvites}
+            direction={direction}
+          />
+        )}
+      </AnimatePresence>
 
       {showCloseConfirm && (
         <CloseConfirmModal
+          title="Skip the welcome tour?"
+          description="You can always come back to set up your workspace later from your dashboard."
           onCancel={() => setShowCloseConfirm(false)}
           onConfirm={() => navigate({ to: "/dashboard" })}
         />
       )}
+    </DeckShell>
+  );
+}
+
+// ─── Consultant 3-slide deck ────────────────────────────────────────────────
+
+function ConsultantWelcomeDeck({ firstName }: { firstName: string }) {
+  const navigate = useNavigate();
+
+  const [slide, setSlide] = useState<1 | 2 | 3>(1);
+  const [direction, setDirection] = useState<1 | -1>(1);
+  const goNext = () => {
+    if (slide < 3) {
+      setDirection(1);
+      setSlide(((slide as number) + 1) as 1 | 2 | 3);
+    }
+  };
+  const goBack = () => {
+    if (slide > 1) {
+      setDirection(-1);
+      setSlide(((slide as number) - 1) as 1 | 2 | 3);
+    }
+  };
+
+  const startApplication = () => navigate({ to: "/consultant/apply" });
+
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const handleClose = () => {
+    if (slide === 1) setShowCloseConfirm(true);
+    else goBack();
+  };
+
+  return (
+    <DeckShell
+      stepper={<Stepper current={slide} total={3} onClose={handleClose} />}
+      footer={
+        <>
+          Want to use Proyekto as a client first?{" "}
+          <button
+            type="button"
+            onClick={() => navigate({ to: "/dashboard" })}
+            className="font-semibold text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-slate-900 hover:decoration-slate-700"
+          >
+            Open my workspace →
+          </button>
+        </>
+      }
+    >
+      <AnimatePresence mode="wait" initial={false} custom={direction}>
+        {slide === 1 && (
+          <SlideOneConsultant
+            key="c-1"
+            firstName={firstName}
+            onNext={goNext}
+            direction={direction}
+          />
+        )}
+        {slide === 2 && (
+          <SlideTwoConsultant
+            key="c-2"
+            onBack={goBack}
+            onNext={goNext}
+            direction={direction}
+          />
+        )}
+        {slide === 3 && (
+          <SlideThreeConsultant
+            key="c-3"
+            onBack={goBack}
+            onStart={startApplication}
+            direction={direction}
+          />
+        )}
+      </AnimatePresence>
+
+      {showCloseConfirm && (
+        <CloseConfirmModal
+          title="Apply later?"
+          description="You can pick up the application anytime from your dashboard. Your workspace is ready in the meantime."
+          confirmLabel="Open workspace"
+          onCancel={() => setShowCloseConfirm(false)}
+          onConfirm={() => navigate({ to: "/dashboard" })}
+        />
+      )}
+    </DeckShell>
+  );
+}
+
+// ─── Shared deck shell (background, layout, footer) ────────────────────────
+
+function DeckShell({
+  stepper,
+  footer,
+  children,
+}: {
+  stepper: React.ReactNode;
+  footer: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-h-screen bg-[#fcfcfd]">
+      <div className="pointer-events-none absolute -top-20 left-[10%] h-72 w-72 rounded-full bg-cyan-200/35 blur-3xl" />
+      <div className="pointer-events-none absolute -right-12 top-1/3 h-72 w-72 rounded-full bg-indigo-200/40 blur-3xl" />
+
+      <div className="relative mx-auto flex min-h-screen max-w-3xl flex-col px-4 py-8 sm:px-6 lg:px-10">
+        {stepper}
+        <div className="relative mt-12 flex-1">{children}</div>
+        <p className="mt-8 text-center text-xs text-slate-500">{footer}</p>
+      </div>
     </div>
   );
 }
@@ -277,15 +389,17 @@ function WelcomePage() {
 
 function Stepper({
   current,
+  total,
   onClose,
 }: {
-  current: 1 | 2 | 3 | 4;
+  current: number;
+  total: number;
   onClose: () => void;
 }) {
   return (
     <div className="flex items-center justify-between gap-4">
       <div className="flex flex-1 items-center gap-2">
-        {[1, 2, 3, 4].map((n) => (
+        {Array.from({ length: total }, (_, i) => i + 1).map((n) => (
           <div
             key={n}
             className={`h-1.5 flex-1 rounded-full transition-colors ${
@@ -294,7 +408,7 @@ function Stepper({
           />
         ))}
         <span className="ml-3 shrink-0 text-xs font-semibold text-slate-500">
-          {current} of 4
+          {current} of {total}
         </span>
       </div>
       <button
@@ -318,9 +432,9 @@ const slideVariants = {
 };
 const slideTransition = { duration: 0.25, ease: "easeOut" as const };
 
-// ─── Slide 1: Welcome ───────────────────────────────────────────────────────
+// ─── C/F Slide 1: Welcome ───────────────────────────────────────────────────
 
-function SlideOne({
+function SlideOneCF({
   firstName,
   onNext,
   direction,
@@ -363,9 +477,9 @@ function SlideOne({
   );
 }
 
-// ─── Slide 2: Capabilities ──────────────────────────────────────────────────
+// ─── C/F Slide 2: Capabilities ──────────────────────────────────────────────
 
-const capabilities = [
+const cfCapabilities = [
   {
     icon: Sparkles,
     title: "Plan with AI",
@@ -386,7 +500,7 @@ const capabilities = [
   },
 ];
 
-function SlideTwo({
+function SlideTwoCF({
   onBack,
   onNext,
   direction,
@@ -412,7 +526,7 @@ function SlideTwo({
       </p>
 
       <div className="mx-auto mt-8 max-w-xl space-y-3">
-        {capabilities.map((cap) => {
+        {cfCapabilities.map((cap) => {
           const Icon = cap.icon;
           return (
             <article
@@ -440,9 +554,9 @@ function SlideTwo({
   );
 }
 
-// ─── Slide 3: Workspace name ────────────────────────────────────────────────
+// ─── C/F Slide 3: Workspace name ────────────────────────────────────────────
 
-function SlideThree({
+function SlideThreeCF({
   draftTitle,
   setDraftTitle,
   onBack,
@@ -503,9 +617,9 @@ function SlideThree({
   );
 }
 
-// ─── Slide 4: Invite ────────────────────────────────────────────────────────
+// ─── C/F Slide 4: Invite ────────────────────────────────────────────────────
 
-function SlideFour({
+function SlideFourCF({
   invites,
   addInviteRow,
   removeInviteRow,
@@ -619,6 +733,205 @@ function SlideFour({
   );
 }
 
+// ─── Consultant Slide 1: Welcome ────────────────────────────────────────────
+
+function SlideOneConsultant({
+  firstName,
+  onNext,
+  direction,
+}: {
+  firstName: string;
+  onNext: () => void;
+  direction: 1 | -1;
+}) {
+  return (
+    <motion.div
+      custom={direction}
+      variants={slideVariants}
+      initial="enter"
+      animate="center"
+      exit="exit"
+      transition={slideTransition}
+      className="text-center"
+    >
+      <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 shadow-[0_8px_18px_rgba(245,158,11,0.12)]">
+        <Crown className="h-6 w-6 text-amber-600" />
+      </div>
+      <h1 className="mt-6 text-balance text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+        Welcome to Proyekto, {firstName}.
+      </h1>
+      <p className="mx-auto mt-3 max-w-md text-balance text-sm text-slate-600 sm:text-base">
+        Let's get you ready to apply.
+      </p>
+      <div className="mt-10 flex justify-center">
+        <Button
+          variant="contained"
+          colorScheme="primary"
+          onClick={onNext}
+          className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800"
+        >
+          Get started
+          <ArrowRight className="ml-2 h-4 w-4" />
+        </Button>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Consultant Slide 2: What you're applying for ───────────────────────────
+
+const consultantBenefits = [
+  {
+    icon: Sparkles,
+    title: "Client workspace + AI planning",
+    description:
+      "Roadmap canvas, chat, files, time tracking. White-glove enough for your enterprise clients.",
+  },
+  {
+    icon: Users,
+    title: "Vetted talent bench",
+    description:
+      "Search and propose freelancers your clients can't see directly. Identity, portfolio, and rate verified by us.",
+  },
+  {
+    icon: Wallet,
+    title: "Escrow, contracts, invoicing",
+    description:
+      "Built-in commercial layer. Stop chasing wire transfers and reconciling spreadsheets.",
+  },
+];
+
+function SlideTwoConsultant({
+  onBack,
+  onNext,
+  direction,
+}: {
+  onBack: () => void;
+  onNext: () => void;
+  direction: 1 | -1;
+}) {
+  return (
+    <motion.div
+      custom={direction}
+      variants={slideVariants}
+      initial="enter"
+      animate="center"
+      exit="exit"
+      transition={slideTransition}
+    >
+      <h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+        What you're applying for
+      </h1>
+      <p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
+        If approved, you'll get the operator's toolkit.
+      </p>
+
+      <div className="mx-auto mt-8 max-w-xl space-y-3">
+        {consultantBenefits.map((b) => {
+          const Icon = b.icon;
+          return (
+            <article
+              key={b.title}
+              className="flex gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_4px_12px_rgba(15,23,42,0.04)]"
+            >
+              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
+                <Icon className="h-5 w-5" />
+              </span>
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">
+                  {b.title}
+                </h3>
+                <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                  {b.description}
+                </p>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      <NavRow onBack={onBack} onNext={onNext} nextLabel="Next" />
+    </motion.div>
+  );
+}
+
+// ─── Consultant Slide 3: What to expect → Start application ─────────────────
+
+const consultantExpectations = [
+  {
+    icon: Clock,
+    title: "5-step application — about 15 minutes",
+    description:
+      "Identity, experience, profile sections, a short cover letter, and references.",
+  },
+  {
+    icon: UserCheck,
+    title: "Reviewed by a human within 5 business days",
+    description:
+      "Every application is read by our team. We'll email you with a decision.",
+  },
+  {
+    icon: BookOpen,
+    title: "Save and resume — no need to finish in one sitting",
+    description:
+      "Drafts auto-save. Come back from any device to pick up where you left off.",
+  },
+];
+
+function SlideThreeConsultant({
+  onBack,
+  onStart,
+  direction,
+}: {
+  onBack: () => void;
+  onStart: () => void;
+  direction: 1 | -1;
+}) {
+  return (
+    <motion.div
+      custom={direction}
+      variants={slideVariants}
+      initial="enter"
+      animate="center"
+      exit="exit"
+      transition={slideTransition}
+    >
+      <h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+        What to expect
+      </h1>
+      <p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
+        Quick application, fast decision.
+      </p>
+
+      <div className="mx-auto mt-8 max-w-xl space-y-3">
+        {consultantExpectations.map((e) => {
+          const Icon = e.icon;
+          return (
+            <article
+              key={e.title}
+              className="flex gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_4px_12px_rgba(15,23,42,0.04)]"
+            >
+              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
+                <Icon className="h-5 w-5" />
+              </span>
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">
+                  {e.title}
+                </h3>
+                <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                  {e.description}
+                </p>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      <NavRow onBack={onBack} onNext={onStart} nextLabel="Start application" />
+    </motion.div>
+  );
+}
+
 // ─── Role toggle ────────────────────────────────────────────────────────────
 
 function RoleToggle({
@@ -685,9 +998,15 @@ function NavRow({
 // ─── Close confirmation modal ───────────────────────────────────────────────
 
 function CloseConfirmModal({
+  title,
+  description,
+  confirmLabel = "Skip",
   onCancel,
   onConfirm,
 }: {
+  title: string;
+  description: string;
+  confirmLabel?: string;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -697,12 +1016,9 @@ function CloseConfirmModal({
         <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
           <CheckCircle2 className="h-5 w-5 text-slate-700" />
         </div>
-        <h2 className="mt-4 text-lg font-semibold text-slate-900">
-          Skip the welcome tour?
-        </h2>
+        <h2 className="mt-4 text-lg font-semibold text-slate-900">{title}</h2>
         <p className="mt-2 text-sm leading-relaxed text-slate-600">
-          You can always come back to set up your workspace later from your
-          dashboard.
+          {description}
         </p>
         <div className="mt-5 flex justify-end gap-2">
           <button
@@ -717,11 +1033,10 @@ function CloseConfirmModal({
             onClick={onConfirm}
             className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
           >
-            Skip
+            {confirmLabel}
           </button>
         </div>
       </div>
     </div>
   );
 }
-

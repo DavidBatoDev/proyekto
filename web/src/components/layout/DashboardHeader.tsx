@@ -8,7 +8,7 @@ import { useNotificationsRealtime } from "@/hooks/useNotificationsRealtime";
 import { notificationsService } from "@/services/notifications.service";
 import { useAuthStore, useIsLoading } from "@/stores/authStore";
 import { Button } from "@/ui/button";
-import Logo from "/prodigylogos/light/logovector.svg";
+import { BrandMark } from "@/components/brand/BrandMark";
 import UserMenu from "./UserMenu";
 
 type HeaderMenuItem = {
@@ -182,7 +182,7 @@ const DashboardHeader = () => {
 					to="/"
 					className="flex shrink-0 items-center border-r border-slate-200 pr-3 sm:pr-4"
 				>
-					<img src={Logo} alt="Prodigy Logo" className="h-6 w-auto" />
+					<BrandMark variant="mark" className="h-6 text-white" />
 				</Link>
 
 				<nav className="hidden items-center gap-2 lg:flex">

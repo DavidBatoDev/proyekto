@@ -11,8 +11,7 @@ import { fetchProfile } from "@/queries/profile";
  *
  * Routing rules:
  *   - unauthenticated → /auth/login
- *   - authenticated, lane="consultant" → /consultant/apply
- *   - authenticated, anything else → /welcome
+ *   - authenticated → /welcome (lane-aware deck handles consultant routing)
  */
 export const Route = createFileRoute("/onboarding")({
   beforeLoad: () => {
@@ -30,13 +29,6 @@ export const Route = createFileRoute("/onboarding")({
     const profile = await fetchProfile(user.id);
     setProfile(profile);
 
-    const lane = (
-      profile?.settings as { onboarding?: { lane?: string } } | null | undefined
-    )?.onboarding?.lane;
-
-    if (lane === "consultant") {
-      throw redirect({ to: "/consultant/apply" });
-    }
     throw redirect({ to: "/welcome" });
   },
   component: () => null,

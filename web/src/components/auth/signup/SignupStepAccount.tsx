@@ -1,8 +1,7 @@
-import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { FloatingInput } from "./FloatingInput";
-import { PasswordStrength } from "./PasswordStrength";
-import { PrimaryButton, GoogleButton } from "./SignupButtons";
+import { GoogleButton } from "./SignupButtons";
+import { WizardNav } from "./WizardNav";
 import { supabase } from "../../../lib/supabase";
 import { useToast } from "../../../hooks/useToast";
 
@@ -13,27 +12,8 @@ interface SignupStepAccountProps {
   setLastName: (v: string) => void;
   email: string;
   setEmail: (v: string) => void;
-  password: string;
-  setPassword: (v: string) => void;
-  confirmPassword: string;
-  setConfirmPassword: (v: string) => void;
   onNext: () => void;
   onBack?: () => void;
-}
-
-function EyeIcon({ visible }: { visible: boolean }) {
-  return visible ? (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17.94 17.94A10.07 10.07 0 0112 20C7 20 2.73 16.39 1 12a18.45 18.45 0 015.06-5.94" />
-      <path d="M9.9 4.24A9.12 9.12 0 0112 4c5 0 9.27 3.61 11 8a18.5 18.5 0 01-2.16 3.19" />
-      <line x1="1" y1="1" x2="23" y2="23" />
-    </svg>
-  ) : (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
 }
 
 function GoogleIcon() {
@@ -66,15 +46,9 @@ export function SignupStepAccount({
   setLastName,
   email,
   setEmail,
-  password,
-  setPassword,
-  confirmPassword,
-  setConfirmPassword,
   onNext,
   onBack,
 }: SignupStepAccountProps) {
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const toast = useToast();
 
   const handleGoogleSignIn = async () => {
@@ -96,16 +70,8 @@ export function SignupStepAccount({
 
   const handleNext = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!firstName.trim() || !lastName.trim() || !email.trim() || !password || !confirmPassword) {
+    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
       toast.error("Please fill in all required fields");
-      return;
-    }
-    if (password !== confirmPassword) {
-      toast.error("Passwords do not match");
-      return;
-    }
-    if (password.length < 8) {
-      toast.error("Password must be at least 8 characters");
       return;
     }
     onNext();
@@ -113,6 +79,31 @@ export function SignupStepAccount({
 
   return (
     <form onSubmit={handleNext} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <div>
+        <h2
+          style={{
+            fontFamily: "'Sora', 'Manrope', sans-serif",
+            fontSize: "1.4rem",
+            fontWeight: 700,
+            color: "#0F172A",
+            margin: "0 0 4px",
+            lineHeight: 1.25,
+          }}
+        >
+          Create your account
+        </h2>
+        <p
+          style={{
+            fontSize: "13px",
+            color: "#64748B",
+            margin: 0,
+            fontFamily: "'Manrope', sans-serif",
+          }}
+        >
+          We'll send a verification code to your email.
+        </p>
+      </div>
+
       {/* Google button */}
       <GoogleButton onClick={handleGoogleSignIn}>
         <GoogleIcon />
@@ -163,101 +154,7 @@ export function SignupStepAccount({
         autoComplete="email"
       />
 
-      {/* Password */}
-      <div>
-        <FloatingInput
-          label="Password"
-          type={showPassword ? "text" : "password"}
-          value={password}
-          onChange={setPassword}
-          required
-          autoComplete="new-password"
-          rightElement={
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: "2px",
-                color: "#94A3B8",
-                display: "flex",
-                alignItems: "center",
-              }}
-              aria-label={showPassword ? "Hide password" : "Show password"}
-            >
-              <EyeIcon visible={showPassword} />
-            </button>
-          }
-        />
-        <PasswordStrength password={password} />
-      </div>
-
-      {/* Confirm password */}
-      <FloatingInput
-        label="Confirm Password"
-        type={showConfirm ? "text" : "password"}
-        value={confirmPassword}
-        onChange={setConfirmPassword}
-        required
-        autoComplete="new-password"
-        rightElement={
-          <button
-            type="button"
-            onClick={() => setShowConfirm(!showConfirm)}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: "2px",
-              color: "#94A3B8",
-              display: "flex",
-              alignItems: "center",
-            }}
-            aria-label={showConfirm ? "Hide password" : "Show password"}
-          >
-            <EyeIcon visible={showConfirm} />
-          </button>
-        }
-      />
-
-      {/* Back + Continue */}
-      <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
-        {onBack && (
-          <button
-            type="button"
-            onClick={onBack}
-            style={{
-              flex: "0 0 auto",
-              padding: "0 18px",
-              height: "44px",
-              borderRadius: "10px",
-              border: "1px solid #CBD5E1",
-              background: "white",
-              color: "#334155",
-              fontFamily: "'Manrope', sans-serif",
-              fontWeight: 600,
-              fontSize: "14px",
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = "#0F172A";
-              e.currentTarget.style.color = "#0F172A";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = "#CBD5E1";
-              e.currentTarget.style.color = "#334155";
-            }}
-          >
-            ← Back
-          </button>
-        )}
-        <PrimaryButton type="submit" style={{ flex: 1 }}>
-          Continue →
-        </PrimaryButton>
-      </div>
+      <WizardNav onBack={onBack} primaryLabel="Continue" />
       <p
         style={{
           textAlign: "center",

@@ -100,22 +100,10 @@ function AuthCallbackPage() {
         if (profile?.has_completed_onboarding) {
           navigate({ to: "/dashboard", replace: true });
         } else {
-          // Lane-aware post-OAuth routing. OAuth users have no lane signal
-          // (the lane query param doesn't survive Google's roundtrip), so
-          // a fresh OAuth signup lands on /welcome with the C/F default. If
-          // the user previously chose the consultant lane (or a partial
-          // signup recorded it), honor that.
-          const lane = (
-            profile?.settings as
-              | { onboarding?: { lane?: string } }
-              | null
-              | undefined
-          )?.onboarding?.lane;
-          if (lane === "consultant") {
-            navigate({ to: "/consultant/apply", replace: true });
-          } else {
-            navigate({ to: "/welcome", replace: true });
-          }
+          // Both lanes route through /welcome — the welcome route renders
+          // a lane-specific deck. OAuth users default to client_freelancer
+          // since the lane query param doesn't survive Google's roundtrip.
+          navigate({ to: "/welcome", replace: true });
         }
       } catch (error) {
         console.error("OAuth callback error:", error);

@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { SignupLayout } from "../../components/auth/signup/SignupLayout";
 import { useToast } from "../../hooks/useToast";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 export const Route = createFileRoute("/auth/forgot-password")({
   component: ForgotPasswordRoute,
@@ -177,11 +178,7 @@ function ForgotPasswordRoute() {
           gap: "24px",
         }}
       >
-        <img
-          src="/prodigylogos/light/logo1.svg"
-          alt="Prodigitality"
-          style={{ height: "32px", objectFit: "contain", objectPosition: "left" }}
-        />
+        <BrandMark className="h-8 text-slate-900" />
 
         <div>
           <h1

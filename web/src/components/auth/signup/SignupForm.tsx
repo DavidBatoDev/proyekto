@@ -10,8 +10,9 @@ import { profileKeys } from "../../../queries/profile";
 import { completeOnboarding, type OnboardingLane } from "../../../lib/auth-api";
 import { SignupStepLane } from "./SignupStepLane";
 import { SignupStepAccount } from "./SignupStepAccount";
+import { SignupStepPassword } from "./SignupStepPassword";
 import { SignupStepProfile } from "./SignupStepProfile";
-import Logo from "/prodigylogos/light/logo1.svg";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 interface SignupFormProps {
   redirectUrl?: string;
@@ -71,14 +72,14 @@ export function SignupForm(_props: SignupFormProps) {
     setLaneState(next);
   };
 
-  // ── Step state (1=Lane, 2=Account, 3=Profile, 4=Verify) ─────────────────
-  const [step, setStepState] = useState<1 | 2 | 3 | 4>(() => {
+  // ── Step state (1=Lane, 2=Account, 3=Password, 4=Profile, 5=Verify) ─────
+  const [step, setStepState] = useState<1 | 2 | 3 | 4 | 5>(() => {
     const saved = parseInt(sessionStorage.getItem("signupStep") ?? "1");
-    return (saved as 1 | 2 | 3 | 4) || 1;
+    return (saved as 1 | 2 | 3 | 4 | 5) || 1;
   });
-  const [prevStep, setPrevStep] = useState<1 | 2 | 3 | 4>(1);
+  const [prevStep, setPrevStep] = useState<1 | 2 | 3 | 4 | 5>(1);
 
-  const setStep = (n: 1 | 2 | 3 | 4) => {
+  const setStep = (n: 1 | 2 | 3 | 4 | 5) => {
     setPrevStep(step);
     sessionStorage.setItem("signupStep", n.toString());
     setStepState(n);
@@ -185,14 +186,19 @@ export function SignupForm(_props: SignupFormProps) {
     setStep(2);
   };
 
-  // ── Step 2 → 3 (account validated, advance to profile) ──────────────────
+  // ── Step 2 → 3 (name + email captured, advance to password) ─────────────
   const handleAccountNext = () => {
     sessionStorage.setItem("signup_firstName", firstName);
     sessionStorage.setItem("signup_lastName", lastName);
     sessionStorage.setItem("signup_email", email);
+    setStep(3);
+  };
+
+  // ── Step 3 → 4 (password validated, advance to profile) ─────────────────
+  const handlePasswordNext = () => {
     sessionStorage.setItem("signup_password", password);
     sessionStorage.setItem("signup_confirmPassword", confirmPassword);
-    setStep(3);
+    setStep(4);
   };
 
   // ── Step 2 submit (profile → create account + verify) ───────────────────
@@ -257,7 +263,7 @@ export function SignupForm(_props: SignupFormProps) {
       await signOut();
 
       // 4. Advance to email verification step (only after account is created)
-      setStep(4);
+      setStep(5);
 
       // 5. Send verification email — errors handled inside; user can resend
       await sendVerificationEmail(generatedCode);
@@ -275,7 +281,7 @@ export function SignupForm(_props: SignupFormProps) {
       } else {
         toast.error(msg || "Signup failed");
       }
-      setStep(3);
+      setStep(4);
     } finally {
       setIsLoading(false);
     }
@@ -359,11 +365,10 @@ export function SignupForm(_props: SignupFormProps) {
 
       clearSignupData();
 
-      if (lane === "consultant") {
-        navigate({ to: "/consultant/apply" });
-      } else {
-        navigate({ to: "/welcome" });
-      }
+      // Both lanes now route through /welcome — the welcome route renders
+      // a lane-specific deck (3 slides for consultants → /consultant/apply,
+      // 4 slides for client/freelancer → /dashboard).
+      navigate({ to: "/welcome" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Verification failed");
     } finally {
@@ -413,39 +418,12 @@ export function SignupForm(_props: SignupFormProps) {
   return (
     <div style={{ width: "100%" }}>
       {/* Logo */}
-      <img
-        src={Logo}
-        alt="Proyekto"
-        style={{ height: "32px", marginBottom: "24px", display: "block" }}
-      />
+      <div style={{ marginBottom: "24px" }}>
+        <BrandMark className="h-8 text-slate-900" />
+      </div>
 
-      {/* Header (only on form steps 1, 2, 3 — hidden on Verify) */}
-      {step < 4 && (
-        <div style={{ marginBottom: "24px" }}>
-          <h1
-            style={{
-              fontFamily: "'Sora', 'Manrope', sans-serif",
-              fontSize: "1.6rem",
-              fontWeight: 700,
-              color: "#0F172A",
-              margin: "0 0 4px",
-              lineHeight: 1.25,
-            }}
-          >
-            Turn ideas into structured execution.
-          </h1>
-          <p
-            style={{
-              fontSize: "13px",
-              color: "#64748B",
-              margin: "0 0 20px",
-              fontFamily: "'Manrope', sans-serif",
-            }}
-          >
-            Start your roadmap, match with experts, and execute in one system.
-          </p>
-        </div>
-      )}
+      {/* Each step renders its own header (Lane, Account, Password, Profile).
+          The Verify step has its own self-contained UI below. */}
 
       {/* Animated step panels */}
       <AnimatePresence mode="wait">
@@ -468,10 +446,6 @@ export function SignupForm(_props: SignupFormProps) {
               setLastName={setLastName}
               email={email}
               setEmail={setEmail}
-              password={password}
-              setPassword={setPassword}
-              confirmPassword={confirmPassword}
-              setConfirmPassword={setConfirmPassword}
               onNext={handleAccountNext}
               onBack={() => setStep(1)}
             />
@@ -479,6 +453,19 @@ export function SignupForm(_props: SignupFormProps) {
         )}
 
         {step === 3 && (
+          <motion.div key="step-password" {...motionProps}>
+            <SignupStepPassword
+              password={password}
+              setPassword={setPassword}
+              confirmPassword={confirmPassword}
+              setConfirmPassword={setConfirmPassword}
+              onNext={handlePasswordNext}
+              onBack={() => setStep(2)}
+            />
+          </motion.div>
+        )}
+
+        {step === 4 && (
           <motion.div key="step-profile" {...motionProps}>
             <SignupStepProfile
               gender={gender}
@@ -495,14 +482,14 @@ export function SignupForm(_props: SignupFormProps) {
               setZipCode={setZipCode}
               acceptedTerms={acceptedTerms}
               setAcceptedTerms={setAcceptedTerms}
-              onBack={() => setStep(2)}
+              onBack={() => setStep(3)}
               onSubmit={handleProfileSubmit}
               isLoading={isLoading}
             />
           </motion.div>
         )}
 
-        {step === 4 && (
+        {step === 5 && (
           <motion.div key="step-verify" {...motionProps}>
             {/* ── Verification screen ── */}
             <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -645,7 +632,7 @@ export function SignupForm(_props: SignupFormProps) {
                   type="button"
                   onClick={() => {
                     setVerificationCode("");
-                    setStep(3);
+                    setStep(4);
                   }}
                   style={{
                     background: "none",
