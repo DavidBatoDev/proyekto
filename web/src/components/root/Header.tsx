@@ -84,10 +84,15 @@ export const Header = () => {
                 </>
               ) : (
                 <>
-                  <span className="hidden items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600 lg:inline-flex">
-                    <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                    Roadmap-first platform
-                  </span>
+                  <motion.div whileTap={{ scale: 0.97 }} transition={{ duration: 0.15 }} className="hidden lg:block">
+                    <Link
+                      to="/consultant/apply"
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:border-slate-900 hover:bg-white hover:text-slate-900"
+                    >
+                      <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                      Apply as a consultant
+                    </Link>
+                  </motion.div>
                   <motion.div whileTap={{ scale: 0.97 }} transition={{ duration: 0.15 }}>
                     <Link to="/auth/login">
                       <Button variant="outlined" colorScheme="primary" className="h-11 rounded-xl border-slate-300 text-slate-700 hover:border-slate-900 hover:bg-slate-900 hover:text-white">

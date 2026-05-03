@@ -1,43 +1,55 @@
+import { Link } from "@tanstack/react-router";
 import Logo from "/prodigylogos/light/logo1.svg";
 
 export const RootFooter = () => {
   return (
     <footer className="mt-20 border-t border-slate-200 bg-white">
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-10">
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-4">
-          <div>
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-5">
+          <div className="md:col-span-2">
             <img src={Logo} alt="Proyekto" className="mb-4 h-10" />
-            <p className="text-sm text-slate-600">
-              Turn your ideas into action, with Proyekto.
+            <p className="max-w-sm text-sm text-slate-600">
+              Hire a team, not a stranger. Vetted consultants run your project end-to-end on Proyekto.
             </p>
           </div>
 
           <div>
-            <h4 className="mb-4 font-semibold text-slate-900">Platform</h4>
+            <h4 className="mb-4 font-semibold text-slate-900">For clients</h4>
             <ul className="space-y-2 text-sm text-slate-600">
               <li>
-                <button type="button" className="transition-colors hover:text-slate-900">Roadmap Studio</button>
+                <Link
+                  to="/auth/signup"
+                  search={{ redirect: undefined }}
+                  className="transition-colors hover:text-slate-900"
+                >
+                  Start a project
+                </Link>
               </li>
               <li>
-                <button type="button" className="transition-colors hover:text-slate-900">Consultant Matching</button>
+                <a href="#how-it-works" className="transition-colors hover:text-slate-900">How it works</a>
               </li>
               <li>
-                <button type="button" className="transition-colors hover:text-slate-900">Execution Layer</button>
+                <a href="#why-proyekto" className="transition-colors hover:text-slate-900">Why Proyekto</a>
               </li>
             </ul>
           </div>
 
           <div>
-            <h4 className="mb-4 font-semibold text-slate-900">Resources</h4>
+            <h4 className="mb-4 font-semibold text-slate-900">For consultants</h4>
             <ul className="space-y-2 text-sm text-slate-600">
               <li>
-                <button type="button" className="transition-colors hover:text-slate-900">Case Studies</button>
+                <Link
+                  to="/consultant/apply"
+                  className="font-semibold text-slate-700 transition-colors hover:text-slate-900"
+                >
+                  Apply to lead
+                </Link>
               </li>
               <li>
-                <button type="button" className="transition-colors hover:text-slate-900">Playbooks</button>
+                <button type="button" className="transition-colors hover:text-slate-900">How it works</button>
               </li>
               <li>
-                <button type="button" className="transition-colors hover:text-slate-900">Roadmap Guides</button>
+                <button type="button" className="transition-colors hover:text-slate-900">Pricing</button>
               </li>
             </ul>
           </div>
@@ -46,7 +58,7 @@ export const RootFooter = () => {
             <h4 className="mb-4 font-semibold text-slate-900">Company</h4>
             <ul className="space-y-2 text-sm text-slate-600">
               <li>
-                <button type="button" className="transition-colors hover:text-slate-900">About Proyekto</button>
+                <button type="button" className="transition-colors hover:text-slate-900">About</button>
               </li>
               <li>
                 <button type="button" className="transition-colors hover:text-slate-900">Security</button>

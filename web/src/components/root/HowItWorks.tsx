@@ -3,23 +3,23 @@ import { ClipboardPen, Users, Gauge } from "lucide-react";
 const steps = [
   {
     number: "1",
-    title: "Start with a Roadmap",
+    title: "Plan free",
     description:
-      "Use a roadmap template or create a plan from scratch — break it down into steps, add deadlines, and visualize the entire process.",
+      "Sketch your project in your workspace. Use AI to draft the roadmap, share it with stakeholders, refine until it's right. No credit card needed.",
     icon: ClipboardPen,
   },
   {
     number: "2",
-    title: "Add people to your project",
+    title: "Bring in a consultant",
     description:
-      "Bring in your clients, team, or collaborators — so everyone knows what's happening and what's next.",
+      "When you're ready, request a vetted consultant. They scope, price, and propose a team within 48 hours — so you skip the freelancer-vetting marathon.",
     icon: Users,
   },
   {
     number: "3",
-    title: "Stay on Track",
+    title: "Ship together",
     description:
-      "From timelines to tasks, conversations to payments — everything is organized in one place so your project keeps moving.",
+      "Track progress, comment on deliverables, approve work — all on one canvas. Pay through escrow, only on milestones.",
     icon: Gauge,
   },
 ];
@@ -37,10 +37,10 @@ export const HowItWorks = () => {
 
       <div className="relative text-center">
         <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-          How It Works
+          How Proyekto works
         </h2>
         <p className="mt-3 text-sm text-slate-600 sm:text-base">
-          Plan your project in minutes, not weeks.
+          From idea to shipped — without the freelancer-management overhead.
         </p>
       </div>
 

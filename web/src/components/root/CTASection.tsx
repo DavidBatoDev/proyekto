@@ -18,10 +18,10 @@ export const CTASection = () => {
 
           <div>
             <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-              Ready to get started?
+              Ready to ship something real?
             </h2>
             <p className="mt-3 max-w-3xl text-base leading-relaxed text-blue-50/95">
-              Create your project plan in minutes and start moving forward.
+              Start your project free. Bring in a vetted consultant when you're ready to hire — they'll run the team so you don't have to.
             </p>
 
             <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -34,16 +34,16 @@ export const CTASection = () => {
                   colorScheme="primary"
                   className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800"
                 >
-                  Create Your Project Plan
+                  Start your project — free
                 </Button>
               </Link>
 
-              <a
-                href="#templates"
+              <Link
+                to="/consultant/apply"
                 className="inline-flex items-center justify-center rounded-xl border border-white/55 bg-white/95 px-5 py-3 text-sm font-semibold text-slate-700 transition-all hover:border-white hover:text-slate-900"
               >
-                Explore Templates
-              </a>
+                Apply to lead on Proyekto
+              </Link>
             </div>
           </div>
         </div>

@@ -1,22 +1,40 @@
-import { Layers3, Sparkles, TimerReset } from "lucide-react";
+import { Layers3, ShieldCheck, TimerReset, UserCheck, Wallet, Sparkles } from "lucide-react";
 
 const cards = [
   {
-    title: "You know the work — Proyekto helps you run it",
+    title: "Vetted consultants only",
     description:
-      "Turn your ideas into clear steps, align your team, and keep projects moving forward.",
+      "Every consultant is interviewed and identity-verified by our team. Clients only see leads who've already proven they can deliver.",
+    icon: UserCheck,
+  },
+  {
+    title: "Escrow on every milestone",
+    description:
+      "Funds release when you approve the work — not before. No chasing wire transfers, no scope-creep surprises.",
+    icon: Wallet,
+  },
+  {
+    title: "AI-assisted planning",
+    description:
+      "Draft a clear roadmap before anyone gets hired. Sharper scope, tighter quotes, fewer mid-project resets.",
     icon: Sparkles,
   },
   {
-    title: "Everything stays in one place",
+    title: "One workspace for the whole project",
     description:
-      "Your plan, your people, your tasks — all in one easy-to-use tool.",
+      "Roadmap, chat, files, and time tracking in one place. No more juggling Slack, Notion, and a half-dozen invoices.",
     icon: Layers3,
   },
   {
-    title: "Projects move forward, automatically",
+    title: "Identity-verified freelancers",
     description:
-      "Proyekto helps you track progress, send reminders, and keep everyone on the same page. No more falling behind.",
+      "Every freelancer your consultant proposes has passed identity, portfolio, and rate verification. The bench is curated, not crowdsourced.",
+    icon: ShieldCheck,
+  },
+  {
+    title: "Projects keep moving",
+    description:
+      "Automated reminders, status digests, and milestone nudges — so nothing slips between you, your consultant, and the team.",
     icon: TimerReset,
   },
 ];
@@ -32,10 +50,10 @@ export function WhyProyektoSection() {
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_12px_30px_rgba(16,24,40,0.06)] sm:p-8">
         <div className="text-center">
           <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-            WHY PROYEKTO
+            Built for serious work
           </h2>
           <p className="mt-3 text-sm text-slate-600 sm:text-base">
-            The easiest way to get your project across the finish line
+            Vetted people. Escrow-backed payments. One workspace from plan to ship.
           </p>
         </div>
 
