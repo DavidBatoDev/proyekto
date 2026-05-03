@@ -28,6 +28,7 @@ function makeQueryStub(): QueryStub {
 
 function buildService(
   tables: Record<string, QueryStub>,
+  authorizationOverrides: Partial<Record<string, jest.Mock>> = {},
 ): PersonalWorkspaceService {
   const supabase: any = {
     from: (table: string) => {
@@ -37,7 +38,25 @@ function buildService(
       return tables[table];
     },
   };
-  return new PersonalWorkspaceService(supabase);
+  // Default authorization stub: grant() succeeds, returns a fake share row.
+  const authorization = {
+    grant: jest.fn().mockResolvedValue({
+      id: 'share-1',
+      project_id: 'p',
+      user_id: 'u',
+      role: 'owner',
+      origin: 'personal_workspace',
+      capabilities: {},
+      granted_by: 'u',
+      granted_at: '2026-05-03T00:00:00Z',
+    }),
+    getUserProjectRole: jest.fn(),
+    assertRole: jest.fn(),
+    roleSatisfies: jest.fn(),
+    revoke: jest.fn(),
+    ...authorizationOverrides,
+  } as any;
+  return new PersonalWorkspaceService(supabase, authorization);
 }
 
 describe('PersonalWorkspaceService', () => {

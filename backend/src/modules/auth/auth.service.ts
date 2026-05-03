@@ -15,10 +15,18 @@ import {
 } from './dto/auth.dto';
 import { Profile } from '../../common/entities';
 import { PersonalWorkspaceService } from '../projects/personal-workspace.service';
+import {
+  FreelancerEligibilityService,
+  type FreelancerRequirement,
+} from '../profile/freelancer-eligibility.service';
 
 export interface CompleteOnboardingResult {
   profile: Profile;
   personal_workspace_id: string;
+}
+
+export interface ProfileWithEligibility extends Profile {
+  missingFreelancerRequirements: FreelancerRequirement[];
 }
 
 @Injectable()
@@ -28,12 +36,17 @@ export class AuthService {
   constructor(
     @Inject(AUTH_REPOSITORY) private readonly authRepo: AuthRepository,
     private readonly personalWorkspaceService: PersonalWorkspaceService,
+    private readonly freelancerEligibility: FreelancerEligibilityService,
   ) {}
 
-  async getProfile(userId: string): Promise<Profile> {
+  async getProfile(userId: string): Promise<ProfileWithEligibility> {
     const profile = await this.authRepo.getProfile(userId);
     if (!profile) throw new NotFoundException('Profile not found');
-    return profile;
+    // Attach the freelancer-eligibility checklist so the dashboard sidebar
+    // can show what's left without a separate roundtrip. Cheap (4 small
+    // lookups) and re-evaluated per request.
+    const { missing } = await this.freelancerEligibility.check(userId);
+    return { ...profile, missingFreelancerRequirements: missing };
   }
 
   async onboarding(userId: string, dto: OnboardingDto): Promise<Profile> {
@@ -87,6 +100,18 @@ export class AuthService {
       if (!profile.is_consultant_verified) {
         throw new ForbiddenException(
           'Consultant verification required to switch to consultant persona',
+        );
+      }
+    }
+    if (dto.persona === 'freelancer') {
+      // Quality-bar enforcement. The dashboard checklist normally guides
+      // the user to satisfy these BEFORE they hit this endpoint, but the
+      // server is the source of truth.
+      const { eligible, missing } =
+        await this.freelancerEligibility.check(userId);
+      if (!eligible) {
+        throw new ForbiddenException(
+          `Complete your freelancer profile first. Missing: ${missing.join(', ')}`,
         );
       }
     }

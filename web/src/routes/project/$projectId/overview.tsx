@@ -14,6 +14,7 @@ import {
   toItems,
   deriveTimelineItems,
 } from "@/components/project/overview";
+import { BringInAConsultantCard } from "@/components/project/BringInAConsultantCard";
 import {
   useInvalidateProjectQueries,
   useLinkedRoadmapQuery,
@@ -241,6 +242,13 @@ function OverviewPage() {
       <div className="px-5 py-6 md:px-8 md:py-8">
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-7">
           <div className="flex flex-col">
+            <BringInAConsultantCard
+              isPersonalWorkspace={Boolean(
+                (project as unknown as { is_personal_workspace?: boolean })
+                  .is_personal_workspace,
+              )}
+              hasConsultant={Boolean(project.consultant_id)}
+            />
             <div className="app-slide-up">
               <OverviewBanner
                 bannerUrl={projectBannerUrl}

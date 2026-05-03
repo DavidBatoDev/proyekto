@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 export const PROJECTS_REPOSITORY = Symbol('PROJECTS_REPOSITORY');
 import type { ProjectsRepository } from './repositories/projects.repository.interface';
+import { ProjectAuthorizationService } from './authorization/project-authorization.service';
 import {
   AddProjectMemberDto,
   CreateProjectDto,
@@ -50,7 +51,26 @@ export class ProjectsService {
     @Inject(PROJECTS_REPOSITORY)
     private readonly projectsRepo: ProjectsRepository,
     private readonly notificationsService: NotificationsService,
+    private readonly authorization: ProjectAuthorizationService,
   ) {}
+
+  /**
+   * Returns true when the caller has `owner` or `admin` role on the project.
+   * Replaces the legacy `callerId === client_id || callerId === consultant_id`
+   * "isLead" short-circuit. The legacy check assumed there were exactly two
+   * privileged users (the persona-based lead pair); the new check works for
+   * any user with the right role grant in project_shares.
+   */
+  private async isProjectPrivileged(
+    callerId: string,
+    projectId: string,
+  ): Promise<boolean> {
+    const role = await this.authorization.getUserProjectRole(
+      callerId,
+      projectId,
+    );
+    return role === 'owner' || role === 'admin';
+  }
 
   private async emitNotification(
     payload: Parameters<NotificationsService['createNotification']>[0],
@@ -150,20 +170,20 @@ export class ProjectsService {
     project: Project,
     callerId: string,
   ): Promise<void> {
-    const isLead =
-      callerId === project.client_id || callerId === project.consultant_id;
+    const isPrivileged = await this.isProjectPrivileged(callerId, project.id);
     const callerPermissions = await this.getCallerPermissions(
       project,
       callerId,
     );
 
-    if (!isLead && !callerPermissions) {
+    if (!isPrivileged && !callerPermissions) {
       throw new ForbiddenException(
-        'Only the project consultant or client can manage the team.',
+        'You do not have permission to manage the team.',
       );
     }
 
     if (
+      !isPrivileged &&
       callerPermissions &&
       !hasPermission(callerPermissions, 'members.manage')
     ) {
@@ -178,10 +198,9 @@ export class ProjectsService {
     callerId: string,
   ): Promise<Project> {
     const project = await this.getProjectOrThrow(projectId);
-    const isLead =
-      callerId === project.client_id || callerId === project.consultant_id;
+    const isPrivileged = await this.isProjectPrivileged(callerId, projectId);
 
-    if (isLead) {
+    if (isPrivileged) {
       return project;
     }
 
@@ -209,10 +228,7 @@ export class ProjectsService {
     // Always resolve/hydrate member permissions first when a member row exists.
     const permissions = await this.getCallerPermissions(project, userId);
 
-    const isLead =
-      userId === project.client_id || userId === project.consultant_id;
-
-    if (isLead) {
+    if (await this.isProjectPrivileged(userId, projectId)) {
       return;
     }
 
@@ -235,10 +251,7 @@ export class ProjectsService {
     // Always resolve/hydrate member permissions first when a member row exists.
     const permissions = await this.getCallerPermissions(project, userId);
 
-    const isLead =
-      userId === project.client_id || userId === project.consultant_id;
-
-    if (isLead) {
+    if (await this.isProjectPrivileged(userId, projectId)) {
       return;
     }
 
@@ -287,10 +300,20 @@ export class ProjectsService {
           'Client mode requires the client active persona.',
         );
       }
-      return this.projectsRepo.create(userId, {
+      const project = await this.projectsRepo.create(userId, {
         ...dto,
         creation_mode: 'client',
       });
+      // Marketplace project created by a client: client gets admin role.
+      // No owner exists until a consultant joins (per design.md).
+      await this.authorization.grant({
+        projectId: project.id,
+        userId,
+        role: 'admin',
+        origin: 'client',
+        grantedBy: userId,
+      });
+      return project;
     }
 
     if (!profile.is_consultant_verified) {
@@ -305,11 +328,21 @@ export class ProjectsService {
       );
     }
 
-    return this.projectsRepo.create(userId, {
+    const project = await this.projectsRepo.create(userId, {
       ...dto,
       creation_mode: 'consultant',
       status: 'draft',
     });
+    // Project created in consultant mode: the creator IS the consultant
+    // and gets owner role from the start.
+    await this.authorization.grant({
+      projectId: project.id,
+      userId,
+      role: 'owner',
+      origin: 'consultant',
+      grantedBy: userId,
+    });
+    return project;
   }
 
   async updateProject(
@@ -393,7 +426,22 @@ export class ProjectsService {
     projectId: string,
     consultantId: string,
   ): Promise<Project> {
-    return this.projectsRepo.assignConsultant(projectId, consultantId);
+    const project = await this.projectsRepo.assignConsultant(
+      projectId,
+      consultantId,
+    );
+    // Auto-grant: assigned consultant becomes project owner.
+    // The pre-existing client (admin role) is unchanged — owner > admin so
+    // the consultant naturally outranks the client. Multi-owner projects
+    // are supported per design.
+    await this.authorization.grant({
+      projectId,
+      userId: consultantId,
+      role: 'owner',
+      origin: 'consultant',
+      grantedBy: consultantId,
+    });
+    return project;
   }
 
   async reassignProjectConsultant(
@@ -402,12 +450,9 @@ export class ProjectsService {
     dto: ReassignProjectConsultantDto,
   ): Promise<Project> {
     const project = await this.getProjectOrThrow(projectId);
-    const isLead =
-      callerId === project.client_id || callerId === project.consultant_id;
-
-    if (!isLead) {
+    if (!(await this.isProjectPrivileged(callerId, projectId))) {
       throw new ForbiddenException(
-        'Only the current project owner or consultant can reassign consultant.',
+        'Only the current project owner or admin can reassign the consultant.',
       );
     }
 
@@ -446,6 +491,35 @@ export class ProjectsService {
       previousConsultantId,
       newConsultantId,
     );
+
+    // Sync project_shares with the consultant change:
+    // - new consultant gets owner role with origin='consultant'
+    // - previous consultant (if any) is revoked. Last-owner protection in
+    //   ProjectAuthorizationService.revoke ensures we never orphan the
+    //   project — if removing the previous consultant would leave 0 owners,
+    //   the revoke throws and we keep them as a co-owner.
+    await this.authorization.grant({
+      projectId,
+      userId: newConsultantId,
+      role: 'owner',
+      origin: 'consultant',
+      grantedBy: callerId,
+    });
+    if (previousConsultantId && previousConsultantId !== newConsultantId) {
+      try {
+        await this.authorization.revoke(projectId, previousConsultantId);
+      } catch (err) {
+        // Last-owner protection — leave the previous consultant in place
+        // rather than orphaning. They remain a co-owner alongside the new
+        // consultant; admin can demote them later from team settings.
+        // eslint-disable-next-line no-console
+        console.warn(
+          `Could not revoke previous consultant ${previousConsultantId} on ${projectId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
 
     await this.emitNotification({
       user_id: newConsultantId,
@@ -567,6 +641,37 @@ export class ProjectsService {
       inviteId,
       dto,
     )) as Record<string, unknown>;
+
+    // On accept: grant the invitee a project_shares row using the invite's
+    // default_role (set at invite time on /welcome slide 4 or in the team
+    // settings invite UI). Editor is the fallback when no default_role was
+    // recorded — matches the slice 1 invite UX default.
+    if (
+      result.status === 'accepted' &&
+      typeof result.project_id === 'string'
+    ) {
+      const defaultRole =
+        result.default_role === 'viewer' ? 'viewer' : 'editor';
+      const grantedBy =
+        typeof result.invited_by === 'string' ? result.invited_by : null;
+      try {
+        await this.authorization.grant({
+          projectId: result.project_id,
+          userId,
+          role: defaultRole,
+          origin: 'invited',
+          grantedBy,
+        });
+      } catch (err) {
+        // Surface but don't block — the invite respond already persisted.
+        // Operator can retry the grant from the team settings UI.
+        // eslint-disable-next-line no-console
+        console.error(
+          `Failed to grant project_share for invite ${inviteId}:`,
+          err,
+        );
+      }
+    }
 
     if (typeof result.invited_by === 'string') {
       await this.emitNotification({

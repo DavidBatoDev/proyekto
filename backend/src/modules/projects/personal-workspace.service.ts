@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
+import { ProjectAuthorizationService } from './authorization/project-authorization.service';
 
 export interface PersonalWorkspace {
   id: string;
@@ -16,6 +17,7 @@ export class PersonalWorkspaceService {
 
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
+    private readonly authorization: ProjectAuthorizationService,
   ) {}
 
   /**
@@ -62,9 +64,36 @@ export class PersonalWorkspaceService {
       throw new Error('Personal workspace insert returned no row');
     }
 
+    // Dual-write during slice 2 transition: project_shares is the new source
+    // of truth; project_members is kept for backward compatibility with
+    // unmodified RLS policies on dependent tables (work_items, milestones,
+    // etc). Slice 3 drops the project_members write.
+    await this.attachOwnerShare(created.id, userId);
     await this.attachOwnerMember(created.id, userId);
 
     return created as PersonalWorkspace;
+  }
+
+  private async attachOwnerShare(
+    projectId: string,
+    userId: string,
+  ): Promise<void> {
+    try {
+      await this.authorization.grant({
+        projectId,
+        userId,
+        role: 'owner',
+        origin: 'personal_workspace',
+        grantedBy: userId,
+      });
+    } catch (err) {
+      this.logger.error(
+        `Failed to grant owner share for personal workspace ${projectId} (user ${userId}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      throw err;
+    }
   }
 
   /**

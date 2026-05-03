@@ -24,9 +24,30 @@ describe('ProjectsService (permissions)', () => {
     createNotification: jest.fn(),
   };
 
-  const buildService = (repoOverrides: Partial<ProjectsRepository>) => {
+  // Default authorization stub: caller has no project_shares grant. Tests
+  // that exercise the role-based bypass should override `getUserProjectRole`.
+  const defaultAuthorization = {
+    getUserProjectRole: jest.fn().mockResolvedValue(null),
+    assertRole: jest.fn(),
+    roleSatisfies: jest.fn(),
+    grant: jest.fn(),
+    revoke: jest.fn(),
+  };
+
+  const buildService = (
+    repoOverrides: Partial<ProjectsRepository>,
+    authorizationOverrides: Partial<typeof defaultAuthorization> = {},
+  ) => {
     const repo = repoOverrides as ProjectsRepository;
-    return new ProjectsService(repo, notificationsService as any);
+    const authorization = {
+      ...defaultAuthorization,
+      ...authorizationOverrides,
+    };
+    return new ProjectsService(
+      repo,
+      notificationsService as any,
+      authorization as any,
+    );
   };
 
   beforeEach(() => {
@@ -136,7 +157,7 @@ describe('ProjectsService (permissions)', () => {
     expect(repo.updateMemberPermissions).toHaveBeenCalled();
   });
 
-  it('sends consultant notification when client invites a freelancer', async () => {
+  it('sends consultant notification when client (admin role) invites a freelancer', async () => {
     const repo = {
       findById: jest.fn().mockResolvedValue(buildProject()),
       getMemberByProjectAndUserId: jest.fn().mockResolvedValue(null),
@@ -147,7 +168,12 @@ describe('ProjectsService (permissions)', () => {
       }),
       getProfileDisplayName: jest.fn().mockResolvedValue('Client Owner'),
     };
-    const service = buildService(repo);
+    // Post-refactor: client has admin role on the project (granted at
+    // project create time). The role bypass replaces the legacy client_id
+    // === userId check.
+    const service = buildService(repo, {
+      getUserProjectRole: jest.fn().mockResolvedValue('admin'),
+    });
 
     await service.inviteByEmail('project-1', 'client-1', {
       email: 'freelancer@example.com',
@@ -163,7 +189,7 @@ describe('ProjectsService (permissions)', () => {
     );
   });
 
-  it('unassigns tasks then removes member when client removes freelancer', async () => {
+  it('unassigns tasks then removes member when client (admin role) removes freelancer', async () => {
     const repo = {
       findById: jest.fn().mockResolvedValue(buildProject()),
       getMemberByProjectAndUserId: jest.fn().mockResolvedValue(null),
@@ -176,7 +202,9 @@ describe('ProjectsService (permissions)', () => {
       removeMember: jest.fn().mockResolvedValue(undefined),
       getProfileDisplayName: jest.fn().mockResolvedValue('Freelancer One'),
     };
-    const service = buildService(repo);
+    const service = buildService(repo, {
+      getUserProjectRole: jest.fn().mockResolvedValue('admin'),
+    });
 
     await service.removeMember('project-1', 'member-row-1', 'client-1');
 
@@ -207,7 +235,16 @@ describe('ProjectsService (permissions)', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('allows consultant to reassign consultant', async () => {
+  // Post-refactor: privileged callers hold owner/admin role on project_shares.
+  // Each reassign test below grants the caller `owner` so the role bypass
+  // fires inside ProjectsService.isProjectPrivileged, then asserts the
+  // downstream behavior. The auto-grant/revoke calls during reassignment are
+  // stubbed via the default `grant`/`revoke` mocks.
+  const ownerAuth = () => ({
+    getUserProjectRole: jest.fn().mockResolvedValue('owner'),
+  });
+
+  it('allows consultant (owner role) to reassign consultant', async () => {
     const repo = {
       findById: jest.fn().mockResolvedValue(
         buildProject({ client_id: 'owner-1', consultant_id: 'consultant-1' }),
@@ -222,7 +259,7 @@ describe('ProjectsService (permissions)', () => {
         buildProject({ consultant_id: 'member-2' }),
       ),
     };
-    const service = buildService(repo);
+    const service = buildService(repo, ownerAuth());
 
     await expect(
       service.reassignProjectConsultant('project-1', 'consultant-1', {
@@ -236,7 +273,7 @@ describe('ProjectsService (permissions)', () => {
       findById: jest.fn().mockResolvedValue(buildProject()),
       getMemberByProjectAndUserId: jest.fn().mockResolvedValue(null),
     };
-    const service = buildService(repo);
+    const service = buildService(repo, ownerAuth());
 
     await expect(
       service.reassignProjectConsultant('project-1', 'client-1', {
@@ -255,7 +292,7 @@ describe('ProjectsService (permissions)', () => {
       }),
       isConsultantVerified: jest.fn().mockResolvedValue(false),
     };
-    const service = buildService(repo);
+    const service = buildService(repo, ownerAuth());
 
     await expect(
       service.reassignProjectConsultant('project-1', 'client-1', {
@@ -268,7 +305,7 @@ describe('ProjectsService (permissions)', () => {
     const repo = {
       findById: jest.fn().mockResolvedValue(buildProject({ consultant_id: 'consultant-1' })),
     };
-    const service = buildService(repo);
+    const service = buildService(repo, ownerAuth());
 
     await expect(
       service.reassignProjectConsultant('project-1', 'client-1', {
@@ -290,7 +327,7 @@ describe('ProjectsService (permissions)', () => {
         buildProject({ consultant_id: 'member-2' }),
       ),
     };
-    const service = buildService(repo);
+    const service = buildService(repo, ownerAuth());
 
     const updated = await service.reassignProjectConsultant('project-1', 'client-1', {
       new_consultant_id: 'member-2',

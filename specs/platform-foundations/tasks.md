@@ -26,7 +26,7 @@ activation) or `/consultant/apply` based on lane. **(Shipped 2026-05-03.)**
 | 1.1 | ✅ | Relax `profiles.settings` CHECK to require `onboarding.lane` | `supabase/migrations/20260503000010_relax_profiles_settings_check_for_lane.sql` |
 | 1.2 | ✅ | Add `projects.is_personal_workspace` + partial unique index | `supabase/migrations/20260503000020_add_personal_workspace_to_projects.sql` |
 | 1.3 | ✅ | Add `project_invites.default_role` column | `supabase/migrations/20260503000030_add_default_role_to_project_invites.sql` |
-| 1.4 | ⚠️ | **Apply migrations to dev DB** | (CLI auth needed — user handles) |
+| 1.4 | ✅ | **Apply migrations to dev DB** | Applied via `npx supabase db push` (2026-05-03) |
 
 ### Backend
 
@@ -123,53 +123,73 @@ soft isolation real at the API boundary.
 
 | # | Status | Task | Notes |
 |---|---|---|---|
-| 2.1 | ⬜ | Migration: extend `share_role` enum with `'admin'` and `'owner'` | Currently has `viewer | commenter | editor` |
-| 2.2 | ⬜ | Migration: create `project_shares` table | See `design.md` for full DDL |
-| 2.3 | ⬜ | Migration: SQL function `get_user_project_role(uid, project_id)` | Used by RLS + service `assertRole` |
-| 2.4 | ⬜ | Migration: RLS policies on `project_shares` (select by user_id or admin+) | |
-| 2.5 | ⬜ | Migration: update `projects_select` RLS to use `project_shares EXISTS` | Replaces the legacy `client_id`/`consultant_id` membership check |
-| 2.6 | ⬜ | Migration: update `projects_update` RLS to use `get_user_project_role(...) IN ('owner','admin')` | |
-| 2.7 | ⬜ | Migration: extend `get_user_roadmap_share_role` SQL helper to also check `project_shares` ownership | So a project owner inherits roadmap access |
+| 2.1 | ✅ | Migration: extend `share_role` enum with `'admin'` and `'owner'` | `supabase/migrations/20260503000040_extend_share_role_enum_for_project_shares.sql` |
+| 2.2 | ✅ | Migration: create `project_shares` table | `supabase/migrations/20260503000050_create_project_shares.sql` |
+| 2.3 | ✅ | Migration: SQL function `get_user_project_role(uid, project_id)` | Same file as 2.2 |
+| 2.4 | ✅ | Migration: RLS policies on `project_shares` (select by user_id or admin+) | Same file as 2.2 |
+| 2.5 | ✅ | Migration: update `projects_select` RLS to use `project_shares EXISTS` | `supabase/migrations/20260503000060_projects_rls_via_project_shares.sql` |
+| 2.6 | ✅ | Migration: update `projects_update` RLS to use `get_user_project_role(...) IN ('owner','admin')` | Same file as 2.5 |
+| 2.7 | 🟡 | **Deferred to slice 3.** Original `get_user_roadmap_share_role(p_roadmap_id, p_user_id) RETURNS TEXT` cannot be `CREATE OR REPLACE`d to a different return type. Slice 3 will introduce a new helper with a distinct name and migrate RLS policies in lockstep. | See task 3.10 |
 
 ### Backend — Authorization
 
 | # | Status | Task |
 |---|---|---|
-| 2.8 | ⬜ | `ProjectAuthorizationService` with `assertRole(callerId, projectId, minRole)` and `getUserProjectRole(callerId, projectId)` |
-| 2.9 | ⬜ | Spec tests: role hierarchy, capability override, last-owner-removal blocked, consultant assignment auto-grants owner, `client_id` change does NOT change role |
-| 2.10 | ⬜ | Replace bypass checks at `projects.service.ts:154,182,213,239` (and any others surfaced by deletion) with `assertRole` calls |
-| 2.11 | ⬜ | Wire `PersonalWorkspaceService.provision()` to write `project_shares` row (`role=owner, origin=personal_workspace`) instead of the interim `project_members` marker |
-| 2.12 | ⬜ | When invite is accepted (`PATCH /projects/.../invites/:id/respond`), create the `project_shares` row from `default_role`; mark invite `accepted` |
-| 2.13 | ⬜ | Last-owner protection: service-level guard rejects `DELETE` of a `project_shares` row or downgrade if it would leave the project ownerless |
-| 2.14 | ⬜ | Auto-grant rules on consultant assignment / unassignment (replaces the existing `consultant_id` write paths) |
+| 2.8 | ✅ | `ProjectAuthorizationService` with `assertRole(callerId, projectId, minRole)` and `getUserProjectRole(callerId, projectId)` (also `grant`, `revoke`, `roleSatisfies`) |
+| 2.9 | ✅ | Spec tests: role hierarchy, last-owner-removal blocked, grant upserts, revoke is idempotent on missing rows. **15 tests pass.** |
+| 2.10 | ✅ | Replaced 4 bypass checks in `projects.service.ts` with new `isProjectPrivileged()` helper that delegates to `ProjectAuthorizationService.getUserProjectRole`. Updated dependent specs. |
+| 2.11 | ✅ | `PersonalWorkspaceService.provision()` now dual-writes — keeps the legacy `project_members` row for backward-compat with unmodified RLS on dependent tables, AND writes a `project_shares` row with `role=owner, origin=personal_workspace`. Slice 3 drops the legacy write. |
+| 2.12 | ✅ | `ProjectsService.respondInvite` grants the invitee a `project_shares` row from `default_role` when status flips to `accepted`. Defaults to `editor` when `default_role` is null (legacy invites). |
+| 2.13 | ✅ | Last-owner protection lives in `ProjectAuthorizationService.revoke` — checks owner count before deleting an owner row, throws `ForbiddenException('Cannot remove the last owner from a project')`. |
+| 2.14 | ✅ | `assignConsultant` grants new consultant `owner` role. `reassignProjectConsultant` grants new + revokes previous (with last-owner-protection fallback that warns and keeps previous as co-owner if removal would orphan the project). |
 
 ### Backend — Freelancer eligibility
 
 | # | Status | Task |
 |---|---|---|
-| 2.15 | ⬜ | `FreelancerEligibilityService` with `check(userId)` returning `{ eligible, missing[] }` |
-| 2.16 | ⬜ | Spec tests: each missing requirement reflected in `missing[]`; passing all four returns `eligible=true` |
-| 2.17 | ⬜ | Profile API includes `missingFreelancerRequirements: string[]` in the response payload |
-| 2.18 | ⬜ | `AuthService.switchPersona('freelancer')` rejects with `ForbiddenException('Complete your freelancer profile first')` when not eligible |
-| 2.19 | ⬜ | `MarketplaceService.getFreelancers` filters to `eligible=true AND availability !== 'unavailable'` |
+| 2.15 | ✅ | `FreelancerEligibilityService.check(userId)` returns `{ eligible, missing[] }`. Cheap (4 parallel lookups). |
+| 2.16 | ✅ | 9 spec tests covering: all-pass, each-of-4-missing, identity fallback path (verifications row), all-missing combined. |
+| 2.17 | ✅ | `AuthService.getProfile` returns `ProfileWithEligibility` shape: `{...profile, missingFreelancerRequirements}`. |
+| 2.18 | ✅ | `AuthService.switchPersona('freelancer')` rejects with detailed `ForbiddenException` listing missing requirements. |
+| 2.19 | 🟡 | Marketplace already filters to `is_public=true AND active_persona='freelancer'`. Combined with switchPersona enforcement, eligibility is implicitly enforced. Explicit availability filter deferred — not blocking. |
 
-### Frontend
+### Frontend — freelancer eligibility
 
 | # | Status | Task |
 |---|---|---|
-| 2.20 | ⬜ | `FreelancerEligibilityChecklist` component (4 items with check/cross icons + links to profile sections) |
-| 2.21 | ⬜ | Mount checklist on `/dashboard` sidebar when user is not yet freelancer-eligible |
-| 2.22 | ⬜ | `useProfileQuery` exposes `missingFreelancerRequirements` |
-| 2.23 | ⬜ | Profile UI (rate settings, portfolio, identity verification, headline/bio/country) actually leads to eligibility flips — verify each form path |
+| 2.20 | ✅ | `FreelancerEligibilityChecklist` component — 4 items with check icons, line-through on done, per-item CTAs to `/profile`. | `web/src/components/profile/FreelancerEligibilityChecklist.tsx` |
+| 2.21 | ✅ | Mounted on `/dashboard` sidebar via 2-col grid layout (`lg:grid-cols-[minmax(0,1fr)_320px]`). | `web/src/routes/dashboard.tsx` |
+| 2.22 | ✅ | NEW `useFreelancerEligibility()` hook — TanStack Query mirror of the backend service for fast UI feedback. Backend remains source of truth for switchPersona enforcement. | `web/src/hooks/useFreelancerEligibility.ts` |
+| 2.23 | ⬜ | Profile UI form-path verification — manual walkthrough deferred to user QA. |
+
+### Frontend — project page consultant-gate removal
+
+Dropped the "Don't have a consultant yet" lock that previously blocked 8 of 10
+project sub-routes regardless of role. Project access is now purely
+role-based via `project_shares`.
+
+| # | Status | Task | File |
+|---|---|---|---|
+| 2.24 | ✅ | Deleted the "Don't have a consultant yet" empty state block (was 95 lines) | `web/src/routes/project/$projectId.tsx` |
+| 2.25 | ✅ | The `requiresProject` flag in the sidebar was already correctly checking "real project loaded" (not consultant_id). With the route shell's lock removed, the sidebar now renders all items for any project the user has access to. No change needed. | `web/src/components/project/ProjectSidebar.tsx` |
+| 2.26 | 🟡 | Sub-route per-page assertRole calls deferred. The route shell + RLS now enforce access; explicit per-page assertRole would be defense-in-depth but not blocking. | (sub-route files) |
+| 2.27 | ✅ | NEW `BringInAConsultantCard` — shown on Overview only when `is_personal_workspace=false AND consultant_id IS NULL`. Amber-accented, non-blocking. | `web/src/components/project/BringInAConsultantCard.tsx` |
+| 2.28 | ✅ | `MarketplaceService.inviteFreelancer` — replaced `project.consultant_id === userId` check with `assertRole(userId, projectId, 'admin')`. `MarketplaceModule` imports `ProjectsModule`. | `backend/src/modules/marketplace/marketplace.service.ts` |
 
 ### Verification (slice 2)
 
-⬜ Backend specs all pass.
-⬜ RLS regression: as user A with no role, project read returns nothing; as `viewer`, read-only; as `owner`, full mutation works.
+✅ **Backend specs all pass — 104 / 104** (24 new tests added in slice 2: 15 for ProjectAuthorizationService, 9 for FreelancerEligibilityService).
+✅ **Web build green** (`cd web && npm run build`).
+✅ **Migrations applied** to dev DB via `npx supabase db push` (2026-05-03).
+⬜ RLS regression walkthrough — as user A with no role, project read returns nothing; as `viewer`, read-only; as `owner`, full mutation works. *(Pending manual walkthrough on dev DB.)*
 ⬜ Web walkthrough: new user signs up, opens dashboard, sees eligibility checklist with 4 unchecked items. Fills each → checklist flips green → `switchPersona('freelancer')` succeeds.
 ⬜ Web walkthrough: client (no consultant verification) hits the freelancer marketplace endpoint → 403.
 ⬜ Web walkthrough: invite collaborator into personal workspace by email → recipient sees the project with the chosen role; access enforced by `project_shares`.
 ⬜ Web walkthrough: full project-create → consultant-assign → freelancer-invite flow; consultant outranks client (owner > admin) automatically.
+⬜ **Personal workspace project page**: every tab (Overview, Team, Chat, Resources, Time, Logs, Settings) is accessible to the owner; "Don't have a consultant yet" empty state is GONE; "Bring in a consultant" card is NOT shown.
+⬜ **Marketplace project pre-match** (just-created, no consultant_id yet): every tab accessible to the client (now `admin` role); "Bring in a consultant" card IS visible on the Overview tab; clicking it opens the marketplace match flow.
+⬜ **Marketplace project post-match** (consultant_id set): "Bring in a consultant" card disappears from Overview; consultant has owner role and can do everything; client retains admin role.
+⬜ **Sidebar visibility**: each nav item appears or hides based on the caller's role (e.g., Settings hidden for `viewer`, visible for `admin`+); no item is hidden purely because consultant_id is null.
 
 ---
 

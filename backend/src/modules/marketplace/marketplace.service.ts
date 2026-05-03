@@ -12,6 +12,7 @@ import {
   MarketplaceQueryDto,
   RespondInviteDto,
 } from './dto/marketplace.dto';
+import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 
 export interface MarketplaceFreelancerCard {
   id: string;
@@ -53,6 +54,7 @@ export class MarketplaceService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly notificationsService: NotificationsService,
+    private readonly authorization: ProjectAuthorizationService,
   ) {}
 
   private async emitNotification(
@@ -256,11 +258,14 @@ export class MarketplaceService {
       throw new BadRequestException('Project not found.');
     }
 
-    if (project.consultant_id !== userId) {
-      throw new ForbiddenException(
-        'Only the assigned consultant can send project invites.',
-      );
-    }
+    // Anyone with admin+ role on the project can send marketplace invites.
+    // Replaces the legacy `project.consultant_id === userId` check, which
+    // tied invite authority to the consultant_id column. Personal-workspace
+    // owners (no consultant assigned) and project admins can both invite.
+    // The caller still must hold the consultant capability flag (enforced
+    // above by ensureConsultant) to be allowed to *find* freelancers in the
+    // marketplace bench in the first place.
+    await this.authorization.assertRole(userId, dto.projectId, 'admin');
 
     const { data: invitee, error: inviteeError } = await this.supabase
       .from('profiles')

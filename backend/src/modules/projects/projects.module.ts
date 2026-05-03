@@ -5,6 +5,7 @@ import { SupabaseProjectsRepository } from './repositories/projects.repository.s
 import { PROJECTS_REPOSITORY } from './projects.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PersonalWorkspaceService } from './personal-workspace.service';
+import { ProjectAuthorizationService } from './authorization/project-authorization.service';
 
 @Module({
   imports: [NotificationsModule],
@@ -12,8 +13,13 @@ import { PersonalWorkspaceService } from './personal-workspace.service';
   providers: [
     ProjectsService,
     PersonalWorkspaceService,
+    ProjectAuthorizationService,
     { provide: PROJECTS_REPOSITORY, useClass: SupabaseProjectsRepository },
   ],
-  exports: [ProjectsService, PersonalWorkspaceService],
+  exports: [
+    ProjectsService,
+    PersonalWorkspaceService,
+    ProjectAuthorizationService,
+  ],
 })
 export class ProjectsModule {}

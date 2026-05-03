@@ -474,6 +474,64 @@ Detailed task breakdown lives in `tasks.md`.
 
 ---
 
+## Project page UX (post-refactor)
+
+### What goes away
+
+- **The "Don't have a consultant yet" empty state** at
+  [web/src/routes/project/$projectId.tsx:66–160](web/src/routes/project/$projectId.tsx) — deleted.
+- **The `requiresProject` flag** in
+  [web/src/components/project/ProjectSidebar.tsx:104–179](web/src/components/project/ProjectSidebar.tsx) —
+  removed. Sidebar nav items render based on the caller's `project_shares.role`,
+  not on whether a consultant is assigned.
+- **Any backend route guard that 403s when `consultant_id` is null** — replaced
+  with `assertRole(...)` against `project_shares`.
+
+### What stays
+
+- **`MarketplaceController.getFreelancers`** keeps `ConsultantOnlyGuard` /
+  `ensureConsultant` — checks `is_consultant_verified` capability flag, not
+  the project's `consultant_id`. Different gate, correct gate.
+- **`MarketplaceService.inviteFreelancer`** — refactored from
+  `consultant_id === userId` to `assertRole(userId, projectId, 'admin')`, so
+  any project admin can invite. The caller still must have the consultant
+  capability to *find* freelancers in the bench (separate concern).
+
+### What changes for the user
+
+| Project type | Today | After refactor |
+|---|---|---|
+| Personal workspace | 8 of 10 tabs locked; no usable activation surface | Full access to all tabs; no consultant CTA shown |
+| Marketplace project (pre-match, `consultant_id=null`) | 8 of 10 tabs locked; user hits the wall the moment they create a project | Full access to all tabs; Overview surfaces a "Bring in a consultant" card as a non-blocking next-step prompt |
+| Marketplace project (matched, `consultant_id` set) | All tabs available; consultant has owner via `consultant_id === userId` short-circuit | Unchanged surface area; consultant has `owner` role via `project_shares` instead of the column check |
+
+### "Bring in a consultant" card
+
+Rendered on the project Overview tab when:
+- `project.is_personal_workspace === false`
+- `project.consultant_id === null`
+
+Otherwise hidden. Personal workspaces never show it. Once a consultant is
+assigned (the consultant accepts a marketplace match), the card disappears.
+
+The card shows: a short headline ("Ready to bring in a vetted lead?"), a
+one-line value prop, and a CTA that opens the marketplace match flow. It's
+visually distinct from the rest of the Overview content (subtle border,
+amber accent matching the consultant brand color) but doesn't block scrolling.
+
+### Authorization shape (pseudocode)
+
+```typescript
+// All project sub-route guards become a one-liner:
+await this.projectAuthorizationService.assertRole(callerId, projectId, 'editor');
+
+// "Member of project" = any role grant. "Can edit" = editor+. "Can manage" = admin+.
+// Consultant assignment grants 'owner' automatically (see auto-grant rules above)
+// but is no longer a prerequisite for any feature.
+```
+
+---
+
 ## Decision log (append-only)
 
 When a foundational decision changes, add a row here. Don't delete past
@@ -494,3 +552,4 @@ entries — the reasoning matters when revisiting.
 | 2026-05-03 | Stepper UI removed from signup wizard | Cleaner aesthetic with the new full-screen card-less layout; back/next nav is self-evident |
 | 2026-05-03 | Consultants get a `/welcome` deck before `/consultant/apply` (3 slides: welcome, what you're applying for, what to expect) | Original design had consultants skip /welcome — but the application form is 5 steps and high-friction. A brief orientation that recaps benefits + sets timeline expectations reduces drop-off and matches the "set expectations honestly" brand voice. Both lanes now share the `/welcome` route via a lane-aware shell. |
 | 2026-05-03 | Signup wizard split into 5 steps (Lane → Account → Password → Profile → Verify) | Account step previously bundled name + email + password — too much per step and forced password decisions before the user committed. Splitting lets the user lock in identity first; Google OAuth users skip the Password step entirely since clicking Google exits the wizard. Better progressive disclosure. |
+| 2026-05-03 | Drop the "consultant required" gate from the project page entirely | Discovered the project page locks 8 of 10 sub-routes behind `consultant_id` being set, and personal workspaces hit the same wall. Three foundational decisions all said this should not exist: soft isolation (consultants are additive), personal workspace activation (full access on day 1), IAM permissions (role-based, not consultant-presence-based). Replacement: every feature gated by `assertRole(editor)` or stronger via project_shares. The marketplace freelancer browse remains capability-gated (`is_consultant_verified`) — that is a different and correct gate. Marketplace projects without a consultant get a non-blocking "Bring in a consultant" card on Overview. |

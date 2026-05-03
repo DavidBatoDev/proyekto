@@ -23,9 +23,30 @@ describe('ProjectsService (resources)', () => {
     createNotification: jest.fn(),
   };
 
-  const buildService = (repoOverrides: Partial<ProjectsRepository>) => {
+  // Default authorization: no role grants. Override per-test where the
+  // legacy "client/consultant bypass" path is being exercised.
+  const defaultAuthorization = {
+    getUserProjectRole: jest.fn().mockResolvedValue(null),
+    assertRole: jest.fn(),
+    roleSatisfies: jest.fn(),
+    grant: jest.fn(),
+    revoke: jest.fn(),
+  };
+
+  const buildService = (
+    repoOverrides: Partial<ProjectsRepository>,
+    authorizationOverrides: Partial<typeof defaultAuthorization> = {},
+  ) => {
     const repo = repoOverrides as ProjectsRepository;
-    return new ProjectsService(repo, notificationsService as any);
+    const authorization = {
+      ...defaultAuthorization,
+      ...authorizationOverrides,
+    };
+    return new ProjectsService(
+      repo,
+      notificationsService as any,
+      authorization as any,
+    );
   };
 
   it('denies resource access for non-participants', async () => {
@@ -40,7 +61,7 @@ describe('ProjectsService (resources)', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('allows project leads to list resources', async () => {
+  it('allows project leads (owner role) to list resources', async () => {
     const payload = {
       folders: [],
       uncategorized_links: [],
@@ -52,7 +73,11 @@ describe('ProjectsService (resources)', () => {
       getMemberByProjectAndUserId: jest.fn().mockResolvedValue(null),
       listProjectResources: jest.fn().mockResolvedValue(payload),
     };
-    const service = buildService(repo);
+    // Post-refactor: a project lead is anyone with owner/admin role on
+    // project_shares. Stub returns 'owner' for this caller.
+    const service = buildService(repo, {
+      getUserProjectRole: jest.fn().mockResolvedValue('owner'),
+    });
 
     await expect(
       service.listProjectResources('project-1', 'lead-1'),

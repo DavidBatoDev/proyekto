@@ -209,7 +209,35 @@ restore the missing requirement. Existing engagements are unaffected.
 
 Inside a project, **persona never determines what you can do**. Authorization
 is governed entirely by your role on that specific project, stored in
-`project_shares`.
+`project_shares`. The presence or absence of an assigned consultant
+(`projects.consultant_id`) **also never determines what features are
+accessible** — it is origin metadata, not a gate.
+
+### No consultant gate (locked decision)
+
+A project's feature set is identical whether or not a consultant has been
+assigned. If you have an `editor`+ role on the project, you can use the
+roadmap, work items, chat, files, time tracking, settings, etc. The
+"this page unlocks after a consultant is assigned" pattern is **explicitly
+removed** in slice 2.
+
+This applies equally to:
+- **Personal workspaces** — the user is the owner; full access on day 1
+- **Marketplace projects waiting for consultant match** — the client is the
+  initial owner; can plan, brief, invite collaborators directly, and prepare
+  the work while waiting for matching
+
+Marketplace surfaces (browsing the freelancer pool, proposing freelancers
+into projects) remain gated by **`is_consultant_verified`** — a capability
+flag on the user, not a project field. This is the only consultant-related
+gate that survives the refactor.
+
+### Bring-in-a-consultant CTA
+
+When a marketplace project (`is_personal_workspace=false`) has no
+`consultant_id` assigned, the project Overview tab shows a discoverable
+**"Bring in a consultant"** card. It is a non-blocking prompt, not a wall.
+Personal workspaces never show this card.
 
 | Role | Read | Comment | Edit | Manage members | Manage billing | Delete project |
 |---|---|---|---|---|---|---|
@@ -282,6 +310,8 @@ critical regression.
 | 7 | Removing the last `owner` from a project is rejected — projects can never become orphaned |
 | 8 | Lane choice persists across signup wizard refreshes and OAuth roundtrips |
 | 9 | The marketplace freelancer browse endpoint is reachable only by users with `is_consultant_verified=true`, regardless of their current `active_persona` |
+| 10 | Project sub-routes (Overview, Team, Chat, Resources, Time, Logs, Settings, etc.) are accessible to any user with `editor`+ role on the project, regardless of whether a consultant is assigned. No "page locked until consultant" gates remain. |
+| 11 | Personal workspaces never display a "Bring in a consultant" CTA. Marketplace projects display it on Overview only when `consultant_id` is null. |
 
 ---
 

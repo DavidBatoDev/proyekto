@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { useTutorial } from "@/contexts/TutorialContext";
 import { dashboardTutorial } from "@/tutorials/dashboardTutorial";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
+import { FreelancerEligibilityChecklist } from "@/components/profile/FreelancerEligibilityChecklist";
 
 export const Route = createFileRoute("/dashboard")({
   beforeLoad: () => {
@@ -48,8 +49,11 @@ function DashboardPage() {
           isFreelancer ? "pt-6" : "pt-[88px]"
         }`}
       >
-        <div data-tutorial="projects-section">
-          <PrimaryFlow />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div data-tutorial="projects-section">
+            <PrimaryFlow />
+          </div>
+          <FreelancerEligibilityChecklist />
         </div>
       </div>
     </div>

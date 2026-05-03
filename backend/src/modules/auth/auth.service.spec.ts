@@ -25,6 +25,7 @@ function buildProfile(overrides: Partial<Profile> = {}): Profile {
 function buildService(
   repoOverrides: Partial<AuthRepository>,
   workspaceOverrides: Partial<PersonalWorkspaceService> = {},
+  eligibilityOverrides: { check?: jest.Mock } = {},
 ) {
   const repo = repoOverrides as AuthRepository;
   const workspaceService = {
@@ -38,8 +39,13 @@ function buildService(
     findForUser: jest.fn(),
     ...workspaceOverrides,
   } as unknown as PersonalWorkspaceService;
+  const eligibilityService = {
+    check:
+      eligibilityOverrides.check ??
+      jest.fn().mockResolvedValue({ eligible: false, missing: [] }),
+  } as any;
   return {
-    service: new AuthService(repo, workspaceService),
+    service: new AuthService(repo, workspaceService, eligibilityService),
     workspaceService,
   };
 }
