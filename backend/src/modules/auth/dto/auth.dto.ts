@@ -26,7 +26,12 @@ class CompleteOnboardingIntentDto {
   client: boolean;
 }
 
+export type OnboardingLane = 'client_freelancer' | 'consultant';
+
 export class CompleteOnboardingDto {
+  @IsEnum(['client_freelancer', 'consultant'])
+  lane: OnboardingLane;
+
   @IsObject()
   @ValidateNested()
   @Type(() => CompleteOnboardingIntentDto)

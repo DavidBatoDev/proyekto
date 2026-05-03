@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as ProjectPostingRouteImport } from './routes/project-posting'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificationsRouteImport } from './routes/notifications'
@@ -61,6 +62,11 @@ import { Route as ProjectProjectIdRoadmapRoadmapIdRouteImport } from './routes/p
 import { Route as ProjectProjectIdChatChatRefRouteImport } from './routes/project/$projectId/chat/$chatRef'
 import { Route as ProjectProjectIdTimeTeamLogsProjectMemberIdRouteImport } from './routes/project/$projectId/time/team-logs/$projectMemberId'
 
+const WelcomeRoute = WelcomeRouteImport.update({
+  id: '/welcome',
+  path: '/welcome',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectPostingRoute = ProjectPostingRouteImport.update({
   id: '/project-posting',
   path: '/project-posting',
@@ -341,6 +347,7 @@ export interface FileRoutesByFullPath {
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/project-posting': typeof ProjectPostingRoute
+  '/welcome': typeof WelcomeRoute
   '/admin/applications': typeof AdminApplicationsRoute
   '/admin/approve-admin': typeof AdminApproveAdminRoute
   '/admin/match': typeof AdminMatchRoute
@@ -393,6 +400,7 @@ export interface FileRoutesByTo {
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/project-posting': typeof ProjectPostingRoute
+  '/welcome': typeof WelcomeRoute
   '/admin/applications': typeof AdminApplicationsRoute
   '/admin/approve-admin': typeof AdminApproveAdminRoute
   '/admin/match': typeof AdminMatchRoute
@@ -447,6 +455,7 @@ export interface FileRoutesById {
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/project-posting': typeof ProjectPostingRoute
+  '/welcome': typeof WelcomeRoute
   '/admin/applications': typeof AdminApplicationsRoute
   '/admin/approve-admin': typeof AdminApproveAdminRoute
   '/admin/match': typeof AdminMatchRoute
@@ -502,6 +511,7 @@ export interface FileRouteTypes {
     | '/notifications'
     | '/onboarding'
     | '/project-posting'
+    | '/welcome'
     | '/admin/applications'
     | '/admin/approve-admin'
     | '/admin/match'
@@ -554,6 +564,7 @@ export interface FileRouteTypes {
     | '/notifications'
     | '/onboarding'
     | '/project-posting'
+    | '/welcome'
     | '/admin/applications'
     | '/admin/approve-admin'
     | '/admin/match'
@@ -607,6 +618,7 @@ export interface FileRouteTypes {
     | '/notifications'
     | '/onboarding'
     | '/project-posting'
+    | '/welcome'
     | '/admin/applications'
     | '/admin/approve-admin'
     | '/admin/match'
@@ -661,6 +673,7 @@ export interface RootRouteChildren {
   NotificationsRoute: typeof NotificationsRoute
   OnboardingRoute: typeof OnboardingRoute
   ProjectPostingRoute: typeof ProjectPostingRoute
+  WelcomeRoute: typeof WelcomeRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
   AuthLoginRoute: typeof AuthLoginRoute
@@ -685,6 +698,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/welcome': {
+      id: '/welcome'
+      path: '/welcome'
+      fullPath: '/welcome'
+      preLoaderRoute: typeof WelcomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/project-posting': {
       id: '/project-posting'
       path: '/project-posting'
@@ -1159,6 +1179,7 @@ const rootRouteChildren: RootRouteChildren = {
   NotificationsRoute: NotificationsRoute,
   OnboardingRoute: OnboardingRoute,
   ProjectPostingRoute: ProjectPostingRoute,
+  WelcomeRoute: WelcomeRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   AuthForgotPasswordRoute: AuthForgotPasswordRoute,
   AuthLoginRoute: AuthLoginRoute,

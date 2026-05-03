@@ -1,10 +1,11 @@
 interface StepIndicatorProps {
-  currentStep: 1 | 2;
+  currentStep: 1 | 2 | 3;
 }
 
 const STEPS = [
-  { id: 1 as const, label: "Account" },
-  { id: 2 as const, label: "Profile" },
+  { id: 1 as const, label: "Lane" },
+  { id: 2 as const, label: "Account" },
+  { id: 3 as const, label: "Profile" },
 ];
 
 export function StepIndicator({ currentStep }: StepIndicatorProps) {

@@ -46,7 +46,14 @@ export const HeroSection = () => {
             transition={{ duration: 0.35, delay: 0.2 }}
             className="mt-7 flex flex-wrap items-center gap-3"
           >
-            <Link to="/auth/signup" search={{ redirect: window.location.pathname }}>
+            <Link
+              to="/auth/signup"
+              search={{
+                redirect: window.location.pathname,
+                lane: "client_freelancer",
+                intent: "client",
+              }}
+            >
               <Button
                 variant="contained"
                 colorScheme="primary"
@@ -57,7 +64,14 @@ export const HeroSection = () => {
               </Button>
             </Link>
 
-            <Link to="/auth/signup" search={{ redirect: window.location.pathname, intent: "freelancer" }}>
+            <Link
+              to="/auth/signup"
+              search={{
+                redirect: window.location.pathname,
+                lane: "client_freelancer",
+                intent: "freelancer",
+              }}
+            >
               <Button
                 variant="outlined"
                 colorScheme="primary"

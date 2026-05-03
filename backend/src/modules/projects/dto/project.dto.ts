@@ -88,6 +88,13 @@ export class InviteProjectByEmailDto {
   @IsOptional()
   role?: string;
 
+  // Persisted to project_invites.default_role. Granted to the invitee when
+  // they accept. Only Editor/Viewer are exposed via the /welcome multi-invite
+  // step; Owner / Admin / Commenter remain admin-only for now.
+  @IsIn(['editor', 'viewer'])
+  @IsOptional()
+  default_role?: 'editor' | 'viewer';
+
   @IsOptional()
   @IsString()
   @MaxLength(1200)

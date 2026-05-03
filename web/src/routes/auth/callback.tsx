@@ -79,7 +79,7 @@ function AuthCallbackPage() {
 
         const { data: profile, error: fetchProfileError } = await supabase
           .from("profiles")
-          .select("has_completed_onboarding")
+          .select("has_completed_onboarding, settings")
           .eq("id", user.id)
           .maybeSingle();
         if (fetchProfileError) {
@@ -100,7 +100,22 @@ function AuthCallbackPage() {
         if (profile?.has_completed_onboarding) {
           navigate({ to: "/dashboard", replace: true });
         } else {
-          navigate({ to: "/onboarding", replace: true });
+          // Lane-aware post-OAuth routing. OAuth users have no lane signal
+          // (the lane query param doesn't survive Google's roundtrip), so
+          // a fresh OAuth signup lands on /welcome with the C/F default. If
+          // the user previously chose the consultant lane (or a partial
+          // signup recorded it), honor that.
+          const lane = (
+            profile?.settings as
+              | { onboarding?: { lane?: string } }
+              | null
+              | undefined
+          )?.onboarding?.lane;
+          if (lane === "consultant") {
+            navigate({ to: "/consultant/apply", replace: true });
+          } else {
+            navigate({ to: "/welcome", replace: true });
+          }
         }
       } catch (error) {
         console.error("OAuth callback error:", error);

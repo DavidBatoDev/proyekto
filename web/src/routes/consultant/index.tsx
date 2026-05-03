@@ -506,7 +506,10 @@ function ApplyButton({ dark = false }: { dark?: boolean }) {
   }
 
   return (
-    <Link to="/auth/signup" search={{ redirect: "/consultant/apply" }}>
+    <Link
+      to="/auth/signup"
+      search={{ redirect: "/consultant/apply", lane: "consultant" }}
+    >
       <Button variant="contained" colorScheme="primary" className={className}>
         Apply to lead on Proyekto
         <ArrowRight className="ml-2 h-4 w-4" />

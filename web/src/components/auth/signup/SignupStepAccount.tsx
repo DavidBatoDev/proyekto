@@ -18,6 +18,7 @@ interface SignupStepAccountProps {
   confirmPassword: string;
   setConfirmPassword: (v: string) => void;
   onNext: () => void;
+  onBack?: () => void;
 }
 
 function EyeIcon({ visible }: { visible: boolean }) {
@@ -70,6 +71,7 @@ export function SignupStepAccount({
   confirmPassword,
   setConfirmPassword,
   onNext,
+  onBack,
 }: SignupStepAccountProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -220,10 +222,42 @@ export function SignupStepAccount({
         }
       />
 
-      {/* Continue button */}
-      <PrimaryButton type="submit" style={{ marginTop: "4px" }}>
-        Continue →
-      </PrimaryButton>
+      {/* Back + Continue */}
+      <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            style={{
+              flex: "0 0 auto",
+              padding: "0 18px",
+              height: "44px",
+              borderRadius: "10px",
+              border: "1px solid #CBD5E1",
+              background: "white",
+              color: "#334155",
+              fontFamily: "'Manrope', sans-serif",
+              fontWeight: 600,
+              fontSize: "14px",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "#0F172A";
+              e.currentTarget.style.color = "#0F172A";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "#CBD5E1";
+              e.currentTarget.style.color = "#334155";
+            }}
+          >
+            ← Back
+          </button>
+        )}
+        <PrimaryButton type="submit" style={{ flex: 1 }}>
+          Continue →
+        </PrimaryButton>
+      </div>
       <p
         style={{
           textAlign: "center",

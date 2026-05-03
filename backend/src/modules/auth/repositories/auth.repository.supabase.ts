@@ -3,6 +3,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { AuthRepository } from './auth.repository.interface';
 import { Profile } from '../../../common/entities';
+import { OnboardingLane } from '../dto/auth.dto';
 
 @Injectable()
 export class SupabaseAuthRepository implements AuthRepository {
@@ -41,7 +42,11 @@ export class SupabaseAuthRepository implements AuthRepository {
 
   async completeOnboarding(
     userId: string,
-    dto: { intent: { freelancer: boolean; client: boolean } },
+    dto: {
+      lane: OnboardingLane;
+      intent: { freelancer: boolean; client: boolean };
+      active_persona?: string;
+    },
   ): Promise<Profile> {
     const { data: existingProfile, error: existingError } = await this.supabase
       .from('profiles')
@@ -63,6 +68,7 @@ export class SupabaseAuthRepository implements AuthRepository {
       settings: {
         ...existingSettings,
         onboarding: {
+          lane: dto.lane,
           intent: {
             freelancer: Boolean(dto.intent?.freelancer),
             client: Boolean(dto.intent?.client),
@@ -71,6 +77,10 @@ export class SupabaseAuthRepository implements AuthRepository {
         },
       },
     };
+
+    if (dto.active_persona) {
+      updatePayload.active_persona = dto.active_persona;
+    }
 
     const { data, error } = await this.supabase
       .from('profiles')

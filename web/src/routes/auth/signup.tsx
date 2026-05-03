@@ -6,12 +6,25 @@ import { SignupForm } from "../../components/auth/signup/SignupForm";
 export const Route = createFileRoute("/auth/signup")({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { redirect?: string; intent?: "client" | "freelancer" } => {
+  ): {
+    redirect?: string;
+    intent?: "client" | "freelancer";
+    lane?: "client_freelancer" | "consultant";
+  } => {
     const rawIntent = search.intent as string | undefined;
-    const intent = rawIntent === "client" || rawIntent === "freelancer" ? rawIntent : undefined;
+    const intent =
+      rawIntent === "client" || rawIntent === "freelancer"
+        ? rawIntent
+        : undefined;
+    const rawLane = search.lane as string | undefined;
+    const lane =
+      rawLane === "client_freelancer" || rawLane === "consultant"
+        ? rawLane
+        : undefined;
     return {
       redirect: (search.redirect as string) || undefined,
       intent,
+      lane,
     };
   },
   beforeLoad: () => {

@@ -197,7 +197,7 @@ function RouteComponent() {
         const { data: profile } = await supabase
           .from("profiles")
           .select(
-            "is_email_verified, first_name, last_name, has_completed_onboarding",
+            "is_email_verified, first_name, last_name, has_completed_onboarding, settings",
           )
           .eq("id", userId)
           .maybeSingle();
@@ -227,9 +227,23 @@ function RouteComponent() {
           return;
         }
 
-        // Check onboarding status and redirect accordingly
+        // Check onboarding status and route lane-aware.
+        // Consultant-lane users skip /welcome and go straight to their
+        // application form; everyone else lands on /welcome (which itself
+        // redirects to /consultant/apply if a consultant arrives via this
+        // path with stale state).
         if (!profile?.has_completed_onboarding) {
-          navigate({ to: "/onboarding" });
+          const lane = (
+            profile?.settings as
+              | { onboarding?: { lane?: string } }
+              | null
+              | undefined
+          )?.onboarding?.lane;
+          if (lane === "consultant") {
+            navigate({ to: "/consultant/apply" });
+          } else {
+            navigate({ to: "/welcome" });
+          }
         } else {
           navigate({ to: "/dashboard" });
         }

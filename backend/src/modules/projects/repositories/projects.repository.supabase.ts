@@ -629,6 +629,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
           invitee_id: (profile?.id as string | undefined) || null,
           invitee_email: normalizedEmail,
           invited_position: invitedPosition,
+          default_role: dto.default_role ?? null,
           message:
             inviteMessage && inviteMessage.length > 0 ? inviteMessage : null,
           status: 'pending',
@@ -638,7 +639,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         { onConflict: 'project_id,invitee_email' },
       )
       .select(
-        'id, project_id, invited_by, invitee_id, invitee_email, invited_position, status, message, created_at, updated_at',
+        'id, project_id, invited_by, invitee_id, invitee_email, invited_position, default_role, status, message, created_at, updated_at',
       )
       .single();
 

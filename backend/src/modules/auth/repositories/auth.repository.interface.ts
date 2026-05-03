@@ -1,4 +1,5 @@
 import { Profile } from '../../../common/entities';
+import { OnboardingLane } from '../dto/auth.dto';
 
 export interface AuthRepository {
   getProfile(userId: string): Promise<Profile | null>;
@@ -8,7 +9,11 @@ export interface AuthRepository {
   ): Promise<Profile>;
   completeOnboarding(
     userId: string,
-    data: { intent: { freelancer: boolean; client: boolean } },
+    data: {
+      lane: OnboardingLane;
+      intent: { freelancer: boolean; client: boolean };
+      active_persona?: string;
+    },
   ): Promise<Profile>;
   switchPersona(userId: string, persona: string): Promise<Profile>;
   updateProfile(

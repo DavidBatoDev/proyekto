@@ -1,13 +1,14 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useAuthStore } from "../../../stores/authStore";
 import { supabase } from "../../../lib/supabase";
 import { useToast } from "../../../hooks/useToast";
 import { profileKeys } from "../../../queries/profile";
-import { StepIndicator } from "./StepIndicator";
+import { completeOnboarding, type OnboardingLane } from "../../../lib/auth-api";
+import { SignupStepLane } from "./SignupStepLane";
 import { SignupStepAccount } from "./SignupStepAccount";
 import { SignupStepProfile } from "./SignupStepProfile";
 import Logo from "/prodigylogos/light/logo1.svg";
@@ -34,6 +35,11 @@ export function SignupForm(_props: SignupFormProps) {
   const signUp = useAuthStore((state) => state.signUp);
   const signOut = useAuthStore((state) => state.signOut);
   const navigate = useNavigate();
+  const search = useSearch({ from: "/auth/signup" }) as {
+    redirect?: string;
+    intent?: "client" | "freelancer";
+    lane?: OnboardingLane;
+  };
   const toast = useToast();
   const queryClient = useQueryClient();
 
@@ -41,14 +47,38 @@ export function SignupForm(_props: SignupFormProps) {
   const getStored = (key: string, fallback = "") =>
     sessionStorage.getItem(key) ?? fallback;
 
-  // ── Step state (1=Account, 2=Profile, 3=Verify) ──────────────────────────
-  const [step, setStepState] = useState<1 | 2 | 3>(() => {
-    const saved = parseInt(sessionStorage.getItem("signupStep") ?? "1");
-    return (saved as 1 | 2 | 3) || 1;
-  });
-  const [prevStep, setPrevStep] = useState<1 | 2 | 3>(1);
+  // ── Lane resolution ──────────────────────────────────────────────────────
+  // Priority: explicit ?lane= search param wins (homepage CTA pre-selects),
+  // then sessionStorage (carried across multi-step wizard reloads), then
+  // default. Lane is editable from Step 1 (the lane picker); whatever the
+  // user lands on is persisted to sessionStorage so the wizard survives
+  // refreshes without losing the choice.
+  const resolveLane = (): OnboardingLane => {
+    if (search.lane) {
+      sessionStorage.setItem("signup_lane", search.lane);
+      return search.lane;
+    }
+    const stored = sessionStorage.getItem("signup_lane");
+    if (stored === "client_freelancer" || stored === "consultant") {
+      return stored;
+    }
+    sessionStorage.setItem("signup_lane", "client_freelancer");
+    return "client_freelancer";
+  };
+  const [lane, setLaneState] = useState<OnboardingLane>(() => resolveLane());
+  const setLane = (next: OnboardingLane) => {
+    sessionStorage.setItem("signup_lane", next);
+    setLaneState(next);
+  };
 
-  const setStep = (n: 1 | 2 | 3) => {
+  // ── Step state (1=Lane, 2=Account, 3=Profile, 4=Verify) ─────────────────
+  const [step, setStepState] = useState<1 | 2 | 3 | 4>(() => {
+    const saved = parseInt(sessionStorage.getItem("signupStep") ?? "1");
+    return (saved as 1 | 2 | 3 | 4) || 1;
+  });
+  const [prevStep, setPrevStep] = useState<1 | 2 | 3 | 4>(1);
+
+  const setStep = (n: 1 | 2 | 3 | 4) => {
     setPrevStep(step);
     sessionStorage.setItem("signupStep", n.toString());
     setStepState(n);
@@ -100,6 +130,7 @@ export function SignupForm(_props: SignupFormProps) {
       "signup_acceptedTerms",
       "signup_sentCode",
       "signup_redirect",
+      "signup_lane",
     ].forEach((k) => sessionStorage.removeItem(k));
   };
 
@@ -148,14 +179,20 @@ export function SignupForm(_props: SignupFormProps) {
     }
   }
 
-  // ── Step 1 → 2 (account validated, advance to profile) ──────────────────
-  const handleStepOneNext = () => {
+  // ── Step 1 → 2 (lane picked, advance to account) ────────────────────────
+  const handleLaneNext = () => {
+    // Lane is already persisted by setLane(); just advance.
+    setStep(2);
+  };
+
+  // ── Step 2 → 3 (account validated, advance to profile) ──────────────────
+  const handleAccountNext = () => {
     sessionStorage.setItem("signup_firstName", firstName);
     sessionStorage.setItem("signup_lastName", lastName);
     sessionStorage.setItem("signup_email", email);
     sessionStorage.setItem("signup_password", password);
     sessionStorage.setItem("signup_confirmPassword", confirmPassword);
-    setStep(2);
+    setStep(3);
   };
 
   // ── Step 2 submit (profile → create account + verify) ───────────────────
@@ -220,7 +257,7 @@ export function SignupForm(_props: SignupFormProps) {
       await signOut();
 
       // 4. Advance to email verification step (only after account is created)
-      setStep(3);
+      setStep(4);
 
       // 5. Send verification email — errors handled inside; user can resend
       await sendVerificationEmail(generatedCode);
@@ -238,7 +275,7 @@ export function SignupForm(_props: SignupFormProps) {
       } else {
         toast.error(msg || "Signup failed");
       }
-      setStep(2);
+      setStep(3);
     } finally {
       setIsLoading(false);
     }
@@ -280,7 +317,6 @@ export function SignupForm(_props: SignupFormProps) {
       }
 
       toast.success("Email verified successfully!");
-      clearSignupData();
 
       // Sync the auth store NOW — before navigating — so route guards
       // (beforeLoad) see isAuthenticated:true immediately rather than waiting
@@ -292,17 +328,42 @@ export function SignupForm(_props: SignupFormProps) {
           user: authData.user,
           isAuthenticated: true,
           isLoading: false,
-          // Clear any stale profile so the onboarding loader fetches fresh data
+          // Clear any stale profile so /welcome's loader fetches fresh data
           profile: null,
         });
       }
 
-      // New users always go to onboarding first.
-      // Do NOT use signup_redirect here — that value may be "/auth/login"
-      // (set when the user was bounced from login → signup), which would
-      // cause the login route's beforeLoad to redirect straight to /dashboard,
-      // bypassing onboarding entirely.
-      navigate({ to: "/onboarding" });
+      // Lane-aware completion + routing.
+      // - Client/Freelancer lane: completeOnboarding with intent based on the
+      //   secondary-CTA `?intent=freelancer` param if present, else default
+      //   to client. Server provisions the personal workspace and routes to
+      //   /welcome.
+      // - Consultant lane: completeOnboarding with both intents false. Server
+      //   still provisions the workspace (soft isolation). Route to
+      //   /consultant/apply.
+      const intent =
+        lane === "client_freelancer"
+          ? {
+              client: search.intent !== "freelancer",
+              freelancer: search.intent === "freelancer",
+            }
+          : { client: false, freelancer: false };
+
+      try {
+        await completeOnboarding({ lane, intent });
+      } catch (onboardingErr) {
+        // Non-fatal — settings can be retried from /welcome on next visit.
+        // Still log it so we notice if it's a recurring failure.
+        console.error("completeOnboarding failed after signup:", onboardingErr);
+      }
+
+      clearSignupData();
+
+      if (lane === "consultant") {
+        navigate({ to: "/consultant/apply" });
+      } else {
+        navigate({ to: "/welcome" });
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Verification failed");
     } finally {
@@ -350,25 +411,16 @@ export function SignupForm(_props: SignupFormProps) {
 
   // ── UI ────────────────────────────────────────────────────────────────────
   return (
-    <div
-      style={{
-        background: "white",
-        borderRadius: "20px",
-        border: "1px solid #E2E8F0",
-        boxShadow: "0 12px 30px rgba(15,23,42,0.08)",
-        padding: "32px",
-        width: "100%",
-      }}
-    >
+    <div style={{ width: "100%" }}>
       {/* Logo */}
       <img
         src={Logo}
-        alt="Prodigitality"
+        alt="Proyekto"
         style={{ height: "32px", marginBottom: "24px", display: "block" }}
       />
 
-      {/* Header + Step indicator (only on form steps 1 & 2) */}
-      {step < 3 && (
+      {/* Header (only on form steps 1, 2, 3 — hidden on Verify) */}
+      {step < 4 && (
         <div style={{ marginBottom: "24px" }}>
           <h1
             style={{
@@ -392,13 +444,22 @@ export function SignupForm(_props: SignupFormProps) {
           >
             Start your roadmap, match with experts, and execute in one system.
           </p>
-          <StepIndicator currentStep={step as 1 | 2} />
         </div>
       )}
 
       {/* Animated step panels */}
       <AnimatePresence mode="wait">
         {step === 1 && (
+          <motion.div key="step-lane" {...motionProps}>
+            <SignupStepLane
+              lane={lane}
+              setLane={setLane}
+              onNext={handleLaneNext}
+            />
+          </motion.div>
+        )}
+
+        {step === 2 && (
           <motion.div key="step-account" {...motionProps}>
             <SignupStepAccount
               firstName={firstName}
@@ -411,12 +472,13 @@ export function SignupForm(_props: SignupFormProps) {
               setPassword={setPassword}
               confirmPassword={confirmPassword}
               setConfirmPassword={setConfirmPassword}
-              onNext={handleStepOneNext}
+              onNext={handleAccountNext}
+              onBack={() => setStep(1)}
             />
           </motion.div>
         )}
 
-        {step === 2 && (
+        {step === 3 && (
           <motion.div key="step-profile" {...motionProps}>
             <SignupStepProfile
               gender={gender}
@@ -433,14 +495,14 @@ export function SignupForm(_props: SignupFormProps) {
               setZipCode={setZipCode}
               acceptedTerms={acceptedTerms}
               setAcceptedTerms={setAcceptedTerms}
-              onBack={() => setStep(1)}
+              onBack={() => setStep(2)}
               onSubmit={handleProfileSubmit}
               isLoading={isLoading}
             />
           </motion.div>
         )}
 
-        {step === 3 && (
+        {step === 4 && (
           <motion.div key="step-verify" {...motionProps}>
             {/* ── Verification screen ── */}
             <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -583,7 +645,7 @@ export function SignupForm(_props: SignupFormProps) {
                   type="button"
                   onClick={() => {
                     setVerificationCode("");
-                    setStep(2);
+                    setStep(3);
                   }}
                   style={{
                     background: "none",

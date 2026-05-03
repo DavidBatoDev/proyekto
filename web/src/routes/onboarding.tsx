@@ -1,378 +1,43 @@
-import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useAuthStore } from "@/stores/authStore";
-import { useToast } from "@/hooks/useToast";
-import { useProfileQuery } from "@/hooks/useProfileQuery";
-import { completeOnboarding } from "@/lib/auth-api";
 import { fetchProfile } from "@/queries/profile";
-import { Button } from "@/ui/button";
-import BusinessCenterIcon from "@mui/icons-material/BusinessCenter";
-import CodeIcon from "@mui/icons-material/Code";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import Logo from "/prodigylogos/light/logo1.svg";
 
+/**
+ * Legacy /onboarding route.
+ *
+ * Replaced by /welcome (the 4-slide activation deck) and the consultant lane's
+ * /consultant/apply form. Kept alive only as a redirect handler so in-flight
+ * email links, bookmarks, and old tab references continue to resolve.
+ *
+ * Routing rules:
+ *   - unauthenticated → /auth/login
+ *   - authenticated, lane="consultant" → /consultant/apply
+ *   - authenticated, anything else → /welcome
+ */
 export const Route = createFileRoute("/onboarding")({
   beforeLoad: () => {
-    const { isAuthenticated } = useAuthStore.getState();
-
-    if (!isAuthenticated) {
+    const { isAuthenticated, isLoading } = useAuthStore.getState();
+    if (!isLoading && !isAuthenticated) {
       throw redirect({ to: "/auth/login" });
     }
   },
   loader: async () => {
     const { user, setProfile } = useAuthStore.getState();
-
-    if (!user) return null;
+    if (!user) {
+      throw redirect({ to: "/auth/login" });
+    }
 
     const profile = await fetchProfile(user.id);
     setProfile(profile);
 
-    // If the user already finished onboarding, send them straight to the dashboard.
-    if (profile?.has_completed_onboarding) {
-      throw redirect({ to: "/dashboard" });
-    }
+    const lane = (
+      profile?.settings as { onboarding?: { lane?: string } } | null | undefined
+    )?.onboarding?.lane;
 
-    return { profile };
+    if (lane === "consultant") {
+      throw redirect({ to: "/consultant/apply" });
+    }
+    throw redirect({ to: "/welcome" });
   },
-  component: OnboardingPage,
+  component: () => null,
 });
-
-function OnboardingPage() {
-  const navigate = useNavigate();
-  const toast = useToast();
-  const { refetch: refetchProfile } = useProfileQuery();
-  // No external image assets needed — decorative circles are rendered with CSS below.
-
-  const [isFreelancer, setIsFreelancer] = useState(false);
-  const [isClient, setIsClient] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [step, setStep] = useState(0);
-
-  const handleContinue = async () => {
-    if (!isFreelancer && !isClient) {
-      toast.error("Please select at least one option to continue");
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      await completeOnboarding({
-        intent: {
-          freelancer: isFreelancer,
-          client: isClient,
-        },
-      });
-
-      await refetchProfile();
-      toast.success("Onboarding completed!");
-      navigate({ to: "/dashboard" });
-    } catch (error) {
-      console.error("Onboarding error:", error);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to complete onboarding."
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <div className="relative min-h-screen overflow-hidden bg-white">
-      {/* Decorative accents */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -left-36 top-1/2 h-[250px] w-[250px] -translate-y-1/2 opacity-30 rounded-full"
-        style={{ background: "radial-gradient(circle, #FF962E 0%, #FF2D75 100%)" }}
-      />
-      
-      <motion.svg
-        className="absolute bottom-0 left-0 w-[200%] h-[500px] opacity-40 z-0"
-        viewBox="0 0 1440 320"
-        preserveAspectRatio="none"
-        initial={{ y: "100%", x: "-25%" }}
-        animate={{ 
-          y: "0%",
-          x: ["-25%", "0%", "-25%"] 
-        }}
-        transition={{
-          y: { duration: 1.4, ease: [0.22, 1, 0.36, 1] }, // Professional easeOut
-          x: { duration: 10, repeat: Infinity, ease: "linear" } // Slower, subtle horizontal flow
-        }}
-      >
-        <path
-            d="M0,96L48,112C96,128,192,160,288,160C384,160,480,128,576,122.7C672,117,768,139,864,144C960,149,1056,139,1152,128C1248,117,1344,107,1392,101.3L1440,96L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
-            fill="#ff9933"
-            fillOpacity="0.3"
-        />
-      </motion.svg>
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-8 h-[200px] w-[200px] -translate-x-1/2 rounded-full opacity-20"
-        style={{ background: "radial-gradient(circle, #FF962E 0%, #FF2D75 80%, transparent 100%)", filter: "blur(32px)" }}
-      />
-
-      <div className="relative mx-auto flex h-screen max-w-6xl flex-col items-center justify-center px-6 lg:px-12 z-10">
-        <AnimatePresence mode="wait">
-
-        {step === 0 && (
-          <motion.div
-             key="welcome"
-             initial="hidden"
-             animate="visible"
-             exit="exit"
-             variants={{
-                hidden: { opacity: 0 },
-                visible: { 
-                   opacity: 1,
-                   transition: { staggerChildren: 0.2, delayChildren: 0.3 }
-                },
-                exit: { 
-                   opacity: 0, 
-                   y: -20, 
-                   transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } 
-                }
-             }}
-             className="flex flex-col items-center justify-center h-full text-center gap-10 w-full"
-          >
-             <div className="space-y-6 max-w-3xl flex flex-col items-center">
-                <div className="text-6xl -mx-16 md:text-7xl font-bold text-black tracking-tight flex flex-col md:flex-row items-center justify-center gap-6">
-                  <motion.span 
-                    className="whitespace-nowrap"
-                    initial={{ opacity: 0, y: 30, filter: "blur(12px)", scale: 0.9 }}
-                    animate={{ opacity: 1, y: 0, filter: "blur(0px)", scale: 1 }}
-                    transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
-                  >
-                    Welcome to
-                  </motion.span>
-                  
-                  <motion.img 
-                    src={Logo} 
-                    alt="Prodigy" 
-                    className="h-24 md:h-28 w-auto object-contain mt-2"
-                    initial={{ opacity: 0, scale: 0.8, x: -20 }}
-                    animate={{ opacity: 1, scale: 1, x: 0 }}
-                    transition={{ duration: 0.8, delay: 0.8, ease: [0.22, 1, 0.36, 1] }}
-                  />
-                </div>
-
-                <motion.p 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.8, delay: 1.8, ease: [0.22, 1, 0.36, 1] }}
-                  className="text-2xl text-[#020202]/70 leading-relaxed"
-                >
-                   A consultant-led startup marketplace where clients don’t hire freelancers — they hire structured teams curated by professionals.
-                </motion.p>
-             </div>
-             
-             <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 2.2, ease: [0.22, 1, 0.36, 1] }}
-             >
-             <Button
-                onClick={() => setStep(1)}
-                className="min-w-[280px] bg-[#ff9900] px-12 py-6 text-xl font-semibold text-white rounded-full shadow-lg hover:bg-[#ff3366] transition-all hover:-translate-y-1 hover:shadow-xl"
-             >
-                Get Started
-             </Button>
-             </motion.div>
-          </motion.div>
-        )}
-
-        {step === 1 && (
-          <motion.div
-             key="expertise"
-             initial={{ opacity: 0, y: 20 }}
-             animate={{ opacity: 1, y: 0 }}
-             exit={{ opacity: 0, x: -50 }}
-             transition={{ duration: 0.5 }}
-             className="w-full flex flex-col items-center justify-center h-full gap-8 scale-90 md:scale-100" // Added scale fix for smaller screens if needed
-          >
-             <div className="w-full max-w-[1400px] px-8"> {/* Increased max-width significantly */}
-               <h2 className="text-4xl font-bold text-center text-[#333438] mb-4 tracking-tight">
-                 Discover our Consultant's Expertise
-               </h2>
-               <p className="text-xl text-center text-[#61636c] mb-12 max-w-3xl mx-auto">
-                 Access structured teams led by top-tier professionals across various domains.
-               </p>
-               
-               {/* Grid Container - WIDER and FLUSH */}
-               <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 w-full">
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-2">
-                   {[
-                      "Business Automation Consultants", "Cloud Services Consultants", "Cybersecurity Consultants",
-                      "Data Analytics Consultants", "Digital Marketing Consultants", "Digital Product Managers",
-                      "Digital Sales Consultants", "Emerging Technologies Consultants", "ERP Consultants",
-                      "Finance Consultants", "Interim Managers", "Business Turnaround Consultants",
-                      "Corporate Development Consultants", "CRM Consultants", "Customer Service Consultants",
-                      "Innovation Consultants", "Manufacturing Consultants", "Marketing Consultants",
-                      "People and Culture Consultants", "Performance Improvement Consultants", "Pricing Consultants",
-                      "Procurement Consultants", "Sales Consultants", "Strategy Consultants",
-                      "Supply Chain Consultants", "Sustainability Consultants", "Project Management Consultants",
-                      "Digital Transformation Consultants", "New Business Model Consultants", "Organization Consultants"
-                   ].map((item, index) => (
-                     <div key={index} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0 hover:bg-gray-50/50 transition-colors rounded-lg px-2 -mx-2">
-                       <span className="text-[13.5px] text-gray-600 font-medium tracking-wide">{item}</span>
-                     </div>
-                   ))}
-                 </div>
-               </div>
-
-               <div className="flex justify-center mt-12">
-                 <Button
-                    onClick={() => setStep(2)}
-                    className="min-w-[280px] bg-[#ff9900] px-12 py-4 text-xl font-bold text-white rounded-full shadow-lg hover:bg-[#ff3366] transition-all hover:-translate-y-1 hover:shadow-xl tracking-wide"
-                 >
-                    Continue
-                 </Button>
-               </div>
-             </div>
-          </motion.div>
-        )}
-
-        {step === 2 && (
-          <motion.div
-             key="selection"
-             initial={{ opacity: 0, x: 50 }}
-             animate={{ opacity: 1, x: 0 }}
-             transition={{ duration: 0.5 }}
-             className="w-full flex flex-col items-center"
-          >
-            {/* Header */}
-            <motion.div 
-              className="flex flex-col items-center gap-4 text-center mb-10"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, ease: "easeOut" }}
-            >
-              <h1 className="text-5xl font-semibold text-black">
-                How will you use Prodigy?
-              </h1>
-              <p className="text-xl text-[#020202]/80 max-w-2xl">
-                Choose your primary goal to customize your dashboard. You can switch
-                roles at any time.
-              </p>
-            </motion.div>
-    
-            {/* Cards */}
-            <div className="flex w-full max-w-4xl flex-col items-center gap-8">
-              <motion.div 
-                className="grid grid-cols-1 md:grid-cols-2 gap-10 w-full"
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, ease: "easeOut", delay: 0.2 }}
-              >
-                {/* Hire card */}
-                <div
-                  className={`rounded-[10px] bg-white p-10 shadow-[0_1px_8px_rgba(0,0,0,0.12),0_3px_4px_rgba(0,0,0,0.14),0_3px_3px_-2px_rgba(0,0,0,0.2)] border-4 transition-all relative flex flex-col items-center justify-between h-full ${
-                    isClient ? "border-green-500" : "border-transparent"
-                  }`}
-                >
-                  {isClient && (
-                    <div className="absolute top-4 right-4">
-                      <CheckCircleIcon sx={{ fontSize: 32, color: "#22c55e" }} />
-                    </div>
-                  )}
-                  <div className="flex flex-col items-center gap-5 text-center">
-                    <div className="flex h-[100px] w-[100px] items-center justify-center rounded-full bg-[#ff9933]">
-                      <BusinessCenterIcon sx={{ fontSize: 56, color: "white" }} />
-                    </div>
-                    <div className="flex flex-col gap-3">
-                      <h3 className="text-2xl font-semibold text-black">
-                        I want to Hire
-                      </h3>
-                      <p className="text-base text-[#020202]">
-                        I have a vision and need a managed team to build it. Match
-                        me with an expert Consultant.
-                      </p>
-                    </div>
-                    <ul className="mt-2 w-60 text-left text-black text-base list-disc list-outside">
-                      <li className="ms-6">Zero Management Overhead</li>
-                      <li className="ms-6">AI-Driven Linear Roadmaps</li>
-                      <li className="ms-6">Secured Milestone Escrow</li>
-                    </ul>
-                  </div>
-                  <Button
-                    onClick={() => setIsClient(!isClient)}
-                    className="cursor-pointer w-[255px] bg-[#ff9933] px-10 py-2 text-lg font-semibold text-white shadow-[0_1px_5px_rgba(0,0,0,0.12),0_2px_2px_rgba(0,0,0,0.14),0_3px_1px_-2px_rgba(0,0,0,0.2)] transition-transform hover:-translate-y-0.5 mt-4"
-                  >
-                    Hire a Vetted Team
-                  </Button>
-                </div>
-    
-                {/* Work card */}
-                <div
-                  className={`rounded-[10px] bg-white p-10 shadow-[0_1px_8px_rgba(0,0,0,0.12),0_3px_4px_rgba(0,0,0,0.14),0_3px_3px_-2px_rgba(0,0,0,0.2)] border-4 transition-all relative flex flex-col items-center justify-between h-full ${
-                    isFreelancer ? "border-green-500" : "border-transparent"
-                  }`}
-                >
-                  {isFreelancer && (
-                    <div className="absolute top-4 right-4">
-                      <CheckCircleIcon sx={{ fontSize: 32, color: "#22c55e" }} />
-                    </div>
-                  )}
-                  <div className="flex flex-col items-center gap-5 text-center">
-                    <div className="flex h-[100px] w-[100px] items-center justify-center rounded-full bg-[#ff3366]">
-                      <CodeIcon sx={{ fontSize: 56, color: "white" }} />
-                    </div>
-                    <div className="flex flex-col gap-3">
-                      <h3 className="text-2xl font-semibold text-black">
-                        I want to Work
-                      </h3>
-                      <p className="text-base text-[#020202]">
-                        Join the top 3% talent pool. Focus on coding while our
-                        Architects handle the clients and requirements.
-                      </p>
-                    </div>
-                    <ul className="mt-2 w-60 text-left text-black text-base list-disc list-outside">
-                      <li className="ms-6">Guaranteed Payouts</li>
-                      <li className="ms-6">Clear, Architected Tasks</li>
-                      <li className="ms-6">No Unpaid Scope Creep</li>
-                    </ul>
-                  </div>
-                  <Button
-                    onClick={() => setIsFreelancer(!isFreelancer)}
-                    className="cursor-pointer w-[255px] bg-[#ff3366] px-10 py-2 text-lg font-semibold text-white shadow-[0_1px_5px_rgba(0,0,0,0.12),0_2px_2px_rgba(0,0,0,0.14),0_3px_1px_-2px_rgba(0,0,0,0.2)] mt-4"
-                  >
-                    Apply as a Talent
-                  </Button>
-                </div>
-              </motion.div>
-    
-            {/* Helper Text */}
-            <motion.p 
-              className="text-black text-center text-sm"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-            >
-              You can choose both options and switch between them anytime
-            </motion.p>
-    
-              {/* Continue Button */}
-              <motion.div
-                 initial={{ opacity: 0, y: 20 }}
-                 animate={{ opacity: 1, y: 0 }}
-                 transition={{ duration: 0.6, ease: "easeOut", delay: 0.4 }}
-              >
-                 <Button
-                    onClick={handleContinue}
-                    disabled={isLoading || (!isFreelancer && !isClient)}
-                    className="w-[280px] bg-[#ff9900] px-10 py-3 text-lg font-semibold text-white shadow-[0_1px_5px_rgba(0,0,0,0.12),0_2px_2px_rgba(0,0,0,0.14),0_3px_1px_-2px_rgba(0,0,0,0.2)] transition-transform hover:-translate-y-0.5 disabled:opacity-50 disabled:hover:translate-y-0"
-                 >
-                    {isLoading ? "Setting up your account..." : "Continue"}
-                 </Button>
-              </motion.div>
-            </div>
-          </motion.div>
-        )}
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
