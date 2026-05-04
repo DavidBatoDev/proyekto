@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { MarketplaceService } from './marketplace.service';
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
+import { ConsultantOnlyGuard } from '../../common/guards/consultant-only.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
 import {
@@ -23,7 +24,14 @@ import {
 export class MarketplaceController {
   constructor(private readonly marketplaceService: MarketplaceService) {}
 
+  /**
+   * Browse the freelancer pool. Gated by the ConsultantOnlyGuard so only
+   * verified consultants see freelancers — clients never browse them
+   * directly. The MarketplaceService.getFreelancers also calls
+   * ensureConsultant() internally as belt-and-suspenders.
+   */
   @Get('freelancers')
+  @UseGuards(ConsultantOnlyGuard)
   getFreelancers(
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: MarketplaceQueryDto,
@@ -37,6 +45,7 @@ export class MarketplaceController {
   }
 
   @Post('invite')
+  @UseGuards(ConsultantOnlyGuard)
   inviteFreelancer(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: InviteFreelancerDto,

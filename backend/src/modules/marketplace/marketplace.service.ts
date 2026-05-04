@@ -429,21 +429,22 @@ export class MarketplaceService {
     }
 
     if (dto.status === 'accepted') {
-      const { error: memberError } = await this.supabase
-        .from('project_members')
-        .upsert(
-          {
-            project_id: invite.project_id,
-            user_id: userId,
-            role: 'member',
-            position: 'Member',
-          },
-          { onConflict: 'project_id,user_id' },
-        );
-
-      if (memberError) {
+      // Slice 3b: marketplace accepts grant a project_shares row directly.
+      // Editor is the default for marketplace freelancer invites — they
+      // need to edit deliverables but not manage members or billing.
+      try {
+        await this.authorization.grant({
+          projectId: invite.project_id as string,
+          userId,
+          role: 'editor',
+          origin: 'invited',
+          grantedBy: invite.invited_by as string | null,
+        });
+      } catch (err) {
         throw new BadRequestException(
-          memberError.message || 'Failed to add member to project members.',
+          err instanceof Error
+            ? err.message
+            : 'Failed to grant project access to invitee.',
         );
       }
     }

@@ -21,8 +21,11 @@ type ProjectRoleData = {
 
 type ProjectMemberRow = {
   user_id: string | null;
-  role: string;
-  position?: string | null;
+  // Slice 3b: shape now sourced from project_shares; `origin` carries the
+  // legacy "role bucket" semantics (client | consultant | invited |
+  // personal_workspace). `position` is no longer stored — UI uses
+  // display_name only.
+  origin?: string | null;
   user?:
     | {
         id: string;
@@ -149,14 +152,9 @@ export class SupabaseChatRepository implements ChatRepository {
   }
 
   async isProjectMember(projectId: string, userId: string): Promise<boolean> {
-    const project = await this.getProjectRoleData(projectId);
-    if (!project) return false;
-    if (userId === project.client_id || userId === project.consultant_id) {
-      return true;
-    }
-
+    // Slice 3b: any project_shares grant counts as membership.
     const { data, error } = await this.supabase
-      .from('project_members')
+      .from('project_shares')
       .select('user_id')
       .eq('project_id', projectId)
       .eq('user_id', userId)
@@ -172,21 +170,32 @@ export class SupabaseChatRepository implements ChatRepository {
     const project = await this.getProjectRoleData(projectId);
     if (!project) return null;
 
-    if (userId === project.consultant_id) return 'consultant';
-    if (userId === project.client_id) return 'client';
-
+    // Origin metadata on project_shares preserves the chat-relevant
+    // distinction between client (origin='client'/'personal_workspace') and
+    // consultant (origin='consultant'). Fall back to active_persona-style
+    // bucketing via normalizeRole for invited members.
     const { data, error } = await this.supabase
-      .from('project_members')
-      .select('role')
+      .from('project_shares')
+      .select('role, origin')
       .eq('project_id', projectId)
       .eq('user_id', userId)
       .maybeSingle();
 
     if (error || !data) return null;
+
+    // Map origin → legacy chat-role bucket so normalizeRole keeps working
+    // unchanged downstream.
+    const memberRole =
+      data.origin === 'consultant'
+        ? 'consultant'
+        : data.origin === 'client' || data.origin === 'personal_workspace'
+          ? 'client'
+          : 'member';
+
     return this.normalizeRole({
       userId,
       project,
-      memberRole: String(data.role ?? ''),
+      memberRole,
     });
   }
 
@@ -206,14 +215,16 @@ export class SupabaseChatRepository implements ChatRepository {
       .eq('id', projectId)
       .single();
 
+    // Slice 3b: pull members from project_shares. Use `origin` as the
+    // legacy "role" bucket for chat normalization. Position field is
+    // dropped (project_shares has no equivalent; UI shows display_name).
     const membersQuery = this.supabase
-      .from('project_members')
+      .from('project_shares')
       .select(
         `
         user_id,
-        role,
-        position,
-        user:profiles!project_members_user_id_fkey(id, display_name, avatar_url, email)
+        origin,
+        user:profiles!project_shares_user_id_fkey(id, display_name, avatar_url, email)
       `,
       )
       .eq('project_id', projectId)
@@ -270,11 +281,16 @@ export class SupabaseChatRepository implements ChatRepository {
 
     for (const row of (memberRows || []) as ProjectMemberRow[]) {
       if (!row.user_id) continue;
+      // Map origin → legacy memberRole bucket for normalizeRole.
+      const memberRole =
+        row.origin === 'consultant'
+          ? 'consultant'
+          : row.origin === 'client' || row.origin === 'personal_workspace'
+            ? 'client'
+            : 'member';
+
       const existing = map.get(row.user_id);
       if (existing) {
-        if ((!existing.position || existing.position.trim().length === 0) && row.position) {
-          existing.position = row.position;
-        }
         const rowUser = this.pickSingle(row.user);
         if (!existing.user && rowUser) {
           existing.user = rowUser;
@@ -287,9 +303,9 @@ export class SupabaseChatRepository implements ChatRepository {
         role: this.normalizeRole({
           userId: row.user_id,
           project,
-          memberRole: row.role,
+          memberRole,
         }),
-        position: row.position ?? null,
+        position: null,
         user: this.pickSingle(row.user),
       });
     }

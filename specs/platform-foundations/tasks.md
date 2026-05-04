@@ -193,35 +193,76 @@ role-based via `project_shares`.
 
 ---
 
-## Slice 3 — Marketplace gate + cleanup
+## Slice 3 — Marketplace gate hardening + Phase A cleanup
 
-**Goal:** Formalize marketplace gating at the API surface. Drop legacy
-permission tables. Enforce consultant-verification invariant at the DB.
+**Goal (revised):** Formalize marketplace gating at the API surface. Add the
+defensive consultant-verification CHECK constraint at the DB. Add the
+additive roadmap-effective-role helper. **Dropping the legacy
+`project_members` table is split into a new Slice 3b** because there are 14+
+read sites across 6 modules (chat, project-time, admin, roadmaps, uploads,
+marketplace) that need migration first, plus a FK from
+`project_member_time_rates.project_member_id`.
 
 ### Database
 
-| # | Status | Task |
-|---|---|---|
-| 3.1 | ⬜ | Migration: drop `project_members` table |
-| 3.2 | ⬜ | Migration: drop the `permissions_json` column (if not already dropped with the table — depends on FK fan-out) |
-| 3.3 | ⬜ | Migration: CHECK constraint `(active_persona <> 'consultant') OR (is_consultant_verified = true)` on `profiles` |
+| # | Status | Task | File |
+|---|---|---|---|
+| 3.1 | 🟡 | Migration: drop `project_members` table — **deferred to Slice 3b**. See scope notes below. | (pending) |
+| 3.2 | 🟡 | Migration: drop the `permissions_json` column — **deferred to Slice 3b** (subsumed by 3.1). | (pending) |
+| 3.3 | ✅ | Migration: CHECK constraint `(active_persona <> 'consultant') OR (is_consultant_verified = true)` on `profiles` | `supabase/migrations/20260503000080_consultant_persona_requires_verification.sql` |
+| 3.10 | ✅ | Additive roadmap helper: NEW `get_user_roadmap_effective_role(uid, roadmap_id) RETURNS share_role` that consults `project_shares` as fallback. The old `get_user_roadmap_share_role` (TEXT-returning) stays untouched — RLS policy migration deferred to 3.10b so the policy migrations happen in lockstep with the function swap. | `supabase/migrations/20260503000070_add_roadmap_effective_role_helper.sql` |
+| 3.10b | ⬜ | **Future slice**: migrate every RLS policy that calls `get_user_roadmap_share_role(p_roadmap_id, p_user_id)` to call `get_user_roadmap_effective_role(uid, roadmap_id)` instead, then drop the old function. |
 
 ### Backend
 
-| # | Status | Task |
-|---|---|---|
-| 3.4 | ⬜ | `ConsultantOnlyGuard` — checks `is_consultant_verified` (capability), throws ForbiddenException otherwise |
-| 3.5 | ⬜ | Apply `@UseGuards(ConsultantOnlyGuard)` on `MarketplaceController.getFreelancers` (today gated by `ensureConsultant` — making it loud) |
-| 3.6 | ⬜ | Fix `marketplace.service.ts:259` invite check: replace `project.consultant_id === userId` with `assertRole('admin')` |
-| 3.7 | ⬜ | Delete `backend/src/modules/projects/permissions/project-permissions.ts` and all template-resolver call sites |
-| 3.8 | ⬜ | Delete `ProjectMemberRole` enum and any remaining references |
-| 3.9 | ⬜ | Update spec tests that relied on `project_members` (e.g. `projects.service.permissions.spec.ts`) — most should delete; a few migrate to `project_shares` semantics |
+| # | Status | Task | File |
+|---|---|---|---|
+| 3.4 | ✅ | `ConsultantOnlyGuard` — checks `is_consultant_verified` (capability), throws ForbiddenException otherwise | `backend/src/common/guards/consultant-only.guard.ts` |
+| 3.5 | ✅ | Apply `@UseGuards(ConsultantOnlyGuard)` on `MarketplaceController.getFreelancers` AND `inviteFreelancer`. Service-layer `ensureConsultant` becomes belt-and-suspenders. | `backend/src/modules/marketplace/marketplace.controller.ts` |
+| 3.6 | ✅ | **Done in slice 2.** Marketplace invite check now uses `assertRole('admin')`. |
+| 3.7 | 🟡 | Delete `project-permissions.ts` and its template-resolver call sites — **deferred to Slice 3b**. ProjectsService still uses `getCallerPermissions` and `hasPermission` from this file as the legacy fine-grained permission fallback when a user lacks owner/admin role. Slice 3b removes both the legacy table AND this fallback together. |
+| 3.8 | 🟡 | Delete `ProjectMemberRole` enum — **deferred to Slice 3b** (used by member CRUD endpoints that still write project_members). |
+| 3.9 | 🟡 | Update spec tests that relied on `project_members` — **deferred to Slice 3b** alongside the table drop. |
 
 ### Verification (slice 3)
 
-⬜ All backend tests still pass after `project_members` removal.
-⬜ Attempting to `UPDATE profiles SET active_persona='consultant'` for an unverified user fails the CHECK constraint.
+✅ **Backend specs all pass — 104 / 104** (no regressions from slice 3 work).
+✅ **Migrations applied** (`get_user_roadmap_effective_role`, consultant-verification CHECK).
+⬜ Attempting to `UPDATE profiles SET active_persona='consultant'` for an unverified user fails the CHECK constraint. *(Pending manual walkthrough on dev DB.)*
 ⬜ Marketplace browse returns 403 for unverified users; 200 for verified consultants regardless of their current `active_persona`.
+
+---
+
+## Slice 3b — `project_members` table drop (split out from Slice 3)
+
+**Goal:** Drop the legacy `project_members` table and `permissions_json` column.
+After slice 2 these are no longer authoritative for permissions, but they're
+still read in 14+ sites across 6 modules for membership rosters.
+
+### Scope discovered (Slice 3 assessment)
+
+| Module | File | Refs | Usage |
+|---|---|---|---|
+| projects | `repositories/projects.repository.supabase.ts` | 22 | Member CRUD (addMember, updateMember, getMembers, removeMember, etc.) — most invasive |
+| projects | `personal-workspace.service.ts` | 4 | Dual-write owner row alongside project_shares — drop in 3b |
+| chat | `repositories/chat.repository.supabase.ts` | 4 | "Is user a project member?" lookups for chat permissions |
+| project-time | `repositories/project-time.repository.supabase.ts` | 3 | `project_member_time_rates.project_member_id` FK joins |
+| admin | `repositories/admin.repository.supabase.ts` | 3 | Admin dashboard counts |
+| roadmaps | `repositories/roadmaps.repository.supabase.ts` | 2 | Roadmap access via project membership |
+| uploads | `uploads.controller.ts` | 1 | Upload permission check |
+| marketplace | `marketplace.service.ts` | 1 | Member lookup |
+
+### Tasks (3b)
+
+| # | Status | Task |
+|---|---|---|
+| 3b.1 | ⬜ | Migrate each read site to `project_shares EXISTS` (cleanest semantic equivalent for "is user a project member?") |
+| 3b.2 | ⬜ | Migrate `project_member_time_rates.project_member_id` FK to either `user_id` directly or to `project_shares.id` — needs a small migration |
+| 3b.3 | ⬜ | Migrate or remove the projects controller member CRUD endpoints (addMember, updateMember, removeMember). Most can be replaced by `project_shares` grants/revokes. |
+| 3b.4 | ⬜ | Stop dual-write in `PersonalWorkspaceService.attachOwnerMember` and `projects.repository.create()` |
+| 3b.5 | ⬜ | Delete `project-permissions.ts` template module + `ProjectMemberRole` enum |
+| 3b.6 | ⬜ | Update specs — most member-permission specs delete; a few migrate to project_shares semantics |
+| 3b.7 | ⬜ | Migration: drop `project_members` table (cascades to its FK) |
 
 ---
 

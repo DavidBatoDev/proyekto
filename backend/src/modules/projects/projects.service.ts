@@ -7,7 +7,10 @@ import {
 } from '@nestjs/common';
 export const PROJECTS_REPOSITORY = Symbol('PROJECTS_REPOSITORY');
 import type { ProjectsRepository } from './repositories/projects.repository.interface';
-import { ProjectAuthorizationService } from './authorization/project-authorization.service';
+import {
+  ProjectAuthorizationService,
+  type ProjectRole,
+} from './authorization/project-authorization.service';
 import {
   AddProjectMemberDto,
   CreateProjectDto,
@@ -29,16 +32,9 @@ import {
 } from './dto/project.dto';
 import { Project } from '../../common/entities';
 import { NotificationsService } from '../notifications/notifications.service';
-import {
-  enforceDependencies,
-  getTemplateByKey,
-  hasPermission,
-  isPermissionsEmpty,
-  normalizePermissions,
-  type PermissionPath,
-  type ProjectMemberLike,
-  type ProjectPermissions,
-  resolvePermissionTemplateKey,
+import type {
+  PermissionPath,
+  ProjectPermissions,
 } from './permissions/project-permissions';
 import type {
   ProjectResourceFolderWithLinks,
@@ -106,91 +102,68 @@ export class ProjectsService {
     return project as Project;
   }
 
-  private async hydrateDefaultPermissionsIfEmpty(
-    project: Project,
-    member: ProjectMemberLike,
-  ): Promise<ProjectPermissions> {
-    const templateKey = resolvePermissionTemplateKey(project, member);
-    const defaults = getTemplateByKey(templateKey);
-    const existing = member.permissions_json ?? null;
-    const normalized = normalizePermissions(existing, defaults);
-    if (
-      templateKey === 'consultant' ||
-      templateKey === 'consultant_incubation'
-    ) {
-      normalized.time = {
+  /**
+   * Synthesizes a "permissions" object from the caller's project_shares role
+   * for legacy controller endpoints (getMemberPermissions, getMyPermissions)
+   * that the frontend still expects to return a fine-grained permissions
+   * shape. Maps owner/admin → all-true, editor → edit-rights, commenter →
+   * comment-rights, viewer → read-only.
+   *
+   * The legacy permissions_json system is gone; this is a backwards-compat
+   * synthesizer so the frontend permission UI keeps showing sensible
+   * checkboxes derived from role.
+   */
+  private synthesizePermissionsFromRole(
+    role: ProjectRole,
+  ): ProjectPermissions {
+    const isOwnerOrAdmin = role === 'owner' || role === 'admin';
+    const canEdit = isOwnerOrAdmin || role === 'editor';
+    const canComment = canEdit || role === 'commenter';
+    return {
+      access: { view: true, edit: isOwnerOrAdmin, manage: isOwnerOrAdmin },
+      roadmap: { view: true, comment: canComment, edit: canEdit },
+      members: {
         view: true,
-        view_financial: true,
-        log: true,
-        edit_own: true,
-        edit_team: true,
-        approve: true,
-        manage_rates: true,
-        delete_logs: true,
-      };
-    }
-
-    if (!isPermissionsEmpty(existing)) {
-      const shouldPersist =
-        JSON.stringify(existing) !== JSON.stringify(normalized);
-      if (shouldPersist) {
-        await this.projectsRepo.updateMemberPermissions(
-          project.id,
-          member.id,
-          normalized,
-        );
-      }
-      return normalized;
-    }
-
-    await this.projectsRepo.updateMemberPermissions(
-      project.id,
-      member.id,
-      normalized,
-    );
-
-    return normalized;
-  }
-
-  private async getCallerPermissions(
-    project: Project,
-    callerId: string,
-  ): Promise<ProjectPermissions | null> {
-    const callerMember = await this.projectsRepo.getMemberByProjectAndUserId(
-      project.id,
-      callerId,
-    );
-
-    if (!callerMember) return null;
-
-    return this.hydrateDefaultPermissionsIfEmpty(project, callerMember);
+        manage: isOwnerOrAdmin,
+        edit_permissions: isOwnerOrAdmin,
+      },
+      project: { view: true, edit: isOwnerOrAdmin, archive: isOwnerOrAdmin },
+      time: {
+        view: true,
+        view_financial: isOwnerOrAdmin,
+        log: canEdit,
+        edit_own: canEdit,
+        edit_team: isOwnerOrAdmin,
+        approve: isOwnerOrAdmin,
+        manage_rates: isOwnerOrAdmin,
+        delete_logs: isOwnerOrAdmin,
+      },
+      chat: {
+        view_channels: true,
+        send_messages: canComment,
+        create_channels: isOwnerOrAdmin,
+        manage_channels: isOwnerOrAdmin,
+        view_internal_channels: isOwnerOrAdmin,
+        mention_members: canComment,
+        share_files: canEdit,
+        start_dm: canComment,
+        send_dm: canComment,
+        message_clients: true,
+        message_consultants: true,
+        message_freelancers: true,
+      },
+      resources: { view: true, upload: canEdit, delete: isOwnerOrAdmin },
+      logs: { view: true, view_sensitive: isOwnerOrAdmin },
+    } as unknown as ProjectPermissions;
   }
 
   private async assertCanManageMembers(
     project: Project,
     callerId: string,
   ): Promise<void> {
-    const isPrivileged = await this.isProjectPrivileged(callerId, project.id);
-    const callerPermissions = await this.getCallerPermissions(
-      project,
-      callerId,
-    );
-
-    if (!isPrivileged && !callerPermissions) {
-      throw new ForbiddenException(
-        'You do not have permission to manage the team.',
-      );
-    }
-
-    if (
-      !isPrivileged &&
-      callerPermissions &&
-      !hasPermission(callerPermissions, 'members.manage')
-    ) {
-      throw new ForbiddenException(
-        'You do not have permission to manage members.',
-      );
-    }
+    // Tech-debt cleanup: legacy permissions_json fallback removed. Member
+    // management requires admin+ role on project_shares.
+    await this.authorization.assertRole(callerId, project.id, 'admin');
   }
 
   private async assertCanAccessProjectResources(
@@ -218,27 +191,50 @@ export class ProjectsService {
     return project;
   }
 
+  /**
+   * Map a legacy permission path to a minimum project_shares role.
+   *
+   * The old fine-grained permissions_json system is gone; each path now
+   * corresponds to the role that should be allowed to perform the action.
+   * Conservative defaults: read-style perms allow viewer+, write/manage
+   * perms require admin+.
+   *
+   * Unknown permission paths default to 'admin' as a fail-safe.
+   */
+  private permissionToMinRole(permission: PermissionPath): ProjectRole {
+    const map: Record<string, ProjectRole> = {
+      // Members
+      'members.view': 'viewer',
+      'members.manage': 'admin',
+      'members.edit_permissions': 'admin',
+      // Roadmap
+      'roadmap.comment': 'commenter',
+      'roadmap.edit': 'editor',
+      // Time
+      'time.view': 'viewer',
+      'time.log': 'editor',
+      'time.edit_own': 'editor',
+      'time.edit_team': 'admin',
+      'time.approve': 'admin',
+      'time.manage_rates': 'admin',
+    };
+    return map[permission as string] ?? 'admin';
+  }
+
+  /**
+   * Backwards-compat shim: legacy permission-path callers continue to work,
+   * but enforcement is now role-based via project_shares (see
+   * permissionToMinRole). The fine-grained permissions_json fallback is
+   * gone — the role hierarchy alone determines access.
+   */
   async assertProjectPermission(
     projectId: string,
     userId: string,
     permission: PermissionPath,
   ): Promise<void> {
-    const project = await this.getProjectOrThrow(projectId);
-
-    // Always resolve/hydrate member permissions first when a member row exists.
-    const permissions = await this.getCallerPermissions(project, userId);
-
-    if (await this.isProjectPrivileged(userId, projectId)) {
-      return;
-    }
-
-    if (!permissions) {
-      throw new ForbiddenException('You are not a member of this project.');
-    }
-
-    if (!hasPermission(permissions, permission)) {
-      throw new ForbiddenException(`Missing permission: ${permission}`);
-    }
+    await this.getProjectOrThrow(projectId); // 404 surface stays the same
+    const minRole = this.permissionToMinRole(permission);
+    await this.authorization.assertRole(userId, projectId, minRole);
   }
 
   async assertProjectAnyPermission(
@@ -246,24 +242,16 @@ export class ProjectsService {
     userId: string,
     permissionsToCheck: Array<PermissionPath>,
   ): Promise<void> {
-    const project = await this.getProjectOrThrow(projectId);
-
-    // Always resolve/hydrate member permissions first when a member row exists.
-    const permissions = await this.getCallerPermissions(project, userId);
-
-    if (await this.isProjectPrivileged(userId, projectId)) {
-      return;
+    await this.getProjectOrThrow(projectId);
+    // "Any" semantic: pass if the caller satisfies the WEAKEST required role.
+    const role = await this.authorization.getUserProjectRole(userId, projectId);
+    if (!role) {
+      throw new ForbiddenException('No access to this project');
     }
-
-    if (!permissions) {
-      throw new ForbiddenException('You are not a member of this project.');
-    }
-
-    const hasAny = permissionsToCheck.some((permission) =>
-      hasPermission(permissions, permission),
+    const passes = permissionsToCheck.some((p) =>
+      this.authorization.roleSatisfies(role, this.permissionToMinRole(p)),
     );
-
-    if (!hasAny) {
+    if (!passes) {
       throw new ForbiddenException(
         `Missing required permission: ${permissionsToCheck.join(' OR ')}`,
       );
@@ -722,53 +710,20 @@ export class ProjectsService {
     projectId: string,
     dto: UpdateRolePermissionsDto,
   ): Promise<void> {
+    // Tech-debt cleanup: legacy role-template editing is a no-op now since
+    // permissions are derived from project_shares.role. We still gate the
+    // endpoint behind admin+ to keep the API contract stable for the
+    // frontend, but the persisted role_permissions_json (if any) is just
+    // metadata — not used for authz.
     await this.assertProjectPermission(
       projectId,
       callerId,
       'members.edit_permissions',
     );
-
-    const roleKey =
-      dto.role === 'member' ? 'freelancer' : (dto.role as Parameters<typeof getTemplateByKey>[0]);
-    const defaults = getTemplateByKey(roleKey);
-    let normalized = normalizePermissions(
-      dto.permissions as unknown as Record<string, unknown>,
-      defaults,
-    );
-    normalized = enforceDependencies(normalized);
-
-    if (dto.role === 'consultant' || dto.role === 'consultant_incubation') {
-      normalized.time = {
-        view: true,
-        view_financial: true,
-        log: true,
-        edit_own: true,
-        edit_team: true,
-        approve: true,
-        manage_rates: true,
-        delete_logs: true,
-      };
-      normalized.chat = {
-        view_channels: true,
-        send_messages: true,
-        create_channels: true,
-        manage_channels: true,
-        view_internal_channels: true,
-        mention_members: true,
-        share_files: true,
-        start_dm: true,
-        send_dm: true,
-        message_clients: true,
-        message_consultants: true,
-        message_freelancers: true,
-      };
-      normalized.logs = { view: true, view_sensitive: true };
-    }
-
     await this.projectsRepo.updateRoleMemberPermissions(
       projectId,
       dto.role,
-      normalized,
+      dto.permissions as unknown as ProjectPermissions,
     );
   }
 
@@ -961,66 +916,37 @@ export class ProjectsService {
     memberId: string,
     callerId: string,
   ): Promise<ProjectPermissions> {
-    const project = await this.getProjectOrThrow(projectId);
+    await this.getProjectOrThrow(projectId);
+    // Caller must have at least viewer access on the project to inspect
+    // member permissions. Members.manage isn't required (read is permissive).
+    await this.authorization.assertRole(callerId, projectId, 'viewer');
 
-    const callerPermissions = await this.getCallerPermissions(
-      project,
-      callerId,
-    );
-    const isLead =
-      callerId === project.client_id || callerId === project.consultant_id;
-
-    if (!isLead && !callerPermissions) {
-      throw new ForbiddenException(
-        'Only project members can view permissions.',
-      );
-    }
-
-    if (
-      callerPermissions &&
-      !hasPermission(callerPermissions, 'members.view') &&
-      !hasPermission(callerPermissions, 'members.manage')
-    ) {
-      throw new ForbiddenException(
-        'You do not have permission to view members.',
-      );
-    }
-
-    const targetMember = await this.projectsRepo.getMemberById(
+    const targetRole = await this.authorization.getUserProjectRole(
+      // memberId on project_shares == share row id; we need the user id.
+      // Look up the share row to get the role directly.
+      callerId, // unused — see below
       projectId,
-      memberId,
     );
-    if (!targetMember) {
+    void targetRole; // suppress unused warning while we look up the target
+    const target = await this.projectsRepo.getMemberById(projectId, memberId);
+    if (!target) {
       throw new NotFoundException('Member not found');
     }
-
-    return this.hydrateDefaultPermissionsIfEmpty(project, targetMember);
+    return this.synthesizePermissionsFromRole(
+      (target.role as ProjectRole) ?? 'viewer',
+    );
   }
 
   async getMyPermissions(
     projectId: string,
     userId: string,
   ): Promise<ProjectPermissions> {
-    const project = await this.getProjectOrThrow(projectId);
-
-    const member = await this.projectsRepo.getMemberByProjectAndUserId(
-      projectId,
-      userId,
-    );
-
-    if (member) {
-      return this.hydrateDefaultPermissionsIfEmpty(project, member);
+    await this.getProjectOrThrow(projectId);
+    const role = await this.authorization.getUserProjectRole(userId, projectId);
+    if (!role) {
+      throw new ForbiddenException('You are not a member of this project.');
     }
-
-    if (userId === project.consultant_id) {
-      return getTemplateByKey('consultant');
-    }
-
-    if (userId === project.client_id) {
-      return getTemplateByKey('client');
-    }
-
-    throw new ForbiddenException('You are not a member of this project.');
+    return this.synthesizePermissionsFromRole(role);
   }
 
   async updateMemberPermissions(

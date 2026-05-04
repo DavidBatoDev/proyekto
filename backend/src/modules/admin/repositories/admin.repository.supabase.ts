@@ -319,35 +319,23 @@ export class SupabaseAdminRepository implements AdminRepository {
       .single();
     if (error || !data) throw new NotFoundException('Project not found');
 
-    const { data: existingMember, error: existingMemberError } =
-      await this.supabase
-        .from('project_members')
-        .select('id, role')
-        .eq('project_id', projectId)
-        .eq('user_id', consultantId)
-        .maybeSingle();
-
-    if (existingMemberError) throw new Error(existingMemberError.message);
-
-    if (existingMember) {
-      const { error: updateMemberError } = await this.supabase
-        .from('project_members')
-        .update({ role: 'consultant', position: 'Main Consultant' })
-        .eq('id', existingMember.id);
-
-      if (updateMemberError) throw new Error(updateMemberError.message);
-    } else {
-      const { error: insertMemberError } = await this.supabase
-        .from('project_members')
-        .insert({
+    // Slice 3b: assigned consultant gets owner role on project_shares
+    // (matches the auto-grant rules in design.md). Upsert handles both
+    // first-time grant and re-grant if the consultant already has a row.
+    const { error: shareError } = await this.supabase
+      .from('project_shares')
+      .upsert(
+        {
           project_id: projectId,
           user_id: consultantId,
-          role: 'consultant',
-          position: 'Main Consultant',
-        });
+          role: 'owner',
+          origin: 'consultant',
+          granted_by: consultantId,
+        },
+        { onConflict: 'project_id,user_id' },
+      );
 
-      if (insertMemberError) throw new Error(insertMemberError.message);
-    }
+    if (shareError) throw new Error(shareError.message);
 
     return data;
   }

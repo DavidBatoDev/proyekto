@@ -18,7 +18,6 @@ import {
   CreateProjectResourceFolderDto,
   CreateProjectResourceLinkDto,
   InviteProjectByEmailDto,
-  ProjectMemberRole,
   ProjectInviteQueryDto,
   ReorderProjectResourceFoldersDto,
   ReorderProjectResourceLinksDto,
@@ -29,11 +28,6 @@ import {
   UpdateProjectResourceFolderDto,
   UpdateProjectResourceLinkDto,
 } from '../dto/project.dto';
-import {
-  applyClientInviteRestrictions,
-  getTemplateByKey,
-  resolvePermissionTemplateKey,
-} from '../permissions/project-permissions';
 import type { ProjectPermissions } from '../permissions/project-permissions';
 import type {
   ProjectResourceFolderWithLinks,
@@ -86,57 +80,10 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     return payload;
   }
 
-  private getDefaultPermissionsForMember(params: {
-    projectId: string;
-    clientId: string;
-    consultantId?: string | null;
-    member: {
-      user_id: string | null;
-      role: ProjectMemberRole;
-    };
-  }) {
-    const templateKey = resolvePermissionTemplateKey(
-      {
-        id: params.projectId,
-        client_id: params.clientId,
-        consultant_id: params.consultantId,
-      },
-      {
-        id: 'n/a',
-        user_id: params.member.user_id,
-        role: params.member.role,
-      },
-    );
-
-    return getTemplateByKey(templateKey);
-  }
-
-  private enforceConsultantTimePermissions(
-    permissions: ProjectPermissions,
-    role: string,
-  ): ProjectPermissions {
-    if (String(role).trim().toLowerCase() !== ProjectMemberRole.CONSULTANT) {
-      return permissions;
-    }
-
-    return {
-      ...permissions,
-      time: {
-        view: true,
-        view_financial: true,
-        log: true,
-        edit_own: true,
-        edit_team: true,
-        approve: true,
-        manage_rates: true,
-        delete_logs: true,
-      },
-    };
-  }
-
   async findByUser(userId: string): Promise<Project[]> {
+    // Slice 3b: project membership lives in project_shares.
     const { data } = await this.supabase
-      .from('project_members')
+      .from('project_shares')
       .select(
         'project:projects(*, client:profiles!projects_client_id_fkey(id, display_name, avatar_url, email))',
       )
@@ -155,8 +102,9 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
           '*, client:profiles!projects_client_id_fkey(id, display_name, avatar_url, email), consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, email)',
         )
         .or(`client_id.eq.${userId},consultant_id.eq.${userId}`),
+      // Slice 3b: project_shares is the source of truth for membership.
       this.supabase
-        .from('project_members')
+        .from('project_shares')
         .select(
           'project:projects(*, client:profiles!projects_client_id_fkey(id, display_name, avatar_url, email), consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, email))',
         )
@@ -194,6 +142,11 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       })
     | null
   > {
+    // Slice 3b: members are sourced from project_shares. The legacy
+    // `position` and `permissions_json` fields are dropped from the response
+    // shape — UI uses display_name + role instead. We synthesize a `role`
+    // text matching the legacy values where downstream code still expects
+    // those strings (consultant/client/member); see the post-query mapping.
     const { data, error } = await this.supabase
       .from('projects')
       .select(
@@ -201,7 +154,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         *,
         client:profiles!projects_client_id_fkey(id, display_name, avatar_url, headline, email),
         consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, headline, email),
-        members:project_members(id, project_id, user_id, role, position, permissions_json, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified))
+        members:project_shares(id, project_id, user_id, role, origin, granted_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified))
       `,
       )
       .eq('id', id)
@@ -233,18 +186,9 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     if (error || !project)
       throw new Error(error?.message ?? 'Failed to create project');
 
-    // Auto-add creator to the team with mode-specific bootstrap permissions.
-    await this.supabase.from('project_members').insert({
-      project_id: project.id,
-      user_id: userId,
-      role: isConsultantMode
-        ? ProjectMemberRole.CONSULTANT
-        : ProjectMemberRole.CLIENT,
-      position: isConsultantMode ? 'Main Consultant' : 'Client',
-      permissions_json: isConsultantMode
-        ? getTemplateByKey('consultant_incubation')
-        : getTemplateByKey('client'),
-    });
+    // Slice 3b: project_members write removed. project_shares write happens
+    // in ProjectsService.createProject (admin role for client mode, owner
+    // role for consultant mode) via ProjectAuthorizationService.grant.
 
     return project as Project;
   }
@@ -325,75 +269,9 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       );
     }
 
-    const { error: newOwnerMemberError } = await this.supabase
-      .from('project_members')
-      .upsert(
-        {
-          project_id: projectId,
-          user_id: newOwnerId,
-          role: ProjectMemberRole.CLIENT,
-          position: 'Client',
-          permissions_json: getTemplateByKey('client'),
-        },
-        { onConflict: 'project_id,user_id' },
-      );
-
-    if (newOwnerMemberError) {
-      throw new BadRequestException(
-        newOwnerMemberError.message ||
-          'Failed to update new owner project membership.',
-      );
-    }
-
-    if (previousOwnerId !== newOwnerId) {
-      const consultantId =
-        (currentProject.consultant_id as string | null) ?? null;
-      const previousOwnerIsConsultant = consultantId === previousOwnerId;
-
-      // Keep consultant identity when the previous owner is also the consultant.
-      if (previousOwnerIsConsultant) {
-        const { error: previousConsultantError } = await this.supabase
-          .from('project_members')
-          .upsert(
-            {
-              project_id: projectId,
-              user_id: previousOwnerId,
-              role: ProjectMemberRole.CONSULTANT,
-              position: 'Main Consultant',
-              permissions_json: getTemplateByKey('consultant'),
-            },
-            { onConflict: 'project_id,user_id' },
-          );
-
-        if (previousConsultantError) {
-          throw new BadRequestException(
-            previousConsultantError.message ||
-              'Failed to sync previous owner consultant membership.',
-          );
-        }
-      } else {
-        const { error: previousOwnerMemberError } = await this.supabase
-          .from('project_members')
-          .upsert(
-            {
-              project_id: projectId,
-              user_id: previousOwnerId,
-              role: ProjectMemberRole.MEMBER,
-              position: 'Member',
-              permissions_json: getTemplateByKey('member'),
-            },
-            { onConflict: 'project_id,user_id' },
-          );
-
-        if (previousOwnerMemberError) {
-          throw new BadRequestException(
-            previousOwnerMemberError.message ||
-              'Failed to sync previous owner membership.',
-          );
-        }
-      }
-    }
-
+    // Slice 3b: project_members syncing dropped. project_shares is the
+    // source of truth and is updated at the service layer via
+    // ProjectAuthorizationService.grant/revoke on transferOwner.
     return updatedProject as Project;
   }
 
@@ -416,53 +294,8 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       );
     }
 
-    const { error: newConsultantError } = await this.supabase
-      .from('project_members')
-      .upsert(
-        {
-          project_id: projectId,
-          user_id: newConsultantId,
-          role: ProjectMemberRole.CONSULTANT,
-          position: 'Main Consultant',
-          permissions_json: getTemplateByKey('consultant'),
-        },
-        { onConflict: 'project_id,user_id' },
-      );
-
-    if (newConsultantError) {
-      throw new BadRequestException(
-        newConsultantError.message || 'Failed to sync new consultant membership.',
-      );
-    }
-
-    if (previousConsultantId && previousConsultantId !== newConsultantId) {
-      const previousConsultantBecomesClient = previousConsultantId === ownerId;
-
-      const { error: previousConsultantError } = await this.supabase
-        .from('project_members')
-        .upsert(
-          {
-            project_id: projectId,
-            user_id: previousConsultantId,
-            role: previousConsultantBecomesClient
-              ? ProjectMemberRole.CLIENT
-              : ProjectMemberRole.MEMBER,
-            position: previousConsultantBecomesClient ? 'Client' : 'Member',
-            permissions_json: previousConsultantBecomesClient
-              ? getTemplateByKey('client')
-              : getTemplateByKey('member'),
-          },
-          { onConflict: 'project_id,user_id' },
-        );
-
-      if (previousConsultantError) {
-        throw new BadRequestException(
-          previousConsultantError.message ||
-            'Failed to sync previous consultant membership.',
-        );
-      }
-    }
-
+    // Slice 3b: project_members syncing dropped. project_shares is updated
+    // at the service layer via ProjectsService.reassignProjectConsultant.
     return updatedProject as Project;
   }
 
@@ -479,17 +312,8 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
 
     if (error || !data) throw new NotFoundException('Project not found');
 
-    // Upsert consultant as project member
-    await this.supabase.from('project_members').upsert(
-      {
-        project_id: projectId,
-        user_id: consultantId,
-        role: ProjectMemberRole.CONSULTANT,
-        position: 'Main Consultant',
-        permissions_json: getTemplateByKey('consultant'),
-      },
-      { onConflict: 'project_id,user_id' },
-    );
+    // Slice 3b: project_members write dropped. project_shares is updated at
+    // the service layer (ProjectsService.assignConsultant grants owner role).
 
     return data as Project;
   }
@@ -547,25 +371,24 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       userId = profile.id as string;
     }
 
+    // Slice 3b: addMember writes a project_shares row directly. Default
+    // role for direct adds (vs invite-accept) is `editor`. The caller's
+    // controller endpoint should validate they have admin+ role.
+    if (!userId) {
+      throw new BadRequestException(
+        'addMember requires a registered user — invite by email instead.',
+      );
+    }
     const { data, error } = await this.supabase
-      .from('project_members')
+      .from('project_shares')
       .insert({
         project_id: projectId,
         user_id: userId,
-        role: ProjectMemberRole.MEMBER,
-        position: dto.position,
-        permissions_json: this.getDefaultPermissionsForMember({
-          projectId,
-          clientId: projectRow.client_id as string,
-          consultantId: (projectRow.consultant_id as string | null) || null,
-          member: {
-            user_id: userId,
-            role: ProjectMemberRole.MEMBER,
-          },
-        }),
+        role: 'editor',
+        origin: 'invited',
       })
       .select(
-        'id, project_id, user_id, role, position, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
+        'id, project_id, user_id, role, origin, granted_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
       )
       .single();
 
@@ -679,50 +502,26 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     role: string,
     permissions: ProjectPermissions,
   ): Promise<void> {
-    // Persist the role template on the project so it can be reloaded later.
-    // Falls back gracefully if the column isn't in the schema cache yet.
+    // Slice 3b: legacy permissions_json template system removed. Role
+    // determines permission via the project_shares.role hierarchy +
+    // capabilities JSONB; templates per role are no longer stored or
+    // applied. We keep the role template stored on the projects row so
+    // legacy UI showing "what does this role currently grant?" stays
+    // functional, but no per-member sync happens.
     const { data: projectData, error: selectErr } = await this.supabase
       .from('projects')
       .select('role_permissions_json')
       .eq('id', projectId)
       .single();
     if (!selectErr && projectData !== null) {
-      const existingTemplates = (projectData.role_permissions_json as Record<string, unknown>) ?? {};
-      const { error: updateErr } = await this.supabase
+      const existingTemplates =
+        (projectData.role_permissions_json as Record<string, unknown>) ?? {};
+      await this.supabase
         .from('projects')
-        .update({ role_permissions_json: { ...existingTemplates, [role]: permissions } })
+        .update({
+          role_permissions_json: { ...existingTemplates, [role]: permissions },
+        })
         .eq('id', projectId);
-      if (updateErr) {
-        // Column not in schema cache yet (migration just applied). Non-fatal.
-        console.warn('[updateRoleMemberPermissions] role template not stored:', updateErr.message);
-      }
-    }
-
-    // Apply to existing members via union merge.
-    const { data: members, error: fetchError } = await this.supabase
-      .from('project_members')
-      .select('id, permissions_json')
-      .eq('project_id', projectId)
-      .eq('role', role);
-
-    if (fetchError) throw new BadRequestException(fetchError.message);
-    if (!members?.length) return;
-
-    // Union merge: preserve any permission a member already has true.
-    for (const member of members) {
-      const existing = (member.permissions_json as Record<string, Record<string, boolean>> | null) ?? {};
-      const merged = structuredClone(permissions) as unknown as Record<string, Record<string, boolean>>;
-      for (const section of Object.keys(merged)) {
-        const existingSection = existing[section] ?? {};
-        for (const key of Object.keys(merged[section])) {
-          merged[section][key] = merged[section][key] || (existingSection[key] === true);
-        }
-      }
-      const { error } = await this.supabase
-        .from('project_members')
-        .update({ permissions_json: merged as unknown as Record<string, unknown> })
-        .eq('id', member.id);
-      if (error) throw new BadRequestException(error.message);
     }
   }
 
@@ -862,67 +661,10 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       );
     }
 
-    if (dto.status === 'accepted') {
-      const { data: projectRow } = await this.supabase
-        .from('projects')
-        .select('id, client_id, consultant_id')
-        .eq('id', invite.project_id)
-        .single();
-
-      if (!projectRow) {
-        throw new NotFoundException('Project not found.');
-      }
-
-      const invitedPosition = (invite.invited_position as string | null) ?? '';
-      const memberRole =
-        invitedPosition === 'consultant'
-          ? ProjectMemberRole.CONSULTANT
-          : invitedPosition === 'client'
-            ? ProjectMemberRole.CLIENT
-            : ProjectMemberRole.MEMBER;
-
-      const displayPosition =
-        memberRole === ProjectMemberRole.CONSULTANT
-          ? 'Consultant'
-          : memberRole === ProjectMemberRole.CLIENT
-            ? 'Client'
-            : invitedPosition || 'Member';
-
-      const defaultPermissions = this.getDefaultPermissionsForMember({
-        projectId: invite.project_id as string,
-        clientId: projectRow.client_id as string,
-        consultantId: (projectRow.consultant_id as string | null) || null,
-        member: {
-          user_id: userId,
-          role: memberRole,
-        },
-      });
-      const invitedByClient =
-        String(invite.invited_by || '') === String(projectRow.client_id || '');
-      const finalPermissions = memberRole === ProjectMemberRole.MEMBER
-        ? applyClientInviteRestrictions(defaultPermissions, invitedByClient)
-        : defaultPermissions;
-
-      const { error: memberError } = await this.supabase
-        .from('project_members')
-        .upsert(
-          {
-            project_id: invite.project_id,
-            user_id: userId,
-            role: memberRole,
-            position: displayPosition,
-            permissions_json: finalPermissions,
-          },
-          { onConflict: 'project_id,user_id' },
-        );
-
-      if (memberError) {
-        throw new BadRequestException(
-          memberError.message || 'Failed to add member to project members.',
-        );
-      }
-    }
-
+    // Slice 3b: project_shares grant on accept now happens at the service
+    // layer (ProjectsService.respondInvite calls ProjectAuthorizationService.
+    // grant with the invite's default_role). Repository no longer writes
+    // membership rows. Returning the updated invite is sufficient.
     return updatedInvite;
   }
 
@@ -931,78 +673,58 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     memberId: string,
     dto: UpdateProjectMemberDto,
   ): Promise<unknown> {
+    // Slice 3b: project_members CRUD now operates on project_shares.
+    // The `memberId` param is now the project_shares.id. Position has no
+    // equivalent on project_shares — silently dropped from the patch.
+    // Role updates map legacy role names ('member'|'client'|'consultant')
+    // to share_role values; passing a share_role directly also works.
     const patch: Record<string, unknown> = {};
-    if (dto.role !== undefined) patch.role = dto.role;
-    if (dto.position !== undefined) patch.position = dto.position;
+    if (dto.role !== undefined) {
+      const r = String(dto.role).toLowerCase();
+      patch.role =
+        r === 'consultant'
+          ? 'owner'
+          : r === 'client'
+            ? 'admin'
+            : r === 'member'
+              ? 'editor'
+              : r; // already a share_role value
+    }
+
+    if (Object.keys(patch).length === 0) {
+      // Nothing to update; just return the current row.
+      const { data: current } = await this.supabase
+        .from('project_shares')
+        .select(
+          'id, project_id, user_id, role, origin, granted_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
+        )
+        .eq('id', memberId)
+        .eq('project_id', projectId)
+        .single();
+      return current;
+    }
 
     const { data, error } = await this.supabase
-      .from('project_members')
+      .from('project_shares')
       .update(patch)
       .eq('id', memberId)
       .eq('project_id', projectId)
       .select(
-        'id, project_id, user_id, role, position, permissions_json, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
+        'id, project_id, user_id, role, origin, granted_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
       )
       .single();
 
     if (error) throw new BadRequestException(error.message);
-
-    const role = String((data as Record<string, unknown>).role ?? '')
-      .trim()
-      .toLowerCase();
-
-    if (role === ProjectMemberRole.CONSULTANT) {
-      const currentPermissions =
-        (data as { permissions_json?: Record<string, unknown> })
-          .permissions_json ?? {};
-      const normalized = this.enforceConsultantTimePermissions(
-        currentPermissions as ProjectPermissions,
-        role,
-      );
-
-      const { data: updated, error: updatePermissionsError } =
-        await this.supabase
-          .from('project_members')
-          .update({ permissions_json: normalized })
-          .eq('id', memberId)
-          .eq('project_id', projectId)
-          .select(
-            'id, project_id, user_id, role, position, permissions_json, joined_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
-          )
-          .single();
-
-      if (updatePermissionsError) {
-        throw new BadRequestException(updatePermissionsError.message);
-      }
-
-      return updated;
-    }
-
     return data;
   }
 
   async removeMember(projectId: string, memberId: string): Promise<void> {
-    // Prevent removing project leads.
-    const { data: existing } = await this.supabase
-      .from('project_members')
-      .select('id, role')
-      .eq('id', memberId)
-      .eq('project_id', projectId)
-      .single();
-
-    if (!existing) throw new NotFoundException('Member not found');
-    const role = String((existing as Record<string, unknown>).role ?? '')
-      .trim()
-      .toLowerCase();
-    if (
-      role === ProjectMemberRole.CLIENT ||
-      role === ProjectMemberRole.CONSULTANT
-    ) {
-      throw new BadRequestException('Project leads cannot be removed.');
-    }
-
+    // Slice 3b: removeMember deletes the project_shares row. Last-owner
+    // protection lives in ProjectAuthorizationService.revoke; the controller
+    // should call that instead for proper enforcement. This direct delete is
+    // kept as a low-level repository primitive for legacy callers.
     const { error } = await this.supabase
-      .from('project_members')
+      .from('project_shares')
       .delete()
       .eq('id', memberId)
       .eq('project_id', projectId);
@@ -1096,21 +818,24 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     position?: string | null;
     permissions_json?: Record<string, unknown> | null;
   } | null> {
+    // Slice 3b: getMemberById now reads project_shares. memberId is the
+    // project_shares.id. Returns the legacy shape so existing callers keep
+    // working; permissions_json is empty (no longer the source of truth).
     const { data, error } = await this.supabase
-      .from('project_members')
-      .select('id, user_id, role, position, permissions_json')
+      .from('project_shares')
+      .select('id, user_id, role, origin')
       .eq('project_id', projectId)
       .eq('id', memberId)
       .limit(1)
       .maybeSingle();
 
     if (error || !data) return null;
-    return data as {
-      id: string;
-      user_id: string | null;
-      role: string;
-      position?: string | null;
-      permissions_json?: Record<string, unknown> | null;
+    return {
+      id: data.id as string,
+      user_id: data.user_id as string | null,
+      role: String(data.role),
+      position: null,
+      permissions_json: null,
     };
   }
 
@@ -1124,81 +849,52 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     position?: string | null;
     permissions_json?: Record<string, unknown> | null;
   } | null> {
+    // Slice 3b: lookup via project_shares.
     const { data, error } = await this.supabase
-      .from('project_members')
-      .select('id, user_id, role, position, permissions_json')
+      .from('project_shares')
+      .select('id, user_id, role, origin')
       .eq('project_id', projectId)
       .eq('user_id', userId)
       .limit(1)
       .maybeSingle();
 
     if (error || !data) return null;
-    return data as {
-      id: string;
-      user_id: string | null;
-      role: string;
-      position?: string | null;
-      permissions_json?: Record<string, unknown> | null;
+    return {
+      id: data.id as string,
+      user_id: data.user_id as string | null,
+      role: String(data.role),
+      position: null,
+      permissions_json: null,
     };
   }
 
   async getMemberPermissions(
-    projectId: string,
-    memberId: string,
+    _projectId: string,
+    _memberId: string,
   ): Promise<ProjectPermissions | null> {
-    const { data, error } = await this.supabase
-      .from('project_members')
-      .select('permissions_json')
-      .eq('project_id', projectId)
-      .eq('id', memberId)
-      .maybeSingle();
-
-    if (error || !data) return null;
-    return (data.permissions_json || null) as ProjectPermissions | null;
+    // Slice 3b: per-member permissions_json is gone. Authority comes from
+    // project_shares.role; per-share capabilities (a small JSONB on the
+    // share row) handle overrides. Legacy callers requesting "what's the
+    // permissions_json for this member" get null — they should switch to
+    // role-based checks.
+    return null;
   }
 
   async updateMemberPermissions(
     projectId: string,
     memberId: string,
-    dto: UpdateProjectMemberPermissionsDto,
+    _dto: UpdateProjectMemberPermissionsDto,
   ): Promise<unknown> {
-    const patch: Record<string, unknown> = {};
-    if (dto.access !== undefined) patch.access = dto.access;
-    if (dto.roadmap !== undefined) patch.roadmap = dto.roadmap;
-    if (dto.members !== undefined) patch.members = dto.members;
-    if (dto.project !== undefined) patch.project = dto.project;
-    if (dto.time !== undefined) patch.time = dto.time;
-    if (dto.chat !== undefined) patch.chat = dto.chat;
-    if (dto.resources !== undefined) patch.resources = dto.resources;
-    if (dto.logs !== undefined) patch.logs = dto.logs;
-
-    const existing = await this.getMemberPermissions(projectId, memberId);
+    // Slice 3b: permissions_json updates are no-ops. Roles + capabilities
+    // on project_shares are the source of truth — a controller should
+    // either change role (via updateMember) or set a capability flag
+    // explicitly (future). Returning the share row keeps the API contract
+    // shape stable for existing UI; the permissions_json field is empty.
     const member = await this.getMemberById(projectId, memberId);
     if (!member) {
       throw new NotFoundException('Member not found');
     }
-
-    const merged: Record<string, unknown> = {
-      ...(existing || {}),
-      ...patch,
-    };
-    const normalizedMerged = this.enforceConsultantTimePermissions(
-      merged as ProjectPermissions,
-      member.role,
-    );
-
-    const { data, error } = await this.supabase
-      .from('project_members')
-      .update({ permissions_json: normalizedMerged })
-      .eq('id', memberId)
-      .eq('project_id', projectId)
-      .select(
-        'id, project_id, user_id, role, position, permissions_json, joined_at',
-      )
-      .single();
-
-    if (error) throw new BadRequestException(error.message);
-    return data;
+    return member;
   }
 
   private normalizeRequiredText(

@@ -6,7 +6,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ProjectsService } from '../projects/projects.service';
-import { hasPermission } from '../projects/permissions/project-permissions';
 import {
   BulkReviewTimeLogsDto,
   CreateProjectMemberTimeRateDto,
@@ -151,24 +150,14 @@ export class ProjectTimeService {
     userId: string,
     projectId: string,
   ): Promise<ProjectMemberTimeRateRecord[]> {
-    const permissions = await this.projectsService.getMyPermissions(
+    // Tech-debt cleanup: replaced legacy hasPermission lookup with role-based.
+    // 'time.edit_team' = admin+ (see permissionToMinRole in projects.service).
+    // assertProjectPermission handles the ForbiddenException + 404 for us.
+    await this.projectsService.assertProjectPermission(
       projectId,
       userId,
+      'time.edit_team',
     );
-    const canManageRates = hasPermission(permissions, 'time.manage_rates');
-    const canViewTeamRates =
-      hasPermission(permissions, 'time.edit_team') || canManageRates;
-
-    if (!canViewTeamRates) {
-      throw new ForbiddenException(
-        'You do not have permission to view team time rates.',
-      );
-    }
-
-    if (!canManageRates) {
-      await this.assertTimeRateEnabled(projectId, userId);
-    }
-
     return this.repo.listProjectMemberRates(projectId);
   }
 

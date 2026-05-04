@@ -2,7 +2,6 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 import type { ProjectsRepository } from './repositories/projects.repository.interface';
 import type { Project } from '../../common/entities';
-import { getTemplateByKey } from './permissions/project-permissions';
 
 function buildProject(overrides: Partial<Project> = {}): Project {
   return {
@@ -54,59 +53,39 @@ describe('ProjectsService (permissions)', () => {
     jest.clearAllMocks();
   });
 
-  it('uses member defaults with team-page view enabled', () => {
-    const permissions = getTemplateByKey('member');
+  // Tech-debt cleanup: legacy member-template behavior is gone. The
+  // synthesized-permissions test below covers the equivalent behavior
+  // (an editor sees view=true, manage=false on members).
 
-    expect(permissions.members.manage).toBe(false);
-    expect(permissions.members.view).toBe(true);
-  });
-
-  it('hydrates and persists member defaults when member permissions are empty', async () => {
+  it('synthesizes role-derived permissions from project_shares for getMyPermissions', async () => {
+    // Tech-debt cleanup: legacy permissions_json hydration is gone.
+    // getMyPermissions now derives a permissions object from project_shares
+    // role. An editor sees view=true, manage=false on members.
     const repo = {
       findById: jest.fn().mockResolvedValue(buildProject()),
-      getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
-        id: 'member-row-1',
-        user_id: 'member-1',
-        role: 'member',
-        permissions_json: null,
-      }),
-      updateMemberPermissions: jest.fn().mockResolvedValue({}),
     };
-    const service = buildService(repo);
+    const service = buildService(repo, {
+      getUserProjectRole: jest.fn().mockResolvedValue('editor'),
+    });
 
     const result = await service.getMyPermissions('project-1', 'member-1');
 
     expect(result.members.manage).toBe(false);
     expect(result.members.view).toBe(true);
-    expect(repo.updateMemberPermissions).toHaveBeenCalledWith(
-      'project-1',
-      'member-row-1',
-      expect.objectContaining({
-        members: expect.objectContaining({
-          manage: false,
-          view: true,
-        }),
-      }),
-    );
   });
 
-  it('rejects permission updates when caller is project client', async () => {
+  it('rejects permission updates when caller has no admin+ role', async () => {
+    // Tech-debt cleanup: gate is now role-based via assertCanManageMembers
+    // → assertRole('admin'). An editor (or lower) gets ForbiddenException.
     const repo = {
       findById: jest.fn().mockResolvedValue(buildProject()),
-      getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
-        id: 'client-row-1',
-        user_id: 'client-1',
-        role: 'client',
-        permissions_json: getTemplateByKey('client'),
-      }),
-      getMemberById: jest.fn().mockResolvedValue({
-        id: 'member-row-1',
-        user_id: 'member-1',
-        role: 'member',
-      }),
-      updateMemberPermissions: jest.fn().mockResolvedValue({}),
     };
-    const service = buildService(repo);
+    const service = buildService(repo, {
+      getUserProjectRole: jest.fn().mockResolvedValue('editor'),
+      assertRole: jest
+        .fn()
+        .mockRejectedValue(new ForbiddenException('Insufficient role')),
+    });
 
     await expect(
       service.updateMemberPermissions('project-1', 'member-row-1', 'client-1', {
@@ -118,26 +97,21 @@ describe('ProjectsService (permissions)', () => {
         },
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
-    expect(repo.updateMemberPermissions).not.toHaveBeenCalled();
   });
 
-  it('allows permission updates when caller is project consultant', async () => {
+  it('allows permission updates when caller has admin+ role', async () => {
     const repo = {
-      findById: jest.fn().mockResolvedValue(buildProject()),
-      getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
-        id: 'consultant-row-1',
-        user_id: 'consultant-1',
-        role: 'consultant',
-        permissions_json: getTemplateByKey('consultant'),
-      }),
+      findById: jest.fn().mockResolvedValue(buildProject({ consultant_id: undefined })),
       getMemberById: jest.fn().mockResolvedValue({
         id: 'member-row-1',
         user_id: 'member-1',
-        role: 'member',
+        role: 'editor',
       }),
       updateMemberPermissions: jest.fn().mockResolvedValue({ ok: true }),
     };
-    const service = buildService(repo);
+    const service = buildService(repo, {
+      getUserProjectRole: jest.fn().mockResolvedValue('owner'),
+    });
 
     await expect(
       service.updateMemberPermissions(

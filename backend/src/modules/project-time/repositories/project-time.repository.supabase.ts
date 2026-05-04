@@ -14,10 +14,14 @@ import type {
 export class ProjectTimeRepositorySupabase implements ProjectTimeRepository {
   constructor(@Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient) {}
 
+  // Slice 3b: dropped the JOIN to project_members. The legacy
+  // `project_member` field on the response is no longer populated; the
+  // frontend falls back to defaults ("member" role, "Project Member"
+  // position) when it's absent. project_member_id is now an opaque per-user
+  // identifier — equal to member_user_id since the FK was decoupled.
   private readonly rateSelectClause = `
     *,
-    member:profiles!project_member_time_rates_member_user_id_fkey(id, display_name, email, avatar_url, banner_url),
-    project_member:project_members!project_member_time_rates_project_member_id_fkey(id, role, position)
+    member:profiles!project_member_time_rates_member_user_id_fkey(id, display_name, email, avatar_url, banner_url)
   `;
 
   private readonly selectClause = `
@@ -187,9 +191,17 @@ export class ProjectTimeRepositorySupabase implements ProjectTimeRepository {
     start_date: string;
     end_date?: string | null;
   }): Promise<ProjectMemberTimeRateRecord> {
+    // Slice 3b: project_member_id is now an opaque per-user identifier.
+    // Always align it with member_user_id on insert so the column stays
+    // semantically consistent. (Frontend treats it as the URL key for
+    // /team-logs/$projectMemberId.)
+    const insertPayload = {
+      ...params,
+      project_member_id: params.member_user_id,
+    };
     const { data, error } = await this.db
       .from('project_member_time_rates')
-      .insert(params)
+      .insert(insertPayload)
       .select(this.rateSelectClause)
       .single();
     if (error) throw new Error(error.message);
@@ -228,17 +240,19 @@ export class ProjectTimeRepositorySupabase implements ProjectTimeRepository {
     projectId: string,
     userId: string,
   ): Promise<{ id: string; user_id: string | null } | null> {
+    // Slice 3b: project membership is now project_shares. The "id" we
+    // expose is the user's id (matches the opaque project_member_id).
     const { data, error } = await this.db
-      .from('project_members')
-      .select('id, user_id')
+      .from('project_shares')
+      .select('user_id')
       .eq('project_id', projectId)
       .eq('user_id', userId)
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return null;
     return {
-      id: data.id as string,
-      user_id: (data.user_id as string | null | undefined) ?? null,
+      id: data.user_id as string,
+      user_id: data.user_id as string,
     };
   }
 
@@ -246,17 +260,19 @@ export class ProjectTimeRepositorySupabase implements ProjectTimeRepository {
     projectId: string,
     projectMemberId: string,
   ): Promise<{ id: string; user_id: string | null } | null> {
+    // Slice 3b: projectMemberId is now opaque == user_id. Look up via
+    // project_shares to confirm membership.
     const { data, error } = await this.db
-      .from('project_members')
-      .select('id, user_id')
+      .from('project_shares')
+      .select('user_id')
       .eq('project_id', projectId)
-      .eq('id', projectMemberId)
+      .eq('user_id', projectMemberId)
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return null;
     return {
-      id: data.id as string,
-      user_id: (data.user_id as string | null | undefined) ?? null,
+      id: data.user_id as string,
+      user_id: data.user_id as string,
     };
   }
 

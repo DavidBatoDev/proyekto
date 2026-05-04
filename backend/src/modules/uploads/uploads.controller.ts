@@ -135,22 +135,19 @@ export class UploadsService {
       consultant_id: string | null;
     };
 
-    // Primary check: user is the registered client or consultant on the project
-    let canEdit = p.client_id === userId || p.consultant_id === userId;
+    // Slice 3b: project_shares is the source of truth for project authz.
+    // Banner edits require admin+ role.
+    let canEdit = false;
+    const { data: share } = await this.supabase
+      .from('project_shares')
+      .select('role')
+      .eq('project_id', dto.project_id)
+      .eq('user_id', userId)
+      .maybeSingle();
 
-    // Fallback: also allow project members with lead roles
-    if (!canEdit) {
-      const { data: member } = await this.supabase
-        .from('project_members')
-        .select('role')
-        .eq('project_id', dto.project_id)
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (member) {
-        const role = ((member as { role: string }).role ?? '').toLowerCase();
-        canEdit = role === 'client' || role === 'consultant';
-      }
+    if (share) {
+      const role = (share as { role: string }).role;
+      canEdit = role === 'owner' || role === 'admin';
     }
 
     if (!canEdit) {

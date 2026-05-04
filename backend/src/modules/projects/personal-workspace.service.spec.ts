@@ -81,10 +81,19 @@ describe('PersonalWorkspaceService', () => {
       expect(projects.insert).not.toHaveBeenCalled();
     });
 
-    it('creates a new workspace and attaches owner member when none exists', async () => {
+    it('creates a new workspace and grants the owner share when none exists', async () => {
       const projects = makeQueryStub();
       const profiles = makeQueryStub();
-      const projectMembers = makeQueryStub();
+      const grantSpy = jest.fn().mockResolvedValue({
+        id: 'share-2',
+        project_id: 'ws-2',
+        user_id: 'user-2',
+        role: 'owner',
+        origin: 'personal_workspace',
+        capabilities: {},
+        granted_by: 'user-2',
+        granted_at: '2026-05-04T00:00:00Z',
+      });
 
       // findExisting -> not found
       projects.maybeSingle.mockResolvedValueOnce({ data: null, error: null });
@@ -104,26 +113,18 @@ describe('PersonalWorkspaceService', () => {
         },
         error: null,
       });
-      // attach owner member -> success
-      projectMembers.insert.mockReturnValueOnce(
-        Promise.resolve({ error: null }) as any,
-      );
 
-      const service = buildService({
-        projects,
-        profiles,
-        project_members: projectMembers,
-      });
+      const service = buildService({ projects, profiles }, { grant: grantSpy });
       const result = await service.provision('user-2');
 
       expect(result.title).toBe("Alex's Workspace");
-      expect(projectMembers.insert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          project_id: 'ws-2',
-          user_id: 'user-2',
-          permissions_json: { is_owner: true },
-        }),
-      );
+      expect(grantSpy).toHaveBeenCalledWith({
+        projectId: 'ws-2',
+        userId: 'user-2',
+        role: 'owner',
+        origin: 'personal_workspace',
+        grantedBy: 'user-2',
+      });
     });
 
     it('falls back to the surviving row on partial-unique-index race (23505)', async () => {
@@ -163,7 +164,6 @@ describe('PersonalWorkspaceService', () => {
     it("falls back to 'My' when neither first_name nor display_name is set", async () => {
       const projects = makeQueryStub();
       const profiles = makeQueryStub();
-      const projectMembers = makeQueryStub();
 
       projects.maybeSingle.mockResolvedValueOnce({ data: null, error: null });
       profiles.maybeSingle.mockResolvedValueOnce({
@@ -180,15 +180,8 @@ describe('PersonalWorkspaceService', () => {
         },
         error: null,
       });
-      projectMembers.insert.mockReturnValueOnce(
-        Promise.resolve({ error: null }) as any,
-      );
 
-      const service = buildService({
-        projects,
-        profiles,
-        project_members: projectMembers,
-      });
+      const service = buildService({ projects, profiles });
 
       await service.provision('user-4');
 

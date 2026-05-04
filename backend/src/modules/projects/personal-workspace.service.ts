@@ -64,12 +64,9 @@ export class PersonalWorkspaceService {
       throw new Error('Personal workspace insert returned no row');
     }
 
-    // Dual-write during slice 2 transition: project_shares is the new source
-    // of truth; project_members is kept for backward compatibility with
-    // unmodified RLS policies on dependent tables (work_items, milestones,
-    // etc). Slice 3 drops the project_members write.
+    // Slice 3b: project_members dual-write removed. project_shares is the
+    // sole source of truth for project membership and authorization.
     await this.attachOwnerShare(created.id, userId);
-    await this.attachOwnerMember(created.id, userId);
 
     return created as PersonalWorkspace;
   }
@@ -137,27 +134,4 @@ export class PersonalWorkspaceService {
     return `${name}'s Workspace`;
   }
 
-  private async attachOwnerMember(
-    projectId: string,
-    userId: string,
-  ): Promise<void> {
-    // Interim ownership marker until project_shares lands in a later slice.
-    const { error } = await this.supabase.from('project_members').insert({
-      project_id: projectId,
-      user_id: userId,
-      role: 'member',
-      position: 'Owner',
-      permissions_json: { is_owner: true },
-    });
-
-    if (error) {
-      // Don't roll back the project — re-running provision() would reuse it
-      // and a follow-up call to attachOwnerMember could re-attempt. But for
-      // hygiene we surface the error so the caller can decide.
-      this.logger.error(
-        `Failed to attach owner member ${userId} to workspace ${projectId}: ${error.message}`,
-      );
-      throw new Error(error.message);
-    }
-  }
 }

@@ -58,8 +58,9 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
         .from('projects')
         .select('id')
         .or(`client_id.eq.${userId},consultant_id.eq.${userId}`),
+      // Slice 3b: project membership now lives in project_shares.
       this.db
-        .from('project_members')
+        .from('project_shares')
         .select('project_id')
         .eq('user_id', userId),
     ]);
@@ -105,8 +106,9 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     if (projectError) throw new Error(projectError.message);
     if (project) return true;
 
+    // Slice 3b: project membership lives in project_shares.
     const { data, error } = await this.db
-      .from('project_members')
+      .from('project_shares')
       .select('id')
       .eq('project_id', projectId)
       .eq('user_id', userId)
