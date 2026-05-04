@@ -9,11 +9,13 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WorkItemsRouteImport } from './routes/work-items'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as ProjectPostingRouteImport } from './routes/project-posting'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as LandingRouteImport } from './routes/landing'
+import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
@@ -62,6 +64,11 @@ import { Route as ProjectProjectIdRoadmapRoadmapIdRouteImport } from './routes/p
 import { Route as ProjectProjectIdChatChatRefRouteImport } from './routes/project/$projectId/chat/$chatRef'
 import { Route as ProjectProjectIdTimeTeamLogsProjectMemberIdRouteImport } from './routes/project/$projectId/time/team-logs/$projectMemberId'
 
+const WorkItemsRoute = WorkItemsRouteImport.update({
+  id: '/work-items',
+  path: '/work-items',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WelcomeRoute = WelcomeRouteImport.update({
   id: '/welcome',
   path: '/welcome',
@@ -85,6 +92,11 @@ const NotificationsRoute = NotificationsRouteImport.update({
 const LandingRoute = LandingRouteImport.update({
   id: '/landing',
   path: '/landing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InboxRoute = InboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -343,11 +355,13 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
   '/dashboard': typeof DashboardRoute
+  '/inbox': typeof InboxRoute
   '/landing': typeof LandingRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/project-posting': typeof ProjectPostingRoute
   '/welcome': typeof WelcomeRoute
+  '/work-items': typeof WorkItemsRoute
   '/admin/applications': typeof AdminApplicationsRoute
   '/admin/approve-admin': typeof AdminApproveAdminRoute
   '/admin/match': typeof AdminMatchRoute
@@ -396,11 +410,13 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/inbox': typeof InboxRoute
   '/landing': typeof LandingRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/project-posting': typeof ProjectPostingRoute
   '/welcome': typeof WelcomeRoute
+  '/work-items': typeof WorkItemsRoute
   '/admin/applications': typeof AdminApplicationsRoute
   '/admin/approve-admin': typeof AdminApproveAdminRoute
   '/admin/match': typeof AdminMatchRoute
@@ -451,11 +467,13 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
   '/dashboard': typeof DashboardRoute
+  '/inbox': typeof InboxRoute
   '/landing': typeof LandingRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/project-posting': typeof ProjectPostingRoute
   '/welcome': typeof WelcomeRoute
+  '/work-items': typeof WorkItemsRoute
   '/admin/applications': typeof AdminApplicationsRoute
   '/admin/approve-admin': typeof AdminApproveAdminRoute
   '/admin/match': typeof AdminMatchRoute
@@ -507,11 +525,13 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/dashboard'
+    | '/inbox'
     | '/landing'
     | '/notifications'
     | '/onboarding'
     | '/project-posting'
     | '/welcome'
+    | '/work-items'
     | '/admin/applications'
     | '/admin/approve-admin'
     | '/admin/match'
@@ -560,11 +580,13 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/dashboard'
+    | '/inbox'
     | '/landing'
     | '/notifications'
     | '/onboarding'
     | '/project-posting'
     | '/welcome'
+    | '/work-items'
     | '/admin/applications'
     | '/admin/approve-admin'
     | '/admin/match'
@@ -614,11 +636,13 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/dashboard'
+    | '/inbox'
     | '/landing'
     | '/notifications'
     | '/onboarding'
     | '/project-posting'
     | '/welcome'
+    | '/work-items'
     | '/admin/applications'
     | '/admin/approve-admin'
     | '/admin/match'
@@ -669,11 +693,13 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
   DashboardRoute: typeof DashboardRoute
+  InboxRoute: typeof InboxRoute
   LandingRoute: typeof LandingRoute
   NotificationsRoute: typeof NotificationsRoute
   OnboardingRoute: typeof OnboardingRoute
   ProjectPostingRoute: typeof ProjectPostingRoute
   WelcomeRoute: typeof WelcomeRoute
+  WorkItemsRoute: typeof WorkItemsRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
   AuthLoginRoute: typeof AuthLoginRoute
@@ -698,6 +724,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/work-items': {
+      id: '/work-items'
+      path: '/work-items'
+      fullPath: '/work-items'
+      preLoaderRoute: typeof WorkItemsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/welcome': {
       id: '/welcome'
       path: '/welcome'
@@ -731,6 +764,13 @@ declare module '@tanstack/react-router' {
       path: '/landing'
       fullPath: '/landing'
       preLoaderRoute: typeof LandingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/inbox': {
+      id: '/inbox'
+      path: '/inbox'
+      fullPath: '/inbox'
+      preLoaderRoute: typeof InboxRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -1175,11 +1215,13 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
   DashboardRoute: DashboardRoute,
+  InboxRoute: InboxRoute,
   LandingRoute: LandingRoute,
   NotificationsRoute: NotificationsRoute,
   OnboardingRoute: OnboardingRoute,
   ProjectPostingRoute: ProjectPostingRoute,
   WelcomeRoute: WelcomeRoute,
+  WorkItemsRoute: WorkItemsRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   AuthForgotPasswordRoute: AuthForgotPasswordRoute,
   AuthLoginRoute: AuthLoginRoute,

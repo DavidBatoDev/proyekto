@@ -2,6 +2,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useAuthStore } from "@/stores/authStore";
 import { PrimaryFlow } from "@/components/home/LeftSide";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
+import { DashboardShell } from "@/components/layout/DashboardShell";
 
 export const Route = createFileRoute("/dashboard")({
   beforeLoad: () => {
@@ -14,19 +15,12 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 function DashboardPage() {
-  const { profile } = useAuthStore();
   useProfileQuery();
-  const isFreelancer = profile?.active_persona === "freelancer";
-
   return (
-    <div className="min-h-screen app-shell-bg">
-      <div
-        className={`max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10 pb-10 app-slide-up ${
-          isFreelancer ? "pt-6" : "pt-[88px]"
-        }`}
-      >
+    <DashboardShell>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-10 app-slide-up">
         <PrimaryFlow />
       </div>
-    </div>
+    </DashboardShell>
   );
 }

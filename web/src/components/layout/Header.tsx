@@ -9,6 +9,8 @@ const Header = () => {
 
 	const validPaths = [
 		"/dashboard",
+		"/inbox",
+		"/work-items",
 		"/project",
 		"/profile",
 		"/consultant",
