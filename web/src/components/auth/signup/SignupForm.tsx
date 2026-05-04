@@ -6,7 +6,7 @@ import { Link } from "@tanstack/react-router";
 import { useAuthStore } from "../../../stores/authStore";
 import { supabase } from "../../../lib/supabase";
 import { useToast } from "../../../hooks/useToast";
-import { profileKeys } from "../../../queries/profile";
+import { fetchProfile, profileKeys } from "../../../queries/profile";
 import { completeOnboarding, type OnboardingLane } from "../../../lib/auth-api";
 import { SignupStepLane } from "./SignupStepLane";
 import { SignupStepAccount } from "./SignupStepAccount";
@@ -313,20 +313,13 @@ export function SignupForm(_props: SignupFormProps) {
           .from("profiles")
           .update({ is_email_verified: true })
           .eq("id", authData.user.id);
-
-        await queryClient.invalidateQueries({
-          queryKey: profileKeys.byUser(authData.user.id),
-        });
-        await queryClient.refetchQueries({
-          queryKey: profileKeys.byUser(authData.user.id),
-        });
       }
 
       toast.success("Email verified successfully!");
 
-      // Sync the auth store NOW — before navigating — so route guards
-      // (beforeLoad) see isAuthenticated:true immediately rather than waiting
-      // for the async onAuthStateChange listener to fire.
+      // Sync session + user to the auth store NOW — route guards
+      // (beforeLoad) need isAuthenticated:true immediately. Profile is set
+      // below, after completeOnboarding has written the lane.
       if (authData.user) {
         const { data: sessionData } = await supabase.auth.getSession();
         useAuthStore.setState({
@@ -334,19 +327,11 @@ export function SignupForm(_props: SignupFormProps) {
           user: authData.user,
           isAuthenticated: true,
           isLoading: false,
-          // Clear any stale profile so /welcome's loader fetches fresh data
-          profile: null,
         });
       }
 
-      // Lane-aware completion + routing.
-      // - Client/Freelancer lane: completeOnboarding with intent based on the
-      //   secondary-CTA `?intent=freelancer` param if present, else default
-      //   to client. Server provisions the personal workspace and routes to
-      //   /welcome.
-      // - Consultant lane: completeOnboarding with both intents false. Server
-      //   still provisions the workspace (soft isolation). Route to
-      //   /consultant/apply.
+      // Lane-aware completion. Server writes settings.onboarding.lane,
+      // sets active_persona, and provisions the personal workspace.
       const intent =
         lane === "client_freelancer"
           ? {
@@ -363,11 +348,27 @@ export function SignupForm(_props: SignupFormProps) {
         console.error("completeOnboarding failed after signup:", onboardingErr);
       }
 
+      // Refetch profile AFTER completeOnboarding so the auth store carries
+      // the lane the welcome page will read. Doing it before is the race
+      // that caused /welcome to render the wrong deck on first visit.
+      if (authData.user) {
+        try {
+          const fresh = await fetchProfile(authData.user.id);
+          queryClient.setQueryData(
+            profileKeys.byUser(authData.user.id),
+            fresh,
+          );
+          useAuthStore.setState({ profile: fresh });
+        } catch (refetchErr) {
+          console.error("Profile refetch after onboarding failed:", refetchErr);
+        }
+      }
+
       clearSignupData();
 
-      // Both lanes now route through /welcome — the welcome route renders
-      // a lane-specific deck (3 slides for consultants → /consultant/apply,
-      // 4 slides for client/freelancer → /dashboard).
+      // Both lanes route through /welcome — the route renders a lane-specific
+      // deck (3 slides for consultants → /consultant/apply, 4 slides for
+      // client/freelancer → /dashboard).
       navigate({ to: "/welcome" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Verification failed");

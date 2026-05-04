@@ -7,7 +7,6 @@ import {
   Briefcase, GraduationCap, BadgeCheck, ShieldCheck,
   Globe as LangIcon, BookOpen, Building2, UserCheck,
 } from "lucide-react";
-import { StepIndicator } from "@/components/project-brief";
 import {
   profileService,
   applicationService,
@@ -58,7 +57,7 @@ function EmptySlate({ message, onAdd }: { message: string; onAdd: () => void }) 
   return (
     <button
       onClick={onAdd}
-      className="w-full flex items-center gap-2 px-4 py-3 border border-dashed border-gray-300 rounded-xl text-sm text-gray-400 hover:border-[#ff9933] hover:text-[#ff9933] hover:bg-orange-50 transition-all"
+      className="w-full flex items-center gap-2 px-4 py-3 border border-dashed border-gray-300 rounded-xl text-sm text-gray-400 hover:border-slate-900 hover:text-slate-900 hover:bg-slate-50 transition-all"
     >
       <Plus className="w-4 h-4" /> {message}
     </button>
@@ -72,7 +71,7 @@ function SectionHeader({ title, icon: Icon, onAdd }: { title: string; icon: Reac
         <Icon className="w-4 h-4 text-gray-900" strokeWidth={2.5} />
         <h3 className="text-sm font-bold text-gray-900">{title}</h3>
       </div>
-      <button onClick={onAdd} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-[#ff9933] transition-colors" title={`Add ${title}`}>
+      <button onClick={onAdd} className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-900 transition-colors" title={`Add ${title}`}>
         <Plus className="w-4 h-4" />
       </button>
     </div>
@@ -108,7 +107,7 @@ function Step1Identity({
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-[#61636c]">
+      <p className="text-sm text-slate-600">
         Upload a government-issued photo ID to begin the verification process. Your documents are stored securely and only accessible to authorized admin staff.
       </p>
 
@@ -171,10 +170,10 @@ function TileOption({ name, value, label, checked, onChange, description }: {
   name: string; value: string; label: string; checked: boolean; onChange: () => void; description?: string;
 }) {
   return (
-    <label className={`flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-all ${checked ? "border-[#ff9933] bg-[#fff8f0] shadow-sm" : "border-gray-200 bg-white hover:border-gray-300"}`}>
-      <input type="radio" name={name} value={value} checked={checked} onChange={onChange} className="mt-0.5 w-4 h-4 accent-[#ff9933] shrink-0" />
+    <label className={`flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-all ${checked ? "border-slate-900 bg-slate-50 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"}`}>
+      <input type="radio" name={name} value={value} checked={checked} onChange={onChange} className="mt-0.5 w-4 h-4 accent-slate-900 shrink-0" />
       <div>
-        <p className="text-sm font-semibold text-[#333438]">{label}</p>
+        <p className="text-sm font-semibold text-slate-900">{label}</p>
         {description && <p className="text-xs text-gray-500 mt-0.5">{description}</p>}
       </div>
     </label>
@@ -185,7 +184,7 @@ function Step2ExperienceNiche({ formData, updateFormData }: { formData: FormData
   return (
     <div className="space-y-6">
       <div>
-        <label className="block text-sm font-semibold text-[#333438] mb-2">Years of Professional Experience <span className="text-red-500">*</span></label>
+        <label className="block text-sm font-semibold text-slate-900 mb-2">Years of Professional Experience <span className="text-red-500">*</span></label>
         <div className="grid grid-cols-2 gap-3">
           {[
             { value: "0", label: "Less than 1 year" },
@@ -200,7 +199,7 @@ function Step2ExperienceNiche({ formData, updateFormData }: { formData: FormData
         </div>
       </div>
       <div>
-        <label className="block text-sm font-semibold text-[#333438] mb-2">Primary Industry / Niche <span className="text-red-500">*</span></label>
+        <label className="block text-sm font-semibold text-slate-900 mb-2">Primary Industry / Niche <span className="text-red-500">*</span></label>
         <div className="grid grid-cols-3 gap-2">
           {NICHES.map(n => (
             <TileOption key={n.value} name="niche" value={n.value} label={n.label}
@@ -215,7 +214,7 @@ function Step2ExperienceNiche({ formData, updateFormData }: { formData: FormData
               placeholder="Describe your industry or niche..."
               value={formData.custom_niche ?? ""}
               onChange={e => updateFormData({ custom_niche: e.target.value })}
-              className="w-full px-4 py-2.5 bg-white border border-[#ff9933] rounded-xl text-sm text-[#333438] focus:outline-none focus:ring-2 focus:ring-[#ff9933] focus:border-transparent shadow-sm"
+              className="w-full px-4 py-2.5 bg-white border border-slate-900 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/15 focus:border-transparent shadow-sm"
               autoFocus
             />
           </div>
@@ -281,7 +280,7 @@ function Step3Profile({
                   <p className="text-xs text-gray-400 capitalize">{lang.fluency_level?.replace("_", " ")}</p>
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all shrink-0">
-                  <button onClick={() => { setEditingLang(lang); setLangModalOpen(true); }} className="p-1 rounded text-gray-300 hover:text-[#ff9933] hover:bg-orange-50 transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => { setEditingLang(lang); setLangModalOpen(true); }} className="p-1 rounded text-gray-300 hover:text-slate-900 hover:bg-slate-100 transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
                   <button onClick={() => deleteLanguage.mutate(lang.id)} className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
                     {deleteLanguage.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                   </button>
@@ -316,7 +315,7 @@ function Step3Profile({
                         </p>
                       </div>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all shrink-0">
-                        <button onClick={() => { setEditingExp(exp); setExpModalOpen(true); }} className="p-1 rounded text-gray-300 hover:text-[#ff9933] hover:bg-orange-50 transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => { setEditingExp(exp); setExpModalOpen(true); }} className="p-1 rounded text-gray-300 hover:text-slate-900 hover:bg-slate-100 transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
                         <button onClick={() => deleteExperience.mutate(exp.id)} className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
                           {deleteExperience.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                         </button>
@@ -351,7 +350,7 @@ function Step3Profile({
                   )}
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all shrink-0">
-                  <button onClick={() => { setEditingEdu(edu); setEduModalOpen(true); }} className="p-1 rounded text-gray-300 hover:text-[#ff9933] hover:bg-orange-50 transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => { setEditingEdu(edu); setEduModalOpen(true); }} className="p-1 rounded text-gray-300 hover:text-slate-900 hover:bg-slate-100 transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
                   <button onClick={() => deleteEducation.mutate(edu.id)} className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
                     {deleteEducation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                   </button>
@@ -382,7 +381,7 @@ function Step3Profile({
                   </div>
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all shrink-0">
-                  <button onClick={() => { setEditingLic(lic); setLicModalOpen(true); }} className="p-1 rounded text-gray-300 hover:text-[#ff9933] hover:bg-orange-50 transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => { setEditingLic(lic); setLicModalOpen(true); }} className="p-1 rounded text-gray-300 hover:text-slate-900 hover:bg-slate-100 transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
                   <button onClick={() => deleteLicense.mutate(lic.id)} className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
                     {deleteLicense.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                   </button>
@@ -432,25 +431,25 @@ function Step4CoverLetter({ formData, updateFormData }: { formData: FormData2; u
   return (
     <div className="space-y-6">
       <div>
-        <label className="block text-sm font-semibold text-[#333438] mb-2">Cover Letter <span className="text-red-500">*</span></label>
-        <p className="text-xs text-[#61636c] mb-3">Tell us about your professional background and why you'd be a great consultant on this platform. Mention specific outcomes, industries, or methodologies you specialise in.</p>
+        <label className="block text-sm font-semibold text-slate-900 mb-2">Cover Letter <span className="text-red-500">*</span></label>
+        <p className="text-xs text-slate-600 mb-3">Tell us about your professional background and why you'd be a great consultant on this platform. Mention specific outcomes, industries, or methodologies you specialise in.</p>
         <textarea
           rows={11}
           placeholder="I have X years of experience in [sector] leading teams to deliver [outcomes]. My core strengths include..."
           value={formData.cover_letter}
           onChange={e => updateFormData({ cover_letter: e.target.value })}
-          className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-[#333438] focus:outline-none focus:ring-2 focus:ring-[#ff9933] focus:border-transparent resize-none shadow-sm"
+          className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/15 focus:border-transparent resize-none shadow-sm"
         />
         <p className="text-right text-xs text-gray-400 mt-1">{formData.cover_letter.length} / 2000</p>
       </div>
       <div>
-        <label className="block text-sm font-semibold text-[#333438] mb-2">Why do you want to join as a Consultant?</label>
+        <label className="block text-sm font-semibold text-slate-900 mb-2">Why do you want to join as a Consultant?</label>
         <textarea
           rows={4}
           placeholder="I want to help early-stage companies solve..."
           value={formData.why_join}
           onChange={e => updateFormData({ why_join: e.target.value })}
-          className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-[#333438] focus:outline-none focus:ring-2 focus:ring-[#ff9933] focus:border-transparent resize-none shadow-sm"
+          className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/15 focus:border-transparent resize-none shadow-sm"
         />
       </div>
     </div>
@@ -471,8 +470,8 @@ function Step5LinksReview({ formData, updateFormData, profile }: { formData: For
 
   const ReviewRow = ({ label, value }: { label: string; value: string }) => (
     <div className="flex gap-3 text-sm py-1.5 border-b border-gray-100 last:border-0">
-      <span className="text-[#61636c] w-36 shrink-0">{label}</span>
-      <span className="text-[#333438] font-medium flex-1 truncate">{value || "—"}</span>
+      <span className="text-slate-600 w-36 shrink-0">{label}</span>
+      <span className="text-slate-900 font-medium flex-1 truncate">{value || "—"}</span>
     </div>
   );
 
@@ -480,26 +479,26 @@ function Step5LinksReview({ formData, updateFormData, profile }: { formData: For
     <div className="space-y-6">
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-semibold text-[#333438] mb-2">LinkedIn Profile URL (Optional)</label>
+          <label className="block text-sm font-semibold text-slate-900 mb-2">LinkedIn Profile URL (Optional)</label>
           <div className="relative">
             <ExternalLink className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input type="url" placeholder="https://linkedin.com/in/yourname" value={formData.linkedin_url} onChange={e => updateFormData({ linkedin_url: e.target.value })}
-              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#ff9933] focus:border-transparent shadow-sm" />
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/15 focus:border-transparent shadow-sm" />
           </div>
         </div>
         <div>
-          <label className="block text-sm font-semibold text-[#333438] mb-2">Personal Website / Portfolio (Optional)</label>
+          <label className="block text-sm font-semibold text-slate-900 mb-2">Personal Website / Portfolio (Optional)</label>
           <div className="relative">
             <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input type="url" placeholder="https://yourwebsite.com" value={formData.website_url} onChange={e => updateFormData({ website_url: e.target.value })}
-              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#ff9933] focus:border-transparent shadow-sm" />
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/15 focus:border-transparent shadow-sm" />
           </div>
         </div>
       </div>
 
       <div className="border-t border-gray-100 pt-5">
-        <p className="text-sm font-semibold text-[#333438] mb-3">Application Summary</p>
-        <div className="bg-[#f6f7f8] rounded-xl p-4 space-y-0">
+        <p className="text-sm font-semibold text-slate-900 mb-3">Application Summary</p>
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-0">
           <ReviewRow label="Applicant" value={profile.display_name ?? `${profile.first_name} ${profile.last_name}`} />
           <ReviewRow label="Primary Niche" value={nicheLabel} />
           <ReviewRow label="Experience" value={formData.years_of_experience ? `${formData.years_of_experience}+ years` : "—"} />
@@ -512,7 +511,7 @@ function Step5LinksReview({ formData, updateFormData, profile }: { formData: For
           <ReviewRow label="LinkedIn" value={formData.linkedin_url} />
           <ReviewRow label="Website" value={formData.website_url} />
         </div>
-        <p className="text-xs text-[#61636c] mt-3">
+        <p className="text-xs text-slate-600 mt-3">
           Our team will manually review your profile within <strong>3–5 business days</strong>. Applications can only be submitted once — ensure all information is accurate.
         </p>
       </div>
@@ -629,30 +628,30 @@ function ConsultantApplyPage() {
   };
 
   if (profileLoading || appLoading) return (
-    <div className="min-h-screen bg-[#f6f7f8] flex items-center justify-center">
-      <Loader2 className="w-8 h-8 text-[#ff9933] animate-spin" />
+    <div className="min-h-screen bg-[#fcfcfd] flex items-center justify-center">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-900" />
     </div>
   );
 
   if (existingApp && existingApp.status !== "draft") {
     return (
-      <div className="min-h-screen bg-[#f6f7f8] ">
-        <div className="max-w-xl mx-auto px-6  py-24 text-center">
-          <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <UserCheck className="w-8 h-8 text-[#ff9933]" />
+      <div className="min-h-screen bg-[#fcfcfd]">
+        <div className="max-w-xl mx-auto px-6 py-24 text-center">
+          <div className="w-14 h-14 rounded-2xl border border-amber-200 bg-amber-50 flex items-center justify-center mx-auto mb-5 shadow-[0_8px_18px_rgba(245,158,11,0.12)]">
+            <UserCheck className="w-7 h-7 text-amber-600" />
           </div>
-          <h1 className="text-3xl font-bold text-[#333438] mb-3 capitalize">
+          <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-slate-900 mb-3">
             {existingApp.status === "approved" ? "You're a verified consultant!" :
-             existingApp.status === "rejected" ? "Application Not Approved" :
-             "Application Under Review"}
+             existingApp.status === "rejected" ? "Application not approved" :
+             "Application under review"}
           </h1>
-          <p className="text-[#61636c] mb-6">Status: <strong className="capitalize">{existingApp.status.replace("_", " ")}</strong></p>
+          <p className="text-slate-600 mb-6">Status: <strong className="capitalize text-slate-900">{existingApp.status.replace("_", " ")}</strong></p>
           {existingApp.rejection_reason && (
             <div className="bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 p-4 mb-6 text-left">
               <strong>Reason:</strong> {existingApp.rejection_reason}
             </div>
           )}
-          <button onClick={() => navigate({ to: "/dashboard" })} className="px-8 py-3 bg-[#ff9933] text-white rounded-lg font-semibold hover:bg-[#e8882e] transition-colors">
+          <button onClick={() => navigate({ to: "/dashboard" })} className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800 transition-colors">
             Back to Dashboard
           </button>
         </div>
@@ -663,47 +662,32 @@ function ConsultantApplyPage() {
   const desc = STEP_DESCRIPTIONS[currentStep - 1];
 
   return (
-    <div className="min-h-screen bg-[#f6f7f8] relative overflow-hidden pt-20">
+    <div className="min-h-screen bg-[#fcfcfd] relative overflow-hidden">
 
-      {/* Background — same as project-posting */}
-      <div className="absolute inset-0 pointer-events-none">
-        <motion.svg className="absolute bottom-0 left-0 w-full h-[700px] opacity-30" viewBox="0 0 1440 320" preserveAspectRatio="none"
-          animate={{ y: [0, -30, 0] }} transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}>
-          <motion.path
-            d="M0,96L48,112C96,128,192,160,288,160C384,160,480,128,576,122.7C672,117,768,139,864,144C960,149,1056,139,1152,128C1248,117,1344,107,1392,101.3L1440,96L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
-            fill={currentStep <= 2 ? "#FF9933" : currentStep === 3 ? "#e91e63" : "#8b5cf6"}
-            fillOpacity="0.3"
-            animate={{ fill: currentStep <= 2 ? "#FF9933" : currentStep === 3 ? "#e91e63" : "#8b5cf6" }}
-            transition={{ duration: 0.5, ease: "easeInOut" }}
-          />
-        </motion.svg>
-        <motion.div className="absolute top-20 left-10 w-[400px] h-[400px] bg-[#ff993326] rounded-full blur-3xl opacity-40"
-          animate={{ scale: [1, 1.3, 1], x: [0, 50, 0], y: [0, -40, 0] }} transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }} />
-        <motion.div className="absolute top-40 right-20 w-[350px] h-[350px] bg-pink-200 rounded-full blur-3xl opacity-30"
-          animate={{ scale: [1, 1.4, 1], x: [0, -40, 0], y: [0, 35, 0] }} transition={{ duration: 7, repeat: Infinity, ease: "easeInOut", delay: 0.5 }} />
-        <motion.div className="absolute bottom-40 left-1/3 w-[300px] h-[300px] bg-orange-200 rounded-full blur-3xl opacity-25"
-          animate={{ scale: [1, 1.5, 1], x: [0, 30, 0], y: [0, -30, 0] }} transition={{ duration: 9, repeat: Infinity, ease: "easeInOut", delay: 1 }} />
+      {/* Soft ambient blurs — matches /welcome and /consultant landing */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-20 left-[10%] h-72 w-72 rounded-full bg-amber-200/35 blur-3xl" />
+        <div className="absolute -right-12 top-1/3 h-72 w-72 rounded-full bg-indigo-200/40 blur-3xl" />
+        <div className="absolute bottom-10 left-1/4 h-80 w-80 rounded-full bg-cyan-200/25 blur-3xl" />
       </div>
 
-      <div className="max-w-[1440px] mx-auto px-20 py-8 pb-40 relative z-10">
+      <div className="max-w-[1280px] mx-auto px-6 sm:px-10 lg:px-16 pt-10 pb-40 relative z-10">
 
-        {/* Step Indicators */}
-        <div className="flex items-center justify-center mb-14 gap-0">
-          {STEP_META.map((s, i) => (
-            <div key={i} className="flex items-center">
-              <StepIndicator step={i + 1} currentStep={currentStep} label={s.label} totalSteps={5} />
-              {i < STEP_META.length - 1 && (
-                <div className="w-16 h-1 bg-gray-200 rounded-full mx-2 overflow-hidden mt-[-24px]">
-                  <motion.div
-                    className="h-full bg-[#ff9933]"
-                    initial={{ width: "0%" }}
-                    animate={{ width: currentStep > i + 1 ? "100%" : "0%" }}
-                    transition={{ duration: 0.5, ease: "easeInOut" }}
-                  />
-                </div>
-              )}
-            </div>
-          ))}
+        {/* Slate dot stepper — matches /welcome */}
+        <div className="mx-auto mb-12 flex max-w-3xl items-center gap-3">
+          <div className="flex flex-1 items-center gap-2">
+            {STEP_META.map((_, i) => (
+              <div
+                key={i}
+                className={`h-1.5 flex-1 rounded-full transition-colors ${
+                  i + 1 <= currentStep ? "bg-slate-900" : "bg-slate-200"
+                }`}
+              />
+            ))}
+          </div>
+          <span className="shrink-0 text-xs font-semibold text-slate-500">
+            Step {currentStep} of {STEP_META.length}
+          </span>
         </div>
 
         {/* Two-column layout */}
@@ -713,8 +697,8 @@ function ConsultantApplyPage() {
             <div className="sticky top-[120px]">
               <AnimatePresence mode="wait">
                 <motion.div key={currentStep} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.4, ease: "easeOut" }}>
-                  <h1 className="text-4xl font-bold text-[#333438] mb-4 leading-tight">{desc.title}</h1>
-                  <p className="text-[#61636c] text-lg">{desc.body}</p>
+                  <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-slate-900 mb-4 leading-tight">{desc.title}</h1>
+                  <p className="text-slate-600 text-base leading-relaxed">{desc.body}</p>
                 </motion.div>
               </AnimatePresence>
             </div>
@@ -754,12 +738,12 @@ function ConsultantApplyPage() {
       </div>
 
       {/* Fixed bottom nav */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none pb-8 pt-4 bg-linear-to-t from-[#f6f7f8] via-[#f6f7f8]/80 to-transparent">
-        <div className="max-w-[1440px] mx-auto px-6 flex justify-between">
+      <div className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none pb-8 pt-6 bg-linear-to-t from-[#fcfcfd] via-[#fcfcfd]/85 to-transparent">
+        <div className="max-w-[1280px] mx-auto px-6 sm:px-10 lg:px-16 flex justify-between gap-3">
           <button
             onClick={() => setCurrentStep(s => Math.max(s - 1, 1))}
             disabled={currentStep === 1}
-            className="pointer-events-auto cursor-pointer px-8 py-3 text-[#ff9933] border border-[#ff9933] bg-white rounded-lg font-semibold hover:bg-[#fff5eb] disabled:opacity-30 disabled:cursor-not-allowed transition-colors uppercase shadow-sm"
+            className="pointer-events-auto cursor-pointer inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Back
           </button>
@@ -767,7 +751,7 @@ function ConsultantApplyPage() {
             <button
               onClick={() => setCurrentStep(s => Math.min(s + 1, 5))}
               disabled={!canNext(currentStep)}
-              className="pointer-events-auto cursor-pointer px-8 py-3 bg-linear-to-r from-[#ff9933] to-[#ff6b35] text-white rounded-lg font-semibold hover:shadow-lg transition-all uppercase disabled:opacity-40 disabled:cursor-not-allowed"
+              className="pointer-events-auto cursor-pointer rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Next
             </button>
@@ -775,9 +759,9 @@ function ConsultantApplyPage() {
             <button
               onClick={() => submitApp.mutate()}
               disabled={submitApp.isPending}
-              className="pointer-events-auto cursor-pointer px-8 py-3 bg-linear-to-r from-[#e91e63] to-[#ff1744] text-white rounded-lg font-semibold hover:shadow-lg transition-all uppercase flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="pointer-events-auto cursor-pointer rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] transition-colors hover:bg-slate-800 flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {submitApp.isPending ? <><Loader2 className="w-5 h-5 animate-spin" /> Submitting...</> : <><Check className="w-5 h-5" /> Submit Application</>}
+              {submitApp.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</> : <><Check className="w-4 h-4" /> Submit application</>}
             </button>
           )}
         </div>
@@ -800,7 +784,7 @@ function ConsultantApplyPage() {
               <p className="text-gray-600 mb-1">Your application is now under review.</p>
               <p className="text-sm text-gray-400 mb-8">Our admin team will review your profile and supporting evidence. You'll be notified within <strong>3–5 business days</strong>.</p>
               <button onClick={() => { setShowSuccessModal(false); navigate({ to: "/dashboard" }); }}
-                className="px-8 py-3 bg-gradient-to-r from-[#ff9933] to-[#ff6b35] text-white rounded-lg font-semibold hover:shadow-lg transition-all">
+                className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800 transition-colors">
                 Back to Dashboard
               </button>
             </motion.div>

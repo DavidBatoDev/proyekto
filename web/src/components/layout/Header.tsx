@@ -29,6 +29,11 @@ const Header = () => {
 		return null;
 	}
 
+	// /consultant/apply is a chrome-less surface (its own back/exit affordance)
+	if (currentPath.startsWith("/consultant/apply")) {
+		return null;
+	}
+
 	let content = <DashboardHeader />;
 
 	if (currentPath.startsWith("/project")) {

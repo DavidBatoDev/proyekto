@@ -37,12 +37,24 @@ export const Route = createFileRoute("/welcome")({
 
 function WelcomePage() {
   const profile = useAuthStore((s) => s.profile);
+
+  // Wait for profile hydration before deciding the lane. Guessing a default
+  // here causes a flicker between decks when the user lands on /welcome
+  // immediately after signup (profile arrives async via onAuthStateChange).
+  if (!profile) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#fcfcfd]">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-900" />
+      </div>
+    );
+  }
+
   const lane =
-    (profile?.settings as { onboarding?: { lane?: string } } | null)?.onboarding
+    (profile.settings as { onboarding?: { lane?: string } } | null)?.onboarding
       ?.lane ?? "client_freelancer";
   const firstName =
-    (profile?.first_name as string | undefined) ||
-    profile?.display_name ||
+    (profile.first_name as string | undefined) ||
+    profile.display_name ||
     "there";
 
   if (lane === "consultant") {
