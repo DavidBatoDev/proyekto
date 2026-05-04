@@ -1,6 +1,6 @@
 ﻿import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, Calendar, Clock, Inbox, User } from "lucide-react";
+import { ArrowRight, Calendar, Clock, Inbox } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import { openProjectInviteModal } from "@/components/invites/projectInviteModalEvents";
 import { supabase } from "@/lib/supabase";
@@ -9,13 +9,11 @@ import {
 	type ProjectInvite,
 	projectService,
 } from "@/services/project.service";
-import { useAuthStore, useUser } from "@/stores/authStore";
+import { useUser } from "@/stores/authStore";
 
-type DashboardRole = "client" | "consultant" | "freelancer";
-type ProjectWithRole = { project: Project; role: DashboardRole };
 type DashboardCard =
 	| { kind: "invite"; invite: ProjectInvite }
-	| { kind: "project"; item: ProjectWithRole };
+	| { kind: "project"; project: Project };
 
 const PROJECT_STATUS_CONFIG: Record<
 	string,
@@ -53,85 +51,11 @@ const PROJECT_STATUS_CONFIG: Record<
 	},
 };
 
-const ROLE_CONFIG: Record<
-	DashboardRole,
-	{ label: string; badgeClass: string }
-> = {
-	client: {
-		label: "Client",
-		badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
-	},
-	consultant: {
-		label: "Consultant",
-		badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
-	},
-	freelancer: {
-		label: "Freelancer",
-		badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
-	},
+const PRIMARY_EMPTY_COPY = {
+	title: "No projects yet",
+	description:
+		"Your projects will appear here once you create one or accept an invitation.",
 };
-
-const PRIMARY_SECTION_TITLE: Record<DashboardRole, string> = {
-	client: "My Client Projects",
-	consultant: "My Consultant Projects",
-	freelancer: "My Freelancer Projects",
-};
-
-function normalizePersona(persona: string | undefined): DashboardRole {
-	if (
-		persona === "consultant" ||
-		persona === "freelancer" ||
-		persona === "client"
-	) {
-		return persona;
-	}
-	return "client";
-}
-
-function resolveProjectRole(
-	project: Project,
-	userId: string,
-	activePersona: DashboardRole,
-): DashboardRole {
-	const isClient = project.client_id === userId;
-	const isConsultant = project.consultant_id === userId;
-
-	if (isClient && isConsultant) {
-		return activePersona;
-	}
-	if (isClient) {
-		return "client";
-	}
-	if (isConsultant) {
-		return "consultant";
-	}
-	return "freelancer";
-}
-
-function primaryEmptyCopy(persona: DashboardRole): {
-	title: string;
-	description: string;
-} {
-	if (persona === "freelancer") {
-		return {
-			title: "No freelancer projects yet",
-			description:
-				"Once you are added to projects, they will appear here under your freelancer role.",
-		};
-	}
-	if (persona === "consultant") {
-		return {
-			title: "No consultant projects yet",
-			description:
-				"Projects assigned to you as consultant will appear here for active delivery.",
-		};
-	}
-	return {
-		title: "No client projects yet",
-		description:
-			"Post your first project vision to begin consultant matching and move into roadmap execution.",
-	};
-}
 
 function formatInviteSentLabel(value: string): string {
 	const parsed = new Date(value);
@@ -148,8 +72,6 @@ function formatInviteSentLabel(value: string): string {
 
 export function ProjectsGrid() {
 	const user = useUser();
-	const { profile } = useAuthStore();
-	const persona = normalizePersona(profile?.active_persona);
 	const queryClient = useQueryClient();
 	const projectsQueryKey = useMemo(
 		() => ["dashboard", "projects", user?.id ?? "anonymous"] as const,
@@ -186,49 +108,19 @@ export function ProjectsGrid() {
 				),
 		[invitesQuery.data],
 	);
-	const shouldMixInvitesIntoPrimary = persona === "freelancer";
-	const isLoading =
-		projectsQuery.isPending ||
-		(shouldMixInvitesIntoPrimary && invitesQuery.isPending);
+	const isLoading = projectsQuery.isPending || invitesQuery.isPending;
 
-	const groupedProjects = useMemo(() => {
-		if (!user?.id) {
-			return {
-				primaryCards: [] as DashboardCard[],
-				otherProjects: [] as ProjectWithRole[],
-			};
-		}
-
-		const resolved = projects.map((project) => ({
-			project,
-			role: resolveProjectRole(project, user.id, persona),
+	const primaryCards = useMemo<DashboardCard[]>(() => {
+		const inviteCards: DashboardCard[] = pendingInvites.map((invite) => ({
+			kind: "invite",
+			invite,
 		}));
-
-		const primaryProjectCards: DashboardCard[] = resolved
-			.filter((item) => item.role === persona)
-			.map((item) => ({ kind: "project", item }));
-
-		const inviteCards: DashboardCard[] = shouldMixInvitesIntoPrimary
-			? pendingInvites.map((invite) => ({ kind: "invite", invite }))
-			: [];
-
-		return {
-			primaryCards: [...inviteCards, ...primaryProjectCards],
-			otherProjects: resolved.filter((item) => item.role !== persona),
-		};
-	}, [pendingInvites, persona, projects, shouldMixInvitesIntoPrimary, user?.id]);
-
-	const { primaryCards, otherProjects } = groupedProjects;
-	const invitationCards = useMemo(
-		() =>
-			shouldMixInvitesIntoPrimary
-				? []
-				: pendingInvites.map(
-						(invite): DashboardCard => ({ kind: "invite", invite }),
-					),
-		[pendingInvites, shouldMixInvitesIntoPrimary],
-	);
-	const emptyCopy = primaryEmptyCopy(persona);
+		const projectCards: DashboardCard[] = projects.map((project) => ({
+			kind: "project",
+			project,
+		}));
+		return [...inviteCards, ...projectCards];
+	}, [pendingInvites, projects]);
 
 	useEffect(() => {
 		if (!user?.id) return;
@@ -277,69 +169,38 @@ export function ProjectsGrid() {
 
 	return (
 		<div
-			id="my-project-visions"
+			id="my-projects"
 			data-tutorial="projects-grid"
 			className="app-slide-up scroll-mt-6"
 		>
-			<div className="mb-4 flex items-center justify-between">
+			<div className="mb-4">
 				<div className="flex items-center gap-2">
 					<div className="h-[18px] w-[18px] rounded-full bg-slate-900" />
 					<h2 className="text-[20px] font-semibold tracking-tight text-slate-900">
-						MY PROJECT VISIONS
+						PROJECTS
 					</h2>
 				</div>
-				<button
-					type="button"
-					className="text-base font-semibold text-slate-700 transition-colors hover:text-slate-900"
-				>
-					View All -&gt;
-				</button>
+				<p className="mt-1 text-xs text-slate-600">
+					Every project you own, share, or have been invited to.
+				</p>
 			</div>
 
 			<ProjectsSection
-				title={PRIMARY_SECTION_TITLE[persona]}
 				cards={primaryCards}
 				isLoading={isLoading}
-				emptyTitle={emptyCopy.title}
-				emptyDescription={emptyCopy.description}
+				emptyTitle={PRIMARY_EMPTY_COPY.title}
+				emptyDescription={PRIMARY_EMPTY_COPY.description}
 			/>
-
-			{invitationCards.length > 0 && (
-				<div className="mt-8">
-					<ProjectsSection
-						title="Project Invitations"
-						cards={invitationCards}
-						isLoading={invitesQuery.isPending}
-						emptyTitle="No pending invitations"
-						emptyDescription="Pending project invitations will appear here."
-					/>
-				</div>
-			)}
-
-			{otherProjects.length > 0 && (
-				<div className="mt-8">
-					<ProjectsSection
-						title="Other Projects"
-						cards={otherProjects.map((item) => ({ kind: "project", item }))}
-						isLoading={false}
-						emptyTitle="No other projects"
-						emptyDescription="Projects where your role is different from your current persona will appear here."
-					/>
-				</div>
-			)}
-
 		</div>
 	);
 }
 
 function ProjectsSection({
-	title,
 	cards,
 	isLoading,
 	emptyTitle,
 	emptyDescription,
 }: {
-	title: string;
 	cards: DashboardCard[];
 	isLoading: boolean;
 	emptyTitle: string;
@@ -347,11 +208,6 @@ function ProjectsSection({
 }) {
 	return (
 		<section>
-			<div className="mb-3">
-				<h3 className="text-[17px] font-semibold tracking-tight text-slate-900">
-					{title}
-				</h3>
-			</div>
 			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 				{isLoading ? (
 					<>
@@ -378,36 +234,33 @@ function ProjectsSection({
 						}
 
 						const statusConfig = PROJECT_STATUS_CONFIG[
-							(card.item.project.status || "").toLowerCase()
+							(card.project.status || "").toLowerCase()
 						] ?? {
-							label: card.item.project.status || "Unknown",
+							label: card.project.status || "Unknown",
 							color: "#9c27b0",
 							badgeClass: "bg-purple-100 text-purple-700 border-purple-200",
 						};
-						const roleConfig = ROLE_CONFIG[card.item.role];
 
 						return (
 							<ProjectCard
-								key={card.item.project.id}
+								key={card.project.id}
 								number={index + 1}
-								projectId={card.item.project.id}
+								projectId={card.project.id}
 								status={statusConfig.label}
 								statusColor={statusConfig.color}
 								statusBadgeClass={statusConfig.badgeClass}
-								roleLabel={roleConfig.label}
-								roleBadgeClass={roleConfig.badgeClass}
-								title={card.item.project.title}
-								client={card.item.project.client?.display_name || "Assigned"}
-								progress={card.item.project.status === "completed" ? 100 : null}
+								title={card.project.title}
+								client={card.project.client?.display_name || "Assigned"}
+								progress={card.project.status === "completed" ? 100 : null}
 								progressColor={statusConfig.color}
 								nextUp={
-									card.item.project.brief
+									card.project.brief
 										? "Review project brief"
 										: "Add project brief"
 								}
 								dueDate={
-									card.item.project.custom_start_date ||
-									card.item.project.start_date ||
+									card.project.custom_start_date ||
+									card.project.start_date ||
 									null
 								}
 							/>
@@ -452,12 +305,6 @@ function InviteCard({
 							{invite.inviter?.display_name || "Team lead"}
 						</span>
 					</p>
-					{invite.invited_position ? (
-						<div className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-white px-2 py-1 text-[12px] text-amber-800">
-							<User className="h-3.5 w-3.5" />
-							<span>{invite.invited_position}</span>
-						</div>
-					) : null}
 				</div>
 
 				<div className="rounded-lg border border-amber-100 bg-white px-3 py-2">
@@ -513,8 +360,6 @@ function ProjectCard({
 	status,
 	statusColor,
 	statusBadgeClass,
-	roleLabel,
-	roleBadgeClass,
 	title,
 	client,
 	progress,
@@ -527,8 +372,6 @@ function ProjectCard({
 	status: string;
 	statusColor: string;
 	statusBadgeClass: string;
-	roleLabel: string;
-	roleBadgeClass: string;
 	title: string;
 	client: string;
 	progress: number | null;
@@ -572,16 +415,6 @@ function ProjectCard({
 					<h3 className="mb-1 text-[16px] font-semibold tracking-tight text-slate-900">
 						{title}
 					</h3>
-					<div className="flex items-center gap-2 mb-1">
-						<span className="text-[14px] font-semibold text-slate-600">
-							Role:
-						</span>
-						<span
-							className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${roleBadgeClass}`}
-						>
-							{roleLabel}
-						</span>
-					</div>
 					<p className="text-[14px]">
 						<span className="font-semibold text-slate-600">Client:</span>
 						<span className="text-slate-600"> {client}</span>

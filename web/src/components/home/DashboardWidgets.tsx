@@ -498,7 +498,7 @@ export function DashboardWidgets({
 	const scrollToProjects = () => {
 		const projectsSection =
 			document.querySelector('[data-tutorial="projects-grid"]') ??
-			document.getElementById("my-project-visions") ??
+			document.getElementById("my-projects") ??
 			document.querySelector('[data-roadmaps-section="my-roadmaps-section"]') ??
 			document.getElementById("my-roadmaps-section") ??
 			document.querySelector('[data-tutorial="projects-grid"]');
@@ -606,7 +606,7 @@ export function DashboardWidgets({
 					{children ? <div className="space-y-8">{children}</div> : null}
 				</div>
 
-				<div className="xl:sticky xl:top-6 self-start space-y-4 min-w-0">
+				<div className="xl:sticky xl:top-24 self-start space-y-4 min-w-0">
 					<div className="app-surface-card p-6">
 						<div className="mb-3">
 							<h3 className="text-[20px] font-semibold tracking-tight text-slate-900">

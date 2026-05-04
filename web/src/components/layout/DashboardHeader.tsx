@@ -94,7 +94,7 @@ const DashboardHeader = () => {
 
 	const navItems = [
 		{ label: "Home", to: "/dashboard" },
-		{ label: "Projects", to: "/dashboard", hash: "my-project-visions" },
+		{ label: "Projects", to: "/dashboard", hash: "my-projects" },
 		{
 			label: "Market place",
 			to: profile?.is_consultant_verified

@@ -291,10 +291,7 @@ export function ProjectInvitePromptManager() {
             </h2>
             <p className="mt-2 text-sm text-gray-600">
               {currentInvite.inviter?.display_name || "A team lead"} invited you
-              {currentInvite.invited_position
-                ? ` as ${currentInvite.invited_position}`
-                : " to collaborate"}
-              .
+              to collaborate.
             </p>
           </div>
 

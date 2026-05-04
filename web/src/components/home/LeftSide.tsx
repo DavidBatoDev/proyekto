@@ -1,6 +1,5 @@
 import { useAuthStore } from "@/stores/authStore";
 import { DashboardWidgets } from "./DashboardWidgets";
-import { Hero } from "./Hero";
 import { MyWorkSection } from "./MyWorkSection";
 import { ProjectsGrid } from "./ProjectsGrid";
 import { RoadmapsGrid } from "./RoadmapsGrid";
@@ -11,7 +10,7 @@ export function PrimaryFlow() {
 	const isFreelancer = persona === "freelancer";
 
 	return (
-		<DashboardWidgets leadContent={<Hero />}>
+		<DashboardWidgets>
 			{/* Projects Grid */}
 			<ProjectsGrid />
 
