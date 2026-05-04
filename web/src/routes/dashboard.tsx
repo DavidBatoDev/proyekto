@@ -1,9 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useAuthStore } from "@/stores/authStore";
 import { PrimaryFlow } from "@/components/home/LeftSide";
-import { useEffect } from "react";
-import { useTutorial } from "@/contexts/TutorialContext";
-import { dashboardTutorial } from "@/tutorials/dashboardTutorial";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { FreelancerEligibilityChecklist } from "@/components/profile/FreelancerEligibilityChecklist";
 
@@ -24,23 +21,7 @@ export const Route = createFileRoute("/dashboard")({
 function DashboardPage() {
   const { profile } = useAuthStore();
   useProfileQuery();
-  const { startTutorial, isActive } = useTutorial();
   const isFreelancer = profile?.active_persona === "freelancer";
-
-  // Auto-start tutorial on first visit
-  useEffect(() => {
-    // Only start tutorial if profile is loaded, tutorial not active, AND onboarding is completed
-    if (!profile || isActive || !profile.has_completed_onboarding) return;
-
-    const hasCompletedTutorial = profile.tutorials_completed?.dashboard;
-    
-    if (!hasCompletedTutorial) {
-      // Small delay to ensure DOM is ready
-      setTimeout(() => {
-        startTutorial(dashboardTutorial);
-      }, 500);
-    }
-  }, [profile, startTutorial, isActive]);
 
   return (
     <div className="min-h-screen app-shell-bg">

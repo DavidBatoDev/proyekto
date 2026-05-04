@@ -2,7 +2,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronDown, LogOut, ShieldCheck, User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useTutorial } from "@/contexts/TutorialContext";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { switchPersona } from "@/lib/auth-api";
 import { profileKeys } from "@/queries/profile";
@@ -20,7 +19,6 @@ export default function UserMenu() {
 	const { user, signOut } = useAuthStore();
 	const queryClient = useQueryClient();
 	const navigate = useNavigate();
-	const { isActive } = useTutorial();
 
 	const { data: adminProfile } = useQuery({
 		queryKey: ["adminMe"],
@@ -107,24 +105,12 @@ export default function UserMenu() {
 		return personas;
 	};
 
-	const getDropdownStyle = () => {
-		if (!isActive || !buttonRef.current) {
-			return {
-				zIndex: 10003,
-				position: "absolute" as const,
-				top: "100%",
-				right: 0,
-			};
-		}
-
-		const buttonRect = buttonRef.current.getBoundingClientRect();
-		return {
-			zIndex: 10003,
-			position: "fixed" as const,
-			top: buttonRect.bottom + 8,
-			right: window.innerWidth - buttonRect.right,
-		};
-	};
+	const getDropdownStyle = () => ({
+		zIndex: 10003,
+		position: "absolute" as const,
+		top: "100%",
+		right: 0,
+	});
 
 	return (
 		<div className="relative overflow-visible" ref={dropdownRef}>

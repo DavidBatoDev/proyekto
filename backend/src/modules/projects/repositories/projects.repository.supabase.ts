@@ -154,7 +154,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         *,
         client:profiles!projects_client_id_fkey(id, display_name, avatar_url, headline, email),
         consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, headline, email),
-        members:project_shares(id, project_id, user_id, role, origin, granted_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified))
+        members:project_shares(id, project_id, user_id, role, origin, granted_at, user:profiles!project_shares_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified))
       `,
       )
       .eq('id', id)
@@ -388,7 +388,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         origin: 'invited',
       })
       .select(
-        'id, project_id, user_id, role, origin, granted_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
+        'id, project_id, user_id, role, origin, granted_at, user:profiles!project_shares_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
       )
       .single();
 
@@ -696,7 +696,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       const { data: current } = await this.supabase
         .from('project_shares')
         .select(
-          'id, project_id, user_id, role, origin, granted_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
+          'id, project_id, user_id, role, origin, granted_at, user:profiles!project_shares_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
         )
         .eq('id', memberId)
         .eq('project_id', projectId)
@@ -710,7 +710,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       .eq('id', memberId)
       .eq('project_id', projectId)
       .select(
-        'id, project_id, user_id, role, origin, granted_at, user:profiles(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
+        'id, project_id, user_id, role, origin, granted_at, user:profiles!project_shares_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
       )
       .single();
 
