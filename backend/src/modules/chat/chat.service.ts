@@ -20,10 +20,13 @@ export class ChatService {
     @Inject(CHAT_REPOSITORY) private readonly chatRepo: ChatRepository,
   ) {}
 
-  private canDirectMessage(actorRole: ChatRole, targetRole: ChatRole): boolean {
-    if (actorRole === 'consultant') return true;
-    if (actorRole === 'client') return targetRole === 'consultant';
-    return targetRole === 'consultant' || targetRole === 'freelancer';
+  private canDirectMessage(_actorRole: ChatRole, _targetRole: ChatRole): boolean {
+    // Soft-isolation update: once a user is a project member, they can DM
+    // any other project member. The legacy persona matrix
+    // (client ↔ consultant only, freelancer ↔ consultant+freelancer) was
+    // a marketplace-level concern that doesn't belong inside an active
+    // project's chat. Membership is gated upstream by assertProjectAccess.
+    return true;
   }
 
   private sortDmSlug(userA: string, userB: string): string {

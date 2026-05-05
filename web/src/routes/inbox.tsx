@@ -1,6 +1,13 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { Hash, Inbox, MessageSquare, PanelRight } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+	ChevronRight,
+	Hash,
+	Inbox,
+	MessageSquare,
+	PanelRight,
+} from "lucide-react";
 import {
 	useCallback,
 	useEffect,
@@ -25,6 +32,8 @@ import {
 } from "@/hooks/useChatQueries";
 import { useChatTyping } from "@/hooks/useChatTyping";
 import { useProjectsRealtime } from "@/hooks/useChatRealtime";
+import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
+import type { ProjectMember } from "@/services/project.service";
 import type { ChatRoom } from "@/services/chat.service";
 import {
 	mergeThreadMessages,
@@ -60,7 +69,37 @@ type InboxEntry = {
 	hasUnread: boolean;
 };
 
+type InboxGroup = {
+	project: Project;
+	entries: InboxEntry[];
+	mostRecent: number;
+	unreadCount: number;
+};
+
 // ─── Helpers ───────────────────────────────────────────────────────────────
+
+const COLLAPSED_STORAGE_KEY = "inbox_collapsed_projects";
+
+function loadCollapsed(): Record<string, boolean> {
+	if (typeof window === "undefined") return {};
+	try {
+		const raw = sessionStorage.getItem(COLLAPSED_STORAGE_KEY);
+		return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+	} catch {
+		return {};
+	}
+}
+
+function saveCollapsed(state: Record<string, boolean>): void {
+	if (typeof window === "undefined") return;
+	try {
+		sessionStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify(state));
+	} catch {
+		/* sessionStorage full / disabled — non-fatal */
+	}
+}
+
+
 
 function hasUnreadForRoom(room: ChatRoom, userId?: string): boolean {
 	if (!userId) return false;
@@ -208,6 +247,59 @@ function InboxPage() {
 		: entries;
 	const unreadCount = entries.filter((e) => e.hasUnread).length;
 
+	// Group visible entries by project. Each group remembers the project's
+	// most-recent room activity so we can sort groups by recency the same
+	// way rows used to sort. Within a group, channels (e.g. #general) sort
+	// above DMs; ties break on recency.
+	const visibleGroups = useMemo<InboxGroup[]>(() => {
+		const map = new Map<string, InboxGroup>();
+		for (const entry of visibleEntries) {
+			const ts = new Date(
+				entry.room.last_message?.created_at ?? entry.room.updated_at,
+			).getTime();
+			const existing = map.get(entry.project.id);
+			if (existing) {
+				existing.entries.push(entry);
+				if (ts > existing.mostRecent) existing.mostRecent = ts;
+				if (entry.hasUnread) existing.unreadCount += 1;
+			} else {
+				map.set(entry.project.id, {
+					project: entry.project,
+					entries: [entry],
+					mostRecent: ts,
+					unreadCount: entry.hasUnread ? 1 : 0,
+				});
+			}
+		}
+		const groups = Array.from(map.values());
+		for (const g of groups) {
+			g.entries.sort((a, b) => {
+				const aChannel = a.room.type === "channel" ? 0 : 1;
+				const bChannel = b.room.type === "channel" ? 0 : 1;
+				if (aChannel !== bChannel) return aChannel - bChannel;
+				const aTs = new Date(
+					a.room.last_message?.created_at ?? a.room.updated_at,
+				).getTime();
+				const bTs = new Date(
+					b.room.last_message?.created_at ?? b.room.updated_at,
+				).getTime();
+				return bTs - aTs;
+			});
+		}
+		return groups.sort((a, b) => b.mostRecent - a.mostRecent);
+	}, [visibleEntries]);
+
+	const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() =>
+		loadCollapsed(),
+	);
+	const toggleCollapsed = useCallback((projectId: string) => {
+		setCollapsed((prev) => {
+			const next = { ...prev, [projectId]: !prev[projectId] };
+			saveCollapsed(next);
+			return next;
+		});
+	}, []);
+
 	return (
 		<DashboardShell>
 			<div className="h-[calc(100vh-3.5rem)] px-4 py-4 sm:px-6 lg:px-8">
@@ -241,7 +333,7 @@ function InboxPage() {
 						<div className="flex-1 overflow-y-auto">
 							{isLoading ? (
 								<InboxListSkeleton />
-							) : visibleEntries.length === 0 ? (
+							) : visibleGroups.length === 0 ? (
 								<EmptyState
 									title={
 										showUnreadOnly ? "No unread messages" : "No messages yet"
@@ -253,26 +345,27 @@ function InboxPage() {
 									}
 								/>
 							) : (
-								<ul className="divide-y divide-slate-100">
-									{visibleEntries.map((entry) => (
-										<InboxRow
-											key={`${entry.project.id}:${entry.room.id}`}
-											entry={entry}
-											isSelected={
-												selectedEntry?.room.id === entry.room.id &&
-												selectedEntry?.project.id === entry.project.id
-											}
-											onSelect={() => handleSelect(entry)}
+								<div>
+									{visibleGroups.map((group) => (
+										<ProjectGroup
+											key={group.project.id}
+											group={group}
+											collapsed={!!collapsed[group.project.id]}
+											onToggle={() => toggleCollapsed(group.project.id)}
+											selectedEntry={selectedEntry}
 											currentUserId={user?.id}
+											onSelect={handleSelect}
 										/>
 									))}
-								</ul>
+								</div>
 							)}
 						</div>
 					</aside>
 
-					{/* Right pane: selected thread */}
-					<section className="flex min-w-0 flex-1 flex-col bg-white">
+					{/* Right pane: thread + member-details panel laid out as a row.
+					    InboxThread itself returns the thread column + (optional)
+					    profile panel column as siblings. */}
+					<section className="flex min-w-0 flex-1 bg-white">
 						{selectedEntry ? (
 							<InboxThread
 								key={`${selectedEntry.project.id}:${selectedEntry.room.id}`}
@@ -296,6 +389,79 @@ function InboxPage() {
 				</div>
 			</div>
 		</DashboardShell>
+	);
+}
+
+// ─── Project group (left rail section) ─────────────────────────────────────
+
+function ProjectGroup({
+	group,
+	collapsed,
+	onToggle,
+	selectedEntry,
+	currentUserId,
+	onSelect,
+}: {
+	group: InboxGroup;
+	collapsed: boolean;
+	onToggle: () => void;
+	selectedEntry: InboxEntry | null;
+	currentUserId?: string;
+	onSelect: (entry: InboxEntry) => void;
+}) {
+	return (
+		<section className="border-b border-slate-100 last:border-b-0">
+			<button
+				type="button"
+				onClick={onToggle}
+				className="flex w-full items-center gap-2 bg-slate-50/60 px-4 py-2 text-left transition-colors hover:bg-slate-100"
+			>
+				<motion.span
+					initial={false}
+					animate={{ rotate: collapsed ? 0 : 90 }}
+					transition={{ duration: 0.18, ease: "easeOut" }}
+					className="flex"
+				>
+					<ChevronRight className="h-3.5 w-3.5 text-slate-500" />
+				</motion.span>
+				<span className="min-w-0 flex-1 truncate text-[12px] font-semibold uppercase tracking-[0.06em] text-slate-600">
+					{group.project.title}
+				</span>
+				{group.unreadCount > 0 && (
+					<span className="rounded-full bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+						{group.unreadCount}
+					</span>
+				)}
+			</button>
+
+			<AnimatePresence initial={false}>
+				{!collapsed && (
+					<motion.div
+						key="rooms"
+						initial={{ height: 0, opacity: 0 }}
+						animate={{ height: "auto", opacity: 1 }}
+						exit={{ height: 0, opacity: 0 }}
+						transition={{ duration: 0.2, ease: "easeOut" }}
+						className="overflow-hidden"
+					>
+						<ul className="divide-y divide-slate-100">
+							{group.entries.map((entry) => (
+								<InboxRow
+									key={`${entry.project.id}:${entry.room.id}`}
+									entry={entry}
+									isSelected={
+										selectedEntry?.room.id === entry.room.id &&
+										selectedEntry?.project.id === entry.project.id
+									}
+									onSelect={() => onSelect(entry)}
+									currentUserId={currentUserId}
+								/>
+							))}
+						</ul>
+					</motion.div>
+				)}
+			</AnimatePresence>
+		</section>
 	);
 }
 
@@ -348,21 +514,18 @@ function InboxRow({
 							{formatTimestamp(last?.created_at ?? entry.room.updated_at)}
 						</span>
 					</div>
-					<div className="mt-0.5 flex items-center justify-between gap-2">
-						<span className="truncate text-xs text-slate-500">
-							{entry.project.title}
-						</span>
+					<div className="mt-1 flex items-center justify-between gap-2">
+						<p
+							className={`min-w-0 flex-1 truncate text-xs ${
+								entry.hasUnread ? "text-slate-700" : "text-slate-500"
+							}`}
+						>
+							{previewText}
+						</p>
 						{entry.hasUnread && (
 							<span className="h-2 w-2 shrink-0 rounded-full bg-cyan-500" />
 						)}
 					</div>
-					<p
-						className={`mt-1 truncate text-xs ${
-							entry.hasUnread ? "text-slate-700" : "text-slate-500"
-						}`}
-					>
-						{previewText}
-					</p>
 				</div>
 			</button>
 		</li>
@@ -433,6 +596,13 @@ function InboxThread({
 		}
 		return map;
 	}, [room.participants]);
+
+	// Project members — used to look up the position/role for the profile
+	// panel. Cheap because the members query is cached and shared with the
+	// per-project team page.
+	const projectMembersQuery = useProjectMembersQuery(project.id);
+	const projectMembers =
+		(projectMembersQuery.data as ProjectMember[] | undefined) ?? [];
 
 	// Typing — broadcast on composer change, display incoming.
 	const { typingNames, startTyping, stopTyping } = useChatTyping({
@@ -679,22 +849,54 @@ function InboxThread({
 		setIsProfilePanelOpen(true);
 	}, []);
 
+	// In channel mode, ChatProfilePanel renders a grid of all project
+	// members. Map our share rows → preview shape so the panel populates.
+	const projectMemberPreviews = useMemo<ChatMemberProfilePreview[]>(
+		() =>
+			projectMembers
+				.filter((m) => !!m.user_id)
+				.map((m) => {
+					const name =
+						m.user?.display_name ||
+						[m.user?.first_name, m.user?.last_name]
+							.filter(Boolean)
+							.join(" ") ||
+						m.user?.email ||
+						"Member";
+					const roleLabel = m.role
+						? m.role.charAt(0).toUpperCase() + m.role.slice(1)
+						: "Member";
+					return {
+						userId: m.user_id as string,
+						name,
+						roleLabel,
+						positionLabel: m.position?.trim() || "",
+						avatarUrl: m.user?.avatar_url ?? null,
+						bannerUrl: null,
+					};
+				}),
+		[projectMembers],
+	);
+
 	const profilePreview = useMemo<ChatMemberProfilePreview | null>(() => {
 		if (!selectedProfileUserId) return null;
 		const sender = senderMap[selectedProfileUserId];
 		if (!sender) return null;
-		const participant = room.participants.find(
-			(p) => p.user_id === selectedProfileUserId,
+		const member = projectMembers.find(
+			(m) => m.user_id === selectedProfileUserId,
 		);
+		const roleLabel = member?.role
+			? member.role.charAt(0).toUpperCase() + member.role.slice(1)
+			: "Member";
 		return {
 			userId: selectedProfileUserId,
 			name: sender.name,
-			roleLabel: "Member",
-			positionLabel: participant?.user?.email ?? "",
+			roleLabel,
+			positionLabel: member?.position?.trim() || "",
 			avatarUrl: sender.avatarUrl ?? null,
 			bannerUrl: null,
 		};
-	}, [selectedProfileUserId, senderMap, room.participants]);
+	}, [selectedProfileUserId, senderMap, projectMembers]);
 
 	const title = getRoomTitle(room, currentUserId);
 
@@ -793,6 +995,7 @@ function InboxThread({
 						member={profilePreview}
 						isOpen={isProfilePanelOpen}
 						mode={room.type}
+						projectMembers={projectMemberPreviews}
 						onToggle={() => setIsProfilePanelOpen((v) => !v)}
 						onClose={() => setIsProfilePanelOpen(false)}
 					/>
