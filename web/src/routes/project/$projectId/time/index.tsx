@@ -2,10 +2,20 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
 import { useTimeRouteData } from "@/components/project/time/useTimeRouteData";
+import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
 
 export const Route = createFileRoute("/project/$projectId/time/")({
-  component: TimeIndexPage,
+  component: TimeIndexRoute,
 });
+
+function TimeIndexRoute() {
+  const { projectId } = Route.useParams();
+  return (
+    <RequireProjectAccess projectId={projectId} access="time">
+      <TimeIndexPage />
+    </RequireProjectAccess>
+  );
+}
 
 function TimeIndexPage() {
   const { projectId } = Route.useParams();

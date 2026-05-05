@@ -1,4 +1,3 @@
-import { ForbiddenException } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import type { ChatRepository, ChatRoom } from './repositories/chat.repository.interface';
 
@@ -110,8 +109,22 @@ describe('ChatService', () => {
     );
   });
 
-  it('blocks freelancer from DMing client', async () => {
+  it('allows DMs between any two project members regardless of role flavor', async () => {
+    // Soft-isolation update: the legacy persona matrix
+    // (client ↔ consultant only, freelancer ↔ consultant+freelancer) was
+    // dropped — any project member can DM any other project member. The
+    // marketplace mediation lives elsewhere.
+    const upsertRoom = jest.fn().mockResolvedValue({
+      id: 'room-1',
+      project_id: 'project-1',
+      type: 'dm',
+      slug: 'a_b',
+      name: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
     const repo = buildRepo({
+      upsertRoom,
       resolveProjectRole: jest
         .fn()
         .mockResolvedValueOnce('freelancer')
@@ -123,8 +136,8 @@ describe('ChatService', () => {
       service.sendMessage('project-1', 'freelancer-1', {
         kind: 'dm',
         recipient_id: 'client-1',
-        content: 'not allowed',
+        content: 'now allowed',
       }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).resolves.toBeTruthy();
   });
 });

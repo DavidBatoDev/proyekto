@@ -26,10 +26,20 @@ import {
   useInvalidateProjectQueries,
   useProjectResourcesQuery,
 } from "@/hooks/useProjectQueries";
+import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
 
 export const Route = createFileRoute("/project/$projectId/resources")({
-  component: ResourcesPage,
+  component: ResourcesRoute,
 });
+
+function ResourcesRoute() {
+  const { projectId } = Route.useParams();
+  return (
+    <RequireProjectAccess projectId={projectId} access="resources">
+      <ResourcesPage />
+    </RequireProjectAccess>
+  );
+}
 
 type LinkFormState = {
   id?: string;

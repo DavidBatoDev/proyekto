@@ -2,11 +2,11 @@ import {
   Inject,
   Injectable,
   NotFoundException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ProjectsService } from '../../projects/projects.service';
+import { MissingPermissionException } from '../../projects/authorization/missing-permission.exception';
 
 @Injectable()
 export class RoadmapAuthorizationService {
@@ -99,7 +99,11 @@ export class RoadmapAuthorizationService {
 
     if (!roadmap.project_id) {
       if (roadmap.owner_id !== userId) {
-        throw new ForbiddenException('Not the roadmap owner');
+        throw new MissingPermissionException({
+          path: null,
+          requiredRole: 'owner',
+          label: 'edit this roadmap',
+        });
       }
       return;
     }
@@ -195,7 +199,11 @@ export class RoadmapAuthorizationService {
 
     if (!roadmap.project_id) {
       if (roadmap.owner_id !== userId) {
-        throw new ForbiddenException('Not the roadmap owner');
+        throw new MissingPermissionException({
+          path: null,
+          requiredRole: 'owner',
+          label: 'edit this roadmap',
+        });
       }
       return;
     }

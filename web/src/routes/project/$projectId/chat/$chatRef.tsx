@@ -48,10 +48,20 @@ import {
   type ThreadUiMessage,
 } from "@/components/project/chat/thread";
 import { useToast } from "@/hooks/useToast";
+import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
 
 export const Route = createFileRoute("/project/$projectId/chat/$chatRef")({
-  component: ChatPage,
+  component: ChatRoute,
 });
+
+function ChatRoute() {
+  const { projectId } = Route.useParams();
+  return (
+    <RequireProjectAccess projectId={projectId} access="chat">
+      <ChatPage />
+    </RequireProjectAccess>
+  );
+}
 
 type ActiveTarget =
   | { kind: "channel"; slug: "general"; roomId: string | null }

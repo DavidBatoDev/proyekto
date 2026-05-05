@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ForbiddenException,
   InternalServerErrorException,
   Inject,
   Injectable,
@@ -21,6 +20,7 @@ import type { IRoadmapsRepository } from '../repositories/roadmaps.repository.in
 import type { IRoadmapPatchRepository } from '../repositories/roadmap-patch.repository.interface';
 import { RoadmapJsonPatchProcessor } from '../patch/roadmap-json-patch.processor';
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
+import { MissingPermissionException } from '../../projects/authorization/missing-permission.exception';
 
 export const ROADMAP_PATCH_REPOSITORY = Symbol('ROADMAP_PATCH_REPOSITORY');
 
@@ -51,7 +51,11 @@ export class RoadmapPatchService {
           'roadmap.edit',
         );
       } else if (existing && existing.owner_id !== userId) {
-        throw new ForbiddenException('Not the owner');
+        throw new MissingPermissionException({
+          path: null,
+          requiredRole: 'owner',
+          label: 'modify this roadmap',
+        });
       }
 
       if (existing) {
@@ -133,7 +137,11 @@ export class RoadmapPatchService {
         'roadmap.edit',
       );
     } else if (existing.owner_id !== userId)
-      throw new ForbiddenException('Not the owner');
+      throw new MissingPermissionException({
+        path: null,
+        requiredRole: 'owner',
+        label: 'modify this roadmap',
+      });
 
     const currentState = await this.roadmapsRepo.findFull(roadmapId, userId);
     if (!currentState) throw new NotFoundException('Roadmap not found');

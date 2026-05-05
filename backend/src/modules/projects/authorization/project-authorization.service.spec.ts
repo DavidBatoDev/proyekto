@@ -135,7 +135,7 @@ describe('ProjectAuthorizationService', () => {
       );
       await expect(
         service.assertRole('u1', 'p1', 'viewer'),
-      ).rejects.toThrow(/No access to this project/);
+      ).rejects.toThrow(/not a member of this project/);
     });
   });
 

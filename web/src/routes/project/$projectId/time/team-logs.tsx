@@ -39,9 +39,20 @@ import {
   restoreRateAtIndex,
 } from "@/components/project/time/timeOptimistic";
 
+import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
+
 export const Route = createFileRoute("/project/$projectId/time/team-logs")({
-  component: TimeTeamLogsPage,
+  component: TimeTeamLogsRoute,
 });
+
+function TimeTeamLogsRoute() {
+  const { projectId } = Route.useParams();
+  return (
+    <RequireProjectAccess projectId={projectId} access="time">
+      <TimeTeamLogsPage />
+    </RequireProjectAccess>
+  );
+}
 
 function TimeTeamLogsPage() {
   const childMatches = useChildMatches();

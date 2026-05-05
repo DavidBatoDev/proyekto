@@ -1,11 +1,11 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { ProjectsService } from '../projects/projects.service';
+import { MissingPermissionException } from '../projects/authorization/missing-permission.exception';
 import {
   BulkReviewTimeLogsDto,
   CreateProjectMemberTimeRateDto,
@@ -83,7 +83,10 @@ export class ProjectTimeService {
 
   private assertOwnLogEditable(existing: TaskTimeLogRecord): void {
     if (existing.status === 'approved' || existing.status === 'rejected') {
-      throw new ForbiddenException(ProjectTimeService.OWN_LOG_LOCKED_MESSAGE);
+      throw new MissingPermissionException({
+        path: 'time.edit_own',
+        message: ProjectTimeService.OWN_LOG_LOCKED_MESSAGE,
+      });
     }
   }
 
@@ -111,7 +114,10 @@ export class ProjectTimeService {
   ): Promise<void> {
     const hasRate = await this.repo.hasProjectMemberRate(projectId, userId);
     if (!hasRate) {
-      throw new ForbiddenException(ProjectTimeService.RATE_REQUIRED_MESSAGE);
+      throw new MissingPermissionException({
+        path: 'time.log',
+        message: ProjectTimeService.RATE_REQUIRED_MESSAGE,
+      });
     }
   }
 
@@ -172,7 +178,10 @@ export class ProjectTimeService {
     );
     const rate = await this.repo.findProjectMemberRateByUser(projectId, userId);
     if (!rate) {
-      throw new ForbiddenException(ProjectTimeService.RATE_REQUIRED_MESSAGE);
+      throw new MissingPermissionException({
+        path: 'time.log',
+        message: ProjectTimeService.RATE_REQUIRED_MESSAGE,
+      });
     }
     return rate;
   }

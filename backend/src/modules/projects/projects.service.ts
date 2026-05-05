@@ -11,6 +11,7 @@ import {
   ProjectAuthorizationService,
   type ProjectRole,
 } from './authorization/project-authorization.service';
+import { MissingPermissionException } from './authorization/missing-permission.exception';
 import {
   AddProjectMemberDto,
   CreateProjectDto,
@@ -188,9 +189,10 @@ export class ProjectsService {
     );
 
     if (!member) {
-      throw new ForbiddenException(
-        'Only project participants can manage resources.',
-      );
+      throw new MissingPermissionException({
+        path: 'resources.view',
+        label: 'manage project resources',
+      });
     }
 
     return project;
@@ -251,15 +253,21 @@ export class ProjectsService {
     // "Any" semantic: pass if the caller satisfies the WEAKEST required role.
     const role = await this.authorization.getUserProjectRole(userId, projectId);
     if (!role) {
-      throw new ForbiddenException('No access to this project');
+      throw new MissingPermissionException({
+        path: null,
+        message: 'You are not a member of this project.',
+      });
     }
     const passes = permissionsToCheck.some((p) =>
       this.authorization.roleSatisfies(role, this.permissionToMinRole(p)),
     );
     if (!passes) {
-      throw new ForbiddenException(
-        `Missing required permission: ${permissionsToCheck.join(' OR ')}`,
-      );
+      // "Any" semantics: surface the first listed path so the FE can show a
+      // canonical label. Frontend can include the others in the help text.
+      throw new MissingPermissionException({
+        path: permissionsToCheck[0],
+        message: `Missing required permission: ${permissionsToCheck.join(' OR ')}.`,
+      });
     }
   }
 
@@ -345,7 +353,11 @@ export class ProjectsService {
   ): Promise<Project> {
     const isOwner = await this.projectsRepo.isOwner(id, userId);
     if (!isOwner)
-      throw new ForbiddenException('Only the project owner can update it');
+      throw new MissingPermissionException({
+        path: null,
+        requiredRole: 'owner',
+        label: 'update this project',
+      });
     return this.projectsRepo.update(id, dto);
   }
 
@@ -353,9 +365,11 @@ export class ProjectsService {
     const project = await this.getProjectOrThrow(id);
 
     if (project.client_id !== userId) {
-      throw new ForbiddenException(
-        'Only the current project owner can delete this project.',
-      );
+      throw new MissingPermissionException({
+        path: null,
+        requiredRole: 'owner',
+        label: 'delete this project',
+      });
     }
 
     await this.projectsRepo.deleteProject(id);
@@ -369,9 +383,11 @@ export class ProjectsService {
     const project = await this.getProjectOrThrow(projectId);
 
     if (project.client_id !== callerId) {
-      throw new ForbiddenException(
-        'Only the current project owner can transfer ownership.',
-      );
+      throw new MissingPermissionException({
+        path: null,
+        requiredRole: 'owner',
+        label: 'transfer project ownership',
+      });
     }
 
     const newOwnerId = dto.new_owner_id;
@@ -444,9 +460,11 @@ export class ProjectsService {
   ): Promise<Project> {
     const project = await this.getProjectOrThrow(projectId);
     if (!(await this.isProjectPrivileged(callerId, projectId))) {
-      throw new ForbiddenException(
-        'Only the current project owner or admin can reassign the consultant.',
-      );
+      throw new MissingPermissionException({
+        path: null,
+        requiredRole: 'admin',
+        label: 'reassign the consultant',
+      });
     }
 
     const newConsultantId = dto.new_consultant_id;
@@ -891,9 +909,11 @@ export class ProjectsService {
     const project = await this.getProjectOrThrow(projectId);
 
     if (callerId === project.client_id || callerId === project.consultant_id) {
-      throw new ForbiddenException(
-        'Project leads cannot leave the project. Transfer ownership or reassign consultant instead.',
-      );
+      throw new MissingPermissionException({
+        path: null,
+        message:
+          'Project leads cannot leave the project. Transfer ownership or reassign consultant instead.',
+      });
     }
 
     const member = await this.projectsRepo.getMemberByProjectAndUserId(
@@ -902,7 +922,10 @@ export class ProjectsService {
     );
 
     if (!member) {
-      throw new ForbiddenException('You are not a member of this project.');
+      throw new MissingPermissionException({
+        path: 'members.view',
+        message: 'You are not a member of this project.',
+      });
     }
 
     const unassignedTaskCount =
@@ -946,7 +969,10 @@ export class ProjectsService {
       userId,
     );
     if (!target) {
-      throw new ForbiddenException('You are not a member of this project.');
+      throw new MissingPermissionException({
+        path: 'members.view',
+        message: 'You are not a member of this project.',
+      });
     }
     return resolvePermissions(
       (target.role as ProjectRole) ?? 'viewer',
@@ -983,7 +1009,11 @@ export class ProjectsService {
     // Cannot demote a project owner via this endpoint — owner permissions
     // are always at the maximum and protected by last-owner rules.
     if (role === 'owner') {
-      throw new ForbiddenException("Cannot modify an owner's permissions.");
+      throw new MissingPermissionException({
+        path: null,
+        message: "Cannot modify an owner's permissions.",
+        label: "modify an owner's permissions",
+      });
     }
 
     // Compute the desired permissions: start from current resolved (baseline

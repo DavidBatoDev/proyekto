@@ -1,9 +1,4 @@
-import {
-  ForbiddenException,
-  Inject,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import {
@@ -12,6 +7,7 @@ import {
   getPermission,
   resolvePermissions,
 } from '../permissions/project-permissions';
+import { MissingPermissionException } from './missing-permission.exception';
 
 /**
  * Roles in descending strength order. Higher index = stronger role.
@@ -101,11 +97,13 @@ export class ProjectAuthorizationService {
   ): Promise<ProjectRole> {
     const role = await this.getUserProjectRole(callerId, projectId);
     if (!role || !this.roleSatisfies(role, minRole)) {
-      throw new ForbiddenException(
-        role
-          ? `Insufficient role on project: have '${role}', need '${minRole}' or stronger`
-          : 'No access to this project',
-      );
+      throw new MissingPermissionException({
+        path: null,
+        requiredRole: minRole,
+        message: role
+          ? `Insufficient role on project: have '${role}', need '${minRole}' or stronger.`
+          : 'You are not a member of this project.',
+      });
     }
     return role;
   }
@@ -159,9 +157,7 @@ export class ProjectAuthorizationService {
   ): Promise<ProjectPermissions> {
     const perms = await this.resolvePermissions(callerId, projectId);
     if (!perms || !getPermission(perms, path)) {
-      throw new ForbiddenException(
-        `Missing required permission '${path}' on this project`,
-      );
+      throw new MissingPermissionException({ path });
     }
     return perms;
   }
@@ -212,9 +208,11 @@ export class ProjectAuthorizationService {
     if (targetRow.role === 'owner') {
       const ownerCount = await this.countOwners(projectId);
       if (ownerCount <= 1) {
-        throw new ForbiddenException(
-          'Cannot remove the last owner from a project',
-        );
+        throw new MissingPermissionException({
+          path: null,
+          message: 'Cannot remove the last owner from a project.',
+          label: 'remove the last owner',
+        });
       }
     }
 

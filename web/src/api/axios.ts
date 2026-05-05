@@ -3,6 +3,21 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 import { getAccessToken } from "../lib/supabase";
+import {
+  formatMissingPermission,
+  parseMissingPermissionError,
+} from "../lib/permissionErrors";
+
+// Module-level toast handler. The ToastProvider wires this on mount so the
+// axios interceptor — which doesn't live inside React — can fire toasts on
+// 403 `missing_permission` responses without each call site catching them
+// individually. See web/src/contexts/ToastContext.tsx.
+type ToastError = (message: string, durationMs?: number) => void;
+let permissionToastHandler: ToastError | null = null;
+
+export function setPermissionToastHandler(handler: ToastError | null): void {
+  permissionToastHandler = handler;
+}
 
 // Get API base URL from environment variable
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -71,6 +86,15 @@ apiClient.interceptors.response.use(
                 url.includes("/rates"));
             if (isExpectedProjectTimeForbidden) {
               break;
+            }
+
+            // Surface structured `missing_permission` errors as a toast so
+            // per-call sites don't have to wire it themselves. The error
+            // still propagates so callers can also render an inline
+            // <PermissionDeniedBanner /> if they want a per-page treatment.
+            const parsed = parseMissingPermissionError(error);
+            if (parsed && permissionToastHandler) {
+              permissionToastHandler(formatMissingPermission(parsed), 6000);
             }
           }
           console.error("Forbidden - Insufficient permissions");

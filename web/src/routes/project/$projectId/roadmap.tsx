@@ -18,12 +18,22 @@ import {
   useInvalidateProjectQueries,
   useLinkedRoadmapQuery,
 } from "@/hooks/useProjectQueries";
+import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
 
 export const Route = createFileRoute("/project/$projectId/roadmap")({
   component: RoadmapPage,
 });
 
 function RoadmapPage() {
+  const { projectId } = Route.useParams();
+  return (
+    <RequireProjectAccess projectId={projectId} access="roadmap">
+      <RoadmapPageBody />
+    </RequireProjectAccess>
+  );
+}
+
+function RoadmapPageBody() {
   const childMatches = useChildMatches();
   const { projectId } = Route.useParams();
   const navigate = useNavigate();

@@ -1,11 +1,11 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import type { SendChatMessageDto } from './dto/chat.dto';
+import { MissingPermissionException } from '../projects/authorization/missing-permission.exception';
 import type {
   ChatRepository,
   ChatRole,
@@ -36,7 +36,10 @@ export class ChatService {
   private async assertProjectAccess(projectId: string, userId: string): Promise<void> {
     const isMember = await this.chatRepo.isProjectMember(projectId, userId);
     if (!isMember) {
-      throw new ForbiddenException('You are not a member of this project.');
+      throw new MissingPermissionException({
+        path: 'access.chat',
+        message: 'You are not a member of this project.',
+      });
     }
   }
 
@@ -117,7 +120,10 @@ export class ChatService {
     await this.assertProjectAccess(projectId, userId);
     const actorRole = await this.chatRepo.resolveProjectRole(projectId, userId);
     if (!actorRole) {
-      throw new ForbiddenException('You are not a member of this project.');
+      throw new MissingPermissionException({
+        path: 'access.chat',
+        message: 'You are not a member of this project.',
+      });
     }
 
     const members = await this.chatRepo.listProjectMemberCandidates(projectId);
@@ -149,7 +155,10 @@ export class ChatService {
 
     const isParticipant = await this.chatRepo.isRoomParticipant(roomId, userId);
     if (!isParticipant) {
-      throw new ForbiddenException('You are not a participant in this room.');
+      throw new MissingPermissionException({
+        path: 'chat.view_channels',
+        message: 'You are not a participant in this room.',
+      });
     }
 
     const safeLimit = Math.min(Math.max(limit, 1), 100);
@@ -203,7 +212,10 @@ export class ChatService {
 
       const isParticipant = await this.chatRepo.isRoomParticipant(room.id, senderId);
       if (!isParticipant) {
-        throw new ForbiddenException('You are not a participant in this room.');
+        throw new MissingPermissionException({
+        path: 'chat.view_channels',
+        message: 'You are not a participant in this room.',
+      });
       }
       return room;
     }
@@ -243,13 +255,17 @@ export class ChatService {
     );
 
     if (!actorRole || !recipientRole) {
-      throw new ForbiddenException('Both users must be project participants.');
+      throw new MissingPermissionException({
+        path: 'access.chat',
+        message: 'Both users must be project participants.',
+      });
     }
 
     if (!this.canDirectMessage(actorRole, recipientRole)) {
-      throw new ForbiddenException(
-        'This direct message is not allowed by project governance.',
-      );
+      throw new MissingPermissionException({
+        path: 'chat.send_dm',
+        message: 'This direct message is not allowed by project governance.',
+      });
     }
 
     const slug = this.sortDmSlug(senderId, dto.recipient_id);
@@ -312,7 +328,10 @@ export class ChatService {
 
     const isParticipant = await this.chatRepo.isRoomParticipant(message.room_id, userId);
     if (!isParticipant) {
-      throw new ForbiddenException('You are not a participant in this room.');
+      throw new MissingPermissionException({
+        path: 'chat.view_channels',
+        message: 'You are not a participant in this room.',
+      });
     }
 
     await this.chatRepo.toggleMessageReaction({
@@ -335,11 +354,18 @@ export class ChatService {
 
     const isParticipant = await this.chatRepo.isRoomParticipant(message.room_id, userId);
     if (!isParticipant) {
-      throw new ForbiddenException('You are not a participant in this room.');
+      throw new MissingPermissionException({
+        path: 'chat.view_channels',
+        message: 'You are not a participant in this room.',
+      });
     }
 
     if (message.sender_id !== userId) {
-      throw new ForbiddenException('You can only unsend your own messages.');
+      throw new MissingPermissionException({
+        path: null,
+        message: 'You can only unsend your own messages.',
+        label: 'unsend another member’s message',
+      });
     }
 
     await this.chatRepo.deleteMessage({
@@ -363,7 +389,10 @@ export class ChatService {
 
     const isParticipant = await this.chatRepo.isRoomParticipant(roomId, userId);
     if (!isParticipant) {
-      throw new ForbiddenException('You are not a participant in this room.');
+      throw new MissingPermissionException({
+        path: 'chat.view_channels',
+        message: 'You are not a participant in this room.',
+      });
     }
 
     const lastReadAt = await this.chatRepo.markRoomRead({

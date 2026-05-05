@@ -2,10 +2,10 @@ import {
   Injectable,
   Inject,
   NotFoundException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
+import { MissingPermissionException } from '../../projects/authorization/missing-permission.exception';
 import type { IRoadmapsRepository } from '../repositories/roadmaps.repository.interface';
 import {
   CreateRoadmapDto,
@@ -32,7 +32,12 @@ export class RoadmapsService {
       .single();
 
     if (error || !data || !data.is_consultant_verified) {
-      throw new ForbiddenException('Consultant access required');
+      throw new MissingPermissionException({
+        path: null,
+        label: 'access this consultant feature',
+        message:
+          'This action is limited to verified consultants. Apply to lead on Proyekto to unlock it.',
+      });
     }
   }
 
@@ -106,7 +111,11 @@ export class RoadmapsService {
     }
 
     if (existing.owner_id !== userId) {
-      throw new ForbiddenException('Not the owner');
+      throw new MissingPermissionException({
+        path: null,
+        requiredRole: 'owner',
+        label: 'modify this roadmap',
+      });
     }
 
     return this.repo.update(id, dto);
@@ -130,7 +139,11 @@ export class RoadmapsService {
     }
 
     if (existing.owner_id !== userId)
-      throw new ForbiddenException('Not the owner');
+      throw new MissingPermissionException({
+        path: null,
+        requiredRole: 'owner',
+        label: 'modify this roadmap',
+      });
     return this.repo.update(id, dto);
   }
 
@@ -148,7 +161,11 @@ export class RoadmapsService {
     }
 
     if (existing.owner_id !== userId)
-      throw new ForbiddenException('Not the owner');
+      throw new MissingPermissionException({
+        path: null,
+        requiredRole: 'owner',
+        label: 'modify this roadmap',
+      });
     return this.repo.remove(id);
   }
 

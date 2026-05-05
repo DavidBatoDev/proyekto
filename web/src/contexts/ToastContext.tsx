@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { CheckCircle2, XCircle, AlertTriangle, Info, X } from "lucide-react";
+import { setPermissionToastHandler } from "@/api/axios";
 
 type Severity = "success" | "error" | "warning" | "info";
 
@@ -142,6 +143,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       showToast({ message, severity: "error", duration }),
     [showToast],
   );
+
+  // Bridge: register `error` as the global permission-toast handler so the
+  // axios 403 interceptor can fire toasts (it lives outside React).
+  useEffect(() => {
+    setPermissionToastHandler(error);
+    return () => setPermissionToastHandler(null);
+  }, [error]);
   const warning = useCallback(
     (message: string, duration = 5000) =>
       showToast({ message, severity: "warning", duration }),

@@ -22,6 +22,8 @@ import { useUser } from "@/stores/authStore";
 import { useToast } from "@/hooks/useToast";
 import { PositionCell } from "./PositionCell";
 import { TeamSkeleton } from "./TeamSkeleton";
+import { PermissionDeniedBanner } from "@/components/common/PermissionDeniedBanner";
+import { parseMissingPermissionError } from "@/lib/permissionErrors";
 import { AddMemberModal } from "./AddMemberModal";
 import { RemoveMemberModal } from "./RemoveMemberModal";
 import { memberDisplayName } from "./utils";
@@ -740,23 +742,32 @@ export function TeamPage({ projectId }: TeamPageProps) {
 
   const isLoading =
     projectQuery.isPending || membersQuery.isPending || myPermissionsQuery.isPending;
-  const error =
-    projectQuery.error instanceof Error
-      ? projectQuery.error.message
-      : membersQuery.error instanceof Error
-        ? membersQuery.error.message
-        : myPermissionsQuery.error instanceof Error
-          ? myPermissionsQuery.error.message
-          : null;
+  const rawError =
+    projectQuery.error ?? membersQuery.error ?? myPermissionsQuery.error ?? null;
+  const permissionFailure = rawError
+    ? parseMissingPermissionError(rawError)
+    : null;
+  const errorMessage =
+    rawError instanceof Error ? rawError.message : rawError ? String(rawError) : null;
 
   if (isLoading) return <TeamSkeleton />;
 
-  if (error) {
+  if (permissionFailure) {
+    return (
+      <div className="h-full overflow-y-auto">
+        <div className="px-8 py-6">
+          <PermissionDeniedBanner parsed={permissionFailure} />
+        </div>
+      </div>
+    );
+  }
+
+  if (errorMessage) {
     return (
       <div className="h-full overflow-y-auto">
         <div className="px-8 py-6">
           <div className="rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
+            {errorMessage}
           </div>
         </div>
       </div>

@@ -41,9 +41,20 @@ import {
   restoreLogAtIndex,
 } from "@/components/project/time/timeOptimistic";
 
+import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
+
 export const Route = createFileRoute("/project/$projectId/time/my-logs")({
-  component: TimeMyLogsPage,
+  component: TimeMyLogsRoute,
 });
+
+function TimeMyLogsRoute() {
+  const { projectId } = Route.useParams();
+  return (
+    <RequireProjectAccess projectId={projectId} access="time">
+      <TimeMyLogsPage />
+    </RequireProjectAccess>
+  );
+}
 
 function TimeMyLogsPage() {
   const { projectId } = Route.useParams();

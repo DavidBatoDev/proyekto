@@ -18,12 +18,22 @@ import {
 	useInvalidateProjectQueries,
 	useLinkedRoadmapQuery,
 } from "@/hooks/useProjectQueries";
+import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
 
 export const Route = createFileRoute("/project/$projectId/work-items")({
 	component: WorkItemsLayout,
 });
 
 function WorkItemsLayout() {
+	const { projectId } = Route.useParams();
+	return (
+		<RequireProjectAccess projectId={projectId} access="work_items">
+			<WorkItemsLayoutBody />
+		</RequireProjectAccess>
+	);
+}
+
+function WorkItemsLayoutBody() {
 	const childMatches = useChildMatches();
 	const { projectId } = Route.useParams();
 	const navigate = useNavigate();
