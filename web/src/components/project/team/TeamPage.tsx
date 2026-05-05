@@ -2,16 +2,13 @@ import { useState, useEffect, useCallback, useLayoutEffect, useRef } from "react
 import { createPortal } from "react-dom";
 import {
   Search,
-  Check,
   ChevronDown,
-  Pencil,
   Plus,
   Trash2,
   MessageSquare,
   MoreHorizontal,
   Clock,
   ShieldCheck,
-  X,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -23,6 +20,7 @@ import {
 } from "@/services/project.service";
 import { useUser } from "@/stores/authStore";
 import { useToast } from "@/hooks/useToast";
+import { PositionCell } from "./PositionCell";
 import { TeamSkeleton } from "./TeamSkeleton";
 import { AddMemberModal } from "./AddMemberModal";
 import { RemoveMemberModal } from "./RemoveMemberModal";
@@ -166,7 +164,7 @@ function ColumnHeaders({ showActions }: { showActions: boolean }) {
       }`}
     >
       <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Name</span>
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Role</span>
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Position</span>
       <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</span>
       {showActions && (
         <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 text-right">
@@ -317,6 +315,7 @@ function TeamRow({
         fallback={roleLabel}
         canEdit={!!canEditPosition}
         onSave={onSavePosition}
+        displayName={name}
       />
 
 
@@ -350,108 +349,6 @@ function TeamRow({
 }
 
 // ─── Position cell with inline edit ───────────────────────────────────────────
-
-function PositionCell({
-  value,
-  fallback,
-  canEdit,
-  onSave,
-}: {
-  value: string | null;
-  fallback: string;
-  canEdit: boolean;
-  onSave?: (next: string) => Promise<void> | void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value ?? "");
-  const [saving, setSaving] = useState(false);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    if (editing) {
-      setDraft(value ?? "");
-      requestAnimationFrame(() => inputRef.current?.focus());
-    }
-  }, [editing, value]);
-
-  const submit = async () => {
-    if (!onSave) return;
-    if (saving) return;
-    const trimmed = draft.trim();
-    if (trimmed === (value ?? "")) {
-      setEditing(false);
-      return;
-    }
-    setSaving(true);
-    try {
-      await onSave(trimmed);
-      setEditing(false);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const cancel = () => {
-    if (saving) return;
-    setEditing(false);
-    setDraft(value ?? "");
-  };
-
-  if (editing) {
-    return (
-      <div className="flex min-w-0 items-center gap-1">
-        <input
-          ref={inputRef}
-          value={draft}
-          maxLength={80}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void submit();
-            if (e.key === "Escape") cancel();
-          }}
-          placeholder="e.g. Backend Dev"
-          className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-        />
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={saving}
-          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-60"
-          title="Save"
-        >
-          <Check className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={cancel}
-          disabled={saving}
-          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-60"
-          title="Cancel"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="group flex min-w-0 items-center gap-1.5">
-      <span className="truncate text-sm text-slate-600">
-        {value?.trim() || fallback}
-      </span>
-      {canEdit && (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-300 opacity-0 transition-opacity hover:bg-slate-100 hover:text-slate-700 group-hover:opacity-100"
-          title="Edit position"
-        >
-          <Pencil className="h-3 w-3" />
-        </button>
-      )}
-    </div>
-  );
-}
 
 // ─── Execution Team Section ───────────────────────────────────────────────────
 
@@ -909,11 +806,25 @@ export function TeamPage({ projectId }: TeamPageProps) {
     email?: string;
     roleLabel: string;
     targetType: TargetType;
+    /** Underlying project_shares row id (so we can save position). */
+    shareId?: string;
+    /** Current position label, if any, on the share row. */
+    position?: string | null;
   };
+
+  // Map principals (by user id) to their project_shares row so we can edit
+  // their position labels. Principals are filtered out of `members` for
+  // display but the share rows still exist in the unfiltered query data.
+  const sourceMembers = (membersQuery.data as ProjectMember[] | undefined) ?? [];
+  const shareByUserId = new Map<string, ProjectMember>();
+  for (const m of sourceMembers) {
+    if (m.user_id) shareByUserId.set(m.user_id, m);
+  }
 
   const stakeholders: Stakeholder[] = [];
 
   if (isSamePrincipal && client) {
+    const share = shareByUserId.get(client.id);
     stakeholders.push({
       id: client.id,
       name: client.display_name || client.email || "Client",
@@ -921,9 +832,12 @@ export function TeamPage({ projectId }: TeamPageProps) {
       email: client.email,
       roleLabel: "Client & Consultant",
       targetType: "consultant",
+      shareId: share?.id,
+      position: share?.position ?? null,
     });
   } else {
     if (client) {
+      const share = shareByUserId.get(client.id);
       stakeholders.push({
         id: client.id,
         name: client.display_name || client.email || "Client",
@@ -931,9 +845,12 @@ export function TeamPage({ projectId }: TeamPageProps) {
         email: client.email,
         roleLabel: "Client",
         targetType: "client",
+        shareId: share?.id,
+        position: share?.position ?? null,
       });
     }
     if (consultant) {
+      const share = shareByUserId.get(consultant.id);
       stakeholders.push({
         id: consultant.id,
         name: consultant.display_name || consultant.email || "Consultant",
@@ -941,6 +858,8 @@ export function TeamPage({ projectId }: TeamPageProps) {
         email: consultant.email,
         roleLabel: "Consultant",
         targetType: "consultant",
+        shareId: share?.id,
+        position: share?.position ?? null,
       });
     }
   }
@@ -1019,6 +938,10 @@ export function TeamPage({ projectId }: TeamPageProps) {
                 {filteredStakeholders.map((s, idx) => {
                   const isSelf = !!user?.id && s.id === user.id;
                   const perms = getRowPermissions(viewerRole, s.targetType, isSelf, canManageMembers);
+                  const canEditOthersPosition = Boolean(
+                    myPermissionsQuery.data?.members.edit_position,
+                  );
+                  const canEditPosition = !!s.shareId && (isSelf || canEditOthersPosition);
                   return (
                     <TeamRow
                       key={s.id}
@@ -1026,6 +949,13 @@ export function TeamPage({ projectId }: TeamPageProps) {
                       avatarUrl={s.avatarUrl}
                       email={s.email}
                       roleLabel={s.roleLabel}
+                      position={s.position}
+                      canEditPosition={canEditPosition}
+                      onSavePosition={
+                        s.shareId
+                          ? (next) => handleSavePosition(s.shareId!, next)
+                          : undefined
+                      }
                       isLast={idx === filteredStakeholders.length - 1}
                       isSelf={isSelf}
                       permissions={perms}

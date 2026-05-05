@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ChevronRight, HelpCircle, Search } from "lucide-react";
@@ -17,6 +17,7 @@ import {
   useProjectMembersQuery,
   useProjectMyPermissionsQuery,
 } from "@/hooks/useProjectQueries";
+import { PositionCell } from "@/components/project/team/PositionCell";
 import {
   PERMISSION_SECTIONS,
   type PermissionMeta,
@@ -874,12 +875,51 @@ function PermissionsTabs({
 
 function TeamPermissionsBody({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const toast = useToast();
   const membersQuery = useProjectMembersQuery(projectId);
   const myPermissionsQuery = useProjectMyPermissionsQuery(projectId);
   const members =
     (membersQuery.data as ProjectMember[] | undefined) ?? [];
   const canManage = Boolean(myPermissionsQuery.data?.members.manage);
+  const canEditOthersPosition = Boolean(
+    myPermissionsQuery.data?.members.edit_position,
+  );
   const [query, setQuery] = useState("");
+
+  const updatePositionMutation = useMutation({
+    mutationFn: ({
+      memberId,
+      position,
+    }: {
+      memberId: string;
+      position: string;
+    }) => projectService.updateMemberPosition(projectId, memberId, position),
+    onSuccess: (_data, variables) => {
+      queryClient.setQueryData<ProjectMember[]>(
+        projectKeys.members(projectId),
+        (current) =>
+          current?.map((m) =>
+            m.id === variables.memberId
+              ? { ...m, position: variables.position || null }
+              : m,
+          ),
+      );
+      void queryClient.invalidateQueries({
+        queryKey: projectKeys.detail(projectId),
+      });
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Couldn't save position");
+    },
+  });
+
+  const handleSavePosition = useCallback(
+    async (memberId: string, next: string) => {
+      await updatePositionMutation.mutateAsync({ memberId, position: next });
+    },
+    [updatePositionMutation],
+  );
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -960,9 +1000,21 @@ function TeamPermissionsBody({ projectId }: { projectId: string }) {
                     </p>
                   )}
                 </div>
-                <p className="truncate text-sm text-slate-600">
-                  {m.position || "—"}
-                </p>
+                <PositionCell
+                  value={m.position ?? null}
+                  fallback="—"
+                  canEdit={canEditOthersPosition}
+                  onSave={(next) => handleSavePosition(m.id, next)}
+                  displayName={
+                    m.user?.display_name ||
+                    [m.user?.first_name, m.user?.last_name]
+                      .filter(Boolean)
+                      .join(" ") ||
+                    m.user?.email ||
+                    undefined
+                  }
+                />
+
                 <span className="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-700">
                   {m.role}
                 </span>
