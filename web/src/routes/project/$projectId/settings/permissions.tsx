@@ -1,26 +1,79 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, ArrowLeft } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowLeft, ChevronRight, HelpCircle, Search } from "lucide-react";
 import { ProjectSettingsLayout } from "@/components/project/ProjectSettingsLayout";
 import { projectKeys } from "@/queries/project";
 import { useToast } from "@/hooks/useToast";
 import {
+  PermissionDependencyError,
   projectService,
   type ProjectPermissions,
   type ProjectMember,
 } from "@/services/project.service";
+import {
+  useProjectMembersQuery,
+  useProjectMyPermissionsQuery,
+} from "@/hooks/useProjectQueries";
+import {
+  PERMISSION_SECTIONS,
+  type PermissionMeta,
+  type PermissionSectionMeta,
+} from "@/components/project/permissions/permissionCatalog";
 
 export const Route = createFileRoute("/project/$projectId/settings/permissions")({
-  component: PermissionsSettingsPage,
+  component: PermissionsRoute,
   validateSearch: (
     search: Record<string, unknown>,
-  ): { role?: string; memberId?: string } => ({
+  ): { role?: string; memberId?: string; tab?: "team" | "catalog" } => ({
     role: (search.role as string) || undefined,
     memberId: (search.memberId as string) || undefined,
+    tab:
+      search.tab === "catalog"
+        ? "catalog"
+        : search.tab === "team"
+          ? "team"
+          : undefined,
   }),
 });
+
+// Top-level dispatcher.
+//   ?memberId=… or ?role=…   → per-target editor
+//   ?tab=catalog              → reference catalogue
+//   default                   → team-permissions list (per-member overview)
+//
+// The header + tab strip live in the shell so switching tabs never
+// remounts them; only the body content swaps.
+function PermissionsRoute() {
+  const { memberId, role, tab } = Route.useSearch();
+  if (memberId || role) return <PermissionsSettingsPage />;
+  const active: "team" | "catalog" = tab === "catalog" ? "catalog" : "team";
+  return <PermissionsShell active={active} />;
+}
+
+function PermissionsShell({ active }: { active: "team" | "catalog" }) {
+  const { projectId } = Route.useParams();
+  return (
+    <ProjectSettingsLayout projectId={projectId}>
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold text-slate-900">Permissions</h2>
+        <p className="mt-0.5 text-sm text-slate-500">
+          Manage member permissions and review the full capability catalog.
+        </p>
+      </div>
+
+      <PermissionsTabs active={active} projectId={projectId} />
+
+      {active === "team" ? (
+        <TeamPermissionsBody projectId={projectId} />
+      ) : (
+        <CatalogPermissionsBody projectId={projectId} />
+      )}
+    </ProjectSettingsLayout>
+  );
+}
 
 // ─── Dependency enforcement (mirrors PermissionsDrawer) ────────────────────
 
@@ -151,113 +204,11 @@ function propagateEnable(
 }
 
 // ─── Permission section definitions ─────────────────────────────────────────
-
-const accessSection = {
-  key: "access" as SectionKey,
-  title: "Access Control",
-  isAccessGate: true,
-  items: [
-    { key: "roadmap", label: "Access Roadmap", hint: "View the Roadmap page and its features." },
-    { key: "work_items", label: "Access Work Items", hint: "View the Work Items execution table." },
-    { key: "team", label: "Access Team", hint: "View the Members page." },
-    { key: "time", label: "Access Time", hint: "View the Time tracking page." },
-    { key: "chat", label: "Access Chat", hint: "View the project messaging system." },
-    { key: "resources", label: "Access Resources", hint: "View project files and links." },
-    { key: "project_settings", label: "Access Project Settings", hint: "View project settings and configuration." },
-  ],
-};
-
-const actionSections: Array<{
-  key: SectionKey;
-  title: string;
-  isAccessGate?: boolean;
-  items: Array<{ key: string; label: string; hint: string }>;
-}> = [
-  {
-    key: "roadmap",
-    title: "Roadmap",
-    items: [
-      { key: "edit", label: "Edit", hint: "Create, edit, and delete epics, features, and reorder structure." },
-      { key: "comment", label: "Comment", hint: "Add and manage comments on roadmap items." },
-      { key: "promote", label: "Promote", hint: "Move items between stages and submit for approval." },
-      { key: "assign", label: "Assign", hint: "Assign members to tasks and features." },
-      { key: "edit_metadata", label: "Edit Metadata", hint: "Edit roadmap name, description, and category." },
-      { key: "view_internal", label: "View Internal", hint: "See internal notes and hidden planning details." },
-      { key: "create_tasks", label: "Create Tasks", hint: "Create tasks under features." },
-      { key: "edit_tasks", label: "Edit Tasks", hint: "Modify task title, description, and due date." },
-      { key: "share", label: "Share", hint: "Generate share links and grant external access." },
-      { key: "export", label: "Export", hint: "Download and export roadmap data." },
-      { key: "dev_mode", label: "Dev Mode", hint: "Access technical/developer view. Very sensitive." },
-    ],
-  },
-  {
-    key: "members",
-    title: "Members",
-    items: [
-      { key: "view", label: "View", hint: "See team members, roles, and position titles." },
-      { key: "manage", label: "Manage", hint: "Invite, remove, and edit team members." },
-      { key: "edit_permissions", label: "Edit Permissions", hint: "Modify access control for other members." },
-    ],
-  },
-  {
-    key: "project",
-    title: "Project",
-    items: [
-      { key: "settings", label: "Settings", hint: "Edit project title, summary, and configuration." },
-      { key: "edit_content", label: "Edit Content", hint: "Edit overview sections, scope, and project banner." },
-      { key: "view_internal_content", label: "View Internal Content", hint: "See internal project notes not visible to clients." },
-    ],
-  },
-  {
-    key: "time",
-    title: "Time",
-    items: [
-      { key: "view", label: "View", hint: "View time logs and summaries." },
-      { key: "view_financial", label: "View Financial Data", hint: "Access hourly rates, fees, and financial totals." },
-      { key: "log", label: "Log Time", hint: "Start/stop timers and create manual time entries." },
-      { key: "edit_own", label: "Edit Own Logs", hint: "Modify your own time entries." },
-      { key: "edit_team", label: "Edit Team Logs", hint: "Modify other members' time entries." },
-      { key: "approve", label: "Approve Logs", hint: "Approve or reject submitted time entries." },
-      { key: "manage_rates", label: "Manage Rates", hint: "Configure billing rates and pricing." },
-      { key: "delete_logs", label: "Delete Logs", hint: "Permanently remove time entries." },
-    ],
-  },
-  {
-    key: "chat",
-    title: "Chat",
-    items: [
-      { key: "view_channels", label: "View Channels", hint: "Access project chat channels." },
-      { key: "send_messages", label: "Send Messages", hint: "Send and reply to messages in channels." },
-      { key: "create_channels", label: "Create Channels", hint: "Create new project chat channels." },
-      { key: "manage_channels", label: "Manage Channels", hint: "Rename, archive, or delete channels." },
-      { key: "view_internal_channels", label: "View Internal Channels", hint: "Access restricted channels not visible to all members." },
-      { key: "mention_members", label: "Mention Members", hint: "Use @mentions to notify users in chat." },
-      { key: "share_files", label: "Share Files", hint: "Attach files to chat messages." },
-      { key: "start_dm", label: "Start Direct Messages", hint: "Initiate private conversations with members." },
-      { key: "send_dm", label: "Send Direct Messages", hint: "Send messages in existing DM conversations." },
-      { key: "message_clients", label: "Message Clients", hint: "Allowed to DM project clients." },
-      { key: "message_consultants", label: "Message Consultants", hint: "Allowed to DM project consultants." },
-      { key: "message_freelancers", label: "Message Freelancers", hint: "Allowed to DM project freelancers." },
-    ],
-  },
-  {
-    key: "resources",
-    title: "Resources",
-    items: [
-      { key: "view", label: "View", hint: "Access project files and documents." },
-      { key: "upload", label: "Upload", hint: "Add new files and resources." },
-      { key: "delete", label: "Delete", hint: "Remove files permanently." },
-    ],
-  },
-  {
-    key: "logs",
-    title: "Logs",
-    items: [
-      { key: "view", label: "View Logs", hint: "See project activity history." },
-      { key: "view_sensitive", label: "View Sensitive Logs", hint: "Access restricted internal/system-level logs." },
-    ],
-  },
-];
+//
+// Section labels, descriptions, dependencies live in
+// `@/components/project/permissions/permissionCatalog`. This page consumes
+// that catalog directly — the duplicated structure that used to live here is
+// gone.
 
 const CONSULTANT_LOCKED_SECTIONS: SectionKey[] = ["time", "chat", "logs"];
 
@@ -266,8 +217,8 @@ const CONSULTANT_LOCKED_SECTIONS: SectionKey[] = ["time", "chat", "logs"];
 const ROLE_TEMPLATES: Record<string, ProjectPermissions> = {
   consultant: {
     access: { roadmap: true, work_items: true, team: true, time: true, chat: true, resources: true, project_settings: true },
-    roadmap: { edit: true, comment: true, promote: true, assign: true, edit_metadata: true, view_internal: true, create_tasks: true, edit_tasks: true, share: true, export: true, dev_mode: true },
-    members: { view: true, manage: true, edit_permissions: true },
+    roadmap: { view: true, edit: true, comment: true, promote: true, assign: true, edit_metadata: true, view_internal: true, create_tasks: true, edit_tasks: true, share: true, export: true, dev_mode: true },
+    members: { view: true, manage: true, edit_permissions: true, edit_position: true },
     project: { settings: true, edit_content: true, view_internal_content: true },
     time: { view: true, view_financial: true, log: true, edit_own: true, edit_team: true, approve: true, manage_rates: true, delete_logs: true },
     chat: { view_channels: true, send_messages: true, create_channels: true, manage_channels: true, view_internal_channels: true, mention_members: true, share_files: true, start_dm: true, send_dm: true, message_clients: true, message_consultants: true, message_freelancers: true },
@@ -276,8 +227,8 @@ const ROLE_TEMPLATES: Record<string, ProjectPermissions> = {
   },
   client: {
     access: { roadmap: true, work_items: true, team: true, time: false, chat: true, resources: true, project_settings: false },
-    roadmap: { edit: true, comment: true, promote: true, assign: false, edit_metadata: true, view_internal: false, create_tasks: false, edit_tasks: false, share: false, export: false, dev_mode: false },
-    members: { view: true, manage: false, edit_permissions: false },
+    roadmap: { view: true, edit: true, comment: true, promote: true, assign: false, edit_metadata: true, view_internal: false, create_tasks: false, edit_tasks: false, share: false, export: false, dev_mode: false },
+    members: { view: true, manage: false, edit_permissions: false, edit_position: false },
     project: { settings: false, edit_content: true, view_internal_content: false },
     time: { view: false, view_financial: false, log: false, edit_own: false, edit_team: false, approve: false, manage_rates: false, delete_logs: false },
     chat: { view_channels: true, send_messages: true, create_channels: false, manage_channels: false, view_internal_channels: false, mention_members: true, share_files: true, start_dm: true, send_dm: true, message_clients: false, message_consultants: true, message_freelancers: false },
@@ -286,8 +237,8 @@ const ROLE_TEMPLATES: Record<string, ProjectPermissions> = {
   },
   freelancer: {
     access: { roadmap: true, work_items: true, team: true, time: false, chat: true, resources: true, project_settings: false },
-    roadmap: { edit: false, comment: true, promote: false, assign: false, edit_metadata: false, view_internal: false, create_tasks: true, edit_tasks: true, share: false, export: false, dev_mode: false },
-    members: { view: true, manage: false, edit_permissions: false },
+    roadmap: { view: true, edit: false, comment: true, promote: false, assign: false, edit_metadata: false, view_internal: false, create_tasks: true, edit_tasks: true, share: false, export: false, dev_mode: false },
+    members: { view: true, manage: false, edit_permissions: false, edit_position: false },
     project: { settings: false, edit_content: false, view_internal_content: false },
     time: { view: false, view_financial: false, log: true, edit_own: true, edit_team: false, approve: false, manage_rates: false, delete_logs: false },
     chat: { view_channels: true, send_messages: true, create_channels: false, manage_channels: false, view_internal_channels: false, mention_members: true, share_files: true, start_dm: true, send_dm: true, message_clients: false, message_consultants: true, message_freelancers: true },
@@ -464,11 +415,45 @@ function PermissionsSettingsPage() {
           `${ROLE_DISPLAY[role] ?? role} permissions updated for all members.`,
         );
       } else if (isMemberMode && memberId) {
-        await projectService.updateMemberPermissions(projectId, memberId, permissions);
+        try {
+          await projectService.updateMemberPermissions(projectId, memberId, permissions);
+        } catch (saveErr) {
+          // Server-side dependency check: if the patch is missing any
+          // prereqs, auto-tick them and retry once. Belt-and-suspenders
+          // for the client-side dep enforcement above.
+          if (
+            saveErr instanceof PermissionDependencyError &&
+            saveErr.code === "permission_dependency_unmet" &&
+            saveErr.missing
+          ) {
+            const patched = structuredClone(permissions);
+            for (const violation of saveErr.missing) {
+              for (const req of violation.requires) {
+                const [section, field] = req.split(".");
+                /* eslint-disable @typescript-eslint/no-explicit-any */
+                if ((patched as any)[section]) {
+                  (patched as any)[section][field] = true;
+                }
+                /* eslint-enable @typescript-eslint/no-explicit-any */
+              }
+            }
+            setPermissions(patched);
+            await projectService.updateMemberPermissions(projectId, memberId, patched);
+            toast.success(
+              "Member permissions updated (prerequisites auto-granted).",
+            );
+            await navigate({
+              to: "/project/$projectId/settings/permissions",
+              params: { projectId },
+            });
+            return;
+          }
+          throw saveErr;
+        }
         toast.success("Member permissions updated.");
       }
       await navigate({
-        to: "/project/$projectId/settings/team",
+        to: "/project/$projectId/settings/permissions",
         params: { projectId },
       });
     } catch (e) {
@@ -478,7 +463,22 @@ function PermissionsSettingsPage() {
     }
   };
 
-  const allSections = [accessSection, ...actionSections];
+  // Search across the catalog (label, path, description)
+  const [query, setQuery] = useState("");
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const visibleSections = useMemo<PermissionSectionMeta[]>(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return PERMISSION_SECTIONS;
+    return PERMISSION_SECTIONS.map((section) => ({
+      ...section,
+      permissions: section.permissions.filter(
+        (perm) =>
+          perm.path.toLowerCase().includes(q) ||
+          perm.label.toLowerCase().includes(q) ||
+          perm.description.toLowerCase().includes(q),
+      ),
+    })).filter((s) => s.permissions.length > 0);
+  }, [query]);
 
   const pageTitle = isRoleMode
     ? `${ROLE_DISPLAY[role ?? ""] ?? role} Default Permissions`
@@ -495,7 +495,7 @@ function PermissionsSettingsPage() {
       {/* Page header */}
       <div className="mb-6">
         <Link
-          to="/project/$projectId/settings/team"
+          to="/project/$projectId/settings/permissions"
           params={{ projectId }}
           className="mb-4 inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900"
         >
@@ -504,6 +504,22 @@ function PermissionsSettingsPage() {
         </Link>
         <h2 className="text-xl font-semibold text-slate-900">{pageTitle}</h2>
         <p className="mt-0.5 text-sm text-slate-500">{pageSubtitle}</p>
+        {isMemberMode && member && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold uppercase tracking-wide text-slate-700">
+              Role: {member.role}
+            </span>
+            {member.origin && (
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold uppercase tracking-wide text-slate-700">
+                Origin: {member.origin}
+              </span>
+            )}
+            <span className="text-slate-500">
+              Overrides on this row layer on top of the role + origin
+              baseline.
+            </span>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -521,118 +537,85 @@ function PermissionsSettingsPage() {
         </div>
       ) : permissions ? (
         <div className="space-y-4 pb-24">
-          {allSections.map((section) => {
-            const isLockedSection =
-              isConsultantRole && CONSULTANT_LOCKED_SECTIONS.includes(section.key);
-            const requiredAccessGate = SECTION_ACCESS_REQUIREMENTS[section.key];
-            const isAccessBlocked =
-              !section.isAccessGate &&
-              !!requiredAccessGate &&
-              permissions.access[requiredAccessGate] !== true;
-            const isSectionDisabled = isLockedSection || isAccessBlocked;
+          {/* Search */}
+          <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2">
+            <div className="flex flex-1 items-center gap-2">
+              <Search className="h-4 w-4 shrink-0 text-slate-400" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Filter by name, path, or description"
+                className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+              />
+            </div>
+            <span className="shrink-0 text-xs text-slate-500">
+              {visibleSections.reduce((n, s) => n + s.permissions.length, 0)}{" "}
+              permissions
+            </span>
+          </div>
 
-            return (
-              <section
-                key={String(section.key)}
-                className="overflow-hidden rounded-2xl border border-slate-200 bg-white"
-              >
-                <header className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/80 px-5 py-3.5">
-                  <h3 className="text-[13px] font-semibold text-slate-800">
-                    {section.title}
-                  </h3>
-                  {section.isAccessGate && (
-                    <span className="flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
-                      <AlertTriangle className="h-3 w-3" />
-                      Page visibility
-                    </span>
-                  )}
-                  {isLockedSection && (
-                    <span className="ml-auto rounded bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
-                      Always enabled for Consultants
-                    </span>
-                  )}
-                </header>
+          <div className="rounded-md border border-slate-200 bg-white">
+            <div className="grid grid-cols-[44px_minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1.2fr)] border-b border-slate-200 bg-slate-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              <span />
+              <span>Permission</span>
+              <span>Description</span>
+              <span className="flex items-center gap-1.5">
+                Dependencies
+                <DependenciesHelp />
+              </span>
+            </div>
 
-                {section.isAccessGate && (
-                  <div className="border-b border-amber-100 bg-amber-50/60 px-5 py-2">
-                    <p className="text-[11px] text-amber-700">
-                      Disabling a gate hides that page entirely for this {isRoleMode ? "role" : "member"}.
-                    </p>
-                  </div>
-                )}
-                {!section.isAccessGate && isAccessBlocked && requiredAccessGate && (
-                  <div className="border-b border-slate-200 bg-slate-50/80 px-5 py-2">
-                    <p className="text-[11px] text-slate-500">
-                      Enable {ACCESS_GATE_LABELS[requiredAccessGate]} in Access Control to edit this section.
-                    </p>
-                  </div>
-                )}
+            {visibleSections.length === 0 ? (
+              <div className="px-4 py-12 text-center text-sm text-slate-500">
+                No permissions match "{query}".
+              </div>
+            ) : (
+              visibleSections.map((section) => {
+                const isLockedSection =
+                  isConsultantRole &&
+                  CONSULTANT_LOCKED_SECTIONS.includes(section.key);
+                const requiredAccessGate =
+                  SECTION_ACCESS_REQUIREMENTS[section.key];
+                const isAccessBlocked =
+                  section.key !== "access" &&
+                  !!requiredAccessGate &&
+                  permissions.access[requiredAccessGate] !== true;
+                const isSectionDisabled = isLockedSection || isAccessBlocked;
+                const isCollapsed = collapsed[section.key] === true;
 
-                <div className="divide-y divide-slate-100">
-                  {section.items.map((item) => {
-                    const group = permissions[section.key] as Record<string, boolean>;
-                    const checked = isLockedSection ? true : (group[item.key] === true);
-                    const changed = !isSectionDisabled && isPermissionChanged(section.key, item.key);
-                    const modified = !isSectionDisabled && isModifiedFromDefault(section.key, item.key);
-
-                    return (
-                      <label
-                        key={item.key}
-                        className={`relative flex items-start justify-between gap-4 py-3.5 pr-5 transition-colors ${
-                          isSectionDisabled
-                            ? "cursor-not-allowed bg-slate-50/50 opacity-70 pl-5"
-                            : changed
-                              ? "cursor-pointer bg-amber-50/60 pl-4 hover:bg-amber-50"
-                              : modified
-                                ? "cursor-pointer bg-indigo-50/40 pl-4 hover:bg-indigo-50/60"
-                                : "cursor-pointer pl-5 hover:bg-slate-50"
-                        }`}
-                      >
-                        {/* Left border accent */}
-                        {changed && (
-                          <span className="absolute inset-y-0 left-0 w-[3px] rounded-r-full bg-amber-400" />
-                        )}
-                        {!changed && modified && (
-                          <span className="absolute inset-y-0 left-0 w-[3px] rounded-r-full bg-indigo-400" />
-                        )}
-                        <div className="min-w-0">
-                          <p className={`text-[13px] font-medium ${changed ? "text-amber-900" : "text-slate-800"}`}>
-                            {item.label}
-                            {modified && (
-                              <span className="ml-2 inline-flex items-center rounded-full bg-indigo-100 border border-indigo-200 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
-                                modified
-                              </span>
-                            )}
-                            {changed && (
-                              <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                                edited
-                              </span>
-                            )}
-                          </p>
-                          <p className="mt-0.5 text-[11px] text-slate-500">
-                            {isLockedSection
-                              ? "Always enabled for consultants."
-                              : isAccessBlocked && requiredAccessGate
-                                ? `Enable ${ACCESS_GATE_LABELS[requiredAccessGate]} first.`
-                              : item.hint}
-                          </p>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={isSectionDisabled || saving}
-                          onChange={(e) =>
-                            setPermission(section.key, item.key, e.target.checked)
-                          }
-                          className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-slate-700 focus:ring-slate-400"
-                        />
-                      </label>
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })}
+                return (
+                  <SectionBlock
+                    key={section.key}
+                    section={section}
+                    permissions={permissions}
+                    collapsed={isCollapsed}
+                    onToggle={() =>
+                      setCollapsed((prev) => ({
+                        ...prev,
+                        [section.key]: !prev[section.key],
+                      }))
+                    }
+                    sectionDisabled={isSectionDisabled}
+                    sectionDisabledReason={
+                      isLockedSection
+                        ? "Always enabled for consultants."
+                        : isAccessBlocked && requiredAccessGate
+                          ? `Enable ${ACCESS_GATE_LABELS[requiredAccessGate]} in Access first.`
+                          : null
+                    }
+                    isLockedSection={isLockedSection}
+                    saving={saving}
+                    onToggleField={(field, checked) =>
+                      setPermission(section.key, field, checked)
+                    }
+                    isPermissionChanged={isPermissionChanged}
+                    isModifiedFromDefault={isModifiedFromDefault}
+                  />
+                );
+              })
+            )}
+          </div>
 
           {/* Error */}
           {error && (
@@ -676,5 +659,571 @@ function PermissionsSettingsPage() {
         document.body,
       )}
     </ProjectSettingsLayout>
+  );
+}
+
+// ─── Section block ───────────────────────────────────────────────────────────
+
+function SectionBlock({
+  section,
+  permissions,
+  collapsed,
+  onToggle,
+  sectionDisabled,
+  sectionDisabledReason,
+  isLockedSection,
+  saving,
+  onToggleField,
+  isPermissionChanged,
+  isModifiedFromDefault,
+}: {
+  section: PermissionSectionMeta;
+  permissions: ProjectPermissions;
+  collapsed: boolean;
+  onToggle: () => void;
+  sectionDisabled: boolean;
+  sectionDisabledReason: string | null;
+  isLockedSection: boolean;
+  saving: boolean;
+  onToggleField: (field: string, checked: boolean) => void;
+  isPermissionChanged: (section: SectionKey, key: string) => boolean;
+  isModifiedFromDefault: (section: SectionKey, key: string) => boolean;
+}) {
+  return (
+    <section className="border-b border-slate-200 last:border-b-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-2 bg-slate-900 px-4 py-3 text-left transition-colors hover:bg-slate-800"
+      >
+        <motion.span
+          initial={false}
+          animate={{ rotate: collapsed ? 0 : 90 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+          className="flex"
+        >
+          <ChevronRight className="h-4 w-4 text-slate-400" />
+        </motion.span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm font-semibold text-white">
+              {section.label}
+            </span>
+            <span className="text-[11px] text-slate-400">
+              {section.permissions.length}{" "}
+              {section.permissions.length === 1 ? "permission" : "permissions"}
+            </span>
+          </div>
+          <p className="truncate text-xs text-slate-400">
+            {section.description}
+          </p>
+        </div>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {!collapsed && (
+          <motion.div
+            key="rows"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            {sectionDisabledReason && (
+              <p className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-[11px] text-slate-500">
+                {sectionDisabledReason}
+              </p>
+            )}
+            <div className="divide-y divide-slate-100">
+              {section.permissions.map((perm) => {
+                const group = permissions[section.key] as Record<string, boolean>;
+                const checked = isLockedSection ? true : group[perm.field] === true;
+                const changed = !sectionDisabled && isPermissionChanged(section.key, perm.field);
+                const modified = !sectionDisabled && isModifiedFromDefault(section.key, perm.field);
+                return (
+                  <PermissionRow
+                    key={perm.path}
+                    perm={perm}
+                    checked={checked}
+                    disabled={sectionDisabled || saving}
+                    changed={changed}
+                    modified={modified}
+                    onChange={(value) => onToggleField(perm.field, value)}
+                  />
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </section>
+  );
+}
+
+function PermissionRow({
+  perm,
+  checked,
+  disabled,
+  changed,
+  modified,
+  onChange,
+}: {
+  perm: PermissionMeta;
+  checked: boolean;
+  disabled: boolean;
+  changed: boolean;
+  modified: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label
+      className={`grid grid-cols-[44px_minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1.2fr)] items-start gap-4 px-4 py-3 transition-colors ${
+        disabled
+          ? "cursor-not-allowed bg-slate-50/60 opacity-70"
+          : "cursor-pointer hover:bg-slate-50"
+      }`}
+    >
+      <div className="flex h-5 items-center">
+        <input
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.checked)}
+          className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-2 focus:ring-slate-900/20 disabled:opacity-60"
+        />
+      </div>
+      <div className="min-w-0">
+        <p className="flex items-center gap-1.5 text-sm font-medium text-slate-900">
+          <span className="truncate">{perm.label}</span>
+          {modified && (
+            <span className="rounded border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+              custom
+            </span>
+          )}
+          {changed && (
+            <span className="rounded border border-slate-900 bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+              edited
+            </span>
+          )}
+        </p>
+        <code className="mt-0.5 block truncate font-mono text-[11px] text-slate-500">
+          {perm.path}
+        </code>
+      </div>
+      <p className="text-sm leading-relaxed text-slate-600">
+        {perm.description}
+      </p>
+      <div className="flex flex-wrap gap-1">
+        {perm.requires?.length ? (
+          perm.requires.map((req) => (
+            <code
+              key={req}
+              title={`Requires ${req}`}
+              className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] text-slate-600"
+            >
+              {req}
+            </code>
+          ))
+        ) : (
+          <span className="text-[11px] text-slate-400">—</span>
+        )}
+      </div>
+    </label>
+  );
+}
+
+// ─── Tab strip (Team permissions | Permissions catalog) ────────────────────
+
+function PermissionsTabs({
+  active,
+  projectId,
+}: {
+  active: "team" | "catalog";
+  projectId: string;
+}) {
+  const tabs: Array<{ key: "team" | "catalog"; label: string }> = [
+    { key: "team", label: "Team permissions" },
+    { key: "catalog", label: "Permissions catalog" },
+  ];
+  return (
+    <div className="mb-5 inline-flex rounded-md border border-slate-200 bg-white p-0.5">
+      {tabs.map((t) => {
+        const isActive = active === t.key;
+        return (
+          <Link
+            key={t.key}
+            to="/project/$projectId/settings/permissions"
+            params={{ projectId }}
+            search={t.key === "team" ? {} : { tab: "catalog" }}
+            className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${
+              isActive
+                ? "bg-slate-900 text-white"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            {t.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Team permissions body (default tab) ───────────────────────────────────
+
+function TeamPermissionsBody({ projectId }: { projectId: string }) {
+  const navigate = useNavigate();
+  const membersQuery = useProjectMembersQuery(projectId);
+  const myPermissionsQuery = useProjectMyPermissionsQuery(projectId);
+  const members =
+    (membersQuery.data as ProjectMember[] | undefined) ?? [];
+  const canManage = Boolean(myPermissionsQuery.data?.members.manage);
+  const [query, setQuery] = useState("");
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return members;
+    return members.filter((m) => {
+      const hay = [
+        m.user?.display_name,
+        m.user?.email,
+        m.user?.first_name,
+        m.user?.last_name,
+        m.position,
+        m.role,
+        m.origin,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [members, query]);
+
+  return (
+    <>
+      <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2">
+        <div className="flex flex-1 items-center gap-2">
+          <Search className="h-4 w-4 shrink-0 text-slate-400" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter by name, email, position, or role"
+            className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+          />
+        </div>
+        <span className="shrink-0 text-xs text-slate-500">
+          {visible.length} member{visible.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      <div className="rounded-md border border-slate-200 bg-white">
+        <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_120px] border-b border-slate-200 bg-slate-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          <span>Member</span>
+          <span>Position</span>
+          <span>Role</span>
+          <span>Origin</span>
+          <span />
+        </div>
+
+        {membersQuery.isPending ? (
+          <div className="px-4 py-12 text-center text-sm text-slate-500">
+            Loading members…
+          </div>
+        ) : visible.length === 0 ? (
+          <div className="px-4 py-12 text-center text-sm text-slate-500">
+            {members.length === 0
+              ? "No members yet."
+              : `No members match "${query}".`}
+          </div>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {visible.map((m) => (
+              <li
+                key={m.id}
+                className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_120px] items-center gap-4 px-4 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-900">
+                    {m.user?.display_name ||
+                      [m.user?.first_name, m.user?.last_name]
+                        .filter(Boolean)
+                        .join(" ") ||
+                      m.user?.email ||
+                      "Unknown"}
+                  </p>
+                  {m.user?.email && (
+                    <p className="truncate text-[11px] text-slate-500">
+                      {m.user.email}
+                    </p>
+                  )}
+                </div>
+                <p className="truncate text-sm text-slate-600">
+                  {m.position || "—"}
+                </p>
+                <span className="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                  {m.role}
+                </span>
+                <span className="truncate text-[11px] uppercase tracking-wide text-slate-500">
+                  {m.origin || "—"}
+                </span>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    disabled={!canManage}
+                    onClick={() =>
+                      void navigate({
+                        to: "/project/$projectId/settings/permissions",
+                        params: { projectId },
+                        search: { memberId: m.id },
+                      })
+                    }
+                    className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    title={
+                      canManage
+                        ? "Edit permissions"
+                        : "You need members.manage to edit permissions"
+                    }
+                  >
+                    Edit
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {!canManage && (
+        <p className="mt-3 text-xs text-slate-500">
+          Read-only — ask a project owner or admin for{" "}
+          <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px] text-slate-700">
+            members.edit_permissions
+          </code>{" "}
+          to make changes.
+        </p>
+      )}
+    </>
+  );
+}
+
+// ─── Catalog body (?tab=catalog) ───────────────────────────────────────────
+
+function CatalogPermissionsBody(_props: { projectId: string }) {
+  const [query, setQuery] = useState("");
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  const totalPermissions = useMemo(
+    () => PERMISSION_SECTIONS.reduce((n, s) => n + s.permissions.length, 0),
+    [],
+  );
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return PERMISSION_SECTIONS;
+    return PERMISSION_SECTIONS.map((section) => ({
+      ...section,
+      permissions: section.permissions.filter(
+        (p) =>
+          p.path.toLowerCase().includes(q) ||
+          p.label.toLowerCase().includes(q) ||
+          p.description.toLowerCase().includes(q),
+      ),
+    })).filter((s) => s.permissions.length > 0);
+  }, [query]);
+
+  const matchingCount = useMemo(
+    () => filtered.reduce((n, s) => n + s.permissions.length, 0),
+    [filtered],
+  );
+
+  return (
+    <>
+      <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2">
+        <div className="flex flex-1 items-center gap-2">
+          <Search className="h-4 w-4 shrink-0 text-slate-400" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter by name, path, or description"
+            className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+          />
+        </div>
+        <span className="shrink-0 text-xs text-slate-500">
+          {matchingCount} of {totalPermissions}
+        </span>
+      </div>
+
+      <div className="rounded-md border border-slate-200 bg-white">
+        <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1.2fr)] border-b border-slate-200 bg-slate-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          <span>Permission</span>
+          <span>Description</span>
+          <span className="flex items-center gap-1.5">
+            Dependencies
+            <DependenciesHelp />
+          </span>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div className="px-4 py-12 text-center text-sm text-slate-500">
+            No permissions match "{query}".
+          </div>
+        ) : (
+          filtered.map((section) => {
+            const isCollapsed = collapsed[section.key] === true;
+            return (
+              <ReferenceSectionBlock
+                key={section.key}
+                section={section}
+                collapsed={isCollapsed}
+                onToggle={() =>
+                  setCollapsed((prev) => ({
+                    ...prev,
+                    [section.key]: !prev[section.key],
+                  }))
+                }
+              />
+            );
+          })
+        )}
+      </div>
+    </>
+  );
+}
+
+function ReferenceSectionBlock({
+  section,
+  collapsed,
+  onToggle,
+}: {
+  section: PermissionSectionMeta;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <section className="border-b border-slate-200 last:border-b-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-2 bg-slate-900 px-4 py-3 text-left transition-colors hover:bg-slate-800"
+      >
+        <motion.span
+          initial={false}
+          animate={{ rotate: collapsed ? 0 : 90 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+          className="flex"
+        >
+          <ChevronRight className="h-4 w-4 text-slate-400" />
+        </motion.span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm font-semibold text-white">
+              {section.label}
+            </span>
+            <span className="text-[11px] text-slate-400">
+              {section.permissions.length}{" "}
+              {section.permissions.length === 1 ? "permission" : "permissions"}
+            </span>
+          </div>
+          <p className="truncate text-xs text-slate-400">
+            {section.description}
+          </p>
+        </div>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {!collapsed && (
+          <motion.div
+            key="rows"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <div className="divide-y divide-slate-100">
+              {section.permissions.map((p) => (
+                <ReferenceRow key={p.path} perm={p} />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </section>
+  );
+}
+
+function ReferenceRow({ perm }: { perm: PermissionMeta }) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1.2fr)] items-start gap-4 px-4 py-3">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-slate-900">
+          {perm.label}
+        </p>
+        <code className="mt-0.5 block truncate font-mono text-[11px] text-slate-500">
+          {perm.path}
+        </code>
+      </div>
+      <p className="text-sm leading-relaxed text-slate-600">
+        {perm.description}
+      </p>
+      <div className="flex flex-wrap gap-1">
+        {perm.requires?.length ? (
+          perm.requires.map((req) => (
+            <code
+              key={req}
+              title={`Requires ${req}`}
+              className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] text-slate-600"
+            >
+              {req}
+            </code>
+          ))
+        ) : (
+          <span className="text-[11px] text-slate-400">—</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Dependencies help tooltip ───────────────────────────────────────────────
+
+function DependenciesHelp() {
+  const [open, setOpen] = useState(false);
+  const tooltipId = "permissions-deps-help";
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        aria-describedby={tooltipId}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900/20"
+      >
+        <HelpCircle className="h-3.5 w-3.5" />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            id={tooltipId}
+            role="tooltip"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className="absolute right-0 top-full z-30 mt-2 w-72 rounded-md border border-slate-200 bg-white p-3 text-[11px] font-normal normal-case tracking-normal text-slate-600 shadow-lg"
+          >
+            Some permissions need others to be granted first. The form
+            auto-grants prerequisites when you save, but they're listed here so
+            you can see the chain explicitly.
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </span>
   );
 }

@@ -30,6 +30,7 @@ import {
   RespondProjectInviteDto,
   TransferProjectOwnerDto,
   UpdateProjectDto,
+  UpdateMemberPositionDto,
   UpdateProjectMemberDto,
   UpdateProjectMemberPermissionsDto,
   UpdateProjectResourceFolderDto,
@@ -313,6 +314,21 @@ export class ProjectsController {
       memberId,
       user.id,
       dto,
+    );
+  }
+
+  @Patch(':id/members/:memberId/position')
+  updateMemberPosition(
+    @Param('id') id: string,
+    @Param('memberId') memberId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateMemberPositionDto,
+  ) {
+    return this.projectsService.updateMemberPosition(
+      id,
+      memberId,
+      user.id,
+      dto.position,
     );
   }
 

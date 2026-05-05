@@ -71,8 +71,14 @@ export class UpdateProjectMemberDto {
 
   @IsString()
   @IsOptional()
-  @MaxLength(100)
+  @MaxLength(80)
   position?: string;
+}
+
+export class UpdateMemberPositionDto {
+  @IsString()
+  @MaxLength(80)
+  position: string;
 }
 
 export class InviteProjectByEmailDto {

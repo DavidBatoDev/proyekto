@@ -50,12 +50,36 @@ export interface Project {
   updated_at: string;
 }
 
+export type PermissionDependencyMissing = {
+  path: string;
+  requires: string[];
+};
+
+export class PermissionDependencyError extends Error {
+  code: string | null;
+  missing: PermissionDependencyMissing[] | null;
+  constructor(
+    message: string,
+    options: {
+      code: string | null;
+      missing: PermissionDependencyMissing[] | null;
+    },
+  ) {
+    super(message);
+    this.name = "PermissionDependencyError";
+    this.code = options.code;
+    this.missing = options.missing;
+  }
+}
+
 export interface ProjectMember {
   id: string;
   project_id: string;
   user_id: string | null;
-  role: "consultant" | "client" | "member";
+  role: "consultant" | "client" | "member" | "owner" | "admin" | "editor" | "commenter" | "viewer";
+  origin?: string | null;
   position?: string | null;
+  capabilities?: Record<string, boolean> | null;
   permissions_json?: ProjectPermissions | null;
   joined_at?: string;
   user?: {
@@ -80,6 +104,7 @@ export interface ProjectPermissions {
     project_settings: boolean;
   };
   roadmap: {
+    view: boolean;
     edit: boolean;
     comment: boolean;
     promote: boolean;
@@ -96,6 +121,7 @@ export interface ProjectPermissions {
     view: boolean;
     manage: boolean;
     edit_permissions: boolean;
+    edit_position: boolean;
   };
   project: {
     settings: boolean;
@@ -427,6 +453,37 @@ class ProjectService {
     return result.data ?? result;
   }
 
+  async updateMemberPosition(
+    projectId: string,
+    memberId: string,
+    position: string,
+  ): Promise<ProjectMember> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) throw new Error("Authentication required");
+
+    const response = await fetch(
+      `${import.meta.env.VITE_API_URL}/api/projects/${projectId}/members/${memberId}/position`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ position }),
+      },
+    );
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(
+        err.message || err.error?.message || "Failed to update position",
+      );
+    }
+    const result = await response.json();
+    return result.data ?? result;
+  }
+
   async updateMember(
     projectId: string,
     memberId: string,
@@ -699,11 +756,18 @@ class ProjectService {
 
     if (!response.ok) {
       const err = await response.json();
-      throw new Error(
+      // Surface the structured dependency-violation payload so the UI can
+      // auto-tick prereqs and retry.
+      const code = err?.code ?? err?.error?.code;
+      const missing = err?.missing ?? err?.error?.missing;
+      const message =
         err.message ||
-          err.error?.message ||
-          "Failed to update member permissions",
-      );
+        err.error?.message ||
+        "Failed to update member permissions";
+      throw new PermissionDependencyError(message, {
+        code,
+        missing: Array.isArray(missing) ? missing : null,
+      });
     }
 
     const result = await response.json();

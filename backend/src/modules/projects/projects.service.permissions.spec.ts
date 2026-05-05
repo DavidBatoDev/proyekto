@@ -28,6 +28,8 @@ describe('ProjectsService (permissions)', () => {
   const defaultAuthorization = {
     getUserProjectRole: jest.fn().mockResolvedValue(null),
     assertRole: jest.fn(),
+    assertPermission: jest.fn(),
+    resolvePermissions: jest.fn(),
     roleSatisfies: jest.fn(),
     grant: jest.fn(),
     revoke: jest.fn(),
@@ -57,60 +59,114 @@ describe('ProjectsService (permissions)', () => {
   // synthesized-permissions test below covers the equivalent behavior
   // (an editor sees view=true, manage=false on members).
 
-  it('synthesizes role-derived permissions from project_shares for getMyPermissions', async () => {
-    // Tech-debt cleanup: legacy permissions_json hydration is gone.
-    // getMyPermissions now derives a permissions object from project_shares
-    // role. An editor sees view=true, manage=false on members.
+  it('resolves role+origin+capabilities permissions for getMyPermissions', async () => {
+    // getMyPermissions now resolves the share row through the layered
+    // resolver. An editor with no capability overrides sees view=true,
+    // manage=false on members.
     const repo = {
       findById: jest.fn().mockResolvedValue(buildProject()),
+      getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
+        id: 'member-row-1',
+        user_id: 'member-1',
+        role: 'editor',
+        origin: 'invited',
+        position: null,
+        capabilities: {},
+      }),
     };
-    const service = buildService(repo, {
-      getUserProjectRole: jest.fn().mockResolvedValue('editor'),
-    });
+    const service = buildService(repo);
 
     const result = await service.getMyPermissions('project-1', 'member-1');
 
     expect(result.members.manage).toBe(false);
     expect(result.members.view).toBe(true);
+    expect(result.roadmap.edit).toBe(true);
   });
 
-  it('rejects permission updates when caller has no admin+ role', async () => {
-    // Tech-debt cleanup: gate is now role-based via assertCanManageMembers
-    // → assertRole('admin'). An editor (or lower) gets ForbiddenException.
+  it('layers consultant origin delta on top of role baseline', async () => {
+    // Same editor role but consultant origin → manage_rates and
+    // message_freelancers flip on via origin delta.
+    const repo = {
+      findById: jest.fn().mockResolvedValue(buildProject()),
+      getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
+        id: 'member-row-1',
+        user_id: 'member-1',
+        role: 'editor',
+        origin: 'consultant',
+        position: 'Lead',
+        capabilities: {},
+      }),
+    };
+    const service = buildService(repo);
+
+    const result = await service.getMyPermissions('project-1', 'member-1');
+
+    expect(result.time.manage_rates).toBe(true);
+    expect(result.chat.message_freelancers).toBe(true);
+  });
+
+  it('applies capabilities overrides on top of (role, origin) baseline', async () => {
+    // Viewer with explicit overrides: roadmap.view + roadmap.edit + access.roadmap
+    // all true → resolved permissions show roadmap.edit true.
+    const repo = {
+      findById: jest.fn().mockResolvedValue(buildProject()),
+      getMemberByProjectAndUserId: jest.fn().mockResolvedValue({
+        id: 'member-row-1',
+        user_id: 'member-1',
+        role: 'viewer',
+        origin: 'invited',
+        position: null,
+        capabilities: {
+          'roadmap.edit': true,
+        },
+      }),
+    };
+    const service = buildService(repo);
+
+    const result = await service.getMyPermissions('project-1', 'member-1');
+
+    expect(result.roadmap.edit).toBe(true);
+    // Roadmap.view is still true from the viewer baseline (deps satisfied).
+    expect(result.roadmap.view).toBe(true);
+  });
+
+  it('rejects permission updates when caller lacks members.edit_permissions', async () => {
+    // The capability gate is members.edit_permissions, default-granted at
+    // admin+. An editor (or lower) without the override gets a Forbidden.
     const repo = {
       findById: jest.fn().mockResolvedValue(buildProject()),
     };
     const service = buildService(repo, {
-      getUserProjectRole: jest.fn().mockResolvedValue('editor'),
-      assertRole: jest
+      assertPermission: jest
         .fn()
-        .mockRejectedValue(new ForbiddenException('Insufficient role')),
+        .mockRejectedValue(new ForbiddenException('Missing required permission')),
     });
 
     await expect(
       service.updateMemberPermissions('project-1', 'member-row-1', 'client-1', {
         roadmap: {
           edit: true,
-          view_internal: false,
           comment: true,
-          promote: false,
         },
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('allows permission updates when caller has admin+ role', async () => {
+  it('allows permission updates when caller has members.edit_permissions', async () => {
     const repo = {
       findById: jest.fn().mockResolvedValue(buildProject({ consultant_id: undefined })),
       getMemberById: jest.fn().mockResolvedValue({
         id: 'member-row-1',
         user_id: 'member-1',
         role: 'editor',
+        origin: 'invited',
+        position: null,
+        capabilities: {},
       }),
-      updateMemberPermissions: jest.fn().mockResolvedValue({ ok: true }),
+      updateMemberCapabilities: jest.fn().mockResolvedValue({ ok: true }),
     };
     const service = buildService(repo, {
-      getUserProjectRole: jest.fn().mockResolvedValue('owner'),
+      assertPermission: jest.fn().mockResolvedValue({}),
     });
 
     await expect(
@@ -120,15 +176,49 @@ describe('ProjectsService (permissions)', () => {
         'consultant-1',
         {
           roadmap: {
+            view: true,
             edit: true,
-            view_internal: true,
             comment: true,
             promote: true,
           },
+          access: { roadmap: true },
         },
       ),
     ).resolves.toEqual({ ok: true });
-    expect(repo.updateMemberPermissions).toHaveBeenCalled();
+    expect(repo.updateMemberCapabilities).toHaveBeenCalled();
+  });
+
+  it('rejects permission updates that violate dependencies', async () => {
+    const repo = {
+      findById: jest.fn().mockResolvedValue(buildProject()),
+      getMemberById: jest.fn().mockResolvedValue({
+        id: 'member-row-1',
+        user_id: 'member-1',
+        role: 'viewer',
+        origin: 'invited',
+        position: null,
+        capabilities: {},
+      }),
+      updateMemberCapabilities: jest.fn(),
+    };
+    const service = buildService(repo, {
+      assertPermission: jest.fn().mockResolvedValue({}),
+    });
+
+    // Trying to grant roadmap.edit while turning off roadmap.view (and
+    // access.roadmap) should fail dependency validation.
+    await expect(
+      service.updateMemberPermissions(
+        'project-1',
+        'member-row-1',
+        'consultant-1',
+        {
+          access: { roadmap: false },
+          roadmap: { view: false, edit: true },
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.updateMemberCapabilities).not.toHaveBeenCalled();
   });
 
   it('sends consultant notification when client (admin role) invites a freelancer', async () => {

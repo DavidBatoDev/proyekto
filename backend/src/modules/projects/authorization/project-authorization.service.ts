@@ -6,6 +6,12 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
+import {
+  type PermissionPath,
+  type ProjectPermissions,
+  getPermission,
+  resolvePermissions,
+} from '../permissions/project-permissions';
 
 /**
  * Roles in descending strength order. Higher index = stronger role.
@@ -109,6 +115,55 @@ export class ProjectAuthorizationService {
    */
   roleSatisfies(actual: ProjectRole, required: ProjectRole): boolean {
     return PROJECT_ROLES.indexOf(actual) >= PROJECT_ROLES.indexOf(required);
+  }
+
+  /**
+   * Load the caller's share row and return their resolved fine-grained
+   * permissions on the project (role baseline + origin delta + capabilities).
+   * Returns null if no share row exists.
+   */
+  async resolvePermissions(
+    callerId: string,
+    projectId: string,
+  ): Promise<ProjectPermissions | null> {
+    const { data, error } = await this.supabase
+      .from('project_shares')
+      .select('role, origin, capabilities')
+      .eq('project_id', projectId)
+      .eq('user_id', callerId)
+      .maybeSingle();
+
+    if (error) {
+      this.logger.error(
+        `resolvePermissions(${callerId}, ${projectId}) failed: ${error.message}`,
+      );
+      throw new Error(error.message);
+    }
+    if (!data) return null;
+    return resolvePermissions(
+      data.role as ProjectRole,
+      (data.origin as ProjectShareOrigin | null) ?? null,
+      (data.capabilities as Record<string, unknown> | null) ?? null,
+    );
+  }
+
+  /**
+   * Throws ForbiddenException unless the caller has the given fine-grained
+   * permission on the project. Use for capability-style checks
+   * (e.g. 'roadmap.edit'); use `assertRole` for coarse role gates.
+   */
+  async assertPermission(
+    callerId: string,
+    projectId: string,
+    path: PermissionPath,
+  ): Promise<ProjectPermissions> {
+    const perms = await this.resolvePermissions(callerId, projectId);
+    if (!perms || !getPermission(perms, path)) {
+      throw new ForbiddenException(
+        `Missing required permission '${path}' on this project`,
+      );
+    }
+    return perms;
   }
 
   /**

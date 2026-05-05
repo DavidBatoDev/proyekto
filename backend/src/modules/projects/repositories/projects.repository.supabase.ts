@@ -154,7 +154,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         *,
         client:profiles!projects_client_id_fkey(id, display_name, avatar_url, headline, email),
         consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, headline, email),
-        members:project_shares(id, project_id, user_id, role, origin, granted_at, user:profiles!project_shares_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified))
+        members:project_shares(id, project_id, user_id, role, origin, position, capabilities, granted_at, user:profiles!project_shares_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified))
       `,
       )
       .eq('id', id)
@@ -388,7 +388,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         origin: 'invited',
       })
       .select(
-        'id, project_id, user_id, role, origin, granted_at, user:profiles!project_shares_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
+        'id, project_id, user_id, role, origin, position, capabilities, granted_at, user:profiles!project_shares_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
       )
       .single();
 
@@ -673,11 +673,10 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     memberId: string,
     dto: UpdateProjectMemberDto,
   ): Promise<unknown> {
-    // Slice 3b: project_members CRUD now operates on project_shares.
-    // The `memberId` param is now the project_shares.id. Position has no
-    // equivalent on project_shares — silently dropped from the patch.
-    // Role updates map legacy role names ('member'|'client'|'consultant')
-    // to share_role values; passing a share_role directly also works.
+    // project_shares CRUD. memberId is the project_shares.id. Role updates
+    // map legacy role names ('member'|'client'|'consultant') to share_role
+    // values; passing a share_role directly also works. `position` is the
+    // free-form display label restored as a real column.
     const patch: Record<string, unknown> = {};
     if (dto.role !== undefined) {
       const r = String(dto.role).toLowerCase();
@@ -690,14 +689,17 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
               ? 'editor'
               : r; // already a share_role value
     }
+    if (dto.position !== undefined) {
+      patch.position = dto.position?.trim() || null;
+    }
+
+    const selectShape =
+      'id, project_id, user_id, role, origin, position, capabilities, granted_at, user:profiles!project_shares_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)';
 
     if (Object.keys(patch).length === 0) {
-      // Nothing to update; just return the current row.
       const { data: current } = await this.supabase
         .from('project_shares')
-        .select(
-          'id, project_id, user_id, role, origin, granted_at, user:profiles!project_shares_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
-        )
+        .select(selectShape)
         .eq('id', memberId)
         .eq('project_id', projectId)
         .single();
@@ -709,8 +711,53 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       .update(patch)
       .eq('id', memberId)
       .eq('project_id', projectId)
+      .select(selectShape)
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  /**
+   * Persist the capabilities JSONB delta on a project_shares row.
+   * Used by updateMemberPermissions in projects.service after diffing
+   * the desired ProjectPermissions against the (role, origin) baseline.
+   */
+  async updateMemberCapabilities(
+    projectId: string,
+    memberId: string,
+    capabilities: Record<string, boolean>,
+  ): Promise<unknown> {
+    const { data, error } = await this.supabase
+      .from('project_shares')
+      .update({ capabilities })
+      .eq('id', memberId)
+      .eq('project_id', projectId)
       .select(
-        'id, project_id, user_id, role, origin, granted_at, user:profiles!project_shares_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
+        'id, project_id, user_id, role, origin, position, capabilities, granted_at',
+      )
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  /**
+   * Update only the `position` label on a share row. Caller authorization
+   * (self / admin / members.edit_position) is enforced in the service.
+   */
+  async updateMemberPosition(
+    projectId: string,
+    memberId: string,
+    position: string | null,
+  ): Promise<unknown> {
+    const { data, error } = await this.supabase
+      .from('project_shares')
+      .update({ position: position?.trim() || null })
+      .eq('id', memberId)
+      .eq('project_id', projectId)
+      .select(
+        'id, project_id, user_id, role, origin, position, capabilities, granted_at',
       )
       .single();
 
@@ -815,15 +862,16 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     id: string;
     user_id: string | null;
     role: string;
-    position?: string | null;
+    origin: string | null;
+    position: string | null;
+    capabilities: Record<string, unknown>;
     permissions_json?: Record<string, unknown> | null;
   } | null> {
-    // Slice 3b: getMemberById now reads project_shares. memberId is the
-    // project_shares.id. Returns the legacy shape so existing callers keep
-    // working; permissions_json is empty (no longer the source of truth).
+    // memberId is the project_shares.id. Reads the full row including the
+    // restored `position` column and the `capabilities` JSONB delta.
     const { data, error } = await this.supabase
       .from('project_shares')
-      .select('id, user_id, role, origin')
+      .select('id, user_id, role, origin, position, capabilities')
       .eq('project_id', projectId)
       .eq('id', memberId)
       .limit(1)
@@ -834,7 +882,10 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       id: data.id as string,
       user_id: data.user_id as string | null,
       role: String(data.role),
-      position: null,
+      origin: (data.origin as string | null) ?? null,
+      position: (data.position as string | null) ?? null,
+      capabilities:
+        (data.capabilities as Record<string, unknown> | null) ?? {},
       permissions_json: null,
     };
   }
@@ -846,13 +897,14 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     id: string;
     user_id: string | null;
     role: string;
-    position?: string | null;
+    origin: string | null;
+    position: string | null;
+    capabilities: Record<string, unknown>;
     permissions_json?: Record<string, unknown> | null;
   } | null> {
-    // Slice 3b: lookup via project_shares.
     const { data, error } = await this.supabase
       .from('project_shares')
-      .select('id, user_id, role, origin')
+      .select('id, user_id, role, origin, position, capabilities')
       .eq('project_id', projectId)
       .eq('user_id', userId)
       .limit(1)
@@ -863,7 +915,10 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       id: data.id as string,
       user_id: data.user_id as string | null,
       role: String(data.role),
-      position: null,
+      origin: (data.origin as string | null) ?? null,
+      position: (data.position as string | null) ?? null,
+      capabilities:
+        (data.capabilities as Record<string, unknown> | null) ?? {},
       permissions_json: null,
     };
   }

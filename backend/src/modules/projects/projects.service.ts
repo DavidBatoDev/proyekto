@@ -32,10 +32,15 @@ import {
 } from './dto/project.dto';
 import { Project } from '../../common/entities';
 import { NotificationsService } from '../notifications/notifications.service';
-import type {
-  PermissionPath,
-  ProjectPermissions,
+import {
+  type PermissionPath,
+  type ProjectPermissions,
+  diffCapabilities,
+  resolvePermissions,
+  setPermission,
+  validateDependencies,
 } from './permissions/project-permissions';
+import type { ProjectShareOrigin } from './authorization/project-authorization.service';
 import type {
   ProjectResourceFolderWithLinks,
   ProjectResourcesPayload,
@@ -918,22 +923,16 @@ export class ProjectsService {
   ): Promise<ProjectPermissions> {
     await this.getProjectOrThrow(projectId);
     // Caller must have at least viewer access on the project to inspect
-    // member permissions. Members.manage isn't required (read is permissive).
+    // member permissions.
     await this.authorization.assertRole(callerId, projectId, 'viewer');
-
-    const targetRole = await this.authorization.getUserProjectRole(
-      // memberId on project_shares == share row id; we need the user id.
-      // Look up the share row to get the role directly.
-      callerId, // unused — see below
-      projectId,
-    );
-    void targetRole; // suppress unused warning while we look up the target
     const target = await this.projectsRepo.getMemberById(projectId, memberId);
     if (!target) {
       throw new NotFoundException('Member not found');
     }
-    return this.synthesizePermissionsFromRole(
+    return resolvePermissions(
       (target.role as ProjectRole) ?? 'viewer',
+      (target.origin as ProjectShareOrigin | null) ?? null,
+      target.capabilities ?? null,
     );
   }
 
@@ -942,11 +941,18 @@ export class ProjectsService {
     userId: string,
   ): Promise<ProjectPermissions> {
     await this.getProjectOrThrow(projectId);
-    const role = await this.authorization.getUserProjectRole(userId, projectId);
-    if (!role) {
+    const target = await this.projectsRepo.getMemberByProjectAndUserId(
+      projectId,
+      userId,
+    );
+    if (!target) {
       throw new ForbiddenException('You are not a member of this project.');
     }
-    return this.synthesizePermissionsFromRole(role);
+    return resolvePermissions(
+      (target.role as ProjectRole) ?? 'viewer',
+      (target.origin as ProjectShareOrigin | null) ?? null,
+      target.capabilities ?? null,
+    );
   }
 
   async updateMemberPermissions(
@@ -955,34 +961,112 @@ export class ProjectsService {
     callerId: string,
     dto: UpdateProjectMemberPermissionsDto,
   ): Promise<unknown> {
-    const project = await this.getProjectOrThrow(projectId);
-    await this.assertCanManageMembers(project, callerId);
-    if (
-      callerId === project.client_id &&
-      callerId !== project.consultant_id
-    ) {
-      throw new ForbiddenException(
-        'Project clients cannot modify member permissions.',
-      );
-    }
-
-    const targetMember = await this.projectsRepo.getMemberById(
+    await this.getProjectOrThrow(projectId);
+    // Editing permissions requires the fine-grained capability, which lives
+    // at admin+ by default. assertPermission walks the resolver, so a
+    // non-admin who's been explicitly granted `members.edit_permissions`
+    // also passes.
+    await this.authorization.assertPermission(
+      callerId,
       projectId,
-      memberId,
+      'members.edit_permissions',
     );
-    if (!targetMember) {
+
+    const target = await this.projectsRepo.getMemberById(projectId, memberId);
+    if (!target) {
       throw new NotFoundException('Member not found');
     }
 
-    if (
-      targetMember.user_id === project.client_id ||
-      targetMember.user_id === project.consultant_id
-    ) {
-      throw new ForbiddenException(
-        'Cannot modify permissions of project leads.',
-      );
+    const role = (target.role as ProjectRole) ?? 'viewer';
+    const origin = (target.origin as ProjectShareOrigin | null) ?? null;
+
+    // Cannot demote a project owner via this endpoint — owner permissions
+    // are always at the maximum and protected by last-owner rules.
+    if (role === 'owner') {
+      throw new ForbiddenException("Cannot modify an owner's permissions.");
     }
 
-    return this.projectsRepo.updateMemberPermissions(projectId, memberId, dto);
+    // Compute the desired permissions: start from current resolved (baseline
+    // + existing capabilities), then layer in any sections present in the
+    // request. The request shape is `Partial<ProjectPermissions>` per
+    // section, so we merge field-by-field for each section it includes.
+    const desired = resolvePermissions(role, origin, target.capabilities);
+    const sections: (keyof ProjectPermissions)[] = [
+      'access', 'roadmap', 'members', 'project',
+      'time', 'chat', 'resources', 'logs',
+    ];
+    for (const section of sections) {
+      const incoming = (dto as unknown as Record<string, Record<string, boolean> | undefined>)[section];
+      if (!incoming) continue;
+      for (const [field, value] of Object.entries(incoming)) {
+        if (typeof value !== 'boolean') continue;
+        const path = `${section}.${field}` as PermissionPath;
+        try {
+          setPermission(desired, path, value);
+        } catch {
+          // Unknown path — ignore silently; class-validator already
+          // accepted any boolean record so we're defensive here.
+        }
+      }
+    }
+
+    // Dependency validation runs against the *post-merge* permission set
+    // (deps may be satisfied by role/origin or by the same patch).
+    const validation = validateDependencies(desired);
+    if (!validation.ok) {
+      throw new BadRequestException({
+        code: 'permission_dependency_unmet',
+        message: 'One or more permissions require prerequisites that are not granted.',
+        missing: validation.missing,
+      });
+    }
+
+    // Diff desired against the (role, origin) baseline → new flat delta
+    // stored on the share row. Empty delta means "use defaults" (we still
+    // write {} to clear any prior overrides).
+    const newCapabilities = diffCapabilities(role, origin, desired);
+    return this.projectsRepo.updateMemberCapabilities(
+      projectId,
+      memberId,
+      newCapabilities,
+    );
+  }
+
+  /**
+   * Update only the `position` label on a member's share row. Allowed if:
+   *   - caller is editing their own row (self-edit)
+   *   - caller has `members.edit_position` (admin+ by default)
+   */
+  async updateMemberPosition(
+    projectId: string,
+    memberId: string,
+    callerId: string,
+    position: string,
+  ): Promise<unknown> {
+    await this.getProjectOrThrow(projectId);
+    const target = await this.projectsRepo.getMemberById(projectId, memberId);
+    if (!target) {
+      throw new NotFoundException('Member not found');
+    }
+    const isSelf = target.user_id === callerId;
+    if (!isSelf) {
+      await this.authorization.assertPermission(
+        callerId,
+        projectId,
+        'members.edit_position',
+      );
+    } else {
+      // Self-edit still requires the caller to be a member of the project.
+      await this.authorization.assertRole(callerId, projectId, 'viewer');
+    }
+    const trimmed = position.trim();
+    if (trimmed.length > 80) {
+      throw new BadRequestException('Position must be 80 characters or fewer.');
+    }
+    return this.projectsRepo.updateMemberPosition(
+      projectId,
+      memberId,
+      trimmed.length === 0 ? null : trimmed,
+    );
   }
 }

@@ -1,16 +1,28 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useLayoutEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   Search,
+  Check,
   ChevronDown,
+  Pencil,
   Plus,
   Trash2,
   MessageSquare,
   MoreHorizontal,
   Clock,
+  ShieldCheck,
+  X,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
-import type { Project, ProjectMember, ProjectInvite } from "@/services/project.service";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  projectService,
+  type Project,
+  type ProjectMember,
+  type ProjectInvite,
+} from "@/services/project.service";
 import { useUser } from "@/stores/authStore";
+import { useToast } from "@/hooks/useToast";
 import { TeamSkeleton } from "./TeamSkeleton";
 import { AddMemberModal } from "./AddMemberModal";
 import { RemoveMemberModal } from "./RemoveMemberModal";
@@ -24,6 +36,7 @@ import {
   useProjectMyPermissionsQuery,
   useProjectRemoveMemberMutation,
 } from "@/hooks/useProjectQueries";
+import { projectKeys } from "@/queries/project";
 
 // ─── Permission System ────────────────────────────────────────────────────────
 
@@ -168,26 +181,34 @@ function ColumnHeaders({ showActions }: { showActions: boolean }) {
 
 function MoreDropdown({
   onRemove,
+  onEditPermissions,
   removing,
 }: {
   onRemove: () => void;
+  onEditPermissions?: () => void;
   removing?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const coords = useDropdownCoords(open, buttonRef, "right");
 
   useEffect(() => {
     if (!open) return;
     const handle = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (buttonRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
   }, [open]);
 
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors"
@@ -195,8 +216,25 @@ function MoreDropdown({
       >
         <MoreHorizontal className="w-3.5 h-3.5" />
       </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg py-1 w-48">
+      {open && coords && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: "fixed", top: coords.top, left: coords.left, zIndex: 60 }}
+          className="bg-white border border-slate-200 rounded-xl shadow-lg py-1 w-52"
+        >
+          {onEditPermissions && (
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onEditPermissions();
+              }}
+              className="w-full px-3 py-2 text-sm text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Edit permissions
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -209,9 +247,10 @@ function MoreDropdown({
             <Trash2 className="w-3.5 h-3.5" />
             Remove from project
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
-    </div>
+    </>
   );
 }
 
@@ -222,11 +261,15 @@ function TeamRow({
   email,
   avatarUrl,
   roleLabel,
+  position,
+  canEditPosition,
+  onSavePosition,
   isLast,
   isSelf,
   permissions,
   showActions,
   onRemove,
+  onEditPermissions,
   onChat,
   removing,
 }: {
@@ -234,11 +277,15 @@ function TeamRow({
   email?: string;
   avatarUrl?: string;
   roleLabel: string;
+  position?: string | null;
+  canEditPosition?: boolean;
+  onSavePosition?: (next: string) => Promise<void> | void;
   isLast: boolean;
   isSelf: boolean;
   permissions: RowPermissions;
   showActions: boolean;
   onRemove?: () => void;
+  onEditPermissions?: () => void;
   onChat?: () => void;
   removing?: boolean;
 }) {
@@ -264,8 +311,14 @@ function TeamRow({
         </div>
       </div>
 
-      {/* Col 2: Role */}
-      <span className="text-sm truncate text-slate-600">{roleLabel}</span>
+      {/* Col 2: Position (editable) / Role fallback */}
+      <PositionCell
+        value={position ?? null}
+        fallback={roleLabel}
+        canEdit={!!canEditPosition}
+        onSave={onSavePosition}
+      />
+
 
       {/* Col 3: Status */}
       <StatusBadge status="Active" />
@@ -284,9 +337,117 @@ function TeamRow({
             </button>
           )}
           {permissions.canRemove && onRemove && (
-            <MoreDropdown onRemove={onRemove} removing={removing} />
+            <MoreDropdown
+              onRemove={onRemove}
+              onEditPermissions={onEditPermissions}
+              removing={removing}
+            />
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Position cell with inline edit ───────────────────────────────────────────
+
+function PositionCell({
+  value,
+  fallback,
+  canEdit,
+  onSave,
+}: {
+  value: string | null;
+  fallback: string;
+  canEdit: boolean;
+  onSave?: (next: string) => Promise<void> | void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (editing) {
+      setDraft(value ?? "");
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }, [editing, value]);
+
+  const submit = async () => {
+    if (!onSave) return;
+    if (saving) return;
+    const trimmed = draft.trim();
+    if (trimmed === (value ?? "")) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(trimmed);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancel = () => {
+    if (saving) return;
+    setEditing(false);
+    setDraft(value ?? "");
+  };
+
+  if (editing) {
+    return (
+      <div className="flex min-w-0 items-center gap-1">
+        <input
+          ref={inputRef}
+          value={draft}
+          maxLength={80}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void submit();
+            if (e.key === "Escape") cancel();
+          }}
+          placeholder="e.g. Backend Dev"
+          className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+        />
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={saving}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-60"
+          title="Save"
+        >
+          <Check className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={cancel}
+          disabled={saving}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-60"
+          title="Cancel"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="group flex min-w-0 items-center gap-1.5">
+      <span className="truncate text-sm text-slate-600">
+        {value?.trim() || fallback}
+      </span>
+      {canEdit && (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-300 opacity-0 transition-opacity hover:bg-slate-100 hover:text-slate-700 group-hover:opacity-100"
+          title="Edit position"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
       )}
     </div>
   );
@@ -300,7 +461,9 @@ function MemberSection({
   roleLabel,
   viewerRole,
   canManageMembers,
+  canEditOthersPosition,
   currentUserId,
+  onSavePosition,
   onRemove,
   removingId,
   showActions,
@@ -311,7 +474,9 @@ function MemberSection({
   roleLabel: string;
   viewerRole: ViewerRole;
   canManageMembers: boolean;
+  canEditOthersPosition: boolean;
   currentUserId?: string;
+  onSavePosition: (memberId: string, next: string) => Promise<void>;
   onRemove: (m: ProjectMember) => void;
   removingId: string | null;
   showActions: boolean;
@@ -331,18 +496,32 @@ function MemberSection({
           const isSelf = !!currentUserId && m.user_id === currentUserId;
           const perms = getRowPermissions(viewerRole, "member", isSelf, canManageMembers);
           const name = memberDisplayName(m);
+          const canEditPosition = isSelf || canEditOthersPosition;
           return (
             <TeamRow
               key={m.id}
               name={name}
               email={m.user?.email}
               avatarUrl={m.user?.avatar_url}
-              roleLabel={m.position?.trim() || roleLabel}
+              roleLabel={roleLabel}
+              position={m.position}
+              canEditPosition={canEditPosition}
+              onSavePosition={(next) => onSavePosition(m.id, next)}
               isLast={idx === members.length - 1}
               isSelf={isSelf}
               permissions={perms}
               showActions={showActions}
               onRemove={() => onRemove(m)}
+              onEditPermissions={
+                canManageMembers
+                  ? () =>
+                      void navigate({
+                        to: "/project/$projectId/settings/permissions",
+                        params: { projectId },
+                        search: { memberId: m.id },
+                      })
+                  : undefined
+              }
               removing={removingId === m.id}
               onChat={
                 !isSelf && m.user_id
@@ -463,12 +642,17 @@ function RoleFilterDropdown({
   onChange: (v: RoleFilter) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const coords = useDropdownCoords(open, buttonRef, "left");
 
   useEffect(() => {
     if (!open) return;
     const handle = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (buttonRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
@@ -477,8 +661,9 @@ function RoleFilterDropdown({
   const label = value === "all" ? "All Roles" : ROLE_LABELS[value];
 
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 transition-all hover:bg-slate-50 hover:border-slate-400"
@@ -486,8 +671,12 @@ function RoleFilterDropdown({
         {label}
         <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
       </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg py-1 w-40">
+      {open && coords && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: "fixed", top: coords.top, left: coords.left, zIndex: 60 }}
+          className="bg-white border border-slate-200 rounded-xl shadow-lg py-1 w-40"
+        >
           {(["all", "consultant", "client", "member"] as RoleFilter[]).map((r) => (
             <button
               key={r}
@@ -503,10 +692,50 @@ function RoleFilterDropdown({
               {r === "all" ? "All Roles" : ROLE_LABELS[r]}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
-    </div>
+    </>
   );
+}
+
+// Compute fixed-position coords for a dropdown panel anchored below `triggerRef`.
+// `align` decides which edge of the panel aligns with the trigger.
+function useDropdownCoords(
+  open: boolean,
+  triggerRef: React.RefObject<HTMLElement | null>,
+  align: "left" | "right",
+): { top: number; left: number } | null {
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setCoords(null);
+      return;
+    }
+    const compute = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const top = rect.bottom + 4;
+      // Right-align: panel's right edge matches trigger's right.
+      // Left-align: panel's left edge matches trigger's left.
+      // Width estimates are conservative; final position is constrained by
+      // the panel's intrinsic width so close-enough is fine for now.
+      const left = align === "right" ? rect.right - 192 : rect.left;
+      setCoords({ top, left });
+    };
+    compute();
+    const onScroll = () => compute();
+    window.addEventListener("resize", onScroll);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [open, triggerRef, align]);
+
+  return coords;
 }
 
 // ─── Main Page ─────────────────────────────────────────────────────────────────
@@ -573,6 +802,44 @@ export function TeamPage({ projectId }: TeamPageProps) {
       setCancellingInviteId(null);
     }
   }, [cancelInviteMutation]);
+
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const updatePositionMutation = useMutation({
+    mutationFn: ({
+      memberId,
+      position,
+    }: {
+      memberId: string;
+      position: string;
+    }) => projectService.updateMemberPosition(projectId, memberId, position),
+    onSuccess: (_data, variables) => {
+      // Optimistic patch: update the cached members list in place so the
+      // UI reflects the new position without a round trip.
+      queryClient.setQueryData<ProjectMember[]>(
+        projectKeys.members(projectId),
+        (current) =>
+          current?.map((m) =>
+            m.id === variables.memberId
+              ? { ...m, position: variables.position || null }
+              : m,
+          ),
+      );
+      void queryClient.invalidateQueries({
+        queryKey: projectKeys.detail(projectId),
+      });
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Couldn't save position");
+    },
+  });
+
+  const handleSavePosition = useCallback(
+    async (memberId: string, next: string) => {
+      await updatePositionMutation.mutateAsync({ memberId, position: next });
+    },
+    [updatePositionMutation],
+  );
 
   const isLoading =
     projectQuery.isPending || membersQuery.isPending || myPermissionsQuery.isPending;
@@ -785,7 +1052,11 @@ export function TeamPage({ projectId }: TeamPageProps) {
             roleLabel="Member"
             viewerRole={viewerRole}
             canManageMembers={canManageMembers}
+            canEditOthersPosition={Boolean(
+              myPermissionsQuery.data?.members.edit_position,
+            )}
             currentUserId={user?.id}
+            onSavePosition={handleSavePosition}
             onRemove={handleRemove}
             removingId={removingId}
             showActions={canManageMembers}

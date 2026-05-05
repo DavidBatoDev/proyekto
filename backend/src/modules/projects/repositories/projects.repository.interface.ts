@@ -97,7 +97,9 @@ export interface ProjectsRepository {
     id: string;
     user_id: string | null;
     role: string;
-    position?: string | null;
+    origin: string | null;
+    position: string | null;
+    capabilities: Record<string, unknown>;
     permissions_json?: Record<string, unknown> | null;
   } | null>;
   getMemberByProjectAndUserId(
@@ -107,7 +109,9 @@ export interface ProjectsRepository {
     id: string;
     user_id: string | null;
     role: string;
-    position?: string | null;
+    origin: string | null;
+    position: string | null;
+    capabilities: Record<string, unknown>;
     permissions_json?: Record<string, unknown> | null;
   } | null>;
   getMemberPermissions(
@@ -118,6 +122,16 @@ export interface ProjectsRepository {
     projectId: string,
     memberId: string,
     dto: UpdateProjectMemberPermissionsDto,
+  ): Promise<unknown>;
+  updateMemberCapabilities(
+    projectId: string,
+    memberId: string,
+    capabilities: Record<string, boolean>,
+  ): Promise<unknown>;
+  updateMemberPosition(
+    projectId: string,
+    memberId: string,
+    position: string | null,
   ): Promise<unknown>;
   updateRoleMemberPermissions(
     projectId: string,

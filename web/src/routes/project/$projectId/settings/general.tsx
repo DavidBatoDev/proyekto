@@ -629,7 +629,7 @@ function SettingsGeneralPage() {
                 Team members with access to this project.
               </p>
               <Link
-                to="/project/$projectId/settings/team"
+                to="/project/$projectId/settings/permissions"
                 params={{ projectId }}
                 className="px-3 py-1.5 text-sm font-medium border border-gray-300 rounded-md hover:bg-slate-100"
               >
