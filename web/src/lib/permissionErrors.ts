@@ -138,3 +138,46 @@ function safeParseJson(value: string): unknown {
 		return undefined;
 	}
 }
+
+/**
+ * Pull a usable error message out of a NestJS-style response body.
+ *
+ * NestJS `HttpException`s with an object payload land under `body.message`
+ * as the OBJECT (not a string), so the common
+ * `body.message || body.error?.message || fallback` chain falls through
+ * to the fallback even when the server returned a perfectly readable
+ * `message` field inside the structured payload. This walks the layered
+ * shape and returns the most specific human-readable string available.
+ *
+ * Resolution order:
+ *   1. structured `missing_permission` → `formatMissingPermission`
+ *   2. body.message.message (object payload + inner message)
+ *   3. body.message (string)
+ *   4. body.error.message
+ *   5. fallback
+ */
+export function extractApiErrorMessage(
+	body: unknown,
+	fallback: string,
+): string {
+	const parsed = parseMissingPermissionError({ data: body, status: 403 });
+	if (parsed) return formatMissingPermission(parsed);
+
+	if (body && typeof body === "object") {
+		const b = body as Record<string, unknown>;
+		// NestJS HttpException with object payload: { statusCode, message: {...}, error }
+		if (b.message && typeof b.message === "object") {
+			const inner = b.message as Record<string, unknown>;
+			if (typeof inner.message === "string" && inner.message) {
+				return inner.message;
+			}
+		}
+		if (typeof b.message === "string" && b.message) return b.message;
+		if (b.error && typeof b.error === "object") {
+			const err = b.error as Record<string, unknown>;
+			if (typeof err.message === "string" && err.message) return err.message;
+		}
+	}
+
+	return fallback;
+}

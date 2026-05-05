@@ -23,6 +23,13 @@ import {
   type PermissionMeta,
   type PermissionSectionMeta,
 } from "@/components/project/permissions/permissionCatalog";
+import {
+  ROLE_PRESETS,
+  ROLE_PRESET_DESCRIPTIONS,
+  ROLE_PRESET_LABELS,
+  detectPreset,
+  type RolePresetKey,
+} from "@/components/project/permissions/roleTemplates";
 
 export const Route = createFileRoute("/project/$projectId/settings/permissions")({
   component: PermissionsRoute,
@@ -180,28 +187,26 @@ function enforceDeps(permissions: ProjectPermissions): ProjectPermissions {
   return result as unknown as ProjectPermissions;
 }
 
-function propagateEnable(
+/**
+ * Returns the prerequisite paths from `perm.requires` that are NOT
+ * currently `true` in `permissions`. Used to grey out rows whose
+ * dependencies aren't satisfied so admins must enable parents
+ * explicitly before children become tickable.
+ */
+function getUnmetRequires(
+  perm: PermissionMeta,
   permissions: ProjectPermissions,
-  section: SectionKey,
-  key: string,
-): ProjectPermissions {
-  const result = structuredClone(permissions) as unknown as Record<string, Record<string, boolean>>;
-  if (!result[section as string]) return permissions;
-  result[section as string][key] = true;
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const [cs, ck, ps, pk] of DEPENDENCIES) {
-      const child = result[cs as string];
-      const parent = result[ps as string];
-      if (!child || !parent) continue;
-      if (child[ck] && !parent[pk]) {
-        parent[pk] = true;
-        changed = true;
-      }
-    }
+): string[] {
+  if (!perm.requires?.length) return [];
+  const out: string[] = [];
+  for (const req of perm.requires) {
+    const [section, field] = req.split(".");
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const value = (permissions as any)[section]?.[field];
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+    if (value !== true) out.push(req);
   }
-  return result as unknown as ProjectPermissions;
+  return out;
 }
 
 // ─── Permission section definitions ─────────────────────────────────────────
@@ -363,9 +368,15 @@ function PermissionsSettingsPage() {
       ) {
         return prev;
       }
-      if (checked) return propagateEnable(prev, section, key);
-      const next = structuredClone(prev) as unknown as Record<string, Record<string, boolean>>;
-      next[section as string][key] = false;
+      const next = structuredClone(prev) as unknown as Record<
+        string,
+        Record<string, boolean>
+      >;
+      next[section as string][key] = checked;
+      // Cascade-down: when a parent is unticked, dependents flip off.
+      // No cascade-up: enabling a child does NOT silently auto-enable its
+      // parents — the UI greys those children until parents are explicitly
+      // ticked.
       return enforceDeps(next as unknown as ProjectPermissions);
     });
   };
@@ -538,6 +549,16 @@ function PermissionsSettingsPage() {
         </div>
       ) : permissions ? (
         <div className="space-y-4 pb-24">
+          {/* Preset switcher — Admin / Editor / Viewer / Custom. Snaps the
+              entire matrix to a known baseline; "Custom" lights up when
+              the current state matches none of the three presets. */}
+          <PresetSwitcher
+            permissions={permissions}
+            onApply={(preset) =>
+              setPermissions(structuredClone(ROLE_PRESETS[preset]))
+            }
+          />
+
           {/* Search */}
           <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2">
             <div className="flex flex-1 items-center gap-2">
@@ -665,6 +686,62 @@ function PermissionsSettingsPage() {
 
 // ─── Section block ───────────────────────────────────────────────────────────
 
+// ─── Preset switcher (Admin / Editor / Viewer / Custom) ───────────────────
+
+function PresetSwitcher({
+  permissions,
+  onApply,
+}: {
+  permissions: ProjectPermissions;
+  onApply: (preset: RolePresetKey) => void;
+}) {
+  const active = detectPreset(permissions); // null when Custom
+  const presets: RolePresetKey[] = ["admin", "editor", "viewer"];
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-3">
+      <div className="mb-2 flex items-baseline justify-between gap-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">
+          Preset
+        </p>
+        <p className="text-[11px] text-slate-500">
+          {active
+            ? ROLE_PRESET_DESCRIPTIONS[active]
+            : "Current permissions don't match a preset — fine-tuned overrides are active."}
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {presets.map((p) => {
+          const isActive = active === p;
+          return (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onApply(p)}
+              className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? "border-slate-900 bg-slate-900 text-white"
+                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              {ROLE_PRESET_LABELS[p]}
+            </button>
+          );
+        })}
+        <span
+          className={`inline-flex items-center rounded-md border px-3 py-1.5 text-sm font-medium ${
+            active === null
+              ? "border-slate-900 bg-slate-900 text-white"
+              : "border-slate-200 bg-slate-50 text-slate-500"
+          }`}
+          title="Lights up when the current state doesn't match any preset"
+        >
+          Custom
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function SectionBlock({
   section,
   permissions,
@@ -742,14 +819,23 @@ function SectionBlock({
                 const checked = isLockedSection ? true : group[perm.field] === true;
                 const changed = !sectionDisabled && isPermissionChanged(section.key, perm.field);
                 const modified = !sectionDisabled && isModifiedFromDefault(section.key, perm.field);
+                // Per-row dependency gate: if any required path is currently
+                // false AND this row is also off, the row is locked until
+                // the admin enables the parent explicitly. Rows that are
+                // already on stay interactive so drift can be cleaned up.
+                const unmetRequires = sectionDisabled
+                  ? []
+                  : getUnmetRequires(perm, permissions);
+                const lockedByUnmet = unmetRequires.length > 0 && !checked;
                 return (
                   <PermissionRow
                     key={perm.path}
                     perm={perm}
                     checked={checked}
-                    disabled={sectionDisabled || saving}
+                    disabled={sectionDisabled || saving || lockedByUnmet}
                     changed={changed}
                     modified={modified}
+                    unmetRequires={unmetRequires}
                     onChange={(value) => onToggleField(perm.field, value)}
                   />
                 );
@@ -768,6 +854,7 @@ function PermissionRow({
   disabled,
   changed,
   modified,
+  unmetRequires,
   onChange,
 }: {
   perm: PermissionMeta;
@@ -775,8 +862,11 @@ function PermissionRow({
   disabled: boolean;
   changed: boolean;
   modified: boolean;
+  unmetRequires: string[];
   onChange: (next: boolean) => void;
 }) {
+  const isBlockedByDeps = unmetRequires.length > 0 && !checked;
+  const unmetSet = new Set(unmetRequires);
   return (
     <label
       className={`grid grid-cols-[44px_minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1.2fr)] items-start gap-4 px-4 py-3 transition-colors ${
@@ -815,20 +905,38 @@ function PermissionRow({
       <p className="text-sm leading-relaxed text-slate-600">
         {perm.description}
       </p>
-      <div className="flex flex-wrap gap-1">
-        {perm.requires?.length ? (
-          perm.requires.map((req) => (
-            <code
-              key={req}
-              title={`Requires ${req}`}
-              className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] text-slate-600"
-            >
-              {req}
-            </code>
-          ))
-        ) : (
-          <span className="text-[11px] text-slate-400">—</span>
+      <div className="flex flex-col gap-1">
+        {isBlockedByDeps && (
+          <p className="text-[11px] font-medium text-slate-700">
+            Requires the following first:
+          </p>
         )}
+        <div className="flex flex-wrap gap-1">
+          {perm.requires?.length ? (
+            perm.requires.map((req) => {
+              const unmet = unmetSet.has(req);
+              return (
+                <code
+                  key={req}
+                  title={
+                    unmet
+                      ? `Enable ${req} first to unlock this permission`
+                      : `Requires ${req}`
+                  }
+                  className={
+                    unmet
+                      ? "rounded border border-slate-400 bg-slate-200 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-slate-900"
+                      : "rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] text-slate-600"
+                  }
+                >
+                  {req}
+                </code>
+              );
+            })
+          ) : (
+            <span className="text-[11px] text-slate-400">—</span>
+          )}
+        </div>
       </div>
     </label>
   );

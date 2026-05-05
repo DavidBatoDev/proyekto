@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { extractApiErrorMessage } from "@/lib/permissionErrors";
 
 export interface CreateProjectData {
   creation_mode?: "client" | "consultant";
@@ -280,7 +281,7 @@ class ProjectService {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error?.message || "Failed to create project");
+      throw new Error(extractApiErrorMessage(error, "Failed to create project"));
     }
 
     const result = await response.json();
@@ -311,7 +312,7 @@ class ProjectService {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error?.message || "Failed to fetch project");
+      throw new Error(extractApiErrorMessage(error, "Failed to fetch project"));
     }
 
     const result = await response.json();
@@ -347,7 +348,7 @@ class ProjectService {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error?.message || "Failed to update project");
+      throw new Error(extractApiErrorMessage(error, "Failed to update project"));
     }
 
     const result = await response.json();
@@ -378,7 +379,7 @@ class ProjectService {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error?.message || "Failed to fetch projects");
+      throw new Error(extractApiErrorMessage(error, "Failed to fetch projects"));
     }
 
     const result = await response.json();
@@ -407,7 +408,7 @@ class ProjectService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(
-        error.error?.message || "Failed to fetch dashboard projects",
+        extractApiErrorMessage(error, "Failed to fetch dashboard projects"),
       );
     }
 
@@ -446,7 +447,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to add member",
+        extractApiErrorMessage(err, "Failed to add member"),
       );
     }
     const result = await response.json();
@@ -477,7 +478,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to update position",
+        extractApiErrorMessage(err, "Failed to update position"),
       );
     }
     const result = await response.json();
@@ -511,7 +512,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to update member",
+        extractApiErrorMessage(err, "Failed to update member"),
       );
     }
     const result = await response.json();
@@ -547,7 +548,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to send invite",
+        extractApiErrorMessage(err, "Failed to send invite"),
       );
     }
 
@@ -574,7 +575,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to fetch invites",
+        extractApiErrorMessage(err, "Failed to fetch invites"),
       );
     }
 
@@ -611,7 +612,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to respond to invite",
+        extractApiErrorMessage(err, "Failed to respond to invite"),
       );
     }
 
@@ -637,7 +638,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to remove member",
+        extractApiErrorMessage(err, "Failed to remove member"),
       );
     }
   }
@@ -663,7 +664,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to leave project",
+        extractApiErrorMessage(err, "Failed to leave project"),
       );
     }
 
@@ -758,14 +759,20 @@ class ProjectService {
       const err = await response.json();
       // Surface the structured dependency-violation payload so the UI can
       // auto-tick prereqs and retry.
-      const code = err?.code ?? err?.error?.code;
-      const missing = err?.missing ?? err?.error?.missing;
-      const message =
-        err.message ||
-        err.error?.message ||
-        "Failed to update member permissions";
+      // NestJS HttpException with object payload nests data under
+      // err.message — peek into both shapes for code/missing.
+      const inner =
+        err?.message && typeof err.message === "object"
+          ? (err.message as Record<string, unknown>)
+          : err;
+      const code = inner?.code ?? err?.error?.code;
+      const missing = inner?.missing ?? err?.error?.missing;
+      const message = extractApiErrorMessage(
+        err,
+        "Failed to update member permissions",
+      );
       throw new PermissionDependencyError(message, {
-        code,
+        code: typeof code === "string" ? code : null,
         missing: Array.isArray(missing) ? missing : null,
       });
     }
@@ -791,7 +798,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to load project invites",
+        extractApiErrorMessage(err, "Failed to load project invites"),
       );
     }
 
@@ -816,7 +823,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to cancel invite",
+        extractApiErrorMessage(err, "Failed to cancel invite"),
       );
     }
   }
@@ -868,7 +875,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to update role permissions",
+        extractApiErrorMessage(err, "Failed to update role permissions"),
       );
     }
   }
@@ -894,7 +901,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to transfer project owner",
+        extractApiErrorMessage(err, "Failed to transfer project owner"),
       );
     }
 
@@ -926,7 +933,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to reassign consultant",
+        extractApiErrorMessage(err, "Failed to reassign consultant"),
       );
     }
 
@@ -953,7 +960,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to delete project",
+        extractApiErrorMessage(err, "Failed to delete project"),
       );
     }
   }
@@ -977,7 +984,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to fetch resources",
+        extractApiErrorMessage(err, "Failed to fetch resources"),
       );
     }
 
@@ -1009,7 +1016,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to create folder",
+        extractApiErrorMessage(err, "Failed to create folder"),
       );
     }
 
@@ -1042,7 +1049,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to update folder",
+        extractApiErrorMessage(err, "Failed to update folder"),
       );
     }
 
@@ -1069,7 +1076,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to delete folder",
+        extractApiErrorMessage(err, "Failed to delete folder"),
       );
     }
   }
@@ -1098,7 +1105,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to reorder folders",
+        extractApiErrorMessage(err, "Failed to reorder folders"),
       );
     }
 
@@ -1135,7 +1142,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to create link",
+        extractApiErrorMessage(err, "Failed to create link"),
       );
     }
 
@@ -1173,7 +1180,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to update link",
+        extractApiErrorMessage(err, "Failed to update link"),
       );
     }
 
@@ -1200,7 +1207,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to delete link",
+        extractApiErrorMessage(err, "Failed to delete link"),
       );
     }
   }
@@ -1232,7 +1239,7 @@ class ProjectService {
     if (!response.ok) {
       const err = await response.json();
       throw new Error(
-        err.message || err.error?.message || "Failed to reorder links",
+        extractApiErrorMessage(err, "Failed to reorder links"),
       );
     }
 

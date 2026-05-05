@@ -37,6 +37,7 @@ import {
   type PermissionPath,
   type ProjectPermissions,
   diffCapabilities,
+  getPermission as getResolvedPermission,
   resolvePermissions,
   setPermission,
   validateDependencies,
@@ -229,10 +230,11 @@ export class ProjectsService {
   }
 
   /**
-   * Backwards-compat shim: legacy permission-path callers continue to work,
-   * but enforcement is now role-based via project_shares (see
-   * permissionToMinRole). The fine-grained permissions_json fallback is
-   * gone — the role hierarchy alone determines access.
+   * Permission-path enforcement. Routes through the resolver
+   * (`role baseline ⊕ origin delta ⊕ capabilities`) so per-row capability
+   * overrides actually gate access. The legacy `permissionToMinRole` map
+   * is kept as a fail-safe for paths the resolver doesn't recognise but
+   * is no longer the primary check.
    */
   async assertProjectPermission(
     projectId: string,
@@ -240,8 +242,7 @@ export class ProjectsService {
     permission: PermissionPath,
   ): Promise<void> {
     await this.getProjectOrThrow(projectId); // 404 surface stays the same
-    const minRole = this.permissionToMinRole(permission);
-    await this.authorization.assertRole(userId, projectId, minRole);
+    await this.authorization.assertPermission(userId, projectId, permission);
   }
 
   async assertProjectAnyPermission(
@@ -250,20 +251,22 @@ export class ProjectsService {
     permissionsToCheck: Array<PermissionPath>,
   ): Promise<void> {
     await this.getProjectOrThrow(projectId);
-    // "Any" semantic: pass if the caller satisfies the WEAKEST required role.
-    const role = await this.authorization.getUserProjectRole(userId, projectId);
-    if (!role) {
+    const perms = await this.authorization.resolvePermissions(
+      userId,
+      projectId,
+    );
+    if (!perms) {
       throw new MissingPermissionException({
         path: null,
         message: 'You are not a member of this project.',
       });
     }
     const passes = permissionsToCheck.some((p) =>
-      this.authorization.roleSatisfies(role, this.permissionToMinRole(p)),
+      getResolvedPermission(perms, p),
     );
     if (!passes) {
-      // "Any" semantics: surface the first listed path so the FE can show a
-      // canonical label. Frontend can include the others in the help text.
+      // Surface the first listed path so the FE can render a canonical
+      // label; the message lists the full OR chain for context.
       throw new MissingPermissionException({
         path: permissionsToCheck[0],
         message: `Missing required permission: ${permissionsToCheck.join(' OR ')}.`,
