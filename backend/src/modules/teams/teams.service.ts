@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -8,12 +9,25 @@ import {
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import { MissingPermissionException } from '../projects/authorization/missing-permission.exception';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   AddTeamMemberDto,
   CreateTeamDto,
+  InviteTeamMemberDto,
+  RespondTeamInviteDto,
+  TeamMemberRole,
   UpdateTeamDto,
   UpdateTeamMemberDto,
 } from './dto/teams.dto';
+
+export interface TeamMemberPreview {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+}
 
 export interface TeamRow {
   id: string;
@@ -24,13 +38,25 @@ export interface TeamRow {
   is_personal: boolean;
   created_at: string;
   updated_at: string;
+  // Populated by listMyTeams for the team-list UI. Other endpoints that
+  // return a single TeamRow may leave these undefined.
+  members_count?: number;
+  members_preview?: Array<TeamMemberPreview | null>;
+  // The caller's own role + position within this team — drives the
+  // "what am I in this team?" chip on the team-list card. Undefined on
+  // endpoints other than listMyTeams.
+  viewer_role?: 'owner' | 'admin' | 'member' | null;
+  viewer_position?: string | null;
 }
+
+const TEAM_LIST_PREVIEW_LIMIT = 6;
 
 export interface TeamMemberRow {
   id: string;
   team_id: string;
   user_id: string;
   role: 'owner' | 'admin' | 'member';
+  position: string | null;
   hourly_rate: number | null;
   currency: string | null;
   custom_id: string | null;
@@ -58,12 +84,48 @@ const RATE_FIELDS: Array<keyof AddTeamMemberDto> = [
   'end_date',
 ];
 
+export interface TeamInviteRow {
+  id: string;
+  team_id: string;
+  invited_by: string | null;
+  invitee_id: string | null;
+  invitee_email: string | null;
+  role: TeamMemberRole;
+  position: string | null;
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled';
+  message: string | null;
+  responded_at: string | null;
+  created_at: string;
+  updated_at: string;
+  team?: { id: string; name: string; avatar_url: string | null } | null;
+  invited_by_profile?: {
+    id: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    email: string | null;
+  } | null;
+  invitee?: {
+    id: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    email: string | null;
+  } | null;
+}
+
+const TEAM_INVITE_SELECT = `
+  *,
+  team:teams!team_invites_team_id_fkey(id, name, avatar_url),
+  invited_by_profile:profiles!team_invites_invited_by_fkey(id, display_name, avatar_url, email),
+  invitee:profiles!team_invites_invitee_id_fkey(id, display_name, avatar_url, email)
+`;
+
 @Injectable()
 export class TeamsService {
   private readonly logger = new Logger(TeamsService.name);
 
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -170,7 +232,70 @@ export class TeamsService {
       if (error) throw new Error(error.message);
       extras = (data ?? []) as TeamRow[];
     }
-    return [...((owned.data ?? []) as TeamRow[]), ...extras];
+
+    const teams: TeamRow[] = [
+      ...((owned.data ?? []) as TeamRow[]),
+      ...extras,
+    ];
+    if (teams.length === 0) return teams;
+
+    // Fetch member previews for all visible teams in one batched query
+    // so the team-list UI can render an avatar stack without N+1 calls.
+    // Also pulls role/position so we can fold the viewer's own row into
+    // each team for the per-card "what am I here?" chip.
+    const teamIds = teams.map((t) => t.id);
+    const { data: allMembers, error: memErr } = await this.supabase
+      .from('team_members')
+      .select(
+        `team_id, user_id, role, position, joined_at,
+         user:profiles!team_members_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name)`,
+      )
+      .in('team_id', teamIds)
+      .order('joined_at', { ascending: true });
+    if (memErr) throw new Error(memErr.message);
+
+    const byTeam = new Map<
+      string,
+      Array<{ user: TeamMemberPreview | null }>
+    >();
+    const viewerByTeam = new Map<
+      string,
+      { role: 'owner' | 'admin' | 'member'; position: string | null }
+    >();
+    // Supabase's typed embedded relation widens FK joins to arrays even
+    // when the relation is one-to-one; cast through unknown then narrow.
+    const memberRows = (allMembers ?? []) as unknown as Array<{
+      team_id: string;
+      user_id: string;
+      role: 'owner' | 'admin' | 'member';
+      position: string | null;
+      user: TeamMemberPreview | null;
+    }>;
+    for (const row of memberRows) {
+      const arr = byTeam.get(row.team_id) ?? [];
+      arr.push({ user: row.user });
+      byTeam.set(row.team_id, arr);
+      if (row.user_id === userId) {
+        viewerByTeam.set(row.team_id, {
+          role: row.role,
+          position: row.position,
+        });
+      }
+    }
+
+    return teams.map((t) => {
+      const members = byTeam.get(t.id) ?? [];
+      const viewer = viewerByTeam.get(t.id) ?? null;
+      return {
+        ...t,
+        members_count: members.length,
+        members_preview: members
+          .slice(0, TEAM_LIST_PREVIEW_LIMIT)
+          .map((m) => m.user),
+        viewer_role: viewer?.role ?? null,
+        viewer_position: viewer?.position ?? null,
+      };
+    });
   }
 
   async getTeam(teamId: string, userId: string): Promise<TeamRow> {
@@ -253,6 +378,48 @@ export class TeamsService {
     }
   }
 
+  /**
+   * List the projects this team is currently attached to. Used by the
+   * team settings "Projects" tab to show + detach attachments. Reads
+   * via service role and gates on the same readership rule as getTeam.
+   */
+  async listProjectsForTeam(
+    teamId: string,
+    callerId: string,
+  ): Promise<
+    Array<{
+      project_id: string;
+      team_id: string;
+      is_primary: boolean;
+      default_role: string;
+      attached_at: string;
+      project: {
+        id: string;
+        title: string | null;
+      } | null;
+    }>
+  > {
+    const team = await this.fetchTeamOrThrow(teamId);
+    await this.assertCanRead(team, callerId);
+    const { data, error } = await this.supabase
+      .from('project_teams')
+      .select(
+        `project_id, team_id, is_primary, default_role, attached_at,
+         project:projects!project_teams_project_id_fkey(id, title)`,
+      )
+      .eq('team_id', teamId)
+      .order('attached_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []) as unknown as Array<{
+      project_id: string;
+      team_id: string;
+      is_primary: boolean;
+      default_role: string;
+      attached_at: string;
+      project: { id: string; title: string | null } | null;
+    }>;
+  }
+
   async listMembers(teamId: string, userId: string): Promise<TeamMemberRow[]> {
     const team = await this.fetchTeamOrThrow(teamId);
     await this.assertCanRead(team, userId);
@@ -278,6 +445,7 @@ export class TeamsService {
       team_id: teamId,
       user_id: dto.user_id,
       role: dto.role ?? 'member',
+      position: dto.position?.trim() || null,
       hourly_rate: dto.hourly_rate ?? null,
       currency: dto.currency ?? null,
       custom_id: dto.custom_id ?? null,
@@ -311,6 +479,11 @@ export class TeamsService {
     }
     const patch: Record<string, unknown> = {};
     if (dto.role !== undefined) patch.role = dto.role;
+    if (dto.position !== undefined) {
+      // Empty string clears the position; otherwise trim whitespace.
+      const trimmed = dto.position.trim();
+      patch.position = trimmed.length === 0 ? null : trimmed;
+    }
     for (const f of RATE_FIELDS) {
       const v = (dto as unknown as Record<string, unknown>)[f];
       if (v !== undefined) patch[f] = v;
@@ -414,5 +587,269 @@ export class TeamsService {
   ): boolean {
     const d = dto as Record<string, unknown>;
     return RATE_FIELDS.some((f) => d[f] !== undefined);
+  }
+
+  // ─── invites (email-based) ──────────────────────────────────────────────
+
+  /**
+   * Invite by email. Mirrors ProjectsService.inviteByEmail:
+   *   - lookup profile by lowercased email
+   *   - if already a team member, 400
+   *   - upsert into team_invites (refresh status to pending, role, message)
+   *   - emit notification when invitee profile exists
+   *
+   * The unique partial indexes on team_invites enforce idempotency at the
+   * DB level. We try the matching upsert path first depending on whether
+   * we resolved the email to a profile or not.
+   */
+  async inviteByEmail(
+    teamId: string,
+    callerId: string,
+    dto: InviteTeamMemberDto,
+  ): Promise<TeamInviteRow> {
+    const team = await this.fetchTeamOrThrow(teamId);
+    await this.assertCanManageMembers(team, callerId);
+
+    const email = dto.email.trim().toLowerCase();
+    if (!email) throw new BadRequestException('Email is required');
+
+    // Resolve email → profile (case-insensitive on lower(email)).
+    const { data: profileMatch } = await this.supabase
+      .from('profiles')
+      .select('id, email')
+      .ilike('email', email)
+      .maybeSingle();
+
+    const matchedUserId = (profileMatch as { id?: string } | null)?.id ?? null;
+
+    // Reject duplicate membership.
+    if (matchedUserId) {
+      const { data: alreadyMember } = await this.supabase
+        .from('team_members')
+        .select('id', { count: 'exact', head: false })
+        .eq('team_id', teamId)
+        .eq('user_id', matchedUserId)
+        .maybeSingle();
+      if (alreadyMember) {
+        throw new BadRequestException(
+          'This person is already a member of the team.',
+        );
+      }
+    }
+
+    const role: TeamMemberRole = dto.role ?? 'member';
+    const position = dto.position?.trim() || null;
+    const message = dto.message?.trim() || null;
+
+    // Refresh existing pending row in place if one exists, else insert.
+    // We can't use Supabase upsert with a partial unique index target,
+    // so do an explicit select-then-update/insert.
+    const existingQuery = this.supabase
+      .from('team_invites')
+      .select('id')
+      .eq('team_id', teamId)
+      .eq('status', 'pending');
+    const { data: existing } = matchedUserId
+      ? await existingQuery.eq('invitee_id', matchedUserId).maybeSingle()
+      : await existingQuery.eq('invitee_email', email).maybeSingle();
+
+    let row: Record<string, unknown> | null = null;
+    if (existing) {
+      const { data, error } = await this.supabase
+        .from('team_invites')
+        .update({
+          invited_by: callerId,
+          invitee_id: matchedUserId,
+          invitee_email: email,
+          role,
+          position,
+          message,
+          status: 'pending',
+          responded_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', (existing as { id: string }).id)
+        .select(TEAM_INVITE_SELECT)
+        .single();
+      if (error || !data) {
+        throw new Error(error?.message ?? 'Failed to refresh invite');
+      }
+      row = data as Record<string, unknown>;
+    } else {
+      const { data, error } = await this.supabase
+        .from('team_invites')
+        .insert({
+          team_id: teamId,
+          invited_by: callerId,
+          invitee_id: matchedUserId,
+          invitee_email: email,
+          role,
+          position,
+          message,
+          status: 'pending',
+        })
+        .select(TEAM_INVITE_SELECT)
+        .single();
+      if (error || !data) {
+        throw new Error(error?.message ?? 'Failed to create invite');
+      }
+      row = data as Record<string, unknown>;
+    }
+
+    // Notify if we resolved to an existing user.
+    if (matchedUserId) {
+      const inviterName = await this.getDisplayName(callerId);
+      const teamName = team.name || 'a team';
+      const positionText = role !== 'member' ? ` as ${role}` : '';
+      const noteText = message ? ` Note: ${message}` : '';
+      const inviteMessage =
+        `${inviterName || 'A team owner'} invited you to join ${teamName}${positionText}.${noteText}`;
+
+      try {
+        await this.notifications.createNotification({
+          user_id: matchedUserId,
+          project_id: undefined,
+          type_name: 'team_invite_received',
+          actor_id: callerId,
+          content: {
+            invite_id: row.id,
+            team_id: teamId,
+            team_name: teamName,
+            invited_role: role,
+            inviter_name: inviterName,
+            message: inviteMessage,
+            note: message,
+          },
+          link_url: '/teams/me/invites',
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Failed to enqueue team_invite_received notification: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
+    return row as unknown as TeamInviteRow;
+  }
+
+  async listInvitesForTeam(
+    teamId: string,
+    callerId: string,
+  ): Promise<TeamInviteRow[]> {
+    const team = await this.fetchTeamOrThrow(teamId);
+    await this.assertCanRead(team, callerId);
+    const { data, error } = await this.supabase
+      .from('team_invites')
+      .select(TEAM_INVITE_SELECT)
+      .eq('team_id', teamId)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []) as unknown as TeamInviteRow[];
+  }
+
+  async listInvitesForMe(userId: string): Promise<TeamInviteRow[]> {
+    const { data, error } = await this.supabase
+      .from('team_invites')
+      .select(TEAM_INVITE_SELECT)
+      .eq('invitee_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []) as unknown as TeamInviteRow[];
+  }
+
+  async cancelInvite(
+    teamId: string,
+    inviteId: string,
+    callerId: string,
+  ): Promise<TeamInviteRow> {
+    const team = await this.fetchTeamOrThrow(teamId);
+    await this.assertCanManageMembers(team, callerId);
+    const { data, error } = await this.supabase
+      .from('team_invites')
+      .update({
+        status: 'cancelled',
+        responded_at: new Date().toISOString(),
+      })
+      .eq('id', inviteId)
+      .eq('team_id', teamId)
+      .eq('status', 'pending')
+      .select(TEAM_INVITE_SELECT)
+      .single();
+    if (error || !data) {
+      throw new NotFoundException('Pending invite not found');
+    }
+    return data as unknown as TeamInviteRow;
+  }
+
+  async respondInvite(
+    inviteId: string,
+    userId: string,
+    dto: RespondTeamInviteDto,
+  ): Promise<TeamInviteRow> {
+    // Fetch the invite as-is (service-role bypasses RLS) and authz
+    // ourselves: only the matched invitee may respond.
+    const { data: invite, error: fetchErr } = await this.supabase
+      .from('team_invites')
+      .select('*')
+      .eq('id', inviteId)
+      .maybeSingle();
+    if (fetchErr) throw new Error(fetchErr.message);
+    if (!invite) throw new NotFoundException('Invite not found');
+    if (invite.invitee_id !== userId) {
+      throw new ForbiddenException('Only the invitee can respond to this invite');
+    }
+    if (invite.status !== 'pending') {
+      throw new BadRequestException(
+        `Invite is already ${invite.status}; cannot respond again.`,
+      );
+    }
+
+    if (dto.status === 'accepted') {
+      // Insert membership; tolerate the unique-violation race where the
+      // user was somehow added between fetch and insert. Carry over
+      // position from the invite so the inviter's intent persists.
+      const { error: insertErr } = await this.supabase
+        .from('team_members')
+        .insert({
+          team_id: invite.team_id,
+          user_id: userId,
+          role: invite.role ?? 'member',
+          position: invite.position ?? null,
+        });
+      if (insertErr && insertErr.code !== '23505') {
+        throw new Error(insertErr.message);
+      }
+    }
+
+    const { data: updated, error: updateErr } = await this.supabase
+      .from('team_invites')
+      .update({
+        status: dto.status,
+        responded_at: new Date().toISOString(),
+      })
+      .eq('id', inviteId)
+      .select(TEAM_INVITE_SELECT)
+      .single();
+    if (updateErr || !updated) {
+      throw new Error(updateErr?.message ?? 'Failed to update invite');
+    }
+
+    return updated as unknown as TeamInviteRow;
+  }
+
+  private async getDisplayName(userId: string): Promise<string | null> {
+    const { data } = await this.supabase
+      .from('profiles')
+      .select('display_name, first_name, last_name, email')
+      .eq('id', userId)
+      .maybeSingle();
+    if (!data) return null;
+    const composed = [data.first_name, data.last_name]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    return data.display_name || composed || data.email || null;
   }
 }

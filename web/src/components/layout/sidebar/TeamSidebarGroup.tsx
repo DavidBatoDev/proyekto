@@ -16,7 +16,9 @@ export function TeamSidebarGroup({
 	onToggle: () => void;
 	currentPath: string;
 }) {
-	const teamActive = currentPath.startsWith(`/teams/${team.id}`);
+	const teamActive =
+		currentPath.startsWith(`/teams/${team.id}`) ||
+		currentPath.startsWith(`/team-onboarding/${team.id}`);
 
 	const subItems = [
 		{

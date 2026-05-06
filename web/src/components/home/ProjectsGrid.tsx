@@ -283,47 +283,47 @@ function InviteCard({
 		<button
 			type="button"
 			onClick={() => openProjectInviteModal(invite.id)}
-			className="group flex h-[385px] flex-col rounded-2xl border border-amber-200 bg-linear-to-b from-amber-50 to-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-lg"
+			className="group flex h-[385px] flex-col rounded-2xl border border-slate-900 bg-slate-900 p-4 text-left text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-lg"
 		>
 			<div className="flex-1 space-y-6">
 				<div>
-					<div className="flex items-center gap-2 mb-2">
-						<span className="text-[16px] font-semibold text-[#b45309]">
+					<div className="mb-2 flex items-center gap-2">
+						<span className="text-[16px] font-semibold text-slate-400">
 							#{number}
 						</span>
-						<div className="w-px h-[25px] bg-amber-300" />
-						<span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+						<div className="h-[25px] w-px bg-white/20" />
+						<span className="inline-flex items-center rounded-full border border-white/30 bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white">
 							Pending Invite
 						</span>
 					</div>
-					<h3 className="mb-2 line-clamp-2 text-[18px] font-semibold tracking-tight text-slate-900">
+					<h3 className="mb-2 line-clamp-2 text-[18px] font-semibold tracking-tight text-white">
 						{invite.project?.title || "Project invitation"}
 					</h3>
-					<p className="mb-1 text-[13px] text-slate-600">
+					<p className="mb-1 text-[13px] text-slate-300">
 						Invited by{" "}
-						<span className="font-semibold text-slate-900">
+						<span className="font-semibold text-white">
 							{invite.inviter?.display_name || "Team lead"}
 						</span>
 					</p>
 				</div>
 
-				<div className="rounded-lg border border-amber-100 bg-white px-3 py-2">
-					<p className="text-[12px] font-semibold uppercase tracking-wide text-amber-700">
+				<div className="rounded-lg border border-white/15 bg-white/10 px-3 py-2">
+					<p className="text-[12px] font-semibold uppercase tracking-wide text-slate-300">
 						Next Step
 					</p>
-					<p className="mt-1 text-[13px] text-slate-900">
+					<p className="mt-1 text-[13px] text-white">
 						Review this invitation and choose to join or decline.
 					</p>
 				</div>
 
-				<div className="flex items-center gap-2 text-[12px] text-slate-600">
-					<Inbox className="h-4 w-4 text-amber-700" />
+				<div className="flex items-center gap-2 text-[12px] text-slate-300">
+					<Inbox className="h-4 w-4 text-slate-300" />
 					<span>Sent {formatInviteSentLabel(invite.created_at)}</span>
 				</div>
 			</div>
 
-			<div className="pt-4 border-t border-amber-100">
-				<div className="flex items-center justify-end gap-1 text-[14px] font-semibold text-amber-800 uppercase transition-colors group-hover:text-amber-900">
+			<div className="border-t border-white/15 pt-4">
+				<div className="flex items-center justify-end gap-1 text-[14px] font-semibold uppercase text-white/80 transition-colors group-hover:text-white">
 					<span>Open invite</span>
 					<ArrowRight className="h-4 w-4" />
 				</div>

@@ -114,12 +114,21 @@ export function CollapsibleNavGroup({
 						initial={{ height: 0, opacity: 0 }}
 						animate={{ height: "auto", opacity: 1 }}
 						exit={{ height: 0, opacity: 0 }}
-						transition={{ duration: 0.2, ease: "easeOut" }}
+						transition={{
+							height: { duration: 0.24, ease: [0.22, 1, 0.36, 1] },
+							opacity: { duration: 0.18, ease: "easeOut" },
+						}}
 						className="overflow-hidden"
 					>
-						<div className="ml-8 mt-1 space-y-0.5 border-l border-slate-200 pl-2">
+						<motion.div
+							initial={{ y: -4 }}
+							animate={{ y: 0 }}
+							exit={{ y: -4 }}
+							transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+							className="ml-8 mt-1 space-y-0.5 border-l border-slate-200 pl-2"
+						>
 							{children}
-						</div>
+						</motion.div>
 					</motion.div>
 				)}
 			</AnimatePresence>

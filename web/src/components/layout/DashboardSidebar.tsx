@@ -4,6 +4,7 @@ import {
 	Inbox,
 	LayoutDashboard,
 	ListChecks,
+	Plus,
 	Users,
 	UserPlus,
 } from "lucide-react";
@@ -52,9 +53,9 @@ export function DashboardSidebar() {
 	);
 
 	const toggleTeamExpanded = useCallback(
-		(teamId: string) => {
+		(teamId: string, currentlyExpanded: boolean) => {
 			setTeamsExpanded((prev) => {
-				const next = { ...prev, [teamId]: !prev[teamId] };
+				const next = { ...prev, [teamId]: !currentlyExpanded };
 				teamsExpansion.save(next);
 				return next;
 			});
@@ -62,9 +63,20 @@ export function DashboardSidebar() {
 		[teamsExpansion],
 	);
 
+	// When the URL targets a specific team (e.g. /teams/:id or
+	// /team-onboarding/:id), force that team's accordion open regardless of
+	// the persisted expansion state so the user lands with their context
+	// already visible.
+	const activeTeamId = (() => {
+		const match =
+			currentPath.match(/^\/teams\/([^/]+)/) ||
+			currentPath.match(/^\/team-onboarding\/([^/]+)/);
+		return match?.[1] ?? null;
+	})();
+
 	return (
 		<aside className="hidden lg:flex sticky top-14 h-[calc(100vh-3.5rem)] w-[260px] shrink-0 flex-col border-r border-slate-200 bg-white/90 backdrop-blur">
-			<nav className="flex-1 overflow-y-auto px-3 py-4">
+			<nav className="hide-scrollbar flex-1 overflow-y-auto px-3 py-4">
 				<div className="space-y-0.5">
 					<SidebarNavLink
 						to="/dashboard"
@@ -91,8 +103,13 @@ export function DashboardSidebar() {
 						<SidebarSectionHeader>Teams</SidebarSectionHeader>
 						<Link
 							to="/teams"
-							className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+							className={
+								currentPath === "/teams"
+									? "rounded bg-slate-900 p-1 text-white"
+									: "rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+							}
 							title="All teams"
+							aria-current={currentPath === "/teams" ? "page" : undefined}
 						>
 							<Users className="h-3.5 w-3.5" />
 						</Link>
@@ -109,21 +126,46 @@ export function DashboardSidebar() {
 						/>
 					) : (
 						<div className="space-y-0.5">
-							{teams.map((t, i) => (
-								<TeamSidebarGroup
-									key={t.id}
-									team={t}
-									isExpanded={teamsExpanded[t.id] ?? i < 2}
-									onToggle={() => toggleTeamExpanded(t.id)}
-									currentPath={currentPath}
-								/>
-							))}
+							{teams.map((t, i) => {
+								// Explicit user toggle wins (true OR false).
+								// Falls back to: auto-open the team in the URL,
+								// otherwise open the first two by default.
+								const expanded =
+									teamsExpanded[t.id] ??
+									(t.id === activeTeamId || i < 2);
+								return (
+									<TeamSidebarGroup
+										key={t.id}
+										team={t}
+										isExpanded={expanded}
+										onToggle={() => toggleTeamExpanded(t.id, expanded)}
+										currentPath={currentPath}
+									/>
+								);
+							})}
 						</div>
 					)}
 				</div>
 
 				<div className="mt-6">
-					<SidebarSectionHeader>Projects</SidebarSectionHeader>
+					<div className="mb-1 flex items-center justify-between pr-1">
+						<SidebarSectionHeader>Projects</SidebarSectionHeader>
+						<Link
+							to="/project-posting"
+							className={
+								currentPath === "/project-posting"
+									? "rounded bg-slate-900 p-1 text-white"
+									: "rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+							}
+							title="New project"
+							aria-label="New project"
+							aria-current={
+								currentPath === "/project-posting" ? "page" : undefined
+							}
+						>
+							<Plus className="h-3.5 w-3.5" />
+						</Link>
+					</div>
 
 					{projectsQuery.isPending ? (
 						<NavSkeleton />

@@ -119,17 +119,17 @@ export default function UserMenu() {
 				ref={buttonRef}
 				onClick={() => setIsOpen(!isOpen)}
 				data-tutorial="user-menu"
-				className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 transition-colors hover:bg-slate-50"
+				className="flex cursor-pointer items-center gap-2 rounded-xl border border-(--app-border) bg-(--app-surface) px-2 py-1.5 backdrop-blur-md transition-colors hover:bg-(--app-muted-surface)"
 				aria-label="User menu"
 			>
 				{profile?.avatar_url ? (
 					<img
 						src={profile.avatar_url}
 						alt={getDisplayName()}
-						className="h-8 w-8 rounded-full border border-amber-400 object-cover"
+						className="h-8 w-8 rounded-full border border-slate-300 object-cover"
 					/>
 				) : (
-					<div className="flex h-8 w-8 items-center justify-center rounded-full border border-amber-400 bg-linear-to-br from-amber-400 to-amber-500 text-sm font-medium text-white">
+					<div className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 bg-linear-to-br from-slate-800 to-slate-900 text-sm font-semibold text-white">
 						{getDisplayName().charAt(0).toUpperCase()}
 					</div>
 				)}
@@ -152,7 +152,7 @@ export default function UserMenu() {
 			{isOpen && (
 				<div
 					data-tutorial="user-menu-dropdown"
-					className="w-64 rounded-xl border border-slate-200 bg-white py-2 shadow-[0_16px_34px_rgba(15,23,42,0.14)]"
+					className="w-64 rounded-xl border border-(--app-border) bg-(--app-surface-strong) py-2 shadow-(--app-shadow-md) backdrop-blur-md"
 					style={getDropdownStyle()}
 				>
 					{isChangingPersona && (
@@ -210,7 +210,7 @@ export default function UserMenu() {
 								<Link
 									to="/admin/applications"
 									onClick={() => setIsOpen(false)}
-									className="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-semibold text-amber-600 transition-colors hover:bg-amber-50"
+									className="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-100"
 								>
 									<ShieldCheck size={16} />
 									Admin Dashboard

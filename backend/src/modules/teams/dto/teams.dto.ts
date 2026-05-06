@@ -2,12 +2,14 @@ import {
   IsArray,
   IsBoolean,
   IsDateString,
+  IsEmail,
   IsIn,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
   Length,
+  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -45,6 +47,40 @@ export class UpdateTeamDto {
 export const TEAM_MEMBER_ROLES = ['owner', 'admin', 'member'] as const;
 export type TeamMemberRole = (typeof TEAM_MEMBER_ROLES)[number];
 
+// Email-based invite DTOs (mirror project_invites). The
+// AddTeamMemberDto below is retained for service-internal direct
+// inserts only — no public endpoint accepts it anymore.
+export class InviteTeamMemberDto {
+  @IsEmail()
+  email!: string;
+
+  @IsOptional()
+  @IsIn(TEAM_MEMBER_ROLES)
+  role?: TeamMemberRole;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  position?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  message?: string;
+}
+
+export const TEAM_INVITE_RESPONSE_STATUSES = [
+  'accepted',
+  'declined',
+] as const;
+export type TeamInviteResponseStatus =
+  (typeof TEAM_INVITE_RESPONSE_STATUSES)[number];
+
+export class RespondTeamInviteDto {
+  @IsIn(TEAM_INVITE_RESPONSE_STATUSES)
+  status!: TeamInviteResponseStatus;
+}
+
 export class AddTeamMemberDto {
   @IsUUID()
   user_id!: string;
@@ -52,6 +88,11 @@ export class AddTeamMemberDto {
   @IsOptional()
   @IsIn(TEAM_MEMBER_ROLES)
   role?: TeamMemberRole;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  position?: string;
 
   @IsOptional()
   @IsNumber()
@@ -79,6 +120,11 @@ export class UpdateTeamMemberDto {
   @IsOptional()
   @IsIn(['admin', 'member'])
   role?: 'admin' | 'member';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  position?: string;
 
   @IsOptional()
   @IsNumber()

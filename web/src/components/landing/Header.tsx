@@ -102,7 +102,7 @@ const Header = () => {
                     variant="contained"
                     colorScheme="primary"
                     className={clsx(
-                      "h-12 cursor-pointer transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-primary"
+                      "h-12 cursor-pointer border border-slate-700 bg-slate-900 text-white shadow-sm transition-transform duration-200 hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-1"
                     )}
                   >
                     Dashboard

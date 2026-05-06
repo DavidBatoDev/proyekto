@@ -220,6 +220,21 @@ CREATE TABLE public.profiles (
   CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id),
   CONSTRAINT profiles_migrated_from_guest_id_fkey FOREIGN KEY (migrated_from_guest_id) REFERENCES public.profiles(id)
 );
+CREATE TABLE public.project_access (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  role USER-DEFINED NOT NULL,
+  origin text NOT NULL,
+  capabilities jsonb NOT NULL DEFAULT '{}'::jsonb,
+  granted_by uuid,
+  granted_at timestamp with time zone NOT NULL DEFAULT now(),
+  position text,
+  CONSTRAINT project_access_pkey PRIMARY KEY (id),
+  CONSTRAINT project_access_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id),
+  CONSTRAINT project_access_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT project_access_granted_by_fkey FOREIGN KEY (granted_by) REFERENCES public.profiles(id)
+);
 CREATE TABLE public.project_briefs (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   project_id uuid NOT NULL,
@@ -255,22 +270,6 @@ CREATE TABLE public.project_invites (
   CONSTRAINT project_invites_invited_by_fkey FOREIGN KEY (invited_by) REFERENCES public.profiles(id),
   CONSTRAINT project_invites_invitee_id_fkey FOREIGN KEY (invitee_id) REFERENCES public.profiles(id)
 );
-CREATE TABLE public.project_member_time_rates (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  project_id uuid NOT NULL,
-  project_member_id uuid NOT NULL,
-  member_user_id uuid NOT NULL,
-  hourly_rate numeric NOT NULL CHECK (hourly_rate >= 0::numeric),
-  currency text NOT NULL DEFAULT 'USD'::text,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  updated_at timestamp with time zone NOT NULL DEFAULT now(),
-  custom_id text,
-  start_date date,
-  end_date date,
-  CONSTRAINT project_member_time_rates_pkey PRIMARY KEY (id),
-  CONSTRAINT project_member_time_rates_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id),
-  CONSTRAINT project_member_time_rates_member_user_id_fkey FOREIGN KEY (member_user_id) REFERENCES public.profiles(id)
-);
 CREATE TABLE public.project_resource_folders (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   project_id uuid NOT NULL,
@@ -295,20 +294,37 @@ CREATE TABLE public.project_resource_links (
   CONSTRAINT project_resource_links_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id),
   CONSTRAINT project_resource_links_folder_id_fkey FOREIGN KEY (folder_id) REFERENCES public.project_resource_folders(id)
 );
-CREATE TABLE public.project_shares (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
+CREATE TABLE public.project_team_members (
   project_id uuid NOT NULL,
+  team_id uuid NOT NULL,
   user_id uuid NOT NULL,
   role USER-DEFINED NOT NULL,
-  origin text,
   capabilities jsonb NOT NULL DEFAULT '{}'::jsonb,
-  granted_by uuid,
-  granted_at timestamp with time zone NOT NULL DEFAULT now(),
-  position text,
-  CONSTRAINT project_shares_pkey PRIMARY KEY (id),
-  CONSTRAINT project_shares_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id),
-  CONSTRAINT project_shares_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
-  CONSTRAINT project_shares_granted_by_fkey FOREIGN KEY (granted_by) REFERENCES public.profiles(id)
+  added_by uuid,
+  added_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT project_team_members_pkey PRIMARY KEY (project_id, team_id, user_id),
+  CONSTRAINT project_team_members_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT project_team_members_added_by_fkey FOREIGN KEY (added_by) REFERENCES public.profiles(id),
+  CONSTRAINT project_team_members_project_id_team_id_fkey FOREIGN KEY (project_id) REFERENCES public.project_teams(project_id),
+  CONSTRAINT project_team_members_project_id_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.project_teams(project_id),
+  CONSTRAINT project_team_members_project_id_team_id_fkey FOREIGN KEY (project_id) REFERENCES public.project_teams(team_id),
+  CONSTRAINT project_team_members_project_id_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.project_teams(team_id),
+  CONSTRAINT project_team_members_team_id_user_id_fkey FOREIGN KEY (team_id) REFERENCES public.team_members(team_id),
+  CONSTRAINT project_team_members_team_id_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.team_members(team_id),
+  CONSTRAINT project_team_members_team_id_user_id_fkey FOREIGN KEY (team_id) REFERENCES public.team_members(user_id),
+  CONSTRAINT project_team_members_team_id_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.team_members(user_id)
+);
+CREATE TABLE public.project_teams (
+  project_id uuid NOT NULL,
+  team_id uuid NOT NULL,
+  is_primary boolean NOT NULL DEFAULT false,
+  default_role USER-DEFINED NOT NULL DEFAULT 'editor'::share_role,
+  attached_by uuid,
+  attached_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT project_teams_pkey PRIMARY KEY (project_id, team_id),
+  CONSTRAINT project_teams_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id),
+  CONSTRAINT project_teams_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id),
+  CONSTRAINT project_teams_attached_by_fkey FOREIGN KEY (attached_by) REFERENCES public.profiles(id)
 );
 CREATE TABLE public.projects (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -331,7 +347,9 @@ CREATE TABLE public.projects (
   banner_url text,
   role_permissions_json jsonb NOT NULL DEFAULT '{}'::jsonb,
   is_personal_workspace boolean NOT NULL DEFAULT false,
+  primary_team_id uuid,
   CONSTRAINT projects_pkey PRIMARY KEY (id),
+  CONSTRAINT projects_primary_team_id_fkey FOREIGN KEY (primary_team_id) REFERENCES public.teams(id),
   CONSTRAINT projects_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.profiles(id),
   CONSTRAINT projects_consultant_id_fkey FOREIGN KEY (consultant_id) REFERENCES public.profiles(id)
 );
@@ -525,11 +543,59 @@ CREATE TABLE public.task_time_logs (
   source text NOT NULL DEFAULT 'timer'::text CHECK (source = ANY (ARRAY['timer'::text, 'manual'::text])),
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  rate_snapshot numeric NOT NULL DEFAULT 0 CHECK (rate_snapshot >= 0::numeric),
+  currency_snapshot text NOT NULL DEFAULT 'USD'::text,
   CONSTRAINT task_time_logs_pkey PRIMARY KEY (id),
   CONSTRAINT task_time_logs_member_user_id_fkey FOREIGN KEY (member_user_id) REFERENCES public.profiles(id),
   CONSTRAINT task_time_logs_reviewed_by_fkey FOREIGN KEY (reviewed_by) REFERENCES public.profiles(id),
   CONSTRAINT task_time_logs_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id),
   CONSTRAINT task_time_logs_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.roadmap_tasks(id)
+);
+CREATE TABLE public.team_invites (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  team_id uuid NOT NULL,
+  invited_by uuid,
+  invitee_id uuid,
+  invitee_email text,
+  role text NOT NULL DEFAULT 'member'::text CHECK (role = ANY (ARRAY['owner'::text, 'admin'::text, 'member'::text])),
+  status text NOT NULL DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'accepted'::text, 'declined'::text, 'cancelled'::text])),
+  message text,
+  responded_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  position text,
+  CONSTRAINT team_invites_pkey PRIMARY KEY (id),
+  CONSTRAINT team_invites_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id),
+  CONSTRAINT team_invites_invited_by_fkey FOREIGN KEY (invited_by) REFERENCES public.profiles(id),
+  CONSTRAINT team_invites_invitee_id_fkey FOREIGN KEY (invitee_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.team_members (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  team_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  role text NOT NULL DEFAULT 'member'::text CHECK (role = ANY (ARRAY['owner'::text, 'admin'::text, 'member'::text])),
+  hourly_rate numeric CHECK (hourly_rate IS NULL OR hourly_rate >= 0::numeric),
+  currency text,
+  custom_id text,
+  start_date date,
+  end_date date,
+  joined_at timestamp with time zone NOT NULL DEFAULT now(),
+  position text,
+  CONSTRAINT team_members_pkey PRIMARY KEY (id),
+  CONSTRAINT team_members_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id),
+  CONSTRAINT team_members_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.teams (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  owner_id uuid NOT NULL,
+  name text NOT NULL,
+  description text,
+  avatar_url text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  is_personal boolean NOT NULL DEFAULT false,
+  CONSTRAINT teams_pkey PRIMARY KEY (id),
+  CONSTRAINT teams_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.profiles(id)
 );
 CREATE TABLE public.user_certifications (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

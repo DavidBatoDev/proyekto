@@ -1,7 +1,7 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Loader2, Plus, Users } from "lucide-react";
+import { ArrowRight, Loader2, Plus, User, Users } from "lucide-react";
 import {
 	AppEmptyState,
 	AppSectionHeader,
@@ -10,7 +10,12 @@ import {
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { useToast } from "@/hooks/useToast";
 import { useAuthStore } from "@/stores/authStore";
-import { createTeam, listMyTeams, type Team } from "@/services/teams.service";
+import {
+	createTeam,
+	listMyTeams,
+	type ProfileSummary,
+	type Team,
+} from "@/services/teams.service";
 
 export const Route = createFileRoute("/teams/")({
 	beforeLoad: () => {
@@ -75,7 +80,7 @@ function TeamsIndexPage() {
 							}
 						/>
 					) : (
-						<div className="grid gap-4 sm:grid-cols-2">
+						<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 							{teams.map((team) => (
 								<TeamCard key={team.id} team={team} />
 							))}
@@ -91,31 +96,140 @@ function TeamsIndexPage() {
 	);
 }
 
+const AVATAR_PREVIEW_LIMIT = 6;
+
 function TeamCard({ team }: { team: Team }) {
+	const totalMembers = team.members_count ?? 0;
+	const previews = (team.members_preview ?? []).filter(
+		(p): p is ProfileSummary => Boolean(p),
+	);
+	const visible = previews.slice(0, AVATAR_PREVIEW_LIMIT);
+	const overflow = Math.max(totalMembers - visible.length, 0);
+
 	return (
 		<Link
 			to="/teams/$teamId"
 			params={{ teamId: team.id }}
-			className="block"
+			className="group flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-400 hover:bg-white hover:shadow-lg"
 		>
-			<AppSurfaceCard className="h-full p-5 transition hover:border-slate-300 hover:shadow-md">
-				<div className="flex items-start gap-3">
-					<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
-						<Users className="h-5 w-5" />
+			<div className="flex items-start gap-2.5">
+				{team.avatar_url ? (
+					<img
+						src={team.avatar_url}
+						alt={team.name}
+						className="h-9 w-9 shrink-0 rounded-lg object-cover ring-1 ring-slate-200"
+					/>
+				) : (
+					<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 transition-colors group-hover:bg-slate-900 group-hover:text-white">
+						<Users className="h-4.5 w-4.5" />
 					</div>
-					<div className="min-w-0 flex-1">
-						<h3 className="truncate text-base font-semibold text-slate-900">
-							{team.name}
-						</h3>
-						{team.description && (
-							<p className="mt-1 line-clamp-2 text-sm text-slate-600">
-								{team.description}
-							</p>
-						)}
-					</div>
+				)}
+				<div className="min-w-0 flex-1">
+					<h3 className="truncate text-[14px] font-semibold leading-tight text-slate-900">
+						{team.name}
+					</h3>
+					<TeamCardSubLine team={team} />
 				</div>
-			</AppSurfaceCard>
+			</div>
+
+			<div className="mt-auto flex items-center justify-between gap-2 pt-3">
+				<p className="text-[11px] text-slate-500">
+					{totalMembers === 1 ? "1 member" : `${totalMembers} members`}
+				</p>
+				<div className="flex items-center justify-end">
+					<AvatarStack members={visible} overflow={overflow} />
+					<span className="ml-1.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition-transform duration-200 group-hover:translate-x-0.5">
+						<ArrowRight className="h-3 w-3" />
+					</span>
+				</div>
+			</div>
 		</Link>
+	);
+}
+
+/**
+ * The line under the team name: shows the viewer's position chip (sky)
+ * inline with — or in place of — the description / "My team" label.
+ * Stays in the natural flow so a long position never overlaps the
+ * title. When there's no position we fall back to a slate role chip.
+ */
+function TeamCardSubLine({ team }: { team: Team }) {
+	const role = team.viewer_role;
+	const position = team.viewer_position;
+	const description = team.description ?? (team.is_personal ? "My team" : null);
+
+	const chip = position ? (
+		<span className="inline-flex shrink-0 items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+			{position}
+		</span>
+	) : role ? (
+		<span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+			{role}
+		</span>
+	) : null;
+
+	if (!chip && !description) return null;
+
+	return (
+		<div className="mt-1 flex min-w-0 items-center gap-1.5">
+			{chip}
+			{description && (
+				<span className="min-w-0 truncate text-xs text-slate-500">
+					{description}
+				</span>
+			)}
+		</div>
+	);
+}
+
+function AvatarStack({
+	members,
+	overflow,
+}: {
+	members: ProfileSummary[];
+	overflow: number;
+}) {
+	if (members.length === 0 && overflow === 0) {
+		return <span className="text-[11px] text-slate-400">No members</span>;
+	}
+	return (
+		<div className="flex -space-x-1.5">
+			{members.map((m) => (
+				<MemberAvatar key={m.id} profile={m} />
+			))}
+			{overflow > 0 && (
+				<div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-[9px] font-semibold text-slate-600 ring-1 ring-slate-200">
+					+{overflow}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function MemberAvatar({ profile }: { profile: ProfileSummary }) {
+	const name =
+		profile.display_name ||
+		[profile.first_name, profile.last_name].filter(Boolean).join(" ") ||
+		profile.email ||
+		"";
+	const initial = name.trim().charAt(0).toUpperCase();
+	if (profile.avatar_url) {
+		return (
+			<img
+				src={profile.avatar_url}
+				alt={name}
+				title={name}
+				className="h-6 w-6 shrink-0 rounded-full border-2 border-white object-cover ring-1 ring-slate-200"
+			/>
+		);
+	}
+	return (
+		<div
+			title={name}
+			className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-white bg-slate-200 text-[9px] font-semibold text-slate-700 ring-1 ring-slate-200"
+		>
+			{initial || <User className="h-2.5 w-2.5" />}
+		</div>
 	);
 }
 

@@ -378,6 +378,42 @@ code {
     linear-gradient(180deg, #fbfcff 0%, #f4f6fa 100%);
 }
 
+/*
+  Pulsing glow for the pending-invite mail icon. Two layers:
+    .invite-glow-halo  → soft blurred white blob behind the icon, fades
+                         in/out so it reads as a slow, calm pulse rather
+                         than a frenetic alert.
+    .invite-glow-icon  → the icon itself, with a subtle drop-shadow
+                         pulsing in lockstep so it keeps presence on
+                         the dark card.
+*/
+@keyframes invite-glow-halo {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.15);
+  }
+}
+@keyframes invite-glow-icon {
+  0%, 100% {
+    filter: drop-shadow(0 0 0 rgba(255, 255, 255, 0));
+  }
+  50% {
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.7));
+  }
+}
+.invite-glow-halo {
+  animation: invite-glow-halo 2.4s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+.invite-glow-icon {
+  animation: invite-glow-icon 2.4s ease-in-out infinite;
+  will-change: filter;
+}
+
 .app-surface-card {
   border: 1px solid var(--app-border);
   background: var(--app-surface);

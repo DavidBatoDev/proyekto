@@ -56,10 +56,10 @@ export default function UserMenu() {
           <img
             src={profile.avatar_url}
             alt={profile.display_name || "User avatar"}
-            className="w-10 h-10 rounded-full object-cover"
+            className="w-10 h-10 rounded-full object-cover border border-slate-300"
           />
         ) : (
-          <div className="w-12 h-12 rounded-full bg-linear-to-br from-yellow-400 to-yellow-500 text-white flex items-center justify-center font-semibold text-lg border-2 border-yellow-400">
+          <div className="w-12 h-12 rounded-full bg-linear-to-br from-slate-800 to-slate-900 text-white flex items-center justify-center font-semibold text-lg border border-slate-700">
             {getDisplayName().charAt(0).toUpperCase()}
           </div>
         )}

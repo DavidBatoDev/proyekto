@@ -1,10 +1,13 @@
 import { User } from "lucide-react";
+import type { ReactNode } from "react";
 import type { ProfileSummary } from "@/services/teams.service";
 
 interface MemberDisplayProps {
 	user: ProfileSummary | null | undefined;
 	fallbackId?: string;
 	subtitle?: string;
+	/** Optional rich subtitle (e.g. chips). Takes precedence over `subtitle`. */
+	subtitleSlot?: ReactNode;
 	size?: "sm" | "md";
 }
 
@@ -16,6 +19,7 @@ export function MemberDisplay({
 	user,
 	fallbackId,
 	subtitle,
+	subtitleSlot,
 	size = "md",
 }: MemberDisplayProps) {
 	const name = displayNameOf(user, fallbackId);
@@ -43,11 +47,15 @@ export function MemberDisplay({
 			</div>
 			<div className="min-w-0">
 				<p className={`${nameClass} truncate text-slate-900`}>{name}</p>
-				{subtitle && (
+				{subtitleSlot ? (
+					<div className="mt-1 flex flex-wrap items-center gap-1.5">
+						{subtitleSlot}
+					</div>
+				) : subtitle ? (
 					<p className="mt-0.5 truncate text-xs uppercase tracking-wide text-slate-500">
 						{subtitle}
 					</p>
-				)}
+				) : null}
 			</div>
 		</div>
 	);

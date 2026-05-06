@@ -13,6 +13,14 @@ export interface Team {
 	is_personal: boolean;
 	created_at: string;
 	updated_at: string;
+	// Populated by listMyTeams. Other endpoints that return a single
+	// Team may leave these undefined.
+	members_count?: number;
+	members_preview?: Array<ProfileSummary | null>;
+	// The caller's own role / position within this team — drives the
+	// per-card "what am I here?" chip on /teams.
+	viewer_role?: TeamRole | null;
+	viewer_position?: string | null;
 }
 
 export interface ProfileSummary {
@@ -29,6 +37,7 @@ export interface TeamMember {
 	team_id: string;
 	user_id: string;
 	role: TeamRole;
+	position: string | null;
 	hourly_rate: number | null;
 	currency: string | null;
 	custom_id: string | null;
@@ -62,6 +71,42 @@ export interface AvailableTeamMember {
 	user_id: string;
 	role: TeamRole;
 	user: ProfileSummary | null;
+}
+
+export type TeamInviteStatus =
+	| "pending"
+	| "accepted"
+	| "declined"
+	| "cancelled";
+
+export interface TeamInvite {
+	id: string;
+	team_id: string;
+	invited_by: string | null;
+	invitee_id: string | null;
+	invitee_email: string | null;
+	role: TeamRole;
+	position: string | null;
+	status: TeamInviteStatus;
+	message: string | null;
+	responded_at: string | null;
+	created_at: string;
+	updated_at: string;
+	team?: { id: string; name: string; avatar_url: string | null } | null;
+	invited_by_profile?: ProfileSummary | null;
+	invitee?: ProfileSummary | null;
+}
+
+export interface InviteTeamMemberInput {
+	email: string;
+	role?: TeamRole;
+	position?: string;
+	message?: string;
+}
+
+export interface UpdateTeamMemberInput {
+	role?: "admin" | "member";
+	position?: string;
 }
 
 // â”€â”€â”€ Team CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -159,38 +204,15 @@ export async function listTeamMembers(teamId: string): Promise<TeamMember[]> {
 	}
 }
 
-export async function addTeamMember(
-	teamId: string,
-	input: {
-		user_id: string;
-		role?: TeamRole;
-		hourly_rate?: number;
-		currency?: string;
-		custom_id?: string;
-		start_date?: string;
-		end_date?: string;
-	},
-): Promise<TeamMember> {
-	try {
-		const { data } = await apiClient.post<{ data: TeamMember }>(`/api/teams/${teamId}/members`,
-			input,
-		);
-		return data.data;
-	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to add team member",
-			),
-		);
-	}
-}
+// Direct add by user_id is no longer exposed by the backend. New
+// members arrive via invite + accept; see inviteTeamMemberByEmail.
 
 export async function updateTeamMember(
 	teamId: string,
 	userId: string,
 	patch: {
 		role?: "admin" | "member";
+		position?: string;
 		hourly_rate?: number;
 		currency?: string;
 		custom_id?: string;
@@ -224,6 +246,36 @@ export async function removeTeamMember(
 			extractApiErrorMessage(
 				(err as { response?: { data?: unknown } }).response?.data,
 				"Failed to remove team member",
+			),
+		);
+	}
+}
+
+export interface TeamProjectAttachment {
+	project_id: string;
+	team_id: string;
+	is_primary: boolean;
+	default_role: ProjectTeamDefaultRole;
+	attached_at: string;
+	project: {
+		id: string;
+		title: string | null;
+	} | null;
+}
+
+export async function listTeamProjects(
+	teamId: string,
+): Promise<TeamProjectAttachment[]> {
+	try {
+		const { data } = await apiClient.get<{ data: TeamProjectAttachment[] }>(
+			`/api/teams/${teamId}/projects`,
+		);
+		return data.data;
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to load attached projects",
 			),
 		);
 	}
@@ -401,6 +453,99 @@ export async function removeCuratedMember(
 			extractApiErrorMessage(
 				(err as { response?: { data?: unknown } }).response?.data,
 				"Failed to remove curated member",
+			),
+		);
+	}
+}
+
+// ─── Team invites (email-based) ──────────────────────────────────────────
+
+export async function inviteTeamMemberByEmail(
+	teamId: string,
+	input: InviteTeamMemberInput,
+): Promise<TeamInvite> {
+	try {
+		const { data } = await apiClient.post<{ data: TeamInvite }>(
+			`/api/teams/${teamId}/invites`,
+			input,
+		);
+		return data.data;
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to send invite",
+			),
+		);
+	}
+}
+
+export async function listTeamInvites(teamId: string): Promise<TeamInvite[]> {
+	try {
+		const { data } = await apiClient.get<{ data: TeamInvite[] }>(
+			`/api/teams/${teamId}/invites`,
+		);
+		return data.data;
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to load team invites",
+			),
+		);
+	}
+}
+
+export async function cancelTeamInvite(
+	teamId: string,
+	inviteId: string,
+): Promise<TeamInvite> {
+	try {
+		const { data } = await apiClient.delete<{ data: TeamInvite }>(
+			`/api/teams/${teamId}/invites/${inviteId}`,
+		);
+		return data.data;
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to cancel invite",
+			),
+		);
+	}
+}
+
+export async function listMyTeamInvites(): Promise<TeamInvite[]> {
+	try {
+		const { data } = await apiClient.get<{ data: TeamInvite[] }>(
+			`/api/teams/me/invites`,
+		);
+		return data.data;
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to load your invites",
+			),
+		);
+	}
+}
+
+export async function respondTeamInvite(
+	inviteId: string,
+	status: "accepted" | "declined",
+): Promise<TeamInvite> {
+	try {
+		const { data } = await apiClient.post<{ data: TeamInvite }>(
+			`/api/teams/me/invites/${inviteId}/respond`,
+			{ status },
+		);
+		return data.data;
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to respond to invite",
 			),
 		);
 	}

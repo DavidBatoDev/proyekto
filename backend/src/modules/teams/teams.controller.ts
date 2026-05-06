@@ -13,8 +13,9 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
 import { TeamsService } from './teams.service';
 import {
-  AddTeamMemberDto,
   CreateTeamDto,
+  InviteTeamMemberDto,
+  RespondTeamInviteDto,
   UpdateTeamDto,
   UpdateTeamMemberDto,
 } from './dto/teams.dto';
@@ -35,6 +36,23 @@ export class TeamsController {
     @Body() dto: CreateTeamDto,
   ) {
     return this.teams.createTeam(user.id, dto);
+  }
+
+  // Self-scoped invite routes. MUST be declared before the `:id` routes
+  // so Nest's route matcher doesn't treat "me" as a team id.
+
+  @Get('me/invites')
+  listMyInvites(@CurrentUser() user: AuthenticatedUser) {
+    return this.teams.listInvitesForMe(user.id);
+  }
+
+  @Post('me/invites/:inviteId/respond')
+  respondInvite(
+    @Param('inviteId') inviteId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: RespondTeamInviteDto,
+  ) {
+    return this.teams.respondInvite(inviteId, user.id, dto);
   }
 
   @Get(':id')
@@ -70,13 +88,12 @@ export class TeamsController {
     return this.teams.listMembers(id, user.id);
   }
 
-  @Post(':id/members')
-  addMember(
+  @Get(':id/projects')
+  listProjects(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: AddTeamMemberDto,
   ) {
-    return this.teams.addMember(id, user.id, dto);
+    return this.teams.listProjectsForTeam(id, user.id);
   }
 
   @Patch(':id/members/:userId')
@@ -96,5 +113,33 @@ export class TeamsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.teams.removeMember(id, userId, user.id);
+  }
+
+  // ─── invites ───────────────────────────────────────────────────────────
+
+  @Post(':id/invites')
+  invite(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: InviteTeamMemberDto,
+  ) {
+    return this.teams.inviteByEmail(id, user.id, dto);
+  }
+
+  @Get(':id/invites')
+  listInvites(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.teams.listInvitesForTeam(id, user.id);
+  }
+
+  @Delete(':id/invites/:inviteId')
+  cancelInvite(
+    @Param('id') id: string,
+    @Param('inviteId') inviteId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.teams.cancelInvite(id, inviteId, user.id);
   }
 }
