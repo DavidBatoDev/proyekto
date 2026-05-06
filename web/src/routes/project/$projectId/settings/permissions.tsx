@@ -92,7 +92,6 @@ const SECTION_ACCESS_REQUIREMENTS: Partial<Record<SectionKey, AccessGateKey>> = 
   roadmap: "roadmap",
   members: "team",
   project: "project_settings",
-  time: "time",
   chat: "chat",
   resources: "resources",
   // Logs are part of project settings access.
@@ -103,7 +102,6 @@ const ACCESS_GATE_LABELS: Record<AccessGateKey, string> = {
   roadmap: "Access Roadmap",
   work_items: "Access Work Items",
   team: "Access Team",
-  time: "Access Time",
   chat: "Access Chat",
   resources: "Access Resources",
   project_settings: "Access Project Settings",
@@ -128,13 +126,6 @@ const DEPENDENCIES: Array<[SectionKey, string, SectionKey, string]> = [
   ["project", "settings", "access", "project_settings"],
   ["project", "edit_content", "access", "project_settings"],
   ["project", "view_internal_content", "access", "project_settings"],
-  ["time", "view_financial", "time", "view"],
-  ["time", "log", "time", "view"],
-  ["time", "edit_own", "time", "view"],
-  ["time", "edit_team", "time", "view"],
-  ["time", "approve", "time", "view"],
-  ["time", "manage_rates", "time", "view"],
-  ["time", "delete_logs", "time", "edit_team"],
   ["chat", "view_channels", "access", "chat"],
   ["chat", "send_messages", "access", "chat"],
   ["chat", "send_messages", "chat", "view_channels"],
@@ -216,37 +207,34 @@ function getUnmetRequires(
 // that catalog directly — the duplicated structure that used to live here is
 // gone.
 
-const CONSULTANT_LOCKED_SECTIONS: SectionKey[] = ["time", "chat", "logs"];
+const CONSULTANT_LOCKED_SECTIONS: SectionKey[] = ["chat", "logs"];
 
 // ─── Default templates (matches backend PERMISSION_TEMPLATES) ────────────────
 
 const ROLE_TEMPLATES: Record<string, ProjectPermissions> = {
   consultant: {
-    access: { roadmap: true, work_items: true, team: true, time: true, chat: true, resources: true, project_settings: true },
+    access: { roadmap: true, work_items: true, team: true, chat: true, resources: true, project_settings: true },
     roadmap: { view: true, edit: true, comment: true, promote: true, assign: true, edit_metadata: true, view_internal: true, create_tasks: true, edit_tasks: true, share: true, export: true, dev_mode: true },
     members: { view: true, manage: true, edit_permissions: true, edit_position: true },
     project: { settings: true, edit_content: true, view_internal_content: true },
-    time: { view: true, view_financial: true, log: true, edit_own: true, edit_team: true, approve: true, manage_rates: true, delete_logs: true },
     chat: { view_channels: true, send_messages: true, create_channels: true, manage_channels: true, view_internal_channels: true, mention_members: true, share_files: true, start_dm: true, send_dm: true, message_clients: true, message_consultants: true, message_freelancers: true },
     resources: { view: true, upload: true, delete: true },
     logs: { view: true, view_sensitive: true },
   },
   client: {
-    access: { roadmap: true, work_items: true, team: true, time: false, chat: true, resources: true, project_settings: false },
+    access: { roadmap: true, work_items: true, team: true, chat: true, resources: true, project_settings: false },
     roadmap: { view: true, edit: true, comment: true, promote: true, assign: false, edit_metadata: true, view_internal: false, create_tasks: false, edit_tasks: false, share: false, export: false, dev_mode: false },
     members: { view: true, manage: false, edit_permissions: false, edit_position: false },
     project: { settings: false, edit_content: true, view_internal_content: false },
-    time: { view: false, view_financial: false, log: false, edit_own: false, edit_team: false, approve: false, manage_rates: false, delete_logs: false },
     chat: { view_channels: true, send_messages: true, create_channels: false, manage_channels: false, view_internal_channels: false, mention_members: true, share_files: true, start_dm: true, send_dm: true, message_clients: false, message_consultants: true, message_freelancers: false },
     resources: { view: true, upload: true, delete: false },
     logs: { view: false, view_sensitive: false },
   },
   freelancer: {
-    access: { roadmap: true, work_items: true, team: true, time: false, chat: true, resources: true, project_settings: false },
+    access: { roadmap: true, work_items: true, team: true, chat: true, resources: true, project_settings: false },
     roadmap: { view: true, edit: false, comment: true, promote: false, assign: false, edit_metadata: false, view_internal: false, create_tasks: true, edit_tasks: true, share: false, export: false, dev_mode: false },
     members: { view: true, manage: false, edit_permissions: false, edit_position: false },
     project: { settings: false, edit_content: false, view_internal_content: false },
-    time: { view: false, view_financial: false, log: true, edit_own: true, edit_team: false, approve: false, manage_rates: false, delete_logs: false },
     chat: { view_channels: true, send_messages: true, create_channels: false, manage_channels: false, view_internal_channels: false, mention_members: true, share_files: true, start_dm: true, send_dm: true, message_clients: false, message_consultants: true, message_freelancers: true },
     resources: { view: true, upload: true, delete: false },
     logs: { view: false, view_sensitive: false },

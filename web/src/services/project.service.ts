@@ -99,7 +99,6 @@ export interface ProjectPermissions {
     roadmap: boolean;
     work_items: boolean;
     team: boolean;
-    time: boolean;
     chat: boolean;
     resources: boolean;
     project_settings: boolean;
@@ -128,16 +127,6 @@ export interface ProjectPermissions {
     settings: boolean;
     edit_content: boolean;
     view_internal_content: boolean;
-  };
-  time: {
-    view: boolean;
-    view_financial: boolean;
-    log: boolean;
-    edit_own: boolean;
-    edit_team: boolean;
-    approve: boolean;
-    manage_rates: boolean;
-    delete_logs: boolean;
   };
   chat: {
     view_channels: boolean;

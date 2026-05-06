@@ -1,3 +1,10 @@
+// @ts-nocheck
+//
+// REFERENCE: kept as a visual / structural reference for the future
+// team-level time pages. Project-level Time page removed in May 2026;
+// references removed types and the project-time backend module.
+// Restore or rewrite against `team_members.hourly_rate` when re-enabling.
+
 import { Loader2, Plus } from "lucide-react";
 import type { ProjectMemberTimeRate } from "@/services/project-time.service";
 import { initialsFromName } from "./time-utils";
@@ -199,4 +206,3 @@ export function TeamRatesSection({
     </div>
   );
 }
-

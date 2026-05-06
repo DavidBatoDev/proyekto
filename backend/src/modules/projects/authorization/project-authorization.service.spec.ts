@@ -77,7 +77,7 @@ describe('ProjectAuthorizationService', () => {
   describe('getUserProjectRole', () => {
     it('returns the role from project_shares', async () => {
       const { service } = buildService(
-        thenable({ data: { role: 'editor' }, error: null }),
+        thenable({ data: [{ role: 'editor' }], error: null }),
       );
       const role = await service.getUserProjectRole('u1', 'p1');
       expect(role).toBe('editor');
@@ -85,7 +85,7 @@ describe('ProjectAuthorizationService', () => {
 
     it('returns null when no grant exists', async () => {
       const { service } = buildService(
-        thenable({ data: null, error: null }),
+        thenable({ data: [], error: null }),
       );
       const role = await service.getUserProjectRole('u1', 'p1');
       expect(role).toBeNull();
@@ -104,7 +104,7 @@ describe('ProjectAuthorizationService', () => {
   describe('assertRole', () => {
     it('passes when the user has exactly the required role', async () => {
       const { service } = buildService(
-        thenable({ data: { role: 'editor' }, error: null }),
+        thenable({ data: [{ role: 'editor' }], error: null }),
       );
       await expect(service.assertRole('u1', 'p1', 'editor')).resolves.toBe(
         'editor',
@@ -113,7 +113,7 @@ describe('ProjectAuthorizationService', () => {
 
     it('passes when the user has a stronger role', async () => {
       const { service } = buildService(
-        thenable({ data: { role: 'owner' }, error: null }),
+        thenable({ data: [{ role: 'owner' }], error: null }),
       );
       await expect(service.assertRole('u1', 'p1', 'editor')).resolves.toBe(
         'owner',
@@ -122,7 +122,7 @@ describe('ProjectAuthorizationService', () => {
 
     it('throws ForbiddenException when the role is too weak', async () => {
       const { service } = buildService(
-        thenable({ data: { role: 'viewer' }, error: null }),
+        thenable({ data: [{ role: 'viewer' }], error: null }),
       );
       await expect(service.assertRole('u1', 'p1', 'editor')).rejects.toThrow(
         ForbiddenException,
@@ -131,7 +131,7 @@ describe('ProjectAuthorizationService', () => {
 
     it('throws ForbiddenException when there is no grant at all', async () => {
       const { service } = buildService(
-        thenable({ data: null, error: null }),
+        thenable({ data: [], error: null }),
       );
       await expect(
         service.assertRole('u1', 'p1', 'viewer'),
@@ -170,7 +170,7 @@ describe('ProjectAuthorizationService', () => {
           role: 'admin',
           origin: 'client',
         }),
-        { onConflict: 'project_id,user_id' },
+        { onConflict: 'project_id,user_id,origin' },
       );
     });
   });
@@ -179,7 +179,7 @@ describe('ProjectAuthorizationService', () => {
     it('removes a non-owner share without checking owner count', async () => {
       const { service } = buildService(
         // lookup: editor role
-        thenable({ data: { role: 'editor' }, error: null }),
+        thenable({ data: [{ role: 'editor' }], error: null }),
         // delete returns no error
         thenable({ error: null }),
       );
@@ -189,7 +189,7 @@ describe('ProjectAuthorizationService', () => {
     it('refuses to remove the last owner', async () => {
       const { service } = buildService(
         // lookup: owner role
-        thenable({ data: { role: 'owner' }, error: null }),
+        thenable({ data: [{ role: 'owner' }], error: null }),
         // count owners → 1
         thenable({ count: 1, error: null }),
       );
@@ -199,7 +199,7 @@ describe('ProjectAuthorizationService', () => {
     it('removes an owner when other owners exist', async () => {
       const { service } = buildService(
         // lookup: owner role
-        thenable({ data: { role: 'owner' }, error: null }),
+        thenable({ data: [{ role: 'owner' }], error: null }),
         // count owners → 2
         thenable({ count: 2, error: null }),
         // delete returns no error
@@ -211,7 +211,7 @@ describe('ProjectAuthorizationService', () => {
     it('is a no-op when the share row does not exist', async () => {
       const { service, queued } = buildService(
         // lookup: nothing
-        thenable({ data: null, error: null }),
+        thenable({ data: [], error: null }),
       );
       await expect(service.revoke('p1', 'u1')).resolves.toBeUndefined();
       expect(queued[0].delete).not.toHaveBeenCalled();

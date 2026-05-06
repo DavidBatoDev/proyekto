@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   X,
@@ -9,20 +9,11 @@ import {
   Search,
   ChevronDown,
   Check,
-  Play,
-  Square,
-  Clock4,
-  Save,
-  XCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Comment, RoadmapTask } from "@/types/roadmap";
 import { projectService, type ProjectMember } from "@/services/project.service";
 import { commentsService } from "@/services/roadmap.service";
-import {
-  projectTimeService,
-  type TaskTimeLog,
-} from "@/services/project-time.service";
 import { CommentsSection } from "../shared/CommentsSection";
 import { UnsavedChangesConfirmModal } from "../shared/UnsavedChangesConfirmModal";
 import { Button } from "@/ui/button";
@@ -88,32 +79,6 @@ const toDateInputValue = (value?: string) => {
   return parsed.toISOString().slice(0, 10);
 };
 
-const toLocalDateTimeInput = (value?: string | null) => {
-  if (!value) return "";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "";
-  const offset = parsed.getTimezoneOffset();
-  const local = new Date(parsed.getTime() - offset * 60_000);
-  return local.toISOString().slice(0, 16);
-};
-
-const fromLocalDateTimeInput = (value: string) => {
-  if (!value) return undefined;
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return undefined;
-  return parsed.toISOString();
-};
-
-const formatDuration = (totalSeconds?: number | null) => {
-  if (!totalSeconds || totalSeconds <= 0) return "00:00:00";
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  return [hours, minutes, seconds]
-    .map((value) => String(value).padStart(2, "0"))
-    .join(":");
-};
-
 function MemberAvatar({
   name,
   avatarUrl,
@@ -173,14 +138,6 @@ export const SidePanel = ({
   const [fetchedProjectMembers, setFetchedProjectMembers] = useState<
     ProjectMember[]
   >([]);
-  const [timeLogs, setTimeLogs] = useState<TaskTimeLog[]>([]);
-  const [isLoadingTimeLogs, setIsLoadingTimeLogs] = useState(false);
-  const [timeActionLoading, setTimeActionLoading] = useState(false);
-  const [timeError, setTimeError] = useState<string | null>(null);
-  const [editingLogId, setEditingLogId] = useState<string | null>(null);
-  const [editStartedAt, setEditStartedAt] = useState("");
-  const [editEndedAt, setEditEndedAt] = useState("");
-  const [timerNow, setTimerNow] = useState(Date.now());
   const [showUnsavedChangesConfirm, setShowUnsavedChangesConfirm] =
     useState(false);
   const createSnapshotRef = useRef<TaskDraftSnapshot>({
@@ -217,10 +174,6 @@ export const SidePanel = ({
       setAssigneeSearch("");
       setComments([]);
       setIsLoadingComments(false);
-      setTimeLogs([]);
-      setIsLoadingTimeLogs(false);
-      setTimeError(null);
-      setEditingLogId(null);
       setShowUnsavedChangesConfirm(false);
     }
   }, [isOpen]);
@@ -293,38 +246,8 @@ export const SidePanel = ({
     setComments((prev) => prev.filter((comment) => comment.id !== commentId));
   };
 
-  const loadTaskTimeLogs = useCallback(async () => {
-    if (!projectId || !task?.id || isCreateMode) return;
-    try {
-      setIsLoadingTimeLogs(true);
-      setTimeError(null);
-      const response = await projectTimeService.listMyTaskLogs(
-        projectId,
-        task.id,
-        { page: 1, limit: 20 },
-      );
-      setTimeLogs(response.items);
-    } catch (error) {
-      setTimeError(
-        error instanceof Error ? error.message : "Failed to load time logs.",
-      );
-      setTimeLogs([]);
-    } finally {
-      setIsLoadingTimeLogs(false);
-    }
-  }, [isCreateMode, projectId, task?.id]);
-
-  useEffect(() => {
-    if (!isOpen || activeTab !== "details") return;
-    void loadTaskTimeLogs();
-  }, [isOpen, activeTab, loadTaskTimeLogs]);
-
-  useEffect(() => {
-    const hasActiveTimer = timeLogs.some((log) => !log.ended_at);
-    if (!hasActiveTimer) return;
-    const interval = window.setInterval(() => setTimerNow(Date.now()), 1000);
-    return () => window.clearInterval(interval);
-  }, [timeLogs]);
+  // (in-task time tracking removed alongside the project Time page;
+  //  task time logging will be re-introduced via the Teams model.)
 
   useEffect(() => {
     if (!isOpen || !projectId) return;
@@ -406,97 +329,6 @@ export const SidePanel = ({
     setIsAssigneeMenuOpen(false);
   };
 
-  const activeLog = useMemo(
-    () => timeLogs.find((entry) => !entry.ended_at) ?? null,
-    [timeLogs],
-  );
-  const isTimerRunning = Boolean(activeLog);
-
-  const activeDurationSeconds = useMemo(() => {
-    if (!activeLog) return null;
-    const startedAt = new Date(activeLog.started_at).getTime();
-    if (Number.isNaN(startedAt)) return null;
-    return Math.max(0, Math.floor((timerNow - startedAt) / 1000));
-  }, [activeLog, timerNow]);
-
-  const handleStartTimer = async () => {
-    if (!projectId || !task?.id) return;
-    try {
-      setTimeActionLoading(true);
-      setTimeError(null);
-      await projectTimeService.start(projectId, task.id);
-      await loadTaskTimeLogs();
-    } catch (error) {
-      setTimeError(
-        error instanceof Error ? error.message : "Failed to start timer.",
-      );
-    } finally {
-      setTimeActionLoading(false);
-    }
-  };
-
-  const handleStopTimer = async (logId: string) => {
-    try {
-      setTimeActionLoading(true);
-      setTimeError(null);
-      await projectTimeService.stop(logId);
-      await loadTaskTimeLogs();
-    } catch (error) {
-      setTimeError(
-        error instanceof Error ? error.message : "Failed to stop timer.",
-      );
-    } finally {
-      setTimeActionLoading(false);
-    }
-  };
-
-  const beginEditLog = (log: TaskTimeLog) => {
-    if (isTimerRunning) {
-      setTimeError("Stop the timer before editing logs.");
-      return;
-    }
-    setEditingLogId(log.id);
-    setEditStartedAt(toLocalDateTimeInput(log.started_at));
-    setEditEndedAt(toLocalDateTimeInput(log.ended_at));
-  };
-
-  const cancelEditLog = () => {
-    setEditingLogId(null);
-    setEditStartedAt("");
-    setEditEndedAt("");
-  };
-
-  const saveEditLog = async (logId: string) => {
-    if (isTimerRunning) {
-      setTimeError("Stop the timer before editing logs.");
-      return;
-    }
-
-    try {
-      setTimeActionLoading(true);
-      setTimeError(null);
-      const started_at = fromLocalDateTimeInput(editStartedAt);
-      const ended_at = fromLocalDateTimeInput(editEndedAt);
-      await projectTimeService.update(logId, {
-        ...(started_at ? { started_at } : {}),
-        ...(ended_at ? { ended_at } : {}),
-      });
-      cancelEditLog();
-      await loadTaskTimeLogs();
-    } catch (error) {
-      setTimeError(
-        error instanceof Error ? error.message : "Failed to update time log.",
-      );
-    } finally {
-      setTimeActionLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!isTimerRunning || editingLogId === null) return;
-    cancelEditLog();
-    setTimeError("Stop the timer before editing logs.");
-  }, [isTimerRunning, editingLogId]);
 
   const handleSave = () => {
     if (isInteractionDisabled) return false;
@@ -896,197 +728,8 @@ export const SidePanel = ({
                       />
                     </div>
 
-                    {!isCreateMode && task?.id && projectId && (
-                      <div className="md:col-span-2 rounded-lg border border-gray-200 bg-white p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <Clock4 className="w-4 h-4 text-gray-500" />
-                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                              Time
-                            </p>
-                          </div>
-                          {activeLog ? (
-                            <span className="text-xs font-semibold text-emerald-600">
-                              Running {formatDuration(activeDurationSeconds)}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-gray-500">
-                              No active timer
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="mt-2 flex items-center gap-2">
-                          {isLoadingTimeLogs ? (
-                            <div className="h-9 w-28 rounded-md border border-gray-200 bg-gray-100 animate-pulse" />
-                          ) : activeLog ? (
-                            <button
-                              type="button"
-                              onClick={() => void handleStopTimer(activeLog.id)}
-                              disabled={
-                                isInteractionDisabled || timeActionLoading
-                              }
-                              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50"
-                            >
-                              <Square className="w-3.5 h-3.5" />
-                              Stop Timer
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => void handleStartTimer()}
-                              disabled={
-                                isInteractionDisabled || timeActionLoading
-                              }
-                              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
-                            >
-                              <Play className="w-3.5 h-3.5" />
-                              Start Timer
-                            </button>
-                          )}
-                        </div>
-
-                        {timeError && (
-                          <p className="mt-2 text-xs text-red-600">
-                            {timeError}
-                          </p>
-                        )}
-
-                        <div className="mt-3 space-y-2 max-h-52 overflow-y-auto pr-1">
-                          {isLoadingTimeLogs ? (
-                            <>
-                              {[0, 1, 2].map((idx) => (
-                                <div
-                                  key={idx}
-                                  className="rounded-md border border-gray-200 bg-gray-50 p-2 animate-pulse"
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <div className="space-y-1.5">
-                                      <div className="h-3 w-44 rounded bg-gray-200" />
-                                      <div className="h-3 w-28 rounded bg-gray-100" />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                      <div className="h-3 w-14 rounded bg-gray-200 ml-auto" />
-                                      <div className="h-4 w-16 rounded-full bg-gray-100 ml-auto" />
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </>
-                          ) : timeLogs.length === 0 ? (
-                            <p className="text-xs text-gray-500">
-                              No time logs yet for this task.
-                            </p>
-                          ) : (
-                            timeLogs.map((log) => {
-                              const isEditing = editingLogId === log.id;
-                              const canEdit = !isTimerRunning;
-                              return (
-                                <div
-                                  key={log.id}
-                                  className="rounded-md border border-gray-200 bg-gray-50 p-2"
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <div className="text-xs text-gray-700">
-                                      {new Date(
-                                        log.started_at,
-                                      ).toLocaleString()}{" "}
-                                      {log.ended_at
-                                        ? `- ${new Date(log.ended_at).toLocaleString()}`
-                                        : "- Running"}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs font-semibold text-gray-700">
-                                        {formatDuration(
-                                          log.ended_at
-                                            ? log.duration_seconds
-                                            : activeLog?.id === log.id
-                                              ? activeDurationSeconds
-                                              : null,
-                                        )}
-                                      </span>
-                                      <span
-                                        className={`text-[10px] px-2 py-0.5 rounded-full ${
-                                          log.status === "approved"
-                                            ? "bg-emerald-100 text-emerald-700"
-                                            : log.status === "rejected"
-                                              ? "bg-red-100 text-red-700"
-                                              : "bg-amber-100 text-amber-700"
-                                        }`}
-                                      >
-                                        {log.status}
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  {isEditing ? (
-                                    <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                                      <input
-                                        type="datetime-local"
-                                        value={editStartedAt}
-                                        onChange={(e) =>
-                                          setEditStartedAt(e.target.value)
-                                        }
-                                        className="px-2 py-1.5 text-xs border border-gray-300 rounded"
-                                      />
-                                      <input
-                                        type="datetime-local"
-                                        value={editEndedAt}
-                                        onChange={(e) =>
-                                          setEditEndedAt(e.target.value)
-                                        }
-                                        className="px-2 py-1.5 text-xs border border-gray-300 rounded"
-                                      />
-                                      <div className="md:col-span-2 flex items-center gap-2">
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            void saveEditLog(log.id)
-                                          }
-                                          disabled={
-                                            isInteractionDisabled ||
-                                            timeActionLoading
-                                          }
-                                          className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded border border-blue-200 bg-blue-50 text-blue-700"
-                                        >
-                                          <Save className="w-3 h-3" />
-                                          Save
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={cancelEditLog}
-                                          className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded border border-gray-300 bg-white text-gray-700"
-                                        >
-                                          <XCircle className="w-3 h-3" />
-                                          Cancel
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    canEdit && (
-                                      <button
-                                        type="button"
-                                        onClick={() => beginEditLog(log)}
-                                        disabled={isInteractionDisabled}
-                                        className="mt-2 text-xs text-blue-700 hover:underline"
-                                      >
-                                        Edit log
-                                      </button>
-                                    )
-                                  )}
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
-
-                        {isTimerRunning && (
-                          <p className="mt-2 text-xs text-amber-700">
-                            Edit log is unavailable while the timer is running.
-                          </p>
-                        )}
-                      </div>
-                    )}
+                    {/* In-task time tracking removed; will return via the
+                        Teams model. */}
                   </div>
                 )}
 

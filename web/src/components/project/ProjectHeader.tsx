@@ -36,7 +36,6 @@ const resolveCurrentPageLabel = (pathname: string, projectId: string) => {
 	if (pathname.includes("/resources")) return "Resources";
 	if (pathname.includes("/payments")) return "Payments";
 	if (pathname.includes("/logs")) return "Logs";
-	if (pathname.includes("/time")) return "Time";
 	if (pathname.includes("/overview") || pathname.endsWith(projectId))
 		return "Overview";
 

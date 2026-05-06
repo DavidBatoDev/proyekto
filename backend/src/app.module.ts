@@ -19,8 +19,8 @@ import { RoadmapsModule } from './modules/roadmaps/roadmaps.module';
 import { RoadmapSharesModule } from './modules/roadmap-shares/roadmap-shares.module';
 import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
-import { ProjectTimeModule } from './modules/project-time/project-time.module';
 import { ChatModule } from './modules/chat/chat.module';
+import { TeamsModule } from './modules/teams/teams.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -52,8 +52,8 @@ import { AppController } from './app.controller';
     RoadmapSharesModule,
     MarketplaceModule,
     NotificationsModule,
-    ProjectTimeModule,
     ChatModule,
+    TeamsModule,
   ],
 })
 export class AppModule {}

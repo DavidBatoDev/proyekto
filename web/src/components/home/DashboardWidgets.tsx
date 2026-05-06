@@ -1,9 +1,8 @@
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ClipboardCheck, Clock3, FolderOpen, ShieldCheck } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import { getRoadmapFull, getRoadmaps } from "@/api";
 import { type Project, projectService } from "@/services/project.service";
-import { projectTimeService } from "@/services/project-time.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
 
 type ActivityItem = {
@@ -120,20 +119,6 @@ function normalizePersona(persona: string | undefined): DashboardRole {
 		return persona;
 	}
 	return "client";
-}
-
-function resolveProjectRole(
-	project: Project,
-	userId: string,
-	activePersona: DashboardRole,
-): DashboardRole {
-	const isClient = project.client_id === userId;
-	const isConsultant = project.consultant_id === userId;
-
-	if (isClient && isConsultant) return activePersona;
-	if (isClient) return "client";
-	if (isConsultant) return "consultant";
-	return "freelancer";
 }
 
 function formatDateLabel(value: string): string {
@@ -313,14 +298,6 @@ export function DashboardWidgets({
 		};
 	}, [timelineQuery.data, user?.id]);
 
-	const consultantProjects = useMemo(() => {
-		if (!user?.id) return [] as Project[];
-		return projects.filter(
-			(project) =>
-				resolveProjectRole(project, user.id, persona) === "consultant",
-		);
-	}, [persona, projects, user?.id]);
-
 	const projectActiveCount = useMemo(() => projects.length, [projects]);
 
 	const clientPendingProjectsCount = useMemo(
@@ -331,61 +308,11 @@ export function DashboardWidgets({
 		[projects],
 	);
 
-	const consultantPendingApprovalQueries = useQueries({
-		queries:
-			persona === "consultant"
-				? consultantProjects.map((project) => ({
-						queryKey: [
-							"dashboard",
-							"consultant",
-							"pending-approvals",
-							project.id,
-							user?.id ?? "anonymous",
-						] as const,
-						queryFn: async () => {
-							try {
-								const result = await projectTimeService.listApprovals(
-									project.id,
-									{
-										status: "pending",
-										page: 1,
-										limit: 1,
-									},
-								);
-								return Number(result.total || 0);
-							} catch (error) {
-								console.warn(
-									"[DashboardWidgets] Failed to fetch pending approvals",
-									project.id,
-									error,
-								);
-								return 0;
-							}
-						},
-						enabled: Boolean(project.id),
-						staleTime: 0,
-						refetchOnMount: true,
-						refetchOnWindowFocus: true,
-						refetchOnReconnect: true,
-						retry: 1,
-					}))
-				: [],
-	});
-
-	const consultantPendingApprovalsCount = useMemo(
-		() =>
-			consultantPendingApprovalQueries.reduce(
-				(sum, query) => sum + Number(query.data || 0),
-				0,
-			),
-		[consultantPendingApprovalQueries],
-	);
-
-	const consultantPendingApprovalsLoading =
-		persona === "consultant" &&
-		(consultantPendingApprovalQueries.length > 0
-			? consultantPendingApprovalQueries.some((query) => query.isPending)
-			: false);
+	// Time approvals were removed alongside the project Time page; the
+	// consultant secondary metric just falls through to 0 until a replacement
+	// metric (e.g. open work items) is wired in.
+	const consultantPendingApprovalsCount = 0;
+	const consultantPendingApprovalsLoading = false;
 
 	const projectTitleById = useMemo(() => {
 		const map = new Map<string, string>();

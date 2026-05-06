@@ -1,3 +1,11 @@
+// @ts-nocheck
+//
+// REFERENCE: kept alongside the time route + component pages.
+// Project-level Time page removed in May 2026; backend project-time
+// module is gone, so calls to these functions error at runtime. Code
+// kept for shape / query-key patterns when wiring time UI into the
+// team detail page.
+
 import type { AxiosError } from "axios";
 
 const RATE_REQUIRED_HINT = "not enabled for time tracking";

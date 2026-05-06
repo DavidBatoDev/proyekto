@@ -1,3 +1,17 @@
+// @ts-nocheck
+//
+// REFERENCE: kept for the future team-level time pages.
+//
+// The project-level Time page was removed in May 2026 when time tracking
+// moved into the Teams model. This file is no longer imported by any live
+// route, but is preserved as a working reference for the query keys,
+// permission gating, rate-required handling, and the My-Logs vs Team-Logs
+// resolver we'll re-use when wiring time UI into the team detail page.
+//
+// Type-checking is disabled because it references the removed
+// `ProjectPermissions.time` shape; restore the section (or rewrite
+// against `team_members.hourly_rate`) when re-enabling.
+
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";

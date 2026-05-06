@@ -28,7 +28,6 @@ export type ProjectPermissions = {
     roadmap: boolean;
     work_items: boolean;
     team: boolean;
-    time: boolean;
     chat: boolean;
     resources: boolean;
     project_settings: boolean;
@@ -57,16 +56,6 @@ export type ProjectPermissions = {
     settings: boolean;
     edit_content: boolean;
     view_internal_content: boolean;
-  };
-  time: {
-    view: boolean;
-    view_financial: boolean;
-    log: boolean;
-    edit_own: boolean;
-    edit_team: boolean;
-    approve: boolean;
-    manage_rates: boolean;
-    delete_logs: boolean;
   };
   chat: {
     view_channels: boolean;
@@ -97,7 +86,6 @@ export type PermissionPath =
   | 'access.roadmap'
   | 'access.work_items'
   | 'access.team'
-  | 'access.time'
   | 'access.chat'
   | 'access.resources'
   | 'access.project_settings'
@@ -120,14 +108,6 @@ export type PermissionPath =
   | 'project.settings'
   | 'project.edit_content'
   | 'project.view_internal_content'
-  | 'time.view'
-  | 'time.view_financial'
-  | 'time.log'
-  | 'time.edit_own'
-  | 'time.edit_team'
-  | 'time.approve'
-  | 'time.manage_rates'
-  | 'time.delete_logs'
   | 'chat.view_channels'
   | 'chat.send_messages'
   | 'chat.create_channels'
@@ -148,7 +128,7 @@ export type PermissionPath =
 
 // Runtime list — handy for iteration in dep validation and the UI.
 export const PERMISSION_PATHS: readonly PermissionPath[] = [
-  'access.roadmap', 'access.work_items', 'access.team', 'access.time',
+  'access.roadmap', 'access.work_items', 'access.team',
   'access.chat', 'access.resources', 'access.project_settings',
   'roadmap.view', 'roadmap.edit', 'roadmap.comment', 'roadmap.promote',
   'roadmap.assign', 'roadmap.edit_metadata', 'roadmap.view_internal',
@@ -157,8 +137,6 @@ export const PERMISSION_PATHS: readonly PermissionPath[] = [
   'members.view', 'members.manage', 'members.edit_permissions',
   'members.edit_position',
   'project.settings', 'project.edit_content', 'project.view_internal_content',
-  'time.view', 'time.view_financial', 'time.log', 'time.edit_own',
-  'time.edit_team', 'time.approve', 'time.manage_rates', 'time.delete_logs',
   'chat.view_channels', 'chat.send_messages', 'chat.create_channels',
   'chat.manage_channels', 'chat.view_internal_channels',
   'chat.mention_members', 'chat.share_files', 'chat.start_dm', 'chat.send_dm',
@@ -193,7 +171,7 @@ export function setPermission(
 function allFalse(): ProjectPermissions {
   return {
     access: {
-      roadmap: false, work_items: false, team: false, time: false,
+      roadmap: false, work_items: false, team: false,
       chat: false, resources: false, project_settings: false,
     },
     roadmap: {
@@ -208,10 +186,6 @@ function allFalse(): ProjectPermissions {
     },
     project: {
       settings: false, edit_content: false, view_internal_content: false,
-    },
-    time: {
-      view: false, view_financial: false, log: false, edit_own: false,
-      edit_team: false, approve: false, manage_rates: false, delete_logs: false,
     },
     chat: {
       view_channels: false, send_messages: false, create_channels: false,
@@ -259,14 +233,12 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
     'access.roadmap': true,
     'access.work_items': true,
     'access.team': true,
-    'access.time': true,
     'access.chat': true,
     'access.resources': true,
     'access.project_settings': false,
     'roadmap.view': true,
     'roadmap.export': true,
     'members.view': true,
-    'time.view': true,
     'chat.view_channels': true,
     'resources.view': true,
     'logs.view': true,
@@ -295,8 +267,6 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
     'roadmap.create_tasks': true,
     'roadmap.edit_tasks': true,
     'roadmap.share': true,
-    'time.log': true,
-    'time.edit_own': true,
     'chat.share_files': true,
     'resources.upload': true,
   });
@@ -315,11 +285,6 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
     'project.settings': true,
     'project.edit_content': true,
     'project.view_internal_content': true,
-    'time.view_financial': true,
-    'time.edit_team': true,
-    'time.approve': true,
-    'time.manage_rates': true,
-    'time.delete_logs': true,
     'chat.create_channels': true,
     'chat.manage_channels': true,
     'chat.view_internal_channels': true,
@@ -347,14 +312,11 @@ export const ORIGIN_DELTAS: Record<
   // Clients can see their financial picture but cannot DM the freelance
   // pool directly — the consultant mediates (per soft-isolation design).
   client: {
-    'time.view_financial': true,
     'chat.message_freelancers': false,
   },
   // Consultants get the operator toolkit additively, regardless of role.
   consultant: {
     'chat.message_freelancers': true,
-    'time.manage_rates': true,
-    'time.view_financial': true,
     'members.manage': true,
   },
   // Pure invite — no extra capabilities beyond the role baseline.
@@ -385,13 +347,6 @@ export const PERMISSION_DEPENDENCIES: Partial<
   'roadmap.dev_mode': ['roadmap.edit'],
   'roadmap.comment': ['roadmap.view'],
   'roadmap.edit_metadata': ['roadmap.edit'],
-
-  'time.log': ['time.view'],
-  'time.edit_own': ['time.log'],
-  'time.edit_team': ['time.view'],
-  'time.approve': ['time.view', 'time.view_financial'],
-  'time.manage_rates': ['time.view_financial'],
-  'time.delete_logs': ['time.view'],
 
   'members.manage': ['members.view'],
   'members.edit_permissions': ['members.manage'],

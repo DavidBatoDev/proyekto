@@ -44,10 +44,6 @@ export class UpdateProjectMemberPermissionsDto {
 
   @IsOptional()
   @IsObject()
-  time?: Record<string, boolean>;
-
-  @IsOptional()
-  @IsObject()
   chat?: Record<string, boolean>;
 
   @IsOptional()

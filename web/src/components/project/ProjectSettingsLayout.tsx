@@ -1,6 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { Settings, Users } from "lucide-react";
+import { Settings, Users, UsersRound } from "lucide-react";
 import { AppNavPill, AppSurfaceCard } from "@/components/common/AppPrimitives";
 
 interface ProjectSettingsLayoutProps {
@@ -29,7 +29,13 @@ export function ProjectSettingsLayout({
       icon: Users,
       active:
         currentPath.startsWith(`/project/${projectId}/settings/permissions`) ||
-        currentPath.startsWith(`/project/${projectId}/settings/team`),
+        currentPath === `/project/${projectId}/settings/team`,
+    },
+    {
+      label: "Teams",
+      to: `/project/${projectId}/settings/teams`,
+      icon: UsersRound,
+      active: currentPath.startsWith(`/project/${projectId}/settings/teams`),
     },
   ];
 

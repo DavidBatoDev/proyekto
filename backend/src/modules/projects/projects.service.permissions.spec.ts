@@ -101,8 +101,8 @@ describe('ProjectsService (permissions)', () => {
 
     const result = await service.getMyPermissions('project-1', 'member-1');
 
-    expect(result.time.manage_rates).toBe(true);
     expect(result.chat.message_freelancers).toBe(true);
+    expect(result.members.manage).toBe(true);
   });
 
   it('applies capabilities overrides on top of (role, origin) baseline', async () => {

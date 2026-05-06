@@ -218,13 +218,6 @@ export class ProjectsService {
       // Roadmap
       'roadmap.comment': 'commenter',
       'roadmap.edit': 'editor',
-      // Time
-      'time.view': 'viewer',
-      'time.log': 'editor',
-      'time.edit_own': 'editor',
-      'time.edit_team': 'admin',
-      'time.approve': 'admin',
-      'time.manage_rates': 'admin',
     };
     return map[permission as string] ?? 'admin';
   }
@@ -1026,7 +1019,7 @@ export class ProjectsService {
     const desired = resolvePermissions(role, origin, target.capabilities);
     const sections: (keyof ProjectPermissions)[] = [
       'access', 'roadmap', 'members', 'project',
-      'time', 'chat', 'resources', 'logs',
+      'chat', 'resources', 'logs',
     ];
     for (const section of sections) {
       const incoming = (dto as unknown as Record<string, Record<string, boolean> | undefined>)[section];

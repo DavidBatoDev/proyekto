@@ -61,9 +61,9 @@ export class ProjectAuthorizationService {
   ) {}
 
   /**
-   * Returns the user's role on a project, or null if no grant exists.
-   * Mirrors the SQL function `get_user_project_role(uid, project)` so the
-   * TS layer and RLS layer always agree.
+   * Returns the caller's effective role on a project — the maximum
+   * across all share rows (direct + any team-derived). Mirrors the SQL
+   * function `get_user_project_role(uid, project)`.
    */
   async getUserProjectRole(
     callerId: string,
@@ -73,8 +73,7 @@ export class ProjectAuthorizationService {
       .from('project_shares')
       .select('role')
       .eq('project_id', projectId)
-      .eq('user_id', callerId)
-      .maybeSingle();
+      .eq('user_id', callerId);
 
     if (error) {
       this.logger.error(
@@ -82,7 +81,13 @@ export class ProjectAuthorizationService {
       );
       throw new Error(error.message);
     }
-    return (data?.role as ProjectRole | undefined) ?? null;
+    if (!data || data.length === 0) return null;
+    return data
+      .map((r) => r.role as ProjectRole)
+      .reduce<ProjectRole>(
+        (best, r) => (this.roleSatisfies(r, best) ? r : best),
+        'viewer',
+      );
   }
 
   /**
@@ -116,9 +121,12 @@ export class ProjectAuthorizationService {
   }
 
   /**
-   * Load the caller's share row and return their resolved fine-grained
-   * permissions on the project (role baseline + origin delta + capabilities).
-   * Returns null if no share row exists.
+   * Load every share row the caller has on the project (one direct
+   * plus any number of team-derived rows) and return the OR-union of
+   * their resolved permissions. Returns null if no rows exist.
+   *
+   * Effective semantics: a user has permission X if any of their share
+   * rows grants permission X.
    */
   async resolvePermissions(
     callerId: string,
@@ -128,8 +136,7 @@ export class ProjectAuthorizationService {
       .from('project_shares')
       .select('role, origin, capabilities')
       .eq('project_id', projectId)
-      .eq('user_id', callerId)
-      .maybeSingle();
+      .eq('user_id', callerId);
 
     if (error) {
       this.logger.error(
@@ -137,12 +144,45 @@ export class ProjectAuthorizationService {
       );
       throw new Error(error.message);
     }
-    if (!data) return null;
-    return resolvePermissions(
-      data.role as ProjectRole,
-      (data.origin as ProjectShareOrigin | null) ?? null,
-      (data.capabilities as Record<string, unknown> | null) ?? null,
-    );
+    if (!data || data.length === 0) return null;
+
+    let merged: ProjectPermissions | null = null;
+    for (const row of data) {
+      const resolved = resolvePermissions(
+        row.role as ProjectRole,
+        // Team-derived origins look like 'team:<uuid>' and have no
+        // delta in ORIGIN_DELTAS — pass null so resolvePermissions
+        // treats them as plain role baselines.
+        this.normalizeOrigin(row.origin as string | null),
+        (row.capabilities as Record<string, unknown> | null) ?? null,
+      );
+      merged = merged ? this.unionPermissions(merged, resolved) : resolved;
+    }
+    return merged;
+  }
+
+  private normalizeOrigin(origin: string | null): ProjectShareOrigin | null {
+    if (!origin) return null;
+    if (origin.startsWith('team:')) return null;
+    return origin as ProjectShareOrigin;
+  }
+
+  private unionPermissions(
+    a: ProjectPermissions,
+    b: ProjectPermissions,
+  ): ProjectPermissions {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const out: any = {};
+    for (const section of Object.keys(a) as (keyof ProjectPermissions)[]) {
+      const aSec = (a as any)[section] as Record<string, boolean>;
+      const bSec = (b as any)[section] as Record<string, boolean>;
+      out[section] = {};
+      for (const field of Object.keys(aSec)) {
+        out[section][field] = Boolean(aSec[field]) || Boolean(bSec[field]);
+      }
+    }
+    return out as ProjectPermissions;
+    /* eslint-enable @typescript-eslint/no-explicit-any */
   }
 
   /**
@@ -163,22 +203,28 @@ export class ProjectAuthorizationService {
   }
 
   /**
-   * Idempotent grant. If a share row exists for (projectId, userId), updates
-   * its role + origin + capabilities; otherwise inserts a new row.
+   * Idempotent grant. Origin is part of the uniqueness contract — a
+   * user can hold one direct row plus any number of team-derived rows
+   * (`origin = 'team:<id>'`). Conflicts on (project_id, user_id, origin)
+   * update role/capabilities/granted_by in place.
+   *
+   * Origin is required: callers used to pass null but the column is now
+   * NOT NULL. Use 'invited' as the conventional default for direct
+   * grants without a more specific source.
    */
   async grant(params: GrantParams): Promise<ProjectShare> {
     const payload = {
       project_id: params.projectId,
       user_id: params.userId,
       role: params.role,
-      origin: params.origin,
+      origin: params.origin ?? 'invited',
       capabilities: params.capabilities ?? {},
       granted_by: params.grantedBy,
     };
 
     const { data, error } = await this.supabase
       .from('project_shares')
-      .upsert(payload, { onConflict: 'project_id,user_id' })
+      .upsert(payload, { onConflict: 'project_id,user_id,origin' })
       .select('*')
       .single();
 
@@ -192,20 +238,29 @@ export class ProjectAuthorizationService {
   }
 
   /**
-   * Revoke a user's share on a project. Refuses to delete the row if it
-   * would leave the project ownerless (last-owner protection).
+   * Revoke a user's share(s) on a project. By default removes ALL rows
+   * for that user (direct + team-derived) — matches the existing
+   * "remove member from project" semantics. Pass `origin` to remove
+   * only one specific row (e.g. just the direct share, leaving
+   * team-derived intact). Refuses to delete the last owner row.
    */
-  async revoke(projectId: string, userId: string): Promise<void> {
-    const { data: targetRow } = await this.supabase
+  async revoke(
+    projectId: string,
+    userId: string,
+    origin?: string,
+  ): Promise<void> {
+    const targetQuery = this.supabase
       .from('project_shares')
-      .select('role')
+      .select('role, origin')
       .eq('project_id', projectId)
-      .eq('user_id', userId)
-      .maybeSingle();
+      .eq('user_id', userId);
+    const { data: targetRows } = origin
+      ? await targetQuery.eq('origin', origin)
+      : await targetQuery;
 
-    if (!targetRow) return; // already gone, nothing to do
+    if (!targetRows || targetRows.length === 0) return;
 
-    if (targetRow.role === 'owner') {
+    if (targetRows.some((r) => r.role === 'owner')) {
       const ownerCount = await this.countOwners(projectId);
       if (ownerCount <= 1) {
         throw new MissingPermissionException({
@@ -216,12 +271,14 @@ export class ProjectAuthorizationService {
       }
     }
 
-    const { error } = await this.supabase
+    let delQuery = this.supabase
       .from('project_shares')
       .delete()
       .eq('project_id', projectId)
       .eq('user_id', userId);
+    if (origin) delQuery = delQuery.eq('origin', origin);
 
+    const { error } = await delQuery;
     if (error) {
       throw new Error(error.message);
     }

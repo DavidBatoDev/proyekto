@@ -1,3 +1,10 @@
+// @ts-nocheck
+//
+// REFERENCE: kept as a visual / structural reference for the future
+// team-level time pages. Project-level Time page removed in May 2026;
+// references removed types and the project-time backend module.
+// Restore or rewrite against `team_members.hourly_rate` when re-enabling.
+
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronLeft, ChevronRight, Search } from "lucide-react";
@@ -510,4 +517,3 @@ export function TaskTreePicker({
     </div>
   );
 }
-

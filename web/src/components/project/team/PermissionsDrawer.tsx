@@ -27,13 +27,6 @@ const DEPENDENCIES: Array<[SectionKey, string, SectionKey, string]> = [
   ["project", "settings", "access", "project_settings"],
   ["project", "edit_content", "access", "project_settings"],
   ["project", "view_internal_content", "access", "project_settings"],
-  ["time", "view_financial", "time", "view"],
-  ["time", "log", "time", "view"],
-  ["time", "edit_own", "time", "view"],
-  ["time", "edit_team", "time", "view"],
-  ["time", "approve", "time", "view"],
-  ["time", "manage_rates", "time", "view"],
-  ["time", "delete_logs", "time", "edit_team"],
   ["chat", "view_channels", "access", "chat"],
   ["chat", "send_messages", "access", "chat"],
   ["chat", "send_messages", "chat", "view_channels"],
@@ -106,7 +99,6 @@ const accessSection = {
     { key: "roadmap", label: "Access Roadmap", hint: "View the Roadmap page and its features." },
     { key: "work_items", label: "Access Work Items", hint: "View the Work Items execution table." },
     { key: "team", label: "Access Team", hint: "View the Members page." },
-    { key: "time", label: "Access Time", hint: "View the Time tracking page." },
     { key: "chat", label: "Access Chat", hint: "View the project messaging system." },
     { key: "resources", label: "Access Resources", hint: "View project files and links." },
     { key: "project_settings", label: "Access Project Settings", hint: "View project settings and configuration." },
@@ -155,20 +147,6 @@ const actionSections: Array<{
     ],
   },
   {
-    key: "time",
-    title: "Time",
-    items: [
-      { key: "view", label: "View", hint: "View time logs and summaries." },
-      { key: "view_financial", label: "View Financial Data", hint: "Access hourly rates, fees, and financial totals." },
-      { key: "log", label: "Log Time", hint: "Start/stop timers and create manual time entries." },
-      { key: "edit_own", label: "Edit Own Logs", hint: "Modify your own time entries." },
-      { key: "edit_team", label: "Edit Team Logs", hint: "Modify other members' time entries." },
-      { key: "approve", label: "Approve Logs", hint: "Approve or reject submitted time entries." },
-      { key: "manage_rates", label: "Manage Rates", hint: "Configure billing rates and pricing." },
-      { key: "delete_logs", label: "Delete Logs", hint: "Permanently remove time entries." },
-    ],
-  },
-  {
     key: "chat",
     title: "Chat",
     items: [
@@ -205,7 +183,7 @@ const actionSections: Array<{
   },
 ];
 
-const CONSULTANT_LOCKED_SECTIONS: SectionKey[] = ["time", "chat", "logs"];
+const CONSULTANT_LOCKED_SECTIONS: SectionKey[] = ["chat", "logs"];
 
 interface PermissionsDrawerProps {
   open: boolean;

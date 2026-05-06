@@ -1,3 +1,14 @@
+// @ts-nocheck
+//
+// REFERENCE: kept as a visual / structural reference for the future
+// team-level time pages.
+//
+// The project-level Time page was removed in May 2026 when time tracking
+// moved into the Teams model. This file is unreachable (no live links to
+// it) and references removed types (`access="time"`, `permissions.time.*`).
+// Type-checking is disabled — restore the section or rewrite against
+// `team_members.hourly_rate` when re-enabling.
+
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
