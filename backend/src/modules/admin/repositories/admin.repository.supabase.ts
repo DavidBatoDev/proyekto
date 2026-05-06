@@ -323,7 +323,7 @@ export class SupabaseAdminRepository implements AdminRepository {
     // (matches the auto-grant rules in design.md). Upsert handles both
     // first-time grant and re-grant if the consultant already has a row.
     const { error: shareError } = await this.supabase
-      .from('project_shares')
+      .from('project_access')
       .upsert(
         {
           project_id: projectId,

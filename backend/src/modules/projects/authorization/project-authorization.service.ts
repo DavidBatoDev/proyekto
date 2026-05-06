@@ -70,7 +70,7 @@ export class ProjectAuthorizationService {
     projectId: string,
   ): Promise<ProjectRole | null> {
     const { data, error } = await this.supabase
-      .from('project_shares')
+      .from('project_access')
       .select('role')
       .eq('project_id', projectId)
       .eq('user_id', callerId);
@@ -133,7 +133,7 @@ export class ProjectAuthorizationService {
     projectId: string,
   ): Promise<ProjectPermissions | null> {
     const { data, error } = await this.supabase
-      .from('project_shares')
+      .from('project_access')
       .select('role, origin, capabilities')
       .eq('project_id', projectId)
       .eq('user_id', callerId);
@@ -223,7 +223,7 @@ export class ProjectAuthorizationService {
     };
 
     const { data, error } = await this.supabase
-      .from('project_shares')
+      .from('project_access')
       .upsert(payload, { onConflict: 'project_id,user_id,origin' })
       .select('*')
       .single();
@@ -250,7 +250,7 @@ export class ProjectAuthorizationService {
     origin?: string,
   ): Promise<void> {
     const targetQuery = this.supabase
-      .from('project_shares')
+      .from('project_access')
       .select('role, origin')
       .eq('project_id', projectId)
       .eq('user_id', userId);
@@ -272,7 +272,7 @@ export class ProjectAuthorizationService {
     }
 
     let delQuery = this.supabase
-      .from('project_shares')
+      .from('project_access')
       .delete()
       .eq('project_id', projectId)
       .eq('user_id', userId);
@@ -289,7 +289,7 @@ export class ProjectAuthorizationService {
    */
   private async countOwners(projectId: string): Promise<number> {
     const { count, error } = await this.supabase
-      .from('project_shares')
+      .from('project_access')
       .select('*', { count: 'exact', head: true })
       .eq('project_id', projectId)
       .eq('role', 'owner');

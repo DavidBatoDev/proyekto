@@ -139,7 +139,7 @@ export class UploadsService {
     // Banner edits require admin+ role.
     let canEdit = false;
     const { data: share } = await this.supabase
-      .from('project_shares')
+      .from('project_access')
       .select('role')
       .eq('project_id', dto.project_id)
       .eq('user_id', userId)

@@ -83,7 +83,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
   async findByUser(userId: string): Promise<Project[]> {
     // Slice 3b: project membership lives in project_shares.
     const { data } = await this.supabase
-      .from('project_shares')
+      .from('project_access')
       .select(
         'project:projects(*, client:profiles!projects_client_id_fkey(id, display_name, avatar_url, email))',
       )
@@ -104,7 +104,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         .or(`client_id.eq.${userId},consultant_id.eq.${userId}`),
       // Slice 3b: project_shares is the source of truth for membership.
       this.supabase
-        .from('project_shares')
+        .from('project_access')
         .select(
           'project:projects(*, client:profiles!projects_client_id_fkey(id, display_name, avatar_url, email), consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, email))',
         )
@@ -154,7 +154,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         *,
         client:profiles!projects_client_id_fkey(id, display_name, avatar_url, headline, email),
         consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, headline, email),
-        members:project_shares(id, project_id, user_id, role, origin, position, capabilities, granted_at, user:profiles!project_shares_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified))
+        members:project_shares(id, project_id, user_id, role, origin, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified))
       `,
       )
       .eq('id', id)
@@ -380,7 +380,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       );
     }
     const { data, error } = await this.supabase
-      .from('project_shares')
+      .from('project_access')
       .insert({
         project_id: projectId,
         user_id: userId,
@@ -388,7 +388,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         origin: 'invited',
       })
       .select(
-        'id, project_id, user_id, role, origin, position, capabilities, granted_at, user:profiles!project_shares_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
+        'id, project_id, user_id, role, origin, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
       )
       .single();
 
@@ -694,11 +694,11 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     }
 
     const selectShape =
-      'id, project_id, user_id, role, origin, position, capabilities, granted_at, user:profiles!project_shares_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)';
+      'id, project_id, user_id, role, origin, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)';
 
     if (Object.keys(patch).length === 0) {
       const { data: current } = await this.supabase
-        .from('project_shares')
+        .from('project_access')
         .select(selectShape)
         .eq('id', memberId)
         .eq('project_id', projectId)
@@ -707,7 +707,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     }
 
     const { data, error } = await this.supabase
-      .from('project_shares')
+      .from('project_access')
       .update(patch)
       .eq('id', memberId)
       .eq('project_id', projectId)
@@ -729,7 +729,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     capabilities: Record<string, boolean>,
   ): Promise<unknown> {
     const { data, error } = await this.supabase
-      .from('project_shares')
+      .from('project_access')
       .update({ capabilities })
       .eq('id', memberId)
       .eq('project_id', projectId)
@@ -752,7 +752,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     position: string | null,
   ): Promise<unknown> {
     const { data, error } = await this.supabase
-      .from('project_shares')
+      .from('project_access')
       .update({ position: position?.trim() || null })
       .eq('id', memberId)
       .eq('project_id', projectId)
@@ -771,7 +771,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     // should call that instead for proper enforcement. This direct delete is
     // kept as a low-level repository primitive for legacy callers.
     const { error } = await this.supabase
-      .from('project_shares')
+      .from('project_access')
       .delete()
       .eq('id', memberId)
       .eq('project_id', projectId);
@@ -870,7 +870,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     // memberId is the project_shares.id. Reads the full row including the
     // restored `position` column and the `capabilities` JSONB delta.
     const { data, error } = await this.supabase
-      .from('project_shares')
+      .from('project_access')
       .select('id, user_id, role, origin, position, capabilities')
       .eq('project_id', projectId)
       .eq('id', memberId)
@@ -903,7 +903,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     permissions_json?: Record<string, unknown> | null;
   } | null> {
     const { data, error } = await this.supabase
-      .from('project_shares')
+      .from('project_access')
       .select('id, user_id, role, origin, position, capabilities')
       .eq('project_id', projectId)
       .eq('user_id', userId)

@@ -154,7 +154,7 @@ export class SupabaseChatRepository implements ChatRepository {
   async isProjectMember(projectId: string, userId: string): Promise<boolean> {
     // Slice 3b: any project_shares grant counts as membership.
     const { data, error } = await this.supabase
-      .from('project_shares')
+      .from('project_access')
       .select('user_id')
       .eq('project_id', projectId)
       .eq('user_id', userId)
@@ -175,7 +175,7 @@ export class SupabaseChatRepository implements ChatRepository {
     // consultant (origin='consultant'). Fall back to active_persona-style
     // bucketing via normalizeRole for invited members.
     const { data, error } = await this.supabase
-      .from('project_shares')
+      .from('project_access')
       .select('role, origin')
       .eq('project_id', projectId)
       .eq('user_id', userId)
@@ -219,12 +219,12 @@ export class SupabaseChatRepository implements ChatRepository {
     // legacy "role" bucket for chat normalization. Position field is
     // dropped (project_shares has no equivalent; UI shows display_name).
     const membersQuery = this.supabase
-      .from('project_shares')
+      .from('project_access')
       .select(
         `
         user_id,
         origin,
-        user:profiles!project_shares_user_id_fkey(id, display_name, avatar_url, email)
+        user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email)
       `,
       )
       .eq('project_id', projectId)
