@@ -1,6 +1,7 @@
 import { AuthService } from './auth.service';
 import type { AuthRepository } from './repositories/auth.repository.interface';
 import type { PersonalWorkspaceService } from '../projects/personal-workspace.service';
+import type { TeamsService } from '../teams/teams.service';
 import type { Profile } from '../../common/entities';
 import type { CompleteOnboardingDto } from './dto/auth.dto';
 
@@ -26,6 +27,7 @@ function buildService(
   repoOverrides: Partial<AuthRepository>,
   workspaceOverrides: Partial<PersonalWorkspaceService> = {},
   eligibilityOverrides: { check?: jest.Mock } = {},
+  teamsOverrides: Partial<TeamsService> = {},
 ) {
   const repo = repoOverrides as AuthRepository;
   const workspaceService = {
@@ -44,9 +46,28 @@ function buildService(
       eligibilityOverrides.check ??
       jest.fn().mockResolvedValue({ eligible: false, missing: [] }),
   } as any;
+  const teamsService = {
+    provisionPersonalTeam: jest.fn().mockResolvedValue({
+      id: 'team-1',
+      owner_id: 'user-1',
+      name: "A's Team",
+      description: null,
+      avatar_url: null,
+      is_personal: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }),
+    ...teamsOverrides,
+  } as unknown as TeamsService;
   return {
-    service: new AuthService(repo, workspaceService, eligibilityService),
+    service: new AuthService(
+      repo,
+      workspaceService,
+      eligibilityService,
+      teamsService,
+    ),
     workspaceService,
+    teamsService,
   };
 }
 
@@ -94,12 +115,14 @@ describe('AuthService.completeOnboarding', () => {
     });
   });
 
-  it('provisions a personal workspace and returns its id alongside the profile', async () => {
+  it('client_freelancer lane: provisions personal workspace, no team', async () => {
     const completeOnboarding = jest
       .fn<Promise<Profile>, [string, any]>()
       .mockResolvedValue(buildProfile());
 
-    const { service, workspaceService } = buildService({ completeOnboarding });
+    const { service, workspaceService, teamsService } = buildService({
+      completeOnboarding,
+    });
 
     const result = await service.completeOnboarding(
       'user-1',
@@ -107,23 +130,32 @@ describe('AuthService.completeOnboarding', () => {
     );
 
     expect(workspaceService.provision).toHaveBeenCalledWith('user-1');
+    expect(teamsService.provisionPersonalTeam).not.toHaveBeenCalled();
     expect(result.personal_workspace_id).toBe('ws-1');
-    expect(result.profile.id).toBe('user-1');
+    expect(result.personal_team_id).toBeNull();
   });
 
-  it('provisions a personal workspace even for consultant-lane users (soft isolation)', async () => {
+  it('consultant lane: provisions personal team, no workspace', async () => {
     const completeOnboarding = jest
       .fn<Promise<Profile>, [string, any]>()
       .mockResolvedValue(buildProfile());
 
-    const { service, workspaceService } = buildService({ completeOnboarding });
+    const { service, workspaceService, teamsService } = buildService({
+      completeOnboarding,
+    });
 
-    await service.completeOnboarding('user-1', dtoForLane('consultant'));
+    const result = await service.completeOnboarding(
+      'user-1',
+      dtoForLane('consultant'),
+    );
 
-    expect(workspaceService.provision).toHaveBeenCalledWith('user-1');
+    expect(teamsService.provisionPersonalTeam).toHaveBeenCalledWith('user-1');
+    expect(workspaceService.provision).not.toHaveBeenCalled();
+    expect(result.personal_team_id).toBe('team-1');
+    expect(result.personal_workspace_id).toBeNull();
   });
 
-  it('surfaces a workspace provisioning failure to the caller', async () => {
+  it('surfaces a workspace provisioning failure on the client lane', async () => {
     const completeOnboarding = jest
       .fn<Promise<Profile>, [string, any]>()
       .mockResolvedValue(buildProfile());
@@ -139,5 +171,26 @@ describe('AuthService.completeOnboarding', () => {
     await expect(
       service.completeOnboarding('user-1', dtoForLane('client_freelancer')),
     ).rejects.toThrow('partial unique violation outside race');
+  });
+
+  it('surfaces a team provisioning failure on the consultant lane', async () => {
+    const completeOnboarding = jest
+      .fn<Promise<Profile>, [string, any]>()
+      .mockResolvedValue(buildProfile());
+
+    const { service } = buildService(
+      { completeOnboarding },
+      {},
+      {},
+      {
+        provisionPersonalTeam: jest
+          .fn()
+          .mockRejectedValue(new Error('teams insert failed')),
+      } as Partial<TeamsService>,
+    );
+
+    await expect(
+      service.completeOnboarding('user-1', dtoForLane('consultant')),
+    ).rejects.toThrow('teams insert failed');
   });
 });

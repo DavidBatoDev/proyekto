@@ -15,6 +15,12 @@ export interface CreateProjectData {
   start_date?: string;
   custom_start_date?: string;
   status?: "draft" | "active" | "bidding" | "paused" | "completed" | "archived";
+  /**
+   * Consultant-mode only: optional team picked at create-time. The
+   * backend attaches it as the primary team after the project is
+   * created. Omit (or set undefined) for "no team — attach later".
+   */
+  primary_team_id?: string;
 }
 
 export interface Project {

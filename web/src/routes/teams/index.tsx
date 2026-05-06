@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Loader2, Plus, Users } from "lucide-react";
@@ -7,10 +7,18 @@ import {
 	AppSectionHeader,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
+import { DashboardShell } from "@/components/layout/DashboardShell";
 import { useToast } from "@/hooks/useToast";
+import { useAuthStore } from "@/stores/authStore";
 import { createTeam, listMyTeams, type Team } from "@/services/teams.service";
 
 export const Route = createFileRoute("/teams/")({
+	beforeLoad: () => {
+		const { isAuthenticated } = useAuthStore.getState();
+		if (!isAuthenticated) {
+			throw redirect({ to: "/auth/login" });
+		}
+	},
 	component: TeamsIndexPage,
 });
 
@@ -22,7 +30,7 @@ function TeamsIndexPage() {
 	const [createOpen, setCreateOpen] = useState(false);
 
 	return (
-		<div className="app-shell-bg min-h-full">
+		<DashboardShell>
 			<div className="mx-auto w-full max-w-[1040px] px-5 py-8 md:px-8 md:py-10">
 				<AppSectionHeader
 					kicker="Teams"
@@ -79,7 +87,7 @@ function TeamsIndexPage() {
 			{createOpen && (
 				<CreateTeamModal onClose={() => setCreateOpen(false)} />
 			)}
-		</div>
+		</DashboardShell>
 	);
 }
 

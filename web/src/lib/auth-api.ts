@@ -11,7 +11,8 @@ export type OnboardingLane = "client_freelancer" | "consultant";
 
 export interface CompleteOnboardingResult {
   profile: Profile;
-  personal_workspace_id: string;
+  personal_workspace_id: string | null;
+  personal_team_id: string | null;
 }
 
 /**
@@ -82,18 +83,35 @@ export async function completeOnboarding(data: {
 
       if (updateError) throw updateError;
 
-      // Best-effort fallback workspace lookup (no provisioning in offline mode —
+      // Best-effort fallback lookup (no provisioning in offline mode —
       // backend will retry on next online completeOnboarding call).
-      const { data: workspace } = await supabase
-        .from("projects")
-        .select("id")
-        .eq("client_id", user.id)
-        .eq("is_personal_workspace", true)
-        .maybeSingle();
+      // Look up the lane-appropriate artifact: workspace for clients,
+      // personal team for consultants.
+      let personal_workspace_id: string | null = null;
+      let personal_team_id: string | null = null;
+
+      if (data.lane === "consultant") {
+        const { data: team } = await supabase
+          .from("teams")
+          .select("id")
+          .eq("owner_id", user.id)
+          .eq("is_personal", true)
+          .maybeSingle();
+        personal_team_id = (team?.id as string | undefined) ?? null;
+      } else {
+        const { data: workspace } = await supabase
+          .from("projects")
+          .select("id")
+          .eq("client_id", user.id)
+          .eq("is_personal_workspace", true)
+          .maybeSingle();
+        personal_workspace_id = (workspace?.id as string | undefined) ?? null;
+      }
 
       return {
         profile: profile as Profile,
-        personal_workspace_id: (workspace?.id as string | undefined) ?? "",
+        personal_workspace_id,
+        personal_team_id,
       };
     }
 

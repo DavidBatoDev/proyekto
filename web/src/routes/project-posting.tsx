@@ -1,6 +1,7 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import {
+  ArrowLeft,
   Upload,
   Check,
   X,
@@ -21,6 +22,7 @@ import {
   StepIndicator,
   type FormData as BaseFormData,
 } from "@/components/project-brief";
+import { ProjectTeamPicker } from "@/components/project-brief/ProjectTeamPicker";
 
 export const Route = createFileRoute("/project-posting")({
   component: ProjectPostingPage,
@@ -60,6 +62,10 @@ function ProjectPostingPage() {
   const [showIntentModal, setShowIntentModal] = useState(false);
   const [hasAutoOpenedIntentModal, setHasAutoOpenedIntentModal] =
     useState(false);
+  // Consultant-mode primary team selection. null means either "not yet
+  // chosen" (the picker will default-select on load) or the explicit
+  // "No team" opt-out — we treat both the same at submit time.
+  const [primaryTeamId, setPrimaryTeamId] = useState<string | null>(null);
   const fromRoadmap = Boolean(searchParams.roadmapId);
   const [formData, setFormData] = useState<FormData>({
     title: "",
@@ -164,6 +170,10 @@ function ProjectPostingPage() {
           start_date: formData.startDate,
           custom_start_date: formData.customStartDate || undefined,
           status: projectStatus,
+          primary_team_id:
+            effectiveIntent === "consultant" && primaryTeamId
+              ? primaryTeamId
+              : undefined,
         });
 
         console.log("Project created from roadmap:", project);
@@ -200,6 +210,10 @@ function ProjectPostingPage() {
           start_date: formData.startDate,
           custom_start_date: formData.customStartDate || undefined,
           status: projectStatus,
+          primary_team_id:
+            effectiveIntent === "consultant" && primaryTeamId
+              ? primaryTeamId
+              : undefined,
         });
 
         console.log("Project created from project posting:", project);
@@ -213,136 +227,53 @@ function ProjectPostingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f6f7f8] pt-16 relative overflow-hidden">
-      {/* Decorative Background Elements */}
-      <div className="absolute inset-0 pointer-events-none">
-        {/* Wave SVG at bottom */}
-        <motion.svg
-          className="absolute bottom-0 left-0 w-full h-[700px] opacity-30"
-          viewBox="0 0 1440 320"
-          preserveAspectRatio="none"
-          animate={{
-            y: [0, -30, 0],
-          }}
-          transition={{
-            duration: 6,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-        >
-          <motion.path
-            d="M0,96L48,112C96,128,192,160,288,160C384,160,480,128,576,122.7C672,117,768,139,864,144C960,149,1056,139,1152,128C1248,117,1344,107,1392,101.3L1440,96L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
-            fill={
-              currentStep === 1
-                ? "#FF9933"
-                : currentStep === 2
-                  ? "#e91e63"
-                  : "#8b5cf6"
-            }
-            fillOpacity="0.3"
-            animate={{
-              fill:
-                currentStep === 1
-                  ? "#FF9933"
-                  : currentStep === 2
-                    ? "#e91e63"
-                    : "#8b5cf6",
-            }}
-            transition={{
-              duration: 0.5,
-              ease: "easeInOut",
-            }}
-          />
-        </motion.svg>
-
-        {/* Gradient Blobs */}
-        <motion.div
-          className="absolute top-20 left-10 w-[400px] h-[400px] bg-[#ff993326] rounded-full blur-3xl opacity-40"
-          animate={{
-            scale: [1, 1.3, 1],
-            x: [0, 50, 0],
-            y: [0, -40, 0],
-          }}
-          transition={{
-            duration: 8,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-        />
-        <motion.div
-          className="absolute top-40 right-20 w-[350px] h-[350px] bg-pink-200 rounded-full blur-3xl opacity-30"
-          animate={{
-            scale: [1, 1.4, 1],
-            x: [0, -40, 0],
-            y: [0, 35, 0],
-          }}
-          transition={{
-            duration: 7,
-            repeat: Infinity,
-            ease: "easeInOut",
-            delay: 0.5,
-          }}
-        />
-        <motion.div
-          className="absolute bottom-40 left-1/3 w-[300px] h-[300px] bg-orange-200 rounded-full blur-3xl opacity-25"
-          animate={{
-            scale: [1, 1.5, 1],
-            x: [0, 30, 0],
-            y: [0, -30, 0],
-          }}
-          transition={{
-            duration: 9,
-            repeat: Infinity,
-            ease: "easeInOut",
-            delay: 1,
-          }}
-        />
+    <div className="app-shell-bg min-h-screen">
+      {/* Minimal top bar — back-out + intent toggle, no global header */}
+      <div className="sticky top-0 z-30 border-b border-slate-200 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex max-w-[1240px] items-center justify-between px-5 py-3 md:px-10">
+          <Link
+            to="/dashboard"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to dashboard
+          </Link>
+          <p className="hidden text-sm font-semibold text-slate-900 sm:block">
+            New project
+          </p>
+          {isVerifiedConsultant ? (
+            <button
+              type="button"
+              onClick={() => setShowIntentModal(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+            >
+              <Briefcase className="h-3.5 w-3.5 text-slate-500" />
+              {effectiveIntent === "client" ? "Bidding" : "Incubation draft"}
+            </button>
+          ) : (
+            <span className="w-[88px]" aria-hidden="true" />
+          )}
+        </div>
       </div>
 
-      <div className="max-w-[1440px] mx-auto px-20 py-8 pb-40 relative z-10">
-        {isVerifiedConsultant && (
-          <button
-            type="button"
-            onClick={() => setShowIntentModal(true)}
-            className="fixed top-20 right-6 z-60 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/95 border border-[#ffcf99] text-[#a65600] font-semibold shadow-lg hover:shadow-xl hover:bg-white transition-all"
-          >
-            <Briefcase className="w-4 h-4" />
-            {effectiveIntent === "client"
-              ? "Current Intent: Bidding"
-              : "Current Intent: Incubation Draft"}
-          </button>
-        )}
+      <div className="mx-auto w-full max-w-[1240px] px-5 py-10 pb-40 md:px-10">
 
         {/* Progress Stepper */}
-        <div className="flex items-center justify-center mb-14 relative">
+        <div className="mb-12 flex items-center justify-center">
           <StepIndicator
             step={1}
             currentStep={currentStep}
             label="Vision & Scope"
             totalSteps={3}
           />
-          <div className="w-32 h-1 bg-gray-200 rounded-full mx-2 overflow-hidden -mt-6">
-            <motion.div
-              className="h-full bg-linear-to-r from-[#ff9933] to-[#e91e63]"
-              initial={{ width: "0%" }}
-              animate={{ width: currentStep > 1 ? "100%" : "0%" }}
-              transition={{ duration: 0.5, ease: "easeInOut" }}
-            />
-          </div>
+          <StepperBar filled={currentStep > 1} />
           <StepIndicator
             step={2}
             currentStep={currentStep}
             label="Skills & Duration"
             totalSteps={3}
           />
-          <div className="w-32 h-1 bg-gray-200 rounded-full mx-2 overflow-hidden -mt-6">
-            <motion.div
-              className="h-full bg-[#e91e63]"
-              initial={{ width: "0%" }}
-              animate={{ width: currentStep > 2 ? "100%" : "0%" }}
-              transition={{ duration: 0.5, ease: "easeInOut", delay: 0.1 }}
-            />
-          </div>
+          <StepperBar filled={currentStep > 2} />
           <StepIndicator
             step={3}
             currentStep={currentStep}
@@ -365,11 +296,11 @@ function ProjectPostingPage() {
                     exit={{ opacity: 0, x: -20 }}
                     transition={{ duration: 0.4, ease: "easeOut" }}
                   >
-                    <h1 className="text-4xl font-bold text-[#333438] mb-4">
+                    <h1 className="mb-4 text-4xl font-bold tracking-tight text-slate-900">
                       Step 1: Vision &<br />
                       Scope
                     </h1>
-                    <p className="text-[#61636c] text-lg">
+                    <p className="text-base text-slate-600">
                       Tell us what you want to build. You can either answer a
                       few questions or upload an existing RFP/Brief.
                     </p>
@@ -383,11 +314,11 @@ function ProjectPostingPage() {
                     exit={{ opacity: 0, x: -20 }}
                     transition={{ duration: 0.4, ease: "easeOut" }}
                   >
-                    <h1 className="text-4xl font-bold text-[#333438] mb-4">
+                    <h1 className="mb-4 text-4xl font-bold tracking-tight text-slate-900">
                       Step 2: Skills &<br />
                       Deliverables
                     </h1>
-                    <p className="text-[#61636c] text-lg">
+                    <p className="text-base text-slate-600">
                       Define the expertise you need and the results you expect.
                     </p>
                   </motion.div>
@@ -400,11 +331,11 @@ function ProjectPostingPage() {
                     exit={{ opacity: 0, x: -20 }}
                     transition={{ duration: 0.4, ease: "easeOut" }}
                   >
-                    <h1 className="text-4xl font-bold text-[#333438] mb-4">
+                    <h1 className="mb-4 text-4xl font-bold tracking-tight text-slate-900">
                       Step 3: Budget &<br />
                       Timeline
                     </h1>
-                    <p className="text-[#61636c] text-lg">
+                    <p className="text-base text-slate-600">
                       {effectiveIntent === "consultant"
                         ? "Set budget and timing for your incubation draft before you invite or transfer to a client."
                         : "Help us match you with Consultants who fit your financial and schedule goals."}
@@ -459,6 +390,14 @@ function ProjectPostingPage() {
                     updateFormData={updateFormData}
                     referencedRoadmap={referencedRoadmap}
                   />
+                  {effectiveIntent === "consultant" && (
+                    <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                      <ProjectTeamPicker
+                        value={primaryTeamId}
+                        onChange={setPrimaryTeamId}
+                      />
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -466,20 +405,19 @@ function ProjectPostingPage() {
         </div>
 
         {/* Navigation Buttons */}
-        {/* Navigation Buttons */}
-        <div className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none pb-8 pt-4 bg-linear-to-t from-[#f6f7f8] via-[#f6f7f8]/80 to-transparent">
-          <div className="max-w-[1440px] mx-auto px-6 flex justify-between">
+        <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-40 bg-linear-to-t from-white via-white/80 to-transparent pb-8 pt-6">
+          <div className="mx-auto flex max-w-[1240px] justify-between px-5 md:px-10">
             <button
               onClick={prevStep}
               disabled={currentStep === 1}
-              className="pointer-events-auto cursor-pointer px-8 py-3 text-[#ff9933] border border-[#ff9933] bg-white rounded-lg font-semibold hover:bg-[#fff5eb] disabled:opacity-30 disabled:cursor-not-allowed transition-colors uppercase shadow-sm"
+              className="pointer-events-auto cursor-pointer rounded-lg border border-slate-200 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Back
             </button>
             {currentStep < 3 ? (
               <button
                 onClick={nextStep}
-                className="pointer-events-auto cursor-pointer px-8 py-3 bg-linear-to-r from-[#ff9933] to-[#ff6b35] text-white rounded-lg font-semibold hover:shadow-lg transition-all uppercase"
+                className="pointer-events-auto cursor-pointer rounded-lg bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
               >
                 Next
               </button>
@@ -487,17 +425,17 @@ function ProjectPostingPage() {
               <button
                 onClick={handleSubmit}
                 disabled={isCreatingProject}
-                className="pointer-events-auto cursor-pointer px-8 py-3 bg-linear-to-r from-[#e91e63] to-[#ff1744] text-white rounded-lg font-semibold hover:shadow-lg transition-all uppercase flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="pointer-events-auto inline-flex cursor-pointer items-center gap-2 rounded-lg bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isCreatingProject ? (
                   <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Creating...
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Creating…
                   </>
                 ) : (
                   <>
-                    <Check className="w-5 h-5" />
-                    Submit Project
+                    <Check className="h-4 w-4" />
+                    Submit project
                   </>
                 )}
               </button>
@@ -523,24 +461,19 @@ function ProjectPostingPage() {
               onClick={() => setShowIntentModal(false)}
             />
             <motion.div
-              className="relative w-full max-w-3xl rounded-3xl overflow-hidden shadow-2xl border border-white/20 bg-linear-to-br from-[#fff4e8] via-[#fffaf6] to-[#ffeef5]"
+              className="relative w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
               initial={{ opacity: 0, y: 24, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 16, scale: 0.96 }}
               transition={{ duration: 0.25, ease: "easeOut" }}
             >
-              <div className="absolute inset-0 pointer-events-none">
-                <div className="absolute -top-16 -left-12 h-40 w-40 rounded-full bg-[#ff993340] blur-2xl" />
-                <div className="absolute -bottom-14 -right-10 h-44 w-44 rounded-full bg-[#ff4d8d30] blur-2xl" />
-              </div>
-
               <div className="relative p-6 md:p-8">
-                <div className="flex items-start justify-between gap-4 mb-6">
+                <div className="mb-6 flex items-start justify-between gap-4">
                   <div>
-                    <h2 className="text-2xl md:text-3xl font-bold text-[#2f302f]">
-                      Choose Your Intention
+                    <h2 className="text-2xl font-semibold tracking-tight text-slate-900 md:text-3xl">
+                      Choose your intention
                     </h2>
-                    <p className="mt-2 text-sm md:text-base text-[#5c5e66] max-w-2xl">
+                    <p className="mt-2 max-w-2xl text-sm text-slate-600 md:text-base">
                       Select your legal and operating role for this project.
                       This controls creation behavior, visibility, and ownership
                       mechanics from day one.
@@ -549,137 +482,44 @@ function ProjectPostingPage() {
                   <button
                     type="button"
                     onClick={() => setShowIntentModal(false)}
-                    className="rounded-full p-2 text-gray-500 hover:text-gray-800 hover:bg-white/70 transition-colors"
+                    className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
                     aria-label="Close intent modal"
                   >
-                    <X className="w-5 h-5" />
+                    <X className="h-5 w-5" />
                   </button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPendingIntent("client");
-                    }}
-                    className={`text-left rounded-2xl border-2 p-5 transition-all ${
-                      pendingIntent === "client"
-                        ? "border-[#ff9933] bg-[#fff2e3] shadow-md"
-                        : "border-gray-200 bg-gray-100/90 text-gray-500 opacity-90 grayscale hover:opacity-100"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 mb-3">
-                      <div
-                        className={`h-10 w-10 rounded-xl flex items-center justify-center ${
-                          pendingIntent === "client"
-                            ? "bg-[#ff9933] text-white"
-                            : "bg-gray-300 text-gray-600"
-                        }`}
-                      >
-                        <Briefcase className="w-5 h-5" />
-                      </div>
-                      <h3
-                        className={`text-lg font-bold ${
-                          pendingIntent === "client"
-                            ? "text-[#2f302f]"
-                            : "text-gray-500"
-                        }`}
-                      >
-                        I Am A Client
-                      </h3>
-                      {pendingIntent === "client" && (
-                        <span className="ml-auto text-[10px] uppercase tracking-wider px-2 py-1 rounded-full bg-[#ff9933] text-white font-bold">
-                          Selected
-                        </span>
-                      )}
-                    </div>
-                    <p
-                      className={`text-sm mb-3 ${
-                        pendingIntent === "client"
-                          ? "text-[#5c5e66]"
-                          : "text-gray-500"
-                      }`}
-                    >
-                      Use this when you want to hire another verified consultant
-                      to lead execution.
-                    </p>
-                    <ul
-                      className={`text-xs space-y-1 ${
-                        pendingIntent === "client"
-                          ? "text-[#61636c]"
-                          : "text-gray-500"
-                      }`}
-                    >
-                      <li>- Starts in bidding/matching flow</li>
-                      <li>- Will be matched with professional consultants</li>
-                      <li>- Best for sponsor and hiring consultants</li>
-                    </ul>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPendingIntent("consultant");
-                    }}
-                    className={`text-left rounded-2xl border-2 p-5 transition-all ${
-                      pendingIntent === "consultant"
-                        ? "border-[#e34b87] bg-[#fff0f6] shadow-md"
-                        : "border-gray-200 bg-gray-100/90 text-gray-500 opacity-90 grayscale hover:opacity-100"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 mb-3">
-                      <div
-                        className={`h-10 w-10 rounded-xl flex items-center justify-center ${
-                          pendingIntent === "consultant"
-                            ? "bg-[#e34b87] text-white"
-                            : "bg-gray-300 text-gray-600"
-                        }`}
-                      >
-                        <UserCheck className="w-5 h-5" />
-                      </div>
-                      <h3
-                        className={`text-lg font-bold ${
-                          pendingIntent === "consultant"
-                            ? "text-[#2f302f]"
-                            : "text-gray-500"
-                        }`}
-                      >
-                        I Am A Consultant
-                      </h3>
-                      {pendingIntent === "consultant" && (
-                        <span className="ml-auto text-[10px] uppercase tracking-wider px-2 py-1 rounded-full bg-[#e34b87] text-white font-bold">
-                          Selected
-                        </span>
-                      )}
-                    </div>
-                    <p
-                      className={`text-sm mb-3 ${
-                        pendingIntent === "consultant"
-                          ? "text-[#5c5e66]"
-                          : "text-gray-500"
-                      }`}
-                    >
-                      Use this for incubation: you architect and lead first,
-                      then hand over to a client later.
-                    </p>
-                    <ul
-                      className={`text-xs space-y-1 ${
-                        pendingIntent === "consultant"
-                          ? "text-[#61636c]"
-                          : "text-gray-500"
-                      }`}
-                    >
-                      <li>- Forced private draft status</li>
-                      <li>- You are both temporary client and consultant</li>
-                      <li>- Includes transfer/manage bootstrap permissions</li>
-                    </ul>
-                  </button>
+                  <IntentOptionCard
+                    icon={Briefcase}
+                    title="I am a client"
+                    description="Use this when you want to hire another verified consultant to lead execution."
+                    bullets={[
+                      "Starts in bidding/matching flow",
+                      "Will be matched with professional consultants",
+                      "Best for sponsors hiring consultants",
+                    ]}
+                    selected={pendingIntent === "client"}
+                    onSelect={() => setPendingIntent("client")}
+                  />
+                  <IntentOptionCard
+                    icon={UserCheck}
+                    title="I am a consultant"
+                    description="Use this for incubation: you architect and lead first, then hand over to a client later."
+                    bullets={[
+                      "Forced private draft status",
+                      "You are both temporary client and consultant",
+                      "Includes transfer/manage bootstrap permissions",
+                    ]}
+                    selected={pendingIntent === "consultant"}
+                    onSelect={() => setPendingIntent("consultant")}
+                  />
                 </div>
 
                 <div className="mt-6 flex items-center justify-between gap-3">
-                  <p className="text-xs text-[#7a7d86]">
-                    You can reopen this modal anytime from the top-right
-                    "Current Intent" button.
+                  <p className="text-xs text-slate-500">
+                    You can reopen this modal anytime from the top "Current
+                    intent" button.
                   </p>
                   <button
                     type="button"
@@ -687,7 +527,7 @@ function ProjectPostingPage() {
                       setCreationIntent(pendingIntent);
                       setShowIntentModal(false);
                     }}
-                    className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-[#4c4e56] text-sm font-medium hover:bg-gray-50"
+                    className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
                   >
                     Continue
                   </button>
@@ -735,6 +575,73 @@ function ProjectPostingPage() {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function IntentOptionCard({
+  icon: Icon,
+  title,
+  description,
+  bullets,
+  selected,
+  onSelect,
+}: {
+  icon: React.ElementType;
+  title: string;
+  description: string;
+  bullets: string[];
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`rounded-xl border p-5 text-left transition-all ${
+        selected
+          ? "border-slate-900 bg-slate-50 shadow-sm"
+          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+      }`}
+    >
+      <div className="mb-3 flex items-center gap-3">
+        <div
+          className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+            selected ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"
+          }`}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
+        <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+        {selected && (
+          <span className="ml-auto rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+            Selected
+          </span>
+        )}
+      </div>
+      <p className="mb-3 text-sm text-slate-600">{description}</p>
+      <ul className="space-y-1 text-xs text-slate-500">
+        {bullets.map((b) => (
+          <li key={b}>• {b}</li>
+        ))}
+      </ul>
+    </button>
+  );
+}
+
+/**
+ * Slate stepper bar between StepIndicator dots. Filled = previous step
+ * complete, otherwise muted slate-200.
+ */
+function StepperBar({ filled }: { filled: boolean }) {
+  return (
+    <div className="-mt-6 mx-2 h-1 w-32 overflow-hidden rounded-full bg-slate-200">
+      <motion.div
+        className="h-full bg-slate-900"
+        initial={{ width: "0%" }}
+        animate={{ width: filled ? "100%" : "0%" }}
+        transition={{ duration: 0.5, ease: "easeInOut" }}
+      />
     </div>
   );
 }

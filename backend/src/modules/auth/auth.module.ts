@@ -5,9 +5,10 @@ import { SupabaseAuthRepository } from './repositories/auth.repository.supabase'
 import { AUTH_REPOSITORY } from './auth.service';
 import { ProjectsModule } from '../projects/projects.module';
 import { ProfileModule } from '../profile/profile.module';
+import { TeamsModule } from '../teams/teams.module';
 
 @Module({
-  imports: [ProjectsModule, ProfileModule],
+  imports: [ProjectsModule, ProfileModule, TeamsModule],
   controllers: [AuthController],
   providers: [
     AuthService,

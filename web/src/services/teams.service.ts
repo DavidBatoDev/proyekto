@@ -1,4 +1,4 @@
-import apiClient from "@/api/axios";
+﻿import apiClient from "@/api/axios";
 import { extractApiErrorMessage } from "@/lib/permissionErrors";
 
 export type TeamRole = "owner" | "admin" | "member";
@@ -10,8 +10,18 @@ export interface Team {
 	name: string;
 	description: string | null;
 	avatar_url: string | null;
+	is_personal: boolean;
 	created_at: string;
 	updated_at: string;
+}
+
+export interface ProfileSummary {
+	id: string;
+	display_name: string | null;
+	avatar_url: string | null;
+	email: string | null;
+	first_name: string | null;
+	last_name: string | null;
 }
 
 export interface TeamMember {
@@ -25,6 +35,7 @@ export interface TeamMember {
 	start_date: string | null;
 	end_date: string | null;
 	joined_at: string;
+	user?: ProfileSummary | null;
 }
 
 export interface ProjectTeam {
@@ -44,14 +55,21 @@ export interface ProjectTeamMember {
 	capabilities: Record<string, unknown>;
 	added_by: string | null;
 	added_at: string;
+	user?: ProfileSummary | null;
 }
 
-// ─── Team CRUD ───────────────────────────────────────────────────────────
+export interface AvailableTeamMember {
+	user_id: string;
+	role: TeamRole;
+	user: ProfileSummary | null;
+}
+
+// â”€â”€â”€ Team CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function listMyTeams(): Promise<Team[]> {
 	try {
-		const { data } = await apiClient.get<Team[]>("/teams");
-		return data;
+		const { data } = await apiClient.get<{ data: Team[] }>("/api/teams");
+		return data.data;
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(
@@ -64,8 +82,8 @@ export async function listMyTeams(): Promise<Team[]> {
 
 export async function getTeam(teamId: string): Promise<Team> {
 	try {
-		const { data } = await apiClient.get<Team>(`/teams/${teamId}`);
-		return data;
+		const { data } = await apiClient.get<{ data: Team }>(`/api/teams/${teamId}`);
+		return data.data;
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(
@@ -82,8 +100,8 @@ export async function createTeam(input: {
 	avatar_url?: string;
 }): Promise<Team> {
 	try {
-		const { data } = await apiClient.post<Team>("/teams", input);
-		return data;
+		const { data } = await apiClient.post<{ data: Team }>("/api/teams", input);
+		return data.data;
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(
@@ -99,8 +117,8 @@ export async function updateTeam(
 	patch: { name?: string; description?: string; avatar_url?: string },
 ): Promise<Team> {
 	try {
-		const { data } = await apiClient.patch<Team>(`/teams/${teamId}`, patch);
-		return data;
+		const { data } = await apiClient.patch<{ data: Team }>(`/api/teams/${teamId}`, patch);
+		return data.data;
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(
@@ -113,7 +131,7 @@ export async function updateTeam(
 
 export async function deleteTeam(teamId: string): Promise<void> {
 	try {
-		await apiClient.delete(`/teams/${teamId}`);
+		await apiClient.delete(`/api/teams/${teamId}`);
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(
@@ -124,14 +142,13 @@ export async function deleteTeam(teamId: string): Promise<void> {
 	}
 }
 
-// ─── Team members ────────────────────────────────────────────────────────
+// â”€â”€â”€ Team members â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function listTeamMembers(teamId: string): Promise<TeamMember[]> {
 	try {
-		const { data } = await apiClient.get<TeamMember[]>(
-			`/teams/${teamId}/members`,
+		const { data } = await apiClient.get<{ data: TeamMember[] }>(`/api/teams/${teamId}/members`,
 		);
-		return data;
+		return data.data;
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(
@@ -155,11 +172,10 @@ export async function addTeamMember(
 	},
 ): Promise<TeamMember> {
 	try {
-		const { data } = await apiClient.post<TeamMember>(
-			`/teams/${teamId}/members`,
+		const { data } = await apiClient.post<{ data: TeamMember }>(`/api/teams/${teamId}/members`,
 			input,
 		);
-		return data;
+		return data.data;
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(
@@ -183,11 +199,10 @@ export async function updateTeamMember(
 	},
 ): Promise<TeamMember> {
 	try {
-		const { data } = await apiClient.patch<TeamMember>(
-			`/teams/${teamId}/members/${userId}`,
+		const { data } = await apiClient.patch<{ data: TeamMember }>(`/api/teams/${teamId}/members/${userId}`,
 			patch,
 		);
-		return data;
+		return data.data;
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(
@@ -203,7 +218,7 @@ export async function removeTeamMember(
 	userId: string,
 ): Promise<void> {
 	try {
-		await apiClient.delete(`/teams/${teamId}/members/${userId}`);
+		await apiClient.delete(`/api/teams/${teamId}/members/${userId}`);
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(
@@ -214,16 +229,15 @@ export async function removeTeamMember(
 	}
 }
 
-// ─── Project ↔ team attachments ──────────────────────────────────────────
+// â”€â”€â”€ Project â†” team attachments â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function listProjectTeams(
 	projectId: string,
 ): Promise<ProjectTeam[]> {
 	try {
-		const { data } = await apiClient.get<ProjectTeam[]>(
-			`/projects/${projectId}/teams`,
+		const { data } = await apiClient.get<{ data: ProjectTeam[] }>(`/api/projects/${projectId}/teams`,
 		);
-		return data;
+		return data.data;
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(
@@ -244,11 +258,10 @@ export async function attachTeam(
 	},
 ): Promise<ProjectTeam> {
 	try {
-		const { data } = await apiClient.post<ProjectTeam>(
-			`/projects/${projectId}/teams`,
+		const { data } = await apiClient.post<{ data: ProjectTeam }>(`/api/projects/${projectId}/teams`,
 			input,
 		);
-		return data;
+		return data.data;
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(
@@ -264,7 +277,7 @@ export async function detachTeam(
 	teamId: string,
 ): Promise<void> {
 	try {
-		await apiClient.delete(`/projects/${projectId}/teams/${teamId}`);
+		await apiClient.delete(`/api/projects/${projectId}/teams/${teamId}`);
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(
@@ -284,11 +297,10 @@ export async function updateProjectTeam(
 	},
 ): Promise<ProjectTeam> {
 	try {
-		const { data } = await apiClient.patch<ProjectTeam>(
-			`/projects/${projectId}/teams/${teamId}`,
+		const { data } = await apiClient.patch<{ data: ProjectTeam }>(`/api/projects/${projectId}/teams/${teamId}`,
 			patch,
 		);
-		return data;
+		return data.data;
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(
@@ -304,10 +316,9 @@ export async function listCuratedMembers(
 	teamId: string,
 ): Promise<ProjectTeamMember[]> {
 	try {
-		const { data } = await apiClient.get<ProjectTeamMember[]>(
-			`/projects/${projectId}/teams/${teamId}/members`,
+		const { data } = await apiClient.get<{ data: ProjectTeamMember[] }>(`/api/projects/${projectId}/teams/${teamId}/members`,
 		);
-		return data;
+		return data.data;
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(
@@ -321,12 +332,11 @@ export async function listCuratedMembers(
 export async function listAvailableTeamMembers(
 	projectId: string,
 	teamId: string,
-): Promise<Array<{ user_id: string; role: TeamRole }>> {
+): Promise<AvailableTeamMember[]> {
 	try {
-		const { data } = await apiClient.get<
-			Array<{ user_id: string; role: TeamRole }>
-		>(`/projects/${projectId}/teams/${teamId}/available-members`);
-		return data;
+		const { data } = await apiClient.get<{ data: AvailableTeamMember[] }>(`/api/projects/${projectId}/teams/${teamId}/available-members`,
+		);
+		return data.data;
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(
@@ -343,11 +353,10 @@ export async function addCuratedMember(
 	input: { user_id: string; role?: ProjectTeamDefaultRole },
 ): Promise<ProjectTeamMember> {
 	try {
-		const { data } = await apiClient.post<ProjectTeamMember>(
-			`/projects/${projectId}/teams/${teamId}/members`,
+		const { data } = await apiClient.post<{ data: ProjectTeamMember }>(`/api/projects/${projectId}/teams/${teamId}/members`,
 			input,
 		);
-		return data;
+		return data.data;
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(
@@ -365,11 +374,10 @@ export async function updateCuratedMember(
 	patch: { role?: ProjectTeamDefaultRole },
 ): Promise<ProjectTeamMember> {
 	try {
-		const { data } = await apiClient.patch<ProjectTeamMember>(
-			`/projects/${projectId}/teams/${teamId}/members/${userId}`,
+		const { data } = await apiClient.patch<{ data: ProjectTeamMember }>(`/api/projects/${projectId}/teams/${teamId}/members/${userId}`,
 			patch,
 		);
-		return data;
+		return data.data;
 	} catch (err) {
 		throw new Error(
 			extractApiErrorMessage(
@@ -386,8 +394,7 @@ export async function removeCuratedMember(
 	userId: string,
 ): Promise<void> {
 	try {
-		await apiClient.delete(
-			`/projects/${projectId}/teams/${teamId}/members/${userId}`,
+		await apiClient.delete(`/api/projects/${projectId}/teams/${teamId}/members/${userId}`,
 		);
 	} catch (err) {
 		throw new Error(

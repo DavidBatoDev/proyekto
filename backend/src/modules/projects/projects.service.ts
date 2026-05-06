@@ -1,10 +1,13 @@
 import {
   BadRequestException,
   ForbiddenException,
+  forwardRef,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ProjectTeamsService } from '../teams/project-teams.service';
 export const PROJECTS_REPOSITORY = Symbol('PROJECTS_REPOSITORY');
 import type { ProjectsRepository } from './repositories/projects.repository.interface';
 import {
@@ -50,11 +53,15 @@ import type {
 
 @Injectable()
 export class ProjectsService {
+  private readonly logger = new Logger(ProjectsService.name);
+
   constructor(
     @Inject(PROJECTS_REPOSITORY)
     private readonly projectsRepo: ProjectsRepository,
     private readonly notificationsService: NotificationsService,
     private readonly authorization: ProjectAuthorizationService,
+    @Inject(forwardRef(() => ProjectTeamsService))
+    private readonly projectTeams: ProjectTeamsService,
   ) {}
 
   /**
@@ -339,6 +346,28 @@ export class ProjectsService {
       origin: 'consultant',
       grantedBy: userId,
     });
+
+    // If the picker passed a team, attach it as primary with the
+    // consultant curated as the only initial member. Failures here are
+    // non-fatal: the project itself was already created and the
+    // consultant can attach a team later from project settings.
+    if (dto.primary_team_id) {
+      try {
+        await this.projectTeams.attach(project.id, userId, {
+          team_id: dto.primary_team_id,
+          is_primary: true,
+          default_role: 'editor',
+          member_user_ids: [userId],
+        });
+      } catch (err) {
+        this.logger.error(
+          `Failed to attach primary_team_id=${dto.primary_team_id} on project ${project.id} create (user ${userId}): ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
     return project;
   }
 

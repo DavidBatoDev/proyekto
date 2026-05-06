@@ -11,6 +11,7 @@ const Header = () => {
 		"/dashboard",
 		"/inbox",
 		"/work-items",
+		"/teams",
 		"/project",
 		"/profile",
 		"/consultant",
@@ -31,8 +32,12 @@ const Header = () => {
 		return null;
 	}
 
-	// /consultant/apply is a chrome-less surface (its own back/exit affordance)
-	if (currentPath.startsWith("/consultant/apply")) {
+	// /consultant/apply and /project-posting are chrome-less surfaces
+	// (each has its own back/exit affordance and a focused full-page UI).
+	if (
+		currentPath.startsWith("/consultant/apply") ||
+		currentPath.startsWith("/project-posting")
+	) {
 		return null;
 	}
 

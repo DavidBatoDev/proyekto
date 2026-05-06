@@ -3,6 +3,7 @@ import { DashboardWidgets } from "./DashboardWidgets";
 import { MyWorkSection } from "./MyWorkSection";
 import { ProjectsGrid } from "./ProjectsGrid";
 import { RoadmapsGrid } from "./RoadmapsGrid";
+import { TeamsGrid } from "./TeamsGrid";
 
 export function PrimaryFlow() {
 	const { profile } = useAuthStore();
@@ -11,18 +12,13 @@ export function PrimaryFlow() {
 
 	return (
 		<DashboardWidgets>
-			{/* Projects Grid */}
+			<TeamsGrid />
+
 			<ProjectsGrid />
 
-			{/* Roadmaps Grid */}
 			<RoadmapsGrid />
 
-			{!isFreelancer ? (
-				<>
-					{/* My Work */}
-					<MyWorkSection />
-				</>
-			) : null}
+			{!isFreelancer ? <MyWorkSection /> : null}
 		</DashboardWidgets>
 	);
 }
@@ -30,13 +26,9 @@ export function PrimaryFlow() {
 export function LeftSide() {
 	return (
 		<div className="space-y-8">
-			{/* Projects Grid */}
+			<TeamsGrid />
 			<ProjectsGrid />
-
-			{/* Roadmaps Grid */}
 			<RoadmapsGrid />
-
-			{/* My Work */}
 			<MyWorkSection />
 		</div>
 	);

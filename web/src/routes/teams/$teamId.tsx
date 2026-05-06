@@ -1,17 +1,12 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import {
-	ArrowLeft,
-	Loader2,
-	Plus,
-	Trash2,
-	User,
-	Users,
-} from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Trash2, Users } from "lucide-react";
 import { AppSectionHeader, AppSurfaceCard } from "@/components/common/AppPrimitives";
+import { DashboardShell } from "@/components/layout/DashboardShell";
+import { MemberDisplay } from "@/components/common/MemberDisplay";
 import { useToast } from "@/hooks/useToast";
-import { useUser } from "@/stores/authStore";
+import { useAuthStore, useUser } from "@/stores/authStore";
 import {
 	addTeamMember,
 	getTeam,
@@ -21,6 +16,12 @@ import {
 } from "@/services/teams.service";
 
 export const Route = createFileRoute("/teams/$teamId")({
+	beforeLoad: () => {
+		const { isAuthenticated } = useAuthStore.getState();
+		if (!isAuthenticated) {
+			throw redirect({ to: "/auth/login" });
+		}
+	},
 	component: TeamDetailPage,
 });
 
@@ -43,23 +44,27 @@ function TeamDetailPage() {
 
 	if (teamQuery.isLoading) {
 		return (
-			<div className="flex h-64 items-center justify-center text-slate-500">
-				<Loader2 className="mr-2 h-5 w-5 animate-spin" />
-				Loading team…
-			</div>
+			<DashboardShell>
+				<div className="flex h-64 items-center justify-center text-slate-500">
+					<Loader2 className="mr-2 h-5 w-5 animate-spin" />
+					Loading team…
+				</div>
+			</DashboardShell>
 		);
 	}
 	if (teamQuery.error) {
 		return (
-			<AppSurfaceCard className="m-8 p-6 text-rose-700">
-				{(teamQuery.error as Error).message}
-			</AppSurfaceCard>
+			<DashboardShell>
+				<AppSurfaceCard className="m-8 p-6 text-rose-700">
+					{(teamQuery.error as Error).message}
+				</AppSurfaceCard>
+			</DashboardShell>
 		);
 	}
 	if (!team) return null;
 
 	return (
-		<div className="app-shell-bg min-h-full">
+		<DashboardShell>
 			<div className="mx-auto w-full max-w-[1040px] px-5 py-8 md:px-8 md:py-10">
 				<Link
 					to="/teams"
@@ -124,7 +129,7 @@ function TeamDetailPage() {
 					onClose={() => setAddOpen(false)}
 				/>
 			)}
-		</div>
+		</DashboardShell>
 	);
 }
 
@@ -156,19 +161,11 @@ function MemberRow({
 
 	return (
 		<li className="flex items-center justify-between px-5 py-3">
-			<div className="flex items-center gap-3">
-				<div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-600">
-					<User className="h-4 w-4" />
-				</div>
-				<div>
-					<p className="text-sm font-medium text-slate-900">
-						{member.user_id}
-					</p>
-					<p className="text-xs uppercase tracking-wide text-slate-500">
-						{member.role}
-					</p>
-				</div>
-			</div>
+			<MemberDisplay
+				user={member.user}
+				fallbackId={member.user_id}
+				subtitle={member.role}
+			/>
 			{isOwnerView && !isOwnerRow && (
 				<button
 					type="button"

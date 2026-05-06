@@ -27,7 +27,18 @@ export interface ProjectTeamMemberRow {
   capabilities: Record<string, unknown>;
   added_by: string | null;
   added_at: string;
+  user?: {
+    id: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    email: string | null;
+    first_name: string | null;
+    last_name: string | null;
+  } | null;
 }
+
+const PROJECT_TEAM_MEMBER_SELECT =
+  '*, user:profiles!project_team_members_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name)';
 
 @Injectable()
 export class ProjectTeamsService {
@@ -57,7 +68,7 @@ export class ProjectTeamsService {
     await this.projectAuth.assertRole(callerId, projectId, 'viewer');
     const { data, error } = await this.supabase
       .from('project_team_members')
-      .select('*')
+      .select(PROJECT_TEAM_MEMBER_SELECT)
       .eq('project_id', projectId)
       .eq('team_id', teamId);
     if (error) throw new Error(error.message);
@@ -68,13 +79,28 @@ export class ProjectTeamsService {
     projectId: string,
     teamId: string,
     callerId: string,
-  ): Promise<Array<{ user_id: string; role: string }>> {
+  ): Promise<
+    Array<{
+      user_id: string;
+      role: string;
+      user: {
+        id: string;
+        display_name: string | null;
+        avatar_url: string | null;
+        email: string | null;
+        first_name: string | null;
+        last_name: string | null;
+      } | null;
+    }>
+  > {
     await this.projectAuth.assertRole(callerId, projectId, 'admin');
     const [{ data: teamMembers, error: tmErr }, { data: curated, error: cErr }] =
       await Promise.all([
         this.supabase
           .from('team_members')
-          .select('user_id, role')
+          .select(
+            'user_id, role, user:profiles!team_members_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name)',
+          )
           .eq('team_id', teamId),
         this.supabase
           .from('project_team_members')
@@ -85,7 +111,18 @@ export class ProjectTeamsService {
     if (tmErr) throw new Error(tmErr.message);
     if (cErr) throw new Error(cErr.message);
     const taken = new Set((curated ?? []).map((c) => c.user_id));
-    return (teamMembers ?? []).filter((m) => !taken.has(m.user_id));
+    return ((teamMembers ?? []) as unknown as Array<{
+      user_id: string;
+      role: string;
+      user: {
+        id: string;
+        display_name: string | null;
+        avatar_url: string | null;
+        email: string | null;
+        first_name: string | null;
+        last_name: string | null;
+      } | null;
+    }>).filter((m) => !taken.has(m.user_id));
   }
 
   async attach(
@@ -228,7 +265,7 @@ export class ProjectTeamsService {
         role,
         added_by: callerId,
       })
-      .select('*')
+      .select(PROJECT_TEAM_MEMBER_SELECT)
       .single();
     if (error || !data) {
       throw new Error(error?.message ?? 'Failed to add curated member');
@@ -252,7 +289,7 @@ export class ProjectTeamsService {
       .eq('project_id', projectId)
       .eq('team_id', teamId)
       .eq('user_id', targetUserId)
-      .select('*')
+      .select(PROJECT_TEAM_MEMBER_SELECT)
       .single();
     if (error || !data) {
       throw new NotFoundException('Curated member not found');

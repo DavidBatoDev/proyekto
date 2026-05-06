@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { ProjectSettingsLayout } from "@/components/project/ProjectSettingsLayout";
 import { AppSurfaceCard } from "@/components/common/AppPrimitives";
+import { MemberDisplay } from "@/components/common/MemberDisplay";
 import { useToast } from "@/hooks/useToast";
 import {
 	addCuratedMember,
@@ -26,6 +27,7 @@ import {
 	removeCuratedMember,
 	type ProjectTeam,
 	type ProjectTeamDefaultRole,
+	type ProjectTeamMember,
 } from "@/services/teams.service";
 
 export const Route = createFileRoute("/project/$projectId/settings/teams")({
@@ -220,8 +222,7 @@ function AttachedTeamRow({
 									key={m.user_id}
 									projectId={projectId}
 									teamId={projectTeam.team_id}
-									userId={m.user_id}
-									role={m.role}
+									member={m}
 								/>
 							))}
 						</ul>
@@ -244,19 +245,17 @@ function AttachedTeamRow({
 function CuratedMemberRow({
 	projectId,
 	teamId,
-	userId,
-	role,
+	member,
 }: {
 	projectId: string;
 	teamId: string;
-	userId: string;
-	role: ProjectTeamDefaultRole;
+	member: ProjectTeamMember;
 }) {
 	const queryClient = useQueryClient();
 	const toast = useToast();
 
 	const removeMutation = useMutation({
-		mutationFn: () => removeCuratedMember(projectId, teamId, userId),
+		mutationFn: () => removeCuratedMember(projectId, teamId, member.user_id),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({
 				queryKey: ["project", projectId, "teams", teamId, "curated"],
@@ -268,12 +267,11 @@ function CuratedMemberRow({
 
 	return (
 		<li className="flex items-center justify-between px-5 py-3">
-			<div>
-				<p className="font-mono text-xs text-slate-700">{userId}</p>
-				<p className="mt-0.5 text-xs uppercase tracking-wide text-slate-500">
-					{role}
-				</p>
-			</div>
+			<MemberDisplay
+				user={member.user}
+				fallbackId={member.user_id}
+				subtitle={member.role}
+			/>
 			<button
 				type="button"
 				onClick={() => removeMutation.mutate()}
@@ -359,16 +357,14 @@ function AddCuratedPicker({
 							{available.map((m) => (
 								<li
 									key={m.user_id}
-									className="flex items-center justify-between px-4 py-3"
+									className="flex items-center justify-between gap-3 px-4 py-3"
 								>
-									<div>
-										<p className="font-mono text-xs text-slate-700">
-											{m.user_id}
-										</p>
-										<p className="mt-0.5 text-xs uppercase tracking-wide text-slate-500">
-											team {m.role}
-										</p>
-									</div>
+									<MemberDisplay
+										user={m.user}
+										fallbackId={m.user_id}
+										subtitle={`team ${m.role}`}
+										size="sm"
+									/>
 									<button
 										type="button"
 										onClick={() => addMutation.mutate(m.user_id)}
@@ -595,12 +591,14 @@ function AttachTeamModal({
 															});
 														}}
 													/>
-													<span className="font-mono text-xs text-slate-700">
-														{m.user_id}
-													</span>
-													<span className="ml-auto text-xs uppercase tracking-wide text-slate-500">
-														{m.role}
-													</span>
+													<div className="flex-1 min-w-0">
+														<MemberDisplay
+															user={m.user}
+															fallbackId={m.user_id}
+															subtitle={m.role}
+															size="sm"
+														/>
+													</div>
 												</li>
 											))}
 										</ul>

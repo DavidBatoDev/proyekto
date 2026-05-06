@@ -149,6 +149,11 @@ export class CreateProjectDto {
   @IsString() @IsOptional() funding_status?: string;
   @IsString() @IsOptional() start_date?: string;
   @IsString() @IsOptional() custom_start_date?: string;
+
+  // Consultant-mode only: optional team picked at create-time. The
+  // service attaches it as the primary team in a separate write so a
+  // failed attach does not roll back the project itself.
+  @IsUUID() @IsOptional() primary_team_id?: string;
 }
 
 export class UpdateProjectDto {

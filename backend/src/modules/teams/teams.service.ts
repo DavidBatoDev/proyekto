@@ -2,6 +2,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
@@ -20,6 +21,7 @@ export interface TeamRow {
   name: string;
   description: string | null;
   avatar_url: string | null;
+  is_personal: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -35,7 +37,18 @@ export interface TeamMemberRow {
   start_date: string | null;
   end_date: string | null;
   joined_at: string;
+  user?: {
+    id: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    email: string | null;
+    first_name: string | null;
+    last_name: string | null;
+  } | null;
 }
+
+const TEAM_MEMBER_SELECT =
+  '*, user:profiles!team_members_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name)';
 
 const RATE_FIELDS: Array<keyof AddTeamMemberDto> = [
   'hourly_rate',
@@ -47,9 +60,88 @@ const RATE_FIELDS: Array<keyof AddTeamMemberDto> = [
 
 @Injectable()
 export class TeamsService {
+  private readonly logger = new Logger(TeamsService.name);
+
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
   ) {}
+
+  /**
+   * Idempotently create the user's single personal team. Called by
+   * AuthService.completeOnboarding for consultant-lane signups. Returns
+   * the existing personal team on re-runs (partial unique index on
+   * teams(owner_id) WHERE is_personal is the source of truth).
+   */
+  async provisionPersonalTeam(userId: string): Promise<TeamRow> {
+    const existing = await this.findPersonalTeam(userId);
+    if (existing) return existing;
+
+    const name = await this.buildDefaultPersonalTeamName(userId);
+
+    const { data: created, error } = await this.supabase
+      .from('teams')
+      .insert({
+        owner_id: userId,
+        name,
+        is_personal: true,
+      })
+      .select('*')
+      .single();
+
+    if (error) {
+      // Race: another caller won the partial unique index. Re-fetch.
+      if (error.code === '23505') {
+        const survivor = await this.findPersonalTeam(userId);
+        if (survivor) return survivor;
+      }
+      this.logger.error(
+        `Failed to create personal team for ${userId}: ${error.message}`,
+      );
+      throw new Error(error.message);
+    }
+    if (!created) throw new Error('Personal team insert returned no row');
+
+    // Owner gets a team_members row, mirroring createTeam().
+    const insertOwner = await this.supabase
+      .from('team_members')
+      .insert({
+        team_id: (created as TeamRow).id,
+        user_id: userId,
+        role: 'owner',
+      });
+    if (insertOwner.error) {
+      this.logger.error(
+        `Personal team ${(created as TeamRow).id} created but owner team_members insert failed: ${insertOwner.error.message}`,
+      );
+      throw new Error(insertOwner.error.message);
+    }
+    return created as TeamRow;
+  }
+
+  async findPersonalTeam(userId: string): Promise<TeamRow | null> {
+    const { data, error } = await this.supabase
+      .from('teams')
+      .select('*')
+      .eq('owner_id', userId)
+      .eq('is_personal', true)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return (data as TeamRow | null) ?? null;
+  }
+
+  private async buildDefaultPersonalTeamName(userId: string): Promise<string> {
+    const { data } = await this.supabase
+      .from('profiles')
+      .select('first_name, display_name')
+      .eq('id', userId)
+      .maybeSingle();
+
+    const name =
+      (data?.first_name as string | undefined)?.trim() ||
+      (data?.display_name as string | undefined)?.trim() ||
+      'My';
+    return `${name}'s Team`;
+  }
 
   async listMyTeams(userId: string): Promise<TeamRow[]> {
     // Teams I own + teams where I'm a member.
@@ -166,7 +258,7 @@ export class TeamsService {
     await this.assertCanRead(team, userId);
     const { data, error } = await this.supabase
       .from('team_members')
-      .select('*')
+      .select(TEAM_MEMBER_SELECT)
       .eq('team_id', teamId);
     if (error) throw new Error(error.message);
     return (data ?? []) as TeamMemberRow[];
@@ -195,7 +287,7 @@ export class TeamsService {
     const { data, error } = await this.supabase
       .from('team_members')
       .insert(payload)
-      .select('*')
+      .select(TEAM_MEMBER_SELECT)
       .single();
     if (error || !data) {
       throw new Error(error?.message ?? 'Failed to add team member');
@@ -228,7 +320,7 @@ export class TeamsService {
       .update(patch)
       .eq('team_id', teamId)
       .eq('user_id', targetUserId)
-      .select('*')
+      .select(TEAM_MEMBER_SELECT)
       .single();
     if (error || !data) {
       throw new Error(error?.message ?? 'Failed to update team member');

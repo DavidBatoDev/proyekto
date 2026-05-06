@@ -19,10 +19,12 @@ import {
   FreelancerEligibilityService,
   type FreelancerRequirement,
 } from '../profile/freelancer-eligibility.service';
+import { TeamsService } from '../teams/teams.service';
 
 export interface CompleteOnboardingResult {
   profile: Profile;
-  personal_workspace_id: string;
+  personal_workspace_id: string | null;
+  personal_team_id: string | null;
 }
 
 export interface ProfileWithEligibility extends Profile {
@@ -37,6 +39,7 @@ export class AuthService {
     @Inject(AUTH_REPOSITORY) private readonly authRepo: AuthRepository,
     private readonly personalWorkspaceService: PersonalWorkspaceService,
     private readonly freelancerEligibility: FreelancerEligibilityService,
+    private readonly teamsService: TeamsService,
   ) {}
 
   async getProfile(userId: string): Promise<ProfileWithEligibility> {
@@ -73,24 +76,32 @@ export class AuthService {
       active_persona,
     });
 
-    // Provision the personal workspace as part of the same orchestration.
-    // Idempotent: re-runs are no-ops. If this throws, the onboarding state is
-    // already persisted — surface the error so the client can retry, but
-    // don't roll back the persona/lane writes.
-    let personal_workspace_id: string;
+    // Lane-scoped provisioning: consultants get a personal team, clients
+    // keep the personal workspace project. Either path is idempotent on
+    // re-run. If provisioning throws, the onboarding state is already
+    // persisted — surface the error so the client can retry without
+    // rolling back the persona/lane writes.
+    let personal_workspace_id: string | null = null;
+    let personal_team_id: string | null = null;
+
     try {
-      const workspace = await this.personalWorkspaceService.provision(userId);
-      personal_workspace_id = workspace.id;
+      if (dto.lane === 'consultant') {
+        const team = await this.teamsService.provisionPersonalTeam(userId);
+        personal_team_id = team.id;
+      } else {
+        const workspace = await this.personalWorkspaceService.provision(userId);
+        personal_workspace_id = workspace.id;
+      }
     } catch (err) {
       this.logger.error(
-        `Failed to provision personal workspace for ${userId} after onboarding: ${
+        `Failed to provision lane-scoped artifact for ${userId} (lane=${dto.lane}) after onboarding: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
       throw err;
     }
 
-    return { profile, personal_workspace_id };
+    return { profile, personal_workspace_id, personal_team_id };
   }
 
   async switchPersona(userId: string, dto: SwitchPersonaDto): Promise<Profile> {

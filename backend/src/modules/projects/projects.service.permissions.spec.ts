@@ -44,10 +44,16 @@ describe('ProjectsService (permissions)', () => {
       ...defaultAuthorization,
       ...authorizationOverrides,
     };
+    const projectTeams = {
+      attach: jest.fn(),
+      detach: jest.fn(),
+      list: jest.fn(),
+    } as any;
     return new ProjectsService(
       repo,
       notificationsService as any,
       authorization as any,
+      projectTeams,
     );
   };
 
