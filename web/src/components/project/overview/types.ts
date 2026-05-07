@@ -1,16 +1,15 @@
 import type { RoadmapMilestone } from "@/types/roadmap";
 
-export type ProjectBrief = {
-  mission_vision?: string | null;
-  scope_statement?: string | null;
-  requirements?: unknown;
-  constraints?: string | null;
-  risk_register?: unknown;
-  visibility_mask?: Record<string, unknown> | null;
-  notes?: string | null;
+export type ProjectBriefField = {
+  key: string;
+  value: string;
+  position: number;
 };
 
-export type BriefStorageMode = "visibility_mask" | "notes" | "none";
+export type ProjectBrief = {
+  project_summary?: string | null;
+  custom_fields: ProjectBriefField[];
+};
 
 export type OverviewTimelineItem = {
   id: string;

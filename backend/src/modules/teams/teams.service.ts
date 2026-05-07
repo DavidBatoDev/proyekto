@@ -391,7 +391,6 @@ export class TeamsService {
       project_id: string;
       team_id: string;
       is_primary: boolean;
-      default_role: string;
       attached_at: string;
       project: {
         id: string;
@@ -404,7 +403,7 @@ export class TeamsService {
     const { data, error } = await this.supabase
       .from('project_teams')
       .select(
-        `project_id, team_id, is_primary, default_role, attached_at,
+        `project_id, team_id, is_primary, attached_at,
          project:projects!project_teams_project_id_fkey(id, title)`,
       )
       .eq('team_id', teamId)
@@ -414,7 +413,6 @@ export class TeamsService {
       project_id: string;
       team_id: string;
       is_primary: boolean;
-      default_role: string;
       attached_at: string;
       project: { id: string; title: string | null } | null;
     }>;

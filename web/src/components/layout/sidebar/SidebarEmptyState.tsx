@@ -1,4 +1,3 @@
-import { Link } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -32,7 +31,11 @@ export function SidebarEmptyState({
 			<div className="mb-2 text-slate-400">{icon}</div>
 			<p className="mb-3 text-[11px] text-slate-500">{label}</p>
 			{ctaTo ? (
-				<Link to={ctaTo}>{cta}</Link>
+				// Plain anchor so generic ctaTo strings don't have to satisfy
+				// each target route's typed search params. Full navigation is
+				// fine here since the sidebar empty-state CTA always routes
+				// the user away from their current page anyway.
+				<a href={ctaTo}>{cta}</a>
 			) : (
 				<button type="button" onClick={onCtaClick}>
 					{cta}

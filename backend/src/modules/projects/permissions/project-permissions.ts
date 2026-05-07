@@ -52,6 +52,10 @@ export type ProjectPermissions = {
     edit_permissions: boolean;
     edit_position: boolean;
   };
+  teams: {
+    view: boolean;
+    manage: boolean;
+  };
   project: {
     settings: boolean;
     edit_content: boolean;
@@ -105,6 +109,8 @@ export type PermissionPath =
   | 'members.manage'
   | 'members.edit_permissions'
   | 'members.edit_position'
+  | 'teams.view'
+  | 'teams.manage'
   | 'project.settings'
   | 'project.edit_content'
   | 'project.view_internal_content'
@@ -136,6 +142,7 @@ export const PERMISSION_PATHS: readonly PermissionPath[] = [
   'roadmap.export', 'roadmap.dev_mode',
   'members.view', 'members.manage', 'members.edit_permissions',
   'members.edit_position',
+  'teams.view', 'teams.manage',
   'project.settings', 'project.edit_content', 'project.view_internal_content',
   'chat.view_channels', 'chat.send_messages', 'chat.create_channels',
   'chat.manage_channels', 'chat.view_internal_channels',
@@ -183,6 +190,9 @@ function allFalse(): ProjectPermissions {
     members: {
       view: false, manage: false, edit_permissions: false,
       edit_position: false,
+    },
+    teams: {
+      view: false, manage: false,
     },
     project: {
       settings: false, edit_content: false, view_internal_content: false,
@@ -239,6 +249,7 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
     'roadmap.view': true,
     'roadmap.export': true,
     'members.view': true,
+    'teams.view': true,
     'chat.view_channels': true,
     'resources.view': true,
     'logs.view': true,
@@ -282,6 +293,7 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
     'members.manage': true,
     'members.edit_permissions': true,
     'members.edit_position': true,
+    'teams.manage': true,
     'project.settings': true,
     'project.edit_content': true,
     'project.view_internal_content': true,
@@ -318,6 +330,7 @@ export const ORIGIN_DELTAS: Record<
   consultant: {
     'chat.message_freelancers': true,
     'members.manage': true,
+    'teams.manage': true,
   },
   // Pure invite — no extra capabilities beyond the role baseline.
   invited: {},
@@ -351,6 +364,8 @@ export const PERMISSION_DEPENDENCIES: Partial<
   'members.manage': ['members.view'],
   'members.edit_permissions': ['members.manage'],
   'members.edit_position': ['members.view'],
+
+  'teams.manage': ['teams.view'],
 
   'chat.send_messages': ['chat.view_channels'],
   'chat.create_channels': ['chat.view_channels'],

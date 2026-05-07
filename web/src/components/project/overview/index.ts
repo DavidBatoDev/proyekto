@@ -4,11 +4,15 @@ export { OverviewLoadingSkeleton } from "./OverviewLoadingSkeleton";
 export { OverviewBanner } from "./OverviewBanner";
 export { OverviewContent } from "./OverviewContent";
 export { OverviewSidebar } from "./OverviewSidebar";
-export type { ProjectBrief, BriefStorageMode, OverviewTimelineItem } from "./types";
+export type {
+  ProjectBrief,
+  ProjectBriefField,
+  OverviewTimelineItem,
+} from "./types";
+export { CustomFieldsEditor } from "./CustomFieldsEditor";
 export {
   MAX_OVERVIEW_MILESTONES,
   escapeHtml,
-  toItems,
   toRichHtml,
   isPastDate,
   mapTaskStatus,

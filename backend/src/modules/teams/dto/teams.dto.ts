@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
@@ -11,6 +12,7 @@ import {
   Length,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 
 export class CreateTeamDto {
@@ -157,6 +159,14 @@ export const PROJECT_TEAM_DEFAULT_ROLES = [
 export type ProjectTeamDefaultRole =
   (typeof PROJECT_TEAM_DEFAULT_ROLES)[number];
 
+export class AttachTeamMemberRoleDto {
+  @IsUUID()
+  user_id!: string;
+
+  @IsIn(PROJECT_TEAM_DEFAULT_ROLES)
+  role!: ProjectTeamDefaultRole;
+}
+
 export class AttachTeamDto {
   @IsUUID()
   team_id!: string;
@@ -165,37 +175,30 @@ export class AttachTeamDto {
   @IsBoolean()
   is_primary?: boolean;
 
-  @IsOptional()
-  @IsIn(PROJECT_TEAM_DEFAULT_ROLES)
-  default_role?: ProjectTeamDefaultRole;
-
-  /** When omitted, defaults to all current team members. */
+  /**
+   * Per-member role pairs for the curated rows. The role is written to
+   * the new project_access row for users without a prior grant; users
+   * already on the project keep their existing yoked role and the role
+   * here is ignored.
+   */
   @IsOptional()
   @IsArray()
-  @IsUUID('all', { each: true })
-  member_user_ids?: string[];
+  @ValidateNested({ each: true })
+  @Type(() => AttachTeamMemberRoleDto)
+  members?: AttachTeamMemberRoleDto[];
 }
 
 export class UpdateProjectTeamDto {
   @IsOptional()
   @IsBoolean()
   is_primary?: boolean;
-
-  @IsOptional()
-  @IsIn(PROJECT_TEAM_DEFAULT_ROLES)
-  default_role?: ProjectTeamDefaultRole;
 }
 
 export class AddCuratedMemberDto {
   @IsUUID()
   user_id!: string;
 
-  @IsOptional()
-  @IsIn(PROJECT_TEAM_DEFAULT_ROLES)
-  role?: ProjectTeamDefaultRole;
-}
-
-export class UpdateCuratedMemberDto {
+  /** Role for new users. Ignored for users already on the project. */
   @IsOptional()
   @IsIn(PROJECT_TEAM_DEFAULT_ROLES)
   role?: ProjectTeamDefaultRole;

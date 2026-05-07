@@ -15,7 +15,6 @@ import { ProjectTeamsService } from './project-teams.service';
 import {
   AddCuratedMemberDto,
   AttachTeamDto,
-  UpdateCuratedMemberDto,
   UpdateProjectTeamDto,
 } from './dto/teams.dto';
 
@@ -86,23 +85,6 @@ export class ProjectTeamsController {
     @Body() dto: AddCuratedMemberDto,
   ) {
     return this.projectTeams.addCuratedMember(projectId, teamId, user.id, dto);
-  }
-
-  @Patch(':teamId/members/:userId')
-  updateMember(
-    @Param('projectId') projectId: string,
-    @Param('teamId') teamId: string,
-    @Param('userId') userId: string,
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: UpdateCuratedMemberDto,
-  ) {
-    return this.projectTeams.updateCuratedMember(
-      projectId,
-      teamId,
-      userId,
-      user.id,
-      dto,
-    );
   }
 
   @Delete(':teamId/members/:userId')

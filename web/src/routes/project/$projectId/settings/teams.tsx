@@ -13,7 +13,12 @@ import {
 import { ProjectSettingsLayout } from "@/components/project/ProjectSettingsLayout";
 import { AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { MemberDisplay } from "@/components/common/MemberDisplay";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import { useToast } from "@/hooks/useToast";
+import {
+	useProjectMembersQuery,
+	useProjectMyPermissionsQuery,
+} from "@/hooks/useProjectQueries";
 import {
 	addCuratedMember,
 	attachTeam,
@@ -36,11 +41,17 @@ export const Route = createFileRoute("/project/$projectId/settings/teams")({
 
 function ProjectTeamsTab() {
 	const { projectId } = Route.useParams();
+	const permissionsQuery = useProjectMyPermissionsQuery(projectId);
 	const teamsQuery = useQuery({
 		queryKey: ["project", projectId, "teams"],
 		queryFn: () => listProjectTeams(projectId),
 	});
 	const [attachOpen, setAttachOpen] = useState(false);
+
+	const canManageTeams = Boolean(permissionsQuery.data?.teams.manage);
+	// teams.manage covers attach/detach. Curation gates separately on
+	// members.manage; AttachedTeamRow handles its own member-level UI.
+	const canManageMembers = Boolean(permissionsQuery.data?.members.manage);
 
 	return (
 		<ProjectSettingsLayout projectId={projectId}>
@@ -56,14 +67,16 @@ function ProjectTeamsTab() {
 						won't see this project.
 					</p>
 				</div>
-				<button
-					type="button"
-					onClick={() => setAttachOpen(true)}
-					className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
-				>
-					<Plus className="h-4 w-4" />
-					Attach team
-				</button>
+				{canManageTeams && (
+					<button
+						type="button"
+						onClick={() => setAttachOpen(true)}
+						className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
+					>
+						<Plus className="h-4 w-4" />
+						Attach team
+					</button>
+				)}
 			</div>
 
 			<div className="mt-6 space-y-4">
@@ -93,6 +106,8 @@ function ProjectTeamsTab() {
 							key={pt.team_id}
 							projectId={projectId}
 							projectTeam={pt}
+							canManageTeams={canManageTeams}
+							canManageMembers={canManageMembers}
 						/>
 					))
 				)}
@@ -111,9 +126,15 @@ function ProjectTeamsTab() {
 function AttachedTeamRow({
 	projectId,
 	projectTeam,
+	canManageTeams,
+	canManageMembers,
 }: {
 	projectId: string;
 	projectTeam: ProjectTeam;
+	/** teams.manage — gates Detach. */
+	canManageTeams: boolean;
+	/** members.manage — gates Add member + per-row Remove. */
+	canManageMembers: boolean;
 }) {
 	const queryClient = useQueryClient();
 	const toast = useToast();
@@ -171,19 +192,19 @@ function AttachedTeamRow({
 							Primary
 						</span>
 					)}
-					<span className="text-xs text-slate-500">
-						default {projectTeam.default_role}
-					</span>
 				</button>
 				<div className="flex items-center gap-2">
-					<button
-						type="button"
-						onClick={() => setPicker(true)}
-						className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
-					>
-						<Plus className="h-3.5 w-3.5" />
-						Add member
-					</button>
+					{canManageMembers && (
+						<button
+							type="button"
+							onClick={() => setPicker(true)}
+							className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+						>
+							<Plus className="h-3.5 w-3.5" />
+							Add member
+						</button>
+					)}
+					{canManageTeams && (
 					<button
 						type="button"
 						onClick={() => {
@@ -201,6 +222,7 @@ function AttachedTeamRow({
 						<Unlink className="h-3.5 w-3.5" />
 						Detach
 					</button>
+					)}
 				</div>
 			</div>
 
@@ -223,6 +245,7 @@ function AttachedTeamRow({
 									projectId={projectId}
 									teamId={projectTeam.team_id}
 									member={m}
+									canManage={canManageMembers}
 								/>
 							))}
 						</ul>
@@ -234,7 +257,6 @@ function AttachedTeamRow({
 				<AddCuratedPicker
 					projectId={projectId}
 					teamId={projectTeam.team_id}
-					defaultRole={projectTeam.default_role}
 					onClose={() => setPicker(false)}
 				/>
 			)}
@@ -246,10 +268,12 @@ function CuratedMemberRow({
 	projectId,
 	teamId,
 	member,
+	canManage,
 }: {
 	projectId: string;
 	teamId: string;
 	member: ProjectTeamMember;
+	canManage: boolean;
 }) {
 	const queryClient = useQueryClient();
 	const toast = useToast();
@@ -270,34 +294,40 @@ function CuratedMemberRow({
 			<MemberDisplay
 				user={member.user}
 				fallbackId={member.user_id}
-				subtitle={member.role}
 			/>
-			<button
-				type="button"
-				onClick={() => removeMutation.mutate()}
-				disabled={removeMutation.isPending}
-				className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
-			>
-				{removeMutation.isPending ? (
-					<Loader2 className="h-3.5 w-3.5 animate-spin" />
-				) : (
-					<UserMinus className="h-3.5 w-3.5" />
-				)}
-				Remove
-			</button>
+			{canManage && (
+				<button
+					type="button"
+					onClick={() => removeMutation.mutate()}
+					disabled={removeMutation.isPending}
+					className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+				>
+					{removeMutation.isPending ? (
+						<Loader2 className="h-3.5 w-3.5 animate-spin" />
+					) : (
+						<UserMinus className="h-3.5 w-3.5" />
+					)}
+					Remove
+				</button>
+			)}
 		</li>
 	);
 }
 
+const ROLE_OPTIONS: ProjectTeamDefaultRole[] = [
+	"admin",
+	"editor",
+	"commenter",
+	"viewer",
+];
+
 function AddCuratedPicker({
 	projectId,
 	teamId,
-	defaultRole,
 	onClose,
 }: {
 	projectId: string;
 	teamId: string;
-	defaultRole: ProjectTeamDefaultRole;
 	onClose: () => void;
 }) {
 	const queryClient = useQueryClient();
@@ -306,19 +336,42 @@ function AddCuratedPicker({
 		queryKey: ["project", projectId, "teams", teamId, "available"],
 		queryFn: () => listAvailableTeamMembers(projectId, teamId),
 	});
+	// Existing collaborators on the project — used to grey out the role
+	// picker for anyone whose role is already locked by an existing
+	// project_access grant (the yoke means their team-derived row will
+	// take their existing role, not the picked one).
+	const projectMembersQuery = useProjectMembersQuery(projectId);
+	const existingRoleByUserId = useMemo(() => {
+		const map = new Map<string, ProjectTeamDefaultRole>();
+		for (const m of projectMembersQuery.data ?? []) {
+			if (!m.user_id) continue;
+			if (map.has(m.user_id)) continue;
+			map.set(m.user_id, m.role as ProjectTeamDefaultRole);
+		}
+		return map;
+	}, [projectMembersQuery.data]);
+
+	const [pickedRoleByUserId, setPickedRoleByUserId] = useState<
+		Record<string, ProjectTeamDefaultRole>
+	>({});
 
 	const addMutation = useMutation({
-		mutationFn: (userId: string) =>
-			addCuratedMember(projectId, teamId, {
-				user_id: userId,
-				role: defaultRole,
-			}),
+		mutationFn: ({
+			userId,
+			role,
+		}: {
+			userId: string;
+			role: ProjectTeamDefaultRole;
+		}) => addCuratedMember(projectId, teamId, { user_id: userId, role }),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({
 				queryKey: ["project", projectId, "teams", teamId, "curated"],
 			});
 			void queryClient.invalidateQueries({
 				queryKey: ["project", projectId, "teams", teamId, "available"],
+			});
+			void queryClient.invalidateQueries({
+				queryKey: ["project", projectId, "members"],
 			});
 			toast.success("Member added to project");
 		},
@@ -328,6 +381,7 @@ function AddCuratedPicker({
 	const available = availableQuery.data ?? [];
 
 	return (
+		<ModalPortal>
 		<div
 			className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4"
 			onClick={onClose}
@@ -354,32 +408,64 @@ function AddCuratedPicker({
 						</div>
 					) : (
 						<ul className="divide-y divide-slate-200">
-							{available.map((m) => (
-								<li
-									key={m.user_id}
-									className="flex items-center justify-between gap-3 px-4 py-3"
-								>
-									<MemberDisplay
-										user={m.user}
-										fallbackId={m.user_id}
-										subtitle={`team ${m.role}`}
-										size="sm"
-									/>
-									<button
-										type="button"
-										onClick={() => addMutation.mutate(m.user_id)}
-										disabled={addMutation.isPending}
-										className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+							{available.map((m) => {
+								const existing = existingRoleByUserId.get(m.user_id);
+								const lockedRole = existing ?? null;
+								const role =
+									lockedRole ??
+									pickedRoleByUserId[m.user_id] ??
+									"editor";
+								return (
+									<li
+										key={m.user_id}
+										className="flex items-center justify-between gap-3 px-4 py-3"
 									>
-										{addMutation.isPending ? (
-											<Loader2 className="h-3.5 w-3.5 animate-spin" />
-										) : (
-											<Plus className="h-3.5 w-3.5" />
-										)}
-										Add
-									</button>
-								</li>
-							))}
+										<MemberDisplay
+											user={m.user}
+											fallbackId={m.user_id}
+											size="sm"
+										/>
+										<div className="flex shrink-0 items-center gap-2">
+											<select
+												value={role}
+												disabled={Boolean(lockedRole)}
+												onChange={(e) =>
+													setPickedRoleByUserId((prev) => ({
+														...prev,
+														[m.user_id]: e.target
+															.value as ProjectTeamDefaultRole,
+													}))
+												}
+												className="rounded-lg border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100 disabled:text-slate-500"
+											>
+												{ROLE_OPTIONS.map((r) => (
+													<option key={r} value={r}>
+														{r}
+													</option>
+												))}
+											</select>
+											<button
+												type="button"
+												onClick={() =>
+													addMutation.mutate({
+														userId: m.user_id,
+														role,
+													})
+												}
+												disabled={addMutation.isPending}
+												className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+											>
+												{addMutation.isPending ? (
+													<Loader2 className="h-3.5 w-3.5 animate-spin" />
+												) : (
+													<Plus className="h-3.5 w-3.5" />
+												)}
+												Add
+											</button>
+										</div>
+									</li>
+								);
+							})}
 						</ul>
 					)}
 				</div>
@@ -394,6 +480,7 @@ function AddCuratedPicker({
 				</div>
 			</div>
 		</div>
+		</ModalPortal>
 	);
 }
 
@@ -414,15 +501,31 @@ function AttachTeamModal({
 		queryKey: ["project", projectId, "teams"],
 		queryFn: () => listProjectTeams(projectId),
 	});
+	// Direct collaborators on this project — yoked-role lookup. Anyone
+	// already on the project keeps their existing role; the picker is
+	// disabled for them and the attach payload still includes them so
+	// the team-derived row gets registered.
+	const projectMembersQuery = useProjectMembersQuery(projectId);
+	const existingRoleByUserId = useMemo(() => {
+		const map = new Map<string, ProjectTeamDefaultRole>();
+		for (const m of projectMembersQuery.data ?? []) {
+			if (!m.user_id) continue;
+			if (map.has(m.user_id)) continue;
+			map.set(m.user_id, m.role as ProjectTeamDefaultRole);
+		}
+		return map;
+	}, [projectMembersQuery.data]);
 
 	const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
-	const [includeAll, setIncludeAll] = useState(true);
-	const [defaultRole, setDefaultRole] =
-		useState<ProjectTeamDefaultRole>("editor");
 	const [isPrimary, setIsPrimary] = useState(false);
 	const [pickedMemberIds, setPickedMemberIds] = useState<Set<string>>(
 		new Set(),
 	);
+	const [pickedRoleByUserId, setPickedRoleByUserId] = useState<
+		Record<string, ProjectTeamDefaultRole>
+	>({});
+	const [bulkRole, setBulkRole] =
+		useState<ProjectTeamDefaultRole>("editor");
 
 	const membersQuery = useQuery({
 		queryKey: ["teams", "members", selectedTeamId],
@@ -439,22 +542,44 @@ function AttachTeamModal({
 		(t) => !attachedIds.has(t.id),
 	);
 
+	const applyBulkRole = () => {
+		const members = membersQuery.data ?? [];
+		setPickedRoleByUserId((prev) => {
+			const next = { ...prev };
+			for (const m of members) {
+				if (!pickedMemberIds.has(m.user_id)) continue;
+				if (existingRoleByUserId.has(m.user_id)) continue;
+				next[m.user_id] = bulkRole;
+			}
+			return next;
+		});
+	};
+
 	const attachMutation = useMutation({
 		mutationFn: () => {
 			if (!selectedTeamId) throw new Error("Pick a team first");
-			const memberIds = includeAll
-				? undefined
-				: Array.from(pickedMemberIds);
+			const teamMembers = membersQuery.data ?? [];
+			const members = teamMembers
+				.filter((m) => pickedMemberIds.has(m.user_id))
+				.map((m) => ({
+					user_id: m.user_id,
+					role:
+						existingRoleByUserId.get(m.user_id) ??
+						pickedRoleByUserId[m.user_id] ??
+						"editor",
+				}));
 			return attachTeam(projectId, {
 				team_id: selectedTeamId,
-				default_role: defaultRole,
 				is_primary: isPrimary,
-				member_user_ids: memberIds,
+				members,
 			});
 		},
 		onSuccess: () => {
 			void queryClient.invalidateQueries({
 				queryKey: ["project", projectId, "teams"],
+			});
+			void queryClient.invalidateQueries({
+				queryKey: ["project", projectId, "members"],
 			});
 			toast.success("Team attached");
 			onClose();
@@ -463,6 +588,7 @@ function AttachTeamModal({
 	});
 
 	return (
+		<ModalPortal>
 		<div
 			className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4"
 			onClick={onClose}
@@ -517,71 +643,75 @@ function AttachTeamModal({
 						)}
 					</div>
 
-					<div className="grid grid-cols-2 gap-3">
-						<label className="block">
-							<span className="text-sm font-medium text-slate-700">
-								Default role
-							</span>
-							<select
-								value={defaultRole}
-								onChange={(e) =>
-									setDefaultRole(
-										e.target.value as ProjectTeamDefaultRole,
-									)
-								}
-								className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-							>
-								<option value="admin">admin</option>
-								<option value="editor">editor</option>
-								<option value="commenter">commenter</option>
-								<option value="viewer">viewer</option>
-							</select>
-						</label>
-						<label className="mt-6 inline-flex items-center gap-2 text-sm text-slate-700">
-							<input
-								type="checkbox"
-								checked={isPrimary}
-								onChange={(e) => setIsPrimary(e.target.checked)}
-							/>
-							Make primary team
-						</label>
-					</div>
+					<label className="inline-flex items-center gap-2 text-sm text-slate-700">
+						<input
+							type="checkbox"
+							checked={isPrimary}
+							onChange={(e) => setIsPrimary(e.target.checked)}
+						/>
+						Make primary team
+					</label>
 
 					{selectedTeamId && (
 						<div>
-							<label className="inline-flex items-center gap-2 text-sm text-slate-700">
-								<input
-									type="checkbox"
-									checked={includeAll}
-									onChange={(e) =>
-										setIncludeAll(e.target.checked)
-									}
-								/>
-								Include all members
-							</label>
-							{!includeAll && (
-								<div className="mt-3 max-h-56 overflow-y-auto rounded-lg border border-slate-200">
-									{membersQuery.isLoading ? (
-										<div className="flex items-center justify-center py-6 text-sm text-slate-500">
-											<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-											Loading…
-										</div>
-									) : (membersQuery.data ?? []).length === 0 ? (
-										<div className="px-4 py-6 text-center text-sm text-slate-500">
-											This team has no members.
-										</div>
-									) : (
-										<ul className="divide-y divide-slate-200">
-											{(membersQuery.data ?? []).map((m) => (
+							<div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+								<span className="text-xs font-medium text-slate-600">
+									Set role for selected
+								</span>
+								<div className="flex items-center gap-2">
+									<select
+										value={bulkRole}
+										onChange={(e) =>
+											setBulkRole(
+												e.target.value as ProjectTeamDefaultRole,
+											)
+										}
+										className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+									>
+										{ROLE_OPTIONS.map((r) => (
+											<option key={r} value={r}>
+												{r}
+											</option>
+										))}
+									</select>
+									<button
+										type="button"
+										onClick={applyBulkRole}
+										disabled={pickedMemberIds.size === 0}
+										className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+									>
+										Apply
+									</button>
+								</div>
+							</div>
+							<div className="mt-3 max-h-72 overflow-y-auto rounded-lg border border-slate-200">
+								{membersQuery.isLoading ? (
+									<div className="flex items-center justify-center py-6 text-sm text-slate-500">
+										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+										Loading…
+									</div>
+								) : (membersQuery.data ?? []).length === 0 ? (
+									<div className="px-4 py-6 text-center text-sm text-slate-500">
+										This team has no members.
+									</div>
+								) : (
+									<ul className="divide-y divide-slate-200">
+										{(membersQuery.data ?? []).map((m) => {
+											const existing =
+												existingRoleByUserId.get(m.user_id) ?? null;
+											const role =
+												existing ??
+												pickedRoleByUserId[m.user_id] ??
+												"editor";
+											const checked = pickedMemberIds.has(m.user_id);
+											return (
 												<li
 													key={m.user_id}
 													className="flex items-center gap-3 px-4 py-2.5"
 												>
 													<input
 														type="checkbox"
-														checked={pickedMemberIds.has(
-															m.user_id,
-														)}
+														checked={checked}
 														onChange={(e) => {
 															setPickedMemberIds((prev) => {
 																const next = new Set(prev);
@@ -591,20 +721,45 @@ function AttachTeamModal({
 															});
 														}}
 													/>
-													<div className="flex-1 min-w-0">
+													<div className="flex min-w-0 flex-1 items-center gap-2">
 														<MemberDisplay
 															user={m.user}
 															fallbackId={m.user_id}
-															subtitle={m.role}
 															size="sm"
 														/>
+														{existing && (
+															<span
+																title="This person already has a grant on this project. The team-derived row adopts their existing role; the picker is locked."
+																className="inline-flex shrink-0 items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600"
+															>
+																Keeps existing role
+															</span>
+														)}
 													</div>
+													<select
+														value={role}
+														disabled={Boolean(existing)}
+														onChange={(e) =>
+															setPickedRoleByUserId((prev) => ({
+																...prev,
+																[m.user_id]: e.target
+																	.value as ProjectTeamDefaultRole,
+															}))
+														}
+														className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100 disabled:text-slate-500"
+													>
+														{ROLE_OPTIONS.map((r) => (
+															<option key={r} value={r}>
+																{r}
+															</option>
+														))}
+													</select>
 												</li>
-											))}
-										</ul>
-									)}
-								</div>
-							)}
+											);
+										})}
+									</ul>
+								)}
+							</div>
 						</div>
 					)}
 				</div>
@@ -631,5 +786,6 @@ function AttachTeamModal({
 				</div>
 			</div>
 		</div>
+		</ModalPortal>
 	);
 }

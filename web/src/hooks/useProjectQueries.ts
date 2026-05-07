@@ -145,8 +145,13 @@ export function useProjectInviteMemberMutation(projectId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (payload: { email: string; role?: string; position?: string; message?: string }) =>
-      projectService.inviteByEmail(projectId, payload),
+    mutationFn: (payload: {
+      email: string;
+      role?: string;
+      default_role?: "editor" | "viewer";
+      position?: string;
+      message?: string;
+    }) => projectService.inviteByEmail(projectId, payload),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: projectKeys.members(projectId) });
       await queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });

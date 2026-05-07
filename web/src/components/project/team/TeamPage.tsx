@@ -1,1031 +1,753 @@
-import { useState, useEffect, useCallback, useLayoutEffect, useRef } from "react";
-import { createPortal } from "react-dom";
+import { Link } from "@tanstack/react-router";
 import {
-  Search,
-  ChevronDown,
-  Plus,
-  Trash2,
-  MessageSquare,
-  MoreHorizontal,
-  Clock,
-  ShieldCheck,
+	useMutation,
+	useQueries,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import {
+	ChevronDown,
+	ChevronRight,
+	Loader2,
+	Mail,
+	Plus,
+	Settings,
+	Users,
+	X,
 } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  projectService,
-  type Project,
-  type ProjectMember,
-  type ProjectInvite,
-} from "@/services/project.service";
-import { useUser } from "@/stores/authStore";
+	AppEmptyState,
+	AppSurfaceCard,
+} from "@/components/common/AppPrimitives";
+import { MemberDisplay } from "@/components/common/MemberDisplay";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import { useToast } from "@/hooks/useToast";
-import { PositionCell } from "./PositionCell";
-import { TeamSkeleton } from "./TeamSkeleton";
-import { PermissionDeniedBanner } from "@/components/common/PermissionDeniedBanner";
-import { parseMissingPermissionError } from "@/lib/permissionErrors";
-import { AddMemberModal } from "./AddMemberModal";
-import { RemoveMemberModal } from "./RemoveMemberModal";
-import { memberDisplayName } from "./utils";
-import { toDmRef } from "@/components/project/chat/chatRef";
 import {
-  useProjectCancelInviteMutation,
-  useProjectDetailQuery,
-  useProjectInvitesQuery,
-  useProjectMembersQuery,
-  useProjectMyPermissionsQuery,
-  useProjectRemoveMemberMutation,
+	useProjectCancelInviteMutation,
+	useProjectInvitesQuery,
+	useProjectMembersQuery,
+	useProjectMyPermissionsQuery,
+	useProjectRemoveMemberMutation,
 } from "@/hooks/useProjectQueries";
 import { projectKeys } from "@/queries/project";
+import {
+	addCuratedMember,
+	getTeam,
+	listAvailableTeamMembers,
+	listCuratedMembers,
+	listProjectTeams,
+	removeCuratedMember,
+	type ProjectTeam,
+	type ProjectTeamMember,
+} from "@/services/teams.service";
+import type { ProjectInvite, ProjectMember } from "@/services/project.service";
+import type { ProfileSummary } from "@/services/teams.service";
+import { ProjectMemberRow } from "./ProjectMemberRow";
 
-// ─── Permission System ────────────────────────────────────────────────────────
+/**
+ * project_access rows carry a slightly looser user shape than the
+ * teams service's ProfileSummary (optional fields + undefined instead
+ * of null). Coerce so MemberDisplay's typed prop is happy.
+ */
+function toProfileSummary(
+	u: ProjectMember["user"] | undefined,
+): ProfileSummary | null {
+	if (!u) return null;
+	return {
+		id: u.id,
+		display_name: u.display_name ?? null,
+		avatar_url: u.avatar_url ?? null,
+		email: u.email ?? null,
+		first_name: u.first_name ?? null,
+		last_name: u.last_name ?? null,
+	};
+}
+import { InviteToProjectModal } from "./InviteToProjectModal";
+import { TeamSkeleton } from "./TeamSkeleton";
 
-type ViewerRole = "consultant" | "client" | "freelancer";
-type TargetType = "client" | "consultant" | "member";
+export function TeamPage({ projectId }: { projectId: string }) {
+	const membersQuery = useProjectMembersQuery(projectId);
+	const invitesQuery = useProjectInvitesQuery(projectId);
+	const permissionsQuery = useProjectMyPermissionsQuery(projectId);
+	const teamsQuery = useQuery({
+		queryKey: ["project", projectId, "teams"],
+		queryFn: () => listProjectTeams(projectId),
+	});
 
-interface RowPermissions {
-  canEdit: boolean;
-  canRemove: boolean;
+	const [inviteOpen, setInviteOpen] = useState(false);
+
+	const canManage = Boolean(permissionsQuery.data?.members.manage);
+	const members = membersQuery.data ?? [];
+	const invites = invitesQuery.data ?? [];
+	const projectTeams = teamsQuery.data ?? [];
+
+	const pendingInvites = invites.filter((i) => i.status === "pending");
+
+	// Direct shares = project_access rows whose origin is NOT a team
+	// fan-out. Team-derived rows live inside their team's card.
+	const directShares = members.filter(
+		(m) => !m.origin || !m.origin.startsWith("team:"),
+	);
+
+	// Sort attached teams: primary first, then by attached_at as a
+	// stable secondary key (we don't have team names embedded here).
+	const sortedTeams = [...projectTeams].sort((a, b) => {
+		if (a.is_primary !== b.is_primary) return a.is_primary ? -1 : 1;
+		return (a.attached_at ?? "").localeCompare(b.attached_at ?? "");
+	});
+
+	// Batch-fetch team detail rows so we can name multi-origin siblings
+	// on the Direct collaborators card. Each AttachedTeamCard runs its
+	// own getTeam query too — react-query dedupes by queryKey, so this
+	// is a single network call shared across both consumers.
+	const teamDetailQueries = useQueries({
+		queries: projectTeams.map((pt) => ({
+			queryKey: ["teams", "detail", pt.team_id],
+			queryFn: () => getTeam(pt.team_id),
+		})),
+	});
+	const teamNameById = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const q of teamDetailQueries) {
+			if (q.data) map.set(q.data.id, q.data.name);
+		}
+		return map;
+	}, [teamDetailQueries]);
+
+	// Yoked-role lookup. After the access-sync rule, every project_access
+	// row for a (project, user) carries the same role; we use the first
+	// one we see per user as the source of truth so the team cards
+	// display the user's effective role on the project (e.g. OWNER for
+	// the consultant) instead of the team's natural default_role.
+	const syncedRoleByUserId = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const m of members) {
+			if (!m.user_id) continue;
+			if (map.has(m.user_id)) continue;
+			map.set(m.user_id, m.role);
+		}
+		return map;
+	}, [members]);
+
+	// For each user_id with a direct share, collect the team names of
+	// any team-derived sibling rows. Used to render "Also on <Team>"
+	// chips so the dual-grant nature is visible without double-listing.
+	const directAlsoOnByUserId = useMemo(() => {
+		const out = new Map<string, string[]>();
+		const directUserIds = new Set(
+			members
+				.filter((m) => !m.origin || !m.origin.startsWith("team:"))
+				.map((m) => m.user_id)
+				.filter((id): id is string => Boolean(id)),
+		);
+		for (const m of members) {
+			if (!m.user_id || !m.origin?.startsWith("team:")) continue;
+			if (!directUserIds.has(m.user_id)) continue;
+			const teamId = m.origin.slice("team:".length);
+			const name = teamNameById.get(teamId);
+			if (!name) continue;
+			const arr = out.get(m.user_id) ?? [];
+			if (!arr.includes(name)) arr.push(name);
+			out.set(m.user_id, arr);
+		}
+		return out;
+	}, [members, teamNameById]);
+
+	const isLoading =
+		membersQuery.isPending || invitesQuery.isPending || teamsQuery.isPending;
+
+	if (isLoading) {
+		return (
+			<div className="mx-auto w-full max-w-[1040px] px-5 py-8 md:px-8 md:py-10">
+				<TeamSkeleton />
+			</div>
+		);
+	}
+
+	const showFullEmpty =
+		sortedTeams.length === 0 &&
+		directShares.length === 0 &&
+		pendingInvites.length === 0;
+
+	return (
+		<div className="mx-auto w-full max-w-[1040px] px-5 py-8 md:px-8 md:py-10">
+			{/* Header */}
+			<div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+				<div>
+					<p className="app-section-kicker">Team</p>
+					<h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+						Project team
+					</h2>
+					<p className="mt-1 max-w-2xl text-sm text-slate-600">
+						Everyone with access to this project, grouped by the team they
+						belong to.
+					</p>
+				</div>
+				<div className="flex shrink-0 items-center gap-2">
+					{canManage && (
+						<button
+							type="button"
+							onClick={() => setInviteOpen(true)}
+							className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+						>
+							<Plus className="h-4 w-4" />
+							Invite by email
+						</button>
+					)}
+					<Link
+						to="/project/$projectId/settings/teams"
+						params={{ projectId }}
+						className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+					>
+						<Settings className="h-4 w-4" />
+						Manage teams
+					</Link>
+				</div>
+			</div>
+
+			{/* Body */}
+			<div className="mt-8 space-y-6">
+				{showFullEmpty ? (
+					<AppEmptyState
+						icon={Users}
+						title="No collaborators yet"
+						description="Invite someone by email or attach a team to bring its members onto this project."
+						action={
+							canManage ? (
+								<div className="flex items-center justify-center gap-2">
+									<button
+										type="button"
+										onClick={() => setInviteOpen(true)}
+										className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+									>
+										<Plus className="h-4 w-4" />
+										Invite by email
+									</button>
+									<Link
+										to="/project/$projectId/settings/teams"
+										params={{ projectId }}
+										className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+									>
+										<Settings className="h-4 w-4" />
+										Attach a team
+									</Link>
+								</div>
+							) : null
+						}
+					/>
+				) : (
+					<>
+						{pendingInvites.length > 0 && (
+							<PendingInvitesCard
+								projectId={projectId}
+								invites={pendingInvites}
+								canManage={canManage}
+							/>
+						)}
+
+						{directShares.length > 0 && (
+							<DirectSharesCard
+								projectId={projectId}
+								shares={directShares}
+								canManage={canManage}
+								alsoOnByUserId={directAlsoOnByUserId}
+							/>
+						)}
+
+						{sortedTeams.length > 0 && (
+							<section>
+								<h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-600">
+									Teams ({sortedTeams.length})
+								</h3>
+								<div className="space-y-4">
+									{sortedTeams.map((pt) => (
+										<AttachedTeamCard
+											key={pt.team_id}
+											projectId={projectId}
+											projectTeam={pt}
+											canManage={canManage}
+											syncedRoleByUserId={syncedRoleByUserId}
+										/>
+									))}
+								</div>
+							</section>
+						)}
+					</>
+				)}
+			</div>
+
+			{inviteOpen && (
+				<InviteToProjectModal
+					projectId={projectId}
+					onClose={() => setInviteOpen(false)}
+				/>
+			)}
+		</div>
+	);
 }
 
-function deriveViewerRole(
-  userId: string | undefined,
-  project: Project | null,
-  viewerMember?: ProjectMember | null,
-): ViewerRole {
-  if (!userId || !project) return "freelancer";
-  if (userId === project.consultant_id) return "consultant";
-  if (userId === project.client_id) return "client";
-  const memberRole = viewerMember?.role;
-  if (memberRole === "consultant") return "consultant";
-  if (memberRole === "client") return "client";
-  return "freelancer";
-}
+// ─── Pending invites ────────────────────────────────────────────────────────
 
-function getRowPermissions(
-  viewerRole: ViewerRole,
-  targetType: TargetType,
-  isSelf: boolean,
-  canManageMembers: boolean,
-): RowPermissions {
-  if (isSelf) return { canEdit: false, canRemove: false };
-  const canManageTarget = canManageMembers && targetType === "member";
-
-  switch (viewerRole) {
-    case "consultant":
-      if (targetType === "client") return { canEdit: false, canRemove: false };
-      if (targetType === "consultant") return { canEdit: false, canRemove: false };
-      return { canEdit: canManageTarget, canRemove: canManageTarget };
-    case "client":
-      if (targetType === "consultant") return { canEdit: false, canRemove: false };
-      return { canEdit: canManageTarget, canRemove: canManageTarget };
-    case "freelancer":
-      if (targetType === "client") return { canEdit: false, canRemove: false };
-      return { canEdit: canManageTarget, canRemove: canManageTarget };
-  }
-}
-
-// ─── Role filter labels ───────────────────────────────────────────────────────
-
-const ROLE_LABELS: Record<string, string> = {
-  consultant: "Consultant",
-  client: "Client",
-  member: "Freelancer",
-};
-
-const ROLE_COLORS: Record<string, string> = {
-  consultant: "bg-violet-100 text-violet-700",
-  client: "bg-blue-100 text-blue-700",
-  member: "bg-emerald-100 text-emerald-700",
-};
-
-function inviteRole(invite: ProjectInvite): "consultant" | "client" | "member" {
-  const pos = invite.invited_position ?? "";
-  if (pos === "consultant") return "consultant";
-  if (pos === "client") return "client";
-  return "member";
-}
-
-function formatInviteDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-interface TeamPageProps {
-  projectId: string;
-}
-
-// ─── Avatar ───────────────────────────────────────────────────────────────────
-
-function Avatar({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
-  const initials = name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-
-  return (
-    <div className="w-8 h-8 rounded-full shrink-0 overflow-hidden flex items-center justify-center bg-slate-100 font-semibold text-slate-600 text-xs">
-      {avatarUrl ? (
-        <img src={avatarUrl} alt={name} className="w-full h-full object-cover object-top" />
-      ) : (
-        <span>{initials || "?"}</span>
-      )}
-    </div>
-  );
-}
-
-// ─── Status Badge ──────────────────────────────────────────────────────────────
-
-function StatusBadge({ status }: { status: "Active" | "Offline" | "Away" }) {
-  const config = {
-    Active: { dot: "bg-emerald-400", text: "text-emerald-600" },
-    Offline: { dot: "bg-slate-400", text: "text-slate-500" },
-    Away: { dot: "bg-amber-400", text: "text-amber-600" },
-  }[status];
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className={`w-2 h-2 rounded-full ${config.dot} shrink-0`} />
-      <span className={`text-xs font-medium ${config.text}`}>{status}</span>
-    </div>
-  );
-}
-
-// ─── Column Headers ────────────────────────────────────────────────────────────
-
-function ColumnHeaders({ showActions }: { showActions: boolean }) {
-  return (
-    <div
-      className={`grid gap-4 items-center px-4 mb-2 ${
-        showActions ? "grid-cols-[2fr_1fr_1fr_100px]" : "grid-cols-[2fr_1fr_1fr]"
-      }`}
-    >
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Name</span>
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Position</span>
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</span>
-      {showActions && (
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 text-right">
-          Actions
-        </span>
-      )}
-    </div>
-  );
-}
-
-// ─── More Dropdown (delete) ───────────────────────────────────────────────────
-
-function MoreDropdown({
-  onRemove,
-  onEditPermissions,
-  removing,
+function PendingInvitesCard({
+	projectId,
+	invites,
+	canManage,
 }: {
-  onRemove: () => void;
-  onEditPermissions?: () => void;
-  removing?: boolean;
+	projectId: string;
+	invites: ProjectInvite[];
+	canManage: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const coords = useDropdownCoords(open, buttonRef, "right");
+	const cancelMutation = useProjectCancelInviteMutation(projectId);
+	const toast = useToast();
 
-  useEffect(() => {
-    if (!open) return;
-    const handle = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (buttonRef.current?.contains(target)) return;
-      if (menuRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [open]);
-
-  return (
-    <>
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors"
-        title="More actions"
-      >
-        <MoreHorizontal className="w-3.5 h-3.5" />
-      </button>
-      {open && coords && createPortal(
-        <div
-          ref={menuRef}
-          style={{ position: "fixed", top: coords.top, left: coords.left, zIndex: 60 }}
-          className="bg-white border border-slate-200 rounded-xl shadow-lg py-1 w-52"
-        >
-          {onEditPermissions && (
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                onEditPermissions();
-              }}
-              className="w-full px-3 py-2 text-sm text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              Edit permissions
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              onRemove();
-            }}
-            disabled={removing}
-            className="w-full px-3 py-2 text-sm text-left text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-40"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Remove from project
-          </button>
-        </div>,
-        document.body,
-      )}
-    </>
-  );
+	return (
+		<section>
+			<h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-600">
+				Pending invites ({invites.length})
+			</h3>
+			<AppSurfaceCard className="overflow-hidden">
+				<ul className="divide-y divide-slate-200">
+					{invites.map((invite) => {
+						// project_invites only carries invitee_email + (when
+						// reconciled to a profile) invitee_id. No embedded
+						// profile, so we display the email directly and let
+						// the position field act as the sub-label.
+						const displayEmail = invite.invitee_email || "unknown";
+						return (
+							<li
+								key={invite.id}
+								className="flex items-center justify-between gap-3 px-5 py-3"
+							>
+								<div className="flex min-w-0 items-center gap-3">
+									<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+										<Mail className="h-4 w-4" />
+									</div>
+									<div className="min-w-0">
+										<p className="truncate text-sm font-medium text-slate-900">
+											{displayEmail}
+										</p>
+										<p className="mt-0.5 flex items-center gap-2 truncate text-xs text-slate-500">
+											<span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+												Pending
+											</span>
+											{invite.invited_position && (
+												<span className="truncate">
+													{invite.invited_position}
+												</span>
+											)}
+										</p>
+									</div>
+								</div>
+								{canManage && (
+									<button
+										type="button"
+										onClick={() =>
+											cancelMutation.mutate(invite.id, {
+												onSuccess: () =>
+													toast.success("Invite cancelled"),
+												onError: (err) =>
+													toast.error((err as Error).message),
+											})
+										}
+										disabled={cancelMutation.isPending}
+										aria-label="Cancel invite"
+										title="Cancel invite"
+										className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+									>
+										{cancelMutation.isPending ? (
+											<Loader2 className="h-3.5 w-3.5 animate-spin" />
+										) : (
+											<X className="h-3.5 w-3.5" />
+										)}
+									</button>
+								)}
+							</li>
+						);
+					})}
+				</ul>
+			</AppSurfaceCard>
+		</section>
+	);
 }
 
-// ─── Generic Team Row ─────────────────────────────────────────────────────────
+// ─── Attached team card ─────────────────────────────────────────────────────
 
-function TeamRow({
-  name,
-  email,
-  avatarUrl,
-  roleLabel,
-  position,
-  canEditPosition,
-  onSavePosition,
-  isLast,
-  isSelf,
-  permissions,
-  showActions,
-  onRemove,
-  onEditPermissions,
-  onChat,
-  removing,
+function AttachedTeamCard({
+	projectId,
+	projectTeam,
+	canManage,
+	syncedRoleByUserId,
 }: {
-  name: string;
-  email?: string;
-  avatarUrl?: string;
-  roleLabel: string;
-  position?: string | null;
-  canEditPosition?: boolean;
-  onSavePosition?: (next: string) => Promise<void> | void;
-  isLast: boolean;
-  isSelf: boolean;
-  permissions: RowPermissions;
-  showActions: boolean;
-  onRemove?: () => void;
-  onEditPermissions?: () => void;
-  onChat?: () => void;
-  removing?: boolean;
+	projectId: string;
+	projectTeam: ProjectTeam;
+	canManage: boolean;
+	syncedRoleByUserId: Map<string, string>;
 }) {
-  return (
-    <div
-      className={`grid gap-4 items-center px-4 py-3 ${
-        showActions ? "grid-cols-[2fr_1fr_1fr_100px]" : "grid-cols-[2fr_1fr_1fr]"
-      } ${!isLast ? "border-b border-slate-100" : ""} hover:bg-slate-50 transition-colors`}
-    >
-      {/* Col 1: Avatar + Name */}
-      <div className="flex items-center gap-2.5 min-w-0">
-        <Avatar name={name} avatarUrl={avatarUrl} />
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <p className="text-sm font-semibold text-slate-900 truncate">{name}</p>
-            {isSelf && (
-              <span className="text-[10px] font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full shrink-0">
-                You
-              </span>
-            )}
-          </div>
-          {email && <p className="text-[11px] text-slate-500 truncate">{email}</p>}
-        </div>
-      </div>
+	const [expanded, setExpanded] = useState(true);
+	const [pickerOpen, setPickerOpen] = useState(false);
+	const queryClient = useQueryClient();
+	const toast = useToast();
 
-      {/* Col 2: Position (editable) / Role fallback */}
-      <PositionCell
-        value={position ?? null}
-        fallback={roleLabel}
-        canEdit={!!canEditPosition}
-        onSave={onSavePosition}
-        displayName={name}
-      />
+	const teamQuery = useQuery({
+		queryKey: ["teams", "detail", projectTeam.team_id],
+		queryFn: () => getTeam(projectTeam.team_id),
+	});
+	const curatedQuery = useQuery({
+		queryKey: [
+			"project",
+			projectId,
+			"teams",
+			projectTeam.team_id,
+			"curated",
+		],
+		queryFn: () => listCuratedMembers(projectId, projectTeam.team_id),
+	});
 
+	const team = teamQuery.data;
+	const curated = curatedQuery.data ?? [];
 
-      {/* Col 3: Status */}
-      <StatusBadge status="Active" />
+	const removeMutation = useMutation({
+		mutationFn: (userId: string) =>
+			removeCuratedMember(projectId, projectTeam.team_id, userId),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({
+				queryKey: [
+					"project",
+					projectId,
+					"teams",
+					projectTeam.team_id,
+					"curated",
+				],
+			});
+			void queryClient.invalidateQueries({
+				queryKey: projectKeys.members(projectId),
+			});
+			toast.success("Member removed from project");
+		},
+		onError: (err) => toast.error((err as Error).message),
+	});
 
-      {/* Col 4: Actions */}
-      {showActions && (
-        <div className="flex items-center justify-end gap-1">
-          {onChat && (
-            <button
-              type="button"
-              onClick={onChat}
-              title="Send message"
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-500 transition-colors"
-            >
-              <MessageSquare className="w-3.5 h-3.5" />
-            </button>
-          )}
-          {permissions.canRemove && onRemove && (
-            <MoreDropdown
-              onRemove={onRemove}
-              onEditPermissions={onEditPermissions}
-              removing={removing}
-            />
-          )}
-        </div>
-      )}
-    </div>
-  );
+	return (
+		<div>
+			<AppSurfaceCard className="overflow-hidden">
+				<div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/60 px-5 py-3">
+					<button
+						type="button"
+						onClick={() => setExpanded((v) => !v)}
+						className="flex min-w-0 flex-1 items-center gap-2 text-left"
+					>
+						{expanded ? (
+							<ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
+						) : (
+							<ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />
+						)}
+						<TeamHeaderIcon team={team} />
+						<span className="truncate text-sm font-semibold text-slate-900">
+							{team?.name ?? "Loading…"}
+						</span>
+						{projectTeam.is_primary && (
+							<span className="shrink-0 rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+								Primary
+							</span>
+						)}
+					</button>
+					<div className="flex shrink-0 items-center gap-2">
+						{canManage && (
+							<button
+								type="button"
+								onClick={() => setPickerOpen(true)}
+								className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+							>
+								<Plus className="h-3.5 w-3.5" />
+								Add from team
+							</button>
+						)}
+						{team && (
+							<Link
+								to="/teams/$teamId"
+								params={{ teamId: team.id }}
+								className="text-xs font-medium text-slate-500 hover:text-slate-900"
+							>
+								Open team →
+							</Link>
+						)}
+					</div>
+				</div>
+
+				{expanded &&
+					(curatedQuery.isPending ? (
+						<div className="flex items-center justify-center py-10 text-sm text-slate-500">
+							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+							Loading…
+						</div>
+					) : curated.length === 0 ? (
+						<div className="px-6 py-10 text-center text-sm text-slate-500">
+							Nobody from this team is on the project yet.
+							{canManage && " Add someone above."}
+						</div>
+					) : (
+						<ul className="divide-y divide-slate-200">
+							{curated.map((m) => (
+								<CuratedMemberRow
+									key={m.user_id}
+									member={m}
+									effectiveRole={
+										syncedRoleByUserId.get(m.user_id) ?? "viewer"
+									}
+									canManage={canManage}
+									isRemoving={
+										removeMutation.isPending &&
+										removeMutation.variables === m.user_id
+									}
+									onRemove={() => removeMutation.mutate(m.user_id)}
+								/>
+							))}
+						</ul>
+					))}
+			</AppSurfaceCard>
+
+			{pickerOpen && (
+				<AddCuratedMemberModal
+					projectId={projectId}
+					teamId={projectTeam.team_id}
+					teamName={team?.name ?? "team"}
+					onClose={() => setPickerOpen(false)}
+				/>
+			)}
+		</div>
+	);
 }
 
-// ─── Position cell with inline edit ───────────────────────────────────────────
-
-// ─── Execution Team Section ───────────────────────────────────────────────────
-
-function MemberSection({
-  title,
-  members,
-  roleLabel,
-  viewerRole,
-  canManageMembers,
-  canEditOthersPosition,
-  currentUserId,
-  onSavePosition,
-  onRemove,
-  removingId,
-  showActions,
-  projectId,
+function CuratedMemberRow({
+	member,
+	effectiveRole,
+	canManage,
+	isRemoving,
+	onRemove,
 }: {
-  title: string;
-  members: ProjectMember[];
-  roleLabel: string;
-  viewerRole: ViewerRole;
-  canManageMembers: boolean;
-  canEditOthersPosition: boolean;
-  currentUserId?: string;
-  onSavePosition: (memberId: string, next: string) => Promise<void>;
-  onRemove: (m: ProjectMember) => void;
-  removingId: string | null;
-  showActions: boolean;
-  projectId: string;
+	member: ProjectTeamMember;
+	/** Effective (yoked) role on the project. May be higher than the
+	 * team's natural source if this user holds a stronger direct
+	 * grant — e.g. a consultant curated via team still reads as OWNER. */
+	effectiveRole: string;
+	canManage: boolean;
+	isRemoving: boolean;
+	onRemove: () => void;
 }) {
-  const navigate = useNavigate();
-  if (members.length === 0) return null;
-
-  return (
-    <div className="app-surface-card p-4 md:p-5">
-      <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">
-        {title} ({members.length})
-      </p>
-      <ColumnHeaders showActions={showActions} />
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        {members.map((m, idx) => {
-          const isSelf = !!currentUserId && m.user_id === currentUserId;
-          const perms = getRowPermissions(viewerRole, "member", isSelf, canManageMembers);
-          const name = memberDisplayName(m);
-          const canEditPosition = isSelf || canEditOthersPosition;
-          return (
-            <TeamRow
-              key={m.id}
-              name={name}
-              email={m.user?.email}
-              avatarUrl={m.user?.avatar_url}
-              roleLabel={roleLabel}
-              position={m.position}
-              canEditPosition={canEditPosition}
-              onSavePosition={(next) => onSavePosition(m.id, next)}
-              isLast={idx === members.length - 1}
-              isSelf={isSelf}
-              permissions={perms}
-              showActions={showActions}
-              onRemove={() => onRemove(m)}
-              onEditPermissions={
-                canManageMembers
-                  ? () =>
-                      void navigate({
-                        to: "/project/$projectId/settings/permissions",
-                        params: { projectId },
-                        search: { memberId: m.id },
-                      })
-                  : undefined
-              }
-              removing={removingId === m.id}
-              onChat={
-                !isSelf && m.user_id
-                  ? () =>
-                      void navigate({
-                        to: "/project/$projectId/chat/$chatRef",
-                        params: { projectId, chatRef: toDmRef(m.user_id!) },
-                      })
-                  : undefined
-              }
-            />
-          );
-        })}
-      </div>
-    </div>
-  );
+	return (
+		<ProjectMemberRow
+			user={member.user}
+			fallbackId={member.user_id}
+			// project_team_members carries role only; the team-side
+			// position lives on team_members and isn't currently embedded
+			// in this payload. Position editing happens on /teams/$teamId.
+			position={null}
+			role={effectiveRole}
+			isRemoving={isRemoving}
+			onRemove={canManage ? onRemove : undefined}
+		/>
+	);
 }
 
-// ─── Role Filter Dropdown ─────────────────────────────────────────────────────
-
-// ─── Pending Invites Section ──────────────────────────────────────────────────
-
-function PendingInvitesSection({
-  invites,
-  canManage,
-  onCancel,
-  cancellingId,
+function TeamHeaderIcon({
+	team,
 }: {
-  invites: ProjectInvite[];
-  canManage: boolean;
-  onCancel: (inviteId: string) => void;
-  cancellingId: string | null;
+	team: { avatar_url?: string | null; name?: string } | undefined;
 }) {
-  if (invites.length === 0) return null;
-
-  return (
-    <div className="app-surface-card p-4 md:p-5">
-      <div className="mb-3 flex items-center gap-2">
-        <Clock className="w-3.5 h-3.5 text-amber-500" />
-        <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">
-          Pending Invites ({invites.length})
-        </p>
-      </div>
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
-        {invites.map((inv) => {
-          const role = inviteRole(inv);
-          const roleLabel = ROLE_LABELS[role];
-          const colorClass = ROLE_COLORS[role];
-          const position =
-            role === "member" && inv.invited_position
-              ? inv.invited_position
-              : null;
-          const initials = (inv.invitee_email ?? "?")[0]?.toUpperCase() ?? "?";
-          const inviterName = inv.inviter?.display_name ?? null;
-          const cancelling = cancellingId === inv.id;
-
-          return (
-            <div
-              key={inv.id}
-              className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-slate-50 transition-colors"
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center bg-amber-100 text-amber-700 text-xs font-semibold">
-                  {initials}
-                </div>
-
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-semibold text-slate-900 truncate">
-                      {inv.invitee_email}
-                    </p>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                      <Clock className="w-2.5 h-2.5" />
-                      Pending
-                    </span>
-                  </div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${colorClass}`}>
-                      {roleLabel}
-                    </span>
-                    {position && (
-                      <span className="text-[11px] text-slate-400">{position}</span>
-                    )}
-                    <span className="text-[11px] text-slate-400">
-                      Invited {formatInviteDate(inv.created_at)}
-                      {inviterName ? ` by ${inviterName}` : ""}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {canManage && (
-                <button
-                  type="button"
-                  onClick={() => onCancel(inv.id)}
-                  disabled={cancelling}
-                  title="Revoke invite"
-                  className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-500 border border-slate-200 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-40"
-                >
-                  {cancelling ? "Revoking…" : "Revoke"}
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+	if (team?.avatar_url) {
+		return (
+			<img
+				src={team.avatar_url}
+				alt={team.name ?? ""}
+				className="h-6 w-6 shrink-0 rounded-md object-cover ring-1 ring-slate-200"
+			/>
+		);
+	}
+	return (
+		<div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-200 text-slate-600">
+			<Users className="h-3.5 w-3.5" />
+		</div>
+	);
 }
 
-type RoleFilter = "all" | "consultant" | "client" | "member";
+// ─── Add curated member from a team's roster ───────────────────────────────
 
-function RoleFilterDropdown({
-  value,
-  onChange,
+function AddCuratedMemberModal({
+	projectId,
+	teamId,
+	teamName,
+	onClose,
 }: {
-  value: RoleFilter;
-  onChange: (v: RoleFilter) => void;
+	projectId: string;
+	teamId: string;
+	teamName: string;
+	onClose: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const coords = useDropdownCoords(open, buttonRef, "left");
+	const queryClient = useQueryClient();
+	const toast = useToast();
 
-  useEffect(() => {
-    if (!open) return;
-    const handle = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (buttonRef.current?.contains(target)) return;
-      if (menuRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [open]);
+	const availableQuery = useQuery({
+		queryKey: ["project", projectId, "teams", teamId, "available"],
+		queryFn: () => listAvailableTeamMembers(projectId, teamId),
+	});
 
-  const label = value === "all" ? "All Roles" : ROLE_LABELS[value];
+	const addMutation = useMutation({
+		mutationFn: (userId: string) =>
+			addCuratedMember(projectId, teamId, { user_id: userId }),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({
+				queryKey: ["project", projectId, "teams", teamId, "curated"],
+			});
+			void queryClient.invalidateQueries({
+				queryKey: ["project", projectId, "teams", teamId, "available"],
+			});
+			void queryClient.invalidateQueries({
+				queryKey: projectKeys.members(projectId),
+			});
+			toast.success("Member added to project");
+		},
+		onError: (err) => toast.error((err as Error).message),
+	});
 
-  return (
-    <>
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 transition-all hover:bg-slate-50 hover:border-slate-400"
-      >
-        {label}
-        <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-      </button>
-      {open && coords && createPortal(
-        <div
-          ref={menuRef}
-          style={{ position: "fixed", top: coords.top, left: coords.left, zIndex: 60 }}
-          className="bg-white border border-slate-200 rounded-xl shadow-lg py-1 w-40"
-        >
-          {(["all", "consultant", "client", "member"] as RoleFilter[]).map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => {
-                onChange(r);
-                setOpen(false);
-              }}
-              className={`w-full px-3 py-2 text-sm text-left hover:bg-slate-50 transition-colors ${
-                value === r ? "font-semibold text-slate-900" : "text-slate-600"
-              }`}
-            >
-              {r === "all" ? "All Roles" : ROLE_LABELS[r]}
-            </button>
-          ))}
-        </div>,
-        document.body,
-      )}
-    </>
-  );
+	const available = availableQuery.data ?? [];
+
+	return (
+		<ModalPortal>
+			<div
+				className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4"
+				onClick={onClose}
+			>
+				<div
+					className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-xl"
+					onClick={(e) => e.stopPropagation()}
+				>
+					<div className="border-b border-slate-100 px-6 py-4">
+						<h2 className="text-lg font-semibold text-slate-900">
+							Add member from {teamName}
+						</h2>
+						<p className="mt-1 text-sm text-slate-600">
+							Pick someone from this team to bring onto the project.
+						</p>
+					</div>
+					<div className="max-h-[420px] overflow-y-auto">
+						{availableQuery.isPending ? (
+							<div className="flex items-center justify-center py-10 text-sm text-slate-500">
+								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+								Loading…
+							</div>
+						) : available.length === 0 ? (
+							<div className="px-6 py-10 text-center text-sm text-slate-500">
+								Everyone on this team is already on the project.
+							</div>
+						) : (
+							<ul className="divide-y divide-slate-200">
+								{available.map((m) => (
+									<li
+										key={m.user_id}
+										className="flex items-center justify-between gap-3 px-5 py-3"
+									>
+										<MemberDisplay
+											user={m.user}
+											fallbackId={m.user_id}
+											size="sm"
+											subtitle={m.role}
+										/>
+										<button
+											type="button"
+											onClick={() => addMutation.mutate(m.user_id)}
+											disabled={
+												addMutation.isPending &&
+												addMutation.variables === m.user_id
+											}
+											className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+										>
+											{addMutation.isPending &&
+											addMutation.variables === m.user_id ? (
+												<Loader2 className="h-3.5 w-3.5 animate-spin" />
+											) : (
+												<Plus className="h-3.5 w-3.5" />
+											)}
+											Add
+										</button>
+									</li>
+								))}
+							</ul>
+						)}
+					</div>
+					<div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-6 py-3">
+						<button
+							type="button"
+							onClick={onClose}
+							className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+						>
+							Done
+						</button>
+					</div>
+				</div>
+			</div>
+		</ModalPortal>
+	);
 }
 
-// Compute fixed-position coords for a dropdown panel anchored below `triggerRef`.
-// `align` decides which edge of the panel aligns with the trigger.
-function useDropdownCoords(
-  open: boolean,
-  triggerRef: React.RefObject<HTMLElement | null>,
-  align: "left" | "right",
-): { top: number; left: number } | null {
-  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+// ─── Direct shares ─────────────────────────────────────────────────────────
 
-  useLayoutEffect(() => {
-    if (!open) {
-      setCoords(null);
-      return;
-    }
-    const compute = () => {
-      const trigger = triggerRef.current;
-      if (!trigger) return;
-      const rect = trigger.getBoundingClientRect();
-      const top = rect.bottom + 4;
-      // Right-align: panel's right edge matches trigger's right.
-      // Left-align: panel's left edge matches trigger's left.
-      // Width estimates are conservative; final position is constrained by
-      // the panel's intrinsic width so close-enough is fine for now.
-      const left = align === "right" ? rect.right - 192 : rect.left;
-      setCoords({ top, left });
-    };
-    compute();
-    const onScroll = () => compute();
-    window.addEventListener("resize", onScroll);
-    window.addEventListener("scroll", onScroll, true);
-    return () => {
-      window.removeEventListener("resize", onScroll);
-      window.removeEventListener("scroll", onScroll, true);
-    };
-  }, [open, triggerRef, align]);
+function DirectSharesCard({
+	projectId,
+	shares,
+	canManage,
+	alsoOnByUserId,
+}: {
+	projectId: string;
+	shares: ProjectMember[];
+	canManage: boolean;
+	/** Map of user_id → list of team names where the same user *also*
+	 * holds a team-derived share. Used to surface multi-origin grants
+	 * inline so we don't double-list the user across cards. */
+	alsoOnByUserId: Map<string, string[]>;
+}) {
+	const removeMutation = useProjectRemoveMemberMutation(projectId);
+	const toast = useToast();
 
-  return coords;
-}
-
-// ─── Main Page ─────────────────────────────────────────────────────────────────
-
-export function TeamPage({ projectId }: TeamPageProps) {
-  const user = useUser();
-  const navigate = useNavigate();
-  const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
-
-  const projectQuery = useProjectDetailQuery(projectId);
-  const membersQuery = useProjectMembersQuery(projectId);
-  const invitesQuery = useProjectInvitesQuery(projectId);
-  const myPermissionsQuery = useProjectMyPermissionsQuery(projectId);
-  const removeMemberMutation = useProjectRemoveMemberMutation(projectId);
-  const cancelInviteMutation = useProjectCancelInviteMutation(projectId);
-  const [cancellingInviteId, setCancellingInviteId] = useState<string | null>(null);
-  const project = (projectQuery.data as Project | undefined) ?? null;
-  const [members, setMembers] = useState<ProjectMember[]>([]);
-  const [showModal, setShowModal] = useState(false);
-  const [removeCandidate, setRemoveCandidate] = useState<ProjectMember | null>(null);
-  const [removingId, setRemovingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const sourceMembers = membersQuery.data ?? [];
-    const principalIds = new Set(
-      [project?.client_id, project?.consultant_id].filter(Boolean),
-    );
-    const principalRoles = new Set(["client", "consultant"]);
-    const filteredMembers = sourceMembers.filter(
-      (member) =>
-        (!member.user_id || !principalIds.has(member.user_id)) &&
-        !principalRoles.has((member.role ?? "").toLowerCase()),
-    );
-    setMembers(filteredMembers);
-  }, [membersQuery.data, project?.client_id, project?.consultant_id]);
-
-  const handleRemove = useCallback((member: ProjectMember) => {
-    setRemoveCandidate(member);
-  }, []);
-
-  const handleConfirmRemove = useCallback(async () => {
-    if (!removeCandidate) return;
-    setRemovingId(removeCandidate.id);
-    try {
-      await removeMemberMutation.mutateAsync(removeCandidate.id);
-      setMembers((prev) => prev.filter((m) => m.id !== removeCandidate.id));
-      setRemoveCandidate(null);
-    } finally {
-      setRemovingId(null);
-    }
-  }, [removeCandidate, removeMemberMutation]);
-
-  const handleCloseRemoveModal = useCallback(() => {
-    if (removingId) return;
-    setRemoveCandidate(null);
-  }, [removingId]);
-
-  const handleCancelInvite = useCallback(async (inviteId: string) => {
-    setCancellingInviteId(inviteId);
-    try {
-      await cancelInviteMutation.mutateAsync(inviteId);
-    } finally {
-      setCancellingInviteId(null);
-    }
-  }, [cancelInviteMutation]);
-
-  const queryClient = useQueryClient();
-  const toast = useToast();
-  const updatePositionMutation = useMutation({
-    mutationFn: ({
-      memberId,
-      position,
-    }: {
-      memberId: string;
-      position: string;
-    }) => projectService.updateMemberPosition(projectId, memberId, position),
-    onSuccess: (_data, variables) => {
-      // Optimistic patch: update the cached members list in place so the
-      // UI reflects the new position without a round trip.
-      queryClient.setQueryData<ProjectMember[]>(
-        projectKeys.members(projectId),
-        (current) =>
-          current?.map((m) =>
-            m.id === variables.memberId
-              ? { ...m, position: variables.position || null }
-              : m,
-          ),
-      );
-      void queryClient.invalidateQueries({
-        queryKey: projectKeys.detail(projectId),
-      });
-    },
-    onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Couldn't save position");
-    },
-  });
-
-  const handleSavePosition = useCallback(
-    async (memberId: string, next: string) => {
-      await updatePositionMutation.mutateAsync({ memberId, position: next });
-    },
-    [updatePositionMutation],
-  );
-
-  const isLoading =
-    projectQuery.isPending || membersQuery.isPending || myPermissionsQuery.isPending;
-  const rawError =
-    projectQuery.error ?? membersQuery.error ?? myPermissionsQuery.error ?? null;
-  const permissionFailure = rawError
-    ? parseMissingPermissionError(rawError)
-    : null;
-  const errorMessage =
-    rawError instanceof Error ? rawError.message : rawError ? String(rawError) : null;
-
-  if (isLoading) return <TeamSkeleton />;
-
-  if (permissionFailure) {
-    return (
-      <div className="h-full overflow-y-auto">
-        <div className="px-8 py-6">
-          <PermissionDeniedBanner parsed={permissionFailure} />
-        </div>
-      </div>
-    );
-  }
-
-  if (errorMessage) {
-    return (
-      <div className="h-full overflow-y-auto">
-        <div className="px-8 py-6">
-          <div className="rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {errorMessage}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const viewerMember = members?.find((m) => m.user_id === user?.id) ?? null;
-  const viewerRole = deriveViewerRole(user?.id, project, viewerMember);
-  const canManageMembers = Boolean(myPermissionsQuery.data?.members.manage);
-  const canViewMembers = Boolean(
-    myPermissionsQuery.data?.members.view || myPermissionsQuery.data?.members.manage,
-  );
-  const canAddMembers = canManageMembers;
-
-  if (!canViewMembers) {
-    return (
-      <div className="app-shell-bg h-full overflow-y-auto">
-        <div className="mx-auto w-full max-w-6xl px-5 py-6 md:px-8">
-          <div className="app-surface-card rounded-2xl border-dashed p-8 text-center">
-            <p className="text-sm font-semibold text-slate-900">
-              You do not have permission to view team privileges.
-            </p>
-            <p className="mt-1 text-sm text-slate-500">
-              Ask a project lead to grant Members View permission.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const client = project?.client;
-  const consultant = project?.consultant;
-
-  const isSamePrincipal =
-    !!client &&
-    !!consultant &&
-    ((client.id && consultant.id && client.id === consultant.id) ||
-      (client.email &&
-        consultant.email &&
-        client.email.toLowerCase() === consultant.email.toLowerCase()));
-
-  type Stakeholder = {
-    id: string;
-    name: string;
-    avatarUrl?: string;
-    email?: string;
-    roleLabel: string;
-    targetType: TargetType;
-    /** Underlying project_shares row id (so we can save position). */
-    shareId?: string;
-    /** Current position label, if any, on the share row. */
-    position?: string | null;
-  };
-
-  // Map principals (by user id) to their project_shares row so we can edit
-  // their position labels. Principals are filtered out of `members` for
-  // display but the share rows still exist in the unfiltered query data.
-  const sourceMembers = (membersQuery.data as ProjectMember[] | undefined) ?? [];
-  const shareByUserId = new Map<string, ProjectMember>();
-  for (const m of sourceMembers) {
-    if (m.user_id) shareByUserId.set(m.user_id, m);
-  }
-
-  const stakeholders: Stakeholder[] = [];
-
-  if (isSamePrincipal && client) {
-    const share = shareByUserId.get(client.id);
-    stakeholders.push({
-      id: client.id,
-      name: client.display_name || client.email || "Client",
-      avatarUrl: client.avatar_url,
-      email: client.email,
-      roleLabel: "Client & Consultant",
-      targetType: "consultant",
-      shareId: share?.id,
-      position: share?.position ?? null,
-    });
-  } else {
-    if (client) {
-      const share = shareByUserId.get(client.id);
-      stakeholders.push({
-        id: client.id,
-        name: client.display_name || client.email || "Client",
-        avatarUrl: client.avatar_url,
-        email: client.email,
-        roleLabel: "Client",
-        targetType: "client",
-        shareId: share?.id,
-        position: share?.position ?? null,
-      });
-    }
-    if (consultant) {
-      const share = shareByUserId.get(consultant.id);
-      stakeholders.push({
-        id: consultant.id,
-        name: consultant.display_name || consultant.email || "Consultant",
-        avatarUrl: consultant.avatar_url,
-        email: consultant.email,
-        roleLabel: "Consultant",
-        targetType: "consultant",
-        shareId: share?.id,
-        position: share?.position ?? null,
-      });
-    }
-  }
-
-  const q = search.toLowerCase();
-
-  const filteredStakeholders = stakeholders.filter(
-    (s) =>
-      (roleFilter === "all" || s.targetType === roleFilter) &&
-      (!q || s.name.toLowerCase().includes(q) || s.roleLabel.toLowerCase().includes(q)),
-  );
-
-  const filteredMembers = members.filter(
-    (m) =>
-      (roleFilter === "all" || roleFilter === "member") &&
-      (!q ||
-        memberDisplayName(m).toLowerCase().includes(q) ||
-        (m.position ?? "").toLowerCase().includes(q)),
-  );
-
-  const allInvites = (invitesQuery.data as ProjectInvite[] | undefined) ?? [];
-  const pendingInvites = allInvites.filter(
-    (inv) =>
-      inv.status === "pending" &&
-      (roleFilter === "all" || inviteRole(inv) === roleFilter),
-  );
-
-  return (
-    <div className="app-shell-bg h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-6xl px-5 py-6 md:px-8">
-        <div className="mb-6 inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/85 p-1">
-          <button
-            type="button"
-            className="px-4 py-1.5 rounded-full text-sm font-semibold transition-all bg-slate-900 text-white shadow-sm"
-          >
-            Team
-          </button>
-        </div>
-
-        <div className="app-surface-card mb-8 mt-2 flex items-center justify-between gap-4 p-5">
-          <div className="flex items-center gap-3">
-            <div className="app-input flex w-56 items-center gap-2 rounded-lg px-3 py-2 transition-all focus-within:ring-0">
-              <Search className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search..."
-                className="bg-transparent text-sm text-slate-700 placeholder:text-slate-400 outline-none w-full"
-              />
-            </div>
-
-            <RoleFilterDropdown value={roleFilter} onChange={setRoleFilter} />
-          </div>
-
-          {canAddMembers && (
-            <button
-              type="button"
-              onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 app-cta rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              Add Team Member
-            </button>
-          )}
-        </div>
-
-        <div className="space-y-6">
-          {filteredStakeholders.length > 0 && (
-            <div className="app-surface-card p-4 md:p-5">
-              <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">
-                Project Principals ({filteredStakeholders.length})
-              </p>
-              <ColumnHeaders showActions={canManageMembers} />
-              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                {filteredStakeholders.map((s, idx) => {
-                  const isSelf = !!user?.id && s.id === user.id;
-                  const perms = getRowPermissions(viewerRole, s.targetType, isSelf, canManageMembers);
-                  const canEditOthersPosition = Boolean(
-                    myPermissionsQuery.data?.members.edit_position,
-                  );
-                  const canEditPosition = !!s.shareId && (isSelf || canEditOthersPosition);
-                  return (
-                    <TeamRow
-                      key={s.id}
-                      name={s.name}
-                      avatarUrl={s.avatarUrl}
-                      email={s.email}
-                      roleLabel={s.roleLabel}
-                      position={s.position}
-                      canEditPosition={canEditPosition}
-                      onSavePosition={
-                        s.shareId
-                          ? (next) => handleSavePosition(s.shareId!, next)
-                          : undefined
-                      }
-                      isLast={idx === filteredStakeholders.length - 1}
-                      isSelf={isSelf}
-                      permissions={perms}
-                      showActions={canManageMembers}
-                      onChat={
-                        !isSelf && s.id
-                          ? () =>
-                              void navigate({
-                                to: "/project/$projectId/chat/$chatRef",
-                                params: { projectId, chatRef: toDmRef(s.id) },
-                              })
-                          : undefined
-                      }
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          <MemberSection
-            title="Team"
-            members={filteredMembers}
-            roleLabel="Member"
-            viewerRole={viewerRole}
-            canManageMembers={canManageMembers}
-            canEditOthersPosition={Boolean(
-              myPermissionsQuery.data?.members.edit_position,
-            )}
-            currentUserId={user?.id}
-            onSavePosition={handleSavePosition}
-            onRemove={handleRemove}
-            removingId={removingId}
-            showActions={canManageMembers}
-            projectId={projectId}
-          />
-
-          <PendingInvitesSection
-            invites={pendingInvites}
-            canManage={canManageMembers}
-            onCancel={(id) => void handleCancelInvite(id)}
-            cancellingId={cancellingInviteId}
-          />
-        </div>
-      </div>
-
-      {showModal && (
-        <AddMemberModal projectId={projectId} onClose={() => setShowModal(false)} />
-      )}
-
-      <RemoveMemberModal
-        open={removeCandidate !== null}
-        memberName={removeCandidate ? memberDisplayName(removeCandidate) : ""}
-        loading={Boolean(
-          removeCandidate && removingId && removingId === removeCandidate.id,
-        )}
-        onClose={handleCloseRemoveModal}
-        onConfirm={() => void handleConfirmRemove()}
-      />
-    </div>
-  );
+	return (
+		<section>
+			<h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-600">
+				Direct collaborators ({shares.length})
+			</h3>
+			<AppSurfaceCard className="overflow-hidden">
+				<ul className="divide-y divide-slate-200">
+					{shares.map((m) => (
+						<ProjectMemberRow
+							key={m.id}
+							user={toProfileSummary(m.user)}
+							fallbackId={m.user_id ?? undefined}
+							position={m.position ?? null}
+							role={m.role}
+							originLabel={m.origin ? `Direct · ${m.origin}` : "Direct"}
+							alsoOnLabels={
+								m.user_id
+									? alsoOnByUserId.get(m.user_id)
+									: undefined
+							}
+							onRemove={
+								canManage
+									? () =>
+											removeMutation.mutate(m.id, {
+												onSuccess: () =>
+													toast.success("Removed from project"),
+												onError: (err) =>
+													toast.error((err as Error).message),
+											})
+									: undefined
+							}
+							isRemoving={
+								removeMutation.isPending &&
+								removeMutation.variables === m.id
+							}
+						/>
+					))}
+				</ul>
+			</AppSurfaceCard>
+		</section>
+	);
 }

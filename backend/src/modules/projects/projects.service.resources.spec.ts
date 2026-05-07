@@ -47,11 +47,18 @@ describe('ProjectsService (resources)', () => {
       detach: jest.fn(),
       list: jest.fn(),
     } as any;
+    const accessSync = {
+      syncUser: jest.fn().mockResolvedValue(null),
+      setUserRole: jest.fn().mockResolvedValue(null),
+      setUserCapabilities: jest.fn().mockResolvedValue(undefined),
+      setUserCapabilitiesByMemberId: jest.fn().mockResolvedValue(null),
+    } as any;
     return new ProjectsService(
       repo,
       notificationsService as any,
       authorization as any,
       projectTeams,
+      accessSync,
     );
   };
 

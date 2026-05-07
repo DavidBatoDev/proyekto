@@ -1,7 +1,6 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import {
 	ChevronRight,
 	Loader2,
@@ -15,6 +14,7 @@ import {
 import { AppSectionHeader, AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { MemberDisplay } from "@/components/common/MemberDisplay";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import { useToast } from "@/hooks/useToast";
 import { useAuthStore, useUser } from "@/stores/authStore";
 import {
@@ -29,17 +29,6 @@ import {
 	type TeamMember,
 	type TeamRole,
 } from "@/services/teams.service";
-
-/**
- * Renders a fullscreen modal escape-hatch'd to document.body. Necessary
- * because some ancestors (e.g. AppSurfaceCard) apply `backdrop-filter`,
- * which creates a containing block for `position: fixed` and traps
- * naïvely-rendered modals inside the card instead of the viewport.
- */
-function ModalPortal({ children }: { children: ReactNode }) {
-	if (typeof document === "undefined") return null;
-	return createPortal(children, document.body);
-}
 
 /**
  * Blue chip for the free-form member position (e.g. "Backend Developer").

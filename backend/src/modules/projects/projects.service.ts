@@ -36,6 +36,7 @@ import {
 } from './dto/project.dto';
 import { Project } from '../../common/entities';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ProjectAccessSyncService } from './access-sync/access-sync.service';
 import {
   type PermissionPath,
   type ProjectPermissions,
@@ -62,7 +63,22 @@ export class ProjectsService {
     private readonly authorization: ProjectAuthorizationService,
     @Inject(forwardRef(() => ProjectTeamsService))
     private readonly projectTeams: ProjectTeamsService,
+    private readonly accessSync: ProjectAccessSyncService,
   ) {}
+
+  /** Best-effort sync — never blocks the calling write. The yoke rule
+   * is recoverable on the next mutation that calls syncUser. */
+  private async safeSync(projectId: string, userId: string): Promise<void> {
+    try {
+      await this.accessSync.syncUser(projectId, userId);
+    } catch (err) {
+      this.logger.warn(
+        `safeSync(${projectId}, ${userId}) failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
 
   /**
    * Returns true when the caller has `owner` or `admin` role on the project.
@@ -222,6 +238,9 @@ export class ProjectsService {
       'members.view': 'viewer',
       'members.manage': 'admin',
       'members.edit_permissions': 'admin',
+      // Teams (structural attach/detach gate)
+      'teams.view': 'viewer',
+      'teams.manage': 'admin',
       // Roadmap
       'roadmap.comment': 'commenter',
       'roadmap.edit': 'editor',
@@ -317,6 +336,7 @@ export class ProjectsService {
         origin: 'client',
         grantedBy: userId,
       });
+      await this.safeSync(project.id, userId);
       return project;
     }
 
@@ -346,6 +366,7 @@ export class ProjectsService {
       origin: 'consultant',
       grantedBy: userId,
     });
+    await this.safeSync(project.id, userId);
 
     // If the picker passed a team, attach it as primary with the
     // consultant curated as the only initial member. Failures here are
@@ -356,8 +377,7 @@ export class ProjectsService {
         await this.projectTeams.attach(project.id, userId, {
           team_id: dto.primary_team_id,
           is_primary: true,
-          default_role: 'editor',
-          member_user_ids: [userId],
+          members: [{ user_id: userId, role: 'editor' }],
         });
       } catch (err) {
         this.logger.error(
@@ -475,6 +495,7 @@ export class ProjectsService {
       origin: 'consultant',
       grantedBy: consultantId,
     });
+    await this.safeSync(projectId, consultantId);
     return project;
   }
 
@@ -541,9 +562,11 @@ export class ProjectsService {
       origin: 'consultant',
       grantedBy: callerId,
     });
+    await this.safeSync(projectId, newConsultantId);
     if (previousConsultantId && previousConsultantId !== newConsultantId) {
       try {
         await this.authorization.revoke(projectId, previousConsultantId);
+        await this.safeSync(projectId, previousConsultantId);
       } catch (err) {
         // Last-owner protection — leave the previous consultant in place
         // rather than orphaning. They remain a co-owner alongside the new
@@ -698,6 +721,7 @@ export class ProjectsService {
           origin: 'invited',
           grantedBy,
         });
+        await this.safeSync(result.project_id, userId);
       } catch (err) {
         // Surface but don't block — the invite respond already persisted.
         // Operator can retry the grant from the team settings UI.
@@ -901,6 +925,12 @@ export class ProjectsService {
 
     await this.projectsRepo.removeMember(projectId, memberId);
 
+    // Yoke: surviving rows for this user (other origins) recompute
+    // their synced role to whatever's left. No-op if no rows survive.
+    if (targetMember.user_id) {
+      await this.safeSync(projectId, targetMember.user_id);
+    }
+
     if (
       callerId === project.client_id &&
       project.consultant_id &&
@@ -1080,11 +1110,26 @@ export class ProjectsService {
     // stored on the share row. Empty delta means "use defaults" (we still
     // write {} to clear any prior overrides).
     const newCapabilities = diffCapabilities(role, origin, desired);
-    return this.projectsRepo.updateMemberCapabilities(
+
+    // Yoke: capabilities are a per-user concept now, not per-origin.
+    // Fan out the same map to every project_access row this user holds
+    // on the project. The legacy memberId stays in the API surface for
+    // backwards compatibility — we just resolve user_id from it.
+    const syncedUserId = await this.accessSync.setUserCapabilitiesByMemberId(
       projectId,
       memberId,
-      newCapabilities,
+      newCapabilities as Record<string, unknown>,
     );
+    if (!syncedUserId) {
+      // Fallback: shouldn't happen in practice (the row exists; we
+      // verified above), but keep the per-row write as a safety net.
+      return this.projectsRepo.updateMemberCapabilities(
+        projectId,
+        memberId,
+        newCapabilities,
+      );
+    }
+    return this.projectsRepo.getMemberById(projectId, memberId);
   }
 
   /**

@@ -189,7 +189,6 @@ function TeamProjectsSettings() {
 											/>
 										</th>
 										<th className="px-4 py-3">Project</th>
-										<th className="px-4 py-3">Default role</th>
 										<th className="px-4 py-3">Primary</th>
 										<th className="px-4 py-3">Attached</th>
 										<th className="w-10 px-4 py-3" />
@@ -309,11 +308,6 @@ function TeamProjectRow({
 				>
 					{row.project?.title || projectId}
 				</Link>
-			</td>
-			<td className="px-4 py-3">
-				<span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
-					{row.default_role}
-				</span>
 			</td>
 			<td className="px-4 py-3 text-slate-600">
 				{row.is_primary ? "Yes" : "—"}

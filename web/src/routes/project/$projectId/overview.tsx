@@ -8,10 +8,8 @@ import {
   OverviewBanner,
   OverviewContent,
   OverviewSidebar,
-  type ProjectBrief,
-  type BriefStorageMode,
+  type ProjectBriefField,
   toRichHtml,
-  toItems,
   deriveTimelineItems,
 } from "@/components/project/overview";
 import { BringInAConsultantCard } from "@/components/project/BringInAConsultantCard";
@@ -41,39 +39,22 @@ function OverviewPage() {
   const project = projectQuery.data ?? null;
   const members = membersQuery.data ?? [];
 
-  const [projectBrief, setProjectBrief] = useState<ProjectBrief | null>(null);
-  const [savingSection, setSavingSection] = useState<
-    "summary" | "scope" | "constraints" | "requirements" | "notes" | null
-  >(null);
-  const [briefStorageMode, setBriefStorageMode] =
-    useState<BriefStorageMode>("visibility_mask");
+  const [projectSummary, setProjectSummary] = useState<string | null>(null);
+  const [customFields, setCustomFields] = useState<ProjectBriefField[]>([]);
+  const [isSavingSummary, setIsSavingSummary] = useState(false);
+  const [isSavingFields, setIsSavingFields] = useState(false);
 
   const [editingSummary, setEditingSummary] = useState(false);
-  const [editingScope, setEditingScope] = useState(false);
-  const [editingConstraints, setEditingConstraints] = useState(false);
-  const [editingRequirements, setEditingRequirements] = useState(false);
-  const [editingNotes, setEditingNotes] = useState(false);
 
   const [bannerModalOpen, setBannerModalOpen] = useState(false);
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [projectBannerUrl, setProjectBannerUrl] = useState<string | null>(null);
 
-  const briefSelectBase =
-    "mission_vision, scope_statement, requirements, constraints, risk_register";
-
-  const isMissingColumnError = (error: unknown, column: string) => {
-    if (!error || typeof error !== "object") return false;
-    const err = error as { message?: string; details?: string; hint?: string };
-    const text =
-      `${err.message ?? ""} ${err.details ?? ""} ${err.hint ?? ""}`.toLowerCase();
-    return text.includes(column.toLowerCase());
-  };
-
   useEffect(() => {
-    const data = briefQuery.data;
-    if (!data) return;
-    setProjectBrief(data.brief);
-    setBriefStorageMode(data.mode);
+    const result = briefQuery.data;
+    if (!result) return;
+    setProjectSummary(result.brief?.project_summary ?? null);
+    setCustomFields(result.brief?.custom_fields ?? []);
   }, [briefQuery.data]);
 
   useEffect(() => {
@@ -98,120 +79,91 @@ function OverviewPage() {
     }
   };
 
-  const risks = useMemo(
-    () => toItems(projectBrief?.risk_register),
-    [projectBrief?.risk_register],
-  );
-
   const timelineItems = useMemo(
     () =>
       roadmapFullQuery.data ? deriveTimelineItems(roadmapFullQuery.data) : [],
     [roadmapFullQuery.data],
   );
 
-  const memberRole =
-    members.find((member) => member.user_id === user?.id)?.role?.toLowerCase() ?? "";
+  // Edit gate: anyone who is the project's client/consultant of record, or
+  // who holds an editor-or-higher role on project_shares, may edit the
+  // brief sections. Earlier this only matched literal "client"/"consultant"
+  // role strings, which excluded owners/admins/editors with full
+  // permissions.
+  const currentMember = members.find((member) => member.user_id === user?.id);
+  const memberRole = (currentMember?.role ?? "").toLowerCase();
+  const isOwnerOnProject =
+    user?.id !== undefined &&
+    (project?.client_id === user.id || project?.consultant_id === user.id);
   const canEditOverview =
-    memberRole.includes("client") || memberRole.includes("consultant");
+    isOwnerOnProject ||
+    ["owner", "admin", "editor", "client", "consultant"].includes(memberRole);
 
-  const summaryHtml = toRichHtml(
-    projectBrief?.mission_vision ?? project?.description ?? "",
-  );
-  const scopeHtml = toRichHtml(projectBrief?.scope_statement ?? "");
-  const constraintsHtml = toRichHtml(projectBrief?.constraints ?? "");
-  const requirementsHtml = toRichHtml(projectBrief?.requirements);
-  const notesHtml = toRichHtml(
-    projectBrief?.visibility_mask?.project_notes ?? projectBrief?.notes ?? "",
-  );
+  const summaryHtml = toRichHtml(projectSummary ?? project?.description ?? "");
 
-  const saveBriefPatch = async (
-    section: "summary" | "scope" | "constraints" | "requirements" | "notes",
-    patch: Partial<ProjectBrief>,
+  const upsertBrief = async (
+    patch: { project_summary?: string | null; custom_fields?: ProjectBriefField[] },
   ) => {
+    return supabase
+      .from("project_briefs")
+      .upsert(
+        {
+          project_id: projectId,
+          version: 1,
+          updated_by: user?.id ?? null,
+          ...patch,
+        },
+        { onConflict: "project_id,version" },
+      )
+      .select("project_summary, custom_fields")
+      .single();
+  };
+
+  const handleSaveSummary = async (value: string) => {
     if (!canEditOverview) return;
-
+    setIsSavingSummary(true);
     try {
-      setSavingSection(section);
-
-      const nextVisibilityMask = {
-        ...(projectBrief?.visibility_mask ?? {}),
-        ...(patch.visibility_mask ?? {}),
-      };
-
-      const payloadBase = {
-        project_id: projectId,
-        version: 1,
-        updated_by: user?.id ?? null,
-        ...patch,
-      };
-
-      const runUpsert = async (mode: BriefStorageMode) => {
-        if (mode === "visibility_mask") {
-          return supabase
-            .from("project_briefs")
-            .upsert(
-              {
-                ...payloadBase,
-                visibility_mask: nextVisibilityMask,
-              },
-              { onConflict: "project_id,version" },
-            )
-            .select(`${briefSelectBase}, visibility_mask`)
-            .single();
-        }
-
-        if (mode === "notes") {
-          return supabase
-            .from("project_briefs")
-            .upsert(payloadBase, { onConflict: "project_id,version" })
-            .select(`${briefSelectBase}, notes`)
-            .single();
-        }
-
-        return supabase
-          .from("project_briefs")
-          .upsert(payloadBase, { onConflict: "project_id,version" })
-          .select(briefSelectBase)
-          .single();
-      };
-
-      let result = await runUpsert(briefStorageMode);
-
-      if (result.error && briefStorageMode === "visibility_mask") {
-        if (isMissingColumnError(result.error, "visibility_mask")) {
-          if (patch.visibility_mask?.project_notes !== undefined) {
-            patch.notes = String(patch.visibility_mask.project_notes ?? "");
-            delete patch.visibility_mask;
-          }
-          result = await runUpsert("notes");
-          if (result.error && isMissingColumnError(result.error, "notes")) {
-            result = await runUpsert("none");
-            if (!result.error) setBriefStorageMode("none");
-          } else if (!result.error) {
-            setBriefStorageMode("notes");
-          }
-        }
+      const { data, error } = await upsertBrief({ project_summary: value });
+      if (error) throw error;
+      const row = data as {
+        project_summary?: string | null;
+        custom_fields?: ProjectBriefField[];
+      } | null;
+      setProjectSummary(row?.project_summary ?? value);
+      if (Array.isArray(row?.custom_fields)) {
+        setCustomFields(row.custom_fields);
       }
-
-      if (result.error && briefStorageMode === "notes") {
-        if (isMissingColumnError(result.error, "notes")) {
-          result = await runUpsert("none");
-          if (!result.error) setBriefStorageMode("none");
-        }
-      }
-
-      const { data, error: updateError } = result;
-
-      if (updateError) {
-        throw updateError;
-      }
-
-      setProjectBrief((data as ProjectBrief | null) ?? null);
       await invalidateBrief();
-    } catch {
+    } catch (err) {
+      console.error("Failed to save summary", err);
       alert("Failed to save changes. Please try again.");
     } finally {
-      setSavingSection(null);
+      setIsSavingSummary(false);
+    }
+  };
+
+  const handleSaveCustomFields = async (next: ProjectBriefField[]) => {
+    if (!canEditOverview) return;
+    setIsSavingFields(true);
+    try {
+      const { data, error } = await upsertBrief({ custom_fields: next });
+      if (error) throw error;
+      const row = data as {
+        project_summary?: string | null;
+        custom_fields?: ProjectBriefField[];
+      } | null;
+      setCustomFields(
+        Array.isArray(row?.custom_fields) ? row.custom_fields : next,
+      );
+      if (typeof row?.project_summary === "string" || row?.project_summary === null) {
+        setProjectSummary(row.project_summary);
+      }
+      await invalidateBrief();
+    } catch (err) {
+      console.error("Failed to save custom fields", err);
+      alert("Failed to save changes. Please try again.");
+    } finally {
+      setIsSavingFields(false);
     }
   };
 
@@ -267,48 +219,14 @@ function OverviewPage() {
                 clientName={project.client?.display_name}
                 consultantName={project.consultant?.display_name}
                 summaryHtml={summaryHtml}
-                scopeHtml={scopeHtml}
-                constraintsHtml={constraintsHtml}
-                requirementsHtml={requirementsHtml}
-                notesHtml={notesHtml}
-                risks={risks}
+                customFields={customFields}
                 canEdit={canEditOverview}
-                savingSection={savingSection}
+                isSavingSummary={isSavingSummary}
+                isSavingFields={isSavingFields}
                 editingSummary={editingSummary}
-                editingScope={editingScope}
-                editingConstraints={editingConstraints}
-                editingRequirements={editingRequirements}
-                editingNotes={editingNotes}
                 setEditingSummary={setEditingSummary}
-                setEditingScope={setEditingScope}
-                setEditingConstraints={setEditingConstraints}
-                setEditingRequirements={setEditingRequirements}
-                setEditingNotes={setEditingNotes}
-                onSaveSummary={(value) =>
-                  saveBriefPatch("summary", { mission_vision: value })
-                }
-                onSaveScope={(value) =>
-                  saveBriefPatch("scope", { scope_statement: value })
-                }
-                onSaveConstraints={(value) =>
-                  saveBriefPatch("constraints", { constraints: value })
-                }
-                onSaveRequirements={(value) =>
-                  saveBriefPatch("requirements", { requirements: { html: value } })
-                }
-                onSaveNotes={(value) =>
-                  saveBriefPatch(
-                    "notes",
-                    briefStorageMode === "visibility_mask"
-                      ? {
-                          visibility_mask: {
-                            ...(projectBrief?.visibility_mask ?? {}),
-                            project_notes: value,
-                          },
-                        }
-                      : { notes: value },
-                  )
-                }
+                onSaveSummary={handleSaveSummary}
+                onSaveCustomFields={handleSaveCustomFields}
               />
             </div>
           </div>
@@ -321,4 +239,3 @@ function OverviewPage() {
     </div>
   );
 }
-

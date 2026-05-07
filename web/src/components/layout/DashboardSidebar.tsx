@@ -152,6 +152,7 @@ export function DashboardSidebar() {
 						<SidebarSectionHeader>Projects</SidebarSectionHeader>
 						<Link
 							to="/project-posting"
+							search={{ roadmapId: undefined }}
 							className={
 								currentPath === "/project-posting"
 									? "rounded bg-slate-900 p-1 text-white"

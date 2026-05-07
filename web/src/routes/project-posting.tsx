@@ -248,7 +248,9 @@ function ProjectPostingPage() {
               className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
             >
               <Briefcase className="h-3.5 w-3.5 text-slate-500" />
-              {effectiveIntent === "client" ? "Bidding" : "Incubation draft"}
+              {effectiveIntent === "client"
+                ? "Creating as client"
+                : "Creating as consultant"}
             </button>
           ) : (
             <span className="w-[88px]" aria-hidden="true" />
@@ -337,8 +339,8 @@ function ProjectPostingPage() {
                     </h1>
                     <p className="text-base text-slate-600">
                       {effectiveIntent === "consultant"
-                        ? "Set budget and timing for your incubation draft before you invite or transfer to a client."
-                        : "Help us match you with Consultants who fit your financial and schedule goals."}
+                        ? "Set budget and timing for the project you're leading. You can adjust these later when you transfer it to a client."
+                        : "Help us match you with consultants who fit your financial and schedule goals."}
                     </p>
                   </motion.div>
                 )}
@@ -471,12 +473,14 @@ function ProjectPostingPage() {
                 <div className="mb-6 flex items-start justify-between gap-4">
                   <div>
                     <h2 className="text-2xl font-semibold tracking-tight text-slate-900 md:text-3xl">
-                      Choose your intention
+                      How are you creating this project?
                     </h2>
                     <p className="mt-2 max-w-2xl text-sm text-slate-600 md:text-base">
-                      Select your legal and operating role for this project.
-                      This controls creation behavior, visibility, and ownership
-                      mechanics from day one.
+                      Pick whether you're creating it as the client (you want
+                      to hire a consultant to deliver) or as a consultant
+                      (you'll lead the work yourself, optionally for a client
+                      later). This controls visibility, ownership, and who
+                      gets matched.
                     </p>
                   </div>
                   <button
@@ -492,24 +496,24 @@ function ProjectPostingPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <IntentOptionCard
                     icon={Briefcase}
-                    title="I am a client"
-                    description="Use this when you want to hire another verified consultant to lead execution."
+                    title="Creating as a client"
+                    description="You want to hire a verified consultant to lead delivery."
                     bullets={[
-                      "Starts in bidding/matching flow",
-                      "Will be matched with professional consultants",
-                      "Best for sponsors hiring consultants",
+                      "Posted publicly so consultants can apply",
+                      "We match you with vetted professionals",
+                      "You stay the project owner; the consultant runs execution",
                     ]}
                     selected={pendingIntent === "client"}
                     onSelect={() => setPendingIntent("client")}
                   />
                   <IntentOptionCard
                     icon={UserCheck}
-                    title="I am a consultant"
-                    description="Use this for incubation: you architect and lead first, then hand over to a client later."
+                    title="Creating as a consultant"
+                    description="You'll lead the work yourself — alone or with your team — and optionally hand it off to a client later."
                     bullets={[
-                      "Forced private draft status",
-                      "You are both temporary client and consultant",
-                      "Includes transfer/manage bootstrap permissions",
+                      "Starts as a private draft owned by you",
+                      "You can attach your team as the primary delivery team",
+                      "Transfer ownership to a client whenever you're ready",
                     ]}
                     selected={pendingIntent === "consultant"}
                     onSelect={() => setPendingIntent("consultant")}
@@ -518,8 +522,8 @@ function ProjectPostingPage() {
 
                 <div className="mt-6 flex items-center justify-between gap-3">
                   <p className="text-xs text-slate-500">
-                    You can reopen this modal anytime from the top "Current
-                    intent" button.
+                    You can reopen this anytime from the "Creating as…"
+                    button at the top of the page.
                   </p>
                   <button
                     type="button"

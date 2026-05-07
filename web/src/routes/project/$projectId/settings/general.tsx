@@ -200,12 +200,12 @@ function SettingsGeneralPage() {
         projectService.getMembers(projectId),
         supabase
           .from("project_briefs")
-          .select("mission_vision")
+          .select("project_summary")
           .eq("project_id", projectId)
           .maybeSingle(),
       ]);
 
-      const summaryHtml = toRichHtml(briefResult.data?.mission_vision ?? "");
+      const summaryHtml = toRichHtml(briefResult.data?.project_summary ?? "");
 
       setProject(projectData);
       setMembers(memberData);
@@ -337,7 +337,7 @@ function SettingsGeneralPage() {
       const { error } = await supabase.from("project_briefs").upsert(
         {
           project_id: project.id,
-          mission_vision: cleaned,
+          project_summary: cleaned,
           updated_by: user?.id ?? null,
           version: 1,
         },

@@ -129,6 +129,10 @@ export interface ProjectPermissions {
     edit_permissions: boolean;
     edit_position: boolean;
   };
+  teams: {
+    view: boolean;
+    manage: boolean;
+  };
   project: {
     settings: boolean;
     edit_content: boolean;
@@ -519,6 +523,8 @@ class ProjectService {
     data: {
       email: string;
       role?: string;
+      /** Effective access on accept; persisted to project_invites.default_role. */
+      default_role?: "editor" | "viewer";
       position?: string;
       message?: string;
     },

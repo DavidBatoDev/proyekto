@@ -152,15 +152,27 @@ export class SupabaseChatRepository implements ChatRepository {
   }
 
   async isProjectMember(projectId: string, userId: string): Promise<boolean> {
-    // Slice 3b: any project_shares grant counts as membership.
+    // Membership = any project_access grant OR being the project's
+    // client/consultant of record. After the teams refactor a single user
+    // can hold multiple project_access rows distinguished by `origin`
+    // (e.g. one direct + one team-derived), so we MUST NOT use
+    // `.maybeSingle()` here — it errors on >1 row and would falsely
+    // report a real member as a non-member, returning a 403 from
+    // /chat/members. Cap to one row instead and treat any row as
+    // membership. The client/consultant fallback mirrors the
+    // `project_chat_is_member` SQL helper.
     const { data, error } = await this.supabase
       .from('project_access')
       .select('user_id')
       .eq('project_id', projectId)
       .eq('user_id', userId)
-      .maybeSingle();
+      .limit(1);
 
-    return !error && !!data;
+    if (!error && data && data.length > 0) return true;
+
+    const project = await this.getProjectRoleData(projectId);
+    if (!project) return false;
+    return project.client_id === userId || project.consultant_id === userId;
   }
 
   async resolveProjectRole(
@@ -170,25 +182,38 @@ export class SupabaseChatRepository implements ChatRepository {
     const project = await this.getProjectRoleData(projectId);
     if (!project) return null;
 
-    // Origin metadata on project_shares preserves the chat-relevant
-    // distinction between client (origin='client'/'personal_workspace') and
-    // consultant (origin='consultant'). Fall back to active_persona-style
-    // bucketing via normalizeRole for invited members.
+    // The (project_id, user_id) pair is no longer unique on
+    // project_access — `origin` is part of the PK. Fetch all matching
+    // rows and prefer a direct (non-team) origin so the chat bucket
+    // reflects the most authoritative grant. normalizeRole still
+    // overrides everything when the user is the project's
+    // client_id/consultant_id of record.
     const { data, error } = await this.supabase
       .from('project_access')
       .select('role, origin')
       .eq('project_id', projectId)
-      .eq('user_id', userId)
-      .maybeSingle();
+      .eq('user_id', userId);
 
-    if (error || !data) return null;
+    if (error) return null;
 
-    // Map origin → legacy chat-role bucket so normalizeRole keeps working
-    // unchanged downstream.
+    // No project_access row but the user is still the client/consultant
+    // of record (shouldn't happen with the current sync, but normalize
+    // anyway so the chat path doesn't 404 a real member).
+    if (!data || data.length === 0) {
+      if (userId === project.client_id || userId === project.consultant_id) {
+        return this.normalizeRole({ userId, project, memberRole: null });
+      }
+      return null;
+    }
+
+    const preferred =
+      data.find((row) => !(row.origin ?? '').startsWith('team:')) ?? data[0];
+
     const memberRole =
-      data.origin === 'consultant'
+      preferred.origin === 'consultant'
         ? 'consultant'
-        : data.origin === 'client' || data.origin === 'personal_workspace'
+        : preferred.origin === 'client' ||
+            preferred.origin === 'personal_workspace'
           ? 'client'
           : 'member';
 

@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
@@ -30,6 +30,7 @@ import {
   detectPreset,
   type RolePresetKey,
 } from "@/components/project/permissions/roleTemplates";
+import { getTeam } from "@/services/teams.service";
 
 export const Route = createFileRoute("/project/$projectId/settings/permissions")({
   component: PermissionsRoute,
@@ -46,6 +47,95 @@ export const Route = createFileRoute("/project/$projectId/settings/permissions")
           : undefined,
   }),
 });
+
+// ─── Multi-origin row helpers ──────────────────────────────────────────────
+//
+// `project_access` has PK `(project_id, user_id, origin)`. A single user
+// can hold several rows on one project (e.g. a direct consultant grant
+// + a team-derived grant from being curated via an attached team).
+// These helpers group rows per user, compute the effective access, and
+// label origins for the chip stack so the UI doesn't double-list anyone.
+
+const ROLE_ORDER: Record<string, number> = {
+  viewer: 1,
+  commenter: 2,
+  member: 2,
+  client: 3,
+  editor: 3,
+  admin: 4,
+  consultant: 5,
+  owner: 5,
+};
+
+/** Returns the highest role across the given member rows by `ROLE_ORDER`. */
+function roleMax(rows: ProjectMember[]): string {
+  if (rows.length === 0) return "viewer";
+  let bestRow = rows[0];
+  let bestRank = ROLE_ORDER[bestRow.role] ?? 0;
+  for (const r of rows.slice(1)) {
+    const rank = ROLE_ORDER[r.role] ?? 0;
+    if (rank > bestRank) {
+      bestRow = r;
+      bestRank = rank;
+    }
+  }
+  return bestRow.role;
+}
+
+/** Returns the row with the highest role (used as the "primary" origin
+ * for a user with multiple rows — Edit and position writes target it). */
+function pickPrimaryRow(rows: ProjectMember[]): ProjectMember {
+  return [...rows].sort((a, b) => {
+    const ra = ROLE_ORDER[a.role] ?? 0;
+    const rb = ROLE_ORDER[b.role] ?? 0;
+    if (ra !== rb) return rb - ra;
+    // Tie-break: direct origins beat team origins, then origin asc.
+    const aTeam = a.origin?.startsWith("team:") ?? false;
+    const bTeam = b.origin?.startsWith("team:") ?? false;
+    if (aTeam !== bTeam) return aTeam ? 1 : -1;
+    return (a.origin ?? "").localeCompare(b.origin ?? "");
+  })[0];
+}
+
+const DIRECT_ORIGIN_LABELS: Record<string, string> = {
+  consultant: "Direct · Consultant",
+  client: "Direct · Client",
+  invited: "Direct · Invited",
+  personal_workspace: "Personal workspace",
+  legacy: "Direct · Legacy",
+};
+
+/** Human-readable label for a `project_access.origin` value. Resolves
+ * `team:<uuid>` to the team's name when available; otherwise falls
+ * back to a generic "Team" so the UI never shows raw UUIDs. */
+function formatOriginLabel(
+  origin: string | null | undefined,
+  teamNames: Map<string, string>,
+): string {
+  if (!origin) return "Direct";
+  if (origin.startsWith("team:")) {
+    const id = origin.slice("team:".length);
+    return teamNames.get(id) ?? "Team";
+  }
+  return DIRECT_ORIGIN_LABELS[origin] ?? `Direct · ${origin}`;
+}
+
+/** Groups members by user_id. Rows with `user_id === null` (rare —
+ * unresolved invites) get their own one-row groups so they still
+ * render. Returns groups in the order their first row appeared. */
+function groupMembersByUser(
+  members: ProjectMember[],
+): Array<{ userId: string | null; rows: ProjectMember[] }> {
+  const groups = new Map<string, { userId: string | null; rows: ProjectMember[] }>();
+  for (const m of members) {
+    // Use member.id as the key for null user_ids so each becomes its own group.
+    const key = m.user_id ?? `__null:${m.id}`;
+    const existing = groups.get(key);
+    if (existing) existing.rows.push(m);
+    else groups.set(key, { userId: m.user_id, rows: [m] });
+  }
+  return Array.from(groups.values());
+}
 
 // Top-level dispatcher.
 //   ?memberId=… or ?role=…   → per-target editor
@@ -216,6 +306,7 @@ const ROLE_TEMPLATES: Record<string, ProjectPermissions> = {
     access: { roadmap: true, work_items: true, team: true, chat: true, resources: true, project_settings: true },
     roadmap: { view: true, edit: true, comment: true, promote: true, assign: true, edit_metadata: true, view_internal: true, create_tasks: true, edit_tasks: true, share: true, export: true, dev_mode: true },
     members: { view: true, manage: true, edit_permissions: true, edit_position: true },
+    teams: { view: true, manage: true },
     project: { settings: true, edit_content: true, view_internal_content: true },
     chat: { view_channels: true, send_messages: true, create_channels: true, manage_channels: true, view_internal_channels: true, mention_members: true, share_files: true, start_dm: true, send_dm: true, message_clients: true, message_consultants: true, message_freelancers: true },
     resources: { view: true, upload: true, delete: true },
@@ -225,6 +316,7 @@ const ROLE_TEMPLATES: Record<string, ProjectPermissions> = {
     access: { roadmap: true, work_items: true, team: true, chat: true, resources: true, project_settings: false },
     roadmap: { view: true, edit: true, comment: true, promote: true, assign: false, edit_metadata: true, view_internal: false, create_tasks: false, edit_tasks: false, share: false, export: false, dev_mode: false },
     members: { view: true, manage: false, edit_permissions: false, edit_position: false },
+    teams: { view: true, manage: false },
     project: { settings: false, edit_content: true, view_internal_content: false },
     chat: { view_channels: true, send_messages: true, create_channels: false, manage_channels: false, view_internal_channels: false, mention_members: true, share_files: true, start_dm: true, send_dm: true, message_clients: false, message_consultants: true, message_freelancers: false },
     resources: { view: true, upload: true, delete: false },
@@ -234,6 +326,7 @@ const ROLE_TEMPLATES: Record<string, ProjectPermissions> = {
     access: { roadmap: true, work_items: true, team: true, chat: true, resources: true, project_settings: false },
     roadmap: { view: true, edit: false, comment: true, promote: false, assign: false, edit_metadata: false, view_internal: false, create_tasks: true, edit_tasks: true, share: false, export: false, dev_mode: false },
     members: { view: true, manage: false, edit_permissions: false, edit_position: false },
+    teams: { view: true, manage: false },
     project: { settings: false, edit_content: false, view_internal_content: false },
     chat: { view_channels: true, send_messages: true, create_channels: false, manage_channels: false, view_internal_channels: false, mention_members: true, share_files: true, start_dm: true, send_dm: true, message_clients: false, message_consultants: true, message_freelancers: true },
     resources: { view: true, upload: true, delete: false },
@@ -260,6 +353,9 @@ function PermissionsSettingsPage() {
   const [initialPermissions, setInitialPermissions] = useState<ProjectPermissions | null>(null);
   const [defaultPermissions, setDefaultPermissions] = useState<ProjectPermissions | null>(null);
   const [member, setMember] = useState<ProjectMember | null>(null);
+  // Other project_access rows held by the same user. Drives the
+  // "switch grant" tab strip above the matrix when set has 2+ rows.
+  const [siblings, setSiblings] = useState<ProjectMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -277,6 +373,7 @@ function PermissionsSettingsPage() {
       setInitialPermissions(null);
       setDefaultPermissions(null);
       setMember(null);
+      setSiblings([]);
 
       try {
         if (isRoleMode && role) {
@@ -325,6 +422,20 @@ function PermissionsSettingsPage() {
             setPermissions(normalized);
             setInitialPermissions(structuredClone(normalized));
             setMember(found);
+            // Siblings = other project_access rows held by the same
+            // user. Surface them as a tab strip so the editor can
+            // switch between origin grants without leaving the page.
+            if (found && found.user_id) {
+              setSiblings(
+                members.filter(
+                  (m) =>
+                    m.id !== found.id &&
+                    m.user_id === found.user_id,
+                ),
+              );
+            } else {
+              setSiblings([]);
+            }
             if (resolvedDefaultTemplate) {
               setDefaultPermissions(resolvedDefaultTemplate);
             }
@@ -480,6 +591,32 @@ function PermissionsSettingsPage() {
     })).filter((s) => s.permissions.length > 0);
   }, [query]);
 
+  // Resolve team names for the multi-origin tab strip below.
+  const siblingTeamIds = useMemo(() => {
+    const ids = new Set<string>();
+    const collect = (origin: string | null | undefined) => {
+      if (origin?.startsWith("team:")) {
+        ids.add(origin.slice("team:".length));
+      }
+    };
+    collect(member?.origin);
+    for (const s of siblings) collect(s.origin);
+    return Array.from(ids);
+  }, [member?.origin, siblings]);
+  const siblingTeamQueries = useQueries({
+    queries: siblingTeamIds.map((id) => ({
+      queryKey: ["teams", "detail", id],
+      queryFn: () => getTeam(id),
+    })),
+  });
+  const siblingTeamNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const q of siblingTeamQueries) {
+      if (q.data) map.set(q.data.id, q.data.name);
+    }
+    return map;
+  }, [siblingTeamQueries]);
+
   const pageTitle = isRoleMode
     ? `${ROLE_DISPLAY[role ?? ""] ?? role} Default Permissions`
     : member
@@ -511,13 +648,38 @@ function PermissionsSettingsPage() {
             </span>
             {member.origin && (
               <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold uppercase tracking-wide text-slate-700">
-                Origin: {member.origin}
+                Origin: {formatOriginLabel(member.origin, siblingTeamNames)}
               </span>
             )}
             <span className="text-slate-500">
               Overrides on this row layer on top of the role + origin
               baseline.
             </span>
+          </div>
+        )}
+        {isMemberMode && member && siblings.length > 0 && (
+          <div className="mt-4 rounded-md border border-slate-200 bg-slate-50/60 p-3">
+            <p className="mb-2 text-[11px] text-slate-600">
+              This person is on the project via{" "}
+              <span className="font-semibold text-slate-900">
+                {siblings.length + 1} sources
+              </span>
+              . Their role and capabilities are unified across all
+              sources — editing here applies to every grant. Removing
+              one source still leaves the others intact.
+            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {[member, ...siblings].map((row) => (
+                <span
+                  key={row.id}
+                  className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700"
+                >
+                  <span className="truncate max-w-40">
+                    {formatOriginLabel(row.origin, siblingTeamNames)}
+                  </span>
+                </span>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -1017,25 +1179,62 @@ function TeamPermissionsBody({ projectId }: { projectId: string }) {
     [updatePositionMutation],
   );
 
+  // Group rows by user so multi-origin grants (direct + team-derived)
+  // render as one row instead of N. Each group surfaces its origins as
+  // a chip stack — see formatOriginLabel + the chip render below.
+  const groups = useMemo(() => groupMembersByUser(members), [members]);
+
+  // Batch-fetch team detail rows so origin chips can show team names
+  // instead of raw UUIDs. Cached under the same query key TeamPage
+  // uses, so this is essentially free on revisits.
+  const teamIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const m of members) {
+      if (m.origin?.startsWith("team:")) {
+        ids.add(m.origin.slice("team:".length));
+      }
+    }
+    return Array.from(ids);
+  }, [members]);
+  const teamDetailQueries = useQueries({
+    queries: teamIds.map((id) => ({
+      queryKey: ["teams", "detail", id],
+      queryFn: () => getTeam(id),
+    })),
+  });
+  const teamNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const q of teamDetailQueries) {
+      if (q.data) map.set(q.data.id, q.data.name);
+    }
+    return map;
+  }, [teamDetailQueries]);
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return members;
-    return members.filter((m) => {
-      const hay = [
-        m.user?.display_name,
-        m.user?.email,
-        m.user?.first_name,
-        m.user?.last_name,
-        m.position,
-        m.role,
-        m.origin,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(q);
-    });
-  }, [members, query]);
+    if (!q) return groups;
+    return groups.filter((g) =>
+      g.rows.some((m) => {
+        const hay = [
+          m.user?.display_name,
+          m.user?.email,
+          m.user?.first_name,
+          m.user?.last_name,
+          m.position,
+          m.role,
+          m.origin,
+          // Searchable team name when origin = team:<uuid>.
+          m.origin?.startsWith("team:")
+            ? teamNames.get(m.origin.slice("team:".length))
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(q);
+      }),
+    );
+  }, [groups, query, teamNames]);
 
   return (
     <>
@@ -1052,6 +1251,7 @@ function TeamPermissionsBody({ projectId }: { projectId: string }) {
         </div>
         <span className="shrink-0 text-xs text-slate-500">
           {visible.length} member{visible.length === 1 ? "" : "s"}
+          {visible.some((g) => g.rows.length > 1) ? " · multi-grant" : ""}
         </span>
       </div>
 
@@ -1070,76 +1270,100 @@ function TeamPermissionsBody({ projectId }: { projectId: string }) {
           </div>
         ) : visible.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-slate-500">
-            {members.length === 0
+            {groups.length === 0
               ? "No members yet."
               : `No members match "${query}".`}
           </div>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {visible.map((m) => (
-              <li
-                key={m.id}
-                className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_120px] items-center gap-4 px-4 py-3"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-900">
-                    {m.user?.display_name ||
-                      [m.user?.first_name, m.user?.last_name]
+            {visible.map((group) => {
+              // Pick a stable representative row for member-cell rendering
+              // and the position write-target. Effective role spans all
+              // rows in the group; origins render below as chips.
+              const primary = pickPrimaryRow(group.rows);
+              const effectiveRole = roleMax(group.rows);
+              // Position falls back to the first non-empty sibling so a
+              // value set on the team-derived row still surfaces when
+              // the primary (e.g. consultant) row hasn't set one.
+              const positionRow =
+                group.rows.find((r) => r.position) ?? primary;
+              return (
+                <li
+                  key={group.userId ?? primary.id}
+                  className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_120px] items-start gap-4 px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-900">
+                      {primary.user?.display_name ||
+                        [primary.user?.first_name, primary.user?.last_name]
+                          .filter(Boolean)
+                          .join(" ") ||
+                        primary.user?.email ||
+                        "Unknown"}
+                    </p>
+                    {primary.user?.email && (
+                      <p className="truncate text-[11px] text-slate-500">
+                        {primary.user.email}
+                      </p>
+                    )}
+                  </div>
+                  <PositionCell
+                    value={positionRow.position ?? null}
+                    fallback="—"
+                    canEdit={canEditOthersPosition}
+                    onSave={(next) => handleSavePosition(positionRow.id, next)}
+                    displayName={
+                      primary.user?.display_name ||
+                      [primary.user?.first_name, primary.user?.last_name]
                         .filter(Boolean)
                         .join(" ") ||
-                      m.user?.email ||
-                      "Unknown"}
-                  </p>
-                  {m.user?.email && (
-                    <p className="truncate text-[11px] text-slate-500">
-                      {m.user.email}
-                    </p>
-                  )}
-                </div>
-                <PositionCell
-                  value={m.position ?? null}
-                  fallback="—"
-                  canEdit={canEditOthersPosition}
-                  onSave={(next) => handleSavePosition(m.id, next)}
-                  displayName={
-                    m.user?.display_name ||
-                    [m.user?.first_name, m.user?.last_name]
-                      .filter(Boolean)
-                      .join(" ") ||
-                    m.user?.email ||
-                    undefined
-                  }
-                />
+                      primary.user?.email ||
+                      undefined
+                    }
+                  />
 
-                <span className="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-700">
-                  {m.role}
-                </span>
-                <span className="truncate text-[11px] uppercase tracking-wide text-slate-500">
-                  {m.origin || "—"}
-                </span>
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    disabled={!canManage}
-                    onClick={() =>
-                      void navigate({
-                        to: "/project/$projectId/settings/permissions",
-                        params: { projectId },
-                        search: { memberId: m.id },
-                      })
-                    }
-                    className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    title={
-                      canManage
-                        ? "Edit permissions"
-                        : "You need members.manage to edit permissions"
-                    }
-                  >
-                    Edit
-                  </button>
-                </div>
-              </li>
-            ))}
+                  <span className="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                    {effectiveRole}
+                  </span>
+                  <div className="flex flex-wrap items-start gap-1">
+                    {group.rows.map((r) => (
+                      <span
+                        key={r.id}
+                        title={`Source: ${r.origin ?? "direct"}. Role and capabilities are unified across this person's sources.`}
+                        className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-600"
+                      >
+                        <span className="truncate max-w-30">
+                          {formatOriginLabel(r.origin, teamNames)}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      disabled={!canManage}
+                      onClick={() =>
+                        void navigate({
+                          to: "/project/$projectId/settings/permissions",
+                          params: { projectId },
+                          search: { memberId: primary.id },
+                        })
+                      }
+                      className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      title={
+                        canManage
+                          ? group.rows.length > 1
+                            ? "Edit permissions (this person has multiple grants — you'll be able to switch between them on the next page)"
+                            : "Edit permissions"
+                          : "You need members.manage to edit permissions"
+                      }
+                    >
+                      Edit
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

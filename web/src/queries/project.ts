@@ -9,21 +9,24 @@ import {
 import { roadmapService, type FullRoadmap } from "@/services/roadmap.service";
 import type { Roadmap } from "@/types/roadmap";
 
-export type ProjectBrief = {
-  mission_vision?: string | null;
-  scope_statement?: string | null;
-  requirements?: unknown;
-  constraints?: string | null;
-  risk_register?: unknown;
-  visibility_mask?: Record<string, unknown> | null;
-  notes?: string | null;
+// New flat brief shape (post-2026_05_07_*_summary_and_custom_fields):
+// a single rich-text summary plus a flexible JSONB array of {key, value,
+// position} rows the user manages on /overview. Kept here in addition
+// to the overview/types.ts copy because the queries layer can't import
+// from the components tree without a cycle.
+export type ProjectBriefField = {
+  key: string;
+  value: string;
+  position: number;
 };
 
-export type BriefStorageMode = "visibility_mask" | "notes" | "none";
+export type ProjectBrief = {
+  project_summary?: string | null;
+  custom_fields: ProjectBriefField[];
+};
 
 export type ProjectBriefResult = {
   brief: ProjectBrief | null;
-  mode: BriefStorageMode;
 };
 
 export const projectKeys = {
@@ -43,15 +46,24 @@ export const projectKeys = {
     ["project", "roadmap-full", roadmapId] as const,
 };
 
-const briefSelectBase =
-  "mission_vision, scope_statement, requirements, constraints, risk_register";
+export const briefSelect = "project_summary, custom_fields";
 
-function isMissingColumnError(error: unknown, column: string): boolean {
-  if (!error || typeof error !== "object") return false;
-  const err = error as { message?: string; details?: string; hint?: string };
-  const text =
-    `${err.message ?? ""} ${err.details ?? ""} ${err.hint ?? ""}`.toLowerCase();
-  return text.includes(column.toLowerCase());
+function normalizeCustomFields(raw: unknown): ProjectBriefField[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((row, idx) => {
+      if (!row || typeof row !== "object") return null;
+      const r = row as Record<string, unknown>;
+      const key = typeof r.key === "string" ? r.key : "";
+      const value = typeof r.value === "string" ? r.value : "";
+      const position =
+        typeof r.position === "number" && Number.isFinite(r.position)
+          ? r.position
+          : idx;
+      return { key, value, position };
+    })
+    .filter((row): row is ProjectBriefField => row !== null)
+    .sort((a, b) => a.position - b.position);
 }
 
 export async function fetchProject(projectId: string): Promise<Project> {
@@ -79,53 +91,21 @@ export async function fetchLinkedRoadmap(projectId: string): Promise<Roadmap | n
 }
 
 export async function fetchProjectBrief(projectId: string): Promise<ProjectBriefResult> {
-  const withVisibility = await supabase
+  const { data, error } = await supabase
     .from("project_briefs")
-    .select(`${briefSelectBase}, visibility_mask`)
+    .select(briefSelect)
     .eq("project_id", projectId)
     .maybeSingle();
 
-  if (!withVisibility.error) {
-    return {
-      brief: (withVisibility.data as ProjectBrief | null) ?? null,
-      mode: "visibility_mask",
-    };
-  }
+  if (error) throw error;
+  if (!data) return { brief: null };
 
-  if (!isMissingColumnError(withVisibility.error, "visibility_mask")) {
-    throw withVisibility.error;
-  }
-
-  const withNotes = await supabase
-    .from("project_briefs")
-    .select(`${briefSelectBase}, notes`)
-    .eq("project_id", projectId)
-    .maybeSingle();
-
-  if (!withNotes.error) {
-    return {
-      brief: (withNotes.data as ProjectBrief | null) ?? null,
-      mode: "notes",
-    };
-  }
-
-  if (!isMissingColumnError(withNotes.error, "notes")) {
-    throw withNotes.error;
-  }
-
-  const baseOnly = await supabase
-    .from("project_briefs")
-    .select(briefSelectBase)
-    .eq("project_id", projectId)
-    .maybeSingle();
-
-  if (baseOnly.error) {
-    throw baseOnly.error;
-  }
-
+  const row = data as { project_summary?: string | null; custom_fields?: unknown };
   return {
-    brief: (baseOnly.data as ProjectBrief | null) ?? null,
-    mode: "none",
+    brief: {
+      project_summary: row.project_summary ?? null,
+      custom_fields: normalizeCustomFields(row.custom_fields),
+    },
   };
 }
 

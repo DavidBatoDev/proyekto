@@ -6,10 +6,15 @@ import { PROJECTS_REPOSITORY } from './projects.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PersonalWorkspaceService } from './personal-workspace.service';
 import { ProjectAuthorizationService } from './authorization/project-authorization.service';
+import { ProjectAccessSyncModule } from './access-sync/access-sync.module';
 import { TeamsModule } from '../teams/teams.module';
 
 @Module({
-  imports: [NotificationsModule, forwardRef(() => TeamsModule)],
+  imports: [
+    NotificationsModule,
+    ProjectAccessSyncModule,
+    forwardRef(() => TeamsModule),
+  ],
   controllers: [ProjectsController],
   providers: [
     ProjectsService,
@@ -21,6 +26,7 @@ import { TeamsModule } from '../teams/teams.module';
     ProjectsService,
     PersonalWorkspaceService,
     ProjectAuthorizationService,
+    ProjectAccessSyncModule,
   ],
 })
 export class ProjectsModule {}

@@ -51,7 +51,6 @@ export interface ProjectTeam {
 	project_id: string;
 	team_id: string;
 	is_primary: boolean;
-	default_role: ProjectTeamDefaultRole;
 	attached_by: string | null;
 	attached_at: string;
 }
@@ -60,8 +59,6 @@ export interface ProjectTeamMember {
 	project_id: string;
 	team_id: string;
 	user_id: string;
-	role: ProjectTeamDefaultRole;
-	capabilities: Record<string, unknown>;
 	added_by: string | null;
 	added_at: string;
 	user?: ProfileSummary | null;
@@ -255,7 +252,6 @@ export interface TeamProjectAttachment {
 	project_id: string;
 	team_id: string;
 	is_primary: boolean;
-	default_role: ProjectTeamDefaultRole;
 	attached_at: string;
 	project: {
 		id: string;
@@ -305,8 +301,7 @@ export async function attachTeam(
 	input: {
 		team_id: string;
 		is_primary?: boolean;
-		default_role?: ProjectTeamDefaultRole;
-		member_user_ids?: string[];
+		members?: Array<{ user_id: string; role: ProjectTeamDefaultRole }>;
 	},
 ): Promise<ProjectTeam> {
 	try {
@@ -345,7 +340,6 @@ export async function updateProjectTeam(
 	teamId: string,
 	patch: {
 		is_primary?: boolean;
-		default_role?: ProjectTeamDefaultRole;
 	},
 ): Promise<ProjectTeam> {
 	try {
@@ -414,27 +408,6 @@ export async function addCuratedMember(
 			extractApiErrorMessage(
 				(err as { response?: { data?: unknown } }).response?.data,
 				"Failed to add member",
-			),
-		);
-	}
-}
-
-export async function updateCuratedMember(
-	projectId: string,
-	teamId: string,
-	userId: string,
-	patch: { role?: ProjectTeamDefaultRole },
-): Promise<ProjectTeamMember> {
-	try {
-		const { data } = await apiClient.patch<{ data: ProjectTeamMember }>(`/api/projects/${projectId}/teams/${teamId}/members/${userId}`,
-			patch,
-		);
-		return data.data;
-	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to update curated member",
 			),
 		);
 	}

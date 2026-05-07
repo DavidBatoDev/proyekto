@@ -83,9 +83,18 @@ export const PERMISSION_SECTIONS: PermissionSectionMeta[] = [
 		description: "View and manage who's on the project.",
 		permissions: [
 			p("members", "view", "View members", "See the project member list."),
-			p("members", "manage", "Manage members", "Invite, remove, and change member roles.", ["members.view"]),
+			p("members", "manage", "Manage members", "Invite, remove, and change member roles. Also covers curating team-derived members onto the project.", ["members.view"]),
 			p("members", "edit_permissions", "Edit permissions", "Override per-member capability flags.", ["members.manage"]),
 			p("members", "edit_position", "Edit positions", "Set or change other members' position labels.", ["members.view"]),
+		],
+	},
+	{
+		key: "teams",
+		label: "Teams",
+		description: "Attach teams to bring their members onto this project.",
+		permissions: [
+			p("teams", "view", "View attached teams", "See which teams contribute to this project and their curated members."),
+			p("teams", "manage", "Manage attached teams", "Attach or detach teams, set the primary team, and change a team's default project role.", ["teams.view"]),
 		],
 	},
 	{
