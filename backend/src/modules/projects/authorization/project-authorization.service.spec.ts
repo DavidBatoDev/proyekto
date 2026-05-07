@@ -140,7 +140,7 @@ describe('ProjectAuthorizationService', () => {
   });
 
   describe('grant', () => {
-    it('upserts the share row and returns the new row', async () => {
+    it('inserts a new row when the user has no prior grant', async () => {
       const newRow = {
         id: 's1',
         project_id: 'p1',
@@ -150,8 +150,12 @@ describe('ProjectAuthorizationService', () => {
         capabilities: {},
         granted_by: null,
         granted_at: '2026-05-03T00:00:00Z',
+        has_direct_grant: true,
       };
       const { service, queued } = buildService(
+        // lookup: no existing row
+        thenable({ data: null, error: null }),
+        // insert returns the new row
         thenable({ data: newRow, error: null }),
       );
       const share = await service.grant({
@@ -162,15 +166,52 @@ describe('ProjectAuthorizationService', () => {
         grantedBy: null,
       });
       expect(share.role).toBe('admin');
-      // upsert was called with the right payload + onConflict
-      expect(queued[0].upsert).toHaveBeenCalledWith(
+      expect(queued[1].insert).toHaveBeenCalledWith(
         expect.objectContaining({
           project_id: 'p1',
           user_id: 'u1',
           role: 'admin',
           origin: 'client',
+          has_direct_grant: true,
         }),
-        { onConflict: 'project_id,user_id,origin' },
+      );
+    });
+
+    it('does not demote: max(existing, new) wins on conflict', async () => {
+      const existing = {
+        id: 's1',
+        role: 'owner',
+        origin: 'consultant',
+        capabilities: { 'roadmap.edit': true },
+      };
+      const updated = {
+        id: 's1',
+        project_id: 'p1',
+        user_id: 'u1',
+        role: 'owner',
+        origin: 'consultant',
+        capabilities: { 'roadmap.edit': true },
+        granted_by: null,
+        granted_at: '2026-05-03T00:00:00Z',
+        has_direct_grant: true,
+      };
+      const { service, queued } = buildService(
+        thenable({ data: existing, error: null }),
+        thenable({ data: updated, error: null }),
+      );
+      const share = await service.grant({
+        projectId: 'p1',
+        userId: 'u1',
+        role: 'editor',
+        origin: 'invited',
+        grantedBy: null,
+      });
+      expect(share.role).toBe('owner');
+      expect(queued[1].update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: 'owner',
+          has_direct_grant: true,
+        }),
       );
     });
   });
@@ -178,9 +219,8 @@ describe('ProjectAuthorizationService', () => {
   describe('revoke (last-owner protection)', () => {
     it('removes a non-owner share without checking owner count', async () => {
       const { service } = buildService(
-        // lookup: editor role
-        thenable({ data: [{ role: 'editor' }], error: null }),
-        // delete returns no error
+        thenable({ data: { role: 'editor' }, error: null }),
+        thenable({ error: null }),
         thenable({ error: null }),
       );
       await expect(service.revoke('p1', 'u1')).resolves.toBeUndefined();
@@ -188,9 +228,7 @@ describe('ProjectAuthorizationService', () => {
 
     it('refuses to remove the last owner', async () => {
       const { service } = buildService(
-        // lookup: owner role
-        thenable({ data: [{ role: 'owner' }], error: null }),
-        // count owners → 1
+        thenable({ data: { role: 'owner' }, error: null }),
         thenable({ count: 1, error: null }),
       );
       await expect(service.revoke('p1', 'u1')).rejects.toThrow(/last owner/);
@@ -198,23 +236,88 @@ describe('ProjectAuthorizationService', () => {
 
     it('removes an owner when other owners exist', async () => {
       const { service } = buildService(
-        // lookup: owner role
-        thenable({ data: [{ role: 'owner' }], error: null }),
-        // count owners → 2
+        thenable({ data: { role: 'owner' }, error: null }),
         thenable({ count: 2, error: null }),
-        // delete returns no error
+        thenable({ error: null }),
         thenable({ error: null }),
       );
       await expect(service.revoke('p1', 'u1')).resolves.toBeUndefined();
     });
 
     it('is a no-op when the share row does not exist', async () => {
-      const { service, queued } = buildService(
-        // lookup: nothing
-        thenable({ data: [], error: null }),
+      const { service } = buildService(
+        thenable({ data: null, error: null }),
       );
       await expect(service.revoke('p1', 'u1')).resolves.toBeUndefined();
-      expect(queued[0].delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('assertActionOutranks (peer-rank guard)', () => {
+    it('throws when caller targets self', async () => {
+      const { service } = buildService();
+      await expect(
+        service.assertActionOutranks(
+          'u1',
+          'u1',
+          'p1',
+          'members.edit_permissions',
+        ),
+      ).rejects.toThrow(/cannot target yourself/i);
+    });
+
+    it('allows when caller is project owner', async () => {
+      const { service } = buildService(
+        // getUserProjectRole(caller) → owner
+        thenable({ data: [{ role: 'owner' }], error: null }),
+      );
+      await expect(
+        service.assertActionOutranks(
+          'caller',
+          'target',
+          'p1',
+          'members.edit_permissions',
+        ),
+      ).resolves.toBeUndefined();
+    });
+
+    it('allows when target lacks the gating capability', async () => {
+      const { service } = buildService(
+        // getUserProjectRole(caller) → admin (non-owner)
+        thenable({ data: [{ role: 'admin' }], error: null }),
+        // resolvePermissions(target) → viewer with no overrides
+        thenable({
+          data: [{ role: 'viewer', origin: null, capabilities: {} }],
+          error: null,
+        }),
+      );
+      await expect(
+        service.assertActionOutranks(
+          'caller',
+          'target',
+          'p1',
+          'members.edit_permissions',
+        ),
+      ).resolves.toBeUndefined();
+    });
+
+    it('throws when target also satisfies the gating capability', async () => {
+      const { service } = buildService(
+        // getUserProjectRole(caller) → admin
+        thenable({ data: [{ role: 'admin' }], error: null }),
+        // resolvePermissions(target) → admin (admins have edit_permissions)
+        thenable({
+          data: [{ role: 'admin', origin: null, capabilities: {} }],
+          error: null,
+        }),
+      );
+      await expect(
+        service.assertActionOutranks(
+          'caller',
+          'target',
+          'p1',
+          'members.edit_permissions',
+        ),
+      ).rejects.toThrow(/equal authority/i);
     });
   });
 });

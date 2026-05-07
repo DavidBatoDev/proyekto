@@ -915,8 +915,18 @@ export class ProjectsService {
     if (!targetMember) {
       throw new NotFoundException('Member not found');
     }
-
+    if (targetMember.user_id && targetMember.user_id === callerId) {
+      throw new ForbiddenException(
+        'You cannot remove yourself from a project.',
+      );
+    }
     if (targetMember.user_id) {
+      await this.authorization.assertActionOutranks(
+        callerId,
+        targetMember.user_id,
+        projectId,
+        'members.manage',
+      );
       await this.projectsRepo.unassignTasksForMemberInProject(
         projectId,
         targetMember.user_id,
@@ -1057,6 +1067,19 @@ export class ProjectsService {
     if (!target) {
       throw new NotFoundException('Member not found');
     }
+    if (target.user_id && target.user_id === callerId) {
+      throw new ForbiddenException(
+        'You cannot edit your own permissions on a project.',
+      );
+    }
+    if (target.user_id) {
+      await this.authorization.assertActionOutranks(
+        callerId,
+        target.user_id,
+        projectId,
+        'members.edit_permissions',
+      );
+    }
 
     const role = (target.role as ProjectRole) ?? 'viewer';
     const origin = (target.origin as ProjectShareOrigin | null) ?? null;
@@ -1077,7 +1100,7 @@ export class ProjectsService {
     // section, so we merge field-by-field for each section it includes.
     const desired = resolvePermissions(role, origin, target.capabilities);
     const sections: (keyof ProjectPermissions)[] = [
-      'access', 'roadmap', 'members', 'project',
+      'access', 'roadmap', 'members', 'teams', 'project',
       'chat', 'resources', 'logs',
     ];
     for (const section of sections) {

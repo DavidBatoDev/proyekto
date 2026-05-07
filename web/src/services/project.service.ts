@@ -85,6 +85,7 @@ export interface ProjectMember {
   user_id: string | null;
   role: "consultant" | "client" | "member" | "owner" | "admin" | "editor" | "commenter" | "viewer";
   origin?: string | null;
+  has_direct_grant?: boolean;
   position?: string | null;
   capabilities?: Record<string, boolean> | null;
   permissions_json?: ProjectPermissions | null;

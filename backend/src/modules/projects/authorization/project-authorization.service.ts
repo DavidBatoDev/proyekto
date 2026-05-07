@@ -1,4 +1,9 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import {
@@ -32,6 +37,7 @@ export interface ProjectShare {
   user_id: string;
   role: ProjectRole;
   origin: string | null;
+  has_direct_grant?: boolean;
   capabilities: Record<string, unknown>;
   granted_by: string | null;
   granted_at: string;
@@ -203,64 +209,164 @@ export class ProjectAuthorizationService {
   }
 
   /**
-   * Idempotent grant. Origin is part of the uniqueness contract — a
-   * user can hold one direct row plus any number of team-derived rows
-   * (`origin = 'team:<id>'`). Conflicts on (project_id, user_id, origin)
-   * update role/capabilities/granted_by in place.
+   * Peer-rank guard. Composes after the coarse capability check:
+   * confirms the caller's authority strictly outranks the target's
+   * for the given gate. Owner is always exempt.
    *
-   * Origin is required: callers used to pass null but the column is now
-   * NOT NULL. Use 'invited' as the conventional default for direct
-   * grants without a more specific source.
+   * Rule:
+   *   - caller === target            → DENY (defensive; callers also self-guard)
+   *   - caller is project owner      → ALLOW
+   *   - target also satisfies `gate` → DENY (peer protection)
+   *   - otherwise                    → ALLOW
+   */
+  async assertActionOutranks(
+    callerId: string,
+    targetUserId: string,
+    projectId: string,
+    gate: PermissionPath,
+  ): Promise<void> {
+    if (callerId === targetUserId) {
+      throw new ForbiddenException('You cannot target yourself.');
+    }
+    const callerRole = await this.getUserProjectRole(callerId, projectId);
+    if (callerRole === 'owner') return;
+
+    const targetPerms = await this.resolvePermissions(
+      targetUserId,
+      projectId,
+    );
+    if (targetPerms && getPermission(targetPerms, gate)) {
+      throw new ForbiddenException(
+        'This member has equal authority on this project. Only a project owner can edit or remove them.',
+      );
+    }
+  }
+
+  /**
+   * Idempotent direct grant. project_access is keyed (project_id,
+   * user_id) — one row per user. On conflict we do not demote: the
+   * stored role becomes max(existing, new). Capabilities are
+   * OR-unioned. `has_direct_grant` is always set true (this is a
+   * direct grant). The origin label is preserved on conflict (treat
+   * it as the original primary-source label).
    */
   async grant(params: GrantParams): Promise<ProjectShare> {
-    const payload = {
-      project_id: params.projectId,
-      user_id: params.userId,
-      role: params.role,
-      origin: params.origin ?? 'invited',
-      capabilities: params.capabilities ?? {},
-      granted_by: params.grantedBy,
-    };
+    const incomingRole = params.role;
+    const incomingCaps = params.capabilities ?? {};
+
+    const { data: existing, error: lookupErr } = await this.supabase
+      .from('project_access')
+      .select('id, role, origin, capabilities')
+      .eq('project_id', params.projectId)
+      .eq('user_id', params.userId)
+      .maybeSingle();
+    if (lookupErr) {
+      this.logger.error(
+        `grant lookup failed for (${params.userId}, ${params.projectId}): ${lookupErr.message}`,
+      );
+      throw new Error(lookupErr.message);
+    }
+
+    if (existing) {
+      const stored = existing as Pick<
+        ProjectShare,
+        'id' | 'role' | 'origin' | 'capabilities'
+      >;
+      const targetRole: ProjectRole = this.roleSatisfies(
+        incomingRole,
+        stored.role,
+      )
+        ? incomingRole
+        : stored.role;
+      const mergedCaps = this.unionCapabilities(
+        (stored.capabilities ?? {}) as Record<string, unknown>,
+        incomingCaps,
+      );
+
+      const { data, error } = await this.supabase
+        .from('project_access')
+        .update({
+          role: targetRole,
+          capabilities: mergedCaps,
+          has_direct_grant: true,
+          granted_by: params.grantedBy,
+        })
+        .eq('id', stored.id)
+        .select('*')
+        .single();
+      if (error || !data) {
+        this.logger.error(
+          `grant update failed for (${params.userId}, ${params.projectId}): ${error?.message}`,
+        );
+        throw new Error(error?.message ?? 'Failed to grant project share');
+      }
+      return data as ProjectShare;
+    }
 
     const { data, error } = await this.supabase
       .from('project_access')
-      .upsert(payload, { onConflict: 'project_id,user_id,origin' })
+      .insert({
+        project_id: params.projectId,
+        user_id: params.userId,
+        role: incomingRole,
+        origin: params.origin ?? 'invited',
+        capabilities: incomingCaps,
+        granted_by: params.grantedBy,
+        has_direct_grant: true,
+      })
       .select('*')
       .single();
-
     if (error || !data) {
       this.logger.error(
-        `grant(${params.userId} on ${params.projectId}) failed: ${error?.message}`,
+        `grant insert failed for (${params.userId}, ${params.projectId}): ${error?.message}`,
       );
       throw new Error(error?.message ?? 'Failed to grant project share');
     }
     return data as ProjectShare;
   }
 
+  private unionCapabilities(
+    a: Record<string, unknown>,
+    b: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const out: Record<string, unknown> = { ...a };
+    for (const [k, v] of Object.entries(b)) {
+      if (v === true) out[k] = true;
+      else if (!(k in out)) out[k] = v;
+    }
+    return out;
+  }
+
   /**
-   * Revoke a user's share(s) on a project. By default removes ALL rows
-   * for that user (direct + team-derived) — matches the existing
-   * "remove member from project" semantics. Pass `origin` to remove
-   * only one specific row (e.g. just the direct share, leaving
-   * team-derived intact). Refuses to delete the last owner row.
+   * Revoke a user's access on a project.
+   *
+   *   origin === undefined  → full removal. Drops project_team_members
+   *                            curations and the project_access row.
+   *   origin === 'team:<id>' → drop just that team's curation. Trigger
+   *                            decides whether to remove the access
+   *                            row (only if no other curations and no
+   *                            direct grant remain).
+   *   origin === <other>     → revoke the direct grant. Sets
+   *                            has_direct_grant=false. If the user has
+   *                            no remaining team curations, deletes
+   *                            project_access.
+   *
+   * Refuses to delete the last owner row in any branch.
    */
   async revoke(
     projectId: string,
     userId: string,
     origin?: string,
   ): Promise<void> {
-    const targetQuery = this.supabase
+    const { data: row } = await this.supabase
       .from('project_access')
-      .select('role, origin')
+      .select('role')
       .eq('project_id', projectId)
-      .eq('user_id', userId);
-    const { data: targetRows } = origin
-      ? await targetQuery.eq('origin', origin)
-      : await targetQuery;
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!row) return;
 
-    if (!targetRows || targetRows.length === 0) return;
-
-    if (targetRows.some((r) => r.role === 'owner')) {
+    if (row.role === 'owner') {
       const ownerCount = await this.countOwners(projectId);
       if (ownerCount <= 1) {
         throw new MissingPermissionException({
@@ -271,17 +377,58 @@ export class ProjectAuthorizationService {
       }
     }
 
-    let delQuery = this.supabase
+    if (origin && origin.startsWith('team:')) {
+      const teamId = origin.slice('team:'.length);
+      const { error } = await this.supabase
+        .from('project_team_members')
+        .delete()
+        .eq('project_id', projectId)
+        .eq('team_id', teamId)
+        .eq('user_id', userId);
+      if (error) throw new Error(error.message);
+      return;
+    }
+
+    if (origin) {
+      // Direct-origin revoke: drop the direct grant flag. Keep the
+      // access row alive only if team curations sustain it.
+      const { count } = await this.supabase
+        .from('project_team_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('project_id', projectId)
+        .eq('user_id', userId);
+      if ((count ?? 0) > 0) {
+        const { error } = await this.supabase
+          .from('project_access')
+          .update({ has_direct_grant: false })
+          .eq('project_id', projectId)
+          .eq('user_id', userId);
+        if (error) throw new Error(error.message);
+        return;
+      }
+      const { error } = await this.supabase
+        .from('project_access')
+        .delete()
+        .eq('project_id', projectId)
+        .eq('user_id', userId);
+      if (error) throw new Error(error.message);
+      return;
+    }
+
+    // Full removal: drop curations + access row.
+    const { error: ptmErr } = await this.supabase
+      .from('project_team_members')
+      .delete()
+      .eq('project_id', projectId)
+      .eq('user_id', userId);
+    if (ptmErr) throw new Error(ptmErr.message);
+
+    const { error } = await this.supabase
       .from('project_access')
       .delete()
       .eq('project_id', projectId)
       .eq('user_id', userId);
-    if (origin) delQuery = delQuery.eq('origin', origin);
-
-    const { error } = await delQuery;
-    if (error) {
-      throw new Error(error.message);
-    }
+    if (error) throw new Error(error.message);
   }
 
   /**

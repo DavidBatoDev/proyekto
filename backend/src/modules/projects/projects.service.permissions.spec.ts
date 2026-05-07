@@ -29,6 +29,7 @@ describe('ProjectsService (permissions)', () => {
     getUserProjectRole: jest.fn().mockResolvedValue(null),
     assertRole: jest.fn(),
     assertPermission: jest.fn(),
+    assertActionOutranks: jest.fn().mockResolvedValue(undefined),
     resolvePermissions: jest.fn(),
     roleSatisfies: jest.fn(),
     grant: jest.fn(),

@@ -154,7 +154,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         *,
         client:profiles!projects_client_id_fkey(id, display_name, avatar_url, headline, email),
         consultant:profiles!projects_consultant_id_fkey(id, display_name, avatar_url, headline, email),
-        members:project_access(id, project_id, user_id, role, origin, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified))
+        members:project_access(id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified))
       `,
       )
       .eq('id', id)
@@ -388,7 +388,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         origin: 'invited',
       })
       .select(
-        'id, project_id, user_id, role, origin, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
+        'id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)',
       )
       .single();
 
@@ -694,7 +694,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     }
 
     const selectShape =
-      'id, project_id, user_id, role, origin, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)';
+      'id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at, user:profiles!project_access_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name, is_consultant_verified)';
 
     if (Object.keys(patch).length === 0) {
       const { data: current } = await this.supabase
@@ -734,7 +734,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       .eq('id', memberId)
       .eq('project_id', projectId)
       .select(
-        'id, project_id, user_id, role, origin, position, capabilities, granted_at',
+        'id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at',
       )
       .single();
 
@@ -757,7 +757,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       .eq('id', memberId)
       .eq('project_id', projectId)
       .select(
-        'id, project_id, user_id, role, origin, position, capabilities, granted_at',
+        'id, project_id, user_id, role, origin, has_direct_grant, position, capabilities, granted_at',
       )
       .single();
 

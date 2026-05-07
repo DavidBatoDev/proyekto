@@ -163,8 +163,15 @@ export class AttachTeamMemberRoleDto {
   @IsUUID()
   user_id!: string;
 
+  /**
+   * Picked role for the new project_access row. Honored only when the
+   * user has no existing grant on the project — when they do, the
+   * existing role wins and this value is ignored. Optional because
+   * the frontend omits it for already-on-project users.
+   */
+  @IsOptional()
   @IsIn(PROJECT_TEAM_DEFAULT_ROLES)
-  role!: ProjectTeamDefaultRole;
+  role?: ProjectTeamDefaultRole;
 }
 
 export class AttachTeamDto {

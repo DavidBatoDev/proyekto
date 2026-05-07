@@ -31,6 +31,8 @@ import {
   type RolePresetKey,
 } from "@/components/project/permissions/roleTemplates";
 import { getTeam } from "@/services/teams.service";
+import { useUser } from "@/stores/authStore";
+import { isCallerOwner, memberHasGate } from "@/lib/projectMemberRank";
 
 export const Route = createFileRoute("/project/$projectId/settings/permissions")({
   component: PermissionsRoute,
@@ -1143,6 +1145,9 @@ function TeamPermissionsBody({ projectId }: { projectId: string }) {
   const canEditOthersPosition = Boolean(
     myPermissionsQuery.data?.members.edit_position,
   );
+  const currentUser = useUser();
+  const currentUserId = currentUser?.id ?? null;
+  const callerIsOwner = isCallerOwner(members, currentUserId);
   const [query, setQuery] = useState("");
 
   const updatePositionMutation = useMutation({
@@ -1339,27 +1344,42 @@ function TeamPermissionsBody({ projectId }: { projectId: string }) {
                     ))}
                   </div>
                   <div className="flex justify-end">
-                    <button
-                      type="button"
-                      disabled={!canManage}
-                      onClick={() =>
-                        void navigate({
-                          to: "/project/$projectId/settings/permissions",
-                          params: { projectId },
-                          search: { memberId: primary.id },
-                        })
-                      }
-                      className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                      title={
-                        canManage
-                          ? group.rows.length > 1
-                            ? "Edit permissions (this person has multiple grants — you'll be able to switch between them on the next page)"
-                            : "Edit permissions"
-                          : "You need members.manage to edit permissions"
-                      }
-                    >
-                      Edit
-                    </button>
+                    {(() => {
+                      const isSelf =
+                        currentUserId !== null &&
+                        primary.user_id === currentUserId;
+                      const outranked =
+                        !callerIsOwner &&
+                        memberHasGate(primary, "members.edit_permissions");
+                      const disabled = !canManage || isSelf || outranked;
+                      return (
+                        <button
+                          type="button"
+                          disabled={disabled}
+                          onClick={() =>
+                            void navigate({
+                              to: "/project/$projectId/settings/permissions",
+                              params: { projectId },
+                              search: { memberId: primary.id },
+                            })
+                          }
+                          className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          title={
+                            isSelf
+                              ? "You can't edit your own permissions. Ask another admin."
+                              : outranked
+                                ? "Only the project owner can edit this person's permissions."
+                                : canManage
+                                  ? group.rows.length > 1
+                                    ? "Edit permissions (this person has multiple grants — you'll be able to switch between them on the next page)"
+                                    : "Edit permissions"
+                                  : "You need members.manage to edit permissions"
+                          }
+                        >
+                          Edit
+                        </button>
+                      );
+                    })()}
                   </div>
                 </li>
               );

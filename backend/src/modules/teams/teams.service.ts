@@ -511,6 +511,11 @@ export class TeamsService {
         'Cannot remove the team owner; transfer ownership or delete the team first.',
       );
     }
+    if (targetUserId === callerId) {
+      throw new ForbiddenException(
+        'You cannot remove yourself from a team. Ask another admin or owner.',
+      );
+    }
     const { error } = await this.supabase
       .from('team_members')
       .delete()

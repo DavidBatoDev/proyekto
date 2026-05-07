@@ -301,7 +301,7 @@ export async function attachTeam(
 	input: {
 		team_id: string;
 		is_primary?: boolean;
-		members?: Array<{ user_id: string; role: ProjectTeamDefaultRole }>;
+		members?: Array<{ user_id: string; role?: ProjectTeamDefaultRole }>;
 	},
 ): Promise<ProjectTeam> {
 	try {

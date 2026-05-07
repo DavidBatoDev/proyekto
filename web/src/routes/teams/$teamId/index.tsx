@@ -221,7 +221,9 @@ function MemberRow({
 }) {
 	const queryClient = useQueryClient();
 	const toast = useToast();
+	const currentUser = useUser();
 	const isOwnerRow = member.user_id === ownerId;
+	const isSelfRow = currentUser?.id === member.user_id;
 	const [editOpen, setEditOpen] = useState(false);
 
 	const removeMutation = useMutation({
@@ -261,7 +263,7 @@ function MemberRow({
 						>
 							<Pencil className="h-3.5 w-3.5" />
 						</button>
-						{!isOwnerRow && (
+						{!isOwnerRow && !isSelfRow && (
 							<button
 								type="button"
 								onClick={() => removeMutation.mutate()}

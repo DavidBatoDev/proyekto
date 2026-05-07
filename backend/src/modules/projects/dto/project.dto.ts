@@ -40,6 +40,10 @@ export class UpdateProjectMemberPermissionsDto {
 
   @IsOptional()
   @IsObject()
+  teams?: Record<string, boolean>;
+
+  @IsOptional()
+  @IsObject()
   project?: Record<string, boolean>;
 
   @IsOptional()
