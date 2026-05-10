@@ -539,9 +539,11 @@ CREATE TABLE public.task_time_logs (
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   rate_snapshot numeric NOT NULL DEFAULT 0 CHECK (rate_snapshot >= 0::numeric),
   currency_snapshot text NOT NULL DEFAULT 'USD'::text,
+  team_id uuid,
   CONSTRAINT task_time_logs_pkey PRIMARY KEY (id),
   CONSTRAINT task_time_logs_member_user_id_fkey FOREIGN KEY (member_user_id) REFERENCES public.profiles(id),
   CONSTRAINT task_time_logs_reviewed_by_fkey FOREIGN KEY (reviewed_by) REFERENCES public.profiles(id),
+  CONSTRAINT task_time_logs_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id),
   CONSTRAINT task_time_logs_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id),
   CONSTRAINT task_time_logs_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.roadmap_tasks(id)
 );
@@ -588,6 +590,7 @@ CREATE TABLE public.teams (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   is_personal boolean NOT NULL DEFAULT false,
+  time_tracking_enabled boolean NOT NULL DEFAULT false,
   CONSTRAINT teams_pkey PRIMARY KEY (id),
   CONSTRAINT teams_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.profiles(id)
 );
