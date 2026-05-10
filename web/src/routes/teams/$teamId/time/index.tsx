@@ -4,7 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { useUser } from "@/stores/authStore";
-import { getTeam, listTeamMembers } from "@/services/teams.service";
+import {
+	getActiveMemberRate,
+	getTeam,
+	listTeamMembers,
+} from "@/services/teams.service";
 
 export const Route = createFileRoute("/teams/$teamId/time/")({
 	component: TimeIndexRedirect,
@@ -35,6 +39,11 @@ function TimeIndexRedirect() {
 		queryKey: ["team", teamId, "members"],
 		queryFn: () => listTeamMembers(teamId),
 	});
+	const myActiveRateQuery = useQuery({
+		queryKey: ["team", teamId, "rates", "active", user?.id],
+		queryFn: () => getActiveMemberRate(teamId, user!.id),
+		enabled: Boolean(user?.id),
+	});
 
 	const team = teamQuery.data;
 	const myMembership = membersQuery.data?.find((m) => m.user_id === user?.id);
@@ -42,19 +51,23 @@ function TimeIndexRedirect() {
 		team?.owner_id === user?.id ||
 		myMembership?.role === "admin" ||
 		myMembership?.role === "owner";
-	const hasOwnRate = myMembership?.hourly_rate != null;
+	const hasOwnRate = Boolean(myActiveRateQuery.data);
+
+	const allLoaded =
+		teamQuery.isSuccess &&
+		membersQuery.isSuccess &&
+		(!user?.id || myActiveRateQuery.isFetched);
 
 	const target:
 		| "/teams/$teamId/time/my-logs"
 		| "/teams/$teamId/time/manage-rates"
-		| null =
-		teamQuery.isSuccess && membersQuery.isSuccess
-			? hasOwnRate
-				? "/teams/$teamId/time/my-logs"
-				: isApprover
-					? "/teams/$teamId/time/manage-rates"
-					: null
-			: null;
+		| null = allLoaded
+		? hasOwnRate
+			? "/teams/$teamId/time/my-logs"
+			: isApprover
+				? "/teams/$teamId/time/manage-rates"
+				: null
+		: null;
 
 	useEffect(() => {
 		if (target) {
@@ -66,7 +79,7 @@ function TimeIndexRedirect() {
 		}
 	}, [target, navigate, teamId]);
 
-	if (teamQuery.isPending || membersQuery.isPending || target) {
+	if (!allLoaded || target) {
 		return (
 			<div className="flex justify-center p-12">
 				<Loader2 className="h-6 w-6 animate-spin text-slate-400" />

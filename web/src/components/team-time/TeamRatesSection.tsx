@@ -1,5 +1,5 @@
-import { Loader2, Plus } from "lucide-react";
-import type { TeamMember } from "@/services/teams.service";
+import { History, Loader2, Plus } from "lucide-react";
+import type { TeamMember, TeamMemberRate } from "@/services/teams.service";
 import { initialsFromName } from "./time-utils";
 
 function formatRateDate(value?: string | null) {
@@ -37,25 +37,33 @@ function RateCardSkeleton() {
 
 interface TeamRatesSectionProps {
 	members: TeamMember[];
+	activeRateByUserId: Record<string, TeamMemberRate | null | undefined>;
 	loadingMembers: boolean;
+	loadingRates: boolean;
 	canManageRates: boolean;
 	pendingMemberById: Record<string, boolean>;
 	onViewLogs: (member: TeamMember) => void;
 	onOpenAddRate: () => void;
-	onOpenEditRate: (member: TeamMember) => void;
+	onViewHistory: (member: TeamMember) => void;
 }
 
 export function TeamRatesSection({
 	members,
+	activeRateByUserId,
 	loadingMembers,
+	loadingRates,
 	canManageRates,
 	pendingMemberById,
 	onViewLogs,
 	onOpenAddRate,
-	onOpenEditRate,
+	onViewHistory,
 }: TeamRatesSectionProps) {
-	// "Has rate" = an hourly_rate is set on the team_members row.
-	const ratedMembers = members.filter((m) => m.hourly_rate != null);
+	// Members with an active (open-ended) rate row.
+	const ratedMembers = members.filter(
+		(m) => activeRateByUserId[m.user_id] != null,
+	);
+
+	const isLoading = loadingMembers || loadingRates;
 
 	return (
 		<div className="space-y-4">
@@ -65,7 +73,7 @@ export function TeamRatesSection({
 						Team Member Time Rates
 					</h2>
 					<p className="text-xs text-gray-500 mt-0.5">
-						Members need a rate before they can use the My Logs tab.
+						Members need an active rate before they can use the My Logs tab.
 					</p>
 				</div>
 				{canManageRates && (
@@ -81,7 +89,7 @@ export function TeamRatesSection({
 			</div>
 
 			<div className="space-y-3">
-				{loadingMembers ? (
+				{isLoading ? (
 					<div className="flex flex-wrap gap-4">
 						<RateCardSkeleton />
 						<RateCardSkeleton />
@@ -95,6 +103,7 @@ export function TeamRatesSection({
 					<div className="flex flex-wrap gap-4">
 						{ratedMembers.map((member) => {
 							const isPending = Boolean(pendingMemberById[member.user_id]);
+							const rate = activeRateByUserId[member.user_id]!;
 							const memberName = memberDisplayName(member);
 							const roleLabel =
 								member.role.charAt(0).toUpperCase() + member.role.slice(1);
@@ -148,7 +157,7 @@ export function TeamRatesSection({
 													Custom ID
 												</span>
 												<span className="font-medium text-gray-700 text-right break-all">
-													{member.custom_id?.trim() || "-"}
+													{rate.custom_id?.trim() || "-"}
 												</span>
 											</div>
 											<div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
@@ -156,7 +165,7 @@ export function TeamRatesSection({
 													Start Date
 												</span>
 												<span className="font-medium text-gray-700 text-right">
-													{formatRateDate(member.start_date)}
+													{formatRateDate(rate.start_date)}
 												</span>
 											</div>
 											<div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
@@ -164,7 +173,7 @@ export function TeamRatesSection({
 													End Date
 												</span>
 												<span className="font-medium text-gray-700 text-right">
-													{formatRateDate(member.end_date)}
+													Active
 												</span>
 											</div>
 											<div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
@@ -172,8 +181,8 @@ export function TeamRatesSection({
 													Hourly Rate
 												</span>
 												<span className="font-semibold text-slate-700 text-right">
-													{Number(member.hourly_rate).toFixed(2)}{" "}
-													{member.currency || "USD"}
+													{Number(rate.hourly_rate).toFixed(2)}{" "}
+													{rate.currency || "USD"}
 												</span>
 											</div>
 										</div>
@@ -191,11 +200,12 @@ export function TeamRatesSection({
 												{canManageRates && (
 													<button
 														type="button"
-														onClick={() => onOpenEditRate(member)}
+														onClick={() => onViewHistory(member)}
 														disabled={isPending}
-														className="px-2.5 py-1 text-xs font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+														className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
 													>
-														Edit
+														<History className="h-3.5 w-3.5" />
+														History
 													</button>
 												)}
 											</div>

@@ -7,6 +7,8 @@ import { TeamsController } from './teams.controller';
 import { TeamsService } from './teams.service';
 import { ProjectTeamsService } from './project-teams.service';
 import { ProjectTeamsController } from './project-teams.controller';
+import { TeamMemberRatesService } from './team-member-rates.service';
+import { TeamMemberRatesController } from './team-member-rates.controller';
 
 @Module({
   imports: [
@@ -15,8 +17,12 @@ import { ProjectTeamsController } from './project-teams.controller';
     ProjectAccessSyncModule,
     NotificationsModule,
   ],
-  controllers: [TeamsController, ProjectTeamsController],
-  providers: [TeamsService, ProjectTeamsService],
-  exports: [TeamsService, ProjectTeamsService],
+  controllers: [
+    TeamsController,
+    ProjectTeamsController,
+    TeamMemberRatesController,
+  ],
+  providers: [TeamsService, ProjectTeamsService, TeamMemberRatesService],
+  exports: [TeamsService, ProjectTeamsService, TeamMemberRatesService],
 })
 export class TeamsModule {}

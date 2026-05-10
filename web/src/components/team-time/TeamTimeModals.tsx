@@ -4,7 +4,7 @@ import type {
 	ProjectTaskOption,
 	TeamLogProject,
 } from "@/services/team-time.service";
-import type { TeamMember } from "@/services/teams.service";
+import type { TeamMember, TeamMemberRate } from "@/services/teams.service";
 
 // ───────────────────────── Edit Log ─────────────────────────
 
@@ -316,7 +316,8 @@ export function AddRateModal({
 interface EditRateModalProps {
 	isOpen: boolean;
 	canManageRates: boolean;
-	editingRateTarget: TeamMember | null;
+	editingRate: TeamMemberRate | null;
+	memberLabel: string;
 	editingRateCustomId: string;
 	editingRateValue: string;
 	editingRateCurrency: string;
@@ -336,7 +337,8 @@ interface EditRateModalProps {
 export function EditRateModal({
 	isOpen,
 	canManageRates,
-	editingRateTarget,
+	editingRate,
+	memberLabel,
 	editingRateCustomId,
 	editingRateValue,
 	editingRateCurrency,
@@ -352,13 +354,9 @@ export function EditRateModal({
 	onChangeStartDate,
 	onChangeEndDate,
 }: EditRateModalProps) {
-	if (!isOpen || !canManageRates || !editingRateTarget) return null;
+	if (!isOpen || !canManageRates || !editingRate) return null;
 
-	const memberName =
-		editingRateTarget.user?.display_name ||
-		editingRateTarget.user?.email ||
-		editingRateTarget.user_id ||
-		"Unknown member";
+	const memberName = memberLabel || "Unknown member";
 
 	return (
 		<div

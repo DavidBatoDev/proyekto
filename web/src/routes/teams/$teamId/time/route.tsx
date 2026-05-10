@@ -13,7 +13,11 @@ import {
 } from "@/components/common/AppPrimitives";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { useAuthStore, useUser } from "@/stores/authStore";
-import { getTeam, listTeamMembers } from "@/services/teams.service";
+import {
+	getActiveMemberRate,
+	getTeam,
+	listTeamMembers,
+} from "@/services/teams.service";
 
 export const Route = createFileRoute("/teams/$teamId/time")({
 	beforeLoad: () => {
@@ -45,8 +49,17 @@ function TeamTimeLayout() {
 		queryKey: ["team", teamId, "members"],
 		queryFn: () => listTeamMembers(teamId),
 	});
+	const myActiveRateQuery = useQuery({
+		queryKey: ["team", teamId, "rates", "active", user?.id],
+		queryFn: () => getActiveMemberRate(teamId, user!.id),
+		enabled: Boolean(user?.id),
+	});
 
-	if (teamQuery.isPending || membersQuery.isPending) {
+	if (
+		teamQuery.isPending ||
+		membersQuery.isPending ||
+		(user?.id && myActiveRateQuery.isPending)
+	) {
 		return (
 			<DashboardShell>
 				<div className="flex justify-center p-12">
@@ -62,7 +75,7 @@ function TeamTimeLayout() {
 		team?.owner_id === user?.id ||
 		myMembership?.role === "admin" ||
 		myMembership?.role === "owner";
-	const hasOwnRate = myMembership?.hourly_rate != null;
+	const hasOwnRate = Boolean(myActiveRateQuery.data);
 
 	if (!team?.time_tracking_enabled) {
 		return (

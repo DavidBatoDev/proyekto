@@ -4,7 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/useToast";
 import { useUser } from "@/stores/authStore";
-import { listTeamMembers, type TeamMember } from "@/services/teams.service";
+import {
+	getActiveMemberRate,
+	listTeamMembers,
+	type TeamMember,
+} from "@/services/teams.service";
 import {
 	teamTimeService,
 	type TaskTimeLog,
@@ -50,6 +54,12 @@ function MemberLogsRoute() {
 		queryFn: () => listTeamMembers(teamId),
 	});
 	const member = membersQuery.data?.find((m) => m.user_id === userId);
+
+	const activeRateQuery = useQuery({
+		queryKey: ["team", teamId, "rates", "active", userId],
+		queryFn: () => getActiveMemberRate(teamId, userId),
+	});
+	const activeRate = activeRateQuery.data ?? null;
 
 	const projectsQuery = useQuery({
 		queryKey: ["team-time", teamId, "projects"],
@@ -162,10 +172,10 @@ function MemberLogsRoute() {
 					<h3 className="text-lg font-semibold text-slate-900">
 						{memberName}'s logs
 					</h3>
-					{member?.hourly_rate != null && (
+					{activeRate && (
 						<p className="text-xs text-slate-500">
-							Current rate: {Number(member.hourly_rate).toFixed(2)}{" "}
-							{member.currency || "USD"} / hour
+							Current rate: {Number(activeRate.hourly_rate).toFixed(2)}{" "}
+							{activeRate.currency || "USD"} / hour
 						</p>
 					)}
 				</div>

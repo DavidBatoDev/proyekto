@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/useToast";
 import { useUser } from "@/stores/authStore";
-import { listTeamMembers } from "@/services/teams.service";
+import { getActiveMemberRate } from "@/services/teams.service";
 import {
 	teamTimeService,
 	type TaskTimeLog,
@@ -53,11 +53,11 @@ function MyLogsTab() {
 
 	// ─── data ─────────────────────────────────────────────────────────
 
-	const membersQuery = useQuery({
-		queryKey: ["team", teamId, "members"],
-		queryFn: () => listTeamMembers(teamId),
+	const myActiveRateQuery = useQuery({
+		queryKey: ["team", teamId, "rates", "active", user?.id],
+		queryFn: () => getActiveMemberRate(teamId, user!.id),
+		enabled: Boolean(user?.id),
 	});
-	const myMembership = membersQuery.data?.find((m) => m.user_id === user?.id);
 
 	const logsQuery = useQuery({
 		queryKey: ["team-time", teamId, "my-logs", user?.id],
@@ -93,13 +93,14 @@ function MyLogsTab() {
 	});
 
 	const ownRate = useMemo(() => {
-		if (!myMembership || myMembership.hourly_rate == null) return null;
+		const rate = myActiveRateQuery.data;
+		if (!rate) return null;
 		return {
-			team_id: teamId,
-			hourly_rate: Number(myMembership.hourly_rate),
-			currency: myMembership.currency ?? "USD",
+			team_id: rate.team_id,
+			hourly_rate: Number(rate.hourly_rate),
+			currency: rate.currency ?? "USD",
 		};
-	}, [myMembership, teamId]);
+	}, [myActiveRateQuery.data]);
 
 	const allLogs = logsQuery.data?.items ?? [];
 

@@ -597,6 +597,14 @@ export class TeamTimeService {
     return projectId;
   }
 
+  /**
+   * Pick the team whose rate snapshots onto a new log for `userId` on
+   * `projectId`. Primary team wins; otherwise any contributor team
+   * (deterministic by attached_at). The chosen team's *active* rate
+   * (the team_member_rates row with end_date IS NULL) supplies the
+   * hourly_rate + currency. Returns null when there is no curation
+   * row OR no active rate — caller treats that as a 0-rate log.
+   */
   private async resolveTeamRate(
     projectId: string,
     userId: string,
@@ -605,8 +613,7 @@ export class TeamTimeService {
       .from('project_team_members')
       .select(
         `team_id,
-         project_team:project_teams!project_team_members_project_id_team_id_fkey(is_primary, attached_at),
-         team_member:team_members!project_team_members_team_id_user_id_fkey(hourly_rate, currency)`,
+         project_team:project_teams!project_team_members_project_id_team_id_fkey(is_primary, attached_at)`,
       )
       .eq('project_id', projectId)
       .eq('user_id', userId);
@@ -614,7 +621,6 @@ export class TeamTimeService {
     const rows = (data ?? []) as unknown as Array<{
       team_id: string;
       project_team: { is_primary: boolean; attached_at: string } | null;
-      team_member: { hourly_rate: number | null; currency: string | null } | null;
     }>;
     if (rows.length === 0) return null;
     rows.sort((a, b) => {
@@ -626,10 +632,20 @@ export class TeamTimeService {
       return aAt.localeCompare(bAt);
     });
     const chosen = rows[0];
+
+    const { data: rateRow, error: rateErr } = await this.supabase
+      .from('team_member_rates')
+      .select('hourly_rate, currency')
+      .eq('team_id', chosen.team_id)
+      .eq('user_id', userId)
+      .is('end_date', null)
+      .maybeSingle();
+    if (rateErr) throw new Error(rateErr.message);
+
     return {
       team_id: chosen.team_id,
-      hourly_rate: Number(chosen.team_member?.hourly_rate ?? 0),
-      currency: chosen.team_member?.currency ?? 'USD',
+      hourly_rate: Number(rateRow?.hourly_rate ?? 0),
+      currency: rateRow?.currency ?? 'USD',
     };
   }
 

@@ -58,11 +58,6 @@ export interface TeamMemberRow {
   user_id: string;
   role: 'owner' | 'admin' | 'member';
   position: string | null;
-  hourly_rate: number | null;
-  currency: string | null;
-  custom_id: string | null;
-  start_date: string | null;
-  end_date: string | null;
   joined_at: string;
   user?: {
     id: string;
@@ -76,14 +71,6 @@ export interface TeamMemberRow {
 
 const TEAM_MEMBER_SELECT =
   '*, user:profiles!team_members_user_id_fkey(id, display_name, avatar_url, email, first_name, last_name)';
-
-const RATE_FIELDS: Array<keyof AddTeamMemberDto> = [
-  'hourly_rate',
-  'currency',
-  'custom_id',
-  'start_date',
-  'end_date',
-];
 
 export interface TeamInviteRow {
   id: string;
@@ -445,19 +432,11 @@ export class TeamsService {
   ): Promise<TeamMemberRow> {
     const team = await this.fetchTeamOrThrow(teamId);
     await this.assertCanManageMembers(team, callerId);
-    if (this.dtoTouchesRateFields(dto)) {
-      await this.assertOwnerIsConsultant(team);
-    }
     const payload = {
       team_id: teamId,
       user_id: dto.user_id,
       role: dto.role ?? 'member',
       position: dto.position?.trim() || null,
-      hourly_rate: dto.hourly_rate ?? null,
-      currency: dto.currency ?? null,
-      custom_id: dto.custom_id ?? null,
-      start_date: dto.start_date ?? null,
-      end_date: dto.end_date ?? null,
     };
     const { data, error } = await this.supabase
       .from('team_members')
@@ -478,9 +457,6 @@ export class TeamsService {
   ): Promise<TeamMemberRow> {
     const team = await this.fetchTeamOrThrow(teamId);
     await this.assertCanManageMembers(team, callerId);
-    if (this.dtoTouchesRateFields(dto)) {
-      await this.assertOwnerIsConsultant(team);
-    }
     if (targetUserId === team.owner_id && dto.role && dto.role !== ('owner' as 'admin' | 'member')) {
       throw new ForbiddenException('Cannot change the role of the team owner');
     }
@@ -490,10 +466,6 @@ export class TeamsService {
       // Empty string clears the position; otherwise trim whitespace.
       const trimmed = dto.position.trim();
       patch.position = trimmed.length === 0 ? null : trimmed;
-    }
-    for (const f of RATE_FIELDS) {
-      const v = (dto as unknown as Record<string, unknown>)[f];
-      if (v !== undefined) patch[f] = v;
     }
     const { data, error } = await this.supabase
       .from('team_members')
@@ -535,7 +507,7 @@ export class TeamsService {
 
   // ─── helpers ─────────────────────────────────────────────────────────────
 
-  private async fetchTeamOrThrow(teamId: string): Promise<TeamRow> {
+  async fetchTeamOrThrow(teamId: string): Promise<TeamRow> {
     const { data, error } = await this.supabase
       .from('teams')
       .select('*')
@@ -546,7 +518,7 @@ export class TeamsService {
     return data as TeamRow;
   }
 
-  private async assertCanRead(team: TeamRow, userId: string): Promise<void> {
+  async assertCanRead(team: TeamRow, userId: string): Promise<void> {
     if (team.owner_id === userId) return;
     const { count } = await this.supabase
       .from('team_members')
@@ -557,7 +529,7 @@ export class TeamsService {
     throw new ForbiddenException('You do not have access to this team');
   }
 
-  private async assertCanManageMembers(
+  async assertCanManageMembers(
     team: TeamRow,
     userId: string,
   ): Promise<void> {
@@ -576,7 +548,8 @@ export class TeamsService {
     }
   }
 
-  private async assertOwnerIsConsultant(team: TeamRow): Promise<void> {
+  // Public so the team-member-rates service can reuse the same gate.
+  async assertOwnerIsConsultant(team: TeamRow): Promise<void> {
     const { data, error } = await this.supabase
       .from('profiles')
       .select('is_consultant_verified')
@@ -592,13 +565,6 @@ export class TeamsService {
           'Team owner must be a verified consultant to set rate / billing fields.',
       });
     }
-  }
-
-  private dtoTouchesRateFields(
-    dto: AddTeamMemberDto | UpdateTeamMemberDto,
-  ): boolean {
-    const d = dto as Record<string, unknown>;
-    return RATE_FIELDS.some((f) => d[f] !== undefined);
   }
 
   // ─── invites (email-based) ──────────────────────────────────────────────

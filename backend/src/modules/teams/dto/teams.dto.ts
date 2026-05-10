@@ -99,27 +99,6 @@ export class AddTeamMemberDto {
   @IsString()
   @MaxLength(120)
   position?: string;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  hourly_rate?: number;
-
-  @IsOptional()
-  @IsString()
-  currency?: string;
-
-  @IsOptional()
-  @IsString()
-  custom_id?: string;
-
-  @IsOptional()
-  @IsDateString()
-  start_date?: string;
-
-  @IsOptional()
-  @IsDateString()
-  end_date?: string;
 }
 
 export class UpdateTeamMemberDto {
@@ -131,7 +110,33 @@ export class UpdateTeamMemberDto {
   @IsString()
   @MaxLength(120)
   position?: string;
+}
 
+export class CreateTeamMemberRateDto {
+  @IsNumber()
+  @Min(0)
+  hourly_rate!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(8)
+  currency?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  custom_id?: string;
+
+  @IsOptional()
+  @IsDateString()
+  start_date?: string;
+
+  @IsOptional()
+  @IsDateString()
+  end_date?: string;
+}
+
+export class UpdateTeamMemberRateDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -139,10 +144,12 @@ export class UpdateTeamMemberDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(8)
   currency?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(120)
   custom_id?: string;
 
   @IsOptional()

@@ -39,13 +39,21 @@ export interface TeamMember {
 	user_id: string;
 	role: TeamRole;
 	position: string | null;
-	hourly_rate: number | null;
-	currency: string | null;
+	joined_at: string;
+	user?: ProfileSummary | null;
+}
+
+export interface TeamMemberRate {
+	id: string;
+	team_id: string;
+	user_id: string;
+	hourly_rate: number;
+	currency: string;
 	custom_id: string | null;
 	start_date: string | null;
 	end_date: string | null;
-	joined_at: string;
-	user?: ProfileSummary | null;
+	created_at: string;
+	updated_at: string;
 }
 
 export interface ProjectTeam {
@@ -216,15 +224,11 @@ export async function updateTeamMember(
 	patch: {
 		role?: "admin" | "member";
 		position?: string;
-		hourly_rate?: number;
-		currency?: string;
-		custom_id?: string;
-		start_date?: string;
-		end_date?: string;
 	},
 ): Promise<TeamMember> {
 	try {
-		const { data } = await apiClient.patch<{ data: TeamMember }>(`/api/teams/${teamId}/members/${userId}`,
+		const { data } = await apiClient.patch<{ data: TeamMember }>(
+			`/api/teams/${teamId}/members/${userId}`,
 			patch,
 		);
 		return data.data;
@@ -233,6 +237,116 @@ export async function updateTeamMember(
 			extractApiErrorMessage(
 				(err as { response?: { data?: unknown } }).response?.data,
 				"Failed to update team member",
+			),
+		);
+	}
+}
+
+// ─── team_member_rates ──────────────────────────────────────────────────
+
+export interface TeamMemberRatePayload {
+	hourly_rate: number;
+	currency?: string;
+	custom_id?: string;
+	start_date?: string;
+	end_date?: string;
+}
+
+export async function listMemberRates(
+	teamId: string,
+	userId: string,
+): Promise<TeamMemberRate[]> {
+	try {
+		const { data } = await apiClient.get<{ data: TeamMemberRate[] }>(
+			`/api/teams/${teamId}/members/${userId}/rates`,
+		);
+		return data.data;
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to load member rate history",
+			),
+		);
+	}
+}
+
+export async function getActiveMemberRate(
+	teamId: string,
+	userId: string,
+): Promise<TeamMemberRate | null> {
+	try {
+		const { data } = await apiClient.get<{ data: TeamMemberRate | null }>(
+			`/api/teams/${teamId}/members/${userId}/rates/active`,
+		);
+		return data.data;
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to load active rate",
+			),
+		);
+	}
+}
+
+export async function createMemberRate(
+	teamId: string,
+	userId: string,
+	payload: TeamMemberRatePayload,
+): Promise<TeamMemberRate> {
+	try {
+		const { data } = await apiClient.post<{ data: TeamMemberRate }>(
+			`/api/teams/${teamId}/members/${userId}/rates`,
+			payload,
+		);
+		return data.data;
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to create rate",
+			),
+		);
+	}
+}
+
+export async function updateMemberRate(
+	teamId: string,
+	userId: string,
+	rateId: string,
+	patch: Partial<TeamMemberRatePayload> & { end_date?: string | null },
+): Promise<TeamMemberRate> {
+	try {
+		const { data } = await apiClient.patch<{ data: TeamMemberRate }>(
+			`/api/teams/${teamId}/members/${userId}/rates/${rateId}`,
+			patch,
+		);
+		return data.data;
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to update rate",
+			),
+		);
+	}
+}
+
+export async function deleteMemberRate(
+	teamId: string,
+	userId: string,
+	rateId: string,
+): Promise<void> {
+	try {
+		await apiClient.delete(
+			`/api/teams/${teamId}/members/${userId}/rates/${rateId}`,
+		);
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to delete rate",
 			),
 		);
 	}

@@ -1,13 +1,24 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	useMutation,
+	useQueries,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { useToast } from "@/hooks/useToast";
 import {
+	createMemberRate,
+	deleteMemberRate,
+	getActiveMemberRate,
+	listMemberRates,
 	listTeamMembers,
-	updateTeamMember,
+	updateMemberRate,
 	type TeamMember,
+	type TeamMemberRate,
 } from "@/services/teams.service";
 import { TeamRatesSection } from "@/components/team-time/TeamRatesSection";
+import { TeamMemberRateHistoryDrawer } from "@/components/team-time/TeamMemberRateHistoryDrawer";
 import {
 	AddRateModal,
 	DeleteRateModal,
@@ -18,26 +29,67 @@ export const Route = createFileRoute("/teams/$teamId/time/manage-rates/")({
 	component: ManageRatesTab,
 });
 
+function memberDisplayLabel(m: TeamMember | null): string {
+	if (!m) return "";
+	const composed = [m.user?.first_name, m.user?.last_name]
+		.filter(Boolean)
+		.join(" ")
+		.trim();
+	return m.user?.display_name || composed || m.user?.email || m.user_id;
+}
+
 function ManageRatesTab() {
 	const { teamId } = Route.useParams();
 	const toast = useToast();
 	const qc = useQueryClient();
 	const navigate = useNavigate();
 
+	// ─── data ─────────────────────────────────────────────────────────
+
 	const membersQuery = useQuery({
 		queryKey: ["team", teamId, "members"],
 		queryFn: () => listTeamMembers(teamId),
 	});
+	const allMembers = membersQuery.data ?? [];
 
-	// Editing state
-	const [editing, setEditing] = useState<TeamMember | null>(null);
-	const [editCustomId, setEditCustomId] = useState("");
-	const [editValue, setEditValue] = useState("");
-	const [editCurrency, setEditCurrency] = useState("USD");
-	const [editStartDate, setEditStartDate] = useState("");
-	const [editEndDate, setEditEndDate] = useState("");
+	// One active-rate query per member. Useful even for the rates card
+	// (decides which members appear) and the modal (decides which can be
+	// added). Keys are kept narrow so individual rate mutations only
+	// invalidate their own slot.
+	const activeRatesQueries = useQueries({
+		queries: allMembers.map((m) => ({
+			queryKey: ["team", teamId, "rates", "active", m.user_id] as const,
+			queryFn: () => getActiveMemberRate(teamId, m.user_id),
+			staleTime: 5_000,
+		})),
+	});
+	const activeRateByUserId: Record<string, TeamMemberRate | null | undefined> =
+		useMemo(() => {
+			const map: Record<string, TeamMemberRate | null | undefined> = {};
+			allMembers.forEach((m, idx) => {
+				map[m.user_id] = activeRatesQueries[idx]?.data ?? null;
+			});
+			return map;
+		}, [allMembers, activeRatesQueries]);
+	const loadingRates = activeRatesQueries.some((q) => q.isPending);
 
-	// Add state
+	const membersWithoutActiveRate = useMemo(
+		() => allMembers.filter((m) => !activeRateByUserId[m.user_id]),
+		[allMembers, activeRateByUserId],
+	);
+
+	// ─── history drawer state ────────────────────────────────────────
+
+	const [historyMember, setHistoryMember] = useState<TeamMember | null>(null);
+	const historyOpen = historyMember !== null;
+	const historyQuery = useQuery({
+		queryKey: ["team", teamId, "rates", "history", historyMember?.user_id],
+		queryFn: () => listMemberRates(teamId, historyMember!.user_id),
+		enabled: historyOpen,
+	});
+
+	// ─── Add Rate state ──────────────────────────────────────────────
+
 	const [addOpen, setAddOpen] = useState(false);
 	const [addUserId, setAddUserId] = useState("");
 	const [addCustomId, setAddCustomId] = useState("");
@@ -46,51 +98,143 @@ function ManageRatesTab() {
 	const [addStartDate, setAddStartDate] = useState("");
 	const [addEndDate, setAddEndDate] = useState("");
 
-	// Delete state (delete = clear all rate fields → null)
-	const [deleting, setDeleting] = useState<TeamMember | null>(null);
+	// ─── Edit Rate state ─────────────────────────────────────────────
+
+	const [editing, setEditing] = useState<TeamMemberRate | null>(null);
+	const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
+	const [editCustomId, setEditCustomId] = useState("");
+	const [editValue, setEditValue] = useState("");
+	const [editCurrency, setEditCurrency] = useState("USD");
+	const [editStartDate, setEditStartDate] = useState("");
+	const [editEndDate, setEditEndDate] = useState("");
+
+	// ─── Delete Rate state ───────────────────────────────────────────
+
+	const [deletingRate, setDeletingRate] = useState<TeamMemberRate | null>(null);
+	const [deletingMember, setDeletingMember] = useState<TeamMember | null>(null);
 	const [deleteVerification, setDeleteVerification] = useState("");
 
-	const allMembers = membersQuery.data ?? [];
-	const membersWithoutRate = useMemo(
-		() => allMembers.filter((m) => m.hourly_rate == null),
-		[allMembers],
-	)
+	// ─── mutations ───────────────────────────────────────────────────
 
-	const saveRateMutation = useMutation({
+	const invalidateRatesFor = (userId: string) => {
+		qc.invalidateQueries({
+			queryKey: ["team", teamId, "rates", "active", userId],
+		});
+		qc.invalidateQueries({
+			queryKey: ["team", teamId, "rates", "history", userId],
+		});
+	};
+
+	const createMutation = useMutation({
 		mutationFn: (input: {
 			userId: string;
-			patch: Parameters<typeof updateTeamMember>[2];
-		}) => updateTeamMember(teamId, input.userId, input.patch),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["team", teamId, "members"] });
+			payload: Parameters<typeof createMemberRate>[2];
+		}) => createMemberRate(teamId, input.userId, input.payload),
+		onSuccess: (_, vars) => {
+			toast.success("Rate added");
+			invalidateRatesFor(vars.userId);
+			setAddOpen(false);
+			setAddUserId("");
+			setAddCustomId("");
+			setAddValue("");
+			setAddCurrency("USD");
+			setAddStartDate("");
+			setAddEndDate("");
+		},
+		onError: (e: Error) => toast.error(e.message),
+	});
+
+	const updateMutation = useMutation({
+		mutationFn: (input: {
+			userId: string;
+			rateId: string;
+			patch: Parameters<typeof updateMemberRate>[3];
+		}) => updateMemberRate(teamId, input.userId, input.rateId, input.patch),
+		onSuccess: (_, vars) => {
+			toast.success("Rate updated");
+			invalidateRatesFor(vars.userId);
+			setEditing(null);
+			setEditingMember(null);
+		},
+		onError: (e: Error) => toast.error(e.message),
+	});
+
+	const deleteMutation = useMutation({
+		mutationFn: (input: { userId: string; rateId: string }) =>
+			deleteMemberRate(teamId, input.userId, input.rateId),
+		onSuccess: (_, vars) => {
+			toast.success("Rate deleted");
+			invalidateRatesFor(vars.userId);
+			setDeletingRate(null);
+			setDeletingMember(null);
+			setDeleteVerification("");
 		},
 		onError: (e: Error) => toast.error(e.message),
 	});
 
 	const pendingMemberById = useMemo<Record<string, boolean>>(() => {
-		if (saveRateMutation.isPending && saveRateMutation.variables)
-			return { [saveRateMutation.variables.userId]: true };
-		return {};
-	}, [saveRateMutation.isPending, saveRateMutation.variables]);
+		const map: Record<string, boolean> = {};
+		if (createMutation.isPending && createMutation.variables)
+			map[createMutation.variables.userId] = true;
+		if (updateMutation.isPending && updateMutation.variables)
+			map[updateMutation.variables.userId] = true;
+		if (deleteMutation.isPending && deleteMutation.variables)
+			map[deleteMutation.variables.userId] = true;
+		return map;
+	}, [
+		createMutation.isPending,
+		createMutation.variables,
+		updateMutation.isPending,
+		updateMutation.variables,
+		deleteMutation.isPending,
+		deleteMutation.variables,
+	]);
 
-	const openEdit = (m: TeamMember) => {
-		setEditing(m);
-		setEditCustomId(m.custom_id ?? "");
-		setEditValue(m.hourly_rate != null ? String(m.hourly_rate) : "");
-		setEditCurrency(m.currency ?? "USD");
-		setEditStartDate(m.start_date ?? "");
-		setEditEndDate(m.end_date ?? "");
-	}
+	const pendingRateById = useMemo<Record<string, boolean>>(() => {
+		const map: Record<string, boolean> = {};
+		if (updateMutation.isPending && updateMutation.variables)
+			map[updateMutation.variables.rateId] = true;
+		if (deleteMutation.isPending && deleteMutation.variables)
+			map[deleteMutation.variables.rateId] = true;
+		return map;
+	}, [
+		updateMutation.isPending,
+		updateMutation.variables,
+		deleteMutation.isPending,
+		deleteMutation.variables,
+	]);
 
-	const closeEdit = () => {
-		if (saveRateMutation.isPending) return;
-		setEditing(null);
-	}
+	// ─── handlers ────────────────────────────────────────────────────
+
+	const handleSaveAdd = async () => {
+		if (!addUserId || !addValue) return;
+		await createMutation.mutateAsync({
+			userId: addUserId,
+			payload: {
+				hourly_rate: Number(addValue),
+				currency: addCurrency || "USD",
+				custom_id: addCustomId || undefined,
+				start_date: addStartDate || undefined,
+				end_date: addEndDate || undefined,
+			},
+		});
+	};
+
+	const openEditRate = (rate: TeamMemberRate, member: TeamMember | null) => {
+		setEditing(rate);
+		setEditingMember(member);
+		setEditCustomId(rate.custom_id ?? "");
+		setEditValue(String(rate.hourly_rate));
+		setEditCurrency(rate.currency || "USD");
+		setEditStartDate(rate.start_date ?? "");
+		setEditEndDate(rate.end_date ?? "");
+	};
 
 	const handleSaveEdit = async () => {
 		if (!editing) return;
-		await saveRateMutation.mutateAsync({
+		await updateMutation.mutateAsync({
 			userId: editing.user_id,
+			rateId: editing.id,
 			patch: {
 				hourly_rate: editValue === "" ? undefined : Number(editValue),
 				currency: editCurrency || undefined,
@@ -98,58 +242,24 @@ function ManageRatesTab() {
 				start_date: editStartDate || undefined,
 				end_date: editEndDate || undefined,
 			},
-		})
-		toast.success("Rate updated");
-		setEditing(null);
-	}
-
-	const handleSaveAdd = async () => {
-		if (!addUserId || !addValue) return;
-		await saveRateMutation.mutateAsync({
-			userId: addUserId,
-			patch: {
-				hourly_rate: Number(addValue),
-				currency: addCurrency || "USD",
-				custom_id: addCustomId || undefined,
-				start_date: addStartDate || undefined,
-				end_date: addEndDate || undefined,
-			},
-		})
-		toast.success("Rate added");
-		setAddOpen(false);
-		setAddUserId("");
-		setAddCustomId("");
-		setAddValue("");
-		setAddCurrency("USD");
-		setAddStartDate("");
-		setAddEndDate("");
-	}
+		});
+	};
 
 	const handleConfirmDelete = async () => {
-		if (!deleting) return;
-		// Clear all rate fields. Backend currently doesn't accept null
-		// directly via the existing PATCH; pass 0 + empty strings, which
-		// the service stores as zero-rate. Effectively disables logging.
-		await saveRateMutation.mutateAsync({
-			userId: deleting.user_id,
-			patch: {
-				hourly_rate: 0,
-				currency: deleting.currency ?? "USD",
-				custom_id: undefined,
-				start_date: undefined,
-				end_date: undefined,
-			},
-		})
-		toast.success("Rate cleared");
-		setDeleting(null);
-		setDeleteVerification("");
-	}
+		if (!deletingRate) return;
+		await deleteMutation.mutateAsync({
+			userId: deletingRate.user_id,
+			rateId: deletingRate.id,
+		});
+	};
 
 	return (
 		<>
 			<TeamRatesSection
 				members={allMembers}
+				activeRateByUserId={activeRateByUserId}
 				loadingMembers={membersQuery.isPending}
+				loadingRates={loadingRates}
 				canManageRates
 				pendingMemberById={pendingMemberById}
 				onViewLogs={(m) => {
@@ -159,15 +269,36 @@ function ManageRatesTab() {
 					});
 				}}
 				onOpenAddRate={() => setAddOpen(true)}
-				onOpenEditRate={openEdit}
+				onViewHistory={(m) => setHistoryMember(m)}
+			/>
+
+			<TeamMemberRateHistoryDrawer
+				isOpen={historyOpen}
+				member={historyMember}
+				rates={historyQuery.data ?? []}
+				loadingRates={historyQuery.isPending}
+				canManage
+				rowPendingByRateId={pendingRateById}
+				onClose={() => setHistoryMember(null)}
+				onAddRate={() => {
+					if (historyMember) {
+						setAddUserId(historyMember.user_id);
+						setAddOpen(true);
+					}
+				}}
+				onEditRate={(rate) => openEditRate(rate, historyMember)}
+				onDeleteRate={(rate) => {
+					setDeletingRate(rate);
+					setDeletingMember(historyMember);
+				}}
 			/>
 
 			<AddRateModal
 				isOpen={addOpen}
 				canManageRates
-				membersWithoutRate={membersWithoutRate}
+				membersWithoutRate={membersWithoutActiveRate}
 				loadingMembers={membersQuery.isPending}
-				savingRate={saveRateMutation.isPending}
+				savingRate={createMutation.isPending}
 				newRateMemberUserId={addUserId}
 				newRateCustomId={addCustomId}
 				newRateValue={addValue}
@@ -175,7 +306,7 @@ function ManageRatesTab() {
 				newRateStartDate={addStartDate}
 				newRateEndDate={addEndDate}
 				onClose={() => {
-					if (saveRateMutation.isPending) return;
+					if (createMutation.isPending) return;
 					setAddOpen(false);
 				}}
 				onCreateRate={handleSaveAdd}
@@ -190,19 +321,26 @@ function ManageRatesTab() {
 			<EditRateModal
 				isOpen={Boolean(editing)}
 				canManageRates
-				editingRateTarget={editing}
+				editingRate={editing}
+				memberLabel={memberDisplayLabel(editingMember)}
 				editingRateCustomId={editCustomId}
 				editingRateValue={editValue}
 				editingRateCurrency={editCurrency}
 				editingRateStartDate={editStartDate}
 				editingRateEndDate={editEndDate}
-				savingRate={saveRateMutation.isPending}
-				onClose={closeEdit}
+				savingRate={updateMutation.isPending}
+				onClose={() => {
+					if (updateMutation.isPending) return;
+					setEditing(null);
+					setEditingMember(null);
+				}}
 				onSave={handleSaveEdit}
 				onRequestDelete={() => {
 					if (editing) {
-						setDeleting(editing);
-						setEditing(null)
+						setDeletingRate(editing);
+						setDeletingMember(editingMember);
+						setEditing(null);
+						setEditingMember(null);
 					}
 				}}
 				onChangeCustomId={setEditCustomId}
@@ -213,22 +351,19 @@ function ManageRatesTab() {
 			/>
 
 			<DeleteRateModal
-				isOpen={Boolean(deleting)}
-				targetLabel={
-					deleting?.user?.display_name ??
-					deleting?.user?.email ??
-					deleting?.user_id
-				}
+				isOpen={Boolean(deletingRate)}
+				targetLabel={memberDisplayLabel(deletingMember)}
 				verificationText={deleteVerification}
-				deletingRate={saveRateMutation.isPending}
+				deletingRate={deleteMutation.isPending}
 				onClose={() => {
-					if (saveRateMutation.isPending) return;
-					setDeleting(null);
+					if (deleteMutation.isPending) return;
+					setDeletingRate(null);
+					setDeletingMember(null);
 					setDeleteVerification("");
 				}}
 				onChangeVerificationText={setDeleteVerification}
 				onConfirmDelete={handleConfirmDelete}
 			/>
 		</>
-	)
+	);
 }
