@@ -36,6 +36,7 @@ export interface TeamRow {
   description: string | null;
   avatar_url: string | null;
   is_personal: boolean;
+  time_tracking_enabled: boolean;
   created_at: string;
   updated_at: string;
   // Populated by listMyTeams for the team-list UI. Other endpoints that
@@ -344,6 +345,14 @@ export class TeamsService {
     if (dto.name !== undefined) patch.name = dto.name;
     if (dto.description !== undefined) patch.description = dto.description;
     if (dto.avatar_url !== undefined) patch.avatar_url = dto.avatar_url;
+    if (dto.time_tracking_enabled !== undefined) {
+      // Enabling time tracking requires the team owner to be a verified
+      // consultant. Disabling is always allowed (owner-only above).
+      if (dto.time_tracking_enabled === true) {
+        await this.assertOwnerIsConsultant(team);
+      }
+      patch.time_tracking_enabled = dto.time_tracking_enabled;
+    }
 
     const { data, error } = await this.supabase
       .from('teams')

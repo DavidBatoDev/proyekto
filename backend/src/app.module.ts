@@ -21,6 +21,7 @@ import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { TeamsModule } from './modules/teams/teams.module';
+import { TeamTimeModule } from './modules/team-time/team-time.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -54,6 +55,7 @@ import { AppController } from './app.controller';
     NotificationsModule,
     ChatModule,
     TeamsModule,
+    TeamTimeModule,
   ],
 })
 export class AppModule {}

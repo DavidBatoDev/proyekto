@@ -44,6 +44,10 @@ export class UpdateTeamDto {
   @IsOptional()
   @IsString()
   avatar_url?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  time_tracking_enabled?: boolean;
 }
 
 export const TEAM_MEMBER_ROLES = ['owner', 'admin', 'member'] as const;
