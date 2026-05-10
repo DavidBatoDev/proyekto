@@ -70,9 +70,6 @@ NestJS is wired in `backend/src/app.module.ts`. Each feature module is self-cont
 - `ThrottlerModule` uses a custom `ThrottlerStorageRedisService` backed by Upstash.
 - `backend/src/lambda.ts` is the Vercel serverless entry; `main.ts` is the standalone entry.
 
-### Persona / RLS model
-A single user can act as Client, Consultant, Freelancer, or Admin across projects. Authorization is enforced at two layers: NestJS guards at the API boundary, and Supabase RLS at the DB. When adding endpoints, mirror any RLS constraints in guards so unauthorized reads fail fast before hitting the DB. Chat channel visibility and `is_client_visible` on work items are the most common filter dimensions.
-
 ### Web routing
 TanStack Router with file-based routes under `web/src/routes/`. `routeTree.gen.ts` is generated — don't hand-edit. Route trees split per persona (`admin/`, `client/`, `consultant/`, `freelancer/`, `profile/`, `project/`, `roadmap/`).
 
