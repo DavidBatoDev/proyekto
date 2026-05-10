@@ -1,4 +1,4 @@
-import { Settings, Users } from "lucide-react";
+import { Clock, Settings, Users } from "lucide-react";
 import type { Team } from "@/services/teams.service";
 import {
 	CollapsibleNavGroup,
@@ -27,6 +27,19 @@ export function TeamSidebarGroup({
 			to: `/teams/${team.id}`,
 			active: currentPath === `/teams/${team.id}`,
 		},
+		// Time + rates only show once the team owner has enabled time
+		// tracking under settings (consultant-verified gate). Settings
+		// stays visible so the owner can flip the flag in the first place.
+		...(team.time_tracking_enabled
+			? [
+					{
+						label: "Time",
+						icon: Clock,
+						to: `/teams/${team.id}/time`,
+						active: currentPath.startsWith(`/teams/${team.id}/time`),
+					},
+				]
+			: []),
 		{
 			label: "Settings",
 			icon: Settings,
