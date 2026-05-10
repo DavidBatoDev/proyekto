@@ -77,14 +77,13 @@ apiClient.interceptors.response.use(
         case 403:
           {
             const url = String(error.config?.url ?? "");
-            const isExpectedProjectTimeForbidden =
-              url.includes("/api/project-time/projects/") &&
+            const isExpectedTeamTimeForbidden =
+              url.includes("/api/team-time/teams/") &&
               (url.includes("/my-rate") ||
                 url.includes("/my?") ||
                 url.endsWith("/my") ||
-                url.includes("/tasks") ||
-                url.includes("/rates"));
-            if (isExpectedProjectTimeForbidden) {
+                url.includes("/tasks"));
+            if (isExpectedTeamTimeForbidden) {
               break;
             }
 

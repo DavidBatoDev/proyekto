@@ -11,6 +11,7 @@ export interface Team {
 	description: string | null;
 	avatar_url: string | null;
 	is_personal: boolean;
+	time_tracking_enabled: boolean;
 	created_at: string;
 	updated_at: string;
 	// Populated by listMyTeams. Other endpoints that return a single
@@ -156,7 +157,12 @@ export async function createTeam(input: {
 
 export async function updateTeam(
 	teamId: string,
-	patch: { name?: string; description?: string; avatar_url?: string },
+	patch: {
+		name?: string;
+		description?: string;
+		avatar_url?: string;
+		time_tracking_enabled?: boolean;
+	},
 ): Promise<Team> {
 	try {
 		const { data } = await apiClient.patch<{ data: Team }>(`/api/teams/${teamId}`, patch);
