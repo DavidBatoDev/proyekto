@@ -5,8 +5,9 @@ import {
 	Loader2,
 	MoreHorizontal,
 	Pencil,
-	Plus,
+	Play,
 	Square,
+	Timer,
 	Trash2,
 } from "lucide-react";
 import {
@@ -24,8 +25,6 @@ import { liveDurationSecondsFromLog } from "./time-utils";
 
 type MyLogGridRow = {
 	id: string;
-	is_placeholder?: boolean;
-	placeholder_index?: number;
 	date: string;
 	task_id: string;
 	time_in: string;
@@ -303,22 +302,7 @@ export function TeamMyLogsGrid({
 				},
 			};
 		});
-		const minimumRows = Math.max(4, populatedRows.length + 1);
-		if (populatedRows.length >= minimumRows) return populatedRows;
-		const emptyCount = minimumRows - populatedRows.length;
-		const emptyRows: MyLogGridRow[] = Array.from({ length: emptyCount }).map(
-			(_, idx) => ({
-				id: `empty-${idx}`,
-				is_placeholder: true,
-				placeholder_index: idx,
-				date: "",
-				task_id: "",
-				time_in: "",
-				is_running: false,
-				log: null as unknown as TaskTimeLog,
-			}),
-		);
-		return [...populatedRows, ...emptyRows];
+		return populatedRows;
 	}, [fullDateFormatter, logs, taskTitleById, timeFormatter]);
 
 	const formatTimeOut = useMemo(
@@ -386,15 +370,13 @@ export function TeamMyLogsGrid({
 			columnHelper.accessor("date", {
 				id: "date",
 				header: "Dates",
-				cell: (info) =>
-					info.row.original.is_placeholder ? null : info.getValue(),
+				cell: (info) => info.getValue(),
 			}),
 			columnHelper.accessor("task_id", {
 				id: "task_id",
 				header: "Task",
 				cell: (info) => {
 					const row = info.row.original;
-					if (row.is_placeholder) return null;
 					const taskTitle =
 						row.log.task?.title ||
 						taskTitleById.get(row.task_id) ||
@@ -420,27 +402,24 @@ export function TeamMyLogsGrid({
 			columnHelper.accessor("time_in", {
 				id: "time_in",
 				header: "Time-in",
-				cell: (info) =>
-					info.row.original.is_placeholder ? null : (
-						<span className="tabular-nums">{info.getValue()}</span>
-					),
+				cell: (info) => (
+					<span className="tabular-nums">{info.getValue()}</span>
+				),
 			}),
 			columnHelper.display({
 				id: "time_out",
 				header: "Time-Out",
-				cell: (info) =>
-					info.row.original.is_placeholder ? null : (
-						<span className="tabular-nums">
-							{formatTimeOut(info.row.original.log)}
-						</span>
-					),
+				cell: (info) => (
+					<span className="tabular-nums">
+						{formatTimeOut(info.row.original.log)}
+					</span>
+				),
 			}),
 			columnHelper.display({
 				id: "hours_worked",
 				header: "Hours",
 				cell: (info) => {
 					const row = info.row.original;
-					if (row.is_placeholder) return null;
 					return (
 						<span className="text-xs font-semibold text-gray-700">
 							{getHoursWorked(row.log).toFixed(2)}
@@ -453,7 +432,6 @@ export function TeamMyLogsGrid({
 				header: "Fees",
 				cell: (info) => {
 					const row = info.row.original;
-					if (row.is_placeholder) return null;
 					const fees = getFees(row.log);
 					return (
 						<span className="text-xs font-semibold text-emerald-700">
@@ -467,7 +445,6 @@ export function TeamMyLogsGrid({
 				header: "Status",
 				cell: (info) => {
 					const row = info.row.original;
-					if (row.is_placeholder) return null;
 					return (
 						<div className="flex items-center gap-1">
 							{row.is_running && (
@@ -491,20 +468,6 @@ export function TeamMyLogsGrid({
 				header: "Actions",
 				cell: (info) => {
 					const row = info.row.original;
-					if (row.is_placeholder) {
-						return row.placeholder_index === 0 ? (
-							<button
-								type="button"
-								onClick={onOpenAddLog}
-								title="Add Log"
-								aria-label="Add Log"
-								className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200 cursor-pointer"
-							>
-								<Plus className="h-3.5 w-3.5" />
-							</button>
-						) : null;
-					}
-
 					const isRowPending = Boolean(rowPendingById[row.id]);
 					const isReadOnly = isMemberReadOnlyStatus(row.log.status);
 					const canOpenInRoadmap = canOpenTaskInRoadmap(row.log.task_id);
@@ -626,22 +589,52 @@ export function TeamMyLogsGrid({
 					))}
 				</thead>
 				<tbody>
-					{table.getRowModel().rows.map((row) => (
-						<tr
-							key={row.id}
-							className={`border-t border-gray-200 ${
-								!row.original.is_placeholder && rowPendingById[row.original.id]
-									? "bg-amber-50/40"
-									: ""
-							}`}
-						>
-							{row.getVisibleCells().map((cell) => (
-								<td key={cell.id} className="px-2 py-1.5 align-middle">
-									{flexRender(cell.column.columnDef.cell, cell.getContext())}
-								</td>
-							))}
+					{rows.length === 0 ? (
+						<tr className="border-t border-gray-200">
+							<td colSpan={8} className="px-6 py-20">
+								<div className="mx-auto flex max-w-sm flex-col items-center text-center">
+									<div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
+										<Timer className="h-7 w-7 text-slate-500" />
+									</div>
+									<h3 className="text-base font-semibold text-slate-900">
+										No time logged yet
+									</h3>
+									<p className="mt-2 text-sm text-slate-500">
+										Track time on tasks across the projects this team is
+										attached to. Each log freezes your current rate, so you'll
+										always know what it's worth.
+									</p>
+									<p className="mt-3 text-sm text-slate-500">
+										Start a timer to begin logging, then submit it for review
+										by a team owner or admin.
+									</p>
+									<button
+										type="button"
+										onClick={onOpenAddLog}
+										className="mt-6 inline-flex items-center gap-2 rounded-md bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+									>
+										<Play className="h-3.5 w-3.5" />
+										Start a timer
+									</button>
+								</div>
+							</td>
 						</tr>
-					))}
+					) : (
+						table.getRowModel().rows.map((row) => (
+							<tr
+								key={row.id}
+								className={`border-t border-gray-200 ${
+									rowPendingById[row.original.id] ? "bg-amber-50/40" : ""
+								}`}
+							>
+								{row.getVisibleCells().map((cell) => (
+									<td key={cell.id} className="px-2 py-1.5 align-middle">
+										{flexRender(cell.column.columnDef.cell, cell.getContext())}
+									</td>
+								))}
+							</tr>
+						))
+					)}
 				</tbody>
 			</table>
 		</div>

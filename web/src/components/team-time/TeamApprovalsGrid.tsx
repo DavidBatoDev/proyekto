@@ -2,6 +2,7 @@ import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
 	Check,
+	ClipboardCheck,
 	ExternalLink,
 	Loader2,
 	MoreHorizontal,
@@ -19,7 +20,6 @@ import { liveDurationSecondsFromLog } from "./time-utils";
 
 type TeamApprovalsRow = {
 	id: string;
-	is_placeholder?: boolean;
 	date: string;
 	project_label: string;
 	task_id: string;
@@ -332,30 +332,7 @@ export function TeamApprovalsGrid({
 			};
 		});
 
-		const minimumRows = Math.max(4, populatedRows.length);
-		if (populatedRows.length >= minimumRows) return populatedRows;
-
-		const emptyCount = minimumRows - populatedRows.length;
-		const emptyRows: TeamApprovalsRow[] = Array.from({ length: emptyCount }).map(
-			(_, idx) => ({
-				id: `empty-${idx}`,
-				is_placeholder: true,
-				date: "",
-				project_label: "",
-				task_id: "",
-				task_title: "",
-				time_in: "",
-				time_out: "",
-				hours_worked: 0,
-				fees: null,
-				currency: "USD",
-				status: "pending",
-				is_running: false,
-				is_self: false,
-				log: null as unknown as TaskTimeLog,
-			}),
-		);
-		return [...populatedRows, ...emptyRows];
+		return populatedRows;
 	}, [
 		logs,
 		timerNowMs,
@@ -371,9 +348,7 @@ export function TeamApprovalsGrid({
 	const eligibleRowIds = useMemo(
 		() =>
 			rows
-				.filter(
-					(row) => !row.is_placeholder && !row.is_running && !row.is_self,
-				)
+				.filter((row) => !row.is_running && !row.is_self)
 				.map((row) => row.id),
 		[rows],
 	);
@@ -406,7 +381,7 @@ export function TeamApprovalsGrid({
 					) : null,
 				cell: (info) => {
 					const row = info.row.original;
-					if (row.is_placeholder || !canApprove) return null;
+					if (!canApprove) return null;
 					const isEligible = !row.is_running && !row.is_self;
 					return (
 						<input
@@ -432,25 +407,22 @@ export function TeamApprovalsGrid({
 			columnHelper.accessor("date", {
 				id: "date",
 				header: "Dates",
-				cell: (info) =>
-					info.row.original.is_placeholder ? null : info.getValue(),
+				cell: (info) => info.getValue(),
 			}),
 			columnHelper.accessor("project_label", {
 				id: "project",
 				header: "Project",
-				cell: (info) =>
-					info.row.original.is_placeholder ? null : (
-						<span className="block truncate" title={info.getValue()}>
-							{info.getValue()}
-						</span>
-					),
+				cell: (info) => (
+					<span className="block truncate" title={info.getValue()}>
+						{info.getValue()}
+					</span>
+				),
 			}),
 			columnHelper.accessor("task_id", {
 				id: "task_id",
 				header: "Task",
 				cell: (info) => {
 					const row = info.row.original;
-					if (row.is_placeholder) return null;
 					return (
 						<span className="block truncate" title={row.task_title}>
 							{row.task_title || "-"}
@@ -461,25 +433,22 @@ export function TeamApprovalsGrid({
 			columnHelper.accessor("time_in", {
 				id: "time_in",
 				header: "Time-in",
-				cell: (info) =>
-					info.row.original.is_placeholder ? null : (
-						<span className="tabular-nums">{info.getValue()}</span>
-					),
+				cell: (info) => (
+					<span className="tabular-nums">{info.getValue()}</span>
+				),
 			}),
 			columnHelper.accessor("time_out", {
 				id: "time_out",
 				header: "Time-Out",
-				cell: (info) =>
-					info.row.original.is_placeholder ? null : (
-						<span className="tabular-nums">{info.getValue()}</span>
-					),
+				cell: (info) => (
+					<span className="tabular-nums">{info.getValue()}</span>
+				),
 			}),
 			columnHelper.accessor("hours_worked", {
 				id: "hours_worked",
 				header: "Hours",
 				cell: (info) => {
 					const row = info.row.original;
-					if (row.is_placeholder) return null;
 					return (
 						<span className="text-xs font-semibold text-gray-700">
 							{row.hours_worked.toFixed(2)}
@@ -492,7 +461,6 @@ export function TeamApprovalsGrid({
 				header: "Fees",
 				cell: (info) => {
 					const row = info.row.original;
-					if (row.is_placeholder) return null;
 					return (
 						<span className="text-xs font-semibold text-emerald-700">
 							{row.fees === null
@@ -507,7 +475,6 @@ export function TeamApprovalsGrid({
 				header: "Status",
 				cell: (info) => {
 					const row = info.row.original;
-					if (row.is_placeholder) return null;
 					return (
 						<div className="flex items-center gap-1">
 							{row.is_running && (
@@ -537,8 +504,6 @@ export function TeamApprovalsGrid({
 				header: "Actions",
 				cell: (info) => {
 					const row = info.row.original;
-					if (row.is_placeholder) return null;
-
 					const isPending = Boolean(rowPendingById[row.id]);
 					const isReviewSyncing = Boolean(reviewSyncById[row.id]);
 					const disableReview =
@@ -654,23 +619,43 @@ export function TeamApprovalsGrid({
 					))}
 				</thead>
 				<tbody>
-					{table.getRowModel().rows.map((row) => (
-						<tr
-							key={row.id}
-							className={`border-t border-gray-200 ${
-								!row.original.is_placeholder &&
-								rowPendingById[row.original.id]
-									? "bg-amber-50/40"
-									: ""
-							}`}
-						>
-							{row.getVisibleCells().map((cell) => (
-								<td key={cell.id} className="px-2 py-1.5 align-middle">
-									{flexRender(cell.column.columnDef.cell, cell.getContext())}
-								</td>
-							))}
+					{rows.length === 0 ? (
+						<tr className="border-t border-gray-200">
+							<td colSpan={10} className="px-6 py-20">
+								<div className="mx-auto flex max-w-sm flex-col items-center text-center">
+									<div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
+										<ClipboardCheck className="h-7 w-7 text-slate-500" />
+									</div>
+									<h3 className="text-base font-semibold text-slate-900">
+										Nothing to review
+									</h3>
+									<p className="mt-2 text-sm text-slate-500">
+										When this member logs time, the entries will appear here
+										for you to approve, reject, or send back to pending.
+									</p>
+									<p className="mt-3 text-sm text-slate-500">
+										Try adjusting the status or project filters above to look
+										at older logs.
+									</p>
+								</div>
+							</td>
 						</tr>
-					))}
+					) : (
+						table.getRowModel().rows.map((row) => (
+							<tr
+								key={row.id}
+								className={`border-t border-gray-200 ${
+									rowPendingById[row.original.id] ? "bg-amber-50/40" : ""
+								}`}
+							>
+								{row.getVisibleCells().map((cell) => (
+									<td key={cell.id} className="px-2 py-1.5 align-middle">
+										{flexRender(cell.column.columnDef.cell, cell.getContext())}
+									</td>
+								))}
+							</tr>
+						))
+					)}
 				</tbody>
 			</table>
 		</div>
