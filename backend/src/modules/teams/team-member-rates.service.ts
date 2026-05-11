@@ -17,6 +17,7 @@ export interface TeamMemberRateRow {
   id: string;
   team_id: string;
   user_id: string;
+  project_id: string;
   hourly_rate: number;
   currency: string;
   custom_id: string | null;
@@ -41,15 +42,19 @@ export class TeamMemberRatesService {
     teamId: string,
     userId: string,
     callerId: string,
+    projectId?: string,
   ): Promise<TeamMemberRateRow[]> {
     const team = await this.teams.fetchTeamOrThrow(teamId);
     await this.teams.assertCanRead(team, callerId);
     await this.assertMemberExists(teamId, userId);
-    const { data, error } = await this.supabase
+    let query = this.supabase
       .from('team_member_rates')
       .select('*')
       .eq('team_id', teamId)
-      .eq('user_id', userId)
+      .eq('user_id', userId);
+    if (projectId) query = query.eq('project_id', projectId);
+    const { data, error } = await query
+      .order('project_id', { ascending: true })
       .order('end_date', { ascending: false, nullsFirst: true })
       .order('start_date', { ascending: false, nullsFirst: true });
     if (error) throw new Error(error.message);
@@ -59,8 +64,12 @@ export class TeamMemberRatesService {
   async getActive(
     teamId: string,
     userId: string,
+    projectId: string,
     callerId: string,
   ): Promise<TeamMemberRateRow | null> {
+    if (!projectId) {
+      throw new BadRequestException('projectId is required');
+    }
     const team = await this.teams.fetchTeamOrThrow(teamId);
     await this.teams.assertCanRead(team, callerId);
     const { data, error } = await this.supabase
@@ -68,6 +77,7 @@ export class TeamMemberRatesService {
       .select('*')
       .eq('team_id', teamId)
       .eq('user_id', userId)
+      .eq('project_id', projectId)
       .is('end_date', null)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -77,45 +87,58 @@ export class TeamMemberRatesService {
   // ─── writes ──────────────────────────────────────────────────────────
 
   /**
-   * Create a new rate row. When end_date is omitted (this becomes a new
-   * "active" rate) the previous open-ended row, if any, gets its
-   * end_date closed to (start_date - 1) or (today - 1) so the partial
-   * unique index stays satisfied.
+   * Create rate rows for each project in dto.project_ids. When end_date is
+   * omitted the per-(team, user, project) open-ended row is closed first
+   * so the partial unique index stays satisfied.
    */
   async create(
     teamId: string,
     userId: string,
     callerId: string,
     dto: CreateTeamMemberRateDto,
-  ): Promise<TeamMemberRateRow> {
+  ): Promise<TeamMemberRateRow[]> {
     const team = await this.teams.fetchTeamOrThrow(teamId);
     await this.teams.assertCanManageMembers(team, callerId);
     await this.teams.assertOwnerIsConsultant(team);
     await this.assertMemberExists(teamId, userId);
 
-    if (dto.end_date === undefined) {
-      const closeBefore = computePreviousEndDate(dto.start_date);
-      await this.closeOpenEnded(teamId, userId, closeBefore);
+    const uniqueProjectIds = Array.from(new Set(dto.project_ids));
+    if (uniqueProjectIds.length === 0) {
+      throw new BadRequestException('project_ids must not be empty');
     }
+    await this.assertProjectsBelongToTeam(teamId, uniqueProjectIds);
 
-    const payload = {
-      team_id: teamId,
-      user_id: userId,
-      hourly_rate: dto.hourly_rate,
-      currency: (dto.currency ?? 'USD').toUpperCase(),
-      custom_id: dto.custom_id ?? null,
-      start_date: dto.start_date ?? null,
-      end_date: dto.end_date ?? null,
-    };
-    const { data, error } = await this.supabase
-      .from('team_member_rates')
-      .insert(payload)
-      .select('*')
-      .single();
-    if (error || !data) {
-      throw new Error(error?.message ?? 'Failed to create rate');
+    const closeBefore =
+      dto.end_date === undefined
+        ? computePreviousEndDate(dto.start_date)
+        : null;
+
+    const inserted: TeamMemberRateRow[] = [];
+    for (const projectId of uniqueProjectIds) {
+      if (closeBefore) {
+        await this.closeOpenEnded(teamId, userId, projectId, closeBefore);
+      }
+      const payload = {
+        team_id: teamId,
+        user_id: userId,
+        project_id: projectId,
+        hourly_rate: dto.hourly_rate,
+        currency: (dto.currency ?? 'USD').toUpperCase(),
+        custom_id: dto.custom_id ?? null,
+        start_date: dto.start_date ?? null,
+        end_date: dto.end_date ?? null,
+      };
+      const { data, error } = await this.supabase
+        .from('team_member_rates')
+        .insert(payload)
+        .select('*')
+        .single();
+      if (error || !data) {
+        throw new Error(error?.message ?? 'Failed to create rate');
+      }
+      inserted.push(data as TeamMemberRateRow);
     }
-    return data as TeamMemberRateRow;
+    return inserted;
   }
 
   async update(
@@ -138,17 +161,15 @@ export class TeamMemberRatesService {
     if (dto.start_date !== undefined) patch.start_date = dto.start_date || null;
     if (dto.end_date !== undefined) patch.end_date = dto.end_date || null;
 
-    // If we're moving this row from closed → open-ended, pre-close any
-    // existing open-ended row to avoid violating the partial unique index.
-    if (
-      dto.end_date === null &&
-      existing.end_date !== null
-    ) {
+    // If moving this row from closed → open-ended, pre-close any sibling
+    // open-ended row on the same project to keep the partial unique index intact.
+    if (dto.end_date === null && existing.end_date !== null) {
       const startDate =
         (patch.start_date as string | null) ?? existing.start_date;
       await this.closeOpenEndedExcept(
         teamId,
         userId,
+        existing.project_id,
         rateId,
         computePreviousEndDate(startDate ?? undefined),
       );
@@ -187,6 +208,19 @@ export class TeamMemberRatesService {
     if (error) throw new Error(error.message);
   }
 
+  /**
+   * Return ids of every project currently attached to the team. UI uses
+   * this to render the "All projects" save-time fan-out shortcut.
+   */
+  async expandAllProjects(teamId: string): Promise<string[]> {
+    const { data, error } = await this.supabase
+      .from('project_teams')
+      .select('project_id')
+      .eq('team_id', teamId);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r: { project_id: string }) => r.project_id);
+  }
+
   // ─── helpers ─────────────────────────────────────────────────────────
 
   private async fetchOrThrow(
@@ -219,14 +253,31 @@ export class TeamMemberRatesService {
     if (!count) throw new NotFoundException('Team member not found');
   }
 
-  /**
-   * Close any open-ended row (end_date IS NULL) for this member by
-   * setting its end_date to `closeBefore`. Caller computes the date so
-   * we don't introduce a per-row "today" inconsistency.
-   */
+  private async assertProjectsBelongToTeam(
+    teamId: string,
+    projectIds: string[],
+  ): Promise<void> {
+    const { data, error } = await this.supabase
+      .from('project_teams')
+      .select('project_id')
+      .eq('team_id', teamId)
+      .in('project_id', projectIds);
+    if (error) throw new Error(error.message);
+    const found = new Set(
+      (data ?? []).map((r: { project_id: string }) => r.project_id),
+    );
+    const missing = projectIds.filter((p) => !found.has(p));
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `Projects not attached to this team: ${missing.join(', ')}`,
+      );
+    }
+  }
+
   private async closeOpenEnded(
     teamId: string,
     userId: string,
+    projectId: string,
     closeBefore: string,
   ): Promise<void> {
     const { error } = await this.supabase
@@ -234,6 +285,7 @@ export class TeamMemberRatesService {
       .update({ end_date: closeBefore })
       .eq('team_id', teamId)
       .eq('user_id', userId)
+      .eq('project_id', projectId)
       .is('end_date', null);
     if (error) throw new Error(error.message);
   }
@@ -241,6 +293,7 @@ export class TeamMemberRatesService {
   private async closeOpenEndedExcept(
     teamId: string,
     userId: string,
+    projectId: string,
     exceptRateId: string,
     closeBefore: string,
   ): Promise<void> {
@@ -249,6 +302,7 @@ export class TeamMemberRatesService {
       .update({ end_date: closeBefore })
       .eq('team_id', teamId)
       .eq('user_id', userId)
+      .eq('project_id', projectId)
       .neq('id', exceptRateId)
       .is('end_date', null);
     if (error) throw new Error(error.message);
@@ -256,9 +310,6 @@ export class TeamMemberRatesService {
 }
 
 function computePreviousEndDate(newStartDate: string | undefined): string {
-  // If the new active rate carries its own start_date, close the prior
-  // active row the day before it starts. Otherwise close at today - 1.
-  // Returned as YYYY-MM-DD.
   const anchor = newStartDate
     ? new Date(`${newStartDate}T00:00:00Z`)
     : new Date();

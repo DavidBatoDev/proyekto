@@ -638,6 +638,7 @@ export class TeamTimeService {
       .select('hourly_rate, currency')
       .eq('team_id', chosen.team_id)
       .eq('user_id', userId)
+      .eq('project_id', projectId)
       .is('end_date', null)
       .maybeSingle();
     if (rateErr) throw new Error(rateErr.message);

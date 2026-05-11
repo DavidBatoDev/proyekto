@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -6,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
@@ -27,8 +29,9 @@ export class TeamMemberRatesController {
     @Param('teamId') teamId: string,
     @Param('userId') userId: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Query('projectId') projectId?: string,
   ) {
-    return this.rates.listForMember(teamId, userId, user.id);
+    return this.rates.listForMember(teamId, userId, user.id, projectId);
   }
 
   @Get('active')
@@ -36,8 +39,12 @@ export class TeamMemberRatesController {
     @Param('teamId') teamId: string,
     @Param('userId') userId: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Query('projectId') projectId?: string,
   ) {
-    return this.rates.getActive(teamId, userId, user.id);
+    if (!projectId) {
+      throw new BadRequestException('projectId query param is required');
+    }
+    return this.rates.getActive(teamId, userId, projectId, user.id);
   }
 
   @Post()

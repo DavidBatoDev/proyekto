@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
 	useMutation,
 	useQueries,
@@ -10,13 +10,13 @@ import { useToast } from "@/hooks/useToast";
 import {
 	createMemberRate,
 	deleteMemberRate,
-	getActiveMemberRate,
 	listMemberRates,
 	listTeamMembers,
 	updateMemberRate,
 	type TeamMember,
 	type TeamMemberRate,
 } from "@/services/teams.service";
+import { teamTimeService } from "@/services/team-time.service";
 import { TeamRatesSection } from "@/components/team-time/TeamRatesSection";
 import { TeamMemberRateHistoryDrawer } from "@/components/team-time/TeamMemberRateHistoryDrawer";
 import {
@@ -44,49 +44,76 @@ function ManageRatesTab() {
 	const qc = useQueryClient();
 	const navigate = useNavigate();
 
-	// ─── data ─────────────────────────────────────────────────────────
-
 	const membersQuery = useQuery({
 		queryKey: ["team", teamId, "members"],
 		queryFn: () => listTeamMembers(teamId),
 	});
 	const allMembers = membersQuery.data ?? [];
 
-	// One active-rate query per member. Useful even for the rates card
-	// (decides which members appear) and the modal (decides which can be
-	// added). Keys are kept narrow so individual rate mutations only
-	// invalidate their own slot.
-	const activeRatesQueries = useQueries({
+	const projectsQuery = useQuery({
+		queryKey: ["team-time", teamId, "projects"],
+		queryFn: () => teamTimeService.listTeamLogProjects(teamId),
+	});
+	const attachedProjects = projectsQuery.data ?? [];
+	const projectTitleById = useMemo(() => {
+		const map: Record<string, string | null> = {};
+		for (const p of attachedProjects) map[p.id] = p.title;
+		return map;
+	}, [attachedProjects]);
+
+	// All rate rows per member. Active filter is computed downstream.
+	const ratesQueries = useQueries({
 		queries: allMembers.map((m) => ({
-			queryKey: ["team", teamId, "rates", "active", m.user_id] as const,
-			queryFn: () => getActiveMemberRate(teamId, m.user_id),
+			queryKey: ["team", teamId, "rates", "history", m.user_id] as const,
+			queryFn: () => listMemberRates(teamId, m.user_id),
 			staleTime: 5_000,
 		})),
 	});
-	const activeRateByUserId: Record<string, TeamMemberRate | null | undefined> =
-		useMemo(() => {
-			const map: Record<string, TeamMemberRate | null | undefined> = {};
-			allMembers.forEach((m, idx) => {
-				map[m.user_id] = activeRatesQueries[idx]?.data ?? null;
-			});
-			return map;
-		}, [allMembers, activeRatesQueries]);
-	const loadingRates = activeRatesQueries.some((q) => q.isPending);
+	const ratesByUserId: Record<string, TeamMemberRate[]> = useMemo(() => {
+		const map: Record<string, TeamMemberRate[]> = {};
+		allMembers.forEach((m, idx) => {
+			map[m.user_id] = ratesQueries[idx]?.data ?? [];
+		});
+		return map;
+	}, [allMembers, ratesQueries]);
+	const activeRatesByUserId: Record<string, TeamMemberRate[]> = useMemo(() => {
+		const map: Record<string, TeamMemberRate[]> = {};
+		for (const [userId, rates] of Object.entries(ratesByUserId)) {
+			map[userId] = rates.filter((r) => r.end_date === null);
+		}
+		return map;
+	}, [ratesByUserId]);
+	const loadingRates = ratesQueries.some((q) => q.isPending);
 
-	const membersWithoutActiveRate = useMemo(
-		() => allMembers.filter((m) => !activeRateByUserId[m.user_id]),
-		[allMembers, activeRateByUserId],
-	);
+	// Eligible = member has at least one attached project without an active rate.
+	const eligibleMembers = useMemo(() => {
+		if (attachedProjects.length === 0) return [];
+		const allProjectIds = new Set(attachedProjects.map((p) => p.id));
+		return allMembers.filter((m) => {
+			const covered = new Set(
+				(activeRatesByUserId[m.user_id] ?? []).map((r) => r.project_id),
+			);
+			for (const pid of allProjectIds) {
+				if (!covered.has(pid)) return true;
+			}
+			return false;
+		});
+	}, [allMembers, activeRatesByUserId, attachedProjects]);
 
 	// ─── history drawer state ────────────────────────────────────────
 
 	const [historyMember, setHistoryMember] = useState<TeamMember | null>(null);
 	const historyOpen = historyMember !== null;
-	const historyQuery = useQuery({
-		queryKey: ["team", teamId, "rates", "history", historyMember?.user_id],
-		queryFn: () => listMemberRates(teamId, historyMember!.user_id),
-		enabled: historyOpen,
-	});
+	const historyRates = historyMember
+		? (ratesByUserId[historyMember.user_id] ?? [])
+		: [];
+	const historyLoading = historyMember
+		? Boolean(
+				ratesQueries[
+					allMembers.findIndex((m) => m.user_id === historyMember.user_id)
+				]?.isPending,
+			)
+		: false;
 
 	// ─── Add Rate state ──────────────────────────────────────────────
 
@@ -97,6 +124,21 @@ function ManageRatesTab() {
 	const [addCurrency, setAddCurrency] = useState("USD");
 	const [addStartDate, setAddStartDate] = useState("");
 	const [addEndDate, setAddEndDate] = useState("");
+	const [addScopeMode, setAddScopeMode] = useState<"all" | "specific">("all");
+	const [addSelectedProjectIds, setAddSelectedProjectIds] = useState<string[]>(
+		[],
+	);
+
+	const coveredProjectIdsForAddUser = useMemo(() => {
+		if (!addUserId) return [];
+		return (activeRatesByUserId[addUserId] ?? []).map((r) => r.project_id);
+	}, [activeRatesByUserId, addUserId]);
+
+	useEffect(() => {
+		if (!addOpen) return;
+		setAddSelectedProjectIds([]);
+		setAddScopeMode("all");
+	}, [addOpen, addUserId]);
 
 	// ─── Edit Rate state ─────────────────────────────────────────────
 
@@ -118,10 +160,10 @@ function ManageRatesTab() {
 
 	const invalidateRatesFor = (userId: string) => {
 		qc.invalidateQueries({
-			queryKey: ["team", teamId, "rates", "active", userId],
+			queryKey: ["team", teamId, "rates", "history", userId],
 		});
 		qc.invalidateQueries({
-			queryKey: ["team", teamId, "rates", "history", userId],
+			queryKey: ["team", teamId, "rates", "active", userId],
 		});
 	};
 
@@ -140,6 +182,8 @@ function ManageRatesTab() {
 			setAddCurrency("USD");
 			setAddStartDate("");
 			setAddEndDate("");
+			setAddSelectedProjectIds([]);
+			setAddScopeMode("all");
 		},
 		onError: (e: Error) => toast.error(e.message),
 	});
@@ -208,9 +252,21 @@ function ManageRatesTab() {
 
 	const handleSaveAdd = async () => {
 		if (!addUserId || !addValue) return;
+		const coveredSet = new Set(coveredProjectIdsForAddUser);
+		const projectIds =
+			addScopeMode === "all"
+				? attachedProjects
+						.map((p) => p.id)
+						.filter((id) => !coveredSet.has(id))
+				: addSelectedProjectIds.filter((id) => !coveredSet.has(id));
+		if (projectIds.length === 0) {
+			toast.error("Pick at least one project that has no active rate yet.");
+			return;
+		}
 		await createMutation.mutateAsync({
 			userId: addUserId,
 			payload: {
+				project_ids: projectIds,
 				hourly_rate: Number(addValue),
 				currency: addCurrency || "USD",
 				custom_id: addCustomId || undefined,
@@ -257,7 +313,8 @@ function ManageRatesTab() {
 		<>
 			<TeamRatesSection
 				members={allMembers}
-				activeRateByUserId={activeRateByUserId}
+				activeRatesByUserId={activeRatesByUserId}
+				projectTitleById={projectTitleById}
 				loadingMembers={membersQuery.isPending}
 				loadingRates={loadingRates}
 				canManageRates
@@ -275,8 +332,9 @@ function ManageRatesTab() {
 			<TeamMemberRateHistoryDrawer
 				isOpen={historyOpen}
 				member={historyMember}
-				rates={historyQuery.data ?? []}
-				loadingRates={historyQuery.isPending}
+				rates={historyRates}
+				projectTitleById={projectTitleById}
+				loadingRates={historyLoading}
 				canManage
 				rowPendingByRateId={pendingRateById}
 				onClose={() => setHistoryMember(null)}
@@ -296,7 +354,7 @@ function ManageRatesTab() {
 			<AddRateModal
 				isOpen={addOpen}
 				canManageRates
-				membersWithoutRate={membersWithoutActiveRate}
+				eligibleMembers={eligibleMembers}
 				loadingMembers={membersQuery.isPending}
 				savingRate={createMutation.isPending}
 				newRateMemberUserId={addUserId}
@@ -305,6 +363,10 @@ function ManageRatesTab() {
 				newRateCurrency={addCurrency}
 				newRateStartDate={addStartDate}
 				newRateEndDate={addEndDate}
+				attachedProjects={attachedProjects}
+				coveredProjectIds={coveredProjectIdsForAddUser}
+				scopeMode={addScopeMode}
+				selectedProjectIds={addSelectedProjectIds}
 				onClose={() => {
 					if (createMutation.isPending) return;
 					setAddOpen(false);
@@ -316,6 +378,8 @@ function ManageRatesTab() {
 				onChangeRateCurrency={setAddCurrency}
 				onChangeStartDate={setAddStartDate}
 				onChangeEndDate={setAddEndDate}
+				onChangeScopeMode={setAddScopeMode}
+				onChangeSelectedProjectIds={setAddSelectedProjectIds}
 			/>
 
 			<EditRateModal

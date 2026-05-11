@@ -111,7 +111,7 @@ export function EditLogModal({
 interface AddRateModalProps {
 	isOpen: boolean;
 	canManageRates: boolean;
-	membersWithoutRate: TeamMember[];
+	eligibleMembers: TeamMember[];
 	loadingMembers: boolean;
 	savingRate: boolean;
 	newRateMemberUserId: string;
@@ -120,6 +120,10 @@ interface AddRateModalProps {
 	newRateCurrency: string;
 	newRateStartDate: string;
 	newRateEndDate: string;
+	attachedProjects: TeamLogProject[];
+	coveredProjectIds: string[];
+	scopeMode: "all" | "specific";
+	selectedProjectIds: string[];
 	onClose: () => void;
 	onCreateRate: () => void | Promise<void>;
 	onChangeMemberUserId: (value: string) => void;
@@ -128,12 +132,14 @@ interface AddRateModalProps {
 	onChangeRateCurrency: (value: string) => void;
 	onChangeStartDate: (value: string) => void;
 	onChangeEndDate: (value: string) => void;
+	onChangeScopeMode: (value: "all" | "specific") => void;
+	onChangeSelectedProjectIds: (ids: string[]) => void;
 }
 
 export function AddRateModal({
 	isOpen,
 	canManageRates,
-	membersWithoutRate,
+	eligibleMembers,
 	loadingMembers,
 	savingRate,
 	newRateMemberUserId,
@@ -142,6 +148,10 @@ export function AddRateModal({
 	newRateCurrency,
 	newRateStartDate,
 	newRateEndDate,
+	attachedProjects,
+	coveredProjectIds,
+	scopeMode,
+	selectedProjectIds,
 	onClose,
 	onCreateRate,
 	onChangeMemberUserId,
@@ -150,8 +160,33 @@ export function AddRateModal({
 	onChangeRateCurrency,
 	onChangeStartDate,
 	onChangeEndDate,
+	onChangeScopeMode,
+	onChangeSelectedProjectIds,
 }: AddRateModalProps) {
 	if (!isOpen || !canManageRates) return null;
+	const coveredSet = new Set(coveredProjectIds);
+	const availableProjects = attachedProjects.filter(
+		(p) => !coveredSet.has(p.id),
+	);
+	const allAvailableProjectIds = availableProjects.map((p) => p.id);
+	const noProjectsAttached = attachedProjects.length === 0;
+	const noProjectsAvailable = availableProjects.length === 0;
+	const effectiveProjectIds =
+		scopeMode === "all"
+			? allAvailableProjectIds
+			: selectedProjectIds.filter((id) => !coveredSet.has(id));
+	const canSave =
+		!savingRate &&
+		!loadingMembers &&
+		!!newRateMemberUserId &&
+		!!newRateValue &&
+		effectiveProjectIds.length > 0;
+	const toggleProject = (id: string) => {
+		const set = new Set(selectedProjectIds);
+		if (set.has(id)) set.delete(id);
+		else set.add(id);
+		onChangeSelectedProjectIds(Array.from(set));
+	};
 
 	return (
 		<div
@@ -192,7 +227,7 @@ export function AddRateModal({
 							className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
 						>
 							<option value="">Select member</option>
-							{membersWithoutRate.map((member) => {
+							{eligibleMembers.map((member) => {
 								const memberName =
 									member.user?.display_name ||
 									member.user?.email ||
@@ -204,6 +239,100 @@ export function AddRateModal({
 								);
 							})}
 						</select>
+					</div>
+
+					<div className="space-y-2">
+						<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+							Apply to projects
+						</label>
+						{noProjectsAttached ? (
+							<div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+								No projects are attached to this team yet. Attach a project
+								first, then come back to set a rate.
+							</div>
+						) : (
+							<>
+								<div
+									role="radiogroup"
+									className="inline-flex items-center rounded-lg bg-slate-100 p-0.5"
+								>
+									<button
+										type="button"
+										role="radio"
+										aria-checked={scopeMode === "all"}
+										onClick={() => onChangeScopeMode("all")}
+										disabled={savingRate || noProjectsAvailable}
+										className={
+											scopeMode === "all"
+												? "rounded-md bg-white px-3 py-1 text-xs font-medium text-slate-900 shadow-sm disabled:opacity-50"
+												: "rounded-md px-3 py-1 text-xs font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50"
+										}
+									>
+										All available projects
+									</button>
+									<button
+										type="button"
+										role="radio"
+										aria-checked={scopeMode === "specific"}
+										onClick={() => onChangeScopeMode("specific")}
+										disabled={savingRate}
+										className={
+											scopeMode === "specific"
+												? "rounded-md bg-white px-3 py-1 text-xs font-medium text-slate-900 shadow-sm"
+												: "rounded-md px-3 py-1 text-xs font-medium text-slate-500 hover:text-slate-700"
+										}
+									>
+										Specific projects
+									</button>
+								</div>
+								<div className="max-h-40 overflow-auto rounded-lg border border-slate-200 bg-white p-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+									{attachedProjects.map((p) => {
+										const covered = coveredSet.has(p.id);
+										const isChecked =
+											scopeMode === "all"
+												? !covered
+												: selectedProjectIds.includes(p.id);
+										return (
+											<label
+												key={p.id}
+												className={`flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs ${
+													covered
+														? "text-slate-400"
+														: "text-slate-700 hover:bg-slate-50 cursor-pointer"
+												}`}
+											>
+												<span className="flex items-center gap-2">
+													<input
+														type="checkbox"
+														checked={isChecked}
+														disabled={
+															savingRate ||
+															covered ||
+															scopeMode === "all"
+														}
+														onChange={() => toggleProject(p.id)}
+													/>
+													<span className="truncate">
+														{p.title || "(untitled)"}
+													</span>
+												</span>
+												{covered && (
+													<span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
+														Has active rate
+													</span>
+												)}
+											</label>
+										);
+									})}
+								</div>
+								{newRateMemberUserId && noProjectsAvailable && (
+									<p className="text-[11px] text-amber-700">
+										This member already has an active rate on every attached
+										project. End an existing rate first to add another.
+									</p>
+								)}
+							</>
+						)}
 					</div>
 
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -299,7 +428,7 @@ export function AddRateModal({
 					<button
 						type="button"
 						onClick={() => void onCreateRate()}
-						disabled={savingRate || loadingMembers || !newRateMemberUserId}
+						disabled={!canSave}
 						className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-md border border-slate-700 bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50"
 					>
 						<Save className="w-3.5 h-3.5" />

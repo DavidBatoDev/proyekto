@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsDateString,
@@ -113,6 +114,11 @@ export class UpdateTeamMemberDto {
 }
 
 export class CreateTeamMemberRateDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('4', { each: true })
+  project_ids!: string[];
+
   @IsNumber()
   @Min(0)
   hourly_rate!: number;

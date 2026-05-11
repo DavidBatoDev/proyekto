@@ -25,7 +25,6 @@ import {
 } from "@tanstack/react-table";
 import type {
 	ProjectTaskOption,
-	ResolvedTeamRate,
 	TaskTimeLog,
 } from "@/services/team-time.service";
 import { liveDurationSecondsFromLog, useLiveNowMs } from "./time-utils";
@@ -419,7 +418,7 @@ function MyLogsGridSkeleton() {
 interface TeamMyLogsGridProps {
 	logs: TaskTimeLog[];
 	tasks: ProjectTaskOption[];
-	ownRate: ResolvedTeamRate | null;
+	ownRateByProjectId: Record<string, { hourly_rate: number; currency: string }>;
 	loadingLogs: boolean;
 	loadingTasks: boolean;
 	taskSyncById: Record<string, boolean>;
@@ -436,7 +435,7 @@ interface TeamMyLogsGridProps {
 export function TeamMyLogsGrid({
 	logs,
 	tasks,
-	ownRate,
+	ownRateByProjectId,
 	loadingLogs,
 	loadingTasks,
 	taskSyncById,
@@ -495,10 +494,7 @@ export function TeamMyLogsGrid({
 		return populatedRows;
 	}, [logs, taskTitleById]);
 
-	// Stable hourly_rate / currency for the LiveFeesCell fallback. Value
-	// is what the cell actually compares; identity changes here are fine.
-	const fallbackHourlyRate = ownRate ? Number(ownRate.hourly_rate) : null;
-	const fallbackCurrency = ownRate?.currency ?? null;
+	// Per-project fallback rate map; consumed inside the cell to pick by log.project_id.
 
 	const columnHelper = createColumnHelper<MyLogGridRow>();
 	const columns = useMemo(
@@ -564,13 +560,19 @@ export function TeamMyLogsGrid({
 			columnHelper.display({
 				id: "fees",
 				header: "Fees",
-				cell: (info) => (
-					<LiveFeesCell
-						log={info.row.original.log}
-						fallbackHourlyRate={fallbackHourlyRate}
-						fallbackCurrency={fallbackCurrency}
-					/>
-				),
+				cell: (info) => {
+					const log = info.row.original.log;
+					const fallback = ownRateByProjectId[log.project_id];
+					return (
+						<LiveFeesCell
+							log={log}
+							fallbackHourlyRate={
+								fallback ? Number(fallback.hourly_rate) : null
+							}
+							fallbackCurrency={fallback?.currency ?? null}
+						/>
+					);
+				},
 			}),
 			columnHelper.accessor((row) => row.log.status, {
 				id: "status",
@@ -638,8 +640,7 @@ export function TeamMyLogsGrid({
 			canOpenTaskInRoadmap,
 			taskTitleById,
 			taskSyncById,
-			fallbackHourlyRate,
-			fallbackCurrency,
+			ownRateByProjectId,
 		],
 	);
 

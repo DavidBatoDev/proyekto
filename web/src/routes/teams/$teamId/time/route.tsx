@@ -14,7 +14,7 @@ import {
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { useAuthStore, useUser } from "@/stores/authStore";
 import {
-	getActiveMemberRate,
+	hasAnyActiveRate,
 	getTeam,
 	listTeamMembers,
 } from "@/services/teams.service";
@@ -50,8 +50,8 @@ function TeamTimeLayout() {
 		queryFn: () => listTeamMembers(teamId),
 	});
 	const myActiveRateQuery = useQuery({
-		queryKey: ["team", teamId, "rates", "active", user?.id],
-		queryFn: () => getActiveMemberRate(teamId, user!.id),
+		queryKey: ["team", teamId, "rates", "anyActive", user?.id],
+		queryFn: () => hasAnyActiveRate(teamId, user!.id),
 		enabled: Boolean(user?.id),
 	});
 
@@ -75,7 +75,7 @@ function TeamTimeLayout() {
 		team?.owner_id === user?.id ||
 		myMembership?.role === "admin" ||
 		myMembership?.role === "owner";
-	const hasOwnRate = Boolean(myActiveRateQuery.data);
+	const hasOwnRate = myActiveRateQuery.data === true;
 
 	if (!team?.time_tracking_enabled) {
 		return (

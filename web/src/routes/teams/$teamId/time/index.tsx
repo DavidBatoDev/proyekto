@@ -5,7 +5,7 @@ import { Loader2 } from "lucide-react";
 import { AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { useUser } from "@/stores/authStore";
 import {
-	getActiveMemberRate,
+	hasAnyActiveRate,
 	getTeam,
 	listTeamMembers,
 } from "@/services/teams.service";
@@ -40,8 +40,8 @@ function TimeIndexRedirect() {
 		queryFn: () => listTeamMembers(teamId),
 	});
 	const myActiveRateQuery = useQuery({
-		queryKey: ["team", teamId, "rates", "active", user?.id],
-		queryFn: () => getActiveMemberRate(teamId, user!.id),
+		queryKey: ["team", teamId, "rates", "anyActive", user?.id],
+		queryFn: () => hasAnyActiveRate(teamId, user!.id),
 		enabled: Boolean(user?.id),
 	});
 
@@ -51,7 +51,7 @@ function TimeIndexRedirect() {
 		team?.owner_id === user?.id ||
 		myMembership?.role === "admin" ||
 		myMembership?.role === "owner";
-	const hasOwnRate = Boolean(myActiveRateQuery.data);
+	const hasOwnRate = myActiveRateQuery.data === true;
 
 	const allLoaded =
 		teamQuery.isSuccess &&

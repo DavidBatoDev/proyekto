@@ -565,16 +565,28 @@ CREATE TABLE public.team_invites (
   CONSTRAINT team_invites_invited_by_fkey FOREIGN KEY (invited_by) REFERENCES public.profiles(id),
   CONSTRAINT team_invites_invitee_id_fkey FOREIGN KEY (invitee_id) REFERENCES public.profiles(id)
 );
+CREATE TABLE public.team_member_rates (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  team_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  hourly_rate numeric NOT NULL CHECK (hourly_rate >= 0::numeric),
+  currency text NOT NULL DEFAULT 'USD'::text,
+  custom_id text,
+  start_date date,
+  end_date date,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT team_member_rates_pkey PRIMARY KEY (id),
+  CONSTRAINT team_member_rates_team_user_fk FOREIGN KEY (team_id) REFERENCES public.team_members(team_id),
+  CONSTRAINT team_member_rates_team_user_fk FOREIGN KEY (user_id) REFERENCES public.team_members(team_id),
+  CONSTRAINT team_member_rates_team_user_fk FOREIGN KEY (team_id) REFERENCES public.team_members(user_id),
+  CONSTRAINT team_member_rates_team_user_fk FOREIGN KEY (user_id) REFERENCES public.team_members(user_id)
+);
 CREATE TABLE public.team_members (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   team_id uuid NOT NULL,
   user_id uuid NOT NULL,
   role text NOT NULL DEFAULT 'member'::text CHECK (role = ANY (ARRAY['owner'::text, 'admin'::text, 'member'::text])),
-  hourly_rate numeric CHECK (hourly_rate IS NULL OR hourly_rate >= 0::numeric),
-  currency text,
-  custom_id text,
-  start_date date,
-  end_date date,
   joined_at timestamp with time zone NOT NULL DEFAULT now(),
   position text,
   CONSTRAINT team_members_pkey PRIMARY KEY (id),

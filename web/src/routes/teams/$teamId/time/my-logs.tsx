@@ -4,9 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/useToast";
 import { useUser } from "@/stores/authStore";
 import {
-	getActiveMemberRate,
 	listMemberRates,
 	type TeamMember,
+	type TeamMemberRate,
 } from "@/services/teams.service";
 import {
 	teamTimeService,
@@ -61,15 +61,9 @@ function MyLogsTab() {
 
 	// ─── data ─────────────────────────────────────────────────────────
 
-	const myActiveRateQuery = useQuery({
-		queryKey: ["team", teamId, "rates", "active", user?.id],
-		queryFn: () => getActiveMemberRate(teamId, user!.id),
-		enabled: Boolean(user?.id),
-	});
-
-	// History is fetched alongside the active rate so we can render the
-	// "View history" button conditionally — but the drawer also reads the
-	// same query, so it's not redundant.
+	// All rate rows for the caller. Active rows (end_date IS NULL) drive the
+	// per-project fallback used by the live "Fees" column; the full list
+	// powers the rate-history drawer and the "View history" affordance.
 	const myRateHistoryQuery = useQuery({
 		queryKey: ["team", teamId, "rates", "history", user?.id],
 		queryFn: () => listMemberRates(teamId, user!.id),
@@ -111,15 +105,22 @@ function MyLogsTab() {
 		enabled: Boolean(taskModalLog),
 	});
 
-	const ownRate = useMemo(() => {
-		const rate = myActiveRateQuery.data;
-		if (!rate) return null;
-		return {
-			team_id: rate.team_id,
-			hourly_rate: Number(rate.hourly_rate),
-			currency: rate.currency ?? "USD",
-		};
-	}, [myActiveRateQuery.data]);
+	const myAllRates: TeamMemberRate[] = myRateHistoryQuery.data ?? [];
+	const ownRateByProjectId = useMemo(() => {
+		const map: Record<string, { hourly_rate: number; currency: string }> = {};
+		for (const r of myAllRates) {
+			if (r.end_date !== null) continue;
+			map[r.project_id] = {
+				hourly_rate: Number(r.hourly_rate),
+				currency: r.currency || "USD",
+			};
+		}
+		return map;
+	}, [myAllRates]);
+	const firstActiveRate = useMemo<TeamMemberRate | null>(
+		() => myAllRates.find((r) => r.end_date === null) ?? null,
+		[myAllRates],
+	);
 
 	const allLogs = logsQuery.data?.items ?? [];
 
@@ -290,13 +291,12 @@ function MyLogsTab() {
 
 	const logStats = useMemo(() => computeLogStats(allLogs), [allLogs]);
 
-	const activeRate = myActiveRateQuery.data ?? null;
-	const rateHistory = myRateHistoryQuery.data ?? [];
-	// Show the "View history" button when there's at least one row
-	// beyond (or instead of) the active one — i.e., the member has
-	// actually had a rate change.
-	const hasRateHistory =
-		rateHistory.length > (activeRate ? 1 : 0);
+	const activeRate = firstActiveRate;
+	const rateHistory = myAllRates;
+	const activeRateCount = rateHistory.filter((r) => r.end_date === null).length;
+	// Show the "View history" button when there's at least one closed row
+	// beyond the currently active set.
+	const hasRateHistory = rateHistory.length > activeRateCount;
 
 	return (
 		<>
@@ -313,6 +313,9 @@ function MyLogsTab() {
 				isOpen={historyOpen}
 				member={meAsMember(user?.id, user?.email)}
 				rates={rateHistory}
+				projectTitleById={Object.fromEntries(
+					(projectsQuery.data ?? []).map((p) => [p.id, p.title]),
+				)}
 				loadingRates={myRateHistoryQuery.isPending}
 				canManage={false}
 				rowPendingByRateId={{}}
@@ -325,7 +328,7 @@ function MyLogsTab() {
 			<TeamMyLogsGrid
 				logs={allLogs}
 				tasks={tasksForGrid}
-				ownRate={ownRate}
+				ownRateByProjectId={ownRateByProjectId}
 				loadingLogs={logsQuery.isPending}
 				loadingTasks={tasksForRowQuery.isFetching}
 				taskSyncById={taskSyncById}

@@ -12,9 +12,10 @@ import {
 import { useToast } from "@/hooks/useToast";
 import { useUser } from "@/stores/authStore";
 import {
-	getActiveMemberRate,
+	listMemberRates,
 	listTeamMembers,
 	type TeamMember,
+	type TeamMemberRate,
 } from "@/services/teams.service";
 import {
 	teamTimeService,
@@ -61,16 +62,23 @@ function MemberLogsRoute() {
 	});
 	const member = membersQuery.data?.find((m) => m.user_id === userId);
 
-	const activeRateQuery = useQuery({
-		queryKey: ["team", teamId, "rates", "active", userId],
-		queryFn: () => getActiveMemberRate(teamId, userId),
+	const ratesQuery = useQuery({
+		queryKey: ["team", teamId, "rates", "history", userId],
+		queryFn: () => listMemberRates(teamId, userId),
 	});
-	const activeRate = activeRateQuery.data ?? null;
+	const allRates: TeamMemberRate[] = ratesQuery.data ?? [];
+	const activeRates = allRates.filter((r) => r.end_date === null);
+	const firstActiveRate = activeRates[0] ?? null;
 
 	const projectsQuery = useQuery({
 		queryKey: ["team-time", teamId, "projects"],
 		queryFn: () => teamTimeService.listTeamLogProjects(teamId),
 	});
+	const projectTitleById = useMemo(() => {
+		const map: Record<string, string | null> = {};
+		for (const p of projectsQuery.data ?? []) map[p.id] = p.title;
+		return map;
+	}, [projectsQuery.data]);
 
 	const logsQuery = useQuery({
 		queryKey: [
@@ -182,10 +190,22 @@ function MemberLogsRoute() {
 				</div>
 			</div>
 
+			{activeRates.length > 1 && (
+				<div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+					<span className="font-semibold text-slate-500">Active rates:</span>{" "}
+					{activeRates
+						.map((r) => {
+							const title = projectTitleById[r.project_id] ?? "Project";
+							return `${title} ${Number(r.hourly_rate).toFixed(2)} ${r.currency}/hr`;
+						})
+						.join(" · ")}
+				</div>
+			)}
+
 			<TeamLogsStatsCard
-				rate={activeRate}
+				rate={firstActiveRate}
 				stats={logStats}
-				fallbackCurrency={activeRate?.currency ?? "USD"}
+				fallbackCurrency={firstActiveRate?.currency ?? "USD"}
 				loading={logsQuery.isPending}
 			/>
 

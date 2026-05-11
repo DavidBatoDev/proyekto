@@ -47,6 +47,7 @@ export interface TeamMemberRate {
 	id: string;
 	team_id: string;
 	user_id: string;
+	project_id: string;
 	hourly_rate: number;
 	currency: string;
 	custom_id: string | null;
@@ -244,7 +245,8 @@ export async function updateTeamMember(
 
 // ─── team_member_rates ──────────────────────────────────────────────────
 
-export interface TeamMemberRatePayload {
+export interface CreateTeamMemberRatePayload {
+	project_ids: string[];
 	hourly_rate: number;
 	currency?: string;
 	custom_id?: string;
@@ -252,13 +254,23 @@ export interface TeamMemberRatePayload {
 	end_date?: string;
 }
 
+export interface UpdateTeamMemberRatePayload {
+	hourly_rate?: number;
+	currency?: string;
+	custom_id?: string;
+	start_date?: string;
+	end_date?: string | null;
+}
+
 export async function listMemberRates(
 	teamId: string,
 	userId: string,
+	projectId?: string,
 ): Promise<TeamMemberRate[]> {
 	try {
 		const { data } = await apiClient.get<{ data: TeamMemberRate[] }>(
 			`/api/teams/${teamId}/members/${userId}/rates`,
+			{ params: projectId ? { projectId } : undefined },
 		);
 		return data.data;
 	} catch (err) {
@@ -274,10 +286,12 @@ export async function listMemberRates(
 export async function getActiveMemberRate(
 	teamId: string,
 	userId: string,
+	projectId: string,
 ): Promise<TeamMemberRate | null> {
 	try {
 		const { data } = await apiClient.get<{ data: TeamMemberRate | null }>(
 			`/api/teams/${teamId}/members/${userId}/rates/active`,
+			{ params: { projectId } },
 		);
 		return data.data;
 	} catch (err) {
@@ -290,13 +304,21 @@ export async function getActiveMemberRate(
 	}
 }
 
+export async function hasAnyActiveRate(
+	teamId: string,
+	userId: string,
+): Promise<boolean> {
+	const rates = await listMemberRates(teamId, userId);
+	return rates.some((r) => r.end_date === null);
+}
+
 export async function createMemberRate(
 	teamId: string,
 	userId: string,
-	payload: TeamMemberRatePayload,
-): Promise<TeamMemberRate> {
+	payload: CreateTeamMemberRatePayload,
+): Promise<TeamMemberRate[]> {
 	try {
-		const { data } = await apiClient.post<{ data: TeamMemberRate }>(
+		const { data } = await apiClient.post<{ data: TeamMemberRate[] }>(
 			`/api/teams/${teamId}/members/${userId}/rates`,
 			payload,
 		);
@@ -315,7 +337,7 @@ export async function updateMemberRate(
 	teamId: string,
 	userId: string,
 	rateId: string,
-	patch: Partial<TeamMemberRatePayload> & { end_date?: string | null },
+	patch: UpdateTeamMemberRatePayload,
 ): Promise<TeamMemberRate> {
 	try {
 		const { data } = await apiClient.patch<{ data: TeamMemberRate }>(
