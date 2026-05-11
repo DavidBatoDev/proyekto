@@ -256,9 +256,12 @@ class ProjectService {
   }
 
   /**
-   * Create a new project
+   * Create a new project. The backend also creates a default empty
+   * roadmap atomically and returns it alongside the project.
    */
-  async create(data: CreateProjectData): Promise<Project> {
+  async create(
+    data: CreateProjectData,
+  ): Promise<{ project: Project; roadmap: { id: string; name: string } }> {
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -285,7 +288,10 @@ class ProjectService {
     }
 
     const result = await response.json();
-    return result.data;
+    return result.data as {
+      project: Project;
+      roadmap: { id: string; name: string };
+    };
   }
 
   /**

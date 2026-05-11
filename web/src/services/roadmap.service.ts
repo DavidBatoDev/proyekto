@@ -394,6 +394,32 @@ export const roadmapService = {
 	},
 
 	/**
+	 * Replace the empty roadmap currently linked to a project with an
+	 * existing unlinked roadmap. The previous empty roadmap is deleted
+	 * server-side as part of the swap.
+	 */
+	async replaceProjectRoadmap(
+		projectId: string,
+		replacementRoadmapId: string,
+	): Promise<Roadmap> {
+		try {
+			const response = await apiClient.post<ApiResponse<Roadmap>>(
+				"/api/roadmaps/replace-for-project",
+				{
+					project_id: projectId,
+					replacement_roadmap_id: replacementRoadmapId,
+				},
+			);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(
+				error,
+				`Replace roadmap for project ${projectId}`,
+			);
+		}
+	},
+
+	/**
 	 * Update an existing roadmap
 	 */
 	async update(id: string, data: UpdateRoadmapDto): Promise<Roadmap> {

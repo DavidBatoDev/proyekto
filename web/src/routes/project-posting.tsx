@@ -156,8 +156,11 @@ function ProjectPostingPage() {
     if (fromRoadmap && referencedRoadmap) {
       setIsCreatingProject(true);
       try {
-        // Create project with all form data
-        const project = await projectService.create({
+        // Create project with all form data. The backend also creates
+        // an empty default roadmap atomically — we immediately replace
+        // it with the referenced one so the auto-created draft is
+        // discarded.
+        const { project } = await projectService.create({
           creation_mode: effectiveIntent,
           title: formData.title || "Untitled Project",
           description: formData.description,
@@ -178,12 +181,11 @@ function ProjectPostingPage() {
 
         console.log("Project created from roadmap:", project);
 
-        // Link roadmap to project
-        await roadmapService.update(referencedRoadmap.id, {
-          project_id: project.id,
-        });
+        await roadmapService.replaceProjectRoadmap(
+          project.id,
+          referencedRoadmap.id,
+        );
 
-        // Navigate to roadmap view
         navigate({
           to: "/project/$projectId/roadmap/$roadmapId",
           params: { projectId: project.id, roadmapId: referencedRoadmap.id },
@@ -197,7 +199,7 @@ function ProjectPostingPage() {
     } else {
       setIsCreatingProject(true);
       try {
-        const project = await projectService.create({
+        const { project, roadmap } = await projectService.create({
           creation_mode: effectiveIntent,
           title: formData.title || "Untitled Project",
           description: formData.description,
@@ -217,7 +219,10 @@ function ProjectPostingPage() {
         });
 
         console.log("Project created from project posting:", project);
-        navigate({ to: "/dashboard" });
+        navigate({
+          to: "/project/$projectId/roadmap/$roadmapId",
+          params: { projectId: project.id, roadmapId: roadmap.id },
+        });
       } catch (error) {
         console.error("Failed to create project:", error);
       } finally {

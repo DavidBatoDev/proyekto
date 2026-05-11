@@ -1,5 +1,7 @@
-import { useCallback } from "react";
-import { Plus } from "lucide-react";
+import { useCallback, useState } from "react";
+import { Link2, Plus } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { LinkRoadmapModal } from "@/components/roadmap/modals/LinkRoadmapModal";
 import { EpicTab } from "./EpicTab";
 import { ArtifactTabView } from "./ArtifactTabView";
 import { MilestonesView } from "../../milestones/MilestonesView";
@@ -174,9 +176,17 @@ const RoadmapCanvas = ({
     ? artifactsById[selectedArtifactId]
     : null;
 
+  const [isLinkRoadmapModalOpen, setIsLinkRoadmapModalOpen] = useState(false);
+  const navigate = useNavigate();
+
   if (!roadmap) {
     return null;
   }
+
+  const canLinkExisting =
+    Boolean(roadmap.project_id) &&
+    epics.length === 0 &&
+    milestones.length === 0;
 
   const handleNavigateToEpicTab = useCallback(
     (epicId: string) => {
@@ -244,13 +254,24 @@ const RoadmapCanvas = ({
                 Get started by creating your first epic. Epics help you organize
                 large bodies of work into manageable pieces.
               </p>
-              <button
-                onClick={() => setIsAddEpicModalOpen(true)}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium"
-              >
-                <Plus className="w-5 h-5" />
-                Add Epic
-              </button>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={() => setIsAddEpicModalOpen(true)}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium"
+                >
+                  <Plus className="w-5 h-5" />
+                  Add Epic
+                </button>
+                {canLinkExisting && (
+                  <button
+                    onClick={() => setIsLinkRoadmapModalOpen(true)}
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors font-medium"
+                  >
+                    <Link2 className="w-5 h-5" />
+                    Link Existing Roadmap
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ) : viewMode === "roadmap" ? (
@@ -417,6 +438,25 @@ const RoadmapCanvas = ({
           />
         )}
       </div>
+      {roadmap.project_id && (
+        <LinkRoadmapModal
+          isOpen={isLinkRoadmapModalOpen}
+          onClose={() => setIsLinkRoadmapModalOpen(false)}
+          projectId={roadmap.project_id}
+          currentRoadmapId={roadmap.id}
+          onLinked={(newRoadmapId) => {
+            setIsLinkRoadmapModalOpen(false);
+            void navigate({
+              to: "/project/$projectId/roadmap/$roadmapId",
+              params: {
+                projectId: roadmap.project_id as string,
+                roadmapId: newRoadmapId,
+              },
+              replace: true,
+            });
+          }}
+        />
+      )}
     </div>
   );
 };

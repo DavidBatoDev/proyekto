@@ -8,7 +8,14 @@ interface LinkRoadmapModalProps {
   isOpen: boolean;
   onClose: () => void;
   projectId: string;
-  onLinked: () => void;
+  onLinked: (linkedRoadmapId: string) => void;
+  /**
+   * When provided, the modal uses the atomic replace-for-project flow:
+   * the picked roadmap is linked AND the current empty roadmap is
+   * deleted server-side in one call. Required when the project already
+   * has an auto-created empty roadmap attached.
+   */
+  currentRoadmapId?: string;
 }
 
 export function LinkRoadmapModal({
@@ -16,12 +23,14 @@ export function LinkRoadmapModal({
   onClose,
   projectId,
   onLinked,
+  currentRoadmapId,
 }: LinkRoadmapModalProps) {
   const [roadmaps, setRoadmaps] = useState<Roadmap[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
   const [selectedRoadmapId, setSelectedRoadmapId] = useState<string | null>(null);
   const [showConfirmInfo, setShowConfirmInfo] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -42,6 +51,7 @@ export function LinkRoadmapModal({
     } else {
       setSelectedRoadmapId(null);
       setShowConfirmInfo(false);
+      setErrorMessage(null);
     }
   }, [isOpen]);
 
@@ -49,11 +59,22 @@ export function LinkRoadmapModal({
     if (!selectedRoadmapId) return;
 
     setIsLinking(true);
+    setErrorMessage(null);
     try {
-      await roadmapService.update(selectedRoadmapId, { project_id: projectId });
-      onLinked();
+      if (currentRoadmapId) {
+        await roadmapService.replaceProjectRoadmap(
+          projectId,
+          selectedRoadmapId,
+        );
+      } else {
+        await roadmapService.update(selectedRoadmapId, { project_id: projectId });
+      }
+      onLinked(selectedRoadmapId);
     } catch (error) {
       console.error("Failed to link roadmap:", error);
+      setErrorMessage(
+        error instanceof Error ? error.message : "Failed to link roadmap.",
+      );
     } finally {
       setIsLinking(false);
       setShowConfirmInfo(false);
@@ -100,8 +121,13 @@ export function LinkRoadmapModal({
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Link Existing Roadmap</h2>
               <p className="text-gray-600">
-                Select an existing roadmap to link to this project. Only roadmaps that are not currently linked to a project are shown.
+                {currentRoadmapId
+                  ? "Pick an existing roadmap to use for this project. The empty roadmap currently attached will be discarded."
+                  : "Select an existing roadmap to link to this project. Only roadmaps that are not currently linked to a project are shown."}
               </p>
+              {errorMessage && (
+                <p className="mt-3 text-sm text-red-600">{errorMessage}</p>
+              )}
             </div>
 
             {/* Content */}
@@ -195,7 +221,9 @@ export function LinkRoadmapModal({
             </div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">Confirm Link</h3>
             <p className="text-gray-600 mb-6">
-              Are you sure you want to link this roadmap to the project? This action cannot be undone.
+              {currentRoadmapId
+                ? "Link this roadmap to the project and discard the current empty roadmap? This cannot be undone."
+                : "Are you sure you want to link this roadmap to the project? This action cannot be undone."}
             </p>
             <div className="flex gap-3 justify-end">
               <button
