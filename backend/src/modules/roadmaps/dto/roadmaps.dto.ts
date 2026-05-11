@@ -45,6 +45,11 @@ export class UpdateRoadmapDto {
   @IsBoolean() @IsOptional() is_templatable?: boolean;
 }
 
+export class ReplaceProjectRoadmapDto {
+  @IsUUID() project_id: string;
+  @IsUUID() replacement_roadmap_id: string;
+}
+
 export class UpdateRoadmapTemplateSettingsDto {
   @IsBoolean() @IsOptional() is_public?: boolean;
   @IsBoolean() @IsOptional() is_templatable?: boolean;

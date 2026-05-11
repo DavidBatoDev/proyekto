@@ -59,6 +59,7 @@ describe('ProjectsService (resources)', () => {
       authorization as any,
       projectTeams,
       accessSync,
+      { from: jest.fn() } as any,
     );
   };
 

@@ -7,6 +7,8 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { SupabaseClient } from '@supabase/supabase-js';
+import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import { ProjectTeamsService } from '../teams/project-teams.service';
 export const PROJECTS_REPOSITORY = Symbol('PROJECTS_REPOSITORY');
 import type { ProjectsRepository } from './repositories/projects.repository.interface';
@@ -64,7 +66,37 @@ export class ProjectsService {
     @Inject(forwardRef(() => ProjectTeamsService))
     private readonly projectTeams: ProjectTeamsService,
     private readonly accessSync: ProjectAccessSyncService,
+    @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
   ) {}
+
+  private async createDefaultRoadmap(
+    projectId: string,
+    userId: string,
+    projectTitle: string | null | undefined,
+  ): Promise<{ id: string; name: string }> {
+    const name =
+      projectTitle && projectTitle.trim().length > 0
+        ? projectTitle.trim().slice(0, 200)
+        : 'Untitled roadmap';
+    const { data, error } = await this.supabase
+      .from('roadmaps')
+      .insert({
+        name,
+        project_id: projectId,
+        owner_id: userId,
+        status: 'draft',
+      })
+      .select('id, name')
+      .single();
+    if (error || !data) {
+      throw new Error(
+        `Failed to create default roadmap for project ${projectId}: ${
+          error?.message ?? 'unknown error'
+        }`,
+      );
+    }
+    return data as { id: string; name: string };
+  }
 
   /** Best-effort sync — never blocks the calling write. The yoke rule
    * is recoverable on the next mutation that calls syncUser. */
@@ -307,7 +339,10 @@ export class ProjectsService {
     return project;
   }
 
-  async createProject(userId: string, dto: CreateProjectDto): Promise<Project> {
+  async createProject(
+    userId: string,
+    dto: CreateProjectDto,
+  ): Promise<{ project: Project; roadmap: { id: string; name: string } }> {
     const profile =
       await this.projectsRepo.getCreatorProfileForProjectCreation(userId);
 
@@ -337,7 +372,12 @@ export class ProjectsService {
         grantedBy: userId,
       });
       await this.safeSync(project.id, userId);
-      return project;
+      const roadmap = await this.attachDefaultRoadmapOrRollback(
+        project.id,
+        userId,
+        project.title,
+      );
+      return { project, roadmap };
     }
 
     if (!profile.is_consultant_verified) {
@@ -388,7 +428,42 @@ export class ProjectsService {
       }
     }
 
-    return project;
+    const roadmap = await this.attachDefaultRoadmapOrRollback(
+      project.id,
+      userId,
+      project.title,
+    );
+    return { project, roadmap };
+  }
+
+  private async attachDefaultRoadmapOrRollback(
+    projectId: string,
+    userId: string,
+    projectTitle: string | null | undefined,
+  ): Promise<{ id: string; name: string }> {
+    try {
+      return await this.createDefaultRoadmap(projectId, userId, projectTitle);
+    } catch (err) {
+      this.logger.error(
+        `Default roadmap creation failed for project ${projectId}; rolling back project. Cause: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      try {
+        await this.projectsRepo.deleteProject(projectId);
+      } catch (rollbackErr) {
+        this.logger.error(
+          `Rollback delete failed for project ${projectId}: ${
+            rollbackErr instanceof Error
+              ? rollbackErr.message
+              : String(rollbackErr)
+          }`,
+        );
+      }
+      throw new BadRequestException(
+        'Project created but default roadmap could not be initialized. Please retry.',
+      );
+    }
   }
 
   async updateProject(

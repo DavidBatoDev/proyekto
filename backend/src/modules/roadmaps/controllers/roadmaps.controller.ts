@@ -17,6 +17,7 @@ import type { AuthenticatedUser } from '../../../common/interfaces/authenticated
 import { RoadmapsService } from '../services/roadmaps.service';
 import {
   CreateRoadmapDto,
+  ReplaceProjectRoadmapDto,
   UpdateRoadmapDto,
   UpdateRoadmapTemplateSettingsDto,
 } from '../dto/roadmaps.dto';
@@ -85,6 +86,19 @@ export class RoadmapsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.roadmapsService.create(dto, user.id);
+  }
+
+  @Post('replace-for-project')
+  @HttpCode(HttpStatus.OK)
+  replaceForProject(
+    @Body() dto: ReplaceProjectRoadmapDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roadmapsService.replaceProjectRoadmap(
+      dto.project_id,
+      dto.replacement_roadmap_id,
+      user.id,
+    );
   }
 
   @Patch(':id')
