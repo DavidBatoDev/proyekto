@@ -41,7 +41,7 @@ const SCHEMES = [
   },
 ];
 
-const T = { duration: 0.5, ease: "easeInOut" };
+const T = { duration: 0.5, ease: "easeInOut" as const };
 
 export function WhyProyektoSection() {
   const [idx, setIdx] = useState(0);
