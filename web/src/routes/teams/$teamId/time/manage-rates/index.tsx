@@ -269,7 +269,7 @@ function ManageRatesTab() {
 					});
 				}}
 				onOpenAddRate={() => setAddOpen(true)}
-				onViewHistory={(m) => setHistoryMember(m)}
+				onManageMember={(m) => setHistoryMember(m)}
 			/>
 
 			<TeamMemberRateHistoryDrawer

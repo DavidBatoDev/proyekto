@@ -178,13 +178,10 @@ function TeamTimeLayout() {
 					title={`${team.name} — Time`}
 					subtitle="Track time on tasks across this team's projects. Logs are reviewed by team owners and admins."
 					rightSlot={
-						<Link
-							to="/teams/$teamId"
-							params={{ teamId }}
-							className="text-sm text-sky-600 hover:underline"
-						>
-							Back to team
-						</Link>
+						<div
+							aria-hidden
+							className="hidden h-24 w-72 rounded-xl border border-dashed border-slate-300 bg-slate-50/50 sm:block"
+						/>
 					}
 				/>
 

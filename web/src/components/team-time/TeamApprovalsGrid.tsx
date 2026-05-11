@@ -1,5 +1,12 @@
 import { createPortal } from "react-dom";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+	memo,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	type ReactNode,
+} from "react";
 import {
 	Check,
 	ClipboardCheck,
@@ -16,7 +23,33 @@ import {
 	useReactTable,
 } from "@tanstack/react-table";
 import type { TaskTimeLog } from "@/services/team-time.service";
-import { liveDurationSecondsFromLog } from "./time-utils";
+import { liveDurationSecondsFromLog, useLiveNowMs } from "./time-utils";
+
+// Module-scope formatters: stable references shared across all cells.
+const FULL_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+	weekday: "long",
+	month: "long",
+	day: "numeric",
+	year: "numeric",
+});
+const TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+	hour: "2-digit",
+	minute: "2-digit",
+	second: "2-digit",
+});
+const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+	month: "short",
+	day: "numeric",
+	year: "numeric",
+});
+const SHORT_DATE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+	month: "short",
+	day: "numeric",
+	year: "numeric",
+	hour: "2-digit",
+	minute: "2-digit",
+	second: "2-digit",
+});
 
 type TeamApprovalsRow = {
 	id: string;
@@ -25,10 +58,6 @@ type TeamApprovalsRow = {
 	task_id: string;
 	task_title: string;
 	time_in: string;
-	time_out: string;
-	hours_worked: number;
-	fees: number | null;
-	currency: string;
 	status: TaskTimeLog["status"];
 	is_running: boolean;
 	is_self: boolean;
@@ -46,6 +75,177 @@ type ActionMenuItem = {
 	tone?: MenuTone;
 };
 
+/**
+ * Memoized actions cell. The grid re-renders every second to advance
+ * the live duration column on running rows; without this wrapper, every
+ * row's menu would re-render every tick (and the open popover would
+ * visibly reconcile its children). Props are deliberately primitives or
+ * stable references so the memo actually holds.
+ */
+// ─── live-updating leaf cells ────────────────────────────────────────
+//
+// Same pattern as TeamMyLogsGrid: each cell that needs the running
+// timer subscribes via useLiveNowMs. The grid's `columns` array no
+// longer depends on a tick prop, so the row model and the open
+// action-menu don't reconcile every second.
+
+const LiveTimeOutCell = memo(function LiveTimeOutCell({
+	log,
+}: {
+	log: TaskTimeLog;
+}) {
+	const isRunning = !log.ended_at;
+	const nowMs = useLiveNowMs(isRunning);
+	const startedDate = new Date(log.started_at);
+	const endedDate = log.ended_at ? new Date(log.ended_at) : null;
+	const nowDate = new Date(nowMs);
+	const hasValidStart = !Number.isNaN(startedDate.getTime());
+	const hasValidEnd = Boolean(endedDate && !Number.isNaN(endedDate.getTime()));
+	const hasValidNow = !Number.isNaN(nowDate.getTime());
+	const endedDateValue = hasValidEnd ? (endedDate as Date) : undefined;
+	const isMultiDay =
+		hasValidStart &&
+		hasValidEnd &&
+		startedDate.toDateString() !== endedDateValue?.toDateString();
+
+	let label: string;
+	if (hasValidEnd) {
+		label = isMultiDay
+			? SHORT_DATE_TIME_FORMATTER.format(endedDateValue as Date)
+			: TIME_FORMATTER.format(endedDateValue as Date);
+	} else if (!hasValidNow) {
+		label = "-";
+	} else if (
+		hasValidStart &&
+		startedDate.toDateString() !== nowDate.toDateString()
+	) {
+		label = SHORT_DATE_TIME_FORMATTER.format(nowDate);
+	} else {
+		label = TIME_FORMATTER.format(nowDate);
+	}
+	return <span className="tabular-nums">{label}</span>;
+});
+
+const LiveHoursCell = memo(function LiveHoursCell({
+	log,
+}: {
+	log: TaskTimeLog;
+}) {
+	const isRunning = !log.ended_at;
+	const nowMs = useLiveNowMs(isRunning);
+	const hours = (liveDurationSecondsFromLog(log, nowMs) / 3600).toFixed(2);
+	return (
+		<span className="text-xs font-semibold text-gray-700">{hours}</span>
+	);
+});
+
+const LiveFeesCell = memo(function LiveFeesCell({
+	log,
+}: {
+	log: TaskTimeLog;
+}) {
+	const isRunning = !log.ended_at;
+	const nowMs = useLiveNowMs(isRunning);
+	const hourlyRate = Number(log.rate_snapshot ?? 0);
+	if (!Number.isFinite(hourlyRate) || hourlyRate <= 0) {
+		return <span className="text-xs font-semibold text-emerald-700">-</span>;
+	}
+	const hours = liveDurationSecondsFromLog(log, nowMs) / 3600;
+	const currency = log.currency_snapshot || "USD";
+	return (
+		<span className="text-xs font-semibold text-emerald-700">
+			{(hours * hourlyRate).toFixed(2)} {currency}
+		</span>
+	);
+});
+
+interface TeamApprovalsActionsCellProps {
+	log: TaskTimeLog;
+	rowId: string;
+	canApprove: boolean;
+	disableReview: boolean;
+	canOpenInRoadmap: boolean;
+	loading: boolean;
+	openMenuRowId: string | null;
+	onSetOpenMenuRowId: (id: string | null) => void;
+	onReviewLog: (
+		logId: string,
+		decision: "approved" | "rejected" | "pending",
+	) => void | Promise<void>;
+	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
+}
+
+const TeamApprovalsActionsCell = memo(function TeamApprovalsActionsCell({
+	log,
+	rowId,
+	canApprove,
+	disableReview,
+	canOpenInRoadmap,
+	loading,
+	openMenuRowId,
+	onSetOpenMenuRowId,
+	onReviewLog,
+	onOpenTaskInRoadmap,
+}: TeamApprovalsActionsCellProps) {
+	const menuItems = useMemo<ActionMenuItem[]>(() => {
+		const items: ActionMenuItem[] = [];
+		if (canApprove) {
+			items.push(
+				{
+					id: "set-approved",
+					label: "Set approved",
+					icon: <Check className="h-3.5 w-3.5" />,
+					onSelect: () => void onReviewLog(rowId, "approved"),
+					disabled: disableReview,
+					tone: "success",
+				},
+				{
+					id: "set-rejected",
+					label: "Set rejected",
+					icon: <X className="h-3.5 w-3.5" />,
+					onSelect: () => void onReviewLog(rowId, "rejected"),
+					disabled: disableReview,
+					tone: "warning",
+				},
+				{
+					id: "set-pending",
+					label: "Set pending",
+					icon: <RotateCcw className="h-3.5 w-3.5" />,
+					onSelect: () => void onReviewLog(rowId, "pending"),
+					disabled: disableReview,
+				},
+			);
+		}
+		items.push({
+			id: "open-roadmap-task",
+			label: "Open task in roadmap",
+			icon: <ExternalLink className="h-3.5 w-3.5" />,
+			onSelect: () => onOpenTaskInRoadmap(log),
+			disabled: loading || !canOpenInRoadmap,
+		});
+		return items;
+	}, [
+		canApprove,
+		disableReview,
+		canOpenInRoadmap,
+		loading,
+		log,
+		rowId,
+		onReviewLog,
+		onOpenTaskInRoadmap,
+	]);
+
+	return (
+		<RowActionsMenu
+			rowId={rowId}
+			openMenuRowId={openMenuRowId}
+			onSetOpenMenuRowId={onSetOpenMenuRowId}
+			items={menuItems}
+			loading={loading}
+		/>
+	);
+});
+
 function TeamApprovalsGridSkeleton() {
 	return (
 		<div className="rounded-xl border border-gray-200 overflow-hidden bg-white animate-pulse">
@@ -62,7 +262,6 @@ function TeamApprovalsGridSkeleton() {
 interface TeamApprovalsGridProps {
 	logs: TaskTimeLog[];
 	loadingLogs: boolean;
-	timerNowMs: number;
 	canApprove: boolean;
 	currentUserId: string | null;
 	selectedLogIds: Set<string>;
@@ -210,7 +409,6 @@ function RowActionsMenu({
 export function TeamApprovalsGrid({
 	logs,
 	loadingLogs,
-	timerNowMs,
 	canApprove,
 	currentUserId,
 	selectedLogIds,
@@ -224,47 +422,6 @@ export function TeamApprovalsGrid({
 }: TeamApprovalsGridProps) {
 	const [openMenuRowId, setOpenMenuRowId] = useState<string | null>(null);
 
-	const fullDateFormatter = useMemo(
-		() =>
-			new Intl.DateTimeFormat(undefined, {
-				weekday: "long",
-				month: "long",
-				day: "numeric",
-				year: "numeric",
-			}),
-		[],
-	);
-	const timeFormatter = useMemo(
-		() =>
-			new Intl.DateTimeFormat(undefined, {
-				hour: "2-digit",
-				minute: "2-digit",
-				second: "2-digit",
-			}),
-		[],
-	);
-	const shortDateFormatter = useMemo(
-		() =>
-			new Intl.DateTimeFormat(undefined, {
-				month: "short",
-				day: "numeric",
-				year: "numeric",
-			}),
-		[],
-	);
-	const shortDateTimeFormatter = useMemo(
-		() =>
-			new Intl.DateTimeFormat(undefined, {
-				month: "short",
-				day: "numeric",
-				year: "numeric",
-				hour: "2-digit",
-				minute: "2-digit",
-				second: "2-digit",
-			}),
-		[],
-	);
-
 	const rows = useMemo<TeamApprovalsRow[]>(() => {
 		const sortedLogs = [...logs].sort((a, b) => {
 			const aMs = new Date(a.started_at).getTime();
@@ -272,23 +429,15 @@ export function TeamApprovalsGrid({
 			return aMs - bMs;
 		});
 
-		const populatedRows: TeamApprovalsRow[] = sortedLogs.map((log) => {
-			const liveSeconds = liveDurationSecondsFromLog(log, timerNowMs);
-			const hoursWorked = Number((liveSeconds / 3600).toFixed(2));
-			const hourlyRate = Number(log.rate_snapshot ?? 0);
-			const fees =
-				Number.isFinite(hourlyRate) && hourlyRate > 0
-					? Number((hoursWorked * hourlyRate).toFixed(2))
-					: null;
-
+		// Static fields only — anything that needs the running timer is
+		// computed inside the live cell components below.
+		return sortedLogs.map<TeamApprovalsRow>((log) => {
 			const startedDate = new Date(log.started_at);
 			const endedDate = log.ended_at ? new Date(log.ended_at) : null;
-			const nowDate = new Date(timerNowMs);
 			const hasValidStart = !Number.isNaN(startedDate.getTime());
 			const hasValidEnd = Boolean(
 				endedDate && !Number.isNaN(endedDate.getTime()),
 			);
-			const hasValidNow = !Number.isNaN(nowDate.getTime());
 			const endedDateValue: Date | undefined = hasValidEnd
 				? (endedDate as Date)
 				: undefined;
@@ -302,46 +451,23 @@ export function TeamApprovalsGrid({
 				date: !hasValidStart
 					? "-"
 					: isMultiDay
-						? `${shortDateFormatter.format(startedDate)} - ${shortDateFormatter.format(endedDateValue as Date)}`
-						: fullDateFormatter.format(startedDate),
+						? `${SHORT_DATE_FORMATTER.format(startedDate)} - ${SHORT_DATE_FORMATTER.format(endedDateValue as Date)}`
+						: FULL_DATE_FORMATTER.format(startedDate),
 				project_label: log.project?.title || log.project_id,
 				task_id: log.task_id,
 				task_title: log.task?.title ?? "Task",
 				time_in: !hasValidStart
 					? "-"
 					: isMultiDay
-						? shortDateTimeFormatter.format(startedDate)
-						: timeFormatter.format(startedDate),
-				time_out: hasValidEnd
-					? isMultiDay
-						? shortDateTimeFormatter.format(endedDateValue as Date)
-						: timeFormatter.format(endedDateValue as Date)
-					: !hasValidNow
-						? "-"
-						: hasValidStart &&
-								startedDate.toDateString() !== nowDate.toDateString()
-							? shortDateTimeFormatter.format(nowDate)
-							: timeFormatter.format(nowDate),
-				hours_worked: hoursWorked,
-				fees,
-				currency: log.currency_snapshot || "USD",
+						? SHORT_DATE_TIME_FORMATTER.format(startedDate)
+						: TIME_FORMATTER.format(startedDate),
 				status: log.status,
 				is_running: !log.ended_at,
 				is_self: currentUserId !== null && log.member_user_id === currentUserId,
 				log,
 			};
 		});
-
-		return populatedRows;
-	}, [
-		logs,
-		timerNowMs,
-		shortDateFormatter,
-		fullDateFormatter,
-		shortDateTimeFormatter,
-		timeFormatter,
-		currentUserId,
-	]);
+	}, [logs, currentUserId]);
 
 	const columnHelper = createColumnHelper<TeamApprovalsRow>();
 	// Self-rows are not eligible for selection (caller can't review own logs).
@@ -437,59 +563,46 @@ export function TeamApprovalsGrid({
 					<span className="tabular-nums">{info.getValue()}</span>
 				),
 			}),
-			columnHelper.accessor("time_out", {
+			columnHelper.display({
 				id: "time_out",
 				header: "Time-Out",
-				cell: (info) => (
-					<span className="tabular-nums">{info.getValue()}</span>
-				),
+				cell: (info) => <LiveTimeOutCell log={info.row.original.log} />,
 			}),
-			columnHelper.accessor("hours_worked", {
+			columnHelper.display({
 				id: "hours_worked",
 				header: "Hours",
-				cell: (info) => {
-					const row = info.row.original;
-					return (
-						<span className="text-xs font-semibold text-gray-700">
-							{row.hours_worked.toFixed(2)}
-						</span>
-					);
-				},
+				cell: (info) => <LiveHoursCell log={info.row.original.log} />,
 			}),
-			columnHelper.accessor("fees", {
+			columnHelper.display({
 				id: "fees",
 				header: "Fees",
-				cell: (info) => {
-					const row = info.row.original;
-					return (
-						<span className="text-xs font-semibold text-emerald-700">
-							{row.fees === null
-								? "-"
-								: `${row.fees.toFixed(2)} ${row.currency}`}
-						</span>
-					);
-				},
+				cell: (info) => <LiveFeesCell log={info.row.original.log} />,
 			}),
 			columnHelper.accessor("status", {
 				id: "status",
 				header: "Status",
 				cell: (info) => {
 					const row = info.row.original;
+					const syncing =
+						rowPendingById[row.id] || reviewSyncById[row.id];
+					// While running, the review status (always 'pending' until
+					// the log is stopped) is noise — collapse to one badge.
 					return (
 						<div className="flex items-center gap-1">
-							{row.is_running && (
+							{row.is_running ? (
 								<span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-100 text-sky-700">
 									running
 								</span>
+							) : (
+								<span
+									className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusBadgeClass(
+										info.getValue(),
+									)}`}
+								>
+									{info.getValue()}
+								</span>
 							)}
-							<span
-								className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusBadgeClass(
-									info.getValue(),
-								)}`}
-							>
-								{info.getValue()}
-							</span>
-							{(rowPendingById[row.id] || reviewSyncById[row.id]) && (
+							{syncing && (
 								<Loader2
 									className="h-3.5 w-3.5 animate-spin text-[#b35f00]"
 									aria-label="Review syncing"
@@ -506,53 +619,23 @@ export function TeamApprovalsGrid({
 					const row = info.row.original;
 					const isPending = Boolean(rowPendingById[row.id]);
 					const isReviewSyncing = Boolean(reviewSyncById[row.id]);
-					const disableReview =
-						row.is_running || row.is_self || isPending || isReviewSyncing;
-					const canOpenInRoadmap = canOpenTaskInRoadmap(row.log.task_id);
-
-					const menuItems: ActionMenuItem[] = [];
-					if (canApprove) {
-						menuItems.push(
-							{
-								id: "set-approved",
-								label: "Set approved",
-								icon: <Check className="h-3.5 w-3.5" />,
-								onSelect: () => void onReviewLog(row.id, "approved"),
-								disabled: disableReview,
-								tone: "success",
-							},
-							{
-								id: "set-rejected",
-								label: "Set rejected",
-								icon: <X className="h-3.5 w-3.5" />,
-								onSelect: () => void onReviewLog(row.id, "rejected"),
-								disabled: disableReview,
-								tone: "warning",
-							},
-							{
-								id: "set-pending",
-								label: "Set pending",
-								icon: <RotateCcw className="h-3.5 w-3.5" />,
-								onSelect: () => void onReviewLog(row.id, "pending"),
-								disabled: disableReview,
-							},
-						);
-					}
-					menuItems.push({
-						id: "open-roadmap-task",
-						label: "Open task in roadmap",
-						icon: <ExternalLink className="h-3.5 w-3.5" />,
-						onSelect: () => onOpenTaskInRoadmap(row.log),
-						disabled: isPending || !canOpenInRoadmap,
-					});
-
 					return (
-						<RowActionsMenu
+						<TeamApprovalsActionsCell
+							log={row.log}
 							rowId={row.id}
+							canApprove={canApprove}
+							disableReview={
+								row.is_running ||
+								row.is_self ||
+								isPending ||
+								isReviewSyncing
+							}
+							canOpenInRoadmap={canOpenTaskInRoadmap(row.log.task_id)}
+							loading={isPending || isReviewSyncing}
 							openMenuRowId={openMenuRowId}
 							onSetOpenMenuRowId={setOpenMenuRowId}
-							items={menuItems}
-							loading={isPending || isReviewSyncing}
+							onReviewLog={onReviewLog}
+							onOpenTaskInRoadmap={onOpenTaskInRoadmap}
 						/>
 					);
 				},
@@ -585,36 +668,41 @@ export function TeamApprovalsGrid({
 	if (loadingLogs) return <TeamApprovalsGridSkeleton />;
 
 	return (
-		<div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-			<table className="w-full table-fixed text-[11px]">
+		<div className="rounded-xl border border-gray-200 bg-white overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+			<table className="w-full min-w-[1100px] table-fixed text-[11px]">
 				<colgroup>
 					<col className="w-[3%]" />
-					<col className="w-[15%]" />
 					<col className="w-[16%]" />
-					<col className="w-[18%]" />
+					<col className="w-[17%]" />
+					<col className="w-[12%]" />
 					<col className="w-[10%]" />
 					<col className="w-[10%]" />
 					<col className="w-[6%]" />
-					<col className="w-[8%]" />
-					<col className="w-[10%]" />
-					<col className="w-[4%]" />
+					<col className="w-[9%]" />
+					<col className="w-[11%]" />
+					<col className="w-[6%]" />
 				</colgroup>
 				<thead className="bg-slate-900 text-white">
 					{table.getHeaderGroups().map((headerGroup) => (
 						<tr key={headerGroup.id}>
-							{headerGroup.headers.map((header) => (
-								<th
-									key={header.id}
-									className="px-2 py-2.5 text-left text-sm font-bold border-r border-white/30 last:border-r-0"
-								>
-									{header.isPlaceholder
-										? null
-										: flexRender(
-												header.column.columnDef.header,
-												header.getContext(),
-											)}
-								</th>
-							))}
+							{headerGroup.headers.map((header) => {
+								const isSticky = header.column.id === "select";
+								return (
+									<th
+										key={header.id}
+										className={`px-2 py-2.5 text-left text-sm font-bold border-r border-white/30 last:border-r-0 ${
+											isSticky ? "sticky left-0 z-20 bg-slate-900" : ""
+										}`}
+									>
+										{header.isPlaceholder
+											? null
+											: flexRender(
+													header.column.columnDef.header,
+													header.getContext(),
+												)}
+									</th>
+								);
+							})}
 						</tr>
 					))}
 				</thead>
@@ -641,20 +729,36 @@ export function TeamApprovalsGrid({
 							</td>
 						</tr>
 					) : (
-						table.getRowModel().rows.map((row) => (
-							<tr
-								key={row.id}
-								className={`border-t border-gray-200 ${
-									rowPendingById[row.original.id] ? "bg-amber-50/40" : ""
-								}`}
-							>
-								{row.getVisibleCells().map((cell) => (
-									<td key={cell.id} className="px-2 py-1.5 align-middle">
-										{flexRender(cell.column.columnDef.cell, cell.getContext())}
-									</td>
-								))}
-							</tr>
-						))
+						table.getRowModel().rows.map((row) => {
+							const pending = Boolean(rowPendingById[row.original.id]);
+							return (
+								<tr
+									key={row.id}
+									className={`border-t border-gray-200 ${
+										pending ? "bg-amber-50/40" : ""
+									}`}
+								>
+									{row.getVisibleCells().map((cell) => {
+										const isSticky = cell.column.id === "select";
+										return (
+											<td
+												key={cell.id}
+												className={`px-2 py-1.5 align-middle ${
+													isSticky
+														? `sticky left-0 z-10 ${pending ? "bg-amber-50" : "bg-white"}`
+														: ""
+												}`}
+											>
+												{flexRender(
+													cell.column.columnDef.cell,
+													cell.getContext(),
+												)}
+											</td>
+										);
+									})}
+								</tr>
+							);
+						})
 					)}
 				</tbody>
 			</table>

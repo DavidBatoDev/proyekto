@@ -1,4 +1,4 @@
-import { History, Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, Settings2 } from "lucide-react";
 import type { TeamMember, TeamMemberRate } from "@/services/teams.service";
 import { initialsFromName } from "./time-utils";
 
@@ -44,7 +44,7 @@ interface TeamRatesSectionProps {
 	pendingMemberById: Record<string, boolean>;
 	onViewLogs: (member: TeamMember) => void;
 	onOpenAddRate: () => void;
-	onViewHistory: (member: TeamMember) => void;
+	onManageMember: (member: TeamMember) => void;
 }
 
 export function TeamRatesSection({
@@ -56,7 +56,7 @@ export function TeamRatesSection({
 	pendingMemberById,
 	onViewLogs,
 	onOpenAddRate,
-	onViewHistory,
+	onManageMember,
 }: TeamRatesSectionProps) {
 	// Members with an active (open-ended) rate row.
 	const ratedMembers = members.filter(
@@ -188,7 +188,7 @@ export function TeamRatesSection({
 										</div>
 
 										<div className="mt-auto pt-3 border-t border-gray-100">
-											<div className="flex items-center justify-center gap-2">
+											<div className="flex flex-wrap items-center justify-center gap-1.5">
 												<button
 													type="button"
 													onClick={() => onViewLogs(member)}
@@ -200,12 +200,12 @@ export function TeamRatesSection({
 												{canManageRates && (
 													<button
 														type="button"
-														onClick={() => onViewHistory(member)}
+														onClick={() => onManageMember(member)}
 														disabled={isPending}
-														className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+														className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md border border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100 disabled:opacity-50 disabled:cursor-not-allowed"
 													>
-														<History className="h-3.5 w-3.5" />
-														History
+														<Settings2 className="h-3.5 w-3.5" />
+														Manage
 													</button>
 												)}
 											</div>

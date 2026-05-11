@@ -1,7 +1,14 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import {
+	ArrowLeft,
+	Check,
+	FolderKanban,
+	Loader2,
+	RotateCcw,
+	X,
+} from "lucide-react";
 import { useToast } from "@/hooks/useToast";
 import { useUser } from "@/stores/authStore";
 import {
@@ -16,6 +23,10 @@ import {
 	type TimeLogStatus,
 } from "@/services/team-time.service";
 import { TeamApprovalsGrid } from "@/components/team-time/TeamApprovalsGrid";
+import {
+	TeamLogsStatsCard,
+	computeLogStats,
+} from "@/components/team-time/TeamLogsStatsCard";
 
 export const Route = createFileRoute("/teams/$teamId/time/manage-rates/$userId")({
 	component: MemberLogsRoute,
@@ -38,16 +49,11 @@ function MemberLogsRoute() {
 	const navigate = useNavigate();
 
 	const [statusFilter, setStatusFilter] = useState<TimeLogStatus | "all">(
-		"pending",
+		"all",
 	);
 	const [projectFilter, setProjectFilter] = useState<string>("");
 	const [selected, setSelected] = useState<Set<string>>(new Set());
-	const [timerNowMs, setTimerNowMs] = useState(Date.now());
 
-	useEffect(() => {
-		const interval = window.setInterval(() => setTimerNowMs(Date.now()), 1000);
-		return () => window.clearInterval(interval);
-	}, []);
 
 	const membersQuery = useQuery({
 		queryKey: ["team", teamId, "members"],
@@ -84,6 +90,7 @@ function MemberLogsRoute() {
 	});
 
 	const items = logsQuery.data?.items ?? [];
+	const logStats = useMemo(() => computeLogStats(items), [items]);
 
 	const reviewBulkMutation = useMutation({
 		mutationFn: async (input: {
@@ -172,72 +179,113 @@ function MemberLogsRoute() {
 					<h3 className="text-lg font-semibold text-slate-900">
 						{memberName}'s logs
 					</h3>
-					{activeRate && (
-						<p className="text-xs text-slate-500">
-							Current rate: {Number(activeRate.hourly_rate).toFixed(2)}{" "}
-							{activeRate.currency || "USD"} / hour
-						</p>
-					)}
 				</div>
 			</div>
 
-			<div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
-				<select
-					value={statusFilter}
-					onChange={(e) =>
-						setStatusFilter(e.target.value as TimeLogStatus | "all")
-					}
-					className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+			<TeamLogsStatsCard
+				rate={activeRate}
+				stats={logStats}
+				fallbackCurrency={activeRate?.currency ?? "USD"}
+				loading={logsQuery.isPending}
+			/>
+
+			<div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+				<div
+					role="tablist"
+					aria-label="Filter by status"
+					className="inline-flex items-center rounded-lg bg-slate-100 p-0.5"
 				>
-					<option value="all">All statuses</option>
-					<option value="pending">Pending</option>
-					<option value="approved">Approved</option>
-					<option value="rejected">Rejected</option>
-				</select>
-				<select
-					value={projectFilter}
-					onChange={(e) => setProjectFilter(e.target.value)}
-					className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-				>
-					<option value="">All projects</option>
-					{(projectsQuery.data ?? []).map((p) => (
-						<option key={p.id} value={p.id}>
-							{p.title ?? "(untitled)"}
-						</option>
-					))}
-				</select>
+					{(
+						[
+							{ value: "all", label: "All" },
+							{ value: "pending", label: "Pending" },
+							{ value: "approved", label: "Approved" },
+							{ value: "rejected", label: "Rejected" },
+						] as const
+					).map((opt) => {
+						const active = statusFilter === opt.value;
+						return (
+							<button
+								key={opt.value}
+								type="button"
+								role="tab"
+								aria-selected={active}
+								onClick={() => setStatusFilter(opt.value)}
+								className={
+									active
+										? "rounded-md bg-white px-3 py-1 text-xs font-medium text-slate-900 shadow-sm"
+										: "rounded-md px-3 py-1 text-xs font-medium text-slate-500 hover:text-slate-700"
+								}
+							>
+								{opt.label}
+							</button>
+						);
+					})}
+				</div>
+
+				<label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white pl-2.5 pr-1 focus-within:border-sky-400 focus-within:ring-1 focus-within:ring-sky-200">
+					<FolderKanban className="h-3.5 w-3.5 text-slate-400" />
+					<select
+						value={projectFilter}
+						onChange={(e) => setProjectFilter(e.target.value)}
+						className="border-0 bg-transparent py-1 pr-2 text-xs text-slate-700 focus:outline-none focus:ring-0"
+					>
+						<option value="">All projects</option>
+						{(projectsQuery.data ?? []).map((p) => (
+							<option key={p.id} value={p.id}>
+								{p.title ?? "(untitled)"}
+							</option>
+						))}
+					</select>
+				</label>
+
 				<div className="ml-auto flex items-center gap-2">
-					<button
-						type="button"
-						disabled={selected.size === 0 || reviewBulkMutation.isPending}
-						onClick={() => submitDecision("approved")}
-						className="rounded-md bg-emerald-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
+					<span
+						className={
+							selected.size === 0
+								? "hidden text-xs text-slate-400 sm:inline"
+								: "inline-flex items-center rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-200"
+						}
 					>
-						Approve ({selected.size})
-					</button>
-					<button
-						type="button"
-						disabled={selected.size === 0 || reviewBulkMutation.isPending}
-						onClick={() => submitDecision("rejected")}
-						className="rounded-md bg-rose-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
-					>
-						Reject ({selected.size})
-					</button>
-					<button
-						type="button"
-						disabled={selected.size === 0 || reviewBulkMutation.isPending}
-						onClick={() => submitDecision("pending")}
-						className="rounded-md border border-slate-300 px-3 py-1 text-sm"
-					>
-						Reset
-					</button>
+						{selected.size === 0
+							? "Select rows to review"
+							: `${selected.size} selected`}
+					</span>
+					<div className="inline-flex items-center overflow-hidden rounded-lg border border-slate-200 shadow-sm">
+						<button
+							type="button"
+							disabled={selected.size === 0 || reviewBulkMutation.isPending}
+							onClick={() => submitDecision("approved")}
+							className="inline-flex items-center gap-1.5 border-r border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:bg-white disabled:text-slate-300 disabled:hover:bg-white"
+						>
+							<Check className="h-3.5 w-3.5" />
+							Approve
+						</button>
+						<button
+							type="button"
+							disabled={selected.size === 0 || reviewBulkMutation.isPending}
+							onClick={() => submitDecision("rejected")}
+							className="inline-flex items-center gap-1.5 border-r border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:bg-white disabled:text-slate-300 disabled:hover:bg-white"
+						>
+							<X className="h-3.5 w-3.5" />
+							Reject
+						</button>
+						<button
+							type="button"
+							disabled={selected.size === 0 || reviewBulkMutation.isPending}
+							onClick={() => submitDecision("pending")}
+							className="inline-flex items-center gap-1.5 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-white"
+						>
+							<RotateCcw className="h-3.5 w-3.5" />
+							Reset
+						</button>
+					</div>
 				</div>
 			</div>
 
 			<TeamApprovalsGrid
 				logs={items}
 				loadingLogs={logsQuery.isPending}
-				timerNowMs={timerNowMs}
 				canApprove
 				currentUserId={user?.id ?? null}
 				selectedLogIds={selected}

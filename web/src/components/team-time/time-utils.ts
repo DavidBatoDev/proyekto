@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { TaskTimeLog } from "@/services/team-time.service";
 
 export const formatDateTime = (value?: string | null) => {
@@ -51,4 +52,54 @@ export function formatMoney(amount: number, currency: string): string {
 export function formatHours(seconds: number | null | undefined): string {
 	if (!seconds || seconds <= 0) return "0.00";
 	return (seconds / 3600).toFixed(2);
+}
+
+// ─── live "now" subscription ─────────────────────────────────────────
+//
+// A single shared 1Hz timer drives every cell that needs a live
+// duration. Each subscriber gets re-rendered when the tick fires;
+// non-subscribed components (and any cell rendered for a finished log)
+// stay at their initial Date.now() value and don't re-render.
+//
+// This lets the time-tracking grids keep their `columns` array stable
+// across ticks. Without it, putting `liveNowMs` in the grid's state
+// caused TanStack Table to rebuild the row model every second and
+// re-render every cell — visibly thrashing any open popover menus.
+
+let nowTimerHandle: number | null = null;
+const nowSubscribers = new Set<(now: number) => void>();
+
+function startNowTimerIfNeeded() {
+	if (nowTimerHandle !== null) return;
+	nowTimerHandle = window.setInterval(() => {
+		const now = Date.now();
+		nowSubscribers.forEach((cb) => cb(now));
+	}, 1000);
+}
+
+function stopNowTimerIfIdle() {
+	if (nowSubscribers.size > 0) return;
+	if (nowTimerHandle === null) return;
+	window.clearInterval(nowTimerHandle);
+	nowTimerHandle = null;
+}
+
+/**
+ * Subscribes the calling component to a 1Hz "now" tick when `active`
+ * is true. Returns the latest Date.now() (or the value at first render
+ * when `active` is false). Many simultaneous subscribers share one
+ * setInterval, so cost stays O(1) regardless of row count.
+ */
+export function useLiveNowMs(active: boolean): number {
+	const [now, setNow] = useState(() => Date.now());
+	useEffect(() => {
+		if (!active) return;
+		nowSubscribers.add(setNow);
+		startNowTimerIfNeeded();
+		return () => {
+			nowSubscribers.delete(setNow);
+			stopNowTimerIfIdle();
+		};
+	}, [active]);
+	return now;
 }

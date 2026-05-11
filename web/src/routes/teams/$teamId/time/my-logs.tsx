@@ -3,18 +3,26 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/useToast";
 import { useUser } from "@/stores/authStore";
-import { getActiveMemberRate } from "@/services/teams.service";
+import {
+	getActiveMemberRate,
+	listMemberRates,
+	type TeamMember,
+} from "@/services/teams.service";
 import {
 	teamTimeService,
 	type TaskTimeLog,
 } from "@/services/team-time.service";
 import { TeamMyLogsGrid } from "@/components/team-time/TeamMyLogsGrid";
+import { TeamMemberRateHistoryDrawer } from "@/components/team-time/TeamMemberRateHistoryDrawer";
+import {
+	TeamLogsStatsCard,
+	computeLogStats,
+} from "@/components/team-time/TeamLogsStatsCard";
 import {
 	AddLogModal,
 	DeleteTimeLogModal,
 	EditLogModal,
 } from "@/components/team-time/TeamTimeModals";
-import { TeamTaskTreePicker } from "@/components/team-time/TeamTaskTreePicker";
 import {
 	fromLocalDateTimeInput,
 	toLocalDateTimeInput,
@@ -58,6 +66,17 @@ function MyLogsTab() {
 		queryFn: () => getActiveMemberRate(teamId, user!.id),
 		enabled: Boolean(user?.id),
 	});
+
+	// History is fetched alongside the active rate so we can render the
+	// "View history" button conditionally — but the drawer also reads the
+	// same query, so it's not redundant.
+	const myRateHistoryQuery = useQuery({
+		queryKey: ["team", teamId, "rates", "history", user?.id],
+		queryFn: () => listMemberRates(teamId, user!.id),
+		enabled: Boolean(user?.id),
+	});
+
+	const [historyOpen, setHistoryOpen] = useState(false);
 
 	const logsQuery = useQuery({
 		queryKey: ["team-time", teamId, "my-logs", user?.id],
@@ -269,8 +288,40 @@ function MyLogsTab() {
 		return Array.from(seen.values());
 	}, [allLogs]);
 
+	const logStats = useMemo(() => computeLogStats(allLogs), [allLogs]);
+
+	const activeRate = myActiveRateQuery.data ?? null;
+	const rateHistory = myRateHistoryQuery.data ?? [];
+	// Show the "View history" button when there's at least one row
+	// beyond (or instead of) the active one — i.e., the member has
+	// actually had a rate change.
+	const hasRateHistory =
+		rateHistory.length > (activeRate ? 1 : 0);
+
 	return (
 		<>
+			<TeamLogsStatsCard
+				rate={activeRate}
+				canShowHistory={hasRateHistory}
+				onOpenHistory={() => setHistoryOpen(true)}
+				stats={logStats}
+				fallbackCurrency={activeRate?.currency ?? "USD"}
+				loading={logsQuery.isPending}
+			/>
+
+			<TeamMemberRateHistoryDrawer
+				isOpen={historyOpen}
+				member={meAsMember(user?.id, user?.email)}
+				rates={rateHistory}
+				loadingRates={myRateHistoryQuery.isPending}
+				canManage={false}
+				rowPendingByRateId={{}}
+				onClose={() => setHistoryOpen(false)}
+				onAddRate={() => {}}
+				onEditRate={() => {}}
+				onDeleteRate={() => {}}
+			/>
+
 			<TeamMyLogsGrid
 				logs={allLogs}
 				tasks={tasksForGrid}
@@ -350,66 +401,74 @@ function MyLogsTab() {
 				}}
 			/>
 
-			{taskModalLog ? (
-				<div
-					className="fixed inset-0 z-165 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
-					onClick={() => {
-						if (taskChangeMutation.isPending) return;
-						setTaskModalLog(null);
-					}}
-				>
-					<div
-						className="w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-2xl overflow-hidden"
-						onClick={(e) => e.stopPropagation()}
-					>
-						<div className="border-b border-gray-200 px-5 py-4">
-							<h3 className="text-base font-semibold text-gray-900">
-								Change task
-							</h3>
-							<p className="text-xs text-gray-500 mt-1">
-								Reassign this log to another task in{" "}
-								{taskModalLog.project?.title ?? "this project"}.
-							</p>
-						</div>
-						<div className="p-5 space-y-3">
-							<TeamTaskTreePicker
-								tasks={tasksForRowQuery.data ?? []}
-								value={taskModalTaskId}
-								enableFind
-								selectedLabelMode="path"
-								onChange={(taskId) => setTaskModalTaskId(taskId)}
-							/>
-						</div>
-						<div className="flex items-center justify-end gap-2 border-t border-gray-200 px-5 py-4 bg-gray-50">
-							<button
-								type="button"
-								onClick={() => setTaskModalLog(null)}
-								disabled={taskChangeMutation.isPending}
-								className="px-3 py-2 text-xs font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-							>
-								Cancel
-							</button>
-							<button
-								type="button"
-								disabled={
-									taskChangeMutation.isPending ||
-									!taskModalTaskId ||
-									taskModalTaskId === taskModalLog.task_id
-								}
-								onClick={() =>
-									taskChangeMutation.mutate({
-										id: taskModalLog.id,
-										task_id: taskModalTaskId,
-									})
-								}
-								className="px-3 py-2 text-xs font-semibold rounded-md border border-slate-700 bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50"
-							>
-								Change task
-							</button>
-						</div>
-					</div>
-				</div>
-			) : null}
+			<AddLogModal
+				isOpen={Boolean(taskModalLog)}
+				projects={
+					taskModalLog
+						? [
+								{
+									id: taskModalLog.project_id,
+									title:
+										taskModalLog.project?.title ?? "Current project",
+								},
+							]
+						: []
+				}
+				tasks={tasksForRowQuery.data ?? []}
+				loadingTasks={tasksForRowQuery.isFetching}
+				selectedProjectId={taskModalLog?.project_id ?? ""}
+				selectedTaskId={taskModalTaskId}
+				saving={taskChangeMutation.isPending}
+				title="Change task"
+				description="Reassign this log to another task in the same project."
+				saveLabel="Change task"
+				onClose={() => {
+					if (taskChangeMutation.isPending) return;
+					setTaskModalLog(null);
+				}}
+				onSave={() => {
+					if (!taskModalLog) return;
+					if (!taskModalTaskId || taskModalTaskId === taskModalLog.task_id)
+						return;
+					taskChangeMutation.mutate({
+						id: taskModalLog.id,
+						task_id: taskModalTaskId,
+					});
+				}}
+				onChangeProjectId={() => {
+					/* project is locked to the log's project */
+				}}
+				onChangeTaskId={(v) => setTaskModalTaskId(v)}
+			/>
 		</>
 	);
+}
+
+/**
+ * The history drawer expects a TeamMember to render the header. The
+ * caller viewing their own rates isn't loaded into the team_members
+ * query here (that's a separate fetch in the parent layout); fabricate
+ * a minimal record from the auth user so the drawer can show a name.
+ */
+function meAsMember(
+	userId: string | undefined,
+	email: string | null | undefined,
+): TeamMember | null {
+	if (!userId) return null;
+	return {
+		id: userId,
+		team_id: "",
+		user_id: userId,
+		role: "member",
+		position: null,
+		joined_at: "",
+		user: {
+			id: userId,
+			display_name: "You",
+			avatar_url: null,
+			email: email ?? null,
+			first_name: null,
+			last_name: null,
+		},
+	};
 }

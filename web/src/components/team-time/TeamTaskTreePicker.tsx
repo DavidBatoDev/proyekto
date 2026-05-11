@@ -24,6 +24,7 @@ interface TeamTaskTreePickerProps {
 	searchPlaceholder?: string;
 	triggerClassName?: string;
 	panelClassName?: string;
+	inline?: boolean;
 	onChange: (taskId: string) => void;
 }
 
@@ -55,6 +56,7 @@ export function TeamTaskTreePicker({
 	searchPlaceholder = "Search epic or task",
 	triggerClassName,
 	panelClassName,
+	inline = false,
 	onChange,
 }: TeamTaskTreePickerProps) {
 	const [open, setOpen] = useState(false);
@@ -151,7 +153,7 @@ export function TeamTaskTreePicker({
 	);
 
 	useEffect(() => {
-		if (!open || !shouldUseTree) return;
+		if (!(open || inline) || !shouldUseTree) return;
 		if (!searchText.trim()) return;
 		const nextExpandedEpics: Record<string, boolean> = {};
 		const nextExpandedFeatures: Record<string, boolean> = {};
@@ -168,7 +170,7 @@ export function TeamTaskTreePicker({
 	}, [open, groups, searchText, shouldUseTree]);
 
 	useEffect(() => {
-		if (!open || !guidedSelection) return;
+		if (!(open || inline) || !guidedSelection) return;
 		if (searchText.trim()) return;
 		setSelectedEpicFocus(getEpicLabel(selectedTask));
 		setSelectedFeatureFocus(getFeatureLabel(selectedTask));
@@ -416,6 +418,56 @@ export function TeamTaskTreePicker({
 		);
 	};
 
+	const panelBody = (
+		<>
+			{enableFind && (
+				<div className="sticky top-0 z-10 border-b border-gray-200 bg-white px-2 py-2">
+					<div className="flex items-center justify-end">
+						<button
+							type="button"
+							onClick={() => {
+								setFindOpen((prev) => !prev);
+								if (findOpen) setSearchText("");
+							}}
+							className="inline-flex items-center gap-1 rounded border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100"
+							title="Find epic/task"
+							aria-label="Find epic/task"
+						>
+							<Search className="h-3.5 w-3.5" />
+							Find
+						</button>
+					</div>
+					{findOpen && (
+						<div className="mt-2 flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1.5">
+							<Search className="h-3.5 w-3.5 text-gray-400" />
+							<input
+								type="text"
+								value={searchText}
+								onChange={(event) => setSearchText(event.target.value)}
+								placeholder={searchPlaceholder}
+								className="w-full border-0 bg-transparent text-xs text-gray-700 outline-none placeholder:text-gray-400"
+							/>
+						</div>
+					)}
+				</div>
+			)}
+			{shouldUseTree ? renderGroupedTree() : renderGuidedPicker()}
+		</>
+	);
+
+	if (inline) {
+		return (
+			<div
+				className={
+					panelClassName ||
+					"max-h-72 overflow-auto rounded-md border border-gray-200 bg-white p-1"
+				}
+			>
+				{panelBody}
+			</div>
+		);
+	}
+
 	return (
 		<div ref={rootRef} className="relative">
 			<button
@@ -446,39 +498,7 @@ export function TeamTaskTreePicker({
 						}
 						style={panelStyle}
 					>
-						{enableFind && (
-							<div className="sticky top-0 z-10 border-b border-gray-200 bg-white px-2 py-2">
-								<div className="flex items-center justify-end">
-									<button
-										type="button"
-										onClick={() => {
-											setFindOpen((prev) => !prev);
-											if (findOpen) setSearchText("");
-										}}
-										className="inline-flex items-center gap-1 rounded border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100"
-										title="Find epic/task"
-										aria-label="Find epic/task"
-									>
-										<Search className="h-3.5 w-3.5" />
-										Find
-									</button>
-								</div>
-								{findOpen && (
-									<div className="mt-2 flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1.5">
-										<Search className="h-3.5 w-3.5 text-gray-400" />
-										<input
-											type="text"
-											value={searchText}
-											onChange={(event) => setSearchText(event.target.value)}
-											placeholder={searchPlaceholder}
-											className="w-full border-0 bg-transparent text-xs text-gray-700 outline-none placeholder:text-gray-400"
-										/>
-									</div>
-								)}
-							</div>
-						)}
-
-						{shouldUseTree ? renderGroupedTree() : renderGuidedPicker()}
+						{panelBody}
 					</div>,
 					document.body,
 				)}

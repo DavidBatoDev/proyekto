@@ -1,11 +1,18 @@
 import { createPortal } from "react-dom";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+	memo,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	type ReactNode,
+} from "react";
 import {
 	ExternalLink,
 	Loader2,
 	MoreHorizontal,
 	Pencil,
-	Play,
+	Plus,
 	Square,
 	Timer,
 	Trash2,
@@ -21,11 +28,34 @@ import type {
 	ResolvedTeamRate,
 	TaskTimeLog,
 } from "@/services/team-time.service";
-import { liveDurationSecondsFromLog } from "./time-utils";
+import { liveDurationSecondsFromLog, useLiveNowMs } from "./time-utils";
+
+// Module-scope formatters: stable references shared across all cells,
+// so they never trigger a re-render via prop identity changes.
+const FULL_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+	weekday: "long",
+	month: "long",
+	day: "numeric",
+	year: "numeric",
+});
+const TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+	hour: "2-digit",
+	minute: "2-digit",
+	second: "2-digit",
+});
+const SHORT_DATE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+	month: "short",
+	day: "numeric",
+	year: "numeric",
+	hour: "2-digit",
+	minute: "2-digit",
+	second: "2-digit",
+});
 
 type MyLogGridRow = {
 	id: string;
 	date: string;
+	project_label: string;
 	task_id: string;
 	time_in: string;
 	is_running: boolean;
@@ -174,6 +204,205 @@ function RowActionsMenu({
 	);
 }
 
+/**
+ * Memoized actions cell. The grid re-renders every second to advance
+ * the live duration column; without this wrapper, the row's menu would
+ * also re-render every tick (and the open popover would visibly
+ * reconcile its children). All props passed in must be stable across
+ * a tick — primitive booleans + useCallback'd handlers from the parent
+ * route + a row.log reference that is itself stable within the rows
+ * useMemo (which doesn't depend on liveNowMs).
+ */
+// ─── live-updating leaf cells ────────────────────────────────────────
+//
+// These cells own their own subscription to the shared 1Hz timer.
+// Putting the live-time logic here (instead of in the grid's `columns`
+// useMemo) keeps the column definitions stable across ticks, so
+// TanStack Table doesn't rebuild the row model and re-render every
+// cell — which previously made the open action-menu visibly thrash.
+
+const LiveTimeOutCell = memo(function LiveTimeOutCell({
+	log,
+}: {
+	log: TaskTimeLog;
+}) {
+	const isRunning = !log.ended_at;
+	const nowMs = useLiveNowMs(isRunning);
+	const startedDate = new Date(log.started_at);
+	const endedDate = log.ended_at ? new Date(log.ended_at) : null;
+	const nowDate = new Date(nowMs);
+	const hasValidStart = !Number.isNaN(startedDate.getTime());
+	const hasValidEnd = Boolean(endedDate && !Number.isNaN(endedDate.getTime()));
+	const hasValidNow = !Number.isNaN(nowDate.getTime());
+	const endedDateValue = hasValidEnd ? (endedDate as Date) : undefined;
+	const isMultiDay =
+		hasValidStart &&
+		hasValidEnd &&
+		startedDate.toDateString() !== endedDateValue?.toDateString();
+
+	let label: string;
+	if (hasValidEnd) {
+		label = isMultiDay
+			? SHORT_DATE_TIME_FORMATTER.format(endedDateValue as Date)
+			: TIME_FORMATTER.format(endedDateValue as Date);
+	} else if (!hasValidNow) {
+		label = "-";
+	} else if (
+		hasValidStart &&
+		startedDate.toDateString() !== nowDate.toDateString()
+	) {
+		label = SHORT_DATE_TIME_FORMATTER.format(nowDate);
+	} else {
+		label = TIME_FORMATTER.format(nowDate);
+	}
+	return <span className="tabular-nums">{label}</span>;
+});
+
+const LiveHoursCell = memo(function LiveHoursCell({
+	log,
+}: {
+	log: TaskTimeLog;
+}) {
+	const isRunning = !log.ended_at;
+	const nowMs = useLiveNowMs(isRunning);
+	const hours = (liveDurationSecondsFromLog(log, nowMs) / 3600).toFixed(2);
+	return (
+		<span className="text-xs font-semibold text-gray-700">{hours}</span>
+	);
+});
+
+const LiveFeesCell = memo(function LiveFeesCell({
+	log,
+	fallbackHourlyRate,
+	fallbackCurrency,
+}: {
+	log: TaskTimeLog;
+	fallbackHourlyRate: number | null;
+	fallbackCurrency: string | null;
+}) {
+	const isRunning = !log.ended_at;
+	const nowMs = useLiveNowMs(isRunning);
+	// Settled logs use their own rate_snapshot; running logs (no
+	// snapshot until first stop in some cases) fall back to the
+	// caller's current ownRate so the live timer feels accurate.
+	const snap = Number(log.rate_snapshot ?? 0);
+	const hourly = snap > 0 ? snap : fallbackHourlyRate;
+	if (hourly === null || !Number.isFinite(hourly)) {
+		return <span className="text-xs font-semibold text-emerald-700">-</span>;
+	}
+	const hours = liveDurationSecondsFromLog(log, nowMs) / 3600;
+	const currency = log.currency_snapshot || fallbackCurrency || "USD";
+	return (
+		<span className="text-xs font-semibold text-emerald-700">
+			{(hours * hourly).toFixed(2)} {currency}
+		</span>
+	);
+});
+
+interface MyLogsActionsCellProps {
+	log: TaskTimeLog;
+	rowId: string;
+	isRunning: boolean;
+	isRowPending: boolean;
+	hasActiveLog: boolean;
+	loadingTasks: boolean;
+	canOpenInRoadmap: boolean;
+	openMenuRowId: string | null;
+	onSetOpenMenuRowId: (id: string | null) => void;
+	onStopLog: (id: string) => void | Promise<void>;
+	onOpenTaskModal: (log: TaskTimeLog) => void;
+	onEditLog: (log: TaskTimeLog) => void;
+	onDeleteLog: (id: string) => void | Promise<void>;
+	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
+}
+
+const MyLogsActionsCell = memo(function MyLogsActionsCell({
+	log,
+	rowId,
+	isRunning,
+	isRowPending,
+	hasActiveLog,
+	loadingTasks,
+	canOpenInRoadmap,
+	openMenuRowId,
+	onSetOpenMenuRowId,
+	onStopLog,
+	onOpenTaskModal,
+	onEditLog,
+	onDeleteLog,
+	onOpenTaskInRoadmap,
+}: MyLogsActionsCellProps) {
+	const isReadOnly = isMemberReadOnlyStatus(log.status);
+	const menuItems = useMemo<ActionMenuItem[]>(() => {
+		const items: ActionMenuItem[] = [];
+		if (isRunning) {
+			items.push({
+				id: "stop",
+				label: "Stop timer",
+				icon: <Square className="h-3.5 w-3.5" />,
+				onSelect: () => void onStopLog(rowId),
+				disabled: isRowPending,
+			});
+		}
+		items.push(
+			{
+				id: "change-task",
+				label: "Change task",
+				icon: <Pencil className="h-3.5 w-3.5" />,
+				onSelect: () => onOpenTaskModal(log),
+				disabled: isRowPending || loadingTasks || isReadOnly,
+			},
+			{
+				id: "edit",
+				label: "Edit log",
+				icon: <Pencil className="h-3.5 w-3.5" />,
+				onSelect: () => onEditLog(log),
+				disabled: isRowPending || hasActiveLog || isReadOnly,
+			},
+			{
+				id: "delete",
+				label: "Delete log",
+				icon: <Trash2 className="h-3.5 w-3.5" />,
+				onSelect: () => void onDeleteLog(rowId),
+				disabled: isRowPending || isReadOnly,
+				tone: "danger",
+			},
+			{
+				id: "open-roadmap-task",
+				label: "Open task in roadmap",
+				icon: <ExternalLink className="h-3.5 w-3.5" />,
+				onSelect: () => onOpenTaskInRoadmap(log),
+				disabled: isRowPending || !canOpenInRoadmap,
+			},
+		);
+		return items;
+	}, [
+		isRunning,
+		isRowPending,
+		loadingTasks,
+		isReadOnly,
+		hasActiveLog,
+		canOpenInRoadmap,
+		log,
+		rowId,
+		onStopLog,
+		onOpenTaskModal,
+		onEditLog,
+		onDeleteLog,
+		onOpenTaskInRoadmap,
+	]);
+
+	return (
+		<RowActionsMenu
+			rowId={rowId}
+			openMenuRowId={openMenuRowId}
+			onSetOpenMenuRowId={onSetOpenMenuRowId}
+			items={menuItems}
+			loading={isRowPending}
+		/>
+	);
+});
+
 function MyLogsGridSkeleton() {
 	return (
 		<div className="rounded-xl border border-gray-200 overflow-hidden bg-white animate-pulse">
@@ -220,51 +449,11 @@ export function TeamMyLogsGrid({
 	canOpenTaskInRoadmap,
 	onOpenAddLog,
 }: TeamMyLogsGridProps) {
-	const [liveNowMs, setLiveNowMs] = useState(Date.now());
 	const [openMenuRowId, setOpenMenuRowId] = useState<string | null>(null);
 
 	const hasActiveLog = useMemo(
 		() => logs.some((log) => !log.ended_at),
 		[logs],
-	);
-
-	useEffect(() => {
-		if (!hasActiveLog) return;
-		const interval = window.setInterval(() => setLiveNowMs(Date.now()), 1000);
-		return () => window.clearInterval(interval);
-	}, [hasActiveLog]);
-
-	const fullDateFormatter = useMemo(
-		() =>
-			new Intl.DateTimeFormat(undefined, {
-				weekday: "long",
-				month: "long",
-				day: "numeric",
-				year: "numeric",
-			}),
-		[],
-	);
-
-	const timeFormatter = useMemo(
-		() =>
-			new Intl.DateTimeFormat(undefined, {
-				hour: "2-digit",
-				minute: "2-digit",
-				second: "2-digit",
-			}),
-		[],
-	);
-	const shortDateTimeFormatter = useMemo(
-		() =>
-			new Intl.DateTimeFormat(undefined, {
-				month: "short",
-				day: "numeric",
-				year: "numeric",
-				hour: "2-digit",
-				minute: "2-digit",
-				second: "2-digit",
-			}),
-		[],
 	);
 
 	const taskTitleById = useMemo(() => {
@@ -289,9 +478,10 @@ export function TeamMyLogsGrid({
 
 			return {
 				id: log.id,
-				date: !hasValidStart ? "-" : fullDateFormatter.format(startedDate),
+				date: !hasValidStart ? "-" : FULL_DATE_FORMATTER.format(startedDate),
+				project_label: log.project?.title || log.project_id,
 				task_id: log.task_id,
-				time_in: !hasValidStart ? "-" : timeFormatter.format(startedDate),
+				time_in: !hasValidStart ? "-" : TIME_FORMATTER.format(startedDate),
 				is_running: !log.ended_at,
 				log: {
 					...log,
@@ -303,66 +493,12 @@ export function TeamMyLogsGrid({
 			};
 		});
 		return populatedRows;
-	}, [fullDateFormatter, logs, taskTitleById, timeFormatter]);
+	}, [logs, taskTitleById]);
 
-	const formatTimeOut = useMemo(
-		() => (log: TaskTimeLog) => {
-			const endedDate = log.ended_at ? new Date(log.ended_at) : null;
-			const nowDate = new Date(liveNowMs);
-			const startedDate = new Date(log.started_at);
-			const hasValidStart = !Number.isNaN(startedDate.getTime());
-			const hasValidEnd = Boolean(
-				endedDate && !Number.isNaN(endedDate.getTime()),
-			);
-			const hasValidNow = !Number.isNaN(nowDate.getTime());
-			const endedDateValue: Date | undefined = hasValidEnd
-				? (endedDate as Date)
-				: undefined;
-			const isMultiDay =
-				hasValidStart &&
-				hasValidEnd &&
-				startedDate.toDateString() !== endedDateValue?.toDateString();
-
-			if (hasValidEnd) {
-				return isMultiDay
-					? shortDateTimeFormatter.format(endedDateValue)
-					: timeFormatter.format(endedDateValue as Date);
-			}
-			if (!hasValidNow) return "-";
-			if (
-				hasValidStart &&
-				startedDate.toDateString() !== nowDate.toDateString()
-			) {
-				return shortDateTimeFormatter.format(nowDate);
-			}
-			return timeFormatter.format(nowDate);
-		},
-		[liveNowMs, shortDateTimeFormatter, timeFormatter],
-	);
-
-	const getHoursWorked = useMemo(
-		() => (log: TaskTimeLog) =>
-			Number((liveDurationSecondsFromLog(log, liveNowMs) / 3600).toFixed(2)),
-		[liveNowMs],
-	);
-
-	const getFees = useMemo(
-		() => (log: TaskTimeLog) => {
-			// Settled logs use their own rate_snapshot; running logs (no
-			// snapshot until first stop in some cases) fall back to the
-			// caller's current ownRate so the live timer feels accurate.
-			const snap = Number(log.rate_snapshot ?? 0);
-			const hourly =
-				snap > 0 ? snap : ownRate ? Number(ownRate.hourly_rate) : null;
-			if (hourly === null || !Number.isFinite(hourly)) return null;
-			const hoursWorked = getHoursWorked(log);
-			return Number((hoursWorked * hourly).toFixed(2));
-		},
-		[getHoursWorked, ownRate],
-	);
-
-	const getCurrency = (log: TaskTimeLog) =>
-		log.currency_snapshot || ownRate?.currency || "USD";
+	// Stable hourly_rate / currency for the LiveFeesCell fallback. Value
+	// is what the cell actually compares; identity changes here are fine.
+	const fallbackHourlyRate = ownRate ? Number(ownRate.hourly_rate) : null;
+	const fallbackCurrency = ownRate?.currency ?? null;
 
 	const columnHelper = createColumnHelper<MyLogGridRow>();
 	const columns = useMemo(
@@ -371,6 +507,15 @@ export function TeamMyLogsGrid({
 				id: "date",
 				header: "Dates",
 				cell: (info) => info.getValue(),
+			}),
+			columnHelper.accessor("project_label", {
+				id: "project",
+				header: "Project",
+				cell: (info) => (
+					<span className="block truncate" title={info.getValue()}>
+						{info.getValue()}
+					</span>
+				),
 			}),
 			columnHelper.accessor("task_id", {
 				id: "task_id",
@@ -409,57 +554,46 @@ export function TeamMyLogsGrid({
 			columnHelper.display({
 				id: "time_out",
 				header: "Time-Out",
-				cell: (info) => (
-					<span className="tabular-nums">
-						{formatTimeOut(info.row.original.log)}
-					</span>
-				),
+				cell: (info) => <LiveTimeOutCell log={info.row.original.log} />,
 			}),
 			columnHelper.display({
 				id: "hours_worked",
 				header: "Hours",
-				cell: (info) => {
-					const row = info.row.original;
-					return (
-						<span className="text-xs font-semibold text-gray-700">
-							{getHoursWorked(row.log).toFixed(2)}
-						</span>
-					);
-				},
+				cell: (info) => <LiveHoursCell log={info.row.original.log} />,
 			}),
 			columnHelper.display({
 				id: "fees",
 				header: "Fees",
-				cell: (info) => {
-					const row = info.row.original;
-					const fees = getFees(row.log);
-					return (
-						<span className="text-xs font-semibold text-emerald-700">
-							{fees === null ? "-" : `${fees.toFixed(2)} ${getCurrency(row.log)}`}
-						</span>
-					);
-				},
+				cell: (info) => (
+					<LiveFeesCell
+						log={info.row.original.log}
+						fallbackHourlyRate={fallbackHourlyRate}
+						fallbackCurrency={fallbackCurrency}
+					/>
+				),
 			}),
 			columnHelper.accessor((row) => row.log.status, {
 				id: "status",
 				header: "Status",
 				cell: (info) => {
 					const row = info.row.original;
-					return (
-						<div className="flex items-center gap-1">
-							{row.is_running && (
-								<span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-100 text-sky-700">
-									running
-								</span>
-							)}
-							<span
-								className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusBadgeClass(
-									info.getValue(),
-								)}`}
-							>
-								{info.getValue()}
+					// While running, the review status (always 'pending' until
+					// the log is stopped) is noise — collapse to one badge.
+					if (row.is_running) {
+						return (
+							<span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-100 text-sky-700">
+								running
 							</span>
-						</div>
+						);
+					}
+					return (
+						<span
+							className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusBadgeClass(
+								info.getValue(),
+							)}`}
+						>
+							{info.getValue()}
+						</span>
 					);
 				},
 			}),
@@ -468,60 +602,22 @@ export function TeamMyLogsGrid({
 				header: "Actions",
 				cell: (info) => {
 					const row = info.row.original;
-					const isRowPending = Boolean(rowPendingById[row.id]);
-					const isReadOnly = isMemberReadOnlyStatus(row.log.status);
-					const canOpenInRoadmap = canOpenTaskInRoadmap(row.log.task_id);
-
-					const menuItems: ActionMenuItem[] = [];
-					if (row.is_running) {
-						menuItems.push({
-							id: "stop",
-							label: "Stop timer",
-							icon: <Square className="h-3.5 w-3.5" />,
-							onSelect: () => void onStopLog(row.id),
-							disabled: isRowPending,
-						});
-					}
-					menuItems.push(
-						{
-							id: "change-task",
-							label: "Change task",
-							icon: <Pencil className="h-3.5 w-3.5" />,
-							onSelect: () => onOpenTaskModal(row.log),
-							disabled: isRowPending || loadingTasks || isReadOnly,
-						},
-						{
-							id: "edit",
-							label: "Edit log",
-							icon: <Pencil className="h-3.5 w-3.5" />,
-							onSelect: () => onEditLog(row.log),
-							disabled: isRowPending || hasActiveLog || isReadOnly,
-						},
-						{
-							id: "delete",
-							label: "Delete log",
-							icon: <Trash2 className="h-3.5 w-3.5" />,
-							onSelect: () => void onDeleteLog(row.id),
-							disabled: isRowPending || isReadOnly,
-							tone: "danger",
-						},
-						{
-							id: "open-roadmap-task",
-							label: "Open task in roadmap",
-							icon: <ExternalLink className="h-3.5 w-3.5" />,
-							onSelect: () => onOpenTaskInRoadmap(row.log),
-							disabled: isRowPending || !canOpenInRoadmap,
-						},
-					);
-
 					return (
-						<RowActionsMenu
+						<MyLogsActionsCell
+							log={row.log}
 							rowId={row.id}
+							isRunning={row.is_running}
+							isRowPending={Boolean(rowPendingById[row.id])}
+							hasActiveLog={hasActiveLog}
+							loadingTasks={loadingTasks}
+							canOpenInRoadmap={canOpenTaskInRoadmap(row.log.task_id)}
 							openMenuRowId={openMenuRowId}
 							onSetOpenMenuRowId={setOpenMenuRowId}
-							items={menuItems}
-							disabled={false}
-							loading={isRowPending}
+							onStopLog={onStopLog}
+							onOpenTaskModal={onOpenTaskModal}
+							onEditLog={onEditLog}
+							onDeleteLog={onDeleteLog}
+							onOpenTaskInRoadmap={onOpenTaskInRoadmap}
 						/>
 					);
 				},
@@ -530,9 +626,6 @@ export function TeamMyLogsGrid({
 		[
 			columnHelper,
 			loadingTasks,
-			formatTimeOut,
-			getFees,
-			getHoursWorked,
 			hasActiveLog,
 			onDeleteLog,
 			onEditLog,
@@ -540,12 +633,13 @@ export function TeamMyLogsGrid({
 			onOpenAddLog,
 			onOpenTaskModal,
 			onStopLog,
-			ownRate?.currency,
 			openMenuRowId,
 			rowPendingById,
 			canOpenTaskInRoadmap,
 			taskTitleById,
 			taskSyncById,
+			fallbackHourlyRate,
+			fallbackCurrency,
 		],
 	);
 
@@ -557,17 +651,18 @@ export function TeamMyLogsGrid({
 
 	if (loadingLogs) return <MyLogsGridSkeleton />;
 	return (
-		<div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-			<table className="w-full table-fixed text-[11px]">
+		<div className="rounded-xl border border-gray-200 bg-white overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+			<table className="w-full min-w-[1050px] table-fixed text-[11px]">
 				<colgroup>
-					<col className="w-[19%]" />
-					<col className="w-[20%]" />
-					<col className="w-[13%]" />
-					<col className="w-[13%]" />
+					<col className="w-[16%]" />
+					<col className="w-[14%]" />
+					<col className="w-[18%]" />
+					<col className="w-[10%]" />
+					<col className="w-[10%]" />
+					<col className="w-[7%]" />
+					<col className="w-[9%]" />
 					<col className="w-[8%]" />
-					<col className="w-[9%]" />
-					<col className="w-[9%]" />
-					<col className="w-[9%]" />
+					<col className="w-[8%]" />
 				</colgroup>
 				<thead className="bg-slate-900 text-white">
 					{table.getHeaderGroups().map((headerGroup) => (
@@ -591,31 +686,18 @@ export function TeamMyLogsGrid({
 				<tbody>
 					{rows.length === 0 ? (
 						<tr className="border-t border-gray-200">
-							<td colSpan={8} className="px-6 py-20">
+							<td colSpan={9} className="px-6 py-12">
 								<div className="mx-auto flex max-w-sm flex-col items-center text-center">
-									<div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
-										<Timer className="h-7 w-7 text-slate-500" />
+									<div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100">
+										<Timer className="h-6 w-6 text-slate-500" />
 									</div>
 									<h3 className="text-base font-semibold text-slate-900">
 										No time logged yet
 									</h3>
 									<p className="mt-2 text-sm text-slate-500">
-										Track time on tasks across the projects this team is
-										attached to. Each log freezes your current rate, so you'll
-										always know what it's worth.
+										Click any of the rows below to start a timer. Each log
+										freezes your current rate.
 									</p>
-									<p className="mt-3 text-sm text-slate-500">
-										Start a timer to begin logging, then submit it for review
-										by a team owner or admin.
-									</p>
-									<button
-										type="button"
-										onClick={onOpenAddLog}
-										className="mt-6 inline-flex items-center gap-2 rounded-md bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-									>
-										<Play className="h-3.5 w-3.5" />
-										Start a timer
-									</button>
 								</div>
 							</td>
 						</tr>
@@ -635,6 +717,17 @@ export function TeamMyLogsGrid({
 							</tr>
 						))
 					)}
+					<tr
+						className="group cursor-pointer border-t border-dashed border-slate-200 hover:bg-sky-50/50"
+						onClick={onOpenAddLog}
+					>
+						<td colSpan={9} className="px-3 py-2 align-middle">
+							<span className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 group-hover:text-sky-700">
+								<Plus className="h-3.5 w-3.5" />
+								<span className="font-medium">Click to start a timer</span>
+							</span>
+						</td>
+					</tr>
 				</tbody>
 			</table>
 		</div>
