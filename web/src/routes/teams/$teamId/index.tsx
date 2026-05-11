@@ -2,7 +2,6 @@ import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import {
-	ChevronRight,
 	Loader2,
 	Mail,
 	Pencil,
@@ -199,28 +198,8 @@ function TeamDetailPage() {
 
 	return (
 		<DashboardShell>
-			<div className="mx-auto w-full max-w-[1040px] px-5 py-8 md:px-8 md:py-10">
-				<nav
-					aria-label="Breadcrumb"
-					className="mb-6 flex items-center gap-1.5 text-sm font-medium"
-				>
-					<Link
-						to="/teams"
-						className="text-slate-600 transition-colors hover:text-slate-900"
-					>
-						Teams
-					</Link>
-					<ChevronRight
-						className="h-4 w-4 text-slate-400"
-						aria-hidden="true"
-					/>
-					<span aria-current="page" className="truncate text-slate-900">
-						{team.name || "Untitled team"}
-					</span>
-				</nav>
-
+			<div className="w-full px-6 pb-6 pt-16">
 				<AppSectionHeader
-					kicker="Team"
 					title={team.name}
 					subtitle={team.description ?? undefined}
 				/>

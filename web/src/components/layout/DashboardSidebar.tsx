@@ -8,14 +8,13 @@ import {
 	Users,
 	UserPlus,
 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { type Project, projectService } from "@/services/project.service";
 import { listMyTeams, type Team } from "@/services/teams.service";
 import { useUser } from "@/stores/authStore";
 import {
 	SidebarNavLink,
 	SidebarSectionHeader,
-	useSidebarExpansion,
 } from "./sidebar/SidebarPrimitives";
 import { ProjectSidebarLink } from "./sidebar/ProjectSidebarLink";
 import {
@@ -24,7 +23,26 @@ import {
 } from "./sidebar/SidebarEmptyState";
 import { TeamSidebarGroup } from "./sidebar/TeamSidebarGroup";
 
-const TEAMS_EXPANDED_KEY = "dashboard_sidebar_teams_expanded";
+const TEAMS_OPEN_KEY = "dashboard_sidebar_open_team";
+
+function loadOpenTeam(): string | null {
+	if (typeof window === "undefined") return null;
+	try {
+		return sessionStorage.getItem(TEAMS_OPEN_KEY);
+	} catch {
+		return null;
+	}
+}
+
+function saveOpenTeam(id: string | null) {
+	if (typeof window === "undefined") return;
+	try {
+		if (id) sessionStorage.setItem(TEAMS_OPEN_KEY, id);
+		else sessionStorage.removeItem(TEAMS_OPEN_KEY);
+	} catch {
+		/* non-fatal */
+	}
+}
 
 export function DashboardSidebar() {
 	const user = useUser();
@@ -47,32 +65,34 @@ export function DashboardSidebar() {
 	});
 	const teams = (teamsQuery.data as Team[] | undefined) ?? [];
 
-	const teamsExpansion = useSidebarExpansion(TEAMS_EXPANDED_KEY);
-	const [teamsExpanded, setTeamsExpanded] = useState<Record<string, boolean>>(
-		() => teamsExpansion.load(),
-	);
-
-	const toggleTeamExpanded = useCallback(
-		(teamId: string, currentlyExpanded: boolean) => {
-			setTeamsExpanded((prev) => {
-				const next = { ...prev, [teamId]: !currentlyExpanded };
-				teamsExpansion.save(next);
-				return next;
-			});
-		},
-		[teamsExpansion],
-	);
-
-	// When the URL targets a specific team (e.g. /teams/:id or
-	// /team-onboarding/:id), force that team's accordion open regardless of
-	// the persisted expansion state so the user lands with their context
-	// already visible.
 	const activeTeamId = (() => {
 		const match =
 			currentPath.match(/^\/teams\/([^/]+)/) ||
 			currentPath.match(/^\/team-onboarding\/([^/]+)/);
 		return match?.[1] ?? null;
 	})();
+
+	const [openTeamId, setOpenTeamId] = useState<string | null>(
+		() => loadOpenTeam(),
+	);
+
+	const lastSyncedActiveTeamId = useRef<string | null>(null);
+	useEffect(() => {
+		if (activeTeamId && activeTeamId !== lastSyncedActiveTeamId.current) {
+			lastSyncedActiveTeamId.current = activeTeamId;
+			setOpenTeamId(activeTeamId);
+			saveOpenTeam(activeTeamId);
+		}
+	}, [activeTeamId]);
+
+	const toggleTeamExpanded = useCallback(
+		(teamId: string, currentlyExpanded: boolean) => {
+			const next = currentlyExpanded ? null : teamId;
+			setOpenTeamId(next);
+			saveOpenTeam(next);
+		},
+		[],
+	);
 
 	return (
 		<aside className="hidden lg:flex sticky top-14 h-[calc(100vh-3.5rem)] w-[260px] shrink-0 flex-col border-r border-slate-200 bg-white/90 backdrop-blur">
@@ -126,13 +146,10 @@ export function DashboardSidebar() {
 						/>
 					) : (
 						<div className="space-y-0.5">
-							{teams.map((t, i) => {
-								// Explicit user toggle wins (true OR false).
-								// Falls back to: auto-open the team in the URL,
-								// otherwise open the first two by default.
-								const expanded =
-									teamsExpanded[t.id] ??
-									(t.id === activeTeamId || i < 2);
+							{teams.map((t) => {
+								const effectiveOpenId =
+									openTeamId ?? activeTeamId ?? teams[0]?.id ?? null;
+								const expanded = t.id === effectiveOpenId;
 								return (
 									<TeamSidebarGroup
 										key={t.id}
