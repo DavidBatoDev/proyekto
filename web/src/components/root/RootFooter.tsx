@@ -9,7 +9,7 @@ export const RootFooter = () => {
           <div className="md:col-span-2">
             <BrandMark className="mb-4 h-10 text-slate-900" />
             <p className="max-w-sm text-sm text-slate-600">
-              Hire a team, not a stranger. Vetted consultants run your project end-to-end on Proyekto.
+              Turn your ideas into action, with Proyekto.
             </p>
           </div>
 
@@ -40,6 +40,7 @@ export const RootFooter = () => {
               <li>
                 <Link
                   to="/consultant"
+                  preload="intent"
                   className="font-semibold text-slate-700 transition-colors hover:text-slate-900"
                 >
                   Apply to lead

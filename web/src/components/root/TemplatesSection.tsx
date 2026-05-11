@@ -73,7 +73,7 @@ export const TemplatesSection = () => {
   );
 
   return (
-    <section id="templates" className="relative mt-14 lg:mt-16">
+    <section id="templates" className="relative mt-14 scroll-mt-24 lg:mt-16">
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[62%] bg-[radial-gradient(75%_95%_at_50%_100%,rgba(37,99,235,0.26),rgba(37,99,235,0)_72%)]" />
       <div className="pointer-events-none absolute -left-28 bottom-10 z-0 h-64 w-64 rounded-full bg-blue-400/30 blur-3xl" />
       <div className="pointer-events-none absolute left-1/2 bottom-8 z-0 h-80 w-80 -translate-x-1/2 rounded-full bg-blue-500/22 blur-3xl" />

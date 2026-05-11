@@ -32,9 +32,10 @@ const Header = () => {
 		return null;
 	}
 
-	// /consultant/apply and /project-posting are chrome-less surfaces
-	// (each has its own back/exit affordance and a focused full-page UI).
+	// These paths have their own marketing/focused headers — no layout header needed.
 	if (
+		currentPath === "/consultant" ||
+		currentPath === "/consultant/" ||
 		currentPath.startsWith("/consultant/apply") ||
 		currentPath.startsWith("/project-posting")
 	) {

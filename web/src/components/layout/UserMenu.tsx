@@ -1,23 +1,17 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronDown, LogOut, ShieldCheck, User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
-import { switchPersona } from "@/lib/auth-api";
-import { profileKeys } from "@/queries/profile";
 import { adminService } from "@/services/admin.service";
 import { useAuthStore } from "@/stores/authStore";
 
-type PersonaKey = "client" | "freelancer" | "consultant";
-
 export default function UserMenu() {
 	const [isOpen, setIsOpen] = useState(false);
-	const [isChangingPersona, setIsChangingPersona] = useState(false);
 	const dropdownRef = useRef<HTMLDivElement>(null);
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const { data: profile } = useProfileQuery();
 	const { user, signOut } = useAuthStore();
-	const queryClient = useQueryClient();
 	const navigate = useNavigate();
 
 	const { data: adminProfile } = useQuery({
@@ -59,50 +53,10 @@ export default function UserMenu() {
 	const getPersonaLabel = (persona: string) =>
 		persona.charAt(0).toUpperCase() + persona.slice(1);
 
-	const handlePersonaChange = async (newPersona: string) => {
-		if (newPersona === profile?.active_persona) return;
-
-		setIsChangingPersona(true);
-		try {
-			await switchPersona(newPersona as PersonaKey);
-
-			if (profile?.id) {
-				await queryClient.invalidateQueries({
-					queryKey: profileKeys.byUser(profile.id),
-				});
-			}
-
-			setIsOpen(false);
-		} catch (error: unknown) {
-			console.error("Failed to change persona:", error);
-			const apiMessage =
-				typeof error === "object" && error !== null && "response" in error
-					? (
-							error as {
-								response?: { data?: { error?: { message?: string } } };
-							}
-						).response?.data?.error?.message
-					: undefined;
-			const fallbackMessage =
-				error instanceof Error ? error.message : "Failed to change persona";
-			alert(fallbackMessage || apiMessage || "Failed to change persona");
-		} finally {
-			setIsChangingPersona(false);
-		}
-	};
-
 	const handleLogout = async () => {
 		await signOut();
 		setIsOpen(false);
 		navigate({ to: "/" });
-	};
-
-	const getAvailablePersonas = () => {
-		const personas: PersonaKey[] = ["freelancer", "client"];
-		if (profile?.is_consultant_verified) {
-			personas.push("consultant");
-		}
-		return personas;
 	};
 
 	const getDropdownStyle = () => ({
@@ -155,53 +109,11 @@ export default function UserMenu() {
 					className="w-64 rounded-xl border border-(--app-border) bg-(--app-surface-strong) py-2 shadow-(--app-shadow-md) backdrop-blur-md"
 					style={getDropdownStyle()}
 				>
-					{isChangingPersona && (
-						<div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/85 backdrop-blur-sm">
-							<div className="flex flex-col items-center gap-3">
-								<div className="relative">
-									<div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-slate-600" />
-									<div className="absolute inset-0 animate-ping rounded-full bg-slate-400/20" />
-								</div>
-								<span className="animate-pulse text-sm font-semibold text-slate-800">
-									Switching persona...
-								</span>
-							</div>
-						</div>
-					)}
-
 					<div className="border-b border-slate-100 px-4 py-3">
 						<p className="text-sm font-semibold text-slate-900">
 							{getDisplayName()}
 						</p>
 						<p className="truncate text-xs text-slate-500">{profile?.email}</p>
-					</div>
-
-					<div className="border-b border-slate-100 px-4 py-3">
-						<p className="mb-2 text-xs font-semibold text-slate-700">
-							Switch Persona
-						</p>
-						<div className="space-y-1">
-							{getAvailablePersonas().map((persona) => (
-								<button
-									type="button"
-									key={persona}
-									onClick={() => handlePersonaChange(persona)}
-									disabled={
-										isChangingPersona || persona === profile?.active_persona
-									}
-									className={`w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm transition-colors ${
-										persona === profile?.active_persona
-											? "bg-slate-100 font-medium text-slate-800"
-											: "text-slate-700 hover:bg-slate-50"
-									} ${isChangingPersona ? "cursor-not-allowed opacity-50" : ""}`}
-								>
-									{getPersonaLabel(persona)}
-									{persona === profile?.active_persona && (
-										<span className="ml-2 text-xs">Active</span>
-									)}
-								</button>
-							))}
-						</div>
 					</div>
 
 					<div className="py-1">

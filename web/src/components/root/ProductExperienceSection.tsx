@@ -131,13 +131,14 @@ function SmallFeatureTile({
 
 export function ProductExperienceSection() {
   return (
-    <section id="features" className="relative mt-16 lg:mt-20">
+    <section id="features" className="relative mt-16 scroll-mt-24 lg:mt-20">
       <div className="text-center">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">Proyekto Features</p>
         <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-          Proyekto Feature
+          Everything you need in one place
         </h2>
         <p className="mx-auto mt-3 max-w-3xl text-sm text-slate-600 sm:text-base">
-          Plan, execute, and run delivery with roadmap, collaboration, operations, and marketplace tools in one connected system.
+          100+ features to plan, execute, and stay aligned — without switching tools.
         </p>
       </div>
 

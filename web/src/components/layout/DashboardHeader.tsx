@@ -1,7 +1,7 @@
 import { Badge, Divider, Menu, MenuItem } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Bell, ChevronDown, MessageCircle, Search } from "lucide-react";
+import { Bell, MessageCircle, Search } from "lucide-react";
 import { type MouseEvent, useState } from "react";
 import { openProjectInviteModal } from "@/components/invites/projectInviteModalEvents";
 import { useNotificationsRealtime } from "@/hooks/useNotificationsRealtime";
@@ -11,22 +11,10 @@ import { Button } from "@/ui/button";
 import { BrandMark } from "@/components/brand/BrandMark";
 import UserMenu from "./UserMenu";
 
-type HeaderMenuItem = {
-	label: string;
-	href: string;
-	divider?: boolean;
-};
-
-type HeaderMenuConfig = {
-	label: string;
-	items: HeaderMenuItem[];
-};
-
 const DashboardHeader = () => {
 	const { isAuthenticated, profile } = useAuthStore();
 	const isAuthLoading = useIsLoading();
 	const isLoading = isAuthLoading || (isAuthenticated && !profile);
-	const [consultantsMenuOpen, setConsultantsMenuOpen] = useState(false);
 	const [notificationAnchor, setNotificationAnchor] =
 		useState<HTMLElement | null>(null);
 	const queryClient = useQueryClient();
@@ -95,85 +83,7 @@ const DashboardHeader = () => {
 	const navItems = [
 		{ label: "Home", to: "/dashboard" },
 		{ label: "Projects", to: "/dashboard", hash: "my-projects" },
-		{
-			label: "Market place",
-			to: profile?.is_consultant_verified
-				? "/consultant/marketplace"
-				: "/consultant/browse",
-		},
-		...(profile?.is_consultant_verified
-			? [{ label: "Templates", to: "/consultant/templates" }]
-			: []),
 	];
-
-	const getPersonaMenu = (): HeaderMenuConfig => {
-		const persona = profile?.active_persona || "client";
-		const isConsultantVerified = profile?.is_consultant_verified;
-
-		// Shared CTA - only shown when not yet a verified consultant
-		const applyItem: HeaderMenuItem[] = !isConsultantVerified
-			? [
-					{
-						label: "Apply as Consultant",
-						href: "/consultant/apply",
-						divider: true,
-					},
-				]
-			: [];
-
-		switch (persona) {
-			case "freelancer":
-				return {
-					label: "Mentorship",
-					items: [
-						profile?.is_public
-							? { label: "You're Live", href: "/consultant/marketplace" }
-							: {
-									label: "Get Hired (I Want to Work)",
-									href: "/freelancer/go-live",
-								},
-						{ label: "My Invites", href: "/freelancer/invites" },
-						{ label: "Find a Mentor", href: "/mentors" },
-						{ label: "My Applications", href: "/applications" },
-						{ label: "Saved Mentors", href: "/saved-mentors" },
-						...applyItem,
-					],
-				};
-			case "consultant":
-				return {
-					label: "My Clients",
-					items: [
-						{
-							label: "Private Freelancer Marketplace",
-							href: "/consultant/marketplace",
-						},
-						{
-							label: "Template Roadmaps",
-							href: "/consultant/templates",
-						},
-						{ label: "Browse Opportunities", href: "/projects" },
-						{ label: "My Clients", href: "/clients" },
-						{ label: "Active Contracts", href: "/contracts" },
-					],
-				};
-			default:
-				return {
-					label: "My Consultants",
-					items: [
-						{ label: "Post a Project", href: "/project-posting" },
-						{
-							label: "Browse Professional Consultants",
-							href: "/consultant/browse",
-						},
-						{ label: "My Consultant Pool", href: "/consultant-pool" },
-						{ label: "Direct Contacts", href: "/direct-contacts" },
-						...applyItem,
-					],
-				};
-		}
-	};
-
-	const menuConfig = getPersonaMenu();
 
 	return (
 		<div className="z-10 flex h-full w-full items-center justify-between px-4 sm:px-6">
@@ -196,49 +106,6 @@ const DashboardHeader = () => {
 							{item.label}
 						</Link>
 					))}
-
-					<div className="relative">
-						<button
-							type="button"
-							onMouseEnter={() => setConsultantsMenuOpen(true)}
-							onMouseLeave={() => setConsultantsMenuOpen(false)}
-							className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[14px] font-semibold text-slate-800 transition-colors hover:bg-slate-100 hover:text-slate-900"
-						>
-							{menuConfig.label}
-							<ChevronDown
-								size={16}
-								className={`text-slate-700 transition-transform ${
-									consultantsMenuOpen ? "rotate-180" : "rotate-0"
-								}`}
-							/>
-						</button>
-
-						{consultantsMenuOpen && (
-							<div
-								className="absolute left-0 top-full z-[10004] pt-2"
-								role="menu"
-								aria-label={`${menuConfig.label} menu`}
-								onMouseEnter={() => setConsultantsMenuOpen(true)}
-								onMouseLeave={() => setConsultantsMenuOpen(false)}
-							>
-								<div className="min-w-[250px] rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_14px_32px_rgba(15,23,42,0.14)]">
-									{menuConfig.items.map((item) => (
-										<div key={item.label}>
-											{item.divider && (
-												<div className="mx-2 my-1 border-t border-slate-200" />
-											)}
-											<Link
-												to={item.href}
-												className="block rounded-lg px-3 py-2 text-[14px] font-medium text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-900"
-											>
-												{item.label}
-											</Link>
-										</div>
-									))}
-								</div>
-							</div>
-						)}
-					</div>
 				</nav>
 			</div>
 

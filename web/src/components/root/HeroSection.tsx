@@ -19,16 +19,17 @@ export const HeroSection = () => {
             className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-300/70 bg-white/85 px-3 py-1.5 text-xs font-semibold tracking-[0.08em] text-slate-700"
           >
             <Sparkles className="h-3.5 w-3.5 text-cyan-600" />
-            Vetted consultants. Vetted teams.
+            Simple. Flexible. Powerful.
           </motion.div>
 
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: 0.06 }}
-            className="mt-5 text-4xl font-semibold leading-[1.05] tracking-tight text-slate-900 sm:text-5xl lg:text-6xl"
+            className="mt-5 text-balance text-4xl font-semibold leading-[1.05] tracking-tight text-slate-900 sm:text-5xl lg:text-6xl font-['Space_Grotesk']"
           >
-            Hire a team,<br />not a stranger.
+            <span className="block sm:inline">Turn ideas</span>{" "}
+            <span className="block sm:inline">into action</span>
           </motion.h1>
 
           <motion.p
@@ -37,7 +38,7 @@ export const HeroSection = () => {
             transition={{ duration: 0.35, delay: 0.12 }}
             className="mt-4 max-w-xl text-sm leading-relaxed text-slate-600 sm:text-base"
           >
-            Your project, led by a vetted consultant who plans the roadmap, hires the freelancers, and ships the work. You stay in the loop — not in the weeds.
+            Start planning your project step-by-step and invite your team. No complex setups, no guesswork — just clarity from the get-go.
           </motion.p>
 
           <motion.div
@@ -48,38 +49,24 @@ export const HeroSection = () => {
           >
             <Link
               to="/auth/signup"
-              search={{
-                redirect: window.location.pathname,
-                lane: "client_freelancer",
-                intent: "client",
-              }}
+              search={{ redirect: undefined }}
             >
               <Button
                 variant="contained"
                 colorScheme="primary"
                 className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800"
               >
-                I have a project to ship
+                Create Your Project Plan
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>
 
-            <Link
-              to="/auth/signup"
-              search={{
-                redirect: window.location.pathname,
-                lane: "client_freelancer",
-                intent: "freelancer",
-              }}
+            <a
+              href="#how-it-works"
+              className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition-all hover:border-slate-900 hover:text-slate-900"
             >
-              <Button
-                variant="outlined"
-                colorScheme="primary"
-                className="rounded-xl border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:border-slate-900 hover:text-slate-900"
-              >
-                I'm looking for freelance work
-              </Button>
-            </Link>
+              See How It Works
+            </a>
           </motion.div>
 
           <motion.p
@@ -88,13 +75,7 @@ export const HeroSection = () => {
             transition={{ duration: 0.35, delay: 0.26 }}
             className="mt-4 text-xs text-slate-500"
           >
-            Free to plan. 10% platform fee on hired work.{" "}
-            <Link
-              to="/consultant"
-              className="font-semibold text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-slate-900 hover:decoration-slate-700"
-            >
-              Consultants — run client teams on Proyekto →
-            </Link>
+            Free to start. No credit card required.
           </motion.p>
 
         </div>

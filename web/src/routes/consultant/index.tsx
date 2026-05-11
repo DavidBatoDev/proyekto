@@ -474,6 +474,7 @@ function FinalCTA() {
             <ApplyButton dark />
             <Link
               to="/"
+              preload="intent"
               className="inline-flex items-center justify-center rounded-xl border border-white/30 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition-all hover:border-white/60 hover:bg-white/10"
             >
               Back to homepage

@@ -1,137 +1,162 @@
-import { Layers3, ShieldCheck, TimerReset, UserCheck, Wallet, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { Layers3, TimerReset, Target } from "lucide-react";
 
-const cards = [
+const SCHEMES = [
   {
-    title: "Vetted consultants only",
-    description:
-      "Every consultant is interviewed and identity-verified by our team. Clients only see leads who've already proven they can deliver.",
-    icon: UserCheck,
+    name: "blue",
+    grad: ["rgb(37,99,235)", "rgb(67,56,202)"],
+    bodyText: "rgb(219,234,254)",
+    card2Bg: "rgb(255,255,255)", card2Border: "rgb(226,232,240)",
+    card3Bg: "rgb(248,250,252)", card3Border: "rgb(241,245,249)",
+    iconAccent: "rgb(37,99,235)",
+    iconAccentBg: "rgb(248,250,252)", iconAccentBorder: "rgb(241,245,249)",
   },
   {
-    title: "Escrow on every milestone",
-    description:
-      "Funds release when you approve the work — not before. No chasing wire transfers, no scope-creep surprises.",
-    icon: Wallet,
+    name: "violet",
+    grad: ["rgb(124,58,237)", "rgb(109,40,217)"],
+    bodyText: "rgb(237,233,254)",
+    card2Bg: "rgb(255,255,255)", card2Border: "rgb(221,214,254)",
+    card3Bg: "rgb(245,243,255)", card3Border: "rgb(237,233,254)",
+    iconAccent: "rgb(124,58,237)",
+    iconAccentBg: "rgb(245,243,255)", iconAccentBorder: "rgb(221,214,254)",
   },
   {
-    title: "AI-assisted planning",
-    description:
-      "Draft a clear roadmap before anyone gets hired. Sharper scope, tighter quotes, fewer mid-project resets.",
-    icon: Sparkles,
+    name: "emerald",
+    grad: ["rgb(5,150,105)", "rgb(15,118,110)"],
+    bodyText: "rgb(209,250,229)",
+    card2Bg: "rgb(255,255,255)", card2Border: "rgb(167,243,208)",
+    card3Bg: "rgb(236,253,245)", card3Border: "rgb(209,250,229)",
+    iconAccent: "rgb(5,150,105)",
+    iconAccentBg: "rgb(236,253,245)", iconAccentBorder: "rgb(167,243,208)",
   },
   {
-    title: "One workspace for the whole project",
-    description:
-      "Roadmap, chat, files, and time tracking in one place. No more juggling Slack, Notion, and a half-dozen invoices.",
-    icon: Layers3,
-  },
-  {
-    title: "Identity-verified freelancers",
-    description:
-      "Every freelancer your consultant proposes has passed identity, portfolio, and rate verification. The bench is curated, not crowdsourced.",
-    icon: ShieldCheck,
-  },
-  {
-    title: "Projects keep moving",
-    description:
-      "Automated reminders, status digests, and milestone nudges — so nothing slips between you, your consultant, and the team.",
-    icon: TimerReset,
+    name: "rose",
+    grad: ["rgb(225,29,72)", "rgb(194,65,12)"],
+    bodyText: "rgb(255,228,230)",
+    card2Bg: "rgb(255,255,255)", card2Border: "rgb(253,164,175)",
+    card3Bg: "rgb(255,241,242)", card3Border: "rgb(255,228,230)",
+    iconAccent: "rgb(225,29,72)",
+    iconAccentBg: "rgb(255,241,242)", iconAccentBorder: "rgb(253,164,175)",
   },
 ];
 
-const loopCards = [...cards, ...cards];
+const T = { duration: 0.5, ease: "easeInOut" };
 
 export function WhyProyektoSection() {
+  const [idx, setIdx] = useState(0);
+  const s = SCHEMES[idx];
+
+  const cycle = () => setIdx((i) => (i + 1) % SCHEMES.length);
+
   return (
-    <section id="why-proyekto" className="relative mt-16 lg:mt-20">
+    <section id="why-proyekto" className="relative mt-16 scroll-mt-24 lg:mt-20">
       <div className="pointer-events-none absolute -left-12 top-8 h-40 w-40 rounded-full bg-cyan-200/25 blur-3xl" />
       <div className="pointer-events-none absolute right-0 top-12 h-44 w-44 rounded-full bg-indigo-200/25 blur-3xl" />
 
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_12px_30px_rgba(16,24,40,0.06)] sm:p-8">
-        <div className="text-center">
-          <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-            Built for serious work
-          </h2>
-          <p className="mt-3 text-sm text-slate-600 sm:text-base">
-            Vetted people. Escrow-backed payments. One workspace from plan to ship.
-          </p>
+      <div className="text-center">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">Why Proyekto</p>
+        <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+          The easiest way to get your project across the finish line
+        </h2>
+        <p className="mx-auto mt-3 max-w-2xl text-sm text-slate-600 sm:text-base">
+          Built for consultants, freelancers, and client teams who need clarity, speed, and alignment — all in one place.
+        </p>
+      </div>
+
+      {/* Bento grid */}
+      <div
+        className="mt-10 grid cursor-pointer gap-4 select-none lg:grid-cols-12"
+        onClick={cycle}
+        title="Click to change theme"
+      >
+        {/* Primary card */}
+        <div className="relative overflow-hidden rounded-3xl p-8 text-white lg:col-span-5 lg:flex lg:min-h-[300px] lg:flex-col">
+          {/* Gradient layers — cross-fade between schemes */}
+          {SCHEMES.map((sc, i) => (
+            <motion.div
+              key={sc.name}
+              className="absolute inset-0"
+              style={{ background: `linear-gradient(135deg, ${sc.grad[0]}, ${sc.grad[1]})` }}
+              animate={{ opacity: i === idx ? 1 : 0 }}
+              transition={T}
+            />
+          ))}
+
+          {/* Decorative circles */}
+          <div className="pointer-events-none absolute -right-10 -top-10 h-48 w-48 rounded-full bg-white/10" />
+          <div className="pointer-events-none absolute -bottom-6 right-4 h-32 w-32 rounded-full bg-black/10" />
+
+          <div className="relative z-10 inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/25 bg-white/15">
+            <Target className="h-5 w-5 text-white" />
+          </div>
+
+          <div className="relative z-10 mt-auto pt-10">
+            <h3 className="text-2xl font-semibold leading-snug">
+              You know the work — Proyekto helps you run it
+            </h3>
+            <motion.p
+              animate={{ color: s.bodyText }}
+              transition={T}
+              className="mt-3 text-sm leading-relaxed"
+            >
+              Turn your ideas into clear steps, align your team, and keep projects moving forward — without juggling a dozen tools.
+            </motion.p>
+          </div>
         </div>
 
-        <div className="mt-6 border-t border-slate-200 pt-6">
-          <div className="relative overflow-hidden">
-            <div className="why-carousel-track flex w-max gap-4 pr-4">
-              {loopCards.map((card, index) => {
-                const Icon = card.icon;
-                const tone = index % cards.length;
-
-                return (
-                  <article
-                    key={`${card.title}-${index}`}
-                    className={`w-[330px] shrink-0 rounded-2xl border p-5 shadow-[0_8px_18px_rgba(15,23,42,0.05)] md:w-[380px] ${
-                      tone === 0
-                        ? "border-blue-200 bg-linear-to-br from-blue-500 to-blue-600 text-white"
-                        : tone === 1
-                          ? "border-blue-200 bg-linear-to-br from-blue-300 to-blue-400 text-slate-900"
-                          : "border-slate-200 bg-slate-50"
-                    }`}
-                  >
-                    <span
-                      className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border ${
-                        tone === 0
-                          ? "border-blue-200/70 bg-white/15 text-white"
-                          : tone === 1
-                            ? "border-blue-200/80 bg-white/60 text-blue-700"
-                            : "border-slate-200 bg-white text-slate-700"
-                      }`}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </span>
-
-                    <h3
-                      className={`mt-3 text-lg font-semibold ${
-                        tone === 0 ? "text-white" : "text-slate-900"
-                      }`}
-                    >
-                      {card.title}
-                    </h3>
-                    <p
-                      className={`mt-2 text-sm leading-relaxed ${
-                        tone === 0
-                          ? "text-blue-50"
-                          : tone === 1
-                            ? "text-blue-900/85"
-                            : "text-slate-600"
-                      }`}
-                    >
-                      {card.description}
-                    </p>
-                  </article>
-                );
-              })}
+        {/* Right stack */}
+        <div className="grid gap-4 lg:col-span-7 lg:grid-rows-2">
+          <motion.div
+            animate={{ backgroundColor: s.card2Bg, borderColor: s.card2Border }}
+            transition={T}
+            className="flex gap-5 rounded-3xl border p-6 shadow-sm"
+          >
+            <div className="shrink-0">
+              <motion.div
+                animate={{ backgroundColor: s.iconAccentBg, borderColor: s.iconAccentBorder }}
+                transition={T}
+                className="flex h-11 w-11 items-center justify-center rounded-2xl border"
+              >
+                <motion.div animate={{ color: s.iconAccent }} transition={T}>
+                  <Layers3 className="h-5 w-5" />
+                </motion.div>
+              </motion.div>
             </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Everything stays in one place</h3>
+              <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+                Your roadmap, your team, your tasks and payments — all connected in one easy-to-use workspace.
+              </p>
+            </div>
+          </motion.div>
 
-            <div className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-linear-to-r from-white to-transparent" />
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-linear-to-l from-white to-transparent" />
-          </div>
+          <motion.div
+            animate={{ backgroundColor: s.card3Bg, borderColor: s.card3Border }}
+            transition={T}
+            className="flex gap-5 rounded-3xl border p-6"
+          >
+            <div className="shrink-0">
+              <motion.div
+                animate={{ backgroundColor: s.iconAccentBg, borderColor: s.iconAccentBorder }}
+                transition={T}
+                className="flex h-11 w-11 items-center justify-center rounded-2xl border"
+              >
+                <motion.div animate={{ color: s.iconAccent }} transition={T}>
+                  <TimerReset className="h-5 w-5" />
+                </motion.div>
+              </motion.div>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Projects move forward, automatically</h3>
+              <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+                Track progress, surface blockers, and keep everyone aligned — no more chasing updates or falling behind.
+              </p>
+            </div>
+          </motion.div>
         </div>
       </div>
 
-      <style>{`
-        .why-carousel-track {
-          animation: why-carousel-loop 26s linear infinite;
-        }
-        .why-carousel-track:hover {
-          animation-play-state: paused;
-        }
-        @keyframes why-carousel-loop {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(calc(-50% - 0.5rem));
-          }
-        }
-      `}</style>
     </section>
   );
 }
