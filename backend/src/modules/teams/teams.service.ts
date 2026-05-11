@@ -391,6 +391,14 @@ export class TeamsService {
       project: {
         id: string;
         title: string | null;
+        status: string | null;
+        start_date: string | null;
+        custom_start_date: string | null;
+        client: {
+          id: string;
+          display_name: string | null;
+          avatar_url: string | null;
+        } | null;
       } | null;
     }>
   > {
@@ -400,7 +408,10 @@ export class TeamsService {
       .from('project_teams')
       .select(
         `project_id, team_id, is_primary, attached_at,
-         project:projects!project_teams_project_id_fkey(id, title)`,
+         project:projects!project_teams_project_id_fkey(
+           id, title, status, start_date, custom_start_date,
+           client:profiles!projects_client_id_fkey(id, display_name, avatar_url)
+         )`,
       )
       .eq('team_id', teamId)
       .order('attached_at', { ascending: false });
@@ -410,7 +421,18 @@ export class TeamsService {
       team_id: string;
       is_primary: boolean;
       attached_at: string;
-      project: { id: string; title: string | null } | null;
+      project: {
+        id: string;
+        title: string | null;
+        status: string | null;
+        start_date: string | null;
+        custom_start_date: string | null;
+        client: {
+          id: string;
+          display_name: string | null;
+          avatar_url: string | null;
+        } | null;
+      } | null;
     }>;
   }
 

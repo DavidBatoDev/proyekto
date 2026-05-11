@@ -22,7 +22,7 @@ export function TeamSidebarGroup({
 
 	const subItems = [
 		{
-			label: "Members",
+			label: "Team",
 			icon: Users,
 			to: `/teams/${team.id}`,
 			active: currentPath === `/teams/${team.id}`,

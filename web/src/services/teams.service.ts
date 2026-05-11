@@ -398,6 +398,14 @@ export interface TeamProjectAttachment {
 	project: {
 		id: string;
 		title: string | null;
+		status: string | null;
+		start_date: string | null;
+		custom_start_date: string | null;
+		client: {
+			id: string;
+			display_name: string | null;
+			avatar_url: string | null;
+		} | null;
 	} | null;
 }
 
