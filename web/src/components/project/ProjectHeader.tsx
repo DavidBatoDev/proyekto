@@ -7,10 +7,8 @@ import {
 } from "@tanstack/react-router";
 import {
 	Bell,
-	Boxes,
 	Briefcase,
 	ChevronRight,
-	ChevronsUpDown,
 	MessageCircle,
 	Search,
 } from "lucide-react";
@@ -88,29 +86,43 @@ export function ProjectHeader() {
 		<div className="z-10 flex h-full w-full items-center justify-between px-4 sm:px-6">
 			<div className="flex min-w-0 items-center gap-3 sm:gap-4">
 				<Link
-					to="/dashboard"
+					to="/"
 					className="flex shrink-0 items-center border-r border-slate-200 pr-3 sm:pr-4"
 				>
 					<BrandMark variant="mark" className="h-6 text-white" />
 				</Link>
 
-				<div className="flex min-w-0 items-center gap-1 text-sm font-medium text-slate-900">
-					<button
-						type="button"
-						className="flex max-w-[250px] items-center gap-2 truncate rounded-lg px-2 py-1.5 text-[15px] transition-colors hover:bg-slate-100"
+				<nav
+					aria-label="Breadcrumb"
+					className="flex min-w-0 items-center gap-1 text-sm font-medium text-slate-900"
+				>
+					<Link
+						to="/dashboard"
+						className="rounded-md px-2 py-1.5 text-[15px] text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
 					>
-						<Boxes className="h-5 w-5 shrink-0 text-slate-500" />
-						<span className="truncate">{title || "Untitled Project"}</span>
-						<ChevronsUpDown className="ml-1 h-4 w-4 shrink-0 text-slate-400" />
-					</button>
-
+						Dashboard
+					</Link>
+					<ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+					{isRoadmapOnly || !projectId ? (
+						<span className="max-w-[260px] truncate px-2 text-[15px] text-slate-900">
+							{title || "Untitled Project"}
+						</span>
+					) : (
+						<Link
+							to="/project/$projectId/overview"
+							params={{ projectId }}
+							className="max-w-[260px] truncate rounded-md px-2 py-1.5 text-[15px] text-slate-900 transition-colors hover:bg-slate-100"
+						>
+							{title || "Untitled Project"}
+						</Link>
+					)}
 					<ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
 					<span className="truncate px-2 text-[15px] capitalize text-slate-600">
 						{isRoadmapOnly
 							? "Roadmap"
 							: resolveCurrentPageLabel(location.pathname, projectId)}
 					</span>
-				</div>
+				</nav>
 			</div>
 
 			<div className="flex shrink-0 items-center gap-2 sm:gap-3">

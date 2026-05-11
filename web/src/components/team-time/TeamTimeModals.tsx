@@ -1,10 +1,24 @@
 import { ChevronDown, Loader2, Save, Search, Trash2, X, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import type {
 	ProjectTaskOption,
 	TeamLogProject,
 } from "@/services/team-time.service";
 import type { TeamMember, TeamMemberRate } from "@/services/teams.service";
+
+const MODAL_BACKDROP_MOTION = {
+	initial: { opacity: 0 },
+	animate: { opacity: 1 },
+	exit: { opacity: 0 },
+	transition: { duration: 0.18, ease: "easeOut" as const },
+};
+const MODAL_PANEL_MOTION = {
+	initial: { opacity: 0, scale: 0.96, y: 8 },
+	animate: { opacity: 1, scale: 1, y: 0 },
+	exit: { opacity: 0, scale: 0.96, y: 8 },
+	transition: { duration: 0.22, ease: [0.32, 0.72, 0, 1] as [number, number, number, number] },
+};
 
 // ───────────────────────── Edit Log ─────────────────────────
 
@@ -163,7 +177,7 @@ export function AddRateModal({
 	onChangeScopeMode,
 	onChangeSelectedProjectIds,
 }: AddRateModalProps) {
-	if (!isOpen || !canManageRates) return null;
+	const visible = isOpen && canManageRates;
 	const coveredSet = new Set(coveredProjectIds);
 	const availableProjects = attachedProjects.filter(
 		(p) => !coveredSet.has(p.id),
@@ -180,6 +194,8 @@ export function AddRateModal({
 		!loadingMembers &&
 		!!newRateMemberUserId &&
 		!!newRateValue &&
+		!!newRateCurrency &&
+		!!newRateStartDate &&
 		effectiveProjectIds.length > 0;
 	const toggleProject = (id: string) => {
 		const set = new Set(selectedProjectIds);
@@ -189,19 +205,24 @@ export function AddRateModal({
 	};
 
 	return (
-		<div
-			className="fixed inset-0 z-160 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
-			onClick={onClose}
-		>
-			<div
-				className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white shadow-[0_24px_80px_rgba(2,6,23,0.35)] overflow-hidden"
-				onClick={(e) => e.stopPropagation()}
-			>
-				<div className="flex items-center justify-between border-b border-slate-200 px-6 py-5 bg-linear-to-r from-slate-50 to-white">
-					<div>
-						<h3 className="text-base font-semibold text-slate-900">
-							Add Team Rate
-						</h3>
+		<AnimatePresence>
+			{visible && (
+				<motion.div
+					key="add-rate-modal"
+					className="fixed inset-0 z-160 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
+					onClick={onClose}
+					{...MODAL_BACKDROP_MOTION}
+				>
+					<motion.div
+						className="w-full max-w-xl max-h-[90vh] flex flex-col rounded-3xl border border-slate-200 bg-white shadow-[0_24px_80px_rgba(2,6,23,0.35)] overflow-hidden"
+						onClick={(e) => e.stopPropagation()}
+						{...MODAL_PANEL_MOTION}
+					>
+						<div className="flex items-center justify-between border-b border-slate-200 px-6 py-5 bg-linear-to-r from-slate-50 to-white">
+							<div>
+								<h3 className="text-base font-semibold text-slate-900">
+									Add Team Rate
+								</h3>
 						<p className="text-xs text-slate-500 mt-1">
 							Enable time tracking for a team member by assigning an hourly rate.
 						</p>
@@ -215,7 +236,7 @@ export function AddRateModal({
 					</button>
 				</div>
 
-				<div className="p-6 space-y-4">
+				<div className="flex-1 overflow-y-auto p-6 space-y-4">
 					<div className="space-y-1.5">
 						<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
 							Select Member
@@ -351,7 +372,7 @@ export function AddRateModal({
 						</div>
 						<div className="space-y-1.5">
 							<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-								Hourly Rate
+								Hourly Rate <span className="text-rose-500">*</span>
 							</label>
 							<input
 								type="number"
@@ -361,12 +382,15 @@ export function AddRateModal({
 								onChange={(e) => onChangeRateValue(e.target.value)}
 								placeholder="e.g. 25.00"
 								disabled={savingRate}
-								className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
+								required
+								className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300 ${
+									newRateValue ? "border-slate-300" : "border-rose-300"
+								}`}
 							/>
 						</div>
 						<div className="space-y-1.5">
 							<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-								Currency
+								Currency <span className="text-rose-500">*</span>
 							</label>
 							<input
 								type="text"
@@ -377,7 +401,10 @@ export function AddRateModal({
 								placeholder="USD"
 								maxLength={8}
 								disabled={savingRate}
-								className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg uppercase focus:outline-none focus:ring-2 focus:ring-slate-300"
+								required
+								className={`w-full px-3 py-2.5 text-sm border rounded-lg uppercase focus:outline-none focus:ring-2 focus:ring-slate-300 ${
+									newRateCurrency ? "border-slate-300" : "border-rose-300"
+								}`}
 							/>
 						</div>
 					</div>
@@ -385,14 +412,17 @@ export function AddRateModal({
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 						<div className="space-y-1.5">
 							<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-								Start Date
+								Start Date <span className="text-rose-500">*</span>
 							</label>
 							<input
 								type="date"
 								value={newRateStartDate}
 								onChange={(e) => onChangeStartDate(e.target.value)}
 								disabled={savingRate}
-								className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
+								required
+								className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300 ${
+									newRateStartDate ? "border-slate-300" : "border-rose-300"
+								}`}
 							/>
 						</div>
 						<div className="space-y-1.5">
@@ -435,8 +465,10 @@ export function AddRateModal({
 						Save Rate
 					</button>
 				</div>
-			</div>
-		</div>
+					</motion.div>
+				</motion.div>
+			)}
+		</AnimatePresence>
 	);
 }
 
@@ -483,24 +515,28 @@ export function EditRateModal({
 	onChangeStartDate,
 	onChangeEndDate,
 }: EditRateModalProps) {
-	if (!isOpen || !canManageRates || !editingRate) return null;
-
+	const visible = isOpen && canManageRates && Boolean(editingRate);
 	const memberName = memberLabel || "Unknown member";
 
 	return (
-		<div
-			className="fixed inset-0 z-170 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
-			onClick={onClose}
-		>
-			<div
-				className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white shadow-[0_24px_80px_rgba(2,6,23,0.35)] overflow-hidden"
-				onClick={(e) => e.stopPropagation()}
-			>
-				<div className="flex items-center justify-between border-b border-slate-200 px-6 py-5 bg-linear-to-r from-slate-50 to-white">
-					<div>
-						<h3 className="text-base font-semibold text-slate-900">
-							Edit Team Rate
-						</h3>
+		<AnimatePresence>
+			{visible && editingRate && (
+				<motion.div
+					key="edit-rate-modal"
+					className="fixed inset-0 z-170 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
+					onClick={onClose}
+					{...MODAL_BACKDROP_MOTION}
+				>
+					<motion.div
+						className="w-full max-w-xl max-h-[90vh] flex flex-col rounded-3xl border border-slate-200 bg-white shadow-[0_24px_80px_rgba(2,6,23,0.35)] overflow-hidden"
+						onClick={(e) => e.stopPropagation()}
+						{...MODAL_PANEL_MOTION}
+					>
+						<div className="flex items-center justify-between border-b border-slate-200 px-6 py-5 bg-linear-to-r from-slate-50 to-white">
+							<div>
+								<h3 className="text-base font-semibold text-slate-900">
+									Edit Team Rate
+								</h3>
 						<p className="text-xs text-slate-500 mt-1">{memberName}</p>
 					</div>
 					<button
@@ -512,7 +548,7 @@ export function EditRateModal({
 					</button>
 				</div>
 
-				<div className="p-6 space-y-4">
+				<div className="flex-1 overflow-y-auto p-6 space-y-4">
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 						<div className="space-y-1.5">
 							<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -527,7 +563,7 @@ export function EditRateModal({
 						</div>
 						<div className="space-y-1.5">
 							<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-								Hourly Rate
+								Hourly Rate <span className="text-rose-500">*</span>
 							</label>
 							<input
 								type="number"
@@ -535,12 +571,15 @@ export function EditRateModal({
 								step="0.01"
 								value={editingRateValue}
 								onChange={(e) => onChangeRateValue(e.target.value)}
-								className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
+								required
+								className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300 ${
+									editingRateValue ? "border-slate-300" : "border-rose-300"
+								}`}
 							/>
 						</div>
 						<div className="space-y-1.5">
 							<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-								Currency
+								Currency <span className="text-rose-500">*</span>
 							</label>
 							<input
 								type="text"
@@ -549,18 +588,24 @@ export function EditRateModal({
 								onChange={(e) =>
 									onChangeRateCurrency(e.target.value.toUpperCase())
 								}
-								className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg uppercase focus:outline-none focus:ring-2 focus:ring-slate-300"
+								required
+								className={`w-full px-3 py-2.5 text-sm border rounded-lg uppercase focus:outline-none focus:ring-2 focus:ring-slate-300 ${
+									editingRateCurrency ? "border-slate-300" : "border-rose-300"
+								}`}
 							/>
 						</div>
 						<div className="space-y-1.5">
 							<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-								Start Date
+								Start Date <span className="text-rose-500">*</span>
 							</label>
 							<input
 								type="date"
 								value={editingRateStartDate}
 								onChange={(e) => onChangeStartDate(e.target.value)}
-								className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
+								required
+								className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300 ${
+									editingRateStartDate ? "border-slate-300" : "border-rose-300"
+								}`}
 							/>
 						</div>
 						<div className="space-y-1.5">
@@ -601,7 +646,12 @@ export function EditRateModal({
 							<button
 								type="button"
 								onClick={() => void onSave()}
-								disabled={savingRate}
+								disabled={
+									savingRate ||
+									!editingRateStartDate ||
+									!editingRateValue ||
+									!editingRateCurrency
+								}
 								className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-md border border-slate-700 bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50"
 							>
 								<Save className="w-3.5 h-3.5" />
@@ -610,8 +660,10 @@ export function EditRateModal({
 						</div>
 					</div>
 				</div>
-			</div>
-		</div>
+					</motion.div>
+				</motion.div>
+			)}
+		</AnimatePresence>
 	);
 }
 

@@ -15,7 +15,7 @@ type DashboardCard =
 	| { kind: "invite"; invite: ProjectInvite }
 	| { kind: "project"; project: Project };
 
-const PROJECT_STATUS_CONFIG: Record<
+export const PROJECT_STATUS_CONFIG: Record<
 	string,
 	{ label: string; color: string; badgeClass: string }
 > = {
@@ -354,7 +354,7 @@ function ProjectsEmptyState({
 	);
 }
 
-function ProjectCard({
+export function ProjectCard({
 	number,
 	projectId,
 	status,

@@ -23,12 +23,14 @@ import {
 	inviteTeamMemberByEmail,
 	listTeamInvites,
 	listTeamMembers,
+	listTeamProjects,
 	removeTeamMember,
 	updateTeamMember,
 	type TeamInvite,
 	type TeamMember,
 	type TeamRole,
 } from "@/services/teams.service";
+import { PROJECT_STATUS_CONFIG } from "@/components/home/ProjectsGrid";
 
 /**
  * Blue chip for the free-form member position (e.g. "Backend Developer").
@@ -56,6 +58,81 @@ function RoleChip({ role }: { role: TeamRole }) {
 	)
 }
 
+function CompactProjectCard({
+	number,
+	projectId,
+	title,
+	client,
+	status,
+	statusColor,
+	statusBadgeClass,
+	progress,
+	progressColor,
+}: {
+	number: number;
+	projectId: string;
+	title: string;
+	client: string;
+	status: string;
+	statusColor: string;
+	statusBadgeClass: string;
+	progress: number | null;
+	progressColor: string;
+}) {
+	const isDraft = status.toLowerCase() === "draft";
+	return (
+		<Link
+			to="/project/$projectId/overview"
+			params={{ projectId }}
+			className="group flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+			style={{
+				backgroundImage: `linear-gradient(to bottom, white 92%, ${statusColor}14)`,
+			}}
+		>
+			<div className="flex items-center gap-2">
+				<span className="text-[11px] font-semibold text-slate-500">
+					#{number}
+				</span>
+				<div className="h-3 w-px bg-slate-300" />
+				{!isDraft && (
+					<div
+						className="h-2 w-2 rounded-full"
+						style={{ backgroundColor: statusColor }}
+					/>
+				)}
+				<span
+					className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${statusBadgeClass}`}
+				>
+					{status}
+				</span>
+			</div>
+			<div className="min-w-0">
+				<h4 className="truncate text-sm font-semibold text-slate-900">
+					{title}
+				</h4>
+				<p className="truncate text-[11px] text-slate-500">
+					<span className="font-medium text-slate-600">Client:</span> {client}
+				</p>
+			</div>
+			<div>
+				<div className="mb-1 flex items-center justify-between text-[10px] text-slate-500">
+					<span>Progress</span>
+					<span>{progress === null ? "Not tracked" : `${progress}%`}</span>
+				</div>
+				<div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+					<div
+						className="h-full rounded-full transition-all"
+						style={{
+							width: `${progress ?? 0}%`,
+							backgroundColor: progressColor,
+						}}
+					/>
+				</div>
+			</div>
+		</Link>
+	);
+}
+
 export const Route = createFileRoute("/teams/$teamId/")({
 	beforeLoad: () => {
 		const { isAuthenticated } = useAuthStore.getState();
@@ -77,6 +154,11 @@ function TeamDetailPage() {
 		queryKey: ["teams", "members", teamId],
 		queryFn: () => listTeamMembers(teamId),
 	});
+	const projectsQuery = useQuery({
+		queryKey: ["teams", "projects", teamId],
+		queryFn: () => listTeamProjects(teamId),
+	});
+	const attachedProjects = projectsQuery.data ?? [];
 
 	const team = teamQuery.data;
 	const members = membersQuery.data ?? [];
@@ -142,6 +224,53 @@ function TeamDetailPage() {
 					title={team.name}
 					subtitle={team.description ?? undefined}
 				/>
+
+				<div className="mt-8">
+					<div className="mb-3 flex items-center justify-between">
+						<h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">
+							Projects ({attachedProjects.length})
+						</h3>
+					</div>
+					{projectsQuery.isLoading ? (
+						<AppSurfaceCard className="flex items-center justify-center py-10 text-slate-500">
+							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+							Loading projects…
+						</AppSurfaceCard>
+					) : attachedProjects.length === 0 ? (
+						<AppSurfaceCard className="px-6 py-10 text-center text-sm text-slate-500">
+							No projects attached to this team yet.
+						</AppSurfaceCard>
+					) : (
+						<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+							{attachedProjects.map((row, index) => {
+								if (!row.project) return null;
+								const statusKey = (row.project.status || "").toLowerCase();
+								const statusConfig = PROJECT_STATUS_CONFIG[statusKey] ?? {
+									label: row.project.status || "Unknown",
+									color: "#9c27b0",
+									badgeClass:
+										"bg-purple-100 text-purple-700 border-purple-200",
+								};
+								return (
+									<CompactProjectCard
+										key={row.project.id}
+										number={index + 1}
+										projectId={row.project.id}
+										title={row.project.title ?? "Untitled project"}
+										client={row.project.client?.display_name || "Assigned"}
+										status={statusConfig.label}
+										statusColor={statusConfig.color}
+										statusBadgeClass={statusConfig.badgeClass}
+										progress={
+											row.project.status === "completed" ? 100 : null
+										}
+										progressColor={statusConfig.color}
+									/>
+								);
+							})}
+						</div>
+					)}
+				</div>
 
 				<div className="mt-8">
 					<div className="mb-3 flex items-center justify-between">
