@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { KeyboardEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, RotateCcw, Sparkles, ListTodo, GitBranch } from "lucide-react";
@@ -375,13 +375,35 @@ function RoadmapCanvas({
   );
 }
 
-export function AIDemoSection() {
+export function AIDemoSection({ isActive = false }: { isActive?: boolean }) {
   const [demoState, setDemoState] = useState<DemoState>("idle");
   const [input, setInput] = useState("");
   const [submittedInput, setSubmittedInput] = useState("");
   const [activeRoadmap, setActiveRoadmap] = useState<MockRoadmap | null>(null);
   const [aiResponse, setAiResponse] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const autoTriggeredRef = useRef(false);
+
+  // Auto-trigger the demo once when the section becomes active
+  useEffect(() => {
+    if (!isActive || autoTriggeredRef.current || demoState !== "idle") return;
+    autoTriggeredRef.current = true;
+    const autoText = "Build a SaaS MVP";
+    const timer = setTimeout(() => {
+      const roadmap = detectRoadmap(autoText);
+      setSubmittedInput(autoText);
+      setInput("");
+      setDemoState("thinking");
+      setTimeout(() => {
+        setActiveRoadmap(roadmap);
+        setAiResponse(
+          `Done! I've mapped out your ${roadmap.name} across 2 epics and ${roadmap.epics.reduce((s, e) => s + e.features.length, 0)} features. Here's your plan:`
+        );
+        setDemoState("done");
+      }, 1800);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [isActive, demoState]);
 
   function handleSend() {
     const text = input.trim();
@@ -401,6 +423,7 @@ export function AIDemoSection() {
   }
 
   function handleReset() {
+    autoTriggeredRef.current = false;
     setDemoState("idle");
     setInput("");
     setSubmittedInput("");
@@ -414,8 +437,8 @@ export function AIDemoSection() {
   }
 
   return (
-    <section className="mt-16 scroll-mt-24 lg:mt-20">
-      <div className="mb-8 text-center">
+    <section className="flex flex-col h-full py-4 overflow-hidden">
+      <div className="mb-4 text-center shrink-0">
         <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
           Use It With AI
         </p>
@@ -427,9 +450,9 @@ export function AIDemoSection() {
         </p>
       </div>
 
-      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_12px_40px_rgba(16,24,40,0.07)]">
+      <div className="flex-1 flex flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_12px_40px_rgba(16,24,40,0.07)] min-h-0">
         {/* Chrome bar */}
-        <div className="flex items-center gap-3 border-b border-slate-200 bg-slate-50/60 px-5 py-3">
+        <div className="shrink-0 flex items-center gap-3 border-b border-slate-200 bg-slate-50/60 px-5 py-3">
           <div className="flex gap-1.5">
             <span className="h-3 w-3 rounded-full bg-red-300" />
             <span className="h-3 w-3 rounded-full bg-amber-300" />
@@ -441,9 +464,9 @@ export function AIDemoSection() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px]">
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_360px] min-h-0 overflow-hidden">
           {/* Left: Roadmap canvas */}
-          <div className="border-b border-slate-200 p-5 lg:border-b-0 lg:border-r">
+          <div className="overflow-y-auto border-b border-slate-200 p-5 lg:border-b-0 lg:border-r">
             {/* Tab bar */}
             <div className="mb-5 flex items-center gap-1 border-b border-slate-100 pb-3">
               <button type="button" className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 shadow-sm border border-slate-200">

@@ -3,10 +3,13 @@ import { Button } from "@/ui/button";
 import { motion } from "framer-motion";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { HeroLivePreview } from "./HeroLivePreview";
+import { usePresentationContext } from "@/contexts/PresentationContext";
 
-export const HeroSection = () => {
+export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}) => {
+  const { goToSection } = usePresentationContext();
+
   return (
-    <section className="relative pt-6 sm:pt-10">
+    <section className="relative flex flex-col h-full justify-center pt-4 overflow-hidden">
       <div className="pointer-events-none absolute -top-20 left-[14%] h-72 w-72 rounded-full bg-cyan-200/40 blur-3xl" />
       <div className="pointer-events-none absolute -right-14 top-1/3 h-72 w-72 rounded-full bg-indigo-200/50 blur-3xl" />
 
@@ -61,12 +64,13 @@ export const HeroSection = () => {
               </Button>
             </Link>
 
-            <a
-              href="#how-it-works"
+            <button
+              type="button"
+              onClick={() => goToSection(2)}
               className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition-all hover:border-slate-900 hover:text-slate-900"
             >
               See How It Works
-            </a>
+            </button>
           </motion.div>
 
           <motion.p

@@ -306,7 +306,7 @@ function UseCaseCard({ card }: { card: UseCase }) {
 
 const NUM_SLIDES = 3;
 
-export function UseItYourWaySection() {
+export function UseItYourWaySection({ isActive = true }: { isActive?: boolean }) {
   const [slide, setSlide] = useState(0);
   const [direction, setDirection] = useState(1);
   const [paused, setPaused] = useState(false);
@@ -317,16 +317,16 @@ export function UseItYourWaySection() {
   }, []);
 
   useEffect(() => {
-    if (paused) return;
+    if (paused || !isActive) return;
     const id = setInterval(() => advance(1), 3500);
     return () => clearInterval(id);
-  }, [paused, advance]);
+  }, [paused, isActive, advance]);
 
   const visibleCards = [0, 1, 2].map((i) => useCases[(slide * 3 + i) % useCases.length]);
 
   return (
-    <section id="use-it-your-way" className="mt-16 scroll-mt-24 lg:mt-20">
-      <div className="mb-8 text-center">
+    <section id="use-it-your-way" className="flex flex-col h-full py-6 overflow-hidden justify-center">
+      <div className="mb-6 text-center">
         <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">Use It Your Way</p>
         <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
           From simple projects to ongoing work

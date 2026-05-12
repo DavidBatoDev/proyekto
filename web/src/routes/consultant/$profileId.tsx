@@ -98,7 +98,10 @@ function ConsultantProfile() {
                   {fullName}
                 </h1>
                 {profile.is_consultant_verified && (
-                  <BadgeCheck className="w-5 h-5 text-green-600 shrink-0" />
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                    <BadgeCheck className="w-3.5 h-3.5 shrink-0" />
+                    Verified Consultant
+                  </span>
                 )}
               </div>
               

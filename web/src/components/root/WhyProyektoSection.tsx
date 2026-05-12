@@ -43,14 +43,14 @@ const SCHEMES = [
 
 const T = { duration: 0.5, ease: "easeInOut" as const };
 
-export function WhyProyektoSection() {
+export function WhyProyektoSection({ isActive: _isActive = true }: { isActive?: boolean }) {
   const [idx, setIdx] = useState(0);
   const s = SCHEMES[idx];
 
   const cycle = () => setIdx((i) => (i + 1) % SCHEMES.length);
 
   return (
-    <section id="why-proyekto" className="relative mt-16 scroll-mt-24 lg:mt-20">
+    <section id="why-proyekto" className="relative flex flex-col h-full py-6 overflow-hidden justify-center">
       <div className="pointer-events-none absolute -left-12 top-8 h-40 w-40 rounded-full bg-cyan-200/25 blur-3xl" />
       <div className="pointer-events-none absolute right-0 top-12 h-44 w-44 rounded-full bg-indigo-200/25 blur-3xl" />
 

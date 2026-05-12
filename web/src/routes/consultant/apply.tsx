@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, redirect } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -562,6 +562,7 @@ function ConsultantApplyPage() {
   const toast = useToast();
   const [currentStep, setCurrentStep] = useState(1);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [hasHydratedDraft, setHasHydratedDraft] = useState(false);
   const [formData, setFormData] = useState<FormData2>({
     years_of_experience: "",
     primary_niche: "",
@@ -585,6 +586,37 @@ function ConsultantApplyPage() {
     queryFn: () => applicationService.getMyApplication(),
     enabled: !!user?.id,
   });
+
+  useEffect(() => {
+    if (hasHydratedDraft || !existingApp || existingApp.status !== "draft") {
+      return;
+    }
+
+    const knownNicheValues = new Set(NICHES.map((n) => n.value));
+    const draftNiche = existingApp.primary_niche?.trim() ?? "";
+    const isKnownNiche = knownNicheValues.has(draftNiche);
+
+    setFormData((prev) => ({
+      ...prev,
+      years_of_experience:
+        existingApp.years_of_experience !== null &&
+        existingApp.years_of_experience !== undefined
+          ? String(existingApp.years_of_experience)
+          : "",
+      primary_niche: draftNiche
+        ? isKnownNiche
+          ? draftNiche
+          : "other"
+        : "",
+      custom_niche: draftNiche && !isKnownNiche ? draftNiche : "",
+      cover_letter: existingApp.cover_letter ?? "",
+      why_join: existingApp.why_join ?? "",
+      linkedin_url: existingApp.linkedin_url ?? "",
+      website_url: existingApp.website_url ?? "",
+    }));
+
+    setHasHydratedDraft(true);
+  }, [existingApp, hasHydratedDraft]);
 
   const submitApp = useMutation({
     mutationFn: async () => {
