@@ -4,12 +4,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { SendChatMessageDto } from './dto/chat.dto';
+import type {
+  SendChannelMessageDto,
+  SendDmMessageDto,
+} from './dto/chat.dto';
 import { MissingPermissionException } from '../projects/authorization/missing-permission.exception';
 import type {
   ChatRepository,
-  ChatRole,
   ChatRoom,
+  ChatRoomWithLastMessage,
 } from './repositories/chat.repository.interface';
 
 export const CHAT_REPOSITORY = Symbol('CHAT_REPOSITORY');
@@ -19,15 +22,6 @@ export class ChatService {
   constructor(
     @Inject(CHAT_REPOSITORY) private readonly chatRepo: ChatRepository,
   ) {}
-
-  private canDirectMessage(_actorRole: ChatRole, _targetRole: ChatRole): boolean {
-    // Soft-isolation update: once a user is a project member, they can DM
-    // any other project member. The legacy persona matrix
-    // (client ↔ consultant only, freelancer ↔ consultant+freelancer) was
-    // a marketplace-level concern that doesn't belong inside an active
-    // project's chat. Membership is gated upstream by assertProjectAccess.
-    return true;
-  }
 
   private sortDmSlug(userA: string, userB: string): string {
     return [userA, userB].sort((a, b) => a.localeCompare(b)).join('_');
@@ -45,40 +39,24 @@ export class ChatService {
 
   private async ensureChannelMembership(
     room: ChatRoom,
-    projectId: string,
     userId: string,
   ): Promise<void> {
     if (room.type !== 'channel') return;
-    const isMember = await this.chatRepo.isProjectMember(projectId, userId);
+    if (!room.project_id) return;
+    const isMember = await this.chatRepo.isProjectMember(room.project_id, userId);
     if (!isMember) return;
 
     const isParticipant = await this.chatRepo.isRoomParticipant(room.id, userId);
     if (isParticipant) return;
 
-    await this.chatRepo.upsertParticipants(room.id, projectId, [userId]);
+    await this.chatRepo.upsertParticipants(room.id, room.project_id, [userId]);
   }
 
-  async listRooms(projectId: string, userId: string) {
-    await this.assertProjectAccess(projectId, userId);
-
-    const generalRoom = await this.chatRepo.findRoomBySlug(
-      projectId,
-      'channel',
-      'general',
-    );
-    if (generalRoom) {
-      await this.ensureChannelMembership(generalRoom, projectId, userId);
-    }
-
-    const rooms = await this.chatRepo.listRecentRooms(projectId, userId);
+  private decorateRooms(
+    rooms: ChatRoomWithLastMessage[],
+    userId: string,
+  ) {
     return rooms
-      .filter((room) => {
-        if (room.type === 'dm') return !!room.last_message;
-        if (room.type === 'channel' && room.slug === 'general') {
-          return !!room.last_message;
-        }
-        return true;
-      })
       .sort((a, b) => {
         const aTime = a.last_message?.created_at ?? a.updated_at;
         const bTime = b.last_message?.created_at ?? b.updated_at;
@@ -86,8 +64,7 @@ export class ChatService {
       })
       .map((room) => {
         const viewerParticipant =
-          room.participants.find((participant) => participant.user_id === userId) ??
-          null;
+          room.participants.find((p) => p.user_id === userId) ?? null;
         const viewerLastReadAt = viewerParticipant?.last_read_at ?? null;
         const latestMessage = room.last_message;
         const hasUnread = latestMessage
@@ -105,8 +82,7 @@ export class ChatService {
           };
         }
         const counterpart =
-          room.participants.find((participant) => participant.user_id !== userId) ??
-          null;
+          room.participants.find((p) => p.user_id !== userId) ?? null;
         return {
           ...room,
           counterpart,
@@ -114,6 +90,35 @@ export class ChatService {
           has_unread: hasUnread,
         };
       });
+  }
+
+  /** Project chat: channels only (DMs are now global). */
+  async listRooms(projectId: string, userId: string) {
+    await this.assertProjectAccess(projectId, userId);
+
+    const generalRoom = await this.chatRepo.findChannelBySlug(
+      projectId,
+      'general',
+    );
+    if (generalRoom) {
+      await this.ensureChannelMembership(generalRoom, userId);
+    }
+
+    const rooms = await this.chatRepo.listRoomsForProject(projectId, userId);
+    const filtered = rooms.filter((room) => {
+      if (room.type === 'channel' && room.slug === 'general') {
+        return !!room.last_message;
+      }
+      return true;
+    });
+    return this.decorateRooms(filtered, userId);
+  }
+
+  /** Global DM list for the current user. */
+  async listDmRooms(userId: string) {
+    const rooms = await this.chatRepo.listDmRoomsForUser(userId);
+    const filtered = rooms.filter((room) => !!room.last_message);
+    return this.decorateRooms(filtered, userId);
   }
 
   async listMembers(projectId: string, userId: string) {
@@ -129,7 +134,6 @@ export class ChatService {
     const members = await this.chatRepo.listProjectMemberCandidates(projectId);
     return members
       .filter((member) => member.user_id !== userId)
-      .filter((member) => this.canDirectMessage(actorRole, member.role))
       .sort((a, b) => {
         const aName = a.user?.display_name || a.user?.email || a.user_id;
         const bName = b.user?.display_name || b.user?.email || b.user_id;
@@ -137,23 +141,26 @@ export class ChatService {
       });
   }
 
-  async listRoomMessages(
-    projectId: string,
-    roomId: string,
-    userId: string,
-    before?: string,
-    limit = 30,
-  ) {
-    await this.assertProjectAccess(projectId, userId);
+  /** DM-eligible members of a project (for the in-project chat sidebar). */
+  async listDmEligibleMembers(projectId: string, userId: string) {
+    return this.listMembers(projectId, userId);
+  }
 
-    const room = await this.chatRepo.findRoomById(projectId, roomId);
+  private async assertRoomAccess(roomId: string, userId: string): Promise<ChatRoom> {
+    const room = await this.chatRepo.findRoomById(roomId);
     if (!room) {
       throw new NotFoundException('Chat room not found.');
     }
 
-    await this.ensureChannelMembership(room, projectId, userId);
+    if (room.type === 'channel') {
+      if (!room.project_id) {
+        throw new NotFoundException('Chat room not found.');
+      }
+      await this.assertProjectAccess(room.project_id, userId);
+      await this.ensureChannelMembership(room, userId);
+    }
 
-    const isParticipant = await this.chatRepo.isRoomParticipant(roomId, userId);
+    const isParticipant = await this.chatRepo.isRoomParticipant(room.id, userId);
     if (!isParticipant) {
       throw new MissingPermissionException({
         path: 'chat.view_channels',
@@ -161,20 +168,29 @@ export class ChatService {
       });
     }
 
+    return room;
+  }
+
+  async listRoomMessages(
+    roomId: string,
+    userId: string,
+    before?: string,
+    limit = 30,
+  ) {
+    await this.assertRoomAccess(roomId, userId);
+
     const safeLimit = Math.min(Math.max(limit, 1), 100);
     const messages = await this.chatRepo.listRoomMessages({
-      projectId,
       roomId,
       before,
       limit: safeLimit,
     });
 
     const chronologicalMessages = [...messages].reverse();
-    const messageIds = chronologicalMessages.map((message) => message.id);
+    const messageIds = chronologicalMessages.map((m) => m.id);
     const reactionsByMessage =
       messageIds.length > 0
         ? await this.chatRepo.listReactionsForMessages({
-            projectId,
             messageIds,
             viewerUserId: userId,
           })
@@ -195,95 +211,11 @@ export class ChatService {
     };
   }
 
-  private async resolveRoomForSend(params: {
-    projectId: string;
-    senderId: string;
-    dto: SendChatMessageDto;
-  }): Promise<ChatRoom> {
-    const { projectId, senderId, dto } = params;
-
-    if (dto.room_id) {
-      const room = await this.chatRepo.findRoomById(projectId, dto.room_id);
-      if (!room) {
-        throw new NotFoundException('Chat room not found.');
-      }
-
-      await this.ensureChannelMembership(room, projectId, senderId);
-
-      const isParticipant = await this.chatRepo.isRoomParticipant(room.id, senderId);
-      if (!isParticipant) {
-        throw new MissingPermissionException({
-        path: 'chat.view_channels',
-        message: 'You are not a participant in this room.',
-      });
-      }
-      return room;
-    }
-
-    if (!dto.kind) {
-      throw new BadRequestException('Either room_id or kind must be provided.');
-    }
-
-    if (dto.kind === 'channel') {
-      const slug = (dto.slug || 'general').trim().toLowerCase();
-      if (slug !== 'general') {
-        throw new BadRequestException('Only the general channel is supported.');
-      }
-
-      const room = await this.chatRepo.upsertRoom({
-        projectId,
-        type: 'channel',
-        slug: 'general',
-        name: 'General',
-      });
-      const participantIds = await this.chatRepo.listProjectParticipantUserIds(
-        projectId,
-      );
-      await this.chatRepo.upsertParticipants(room.id, projectId, participantIds);
-      await this.chatRepo.upsertParticipants(room.id, projectId, [senderId]);
-      return room;
-    }
-
-    if (!dto.recipient_id) {
-      throw new BadRequestException('recipient_id is required for DM messages.');
-    }
-
-    const actorRole = await this.chatRepo.resolveProjectRole(projectId, senderId);
-    const recipientRole = await this.chatRepo.resolveProjectRole(
-      projectId,
-      dto.recipient_id,
-    );
-
-    if (!actorRole || !recipientRole) {
-      throw new MissingPermissionException({
-        path: 'access.chat',
-        message: 'Both users must be project participants.',
-      });
-    }
-
-    if (!this.canDirectMessage(actorRole, recipientRole)) {
-      throw new MissingPermissionException({
-        path: 'chat.send_dm',
-        message: 'This direct message is not allowed by project governance.',
-      });
-    }
-
-    const slug = this.sortDmSlug(senderId, dto.recipient_id);
-    const room = await this.chatRepo.upsertRoom({
-      projectId,
-      type: 'dm',
-      slug,
-      name: null,
-    });
-
-    await this.chatRepo.upsertParticipants(room.id, projectId, [
-      senderId,
-      dto.recipient_id,
-    ]);
-    return room;
-  }
-
-  async sendMessage(projectId: string, senderId: string, dto: SendChatMessageDto) {
+  async sendChannelMessage(
+    projectId: string,
+    senderId: string,
+    dto: SendChannelMessageDto,
+  ) {
     await this.assertProjectAccess(projectId, senderId);
 
     const content = dto.content?.trim();
@@ -291,7 +223,38 @@ export class ChatService {
       throw new BadRequestException('Message content is required.');
     }
 
-    const room = await this.resolveRoomForSend({ projectId, senderId, dto });
+    let room: ChatRoom;
+    if (dto.room_id) {
+      const existing = await this.chatRepo.findRoomById(dto.room_id);
+      if (!existing || existing.type !== 'channel' || existing.project_id !== projectId) {
+        throw new NotFoundException('Chat room not found.');
+      }
+      await this.ensureChannelMembership(existing, senderId);
+      room = existing;
+    } else {
+      const slug = (dto.slug || 'general').trim().toLowerCase();
+      if (slug !== 'general') {
+        throw new BadRequestException('Only the general channel is supported.');
+      }
+
+      room = await this.chatRepo.upsertChannel({
+        projectId,
+        slug: 'general',
+        name: 'General',
+      });
+      const participantIds = await this.chatRepo.listProjectParticipantUserIds(projectId);
+      await this.chatRepo.upsertParticipants(room.id, projectId, participantIds);
+      await this.chatRepo.upsertParticipants(room.id, projectId, [senderId]);
+    }
+
+    const isParticipant = await this.chatRepo.isRoomParticipant(room.id, senderId);
+    if (!isParticipant) {
+      throw new MissingPermissionException({
+        path: 'chat.view_channels',
+        message: 'You are not a participant in this room.',
+      });
+    }
+
     const message = await this.chatRepo.createMessage({
       roomId: room.id,
       projectId,
@@ -308,34 +271,107 @@ export class ChatService {
     };
   }
 
+  async sendDmMessage(senderId: string, dto: SendDmMessageDto) {
+    const content = dto.content?.trim();
+    if (!content) {
+      throw new BadRequestException('Message content is required.');
+    }
+
+    let room: ChatRoom;
+    if (dto.room_id) {
+      const existing = await this.chatRepo.findRoomById(dto.room_id);
+      if (!existing || existing.type !== 'dm') {
+        throw new NotFoundException('Chat room not found.');
+      }
+      const isParticipant = await this.chatRepo.isRoomParticipant(existing.id, senderId);
+      if (!isParticipant) {
+        throw new MissingPermissionException({
+          path: 'chat.send_dm',
+          message: 'You are not a participant in this DM.',
+        });
+      }
+      room = existing;
+    } else {
+      if (!dto.recipient_id) {
+        throw new BadRequestException('recipient_id is required for DM messages.');
+      }
+      if (dto.recipient_id === senderId) {
+        throw new BadRequestException('Cannot DM yourself.');
+      }
+
+      const canDm = await this.chatRepo.usersShareAnyProject(senderId, dto.recipient_id);
+      if (!canDm) {
+        throw new MissingPermissionException({
+          path: 'chat.send_dm',
+          message: 'You can only DM people you share a project with.',
+        });
+      }
+
+      const slug = this.sortDmSlug(senderId, dto.recipient_id);
+      room = await this.chatRepo.upsertDm({ slug });
+      await this.chatRepo.upsertParticipants(room.id, null, [
+        senderId,
+        dto.recipient_id,
+      ]);
+    }
+
+    const message = await this.chatRepo.createMessage({
+      roomId: room.id,
+      projectId: null,
+      senderId,
+      content,
+    });
+
+    return {
+      room,
+      message: {
+        ...message,
+        reactions: [],
+      },
+    };
+  }
+
+  /**
+   * Resolve (or create) the global DM room with a specific recipient — useful
+   * for the web UI when the user clicks "Message X" before sending any text.
+   */
+  async resolveDmRoom(senderId: string, recipientId: string) {
+    if (!recipientId || recipientId === senderId) {
+      throw new BadRequestException('A valid recipient_id is required.');
+    }
+
+    const canDm = await this.chatRepo.usersShareAnyProject(senderId, recipientId);
+    if (!canDm) {
+      throw new MissingPermissionException({
+        path: 'chat.send_dm',
+        message: 'You can only DM people you share a project with.',
+      });
+    }
+
+    const slug = this.sortDmSlug(senderId, recipientId);
+    const room = await this.chatRepo.upsertDm({ slug });
+    await this.chatRepo.upsertParticipants(room.id, null, [senderId, recipientId]);
+    return room;
+  }
+
   async toggleMessageReaction(
-    projectId: string,
     messageId: string,
     userId: string,
     emoji: string,
   ) {
-    await this.assertProjectAccess(projectId, userId);
-
     const normalizedEmoji = emoji?.trim();
     if (!normalizedEmoji) {
       throw new BadRequestException('Emoji is required.');
     }
 
-    const message = await this.chatRepo.findMessageById(projectId, messageId);
+    const message = await this.chatRepo.findMessageById(messageId);
     if (!message) {
       throw new NotFoundException('Chat message not found.');
     }
 
-    const isParticipant = await this.chatRepo.isRoomParticipant(message.room_id, userId);
-    if (!isParticipant) {
-      throw new MissingPermissionException({
-        path: 'chat.view_channels',
-        message: 'You are not a participant in this room.',
-      });
-    }
+    await this.assertRoomAccess(message.room_id, userId);
 
     await this.chatRepo.toggleMessageReaction({
-      projectId,
       messageId,
       userId,
       emoji: normalizedEmoji,
@@ -344,21 +380,13 @@ export class ChatService {
     return { ok: true };
   }
 
-  async unsendMessage(projectId: string, messageId: string, userId: string) {
-    await this.assertProjectAccess(projectId, userId);
-
-    const message = await this.chatRepo.findMessageById(projectId, messageId);
+  async unsendMessage(messageId: string, userId: string) {
+    const message = await this.chatRepo.findMessageById(messageId);
     if (!message) {
       throw new NotFoundException('Chat message not found.');
     }
 
-    const isParticipant = await this.chatRepo.isRoomParticipant(message.room_id, userId);
-    if (!isParticipant) {
-      throw new MissingPermissionException({
-        path: 'chat.view_channels',
-        message: 'You are not a participant in this room.',
-      });
-    }
+    await this.assertRoomAccess(message.room_id, userId);
 
     if (message.sender_id !== userId) {
       throw new MissingPermissionException({
@@ -369,7 +397,6 @@ export class ChatService {
     }
 
     await this.chatRepo.deleteMessage({
-      projectId,
       messageId,
       senderId: userId,
     });
@@ -377,23 +404,8 @@ export class ChatService {
     return { ok: true };
   }
 
-  async markRoomRead(projectId: string, roomId: string, userId: string) {
-    await this.assertProjectAccess(projectId, userId);
-
-    const room = await this.chatRepo.findRoomById(projectId, roomId);
-    if (!room) {
-      throw new NotFoundException('Chat room not found.');
-    }
-
-    await this.ensureChannelMembership(room, projectId, userId);
-
-    const isParticipant = await this.chatRepo.isRoomParticipant(roomId, userId);
-    if (!isParticipant) {
-      throw new MissingPermissionException({
-        path: 'chat.view_channels',
-        message: 'You are not a participant in this room.',
-      });
-    }
+  async markRoomRead(roomId: string, userId: string) {
+    await this.assertRoomAccess(roomId, userId);
 
     const lastReadAt = await this.chatRepo.markRoomRead({
       roomId,

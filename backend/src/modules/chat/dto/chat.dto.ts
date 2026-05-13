@@ -1,5 +1,4 @@
 import {
-  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -24,28 +23,39 @@ export class ChatMessagesQueryDto {
   limit?: number;
 }
 
-export class SendChatMessageDto {
+/**
+ * Project-scoped channel send. Either `room_id` (existing room) or `slug`
+ * (defaults to 'general') must resolve to a channel inside the path's
+ * projectId.
+ */
+export class SendChannelMessageDto {
   @IsOptional()
   @IsUUID()
   room_id?: string;
 
-  @ValidateIf((dto: SendChatMessageDto) => !dto.room_id)
-  @IsIn(['dm', 'channel'])
-  kind?: 'dm' | 'channel';
-
-  @ValidateIf(
-    (dto: SendChatMessageDto) => !dto.room_id && dto.kind === 'dm',
-  )
-  @IsUUID()
-  recipient_id?: string;
-
-  @ValidateIf(
-    (dto: SendChatMessageDto) => !dto.room_id && dto.kind === 'channel',
-  )
+  @ValidateIf((dto: SendChannelMessageDto) => !dto.room_id)
   @IsOptional()
   @IsString()
   @MaxLength(120)
   slug?: string;
+
+  @IsString()
+  @MaxLength(4000)
+  content: string;
+}
+
+/**
+ * Global DM send. Either `room_id` (existing DM room) or `recipient_id`
+ * (a user to start/continue a DM with) must be provided.
+ */
+export class SendDmMessageDto {
+  @IsOptional()
+  @IsUUID()
+  room_id?: string;
+
+  @ValidateIf((dto: SendDmMessageDto) => !dto.room_id)
+  @IsUUID()
+  recipient_id?: string;
 
   @IsString()
   @MaxLength(4000)

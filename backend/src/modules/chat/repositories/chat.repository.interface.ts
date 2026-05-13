@@ -4,7 +4,7 @@ export type ChatRoomType = 'channel' | 'dm';
 
 export type ChatRoom = {
   id: string;
-  project_id: string;
+  project_id: string | null;
   type: ChatRoomType;
   slug: string;
   name: string | null;
@@ -15,7 +15,7 @@ export type ChatRoom = {
 export type ChatMessage = {
   id: string;
   room_id: string;
-  project_id: string;
+  project_id: string | null;
   sender_id: string;
   content: string;
   created_at: string;
@@ -27,7 +27,7 @@ export type ChatMessageReaction = {
   id: string;
   message_id: string;
   room_id: string;
-  project_id: string;
+  project_id: string | null;
   user_id: string;
   emoji: string;
   created_at: string;
@@ -50,7 +50,7 @@ export type ChatUser = {
 export type ChatParticipant = {
   room_id: string;
   user_id: string;
-  project_id: string;
+  project_id: string | null;
   joined_at: string;
   last_read_at: string | null;
   user: ChatUser | null;
@@ -73,54 +73,54 @@ export interface ChatRepository {
   resolveProjectRole(projectId: string, userId: string): Promise<ChatRole | null>;
   listProjectMemberCandidates(projectId: string): Promise<ChatMemberCandidate[]>;
   listProjectParticipantUserIds(projectId: string): Promise<string[]>;
-  findRoomById(projectId: string, roomId: string): Promise<ChatRoom | null>;
-  findRoomBySlug(
+  usersShareAnyProject(userA: string, userB: string): Promise<boolean>;
+  findRoomById(roomId: string): Promise<ChatRoom | null>;
+  findChannelBySlug(
     projectId: string,
-    type: ChatRoomType,
     slug: string,
   ): Promise<ChatRoom | null>;
-  upsertRoom(params: {
+  findDmBySlug(slug: string): Promise<ChatRoom | null>;
+  upsertChannel(params: {
     projectId: string;
-    type: ChatRoomType;
     slug: string;
     name?: string | null;
   }): Promise<ChatRoom>;
+  upsertDm(params: {
+    slug: string;
+  }): Promise<ChatRoom>;
   upsertParticipants(
     roomId: string,
-    projectId: string,
+    projectId: string | null,
     userIds: string[],
   ): Promise<void>;
   isRoomParticipant(roomId: string, userId: string): Promise<boolean>;
-  listRecentRooms(
+  listRoomsForProject(
     projectId: string,
     userId: string,
   ): Promise<ChatRoomWithLastMessage[]>;
+  listDmRoomsForUser(userId: string): Promise<ChatRoomWithLastMessage[]>;
   listRoomMessages(params: {
-    projectId: string;
     roomId: string;
     before?: string;
     limit: number;
   }): Promise<ChatMessage[]>;
   createMessage(params: {
     roomId: string;
-    projectId: string;
+    projectId: string | null;
     senderId: string;
     content: string;
   }): Promise<ChatMessage>;
-  findMessageById(projectId: string, messageId: string): Promise<ChatMessage | null>;
+  findMessageById(messageId: string): Promise<ChatMessage | null>;
   listReactionsForMessages(params: {
-    projectId: string;
     messageIds: string[];
     viewerUserId: string;
   }): Promise<Map<string, ChatMessageReactionSummary[]>>;
   toggleMessageReaction(params: {
-    projectId: string;
     messageId: string;
     userId: string;
     emoji: string;
   }): Promise<void>;
   deleteMessage(params: {
-    projectId: string;
     messageId: string;
     senderId: string;
   }): Promise<void>;

@@ -10,7 +10,6 @@ import type {
   ChatRepository,
   ChatRole,
   ChatRoom,
-  ChatRoomType,
   ChatRoomWithLastMessage,
 } from './chat.repository.interface';
 
@@ -21,10 +20,6 @@ type ProjectRoleData = {
 
 type ProjectMemberRow = {
   user_id: string | null;
-  // Slice 3b: shape now sourced from project_shares; `origin` carries the
-  // legacy "role bucket" semantics (client | consultant | invited |
-  // personal_workspace). `position` is no longer stored — UI uses
-  // display_name only.
   origin?: string | null;
   user?:
     | {
@@ -78,7 +73,7 @@ type RawProjectSelect = {
 type RawParticipantRow = {
   room_id: string;
   user_id: string;
-  project_id: string;
+  project_id: string | null;
   joined_at: string;
   last_read_at: string | null;
   user?:
@@ -101,7 +96,7 @@ type RawReactionRow = {
   id: string;
   message_id: string;
   room_id: string;
-  project_id: string;
+  project_id: string | null;
   user_id: string;
   emoji: string;
   created_at: string;
@@ -152,15 +147,6 @@ export class SupabaseChatRepository implements ChatRepository {
   }
 
   async isProjectMember(projectId: string, userId: string): Promise<boolean> {
-    // Membership = any project_access grant OR being the project's
-    // client/consultant of record. After the teams refactor a single user
-    // can hold multiple project_access rows distinguished by `origin`
-    // (e.g. one direct + one team-derived), so we MUST NOT use
-    // `.maybeSingle()` here — it errors on >1 row and would falsely
-    // report a real member as a non-member, returning a 403 from
-    // /chat/members. Cap to one row instead and treat any row as
-    // membership. The client/consultant fallback mirrors the
-    // `project_chat_is_member` SQL helper.
     const { data, error } = await this.supabase
       .from('project_access')
       .select('user_id')
@@ -182,12 +168,6 @@ export class SupabaseChatRepository implements ChatRepository {
     const project = await this.getProjectRoleData(projectId);
     if (!project) return null;
 
-    // The (project_id, user_id) pair is no longer unique on
-    // project_access — `origin` is part of the PK. Fetch all matching
-    // rows and prefer a direct (non-team) origin so the chat bucket
-    // reflects the most authoritative grant. normalizeRole still
-    // overrides everything when the user is the project's
-    // client_id/consultant_id of record.
     const { data, error } = await this.supabase
       .from('project_access')
       .select('role, origin')
@@ -196,9 +176,6 @@ export class SupabaseChatRepository implements ChatRepository {
 
     if (error) return null;
 
-    // No project_access row but the user is still the client/consultant
-    // of record (shouldn't happen with the current sync, but normalize
-    // anyway so the chat path doesn't 404 a real member).
     if (!data || data.length === 0) {
       if (userId === project.client_id || userId === project.consultant_id) {
         return this.normalizeRole({ userId, project, memberRole: null });
@@ -240,9 +217,6 @@ export class SupabaseChatRepository implements ChatRepository {
       .eq('id', projectId)
       .single();
 
-    // Slice 3b: pull members from project_shares. Use `origin` as the
-    // legacy "role" bucket for chat normalization. Position field is
-    // dropped (project_shares has no equivalent; UI shows display_name).
     const membersQuery = this.supabase
       .from('project_access')
       .select(
@@ -306,7 +280,6 @@ export class SupabaseChatRepository implements ChatRepository {
 
     for (const row of (memberRows || []) as ProjectMemberRow[]) {
       if (!row.user_id) continue;
-      // Map origin → legacy memberRole bucket for normalizeRole.
       const memberRole =
         row.origin === 'consultant'
           ? 'consultant'
@@ -343,28 +316,76 @@ export class SupabaseChatRepository implements ChatRepository {
     return Array.from(new Set(candidates.map((candidate) => candidate.user_id)));
   }
 
-  async findRoomById(projectId: string, roomId: string): Promise<ChatRoom | null> {
+  async usersShareAnyProject(userA: string, userB: string): Promise<boolean> {
+    if (userA === userB) return false;
+
+    // Either user is a client/consultant on a project the other belongs to.
+    const { data: projectsForA, error: projErr } = await this.supabase
+      .from('projects')
+      .select('id, client_id, consultant_id')
+      .or(`client_id.eq.${userA},consultant_id.eq.${userA}`);
+
+    if (!projErr && projectsForA) {
+      for (const p of projectsForA) {
+        if (p.client_id === userB || p.consultant_id === userB) return true;
+      }
+    }
+
+    const { data: projectsForB, error: projErrB } = await this.supabase
+      .from('projects')
+      .select('id, client_id, consultant_id')
+      .or(`client_id.eq.${userB},consultant_id.eq.${userB}`);
+
+    if (!projErrB && projectsForB) {
+      for (const p of projectsForB) {
+        if (p.client_id === userA || p.consultant_id === userA) return true;
+      }
+    }
+
+    // Both appear in project_access for some shared project.
+    const { data: accessA, error: accessErr } = await this.supabase
+      .from('project_access')
+      .select('project_id')
+      .eq('user_id', userA);
+
+    if (accessErr || !accessA || accessA.length === 0) return false;
+
+    const projectIds = Array.from(
+      new Set(accessA.map((row) => String(row.project_id)).filter(Boolean)),
+    );
+    if (projectIds.length === 0) return false;
+
+    const { data: accessB, error: accessErrB } = await this.supabase
+      .from('project_access')
+      .select('project_id')
+      .eq('user_id', userB)
+      .in('project_id', projectIds)
+      .limit(1);
+
+    if (accessErrB) return false;
+    return Boolean(accessB && accessB.length > 0);
+  }
+
+  async findRoomById(roomId: string): Promise<ChatRoom | null> {
     const { data, error } = await this.supabase
       .from('chat_rooms')
       .select('id, project_id, type, slug, name, created_at, updated_at')
       .eq('id', roomId)
-      .eq('project_id', projectId)
       .maybeSingle();
 
     if (error || !data) return null;
     return data as ChatRoom;
   }
 
-  async findRoomBySlug(
+  async findChannelBySlug(
     projectId: string,
-    type: ChatRoomType,
     slug: string,
   ): Promise<ChatRoom | null> {
     const { data, error } = await this.supabase
       .from('chat_rooms')
       .select('id, project_id, type, slug, name, created_at, updated_at')
       .eq('project_id', projectId)
-      .eq('type', type)
+      .eq('type', 'channel')
       .eq('slug', slug)
       .maybeSingle();
 
@@ -372,35 +393,75 @@ export class SupabaseChatRepository implements ChatRepository {
     return data as ChatRoom;
   }
 
-  async upsertRoom(params: {
+  async findDmBySlug(slug: string): Promise<ChatRoom | null> {
+    const { data, error } = await this.supabase
+      .from('chat_rooms')
+      .select('id, project_id, type, slug, name, created_at, updated_at')
+      .is('project_id', null)
+      .eq('type', 'dm')
+      .eq('slug', slug)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return data as ChatRoom;
+  }
+
+  async upsertChannel(params: {
     projectId: string;
-    type: ChatRoomType;
     slug: string;
     name?: string | null;
   }): Promise<ChatRoom> {
+    const existing = await this.findChannelBySlug(params.projectId, params.slug);
+    if (existing) return existing;
+
     const { data, error } = await this.supabase
       .from('chat_rooms')
-      .upsert(
-        {
-          project_id: params.projectId,
-          type: params.type,
-          slug: params.slug,
-          name: params.name ?? null,
-        },
-        { onConflict: 'project_id,type,slug' },
-      )
+      .insert({
+        project_id: params.projectId,
+        type: 'channel',
+        slug: params.slug,
+        name: params.name ?? null,
+      })
       .select('id, project_id, type, slug, name, created_at, updated_at')
       .single();
 
-    if (error || !data) {
-      throw new Error(error?.message || 'Failed to upsert room');
+    if (error) {
+      // Could be a unique-key race — re-fetch.
+      const retry = await this.findChannelBySlug(params.projectId, params.slug);
+      if (retry) return retry;
+      throw new Error(error.message || 'Failed to upsert channel');
     }
+    if (!data) throw new Error('Failed to upsert channel');
+    return data as ChatRoom;
+  }
+
+  async upsertDm(params: { slug: string }): Promise<ChatRoom> {
+    const existing = await this.findDmBySlug(params.slug);
+    if (existing) return existing;
+
+    const { data, error } = await this.supabase
+      .from('chat_rooms')
+      .insert({
+        project_id: null,
+        type: 'dm',
+        slug: params.slug,
+        name: null,
+      })
+      .select('id, project_id, type, slug, name, created_at, updated_at')
+      .single();
+
+    if (error) {
+      const retry = await this.findDmBySlug(params.slug);
+      if (retry) return retry;
+      throw new Error(error.message || 'Failed to upsert DM');
+    }
+    if (!data) throw new Error('Failed to upsert DM');
     return data as ChatRoom;
   }
 
   async upsertParticipants(
     roomId: string,
-    projectId: string,
+    projectId: string | null,
     userIds: string[],
   ): Promise<void> {
     const deduped = Array.from(new Set(userIds.filter(Boolean)));
@@ -432,33 +493,20 @@ export class SupabaseChatRepository implements ChatRepository {
     return !error && !!data;
   }
 
-  async listRecentRooms(
-    projectId: string,
-    userId: string,
+  private async hydrateRooms(
+    roomIds: string[],
+    viewerUserId: string,
   ): Promise<ChatRoomWithLastMessage[]> {
-    const { data: participantRows, error: participantsError } = await this.supabase
-      .from('chat_room_participants')
-      .select('room_id')
-      .eq('project_id', projectId)
-      .eq('user_id', userId);
-
-    if (participantsError) {
-      throw new Error(participantsError.message);
-    }
-
-    const roomIds = (participantRows || []).map((row) => String(row.room_id));
     if (roomIds.length === 0) return [];
 
     const [roomsResult, messagesResult, roomParticipantsResult] = await Promise.all([
       this.supabase
         .from('chat_rooms')
         .select('id, project_id, type, slug, name, created_at, updated_at')
-        .eq('project_id', projectId)
         .in('id', roomIds),
       this.supabase
         .from('chat_room_messages')
         .select('id, room_id, project_id, sender_id, content, created_at, updated_at')
-        .eq('project_id', projectId)
         .in('room_id', roomIds)
         .order('created_at', { ascending: false }),
       this.supabase
@@ -469,9 +517,10 @@ export class SupabaseChatRepository implements ChatRepository {
           user:profiles!chat_room_participants_user_id_fkey(id, display_name, avatar_url, email)
         `,
         )
-        .eq('project_id', projectId)
         .in('room_id', roomIds),
     ]);
+
+    void viewerUserId;
 
     if (roomsResult.error) throw new Error(roomsResult.error.message);
     if (messagesResult.error) throw new Error(messagesResult.error.message);
@@ -507,8 +556,55 @@ export class SupabaseChatRepository implements ChatRepository {
     }));
   }
 
+  async listRoomsForProject(
+    projectId: string,
+    userId: string,
+  ): Promise<ChatRoomWithLastMessage[]> {
+    const { data: participantRows, error: participantsError } = await this.supabase
+      .from('chat_room_participants')
+      .select('room_id, chat_rooms!inner(project_id, type)')
+      .eq('user_id', userId)
+      .eq('chat_rooms.project_id', projectId)
+      .eq('chat_rooms.type', 'channel');
+
+    if (participantsError) {
+      throw new Error(participantsError.message);
+    }
+
+    const roomIds = Array.from(
+      new Set(
+        (participantRows || [])
+          .map((row) => String((row as { room_id: string }).room_id))
+          .filter(Boolean),
+      ),
+    );
+
+    return this.hydrateRooms(roomIds, userId);
+  }
+
+  async listDmRoomsForUser(userId: string): Promise<ChatRoomWithLastMessage[]> {
+    const { data: participantRows, error: participantsError } = await this.supabase
+      .from('chat_room_participants')
+      .select('room_id, chat_rooms!inner(type)')
+      .eq('user_id', userId)
+      .eq('chat_rooms.type', 'dm');
+
+    if (participantsError) {
+      throw new Error(participantsError.message);
+    }
+
+    const roomIds = Array.from(
+      new Set(
+        (participantRows || [])
+          .map((row) => String((row as { room_id: string }).room_id))
+          .filter(Boolean),
+      ),
+    );
+
+    return this.hydrateRooms(roomIds, userId);
+  }
+
   async listRoomMessages(params: {
-    projectId: string;
     roomId: string;
     before?: string;
     limit: number;
@@ -516,7 +612,6 @@ export class SupabaseChatRepository implements ChatRepository {
     let query = this.supabase
       .from('chat_room_messages')
       .select('id, room_id, project_id, sender_id, content, created_at, updated_at')
-      .eq('project_id', params.projectId)
       .eq('room_id', params.roomId)
       .order('created_at', { ascending: false })
       .limit(params.limit);
@@ -532,7 +627,7 @@ export class SupabaseChatRepository implements ChatRepository {
 
   async createMessage(params: {
     roomId: string;
-    projectId: string;
+    projectId: string | null;
     senderId: string;
     content: string;
   }): Promise<ChatMessage> {
@@ -554,14 +649,10 @@ export class SupabaseChatRepository implements ChatRepository {
     return data as ChatMessage;
   }
 
-  async findMessageById(
-    projectId: string,
-    messageId: string,
-  ): Promise<ChatMessage | null> {
+  async findMessageById(messageId: string): Promise<ChatMessage | null> {
     const { data, error } = await this.supabase
       .from('chat_room_messages')
       .select('id, room_id, project_id, sender_id, content, created_at, updated_at')
-      .eq('project_id', projectId)
       .eq('id', messageId)
       .maybeSingle();
 
@@ -570,7 +661,6 @@ export class SupabaseChatRepository implements ChatRepository {
   }
 
   async listReactionsForMessages(params: {
-    projectId: string;
     messageIds: string[];
     viewerUserId: string;
   }): Promise<Map<string, ChatMessageReactionSummary[]>> {
@@ -582,7 +672,6 @@ export class SupabaseChatRepository implements ChatRepository {
       .select(
         'id, message_id, room_id, project_id, user_id, emoji, created_at, updated_at',
       )
-      .eq('project_id', params.projectId)
       .in('message_id', params.messageIds);
 
     if (error) {
@@ -621,12 +710,11 @@ export class SupabaseChatRepository implements ChatRepository {
   }
 
   async toggleMessageReaction(params: {
-    projectId: string;
     messageId: string;
     userId: string;
     emoji: string;
   }): Promise<void> {
-    const message = await this.findMessageById(params.projectId, params.messageId);
+    const message = await this.findMessageById(params.messageId);
     if (!message) {
       throw new Error('Message not found');
     }
@@ -634,7 +722,6 @@ export class SupabaseChatRepository implements ChatRepository {
     const { data: existing, error: existingError } = await this.supabase
       .from('chat_room_message_reactions')
       .select('id')
-      .eq('project_id', params.projectId)
       .eq('message_id', params.messageId)
       .eq('user_id', params.userId)
       .eq('emoji', params.emoji)
@@ -658,7 +745,7 @@ export class SupabaseChatRepository implements ChatRepository {
       .insert({
         message_id: params.messageId,
         room_id: message.room_id,
-        project_id: params.projectId,
+        project_id: message.project_id,
         user_id: params.userId,
         emoji: params.emoji,
       } satisfies Omit<ChatMessageReaction, 'id' | 'created_at' | 'updated_at'>);
@@ -667,14 +754,12 @@ export class SupabaseChatRepository implements ChatRepository {
   }
 
   async deleteMessage(params: {
-    projectId: string;
     messageId: string;
     senderId: string;
   }): Promise<void> {
     const { error } = await this.supabase
       .from('chat_room_messages')
       .delete()
-      .eq('project_id', params.projectId)
       .eq('id', params.messageId)
       .eq('sender_id', params.senderId);
 

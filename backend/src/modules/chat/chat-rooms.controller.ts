@@ -14,30 +14,19 @@ import type { AuthenticatedUser } from '../../common/interfaces/authenticated-re
 import { ChatService } from './chat.service';
 import {
   ChatMessagesQueryDto,
-  SendChannelMessageDto,
   ToggleChatReactionDto,
 } from './dto/chat.dto';
 
+/**
+ * Room-agnostic chat endpoints: message history, reactions, unsend, and
+ * read-pointer updates work for both project channels and global DMs because
+ * the service verifies access via the room's type. Callers do not need to
+ * know whether a room is a DM or a channel.
+ */
 @UseGuards(SupabaseAuthGuard)
-@Controller('projects/:projectId/chat')
-export class ChatController {
+@Controller('chat')
+export class ChatRoomsController {
   constructor(private readonly chatService: ChatService) {}
-
-  @Get('rooms')
-  listRooms(
-    @Param('projectId') projectId: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.chatService.listRooms(projectId, user.id);
-  }
-
-  @Get('members')
-  listMembers(
-    @Param('projectId') projectId: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.chatService.listMembers(projectId, user.id);
-  }
 
   @Get('rooms/:roomId/messages')
   listMessages(
@@ -59,15 +48,6 @@ export class ChatController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.chatService.markRoomRead(roomId, user.id);
-  }
-
-  @Post('messages')
-  sendMessage(
-    @Param('projectId') projectId: string,
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: SendChannelMessageDto,
-  ) {
-    return this.chatService.sendChannelMessage(projectId, user.id, dto);
   }
 
   @Post('messages/:messageId/reactions')

@@ -14,6 +14,8 @@ import {
 } from "@/services/chat.service";
 import {
   chatKeys,
+  fetchDmEligibleMembers,
+  fetchDmRooms,
   fetchProjectChatMembers,
   fetchProjectChatRooms,
   fetchRoomMessages,
@@ -24,6 +26,17 @@ export function useProjectChatRoomsQuery(projectId: string) {
     queryKey: chatKeys.rooms(projectId),
     queryFn: () => fetchProjectChatRooms(projectId),
     enabled: Boolean(projectId),
+    staleTime: 15 * 1000,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  });
+}
+
+export function useDmRoomsQuery(enabled = true) {
+  return useQuery({
+    queryKey: chatKeys.dmRooms(),
+    queryFn: () => fetchDmRooms(),
+    enabled,
     staleTime: 15 * 1000,
     refetchOnWindowFocus: true,
     retry: 1,
@@ -41,50 +54,83 @@ export function useProjectChatMembersQuery(projectId: string) {
   });
 }
 
-export function useRoomMessagesQuery(projectId: string, roomId: string, limit = 30) {
+export function useDmEligibleMembersQuery(projectId: string) {
+  return useQuery({
+    queryKey: chatKeys.dmEligibleMembers(projectId),
+    queryFn: () => fetchDmEligibleMembers(projectId),
+    enabled: Boolean(projectId),
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  });
+}
+
+export function useRoomMessagesQuery(roomId: string, limit = 30) {
   return useInfiniteQuery({
-    queryKey: chatKeys.roomMessages(projectId, roomId),
+    queryKey: chatKeys.roomMessages(roomId),
     queryFn: ({ pageParam }) =>
-      fetchRoomMessages(projectId, roomId, {
+      fetchRoomMessages(roomId, {
         before: pageParam as string | undefined,
         limit,
       }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.next_before || undefined,
-    enabled: Boolean(projectId && roomId),
+    enabled: Boolean(roomId),
     staleTime: 5 * 1000,
     refetchOnWindowFocus: true,
     retry: 1,
   });
 }
 
-export function useSendChatMessageMutation(projectId: string) {
+/**
+ * Send a channel message (project-scoped). Invalidates the project's room
+ * list and the room's message thread.
+ */
+export function useSendChannelMessageMutation(projectId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (
       payload:
         | { room_id: string; content: string }
-        | { kind: "dm"; recipient_id: string; content: string }
-        | { kind: "channel"; slug?: "general"; content: string },
-    ) => chatService.sendMessage(projectId, payload),
+        | { slug?: "general"; content: string },
+    ) => chatService.sendChannelMessage(projectId, payload),
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
       await queryClient.invalidateQueries({
-        queryKey: chatKeys.roomMessages(projectId, result.room.id),
+        queryKey: chatKeys.roomMessages(result.room.id),
       });
     },
   });
 }
 
-export function useToggleChatReactionMutation(projectId: string) {
+/** Send a DM message (global). Invalidates the DM room list. */
+export function useSendDmMessageMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (
+      payload:
+        | { room_id: string; content: string }
+        | { recipient_id: string; content: string },
+    ) => chatService.sendDmMessage(payload),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: chatKeys.dmRooms() });
+      await queryClient.invalidateQueries({
+        queryKey: chatKeys.roomMessages(result.room.id),
+      });
+    },
+  });
+}
+
+export function useToggleChatReactionMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (payload: { roomId: string; messageId: string; emoji: string }) =>
-      chatService.toggleReaction(projectId, payload.messageId, payload.emoji),
+      chatService.toggleReaction(payload.messageId, payload.emoji),
     onMutate: async (payload) => {
-      const key = chatKeys.roomMessages(projectId, payload.roomId);
+      const key = chatKeys.roomMessages(payload.roomId);
       await queryClient.cancelQueries({ queryKey: key });
 
       const previous =
@@ -152,21 +198,20 @@ export function useToggleChatReactionMutation(projectId: string) {
     },
     onSettled: async (_data, _error, payload) => {
       await queryClient.invalidateQueries({
-        queryKey: chatKeys.roomMessages(projectId, payload.roomId),
+        queryKey: chatKeys.roomMessages(payload.roomId),
       });
-      await queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
     },
   });
 }
 
-export function useDeleteChatMessageMutation(projectId: string) {
+export function useDeleteChatMessageMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (payload: { roomId: string; messageId: string }) =>
-      chatService.deleteMessage(projectId, payload.messageId),
+      chatService.deleteMessage(payload.messageId),
     onMutate: async (payload) => {
-      const key = chatKeys.roomMessages(projectId, payload.roomId);
+      const key = chatKeys.roomMessages(payload.roomId);
       await queryClient.cancelQueries({ queryKey: key });
       const previous =
         queryClient.getQueryData<InfiniteData<ChatMessagesPage>>(key);
@@ -191,30 +236,45 @@ export function useDeleteChatMessageMutation(projectId: string) {
     },
     onSettled: async (_data, _error, payload) => {
       await queryClient.invalidateQueries({
-        queryKey: chatKeys.roomMessages(projectId, payload.roomId),
+        queryKey: chatKeys.roomMessages(payload.roomId),
       });
-      await queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
     },
   });
 }
 
-export function useMarkRoomReadMutation(projectId: string, currentUserId?: string) {
+/**
+ * Mark a room as read. Optimistically updates whichever room list query the
+ * caller targets (channel rooms by projectId, or global DM rooms).
+ */
+export function useMarkRoomReadMutation(
+  options: {
+    projectId?: string;
+    isDm?: boolean;
+    currentUserId?: string;
+  } = {},
+) {
   const queryClient = useQueryClient();
+  const { projectId, isDm, currentUserId } = options;
+
+  const listKey = isDm
+    ? chatKeys.dmRooms()
+    : projectId
+      ? chatKeys.rooms(projectId)
+      : null;
 
   return useMutation({
     mutationFn: (payload: { roomId: string }) =>
-      chatService.markRoomRead(projectId, payload.roomId),
+      chatService.markRoomRead(payload.roomId),
     onMutate: async (payload) => {
-      const key = chatKeys.rooms(projectId);
-      await queryClient.cancelQueries({ queryKey: key });
-      const previous = queryClient.getQueryData<ChatRoom[]>(key);
+      if (!listKey) return { previous: undefined, key: null as null };
+      await queryClient.cancelQueries({ queryKey: listKey });
+      const previous = queryClient.getQueryData<ChatRoom[]>(listKey);
       const optimisticReadAt = new Date().toISOString();
 
-      queryClient.setQueryData<ChatRoom[]>(key, (current) => {
+      queryClient.setQueryData<ChatRoom[]>(listKey, (current) => {
         if (!current) return current;
         return current.map((room) => {
           if (room.id !== payload.roomId) return room;
-
           return {
             ...room,
             has_unread: false,
@@ -228,15 +288,16 @@ export function useMarkRoomReadMutation(projectId: string, currentUserId?: strin
         });
       });
 
-      return { previous, key };
+      return { previous, key: listKey };
     },
     onError: (_error, _payload, context) => {
-      if (context?.previous) {
+      if (context?.previous && context.key) {
         queryClient.setQueryData(context.key, context.previous);
       }
     },
     onSuccess: (result, payload) => {
-      queryClient.setQueryData<ChatRoom[]>(chatKeys.rooms(projectId), (current) => {
+      if (!listKey) return;
+      queryClient.setQueryData<ChatRoom[]>(listKey, (current) => {
         if (!current) return current;
         return current.map((room) => {
           if (room.id !== payload.roomId) return room;
@@ -254,7 +315,9 @@ export function useMarkRoomReadMutation(projectId: string, currentUserId?: strin
       });
     },
     onSettled: async () => {
-      await queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
+      if (listKey) {
+        await queryClient.invalidateQueries({ queryKey: listKey });
+      }
     },
   });
 }

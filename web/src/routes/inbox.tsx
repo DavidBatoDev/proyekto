@@ -25,13 +25,15 @@ import { chatKeys, fetchProjectChatRooms } from "@/queries/chat";
 import {
 	flattenRoomMessages,
 	useDeleteChatMessageMutation,
+	useDmRoomsQuery,
 	useMarkRoomReadMutation,
 	useRoomMessagesQuery,
-	useSendChatMessageMutation,
+	useSendChannelMessageMutation,
+	useSendDmMessageMutation,
 	useToggleChatReactionMutation,
 } from "@/hooks/useChatQueries";
 import { useChatTyping } from "@/hooks/useChatTyping";
-import { useProjectsRealtime } from "@/hooks/useChatRealtime";
+import { useDmRealtime, useProjectsRealtime } from "@/hooks/useChatRealtime";
 import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
 import type { ProjectMember } from "@/services/project.service";
 import type { ChatRoom } from "@/services/chat.service";
@@ -51,7 +53,6 @@ import type { ChatMemberProfilePreview } from "@/components/project/chat/ChatMem
 
 export const Route = createFileRoute("/inbox")({
 	validateSearch: (search) => ({
-		p: typeof search.p === "string" ? search.p : undefined,
 		r: typeof search.r === "string" ? search.r : undefined,
 	}),
 	beforeLoad: () => {
@@ -65,16 +66,20 @@ export const Route = createFileRoute("/inbox")({
 
 type InboxEntry = {
 	room: ChatRoom;
-	project: Project;
+	project: Project | null; // null for global DM entries
 	hasUnread: boolean;
 };
 
 type InboxGroup = {
-	project: Project;
+	id: string;
+	label: string;
+	project: Project | null;
 	entries: InboxEntry[];
 	mostRecent: number;
 	unreadCount: number;
 };
+
+const DM_GROUP_ID = "__dm__";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -98,8 +103,6 @@ function saveCollapsed(state: Record<string, boolean>): void {
 		/* sessionStorage full / disabled — non-fatal */
 	}
 }
-
-
 
 function hasUnreadForRoom(room: ChatRoom, userId?: string): boolean {
 	if (!userId) return false;
@@ -162,7 +165,6 @@ function InboxPage() {
 	const user = useUser();
 	const queryClient = useQueryClient();
 
-	// Cross-project: fetch all dashboard projects, then fan-out to chat rooms.
 	const projectsQuery = useQueries({
 		queries: [
 			{
@@ -175,6 +177,7 @@ function InboxPage() {
 	})[0];
 	const projects = (projectsQuery.data as Project[] | undefined) ?? [];
 
+	// Per-project: channels only (backend now filters DMs out of this list).
 	const roomQueries = useQueries({
 		queries: projects.map((project) => ({
 			queryKey: chatKeys.rooms(project.id),
@@ -185,17 +188,20 @@ function InboxPage() {
 		})),
 	});
 
-	// Live updates across every project the user belongs to. Subscribes to
-	// chat-room-messages, chat-message-reactions, chat-room-read-pointers
-	// per project; handlers invalidate the matching React Query keys.
-	const projectIds = useMemo(
-		() => projects.map((p) => p.id),
-		[projects],
-	);
+	// Global DMs (cross-project; one row per counterpart).
+	const dmRoomsQuery = useDmRoomsQuery(Boolean(user?.id));
+	const dmRooms = dmRoomsQuery.data ?? [];
+
+	// Realtime: channels per project + per-DM-room.
+	const projectIds = useMemo(() => projects.map((p) => p.id), [projects]);
 	useProjectsRealtime(projectIds, user?.id);
+	const dmRoomIds = useMemo(() => dmRooms.map((r) => r.id), [dmRooms]);
+	useDmRealtime(dmRoomIds, user?.id);
 
 	const isLoading =
-		projectsQuery.isPending || roomQueries.some((q) => q.isPending);
+		projectsQuery.isPending ||
+		roomQueries.some((q) => q.isPending) ||
+		dmRoomsQuery.isPending;
 
 	const entries: InboxEntry[] = useMemo(() => {
 		const out: InboxEntry[] = [];
@@ -203,6 +209,7 @@ function InboxPage() {
 			const project = projects[i];
 			const rooms = roomQueries[i]?.data ?? [];
 			for (const room of rooms) {
+				if (room.type !== "channel") continue;
 				out.push({
 					room,
 					project,
@@ -210,31 +217,33 @@ function InboxPage() {
 				});
 			}
 		}
+		for (const room of dmRooms) {
+			out.push({
+				room,
+				project: null,
+				hasUnread: hasUnreadForRoom(room, user?.id),
+			});
+		}
 		out.sort((a, b) => {
 			const ta = a.room.last_message?.created_at ?? a.room.updated_at;
 			const tb = b.room.last_message?.created_at ?? b.room.updated_at;
 			return new Date(tb).getTime() - new Date(ta).getTime();
 		});
 		return out;
-	}, [projects, roomQueries, user?.id]);
+	}, [projects, roomQueries, dmRooms, user?.id]);
 
-	// Resolve selection: explicit ?p=&r=, otherwise first entry.
 	const selectedEntry = useMemo<InboxEntry | null>(() => {
-		if (search.p && search.r) {
-			return (
-				entries.find(
-					(e) => e.project.id === search.p && e.room.id === search.r,
-				) ?? null
-			);
+		if (search.r) {
+			return entries.find((e) => e.room.id === search.r) ?? null;
 		}
 		return entries[0] ?? null;
-	}, [entries, search.p, search.r]);
+	}, [entries, search.r]);
 
 	const handleSelect = useCallback(
 		(entry: InboxEntry) => {
 			navigate({
 				to: "/inbox",
-				search: { p: entry.project.id, r: entry.room.id },
+				search: { r: entry.room.id },
 				replace: true,
 			});
 		},
@@ -247,23 +256,24 @@ function InboxPage() {
 		: entries;
 	const unreadCount = entries.filter((e) => e.hasUnread).length;
 
-	// Group visible entries by project. Each group remembers the project's
-	// most-recent room activity so we can sort groups by recency the same
-	// way rows used to sort. Within a group, channels (e.g. #general) sort
-	// above DMs; ties break on recency.
+	// Group: each project + one synthetic "Direct messages" group.
 	const visibleGroups = useMemo<InboxGroup[]>(() => {
 		const map = new Map<string, InboxGroup>();
 		for (const entry of visibleEntries) {
 			const ts = new Date(
 				entry.room.last_message?.created_at ?? entry.room.updated_at,
 			).getTime();
-			const existing = map.get(entry.project.id);
+			const groupId = entry.project?.id ?? DM_GROUP_ID;
+			const groupLabel = entry.project?.title ?? "Direct messages";
+			const existing = map.get(groupId);
 			if (existing) {
 				existing.entries.push(entry);
 				if (ts > existing.mostRecent) existing.mostRecent = ts;
 				if (entry.hasUnread) existing.unreadCount += 1;
 			} else {
-				map.set(entry.project.id, {
+				map.set(groupId, {
+					id: groupId,
+					label: groupLabel,
 					project: entry.project,
 					entries: [entry],
 					mostRecent: ts,
@@ -286,15 +296,20 @@ function InboxPage() {
 				return bTs - aTs;
 			});
 		}
-		return groups.sort((a, b) => b.mostRecent - a.mostRecent);
+		// Pin DMs group at top, then projects by recency.
+		return groups.sort((a, b) => {
+			if (a.id === DM_GROUP_ID && b.id !== DM_GROUP_ID) return -1;
+			if (b.id === DM_GROUP_ID && a.id !== DM_GROUP_ID) return 1;
+			return b.mostRecent - a.mostRecent;
+		});
 	}, [visibleEntries]);
 
 	const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() =>
 		loadCollapsed(),
 	);
-	const toggleCollapsed = useCallback((projectId: string) => {
+	const toggleCollapsed = useCallback((groupId: string) => {
 		setCollapsed((prev) => {
-			const next = { ...prev, [projectId]: !prev[projectId] };
+			const next = { ...prev, [groupId]: !prev[groupId] };
 			saveCollapsed(next);
 			return next;
 		});
@@ -304,7 +319,6 @@ function InboxPage() {
 		<DashboardShell>
 			<div className="h-[calc(100vh-3.5rem)] px-4 py-4 sm:px-6 lg:px-8">
 				<div className="flex h-full min-h-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
-					{/* Left rail: room list across all projects */}
 					<aside className="hidden md:flex w-[340px] shrink-0 flex-col border-r border-slate-200 bg-white">
 						<div className="border-b border-slate-200 px-4 py-3">
 							<div className="flex items-center justify-between">
@@ -347,11 +361,11 @@ function InboxPage() {
 							) : (
 								<div>
 									{visibleGroups.map((group) => (
-										<ProjectGroup
-											key={group.project.id}
+										<InboxSection
+											key={group.id}
 											group={group}
-											collapsed={!!collapsed[group.project.id]}
-											onToggle={() => toggleCollapsed(group.project.id)}
+											collapsed={!!collapsed[group.id]}
+											onToggle={() => toggleCollapsed(group.id)}
 											selectedEntry={selectedEntry}
 											currentUserId={user?.id}
 											onSelect={handleSelect}
@@ -362,19 +376,22 @@ function InboxPage() {
 						</div>
 					</aside>
 
-					{/* Right pane: thread + member-details panel laid out as a row.
-					    InboxThread itself returns the thread column + (optional)
-					    profile panel column as siblings. */}
 					<section className="flex min-w-0 flex-1 bg-white">
 						{selectedEntry ? (
 							<InboxThread
-								key={`${selectedEntry.project.id}:${selectedEntry.room.id}`}
+								key={selectedEntry.room.id}
 								entry={selectedEntry}
 								currentUserId={user?.id}
 								onAfterSend={() => {
-									void queryClient.invalidateQueries({
-										queryKey: chatKeys.rooms(selectedEntry.project.id),
-									});
+									if (selectedEntry.room.type === "dm") {
+										void queryClient.invalidateQueries({
+											queryKey: chatKeys.dmRooms(),
+										});
+									} else if (selectedEntry.project) {
+										void queryClient.invalidateQueries({
+											queryKey: chatKeys.rooms(selectedEntry.project.id),
+										});
+									}
 								}}
 							/>
 						) : (
@@ -392,9 +409,9 @@ function InboxPage() {
 	);
 }
 
-// ─── Project group (left rail section) ─────────────────────────────────────
+// ─── Group section (left rail) ─────────────────────────────────────────────
 
-function ProjectGroup({
+function InboxSection({
 	group,
 	collapsed,
 	onToggle,
@@ -425,7 +442,7 @@ function ProjectGroup({
 					<ChevronRight className="h-3.5 w-3.5 text-slate-500" />
 				</motion.span>
 				<span className="min-w-0 flex-1 truncate text-[12px] font-semibold uppercase tracking-[0.06em] text-slate-600">
-					{group.project.title}
+					{group.label}
 				</span>
 				{group.unreadCount > 0 && (
 					<span className="rounded-full bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold text-white">
@@ -447,12 +464,9 @@ function ProjectGroup({
 						<ul className="divide-y divide-slate-100">
 							{group.entries.map((entry) => (
 								<InboxRow
-									key={`${entry.project.id}:${entry.room.id}`}
+									key={entry.room.id}
 									entry={entry}
-									isSelected={
-										selectedEntry?.room.id === entry.room.id &&
-										selectedEntry?.project.id === entry.project.id
-									}
+									isSelected={selectedEntry?.room.id === entry.room.id}
 									onSelect={() => onSelect(entry)}
 									currentUserId={currentUserId}
 								/>
@@ -545,11 +559,16 @@ function InboxThread({
 }) {
 	const { project, room } = entry;
 	const profile = useProfile();
-	const messagesQuery = useRoomMessagesQuery(project.id, room.id);
-	const sendMutation = useSendChatMessageMutation(project.id);
-	const markReadMutation = useMarkRoomReadMutation(project.id, currentUserId);
-	const toggleReactionMutation = useToggleChatReactionMutation(project.id);
-	const deleteMessageMutation = useDeleteChatMessageMutation(project.id);
+	const messagesQuery = useRoomMessagesQuery(room.id);
+	const sendChannelMutation = useSendChannelMessageMutation(project?.id ?? "");
+	const sendDmMutation = useSendDmMessageMutation();
+	const markReadMutation = useMarkRoomReadMutation({
+		projectId: project?.id,
+		isDm: room.type === "dm",
+		currentUserId,
+	});
+	const toggleReactionMutation = useToggleChatReactionMutation();
+	const deleteMessageMutation = useDeleteChatMessageMutation();
 
 	const [input, setInput] = useState("");
 	const [optimisticMessages, setOptimisticMessages] = useState<
@@ -583,8 +602,6 @@ function InboxThread({
 		[confirmedMessages, optimisticMessages],
 	);
 
-	// Build sender map from room participants. Inbox doesn't load
-	// per-project members so this is the lightweight version.
 	const senderMap = useMemo<Record<string, ThreadSender>>(() => {
 		const map: Record<string, ThreadSender> = {};
 		for (const p of room.participants) {
@@ -597,23 +614,20 @@ function InboxThread({
 		return map;
 	}, [room.participants]);
 
-	// Project members — used to look up the position/role for the profile
-	// panel. Cheap because the members query is cached and shared with the
-	// per-project team page.
-	const projectMembersQuery = useProjectMembersQuery(project.id);
+	const projectMembersQuery = useProjectMembersQuery(project?.id ?? "");
 	const projectMembers =
 		(projectMembersQuery.data as ProjectMember[] | undefined) ?? [];
 
-	// Typing — broadcast on composer change, display incoming.
 	const { typingNames, startTyping, stopTyping } = useChatTyping({
-		projectId: project.id,
+		// Use room.project_id when available so channel typing stays per-project;
+		// fall back to "dm" sentinel so both DM participants share the same channel
+		// name regardless of where they opened the thread.
+		projectId: room.project_id ?? "dm",
 		roomId: room.id,
 		userId: currentUserId,
-		displayName:
-			profile?.display_name ?? profile?.first_name ?? undefined,
+		displayName: profile?.display_name ?? profile?.first_name ?? undefined,
 	});
 
-	// In a DM, default the profile panel selection to the counterpart.
 	useEffect(() => {
 		if (room.type === "dm") {
 			const counterpart = room.participants.find(
@@ -626,8 +640,6 @@ function InboxThread({
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [room.id]);
 
-	// Drop optimistic messages once their server-confirmed counterpart
-	// shows up via the realtime invalidation.
 	useEffect(() => {
 		if (optimisticMessages.length === 0) return;
 		setOptimisticMessages((prev) =>
@@ -651,7 +663,6 @@ function InboxThread({
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [confirmedMessages]);
 
-	// Debounced + deduped mark-as-read. Mirrors project chat behavior.
 	const scheduleMarkRead = useCallback(
 		(delayMs = 550) => {
 			if (!currentUserId) return;
@@ -679,7 +690,6 @@ function InboxThread({
 		};
 	}, []);
 
-	// Reset scroll/sticky state when the active room changes.
 	useEffect(() => {
 		shouldStickToBottomRef.current = true;
 		prependAnchorRef.current = null;
@@ -688,7 +698,6 @@ function InboxThread({
 		setSelectedProfileUserId(null);
 	}, [room.id]);
 
-	// Infinite scroll up + sticky-to-bottom + mark-read trigger.
 	const fetchOlderMessages = useCallback(async () => {
 		const viewport = viewportRef.current;
 		if (!viewport) return;
@@ -743,7 +752,6 @@ function InboxThread({
 		scheduleMarkRead,
 	]);
 
-	// Sticky-to-bottom: re-anchor after new messages or typing change.
 	useEffect(() => {
 		const viewport = viewportRef.current;
 		if (!viewport) return;
@@ -754,8 +762,11 @@ function InboxThread({
 		});
 	}, [messages.length, typingNames.length, scheduleMarkRead]);
 
+	const isSendingMessage =
+		sendChannelMutation.isPending || sendDmMutation.isPending;
+
 	const handleSend = async () => {
-		if (!currentUserId || sendMutation.isPending) return;
+		if (!currentUserId || isSendingMessage) return;
 		const content = input.trim();
 		if (!content) return;
 
@@ -774,7 +785,7 @@ function InboxThread({
 			render_key: tempId,
 			optimistic_order: optimisticOrder,
 			room_id: room.id,
-			project_id: project.id,
+			project_id: room.project_id,
 			sender_id: currentUserId,
 			content,
 			created_at: nowIso,
@@ -791,13 +802,17 @@ function InboxThread({
 		});
 
 		try {
-			const result = await sendMutation.mutateAsync({
-				room_id: room.id,
-				content,
-			});
+			const result =
+				room.type === "dm"
+					? await sendDmMutation.mutateAsync({
+							room_id: room.id,
+							content,
+						})
+					: await sendChannelMutation.mutateAsync({
+							room_id: room.id,
+							content,
+						});
 			void stopTyping();
-			// Swap the optimistic id with the server one so any later
-			// updates (reactions, deletes) match.
 			setOptimisticMessages((prev) =>
 				prev.map((m) =>
 					m.id === tempId
@@ -849,8 +864,6 @@ function InboxThread({
 		setIsProfilePanelOpen(true);
 	}, []);
 
-	// In channel mode, ChatProfilePanel renders a grid of all project
-	// members. Map our share rows → preview shape so the panel populates.
 	const projectMemberPreviews = useMemo<ChatMemberProfilePreview[]>(
 		() =>
 			projectMembers
@@ -917,7 +930,7 @@ function InboxThread({
 								{title}
 							</h2>
 							<p className="truncate text-xs text-slate-500">
-								{project.title}
+								{project?.title ?? "Direct message"}
 							</p>
 						</div>
 					</div>
@@ -973,7 +986,7 @@ function InboxThread({
 				<ChatComposer
 					value={input}
 					placeholder={`Message ${title}`}
-					isSending={sendMutation.isPending}
+					isSending={isSendingMessage}
 					onChange={(next) => {
 						setInput(next);
 						if (next.trim()) void startTyping();
@@ -988,7 +1001,6 @@ function InboxThread({
 				/>
 			</div>
 
-			{/* Profile panel — collapsible third pane */}
 			{isProfilePanelOpen && (
 				<aside className="hidden xl:flex w-[320px] shrink-0 flex-col border-l border-slate-200 bg-white">
 					<ChatProfilePanel

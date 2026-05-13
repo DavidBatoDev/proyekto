@@ -1,23 +1,24 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { useQuery } from "@tanstack/react-query";
 import { useProfile, useUser } from "@/stores/authStore";
 import { useChatTyping } from "@/hooks/useChatTyping";
+import { useDmRealtime, useProjectsRealtime } from "@/hooks/useChatRealtime";
 import { profileService } from "@/services/profile.service";
 import {
   findMemberCandidate,
   findRoomByCounterpart,
   flattenRoomMessages,
   useDeleteChatMessageMutation,
+  useDmRoomsQuery,
   useProjectChatMembersQuery,
   useProjectChatRoomsQuery,
   useRoomMessagesQuery,
-  useSendChatMessageMutation,
+  useSendChannelMessageMutation,
+  useSendDmMessageMutation,
   useToggleChatReactionMutation,
   useMarkRoomReadMutation,
 } from "@/hooks/useChatQueries";
-import { chatKeys } from "@/queries/chat";
 import {
   ChatComposer,
   ChatHeader,
@@ -103,7 +104,6 @@ function hasUnreadForRoom(room: ChatRoom, userId?: string): boolean {
 function ChatPage() {
   const { projectId, chatRef } = Route.useParams();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const user = useUser();
   const profile = useProfile();
   const toast = useToast();
@@ -132,10 +132,22 @@ function ChatPage() {
 
   const roomsQuery = useProjectChatRoomsQuery(projectId);
   const membersQuery = useProjectChatMembersQuery(projectId);
-  const sendMessageMutation = useSendChatMessageMutation(projectId);
-  const toggleReactionMutation = useToggleChatReactionMutation(projectId);
-  const deleteMessageMutation = useDeleteChatMessageMutation(projectId);
-  const markRoomReadMutation = useMarkRoomReadMutation(projectId, user?.id);
+  const dmRoomsQuery = useDmRoomsQuery(Boolean(user?.id));
+  const sendChannelMutation = useSendChannelMessageMutation(projectId);
+  const sendDmMutation = useSendDmMessageMutation();
+  const toggleReactionMutation = useToggleChatReactionMutation();
+  const deleteMessageMutation = useDeleteChatMessageMutation();
+  // The active room may be a project channel OR a global DM. Pick the
+  // right list to optimistically update based on the room currently in view.
+  const markChannelReadMutation = useMarkRoomReadMutation({
+    projectId,
+    isDm: false,
+    currentUserId: user?.id,
+  });
+  const markDmReadMutation = useMarkRoomReadMutation({
+    isDm: true,
+    currentUserId: user?.id,
+  });
   const [pendingUnsendMessage, setPendingUnsendMessage] = useState<ThreadUiMessage | null>(
     null,
   );
@@ -145,8 +157,35 @@ function ChatPage() {
   const threadReadyRef = useRef(false);
   const [showRoomSwitchSkeletonPulse, setShowRoomSwitchSkeletonPulse] = useState(false);
 
-  const rooms = roomsQuery.data ?? [];
+  const channelRooms = roomsQuery.data ?? [];
   const members = membersQuery.data ?? [];
+  const allDmRooms = dmRoomsQuery.data ?? [];
+  // DM rows visible in this project: only those whose counterpart is a
+  // member of *this* project. Same global thread, filtered surface.
+  const memberIdSet = useMemo(
+    () => new Set(members.map((m) => m.user_id)),
+    [members],
+  );
+  const projectDmRooms = useMemo(
+    () =>
+      allDmRooms.filter((room) =>
+        room.participants.some(
+          (participant) =>
+            participant.user_id !== user?.id &&
+            memberIdSet.has(participant.user_id),
+        ),
+      ),
+    [allDmRooms, memberIdSet, user?.id],
+  );
+  // Unified "rooms" view for the existing resolution logic: channels for
+  // this project + the project-filtered DM rooms.
+  const rooms = useMemo(
+    () => [...channelRooms, ...projectDmRooms],
+    [channelRooms, projectDmRooms],
+  );
+  const dmRoomIds = useMemo(() => allDmRooms.map((r) => r.id), [allDmRooms]);
+  useProjectsRealtime([projectId], user?.id);
+  useDmRealtime(dmRoomIds, user?.id);
 
   const generalRoomBySlug = useMemo(
     () => rooms.find((room) => room.type === "channel" && room.slug === "general") ?? null,
@@ -237,7 +276,7 @@ function ChatPage() {
     activeTarget.kind === "channel"
       ? "channel:general"
       : `dm:${activeTarget.userId}`;
-  const messagesQuery = useRoomMessagesQuery(projectId, activeRoomId ?? "");
+  const messagesQuery = useRoomMessagesQuery(activeRoomId ?? "");
   const messages = flattenRoomMessages(messagesQuery.data);
   const optimisticMessages = optimisticByConversation[conversationKey] ?? [];
   const displayedMessages = useMemo(() => {
@@ -246,7 +285,7 @@ function ChatPage() {
   const activeRoom =
     activeRoomId != null ? rooms.find((room) => room.id === activeRoomId) : null;
   const isInitialChatBootLoading =
-    (roomsQuery.isPending || membersQuery.isPending) &&
+    (roomsQuery.isPending || membersQuery.isPending || dmRoomsQuery.isPending) &&
     rooms.length === 0 &&
     members.length === 0;
 
@@ -376,99 +415,15 @@ function ChatPage() {
     selectedProfileUserId,
   ]);
 
-  useEffect(() => {
-    if (!projectId) return;
+  // Realtime is handled by useProjectsRealtime + useDmRealtime above.
 
-    const messageChannel = supabase
-      .channel(`chat-room-messages:${projectId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "chat_room_messages",
-          filter: `project_id=eq.${projectId}`,
-        },
-        (payload) => {
-          const roomId = String(
-            (
-              (payload.new as { room_id?: string }) ??
-              (payload.old as { room_id?: string }) ??
-              {}
-            ).room_id ?? "",
-          );
-          void queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
-          if (roomId) {
-            void queryClient.invalidateQueries({
-              queryKey: chatKeys.roomMessages(projectId, roomId),
-            });
-          }
-        },
-      )
-      .subscribe();
-
-    const reactionChannel = supabase
-      .channel(`chat-message-reactions:${projectId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "chat_room_message_reactions",
-          filter: `project_id=eq.${projectId}`,
-        },
-        (payload) => {
-          const roomId = String(
-            (
-              (payload.new as { room_id?: string }) ??
-              (payload.old as { room_id?: string }) ??
-              {}
-            ).room_id ?? "",
-          );
-          if (roomId) {
-            void queryClient.invalidateQueries({
-              queryKey: chatKeys.roomMessages(projectId, roomId),
-            });
-          }
-        },
-      )
-      .subscribe();
-
-    const readPointerChannel = user?.id
-      ? supabase
-          .channel(`chat-room-read-pointers:${projectId}:${user.id}`)
-          .on(
-            "postgres_changes",
-            {
-              event: "UPDATE",
-              schema: "public",
-              table: "chat_room_participants",
-              filter: `project_id=eq.${projectId}`,
-            },
-            (payload) => {
-              const userId = String(
-                ((payload.new as { user_id?: string }) ?? {}).user_id ?? "",
-              );
-              if (!userId || userId !== user.id) return;
-              void queryClient.invalidateQueries({
-                queryKey: chatKeys.rooms(projectId),
-              });
-            },
-          )
-          .subscribe()
-      : null;
-
-    return () => {
-      void supabase.removeChannel(messageChannel);
-      void supabase.removeChannel(reactionChannel);
-      if (readPointerChannel) {
-        void supabase.removeChannel(readPointerChannel);
-      }
-    };
-  }, [projectId, queryClient, user?.id]);
-
+  const activeRoomForTyping =
+    activeRoomId != null ? rooms.find((room) => room.id === activeRoomId) : null;
   const { typingNames, startTyping, stopTyping } = useChatTyping({
-    projectId,
+    // Use room.project_id for channel typing (per-project channel) and a
+    // "dm" sentinel for DM rooms so both peers join the same broadcast
+    // channel regardless of the project they opened the DM from.
+    projectId: activeRoomForTyping?.project_id ?? (activeRoomForTyping?.type === "dm" ? "dm" : projectId),
     roomId: activeRoomId,
     userId: user?.id,
     displayName: user?.email || "You",
@@ -551,10 +506,13 @@ function ChatPage() {
         clearTimeout(readMarkTimerRef.current);
       }
 
+      const mutation =
+        activeRoom.type === "dm" ? markDmReadMutation : markChannelReadMutation;
+
       readMarkTimerRef.current = setTimeout(() => {
         if (inFlightReadRoomRef.current === activeRoomId) return;
         inFlightReadRoomRef.current = activeRoomId;
-        void markRoomReadMutation
+        void mutation
           .mutateAsync({ roomId: activeRoomId })
           .finally(() => {
             if (inFlightReadRoomRef.current === activeRoomId) {
@@ -563,7 +521,7 @@ function ChatPage() {
           });
       }, delayMs);
     },
-    [activeRoom, activeRoomId, markRoomReadMutation, user?.id],
+    [activeRoom, activeRoomId, markChannelReadMutation, markDmReadMutation, user?.id],
   );
 
   const fetchOlderMessages = async () => {
@@ -661,8 +619,9 @@ function ChatPage() {
     };
   }, []);
 
+  const isSending = sendChannelMutation.isPending || sendDmMutation.isPending;
   const sendMessage = async () => {
-    if (!user || sendMessageMutation.isPending) return;
+    if (!user || isSending) return;
 
     const content = messageInput.trim();
     if (!content) return;
@@ -687,7 +646,7 @@ function ChatPage() {
       render_key: tempId,
       optimistic_order: optimisticOrder,
       room_id: activeRoomId ?? "pending",
-      project_id: projectId,
+      project_id: activeTarget.kind === "channel" ? projectId : null,
       sender_id: user.id,
       content,
       created_at: nowIso,
@@ -716,19 +675,18 @@ function ChatPage() {
         | undefined;
 
       if (activeTarget.kind === "channel") {
-        result = await sendMessageMutation.mutateAsync({
-          kind: "channel",
-          slug: "general",
-          content,
-        });
+        result = await sendChannelMutation.mutateAsync(
+          activeTarget.roomId
+            ? { room_id: activeTarget.roomId, content }
+            : { slug: "general", content },
+        );
       } else if (activeTarget.roomId) {
-        result = await sendMessageMutation.mutateAsync({
+        result = await sendDmMutation.mutateAsync({
           room_id: activeTarget.roomId,
           content,
         });
       } else {
-        result = await sendMessageMutation.mutateAsync({
-          kind: "dm",
+        result = await sendDmMutation.mutateAsync({
           recipient_id: activeTarget.userId,
           content,
         });
@@ -989,7 +947,7 @@ function ChatPage() {
           onSend={() => {
             void sendMessage();
           }}
-          isSending={sendMessageMutation.isPending}
+          isSending={isSending}
           placeholder={
             activeTarget.kind === "channel"
               ? "Message #general"

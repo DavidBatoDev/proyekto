@@ -12,7 +12,7 @@ export interface ChatUser {
 export interface ChatParticipant {
   room_id: string;
   user_id: string;
-  project_id: string;
+  project_id: string | null;
   joined_at: string;
   last_read_at: string | null;
   user: ChatUser | null;
@@ -21,7 +21,7 @@ export interface ChatParticipant {
 export interface ChatMessage {
   id: string;
   room_id: string;
-  project_id: string;
+  project_id: string | null;
   sender_id: string;
   content: string;
   created_at: string;
@@ -37,7 +37,7 @@ export interface ChatMessageReaction {
 
 export interface ChatRoom {
   id: string;
-  project_id: string;
+  project_id: string | null;
   type: ChatRoomType;
   slug: string;
   name: string | null;
@@ -65,21 +65,13 @@ export interface ChatMessagesPage {
   next_before: string | null;
 }
 
-type SendMessagePayload =
-  | {
-      room_id: string;
-      content: string;
-    }
-  | {
-      kind: "dm";
-      recipient_id: string;
-      content: string;
-    }
-  | {
-      kind: "channel";
-      slug?: "general";
-      content: string;
-    };
+type SendChannelPayload =
+  | { room_id: string; content: string }
+  | { slug?: "general"; content: string };
+
+type SendDmPayload =
+  | { room_id: string; content: string }
+  | { recipient_id: string; content: string };
 
 class ChatService {
   private async getAccessToken(): Promise<string> {
@@ -112,6 +104,7 @@ class ChatService {
     return payload as T;
   }
 
+  // ── Project (channel) endpoints ─────────────────────────────────────────
   listRooms(projectId: string): Promise<ChatRoom[]> {
     return this.request<ChatRoom[]>(`/projects/${projectId}/chat/rooms`, {
       method: "GET",
@@ -124,8 +117,57 @@ class ChatService {
     });
   }
 
-  listRoomMessages(
+  sendChannelMessage(
     projectId: string,
+    payload: SendChannelPayload,
+  ): Promise<{ room: ChatRoom; message: ChatMessage }> {
+    return this.request<{ room: ChatRoom; message: ChatMessage }>(
+      `/projects/${projectId}/chat/messages`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    );
+  }
+
+  // ── Global DM endpoints ─────────────────────────────────────────────────
+  listDmRooms(): Promise<ChatRoom[]> {
+    return this.request<ChatRoom[]>(`/chat/dm/rooms`, { method: "GET" });
+  }
+
+  listDmEligibleMembers(projectId: string): Promise<ChatMemberCandidate[]> {
+    const qs = new URLSearchParams({ projectId }).toString();
+    return this.request<ChatMemberCandidate[]>(
+      `/chat/dm/eligible-members?${qs}`,
+      { method: "GET" },
+    );
+  }
+
+  resolveDm(recipientId: string): Promise<ChatRoom> {
+    return this.request<ChatRoom>(`/chat/dm/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipient_id: recipientId }),
+    });
+  }
+
+  sendDmMessage(
+    payload: SendDmPayload,
+  ): Promise<{ room: ChatRoom; message: ChatMessage }> {
+    return this.request<{ room: ChatRoom; message: ChatMessage }>(
+      `/chat/dm/messages`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    );
+  }
+
+  // ── Room-agnostic endpoints ─────────────────────────────────────────────
+  // Work for both channels and DMs; service verifies access by room.
+  listRoomMessages(
     roomId: string,
     options?: { before?: string; limit?: number },
   ): Promise<ChatMessagesPage> {
@@ -135,64 +177,37 @@ class ChatService {
 
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
     return this.request<ChatMessagesPage>(
-      `/projects/${projectId}/chat/rooms/${roomId}/messages${suffix}`,
-      {
-        method: "GET",
-      },
-    );
-  }
-
-  sendMessage(
-    projectId: string,
-    payload: SendMessagePayload,
-  ): Promise<{ room: ChatRoom; message: ChatMessage }> {
-    return this.request<{ room: ChatRoom; message: ChatMessage }>(
-      `/projects/${projectId}/chat/messages`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      },
+      `/chat/rooms/${roomId}/messages${suffix}`,
+      { method: "GET" },
     );
   }
 
   toggleReaction(
-    projectId: string,
     messageId: string,
     emoji: string,
   ): Promise<{ ok: boolean }> {
     return this.request<{ ok: boolean }>(
-      `/projects/${projectId}/chat/messages/${messageId}/reactions`,
+      `/chat/messages/${messageId}/reactions`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emoji }),
       },
     );
   }
 
-  deleteMessage(projectId: string, messageId: string): Promise<{ ok: boolean }> {
-    return this.request<{ ok: boolean }>(
-      `/projects/${projectId}/chat/messages/${messageId}`,
-      {
-        method: "DELETE",
-      },
-    );
+  deleteMessage(messageId: string): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>(`/chat/messages/${messageId}`, {
+      method: "DELETE",
+    });
   }
 
   markRoomRead(
-    projectId: string,
     roomId: string,
   ): Promise<{ ok: boolean; room_id: string; last_read_at: string }> {
     return this.request<{ ok: boolean; room_id: string; last_read_at: string }>(
-      `/projects/${projectId}/chat/rooms/${roomId}/read`,
-      {
-        method: "POST",
-      },
+      `/chat/rooms/${roomId}/read`,
+      { method: "POST" },
     );
   }
 }
