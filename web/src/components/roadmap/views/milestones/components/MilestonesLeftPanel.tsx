@@ -1,5 +1,4 @@
 import {
-	BarChart2,
 	ChevronDown,
 	ChevronRight,
 	ExternalLink,
@@ -37,7 +36,6 @@ interface MilestonesLeftPanelProps {
 	leftHeaderRef: RefObject<HTMLDivElement | null>;
 	sortedEpics: RoadmapEpic[];
 	collapsed: Set<string>;
-	hasAnyDates: boolean;
 	hasAnyExpanded: boolean;
 	showCollapseToggle: boolean;
 	onToggleEpic: (epicId: string) => void;
@@ -165,7 +163,6 @@ export const MilestonesLeftPanel = ({
 	leftHeaderRef,
 	sortedEpics,
 	collapsed,
-	hasAnyDates,
 	hasAnyExpanded,
 	showCollapseToggle,
 	onToggleEpic,
@@ -252,18 +249,6 @@ export const MilestonesLeftPanel = ({
 					/>
 				</div>
 			</div>
-
-			{!hasAnyDates && (
-				<div className="py-24 text-center opacity-0">
-					<div>
-						<BarChart2 className="w-12 h-12 mx-auto mb-4" />
-						<p className="font-medium text-base">No dates set yet</p>
-						<p className="text-sm mt-1 max-w-xs mx-auto">
-							Add start and end dates to features to see them on the timeline
-						</p>
-					</div>
-				</div>
-			)}
 
 			<DndContext
 				sensors={sensors}

@@ -1,4 +1,4 @@
-import { BarChart2, Plus, CalendarClock } from "lucide-react";
+import { Plus, CalendarClock } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EpicReorderConfirmModal } from "../../panels/EpicReorderConfirmModal";
 import { FeatureReorderConfirmModal } from "../../panels/FeatureReorderConfirmModal";
@@ -332,7 +332,6 @@ export const MilestonesView = ({
     todayColIndex,
     todayColLeft,
     todayColInRange,
-    hasAnyDates,
     milestoneMarkers,
     gridBg,
   } = useMilestonesTimeline({
@@ -842,7 +841,6 @@ export const MilestonesView = ({
             leftHeaderRef={leftHeaderRef}
             sortedEpics={sortedEpics}
             collapsed={collapsed}
-            hasAnyDates={hasAnyDates}
             hasAnyExpanded={hasAnyExpanded}
             showCollapseToggle={
               timelineExplorerConfig.allowFeatureCollapse === false
@@ -885,20 +883,6 @@ export const MilestonesView = ({
                 onMilestoneDateDraftCommit={handleMilestoneDateDraftCommit}
               />
 
-              {!hasAnyDates && (
-                <div className="flex items-center justify-center py-24 text-center">
-                  <div>
-                    <BarChart2 className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                    <p className="text-gray-600 font-medium text-base">
-                      No dates set yet
-                    </p>
-                    <p className="text-gray-400 text-sm mt-1 max-w-xs">
-                      Add start and end dates to features to see them on the
-                      timeline
-                    </p>
-                  </div>
-                </div>
-              )}
 
               <MilestonesTimelineRows
                 sortedEpics={sortedEpics}
@@ -919,14 +903,16 @@ export const MilestonesView = ({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={startCreateMilestone}
-          className="fixed bottom-6 left-1/2 z-40 inline-flex -translate-x-1/2 items-center gap-2 rounded-full bg-orange-500 px-6 py-3 text-base font-semibold text-white shadow-lg transition-colors hover:bg-orange-600"
-        >
-          <Plus size={18} />
-          Add Milestone
-        </button>
+        {sortedMilestones.length > 0 && (
+          <button
+            type="button"
+            onClick={startCreateMilestone}
+            className="fixed bottom-6 left-1/2 z-40 inline-flex -translate-x-1/2 items-center gap-2 rounded-full bg-orange-500 px-6 py-3 text-base font-semibold text-white shadow-lg transition-colors hover:bg-orange-600"
+          >
+            <Plus size={18} />
+            Add Milestone
+          </button>
+        )}
 
         <MilestoneEditorModal
           isOpen={isMilestoneModalOpen}
