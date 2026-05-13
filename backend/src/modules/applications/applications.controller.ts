@@ -50,7 +50,6 @@ export class ApplicationsService {
       'cover_letter',
       'years_of_experience',
       'primary_niche',
-      'why_join',
     ];
     const missing = required.filter((field) => {
       const value = existing[field];

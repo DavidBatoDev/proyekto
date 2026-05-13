@@ -69,7 +69,7 @@ const iconPositions = [
   { style: "right-[12%] top-[94px]", translateClass: "translate-x-1/2 -translate-y-1/2" },
 ];
 
-export const HowItWorks = () => {
+export const HowItWorks = ({ isActive = true }: { isActive?: boolean }) => {
   const [activeStep, setActiveStep] = useState(0);
   const [paused, setPaused] = useState(false);
   const [pathLength, setPathLength] = useState(0);
@@ -88,10 +88,10 @@ export const HowItWorks = () => {
   };
 
   useEffect(() => {
-    if (!paused) startTimer();
+    if (!paused && isActive) startTimer();
     else if (timerRef.current) clearInterval(timerRef.current);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [paused]);
+  }, [paused, isActive]);
 
   const handleStepClick = (i: number) => { setActiveStep(i); startTimer(); };
 
@@ -101,7 +101,7 @@ export const HowItWorks = () => {
   return (
     <section
       id="how-it-works"
-      className="relative mt-16 scroll-mt-24 lg:mt-20"
+      className="relative flex flex-col h-full py-6 overflow-hidden justify-center"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >

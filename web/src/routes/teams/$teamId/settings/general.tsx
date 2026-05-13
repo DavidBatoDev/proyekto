@@ -1,6 +1,7 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
 	AlertTriangle,
 	Edit2,
@@ -309,52 +310,55 @@ function TeamGeneralSettings() {
 				)}
 			</div>
 
-			{isDeleteOpen && (
-				<div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
-					<div className="w-full max-w-lg overflow-hidden rounded-2xl border border-red-200 bg-white shadow-2xl">
-						<div className="border-b border-red-100 bg-red-50 px-6 py-4">
-							<h3 className="text-[16px] font-semibold text-red-700">
-								Delete team
-							</h3>
-							<p className="mt-1 text-sm text-red-700">
-								Type{" "}
-								<span className="font-semibold">{team.name}</span> to confirm
-								deletion.
-							</p>
+			{isDeleteOpen &&
+				typeof document !== "undefined" &&
+				createPortal(
+					<div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+						<div className="w-full max-w-lg overflow-hidden rounded-2xl border border-red-200 bg-white shadow-2xl">
+							<div className="border-b border-red-100 bg-red-50 px-6 py-4">
+								<h3 className="text-[16px] font-semibold text-red-700">
+									Delete team
+								</h3>
+								<p className="mt-1 text-sm text-red-700">
+									Type{" "}
+									<span className="font-semibold">{team.name}</span> to
+									confirm deletion.
+								</p>
+							</div>
+							<div className="px-6 py-4">
+								<input
+									type="text"
+									value={deleteText}
+									onChange={(e) => setDeleteText(e.target.value)}
+									className="w-full rounded-lg border border-red-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-200"
+									placeholder="Enter team name to confirm"
+								/>
+							</div>
+							<div className="flex items-center justify-end gap-2 border-t border-red-100 bg-red-50/40 px-6 py-4">
+								<button
+									type="button"
+									onClick={() => {
+										setIsDeleteOpen(false);
+										setDeleteText("");
+									}}
+									className="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+									disabled={deleteMutation.isPending}
+								>
+									Cancel
+								</button>
+								<button
+									type="button"
+									onClick={() => deleteMutation.mutate()}
+									disabled={!deleteConfirmMatches || deleteMutation.isPending}
+									className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+								>
+									{deleteMutation.isPending ? "Deleting…" : "Delete team"}
+								</button>
+							</div>
 						</div>
-						<div className="px-6 py-4">
-							<input
-								type="text"
-								value={deleteText}
-								onChange={(e) => setDeleteText(e.target.value)}
-								className="w-full rounded-lg border border-red-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-200"
-								placeholder="Enter team name to confirm"
-							/>
-						</div>
-						<div className="flex items-center justify-end gap-2 border-t border-red-100 bg-red-50/40 px-6 py-4">
-							<button
-								type="button"
-								onClick={() => {
-									setIsDeleteOpen(false);
-									setDeleteText("");
-								}}
-								className="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
-								disabled={deleteMutation.isPending}
-							>
-								Cancel
-							</button>
-							<button
-								type="button"
-								onClick={() => deleteMutation.mutate()}
-								disabled={!deleteConfirmMatches || deleteMutation.isPending}
-								className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
-							>
-								{deleteMutation.isPending ? "Deleting…" : "Delete team"}
-							</button>
-						</div>
-					</div>
-				</div>
-			)}
+					</div>,
+					document.body
+				)}
 		</TeamSettingsLayout>
 	);
 }
