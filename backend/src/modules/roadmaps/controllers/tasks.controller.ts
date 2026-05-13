@@ -31,6 +31,11 @@ export class TasksController {
     return this.tasksService.findByFeature(featureId);
   }
 
+  @Get('roadmap/:roadmapId')
+  getByRoadmap(@Param('roadmapId') roadmapId: string) {
+    return this.tasksService.findByRoadmap(roadmapId);
+  }
+
   @Get(':id')
   getOne(@Param('id') id: string) {
     return this.tasksService.findById(id);

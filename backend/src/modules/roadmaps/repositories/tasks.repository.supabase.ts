@@ -40,6 +40,27 @@ export class TasksRepositorySupabase implements ITasksRepository {
     return data ?? [];
   }
 
+  async findByRoadmap(roadmapId: string): Promise<any[]> {
+    const { data, error } = await this.db
+      .from('roadmap_tasks')
+      .select(
+        `*,
+         assignee:profiles(id, display_name, avatar_url, email, first_name, last_name),
+         feature:roadmap_features!inner(
+           id,
+           title,
+           roadmap_id,
+           epic_id,
+           epic:roadmap_epics(id, title, color),
+           milestone_features(milestone_id)
+         )`,
+      )
+      .eq('feature.roadmap_id', roadmapId)
+      .order('position', { ascending: true });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  }
+
   async findById(id: string): Promise<any | null> {
     const { data, error } = await this.db
       .from('roadmap_tasks')

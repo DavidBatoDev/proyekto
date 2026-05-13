@@ -343,7 +343,7 @@ export function RoadmapViewContent({
   useEffect(() => {
     const handleViewportResize = () => {
       const leftPanelWidth =
-        canvasViewMode !== "milestones" ? ROADMAP_LEFT_PANEL_WIDTH : 0;
+        canvasViewMode !== "milestones" && canvasViewMode !== "kanban" ? ROADMAP_LEFT_PANEL_WIDTH : 0;
       const maxAllowed = Math.max(
         CHAT_PANEL_MIN_WIDTH,
         Math.min(
@@ -367,7 +367,7 @@ export function RoadmapViewContent({
     const startX = event.clientX;
     const startWidth = chatPanelWidthRef.current;
     const leftPanelWidth =
-      canvasViewMode !== "milestones" ? ROADMAP_LEFT_PANEL_WIDTH : 0;
+      canvasViewMode !== "milestones" && canvasViewMode !== "kanban" ? ROADMAP_LEFT_PANEL_WIDTH : 0;
     const maxAllowed = Math.max(
       CHAT_PANEL_MIN_WIDTH,
       Math.min(
@@ -743,7 +743,7 @@ export function RoadmapViewContent({
 
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Sidebar — hidden in milestones view */}
-        {canvasViewMode !== "milestones" && (
+        {canvasViewMode !== "milestones" && canvasViewMode !== "kanban" && (
           <motion.div
             id="roadmap-left-panel"
             className="relative h-full border-r border-slate-200 bg-white/95 backdrop-blur"

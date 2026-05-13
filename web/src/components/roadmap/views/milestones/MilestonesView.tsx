@@ -1,4 +1,4 @@
-import { BarChart2, Plus } from "lucide-react";
+import { BarChart2, Plus, CalendarClock } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EpicReorderConfirmModal } from "../../panels/EpicReorderConfirmModal";
 import { FeatureReorderConfirmModal } from "../../panels/FeatureReorderConfirmModal";
@@ -797,12 +797,41 @@ export const MilestonesView = ({
     [onOpenFeatureEditor, sortedEpics],
   );
 
+  const overdueMilestones = useMemo(() => {
+    const now = Date.now();
+    return sortedMilestones.filter((milestone) => {
+      if (milestone.status === "completed") return false;
+      const target = new Date(milestone.target_date).getTime();
+      return Number.isFinite(target) && target < now;
+    });
+  }, [sortedMilestones]);
+
   return (
     <div className="absolute inset-0 bg-white">
       <MilestonesToolbar
         granularity={granularity}
         onGranularityChange={setGranularity}
       />
+
+      {overdueMilestones.length > 0 && canEditTimelineDates && (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2">
+          <div className="flex items-center gap-2 flex-wrap text-xs text-amber-900">
+            <CalendarClock className="w-4 h-4" />
+            <span className="font-medium">Past target date:</span>
+            {overdueMilestones.map((milestone) => (
+              <button
+                key={milestone.id}
+                type="button"
+                onClick={() => startEditMilestone(milestone)}
+                className="inline-flex items-center gap-1 rounded-full bg-white border border-amber-300 px-2 py-0.5 text-amber-800 hover:bg-amber-100"
+              >
+                {milestone.title}
+                <span className="text-amber-600">· Reschedule</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div
         ref={verticalScrollRef}

@@ -289,6 +289,17 @@ export interface AssignTaskDto {
 	user_id: string;
 }
 
+export interface RoadmapTaskWithContext extends RoadmapTask {
+	feature?: {
+		id: string;
+		title: string;
+		roadmap_id: string;
+		epic_id: string;
+		epic?: { id: string; title: string; color?: string | null };
+		milestone_features?: Array<{ milestone_id: string }>;
+	};
+}
+
 const normalizeComment = (raw: any): Comment => {
 	const normalizedUser = raw.user ?? raw.author;
 	const normalizedUserId = raw.user_id ?? raw.author_id ?? normalizedUser?.id;
@@ -808,6 +819,21 @@ export const taskService = {
 			return response.data.data;
 		} catch (error) {
 			throw handleServiceError(error, `Get tasks for feature ${featureId}`);
+		}
+	},
+
+	/**
+	 * Get all tasks across a roadmap, with feature/epic/milestone context.
+	 * Used by the Kanban board view.
+	 */
+	async listByRoadmap(roadmapId: string): Promise<RoadmapTaskWithContext[]> {
+		try {
+			const response = await apiClient.get<
+				ApiResponse<RoadmapTaskWithContext[]>
+			>(`/api/tasks/roadmap/${roadmapId}`);
+			return response.data.data ?? [];
+		} catch (error) {
+			throw handleServiceError(error, `List tasks for roadmap ${roadmapId}`);
 		}
 	},
 

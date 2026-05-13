@@ -5,6 +5,7 @@ import { LinkRoadmapModal } from "@/components/roadmap/modals/LinkRoadmapModal";
 import { EpicTab } from "./EpicTab";
 import { ArtifactTabView } from "./ArtifactTabView";
 import { MilestonesView } from "../../milestones/MilestonesView";
+import { KanbanView } from "../../kanban/KanbanView";
 import type { RoadmapCanvasProps } from "../models/types";
 import { RoadmapCanvasOverlays } from "./RoadmapCanvasOverlays";
 import { RoadmapView } from "../RoadmapView";
@@ -373,6 +374,8 @@ const RoadmapCanvas = ({
             </div>
           </div>
         )}
+
+        {viewMode === "kanban" && <KanbanView />}
 
         {viewMode === "milestones" && (
           <MilestonesView

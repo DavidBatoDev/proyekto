@@ -7,6 +7,9 @@ import type {
   RoadmapTask,
 } from "@/types/roadmap";
 import { useUser } from "@/auth";
+import { useShallow } from "zustand/react/shallow";
+import { useRoadmapStore } from "@/stores/roadmapStore";
+import { useToast } from "@/hooks/useToast";
 import { RoadmapModalLayout } from "./RoadmapModalLayout";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { TaskListItem } from "../widgets/TaskListItem";
@@ -57,6 +60,45 @@ export const FeatureModal = ({
   isPendingCreate = false,
 }: FeatureModalProps) => {
   const user = useUser();
+  const toast = useToast();
+  const { milestones, reassignFeatureToMilestone } = useRoadmapStore(
+    useShallow((s) => ({
+      milestones: s.milestones,
+      reassignFeatureToMilestone: s.reassignFeatureToMilestone,
+    })),
+  );
+  const currentMilestoneId = useMemo(() => {
+    if (!initialData?.id) return null;
+    const match = milestones.find((m) =>
+      (m.linked_features ?? []).some((f) => f.id === initialData.id),
+    );
+    return match?.id ?? null;
+  }, [initialData?.id, milestones]);
+  const [milestonePending, setMilestonePending] = useState(false);
+  const handleMilestoneChange = async (nextMilestoneId: string) => {
+    if (!initialData?.id) return;
+    const toId = nextMilestoneId === "" ? null : nextMilestoneId;
+    if (toId === currentMilestoneId) return;
+    setMilestonePending(true);
+    try {
+      await reassignFeatureToMilestone(
+        initialData.id,
+        currentMilestoneId,
+        toId,
+      );
+      toast.success(
+        toId
+          ? "Feature moved to milestone"
+          : "Feature unassigned from milestone",
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update milestone",
+      );
+    } finally {
+      setMilestonePending(false);
+    }
+  };
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<FeatureStatus>("not_started");
@@ -362,6 +404,31 @@ export const FeatureModal = ({
             </label>
           </div>
         </div>
+
+        {/* Milestone (soft phases): assign feature to any milestone — past or future */}
+        {initialData?.id && (
+          <div className="mb-6">
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">
+              Milestone
+            </h3>
+            <select
+              value={currentMilestoneId ?? ""}
+              disabled={milestonePending}
+              onChange={(e) => void handleMilestoneChange(e.target.value)}
+              className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-white disabled:opacity-60"
+            >
+              <option value="">Unassigned</option>
+              {milestones.map((milestone) => (
+                <option key={milestone.id} value={milestone.id}>
+                  {milestone.title}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              Any milestone is selectable — phases are flexible.
+            </p>
+          </div>
+        )}
 
         {/* Progress (auto-calculated from task statuses) */}
         <div className="mb-6">

@@ -183,7 +183,7 @@ function SharedRoadmapPage() {
 
         <div className="flex-1 flex overflow-hidden">
           {/* Left: Chat Sidebar (Info Only) — hidden in milestones view */}
-          {canvasViewMode !== "milestones" && (
+          {canvasViewMode !== "milestones" && canvasViewMode !== "kanban" && (
             <motion.div
               id="roadmap-info-panel"
               className="relative h-full border-r border-gray-200 bg-white overflow-x-hidden"
@@ -202,7 +202,7 @@ function SharedRoadmapPage() {
           )}
 
           {/* Toggle button - positioned outside motion.div to avoid clipping */}
-          {canvasViewMode !== "milestones" && (
+          {canvasViewMode !== "milestones" && canvasViewMode !== "kanban" && (
             <motion.button
               type="button"
               aria-controls="roadmap-info-panel"

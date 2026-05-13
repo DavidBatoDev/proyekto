@@ -22,7 +22,24 @@ import type {
 } from "@/types/roadmap";
 import type { RoadmapArtifactPreview } from "@/types/roadmapArtifact";
 
-export type CanvasViewMode = "roadmap" | "epic" | "milestones" | "artifact";
+export type CanvasViewMode =
+  | "roadmap"
+  | "epic"
+  | "milestones"
+  | "artifact"
+  | "kanban";
+
+export interface KanbanBoardFilters {
+  epicIds: string[];
+  milestoneIds: string[];
+  assigneeIds: string[];
+}
+
+const EMPTY_BOARD_FILTERS: KanbanBoardFilters = {
+  epicIds: [],
+  milestoneIds: [],
+  assigneeIds: [],
+};
 
 interface RoadmapState {
   // Data
@@ -55,6 +72,9 @@ interface RoadmapState {
   canvasSelectedArtifactId: string | null;
   canvasOpenArtifactTabs: string[];
   artifactsById: Record<string, RoadmapArtifactPreview>;
+
+  // UI State - Kanban Board
+  boardFilters: KanbanBoardFilters;
 
   // UI State - Modal Triggers
   addFeatureEpicId: string | null;
@@ -118,6 +138,19 @@ interface RoadmapActions {
     nextStatus: RoadmapTask["status"],
   ) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
+
+  // Kanban board
+  setBoardFilters: (
+    update:
+      | Partial<KanbanBoardFilters>
+      | ((prev: KanbanBoardFilters) => KanbanBoardFilters),
+  ) => void;
+  resetBoardFilters: () => void;
+  reassignFeatureToMilestone: (
+    featureId: string,
+    fromMilestoneId: string | null,
+    toMilestoneId: string | null,
+  ) => Promise<void>;
 
   // Milestone CRUD
   addMilestone: (data: {
@@ -311,6 +344,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
   canvasSelectedArtifactId: null,
   canvasOpenArtifactTabs: [],
   artifactsById: {},
+  boardFilters: EMPTY_BOARD_FILTERS,
 
   // Initialize - Load full roadmap data
   loadRoadmap: async (roadmapId: string, options?: { force?: boolean }) => {
@@ -1662,6 +1696,44 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
     const { milestones } = get();
     await milestoneService.delete(id);
     set({ milestones: milestones.filter((m) => m.id !== id) });
+  },
+
+  // Kanban board filters
+  setBoardFilters: (update) => {
+    set((state) => ({
+      boardFilters:
+        typeof update === "function"
+          ? update(state.boardFilters)
+          : { ...state.boardFilters, ...update },
+    }));
+  },
+
+  resetBoardFilters: () => {
+    set({ boardFilters: EMPTY_BOARD_FILTERS });
+  },
+
+  // Soft phases: move a feature between milestones (or to/from unassigned).
+  // Either id may be null. After the API call we reload to keep
+  // milestone.linked_features in sync — small refetch, no rollback bookkeeping.
+  reassignFeatureToMilestone: async (
+    featureId: string,
+    fromMilestoneId: string | null,
+    toMilestoneId: string | null,
+  ) => {
+    if (fromMilestoneId === toMilestoneId) return;
+    const { roadmap } = get();
+    if (fromMilestoneId) {
+      await featureService.unlinkFromMilestone(featureId, fromMilestoneId);
+    }
+    if (toMilestoneId) {
+      await featureService.linkToMilestone({
+        feature_id: featureId,
+        milestone_id: toMilestoneId,
+      });
+    }
+    if (roadmap) {
+      await get().loadRoadmap(roadmap.id, { force: true });
+    }
   },
 
   // UI Actions - Modal Triggers

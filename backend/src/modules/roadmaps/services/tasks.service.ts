@@ -20,6 +20,10 @@ export class TasksService {
     return this.repo.findByFeature(featureId);
   }
 
+  async findByRoadmap(roadmapId: string) {
+    return this.repo.findByRoadmap(roadmapId);
+  }
+
   async findById(id: string) {
     const task = await this.repo.findById(id);
     if (!task) throw new NotFoundException('Task not found');
