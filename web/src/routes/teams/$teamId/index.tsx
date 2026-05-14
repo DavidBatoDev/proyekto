@@ -81,7 +81,7 @@ function CompactProjectCard({
 	const isDraft = status.toLowerCase() === "draft";
 	return (
 		<Link
-			to="/project/$projectId/overview"
+			to="/project/$projectId/roadmap"
 			params={{ projectId }}
 			className="group flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
 			style={{

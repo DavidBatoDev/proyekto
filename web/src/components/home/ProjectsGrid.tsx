@@ -461,7 +461,7 @@ export function ProjectCard({
 			<div className="border-t border-slate-200 pt-4">
 				<div className="flex flex-col items-end gap-1">
 					<Link
-						to="/project/$projectId/overview"
+						to="/project/$projectId/roadmap"
 						params={{ projectId }}
 						className="whitespace-nowrap text-[14px] font-semibold uppercase text-slate-700 transition-colors group-hover:text-slate-900"
 					>

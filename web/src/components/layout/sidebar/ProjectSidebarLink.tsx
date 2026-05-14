@@ -27,12 +27,6 @@ interface SubItem {
 
 const SUB_ITEMS: SubItem[] = [
 	{
-		label: "Overview",
-		icon: LayoutGrid,
-		to: "/project/$projectId/overview",
-		matches: (p, id) => p === `/project/${id}/overview`,
-	},
-	{
 		label: "Roadmap",
 		icon: Map,
 		to: "/project/$projectId/roadmap",
@@ -43,6 +37,12 @@ const SUB_ITEMS: SubItem[] = [
 		icon: ListChecks,
 		to: "/project/$projectId/work-items",
 		matches: (p, id) => p.startsWith(`/project/${id}/work-items`),
+	},
+	{
+		label: "Overview",
+		icon: LayoutGrid,
+		to: "/project/$projectId/overview",
+		matches: (p, id) => p === `/project/${id}/overview`,
 	},
 	{
 		label: "Team",
@@ -117,7 +117,7 @@ export function ProjectSidebarLink({
 			onMouseLeave={scheduleClose}
 		>
 			<Link
-				to="/project/$projectId/overview"
+				to="/project/$projectId/roadmap"
 				params={{ projectId: project.id }}
 				className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
 					active

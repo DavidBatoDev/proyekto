@@ -95,12 +95,6 @@ export function ProjectSidebar({
       title: "Plan",
       items: [
         {
-          label: "Overview",
-          icon: LayoutDashboard,
-          to: `/project/${projectId}/overview`,
-          requiresProject: true,
-        },
-        {
           label: "Roadmap",
           icon: Map,
           to: effectiveRoadmapId
@@ -115,6 +109,12 @@ export function ProjectSidebar({
             ? `/project/${projectId}/work-items/${effectiveRoadmapId}`
             : `/project/${projectId}/work-items`,
           requiresProject: false,
+        },
+        {
+          label: "Overview",
+          icon: LayoutDashboard,
+          to: `/project/${projectId}/overview`,
+          requiresProject: true,
         },
       ],
     },

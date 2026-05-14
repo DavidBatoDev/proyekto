@@ -247,7 +247,7 @@ export function ProjectInvitePromptManager() {
       if (acceptedProjectId) {
         setOpen(false);
         navigate({
-          to: "/project/$projectId/overview",
+          to: "/project/$projectId/roadmap",
           params: { projectId: acceptedProjectId },
         });
         return;
