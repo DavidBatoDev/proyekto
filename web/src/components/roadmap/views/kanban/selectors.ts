@@ -36,12 +36,18 @@ export function applyBoardFilters(
 	rows: KanbanTaskContext[],
 	filters: KanbanBoardFilters,
 ): KanbanTaskContext[] {
-	const { epicIds, milestoneIds, assigneeIds } = filters;
-	if (!epicIds.length && !milestoneIds.length && !assigneeIds.length) {
+	const { epicIds, featureIds, milestoneIds, assigneeIds } = filters;
+	if (
+		!epicIds.length &&
+		!featureIds.length &&
+		!milestoneIds.length &&
+		!assigneeIds.length
+	) {
 		return rows;
 	}
 	return rows.filter((row) => {
 		if (epicIds.length && !epicIds.includes(row.epic.id)) return false;
+		if (featureIds.length && !featureIds.includes(row.feature.id)) return false;
 		if (milestoneIds.length) {
 			const milestoneId = row.milestone?.id ?? null;
 			if (!milestoneId || !milestoneIds.includes(milestoneId)) return false;

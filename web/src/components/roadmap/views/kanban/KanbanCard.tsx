@@ -39,7 +39,7 @@ const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(
 			"bg-white border border-gray-200 rounded-lg p-3 shadow-sm transition";
 		const interactive = overlay
 			? "shadow-lg rotate-1 cursor-grabbing"
-			: "hover:shadow-md cursor-grab active:cursor-grabbing";
+			: "hover:shadow-md cursor-pointer active:cursor-grabbing";
 		const dim = !overlay && dragging ? "opacity-40" : "";
 
 		return (
@@ -52,24 +52,34 @@ const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(
 					{task.title}
 				</div>
 
-				<div className="mt-2 flex flex-wrap gap-1.5">
+				<div className="mt-2 flex flex-col gap-1 items-start">
 					<span
-						className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium"
+						className="inline-flex items-center max-w-full px-2 py-0.5 rounded-md text-[11px] font-semibold border truncate"
 						style={{
-							backgroundColor: (epic.color ?? "#e5e7eb") + "33",
-							color: epic.color ?? "#374151",
+							backgroundColor: (epic.color ?? "#64748b") + "1f",
+							color: epic.color ?? "#334155",
+							borderColor: (epic.color ?? "#64748b") + "4d",
 						}}
+						title={epic.title}
 					>
 						{epic.title}
 					</span>
+					<div className="flex items-center gap-1 pl-2 max-w-full">
+						<span className="text-slate-300 text-xs leading-none select-none">
+							└
+						</span>
+						<span
+							className="inline-flex items-center max-w-full px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200 truncate"
+							title={feature.title}
+						>
+							{feature.title}
+						</span>
+					</div>
 					{milestone && (
-						<span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-indigo-50 text-indigo-700">
+						<span className="inline-flex items-center max-w-full px-2 py-0.5 rounded-md text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-100 truncate">
 							{milestone.title}
 						</span>
 					)}
-					<span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] text-gray-500 bg-gray-50">
-						{feature.title}
-					</span>
 				</div>
 
 				<div className="mt-2 flex items-center justify-between text-[11px] text-gray-500">
@@ -139,7 +149,7 @@ export function KanbanCard({ row, overlay = false }: KanbanCardProps) {
 			style={style}
 			{...attributes}
 			{...listeners}
-			onDoubleClick={() => openTaskDetail(row.task.id)}
+			onClick={() => openTaskDetail(row.task.id)}
 		/>
 	);
 }
