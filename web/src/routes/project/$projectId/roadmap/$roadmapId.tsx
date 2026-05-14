@@ -3,7 +3,7 @@ import { useCallback, useEffect } from "react";
 import { RoadmapViewContent } from "@/components/roadmap";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 
-type RoadmapDetailView = "roadmapView" | "timelineView";
+type RoadmapDetailView = "roadmapView" | "timelineView" | "boardView";
 
 const parseStringParam = (value: unknown): string | undefined => {
   if (typeof value !== "string") return undefined;
@@ -12,7 +12,11 @@ const parseStringParam = (value: unknown): string | undefined => {
 };
 
 const parseViewParam = (value: unknown): RoadmapDetailView | undefined => {
-  if (value === "roadmapView" || value === "timelineView") {
+  if (
+    value === "roadmapView" ||
+    value === "timelineView" ||
+    value === "boardView"
+  ) {
     return value;
   }
   return undefined;

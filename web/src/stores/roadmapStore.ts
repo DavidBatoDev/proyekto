@@ -31,12 +31,14 @@ export type CanvasViewMode =
 
 export interface KanbanBoardFilters {
   epicIds: string[];
+  featureIds: string[];
   milestoneIds: string[];
   assigneeIds: string[];
 }
 
 const EMPTY_BOARD_FILTERS: KanbanBoardFilters = {
   epicIds: [],
+  featureIds: [],
   milestoneIds: [],
   assigneeIds: [],
 };

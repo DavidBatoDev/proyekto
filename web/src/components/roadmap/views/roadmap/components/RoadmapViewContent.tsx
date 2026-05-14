@@ -75,13 +75,19 @@ const TASK_NAVIGATE_OFFSET_X = 620;
 const clampPanelWidth = (value: number, maxAllowed: number) =>
   Math.min(Math.max(value, CHAT_PANEL_MIN_WIDTH), maxAllowed);
 
-type RoadmapUrlView = "roadmapView" | "timelineView";
+type RoadmapUrlView = "roadmapView" | "timelineView" | "boardView";
 
-const toRoadmapUrlView = (mode: CanvasViewMode): RoadmapUrlView =>
-  mode === "milestones" ? "timelineView" : "roadmapView";
+const toRoadmapUrlView = (mode: CanvasViewMode): RoadmapUrlView => {
+  if (mode === "milestones") return "timelineView";
+  if (mode === "kanban") return "boardView";
+  return "roadmapView";
+};
 
-const toCanvasViewMode = (view: RoadmapUrlView): CanvasViewMode =>
-  view === "timelineView" ? "milestones" : "roadmap";
+const toCanvasViewMode = (view: RoadmapUrlView): CanvasViewMode => {
+  if (view === "timelineView") return "milestones";
+  if (view === "boardView") return "kanban";
+  return "roadmap";
+};
 
 type DeepLinkTarget =
   | { kind: "epic"; epicId: string }
