@@ -124,7 +124,6 @@ export interface RoadmapFeature {
   epic_id: string;
   title: string;
   description?: string;
-  status: FeatureStatus;
   position: number;
   is_deliverable: boolean; // v2.0: Whether this feature counts toward milestone progress
   estimated_hours?: number;

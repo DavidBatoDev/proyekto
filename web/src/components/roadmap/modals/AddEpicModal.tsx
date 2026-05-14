@@ -6,6 +6,7 @@ import type {
   RoadmapFeature,
   RoadmapTask,
 } from "@/types/roadmap";
+import { deriveFeatureStatus } from "@/utils/featureStatus";
 import { useUser } from "@/auth";
 import { RoadmapModalLayout } from "./RoadmapModalLayout";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
@@ -491,11 +492,16 @@ export const EpicModal = ({
                       <p className="text-sm font-semibold text-gray-900">
                         {feature.title}
                       </p>
-                      <span
-                        className={`text-xs px-2 py-1 rounded-md font-medium ${getFeatureStatusColor(feature.status)}`}
-                      >
-                        {feature.status?.replace("_", " ") ?? ""}
-                      </span>
+                      {(() => {
+                        const derivedStatus = deriveFeatureStatus(feature.tasks);
+                        return (
+                          <span
+                            className={`text-xs px-2 py-1 rounded-md font-medium ${getFeatureStatusColor(derivedStatus)}`}
+                          >
+                            {derivedStatus.replace("_", " ")}
+                          </span>
+                        );
+                      })()}
                     </div>
                     {feature.description ? (
                       <div className="mt-1 text-xs text-gray-600 line-clamp-2 prose prose-sm max-w-none">

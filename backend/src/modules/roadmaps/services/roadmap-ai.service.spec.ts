@@ -503,7 +503,7 @@ describe('RoadmapAiService context timing logs', () => {
     expect(epicChildren.children[0]).toMatchObject({
       id: FEATURE_ID,
       type: 'feature',
-      status: 'not_started',
+      status: 'in_progress',
       parent_id: EPIC_ID,
     });
 
@@ -534,7 +534,7 @@ describe('RoadmapAiService context timing logs', () => {
     expect(result.children[0]).toMatchObject({
       id: FEATURE_ID,
       type: 'feature',
-      status: 'not_started',
+      status: 'in_progress',
       parent_id: EPIC_ID,
     });
   });

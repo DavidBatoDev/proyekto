@@ -36,6 +36,7 @@ import type {
   TaskStatus,
   EpicPriority,
 } from "@/types/roadmap";
+import { deriveFeatureStatus } from "@/utils/featureStatus";
 import {
   useProjectMembersQuery,
   useRoadmapFullQuery,
@@ -789,7 +790,7 @@ function FeatureRow({
 
         {/* Status */}
         <div className={`${COL.status} flex items-center`}>
-          <StatusBadge status={feature.status} map={FEATURE_STATUS_MAP} />
+          <StatusBadge status={deriveFeatureStatus(feature.tasks)} map={FEATURE_STATUS_MAP} />
         </div>
 
         {/* Dates */}
@@ -878,7 +879,7 @@ function EpicCard({
 
           if (assigneeFilter !== "all" && scopedTasks.length === 0)
             return false;
-          if (statusFilter && f.status !== statusFilter) return false;
+          if (statusFilter && deriveFeatureStatus(f.tasks) !== statusFilter) return false;
           if (search) {
             const fMatch = f.title.toLowerCase().includes(search.toLowerCase());
             const tMatch = scopedTasks.some((t) =>
@@ -1417,7 +1418,6 @@ function WorkItemsViewPage() {
     (data: {
       title: string;
       description: string;
-      status: FeatureStatus;
       is_deliverable: boolean;
       start_date?: string;
       end_date?: string;
@@ -1431,7 +1431,6 @@ function WorkItemsViewPage() {
         ...rollbackFeature,
         title: data.title,
         description: data.description,
-        status: data.status,
         is_deliverable: data.is_deliverable,
         start_date: data.start_date,
         end_date: data.end_date,
@@ -1446,7 +1445,6 @@ function WorkItemsViewPage() {
         .update(featureId, {
           title: data.title,
           description: data.description,
-          status: data.status,
           is_deliverable: data.is_deliverable,
           start_date: data.start_date,
           end_date: data.end_date,

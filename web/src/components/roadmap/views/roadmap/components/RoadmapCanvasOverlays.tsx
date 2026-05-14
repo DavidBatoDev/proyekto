@@ -6,7 +6,6 @@ import type {
   RoadmapEpic,
   RoadmapTask,
   EpicPriority,
-  FeatureStatus,
 } from "@/types/roadmap";
 
 interface DeleteConfirm {
@@ -72,7 +71,6 @@ interface RoadmapCanvasOverlaysProps {
   handleCreateFeature: (data: {
     title: string;
     description: string;
-    status: FeatureStatus;
     is_deliverable: boolean;
     start_date?: string;
     end_date?: string;
@@ -80,7 +78,6 @@ interface RoadmapCanvasOverlaysProps {
   handleUpdateFeatureFromModal: (data: {
     title: string;
     description: string;
-    status: FeatureStatus;
     is_deliverable: boolean;
     start_date?: string;
     end_date?: string;

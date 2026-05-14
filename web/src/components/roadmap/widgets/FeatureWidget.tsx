@@ -18,13 +18,14 @@ import {
   Plus,
   Calendar,
 } from "lucide-react";
-import type { RoadmapFeature, RoadmapTask } from "@/types/roadmap";
+import type { FeatureStatus, RoadmapFeature, RoadmapTask } from "@/types/roadmap";
 import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
 import { TaskListItem } from "./TaskListItem";
 import {
   calculateFeatureProgressFromTasks,
   getCompletedTaskCount,
 } from "../shared/featureProgress";
+import { deriveFeatureStatus } from "@/utils/featureStatus";
 
 type ToolbarItemType = "epic" | "feature" | "task";
 const TOOLBAR_DRAG_MIME = "application/x-roadmap-toolbar-item";
@@ -74,7 +75,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   const [isCardTaskDropActive, setIsCardTaskDropActive] = useState(false);
   const [isAddTaskDropActive, setIsAddTaskDropActive] = useState(false);
 
-  const getStatusColor = (status: RoadmapFeature["status"]) => {
+  const getStatusColor = (status: FeatureStatus) => {
     switch (status) {
       case "completed":
         return "bg-green-100 text-green-800 border-green-300";
@@ -91,7 +92,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     }
   };
 
-  const getStatusIcon = (status: RoadmapFeature["status"]) => {
+  const getStatusIcon = (status: FeatureStatus) => {
     switch (status) {
       case "completed":
         return <CheckCircle2 className="w-3 h-3" />;
@@ -356,12 +357,17 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
 
           {/* Status Badge */}
           <div className="flex items-center gap-2 mb-2">
-            <span
-              className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded border ${getStatusColor(feature.status)}`}
-            >
-              {getStatusIcon(feature.status)}
-              {feature.status.replace(/_/g, " ")}
-            </span>
+            {(() => {
+              const derivedStatus = deriveFeatureStatus(feature.tasks);
+              return (
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded border ${getStatusColor(derivedStatus)}`}
+                >
+                  {getStatusIcon(derivedStatus)}
+                  {derivedStatus.replace(/_/g, " ")}
+                </span>
+              );
+            })()}
 
             {featureAssignees.length > 0 && (
               <div className="ml-auto flex items-center">

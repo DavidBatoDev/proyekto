@@ -13,6 +13,7 @@ import type {
   RoadmapTask,
 } from "@/types/roadmap";
 import type { OverviewTimelineItem } from "./types";
+import { deriveFeatureStatus } from "@/utils/featureStatus";
 
 export const MAX_OVERVIEW_MILESTONES = 6;
 
@@ -97,9 +98,10 @@ export const mapTaskStatus = (task: RoadmapTask): RoadmapMilestone["status"] => 
 export const mapFeatureStatus = (
   feature: RoadmapFeature,
 ): RoadmapMilestone["status"] => {
-  if (feature.status === "completed") return "completed";
-  if (feature.status === "blocked") return "at_risk";
-  if (feature.status === "in_progress" || feature.status === "in_review") {
+  const derived = deriveFeatureStatus(feature.tasks);
+  if (derived === "completed") return "completed";
+  if (derived === "blocked") return "at_risk";
+  if (derived === "in_progress" || derived === "in_review") {
     return "in_progress";
   }
   if (isPastDate(feature.end_date)) return "missed";

@@ -2,10 +2,10 @@ import { useState, useEffect, useRef, useMemo, type FormEvent } from "react";
 import { Plus, Edit2, ChevronDown, ChevronUp, Calendar, X } from "lucide-react";
 import type {
   Comment,
-  FeatureStatus,
   RoadmapFeature,
   RoadmapTask,
 } from "@/types/roadmap";
+import { deriveFeatureStatus } from "@/utils/featureStatus";
 import { useUser } from "@/auth";
 import { RoadmapModalLayout } from "./RoadmapModalLayout";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
@@ -31,7 +31,6 @@ interface FeatureModalProps {
   onSubmit: (data: {
     title: string;
     description: string;
-    status: FeatureStatus;
     is_deliverable: boolean;
     start_date?: string;
     end_date?: string;
@@ -56,7 +55,6 @@ export const FeatureModal = ({
   const user = useUser();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [status, setStatus] = useState<FeatureStatus>("not_started");
   const [isDeliverable, setIsDeliverable] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -75,7 +73,6 @@ export const FeatureModal = ({
     if (isOpen) {
       setTitle(initialData?.title ?? "");
       setDescription(initialData?.description ?? "");
-      setStatus(initialData?.status ?? "not_started");
       setIsDeliverable(initialData?.is_deliverable ?? false);
       const initialStartDate = initialData?.start_date?.slice(0, 10) ?? "";
       const initialEndDate = initialData?.end_date?.slice(0, 10) ?? "";
@@ -111,7 +108,6 @@ export const FeatureModal = ({
     onSubmit({
       title,
       description,
-      status,
       is_deliverable: isDeliverable,
       start_date: startDate || undefined,
       end_date: endDate || undefined,
@@ -121,7 +117,6 @@ export const FeatureModal = ({
     if (!initialData) {
       setTitle("");
       setDescription("");
-      setStatus("not_started");
       setIsDeliverable(false);
     }
   };
@@ -260,20 +255,15 @@ export const FeatureModal = ({
     <>
       {/* Status and Deliverable Row */}
       <div className="flex gap-6 mb-6">
-        {/* Status */}
+        {/* Status — read-only, derived from child task statuses */}
         <div className="flex-1">
           <h3 className="text-sm font-semibold text-gray-900 mb-2">Status</h3>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value as FeatureStatus)}
-            className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-white"
-          >
-            <option value="not_started">Not Started</option>
-            <option value="in_progress">In Progress</option>
-            <option value="in_review">In Review</option>
-            <option value="completed">Completed</option>
-            <option value="blocked">Blocked</option>
-          </select>
+          <div className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-200 rounded-md bg-gray-50 capitalize">
+            {deriveFeatureStatus(initialData?.tasks).replace(/_/g, " ")}
+          </div>
+          <p className="mt-1 text-xs text-gray-500">
+            Derived from task statuses
+          </p>
         </div>
 
         {/* Is Deliverable */}

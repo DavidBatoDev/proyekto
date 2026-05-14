@@ -149,7 +149,6 @@ const buildRoadmapJsonDocument = (roadmap: Roadmap): UpsertFullRoadmapDto => ({
       id: feature.id,
       title: feature.title,
       description: feature.description,
-      status: feature.status,
       position: feature.position,
       is_deliverable: feature.is_deliverable,
       start_date: feature.start_date,

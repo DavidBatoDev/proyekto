@@ -1353,11 +1353,6 @@ class ContextToolIntentTests(unittest.TestCase):
                 [('update_node', 'task', None)],
             ),
             (
-                'update_feature_status',
-                {'roadmap_id': 'r1', 'feature_id': 'f1', 'status': 'blocked'},
-                [('mark_status', 'feature', None)],
-            ),
-            (
                 'update_epic_status',
                 {'roadmap_id': 'r1', 'epic_id': 'e1', 'status': 'in_progress'},
                 [('mark_status', 'epic', None)],
@@ -1467,15 +1462,6 @@ class ContextToolIntentTests(unittest.TestCase):
                     'start_position': 1,
                 },
                 [('move_node', 'task', None), ('move_node', 'task', None)],
-            ),
-            (
-                'bulk_update_feature_status',
-                {
-                    'roadmap_id': 'r1',
-                    'feature_ids': ['f1', 'f2'],
-                    'status': 'completed',
-                },
-                [('mark_status', 'feature', ['f1', 'f2'])],
             ),
             (
                 'bulk_update_epic_status',

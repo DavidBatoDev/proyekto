@@ -254,7 +254,6 @@ export class RoadmapPatchService {
       id: feature.id ?? randomUUID(),
       title: feature.title,
       description: feature.description,
-      status: feature.status ?? 'not_started',
       position: feature.position ?? featureIndex,
       is_deliverable: feature.is_deliverable ?? true,
       start_date: feature.start_date,

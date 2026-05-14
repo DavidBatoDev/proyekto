@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "@/hooks/useToast";
 import { type CanvasViewMode, useRoadmapStore } from "@/stores/roadmapStore";
-import type { EpicPriority, FeatureStatus, RoadmapTask } from "@/types/roadmap";
+import type { EpicPriority, RoadmapTask } from "@/types/roadmap";
 import type { UseRoadmapCanvasControllerArgs } from "../models/types";
 
 /** @deprecated Use CanvasViewMode from roadmapStore instead */
@@ -628,7 +628,6 @@ export function useRoadmapCanvasController({
     async (data: {
       title: string;
       description: string;
-      status: FeatureStatus;
       is_deliverable: boolean;
       start_date?: string;
       end_date?: string;
@@ -861,7 +860,6 @@ export function useRoadmapCanvasController({
     async (data: {
       title: string;
       description: string;
-      status: FeatureStatus;
       is_deliverable: boolean;
       start_date?: string;
       end_date?: string;
@@ -880,7 +878,6 @@ export function useRoadmapCanvasController({
         ...feature,
         title: data.title,
         description: data.description,
-        status: data.status,
         is_deliverable: data.is_deliverable,
         start_date: data.start_date,
         end_date: data.end_date,

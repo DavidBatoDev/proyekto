@@ -1,5 +1,4 @@
 import type {
-	FeatureStatus,
 	Roadmap,
 	RoadmapEpic,
 	RoadmapFeature,
@@ -33,7 +32,6 @@ export interface RoadmapCanvasControllerProps {
 		data: {
 			title: string;
 			description: string;
-			status: FeatureStatus;
 			is_deliverable: boolean;
 		},
 	) => void | Promise<void>;

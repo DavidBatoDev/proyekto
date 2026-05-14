@@ -13,7 +13,6 @@ import {
   type FullRoadmap,
 } from "@/services/roadmap.service";
 import type {
-  FeatureStatus,
   Roadmap,
   RoadmapEpic,
   RoadmapFeature,
@@ -92,7 +91,6 @@ interface RoadmapState {
 interface FeatureData {
   title: string;
   description: string;
-  status: FeatureStatus;
   position?: number;
   is_deliverable: boolean;
   start_date?: string;
@@ -872,7 +870,6 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
           epic_id: epicId,
           title,
           description: data.description,
-          status: data.status || "not_started",
           position: optimisticPosition,
           is_deliverable: data.is_deliverable,
           estimated_hours: undefined,
@@ -908,7 +905,6 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         epic_id: epicId,
         title,
         description: data.description,
-        status: data.status,
         position: optimisticPosition,
         is_deliverable: data.is_deliverable,
         start_date: data.start_date,
@@ -998,7 +994,6 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
       const updated = await featureService.update(featureId, {
         title: feature.title,
         description: feature.description,
-        status: feature.status,
         position: feature.position,
         is_deliverable: feature.is_deliverable,
         estimated_hours: feature.estimated_hours,

@@ -17,6 +17,7 @@ import type {
   RoadmapTask,
   Comment,
 } from "@/types/roadmap";
+import { deriveFeatureStatus } from "@/utils/featureStatus";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { FeatureModal } from "../../../modals/FeatureModal";
 import { CommentsSection } from "../../../shared/CommentsSection";
@@ -354,7 +355,6 @@ export const EpicTab = ({
   const handleUpdateFeatureFromModal = async (data: {
     title: string;
     description: string;
-    status: any;
     is_deliverable: boolean;
   }) => {
     if (editingFeature) {
@@ -659,11 +659,16 @@ export const EpicTab = ({
                       <h3 className="text-lg font-semibold text-gray-900">
                         {feature.title}
                       </h3>
-                      <span
-                        className={`text-xs px-2 py-1 rounded-md font-medium ${getStatusColor(feature.status)}`}
-                      >
-                        {feature.status?.replace("_", " ")}
-                      </span>
+                      {(() => {
+                        const derivedStatus = deriveFeatureStatus(feature.tasks);
+                        return (
+                          <span
+                            className={`text-xs px-2 py-1 rounded-md font-medium ${getStatusColor(derivedStatus)}`}
+                          >
+                            {derivedStatus.replace("_", " ")}
+                          </span>
+                        );
+                      })()}
                       {feature.is_deliverable && (
                         <span className="text-xs px-2 py-1 bg-amber-100 text-amber-800 rounded-md font-medium">
                           Deliverable

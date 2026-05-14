@@ -166,7 +166,6 @@ EDIT_HELPER_TOOL_NAMES = {
     'update_task_status',
     'update_task_priority',
     'update_task_assignee',
-    'update_feature_status',
     'update_epic_status',
     'update_titles',
     'delete_task',
@@ -183,7 +182,6 @@ EDIT_HELPER_TOOL_NAMES = {
     'bulk_assign_tasks',
     'bulk_delete_tasks',
     'bulk_move_tasks_to_feature',
-    'bulk_update_feature_status',
     'bulk_update_epic_status',
 }
 
@@ -477,7 +475,6 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
                 'epic_id': {'type': 'string'},
                 'title': {'type': 'string'},
                 'description': {'type': 'string'},
-                'status': {'type': 'string', 'enum': FEATURE_STATUS_VALUES},
             },
         ),
         _function_tool(
@@ -524,15 +521,6 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
                         {'type': 'null'},
                     ]
                 },
-            },
-        ),
-        _function_tool(
-            name='update_feature_status',
-            description='Draft a status update for a single feature.',
-            required=['feature_id', 'status'],
-            properties={
-                'feature_id': {'type': 'string'},
-                'status': {'type': 'string', 'enum': FEATURE_STATUS_VALUES},
             },
         ),
         _function_tool(
@@ -715,15 +703,6 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
             },
         ),
         _function_tool(
-            name='bulk_update_feature_status',
-            description='Draft status updates for multiple features.',
-            required=['feature_ids', 'status'],
-            properties={
-                'feature_ids': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1},
-                'status': {'type': 'string', 'enum': FEATURE_STATUS_VALUES},
-            },
-        ),
-        _function_tool(
             name='bulk_update_epic_status',
             description='Draft status updates for multiple epics.',
             required=['epic_ids', 'status'],
@@ -737,7 +716,6 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
 
 _CREATE_STATUS_ENUMS: dict[str, list[str]] = {
     'add_epic': EPIC_STATUS_VALUES,
-    'add_feature': FEATURE_STATUS_VALUES,
     'add_task': TASK_STATUS_VALUES,
 }
 
@@ -1071,12 +1049,10 @@ SCOPED_EDIT_TOOL_MANIFESTS: dict[str, frozenset[str]] = {
         'get_tasks_by_parent',
         'get_tasks_assigned_to_me',
         'update_task_status',
-        'update_feature_status',
         'update_epic_status',
         'bulk_update_task_status',
         'bulk_update_tasks_by_parent',
         'bulk_update_tasks_by_filter',
-        'bulk_update_feature_status',
         'bulk_update_epic_status',
         PLANNING_TOOL_NAME,
     }),
@@ -1674,17 +1650,6 @@ def _normalize_single_item_helper_alias(payload: dict[str, Any]) -> dict[str, An
             payload['node_id'] = task_id
             payload['status'] = status
             payload.pop('task_id', None)
-        return payload
-
-    if op == 'update_feature_status':
-        feature_id = _str_arg('feature_id', 'node_id')
-        status = _str_arg('status')
-        if feature_id and status:
-            payload['op'] = 'mark_status'
-            payload['node_type'] = 'feature'
-            payload['node_id'] = feature_id
-            payload['status'] = status
-            payload.pop('feature_id', None)
         return payload
 
     if op == 'update_epic_status':

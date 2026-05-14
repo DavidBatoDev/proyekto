@@ -92,10 +92,6 @@ export class FullRoadmapFeatureDto {
   description?: string;
 
   @IsOptional()
-  @IsEnum(['not_started', 'in_progress', 'in_review', 'completed', 'blocked'])
-  status?: string;
-
-  @IsOptional()
   @IsInt()
   @Min(0)
   position?: number;

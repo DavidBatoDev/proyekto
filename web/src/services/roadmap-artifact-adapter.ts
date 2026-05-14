@@ -125,7 +125,6 @@ function normalizeFeatures(
       epic_id: epicId,
       title: readString(featureRecord.title) ?? "Untitled feature",
       description: readString(featureRecord.description),
-      status: (readString(featureRecord.status) ?? "not_started") as RoadmapFeature["status"],
       position: readNumber(featureRecord.position) ?? featureIndex,
       is_deliverable: readBoolean(featureRecord.is_deliverable) ?? true,
       start_date: readString(featureRecord.start_date),

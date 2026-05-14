@@ -45,7 +45,7 @@ export interface RoadmapPreview extends Omit<Roadmap, "epics"> {
       features: Array<
         Pick<
           RoadmapFeature,
-          "id" | "roadmap_id" | "epic_id" | "title" | "position" | "status"
+          "id" | "roadmap_id" | "epic_id" | "title" | "position"
         > & {
           tasks: Array<
             Pick<RoadmapTask, "id" | "feature_id" | "position" | "status">

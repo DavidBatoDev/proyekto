@@ -62,6 +62,7 @@ import type {
   SemanticDiffDto,
 } from '../dto/roadmap-ai.dto';
 import { RoadmapAiPreviewStoreService } from './roadmap-ai-preview-store.service';
+import { deriveFeatureStatus } from './derive-feature-status';
 
 type Severity = 'error' | 'warning';
 
@@ -468,7 +469,7 @@ export class RoadmapAiService {
                         {
                           id: feature.id,
                           title: feature.title ?? 'Untitled feature',
-                          status: feature.status,
+                          status: deriveFeatureStatus(feature.roadmap_tasks),
                         },
                       ]
                     : [],
@@ -888,7 +889,7 @@ export class RoadmapAiService {
         type: 'feature',
         title: locator.feature.title ?? 'Untitled feature',
         description: locator.feature.description,
-        status: locator.feature.status,
+        status: deriveFeatureStatus(locator.feature.roadmap_tasks),
         start_date: locator.feature.start_date,
         end_date: locator.feature.end_date,
         parent_id: this.requireNodeId(locator.epic.id, 'epic'),
@@ -941,7 +942,7 @@ export class RoadmapAiService {
                   id: feature.id,
                   type: 'feature' as const,
                   title: feature.title ?? 'Untitled feature',
-                  status: feature.status,
+                  status: deriveFeatureStatus(feature.roadmap_tasks),
                   parent_id: parentId,
                 },
               ]
@@ -1009,7 +1010,7 @@ export class RoadmapAiService {
                 id: feature.id,
                 type: 'feature' as const,
                 title: feature.title ?? 'Untitled feature',
-                status: feature.status,
+                status: deriveFeatureStatus(feature.roadmap_tasks),
                 parent_id: epicId,
               },
             ]
@@ -1304,7 +1305,7 @@ export class RoadmapAiService {
         type: 'feature',
         title: locator.feature.title ?? 'Untitled feature',
         description: locator.feature.description,
-        status: locator.feature.status,
+        status: deriveFeatureStatus(locator.feature.roadmap_tasks),
         start_date: locator.feature.start_date,
         end_date: locator.feature.end_date,
         parent_id: this.requireNodeId(locator.epic.id, 'epic'),
@@ -1414,7 +1415,7 @@ export class RoadmapAiService {
                     id: feature.id,
                     type: 'feature' as const,
                     title: feature.title ?? 'Untitled feature',
-                    status: feature.status,
+                    status: deriveFeatureStatus(feature.roadmap_tasks),
                     parent_id: parentId,
                   },
                 ]
@@ -2539,7 +2540,6 @@ export class RoadmapAiService {
       id: assignedId,
       title,
       description: this.readString(operation.data, 'description'),
-      status: this.readString(operation.data, 'status') ?? 'not_started',
       is_deliverable:
         this.readBoolean(operation.data, 'is_deliverable') ?? true,
       start_date: this.readString(operation.data, 'start_date'),
@@ -2547,18 +2547,6 @@ export class RoadmapAiService {
       roadmap_tasks: [],
       position: 0,
     };
-
-    if (!FEATURE_STATUS.includes(feature.status ?? '')) {
-      issues.push(
-        this.issue(
-          'INVALID_ENUM',
-          'error',
-          `${path}/data/status`,
-          'Invalid feature status enum',
-        ),
-      );
-      return;
-    }
 
     const targetPosition = this.resolveInsertPosition(
       operation.position,
@@ -2989,6 +2977,18 @@ export class RoadmapAiService {
       return;
     }
 
+    if (locator.type === 'feature') {
+      issues.push(
+        this.issue(
+          'OUT_OF_SCOPE_MUTATION',
+          'error',
+          `${path}/node_id`,
+          'mark_status is not supported on features; change child task statuses instead',
+        ),
+      );
+      return;
+    }
+
     const isValid = this.validateNodeStatus(locator.type, operation.status);
     if (!isValid) {
       issues.push(
@@ -3215,16 +3215,6 @@ export class RoadmapAiService {
           featurePath,
           issues,
         );
-        if (feature.status && !FEATURE_STATUS.includes(feature.status)) {
-          issues.push(
-            this.issue(
-              'INVALID_ENUM',
-              'error',
-              `${featurePath}/status`,
-              'Invalid feature status enum',
-            ),
-          );
-        }
 
         (feature.roadmap_tasks ?? []).forEach((task, taskIndex) => {
           const taskPath = `${featurePath}/roadmap_tasks/${taskIndex}`;
@@ -3297,7 +3287,7 @@ export class RoadmapAiService {
     for (const epic of state.roadmap_epics ?? []) {
       if (epic.status !== 'completed') continue;
       const hasIncompleteFeature = (epic.roadmap_features ?? []).some(
-        (feature) => feature.status !== 'completed',
+        (feature) => deriveFeatureStatus(feature.roadmap_tasks) !== 'completed',
       );
       if (hasIncompleteFeature) {
         issues.push(
@@ -3309,26 +3299,6 @@ export class RoadmapAiService {
             { type: 'epic', id: epic.id ?? '' },
           ),
         );
-      }
-    }
-
-    for (const epic of state.roadmap_epics ?? []) {
-      for (const feature of epic.roadmap_features ?? []) {
-        if (feature.status !== 'completed') continue;
-        const hasIncompleteTask = (feature.roadmap_tasks ?? []).some(
-          (task) => task.status !== 'done',
-        );
-        if (hasIncompleteTask) {
-          issues.push(
-            this.issue(
-              'PROGRESS_MISMATCH',
-              'warning',
-              `/roadmap_features/${feature.id}/status`,
-              'Feature is completed while one or more tasks are not done',
-              { type: 'feature', id: feature.id ?? '' },
-            ),
-          );
-        }
       }
     }
   }
@@ -3537,7 +3507,7 @@ export class RoadmapAiService {
           position: feature.position,
           title: feature.title,
           description: feature.description,
-          status: feature.status,
+          status: deriveFeatureStatus(feature.roadmap_tasks),
           isDeliverable: feature.is_deliverable,
           startDate: feature.start_date,
           endDate: feature.end_date,
@@ -3888,7 +3858,6 @@ export class RoadmapAiService {
       id: this.readUuid(raw, 'id'),
       title: this.readString(raw, 'title') ?? 'Untitled feature',
       description: this.readString(raw, 'description'),
-      status: this.readString(raw, 'status') ?? 'not_started',
       position: this.readNumber(raw, 'position') ?? featureIndex,
       is_deliverable: this.readBoolean(raw, 'is_deliverable') ?? true,
       start_date: this.readString(raw, 'start_date'),

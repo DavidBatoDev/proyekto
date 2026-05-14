@@ -168,13 +168,12 @@ class RoadmapOperation(BaseModel):
             normalized_status = self.status.strip() if isinstance(self.status, str) else ''
             if not normalized_status:
                 issues.append('mark_status.status_missing')
+            elif self.node_type == NodeType.FEATURE:
+                issues.append('mark_status.feature_unsupported')
             else:
                 canonical_status = normalized_status.lower()
                 if self.node_type == NodeType.EPIC:
                     if canonical_status not in _EPIC_MARK_STATUS_VALUES:
-                        issues.append('mark_status.status_invalid')
-                elif self.node_type == NodeType.FEATURE:
-                    if canonical_status not in _FEATURE_MARK_STATUS_VALUES:
                         issues.append('mark_status.status_invalid')
                 elif canonical_status not in _TASK_MARK_STATUS_VALUES:
                     issues.append('mark_status.status_invalid')

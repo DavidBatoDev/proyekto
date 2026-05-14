@@ -1187,15 +1187,10 @@ class EditHelperHandler(ToolHandlerBase):
             )
             return result
 
-        if tool_name in {'bulk_update_feature_status', 'bulk_update_epic_status'}:
-            if tool_name == 'bulk_update_feature_status':
-                ids = self._string_list(args.get('feature_ids'))
-                node_type = 'feature'
-                id_label = 'feature_ids'
-            else:
-                ids = self._string_list(args.get('epic_ids'))
-                node_type = 'epic'
-                id_label = 'epic_ids'
+        if tool_name == 'bulk_update_epic_status':
+            ids = self._string_list(args.get('epic_ids'))
+            node_type = 'epic'
+            id_label = 'epic_ids'
             status = str(args.get('status') or '').strip()
             if not ids or not status:
                 return self._invalid_argument_result(

@@ -620,17 +620,19 @@ class PlanToolStatusEnumSchemaTests(unittest.TestCase):
         )
         self.assertEqual(epic_status['enum'], EPIC_STATUS_VALUES)
 
-    def test_add_feature_data_status_enforces_feature_enum(self) -> None:
+    def test_add_feature_data_has_no_status_field(self) -> None:
+        # Feature status is derived from child task statuses, so add_feature
+        # should not carry a status field in its data schema.
         branches = self._operation_branches()
         feature_branches = [
             b for b in branches
             if b.get('properties', {}).get('op', {}).get('const') == 'add_feature'
         ]
         self.assertTrue(feature_branches)
-        feature_status = (
-            feature_branches[0]['properties']['data']['properties']['status']  # type: ignore[index]
+        feature_data_props = (
+            feature_branches[0]['properties']['data']['properties']  # type: ignore[index]
         )
-        self.assertEqual(feature_status['enum'], FEATURE_STATUS_VALUES)
+        self.assertNotIn('status', feature_data_props)
 
     def test_add_task_data_status_enforces_task_enum(self) -> None:
         branches = self._operation_branches()
@@ -649,12 +651,9 @@ class PlanToolStatusEnumSchemaTests(unittest.TestCase):
         by_name = {tool['function']['name']: tool for tool in tools}
         expectations = {
             'create_epic': EPIC_STATUS_VALUES,
-            'create_feature': FEATURE_STATUS_VALUES,
             'create_task': TASK_STATUS_VALUES,
             'update_task_status': TASK_STATUS_VALUES,
-            'update_feature_status': FEATURE_STATUS_VALUES,
             'update_epic_status': EPIC_STATUS_VALUES,
-            'bulk_update_feature_status': FEATURE_STATUS_VALUES,
             'bulk_update_epic_status': EPIC_STATUS_VALUES,
         }
         for tool_name, expected_enum in expectations.items():
@@ -667,6 +666,25 @@ class PlanToolStatusEnumSchemaTests(unittest.TestCase):
                 expected_enum,
                 f'{tool_name} status enum mismatch',
             )
+
+    def test_feature_status_edit_helpers_removed(self) -> None:
+        # Feature status is derived; the standalone update/bulk helpers
+        # that wrote feature.status directly were removed.
+        tools = get_edit_helper_tools()
+        names = {tool['function']['name'] for tool in tools}
+        self.assertNotIn('update_feature_status', names)
+        self.assertNotIn('bulk_update_feature_status', names)
+        # create_feature exists but no longer takes a status field.
+        create_feature = next(
+            (t for t in tools if t['function']['name'] == 'create_feature'),
+            None,
+        )
+        self.assertIsNotNone(create_feature)
+        assert create_feature is not None
+        self.assertNotIn(
+            'status',
+            create_feature['function']['parameters']['properties'],
+        )
 
     def test_all_status_union_contains_every_node_type_value(self) -> None:
         expected = sorted(

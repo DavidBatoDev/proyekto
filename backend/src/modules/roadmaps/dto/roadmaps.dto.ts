@@ -147,9 +147,6 @@ export class CreateFeatureDto {
   @IsUUID() epic_id: string;
   @IsString() @MaxLength(200) title: string;
   @IsString() @IsOptional() description?: string;
-  @IsEnum(['not_started', 'in_progress', 'in_review', 'completed', 'blocked'])
-  @IsOptional()
-  status?: string;
   @IsNumber() @IsOptional() @Min(0) position?: number;
   @IsBoolean() @IsOptional() is_deliverable?: boolean;
   @IsNumber() @IsOptional() @Min(0) estimated_hours?: number;
@@ -160,9 +157,6 @@ export class CreateFeatureDto {
 export class UpdateFeatureDto {
   @IsString() @IsOptional() @MaxLength(200) title?: string;
   @IsString() @IsOptional() description?: string;
-  @IsEnum(['not_started', 'in_progress', 'in_review', 'completed', 'blocked'])
-  @IsOptional()
-  status?: string;
   @IsNumber() @IsOptional() @Min(0) position?: number;
   @IsBoolean() @IsOptional() is_deliverable?: boolean;
   @IsNumber() @IsOptional() @Min(0) estimated_hours?: number;

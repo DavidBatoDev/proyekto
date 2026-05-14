@@ -9,7 +9,6 @@ import type {
 	Comment,
 	EpicPriority,
 	EpicStatus,
-	FeatureStatus,
 	Roadmap,
 	RoadmapEpic,
 	RoadmapFeature,
@@ -133,7 +132,6 @@ export interface UpsertFullRoadmapFeatureDto {
 	id?: string;
 	title: string;
 	description?: string;
-	status?: FeatureStatus;
 	position?: number;
 	is_deliverable?: boolean;
 	start_date?: string;
@@ -228,7 +226,6 @@ export interface CreateFeatureDto {
 	epic_id: string;
 	title: string;
 	description?: string;
-	status?: FeatureStatus;
 	position?: number;
 	is_deliverable?: boolean;
 	estimated_hours?: number;
@@ -239,7 +236,6 @@ export interface CreateFeatureDto {
 export interface UpdateFeatureDto {
 	title?: string;
 	description?: string;
-	status?: FeatureStatus;
 	position?: number;
 	is_deliverable?: boolean;
 	estimated_hours?: number;

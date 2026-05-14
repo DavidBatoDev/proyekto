@@ -23,11 +23,13 @@ import {
   type FeatureWidgetData,
 } from "../../widgets/FeatureWidget";
 import type {
+  FeatureStatus,
   Roadmap,
   RoadmapEpic,
   RoadmapFeature,
   RoadmapTask,
 } from "@/types/roadmap";
+import { deriveFeatureStatus } from "@/utils/featureStatus";
 import type { RoadmapPerformanceMode } from "./models/types";
 import {
   useRecentAssignees,
@@ -127,7 +129,7 @@ type StructuralNodeData = StructuralEpicNodeData | StructuralFeatureNodeData;
 type ToolbarItemType = "epic" | "feature" | "task";
 const TOOLBAR_DRAG_MIME = "application/x-roadmap-toolbar-item";
 
-const getEdgeColor = (status: RoadmapFeature["status"]) => {
+const getEdgeColor = (status: FeatureStatus) => {
   switch (status) {
     case "completed":
       return "#22c55e";
@@ -407,18 +409,21 @@ export const RoadmapView = ({
 
     const allNodes = [...epicNodes, ...featureNodes];
 
-    const featureEdges: Edge[] = allFeatures.map((feature) => ({
-      id: `epic-feature-${feature.epic_id}-${feature.id}`,
-      source: feature.epic_id,
-      sourceHandle: "epic-right",
-      target: feature.id,
-      type: "simplebezier",
-      animated: feature.status === "in_progress",
-      style: {
-        stroke: getEdgeColor(feature.status),
-        strokeWidth: 2,
-      },
-    }));
+    const featureEdges: Edge[] = allFeatures.map((feature) => {
+      const derivedStatus = deriveFeatureStatus(feature.tasks);
+      return {
+        id: `epic-feature-${feature.epic_id}-${feature.id}`,
+        source: feature.epic_id,
+        sourceHandle: "epic-right",
+        target: feature.id,
+        type: "simplebezier",
+        animated: derivedStatus === "in_progress",
+        style: {
+          stroke: getEdgeColor(derivedStatus),
+          strokeWidth: 2,
+        },
+      };
+    });
 
     const epicEdges: Edge[] = [];
     for (let i = 0; i < orderedEpics.length - 1; i++) {

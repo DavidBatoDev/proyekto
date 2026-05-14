@@ -7070,9 +7070,12 @@ class PlannerContextSafetyTests(unittest.TestCase):
 
         self.assertEqual(call_count['value'], 2)
         self.assertEqual(len(captured_prompts), 1)
-        self.assertIn('BULK TASK STATUS CONTRACT REPAIR:', captured_prompts[0])
+        # Feature status is derived, so mark_status on a feature now triggers
+        # the generic semantic-contract repair with mark_status.feature_unsupported.
+        # The repair still steers the planner toward task-level status updates.
+        self.assertIn('SEMANTIC OPERATION CONTRACT REPAIR:', captured_prompts[0])
+        self.assertIn('mark_status.feature_unsupported', captured_prompts[0])
         self.assertTrue(captured_tool_names)
-        self.assertIn('bulk_update_tasks_by_parent', captured_tool_names[0])
         self.assertIn('plan_roadmap_operations', captured_tool_names[0])
         self.assertEqual(result.get('response_mode'), 'edit_plan')
         planned_ops = result.get('planned_operations') or []
