@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { ListChecks, AlertCircle, Loader2, Plus } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useRoadmapFullQuery } from "@/hooks/useProjectQueries";
@@ -13,35 +13,13 @@ export const Route = createFileRoute(
   component: WorkItemsBoardPage,
 });
 
-function Pill({
-  label,
-  color,
-}: {
-  label: string;
-  color: "orange" | "blue" | "green";
-}) {
-  const cls = {
-    orange: "bg-slate-100 text-slate-700 border-slate-200",
-    blue: "bg-blue-50 text-blue-500 border-blue-100",
-    green: "bg-emerald-50 text-emerald-600 border-emerald-100",
-  }[color];
-  return (
-    <span
-      className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${cls}`}
-    >
-      {label}
-    </span>
-  );
-}
-
 function WorkItemsBoardPage() {
   const { projectId, roadmapId } = Route.useParams();
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
   const roadmapFullQuery = useRoadmapFullQuery(roadmapId);
-  const { applyRoadmapSnapshot, epics } = useRoadmapStore(
+  const { applyRoadmapSnapshot } = useRoadmapStore(
     useShallow((s) => ({
       applyRoadmapSnapshot: s.applyRoadmapSnapshot,
-      epics: s.epics,
     })),
   );
 
@@ -53,22 +31,6 @@ function WorkItemsBoardPage() {
 
   const isLoading = roadmapFullQuery.isPending;
   const error = roadmapFullQuery.error;
-
-  const { totalFeatures, totalTasks, doneTasks } = useMemo(() => {
-    let features = 0;
-    let tasks = 0;
-    let done = 0;
-    for (const epic of epics) {
-      for (const feature of epic.features ?? []) {
-        features += 1;
-        for (const task of feature.tasks ?? []) {
-          tasks += 1;
-          if (task.status === "done") done += 1;
-        }
-      }
-    }
-    return { totalFeatures: features, totalTasks: tasks, doneTasks: done };
-  }, [epics]);
 
   return (
     <div className="relative flex flex-col h-full min-h-0 bg-slate-50/30">
@@ -99,27 +61,6 @@ function WorkItemsBoardPage() {
               <Plus className="w-3.5 h-3.5" />
               Add work items
             </button>
-            {isLoading ? (
-              <div className="hidden sm:flex items-center gap-2 animate-pulse">
-                <div className="h-6 w-20 rounded-full bg-slate-100 border border-slate-200" />
-                <div className="h-6 w-24 rounded-full bg-slate-100 border border-slate-200" />
-                <div className="h-6 w-24 rounded-full bg-slate-100 border border-slate-200" />
-              </div>
-            ) : (
-              epics.length > 0 && (
-                <div className="hidden sm:flex items-center gap-2">
-                  <Pill
-                    label={`${epics.length} epic${epics.length !== 1 ? "s" : ""}`}
-                    color="orange"
-                  />
-                  <Pill
-                    label={`${totalFeatures} feature${totalFeatures !== 1 ? "s" : ""}`}
-                    color="blue"
-                  />
-                  <Pill label={`${doneTasks}/${totalTasks} done`} color="green" />
-                </div>
-              )
-            )}
           </div>
         </div>
       </div>

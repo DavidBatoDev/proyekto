@@ -47,6 +47,9 @@ export class FeaturesService {
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Feature not found');
     await this.roadmapAuthz.assertFeaturePermission(id, userId, 'roadmap.edit');
+    if (dto.epic_id && dto.epic_id !== existing.epic_id) {
+      await this.roadmapAuthz.assertEpicPermission(dto.epic_id, userId, 'roadmap.edit');
+    }
     return this.repo.update(id, dto);
   }
 

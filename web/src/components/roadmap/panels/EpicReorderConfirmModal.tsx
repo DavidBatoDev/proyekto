@@ -1,5 +1,6 @@
 import { ArrowDownUp, X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
+import { createPortal } from "react-dom";
 
 interface EpicReorderConfirmModalProps {
 	isOpen: boolean;
@@ -39,7 +40,7 @@ export const EpicReorderConfirmModal = ({
 		return null;
 	}
 
-	return (
+	return createPortal(
 		<div
 			className={`fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[3px] transition-opacity duration-200 ${
 				isVisible ? "opacity-100" : "opacity-0"

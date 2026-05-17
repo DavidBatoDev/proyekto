@@ -74,6 +74,23 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   const [isPulsing, setIsPulsing] = useState(false);
   const [isCardTaskDropActive, setIsCardTaskDropActive] = useState(false);
   const [isAddTaskDropActive, setIsAddTaskDropActive] = useState(false);
+  const derivedStatus = deriveFeatureStatus(feature.tasks);
+
+  const getWidgetBorderColor = (status: FeatureStatus) => {
+    switch (status) {
+      case "completed":
+        return "border-green-500 hover:border-green-600";
+      case "in_progress":
+        return "border-blue-500 hover:border-blue-600";
+      case "in_review":
+        return "border-purple-500 hover:border-purple-600";
+      case "blocked":
+        return "border-red-500 hover:border-red-600";
+      case "not_started":
+      default:
+        return "border-transparent hover:border-gray-200";
+    }
+  };
 
   const getStatusColor = (status: FeatureStatus) => {
     switch (status) {
@@ -82,7 +99,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
       case "in_progress":
         return "bg-blue-100 text-blue-800 border-blue-300";
       case "in_review":
-        return "bg-orange-100 text-orange-800 border-orange-300";
+        return "bg-purple-100 text-purple-800 border-purple-300";
       case "blocked":
         return "bg-red-100 text-red-800 border-red-300";
       case "not_started":
@@ -205,7 +222,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
             ? "border-emerald-500 ring-2 ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.3),0_12px_24px_rgba(16,185,129,0.22)]"
             : isGlobalTaskDropHighlight
               ? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
-              : "border-amber-300 hover:border-amber-400"
+              : getWidgetBorderColor(derivedStatus)
         }`}
         onClick={() => onClick?.(feature)}
         onDragEnter={(event) => {
@@ -357,17 +374,12 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
 
           {/* Status Badge */}
           <div className="flex items-center gap-2 mb-2">
-            {(() => {
-              const derivedStatus = deriveFeatureStatus(feature.tasks);
-              return (
-                <span
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded border ${getStatusColor(derivedStatus)}`}
-                >
-                  {getStatusIcon(derivedStatus)}
-                  {derivedStatus.replace(/_/g, " ")}
-                </span>
-              );
-            })()}
+            <span
+              className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded border ${getStatusColor(derivedStatus)}`}
+            >
+              {getStatusIcon(derivedStatus)}
+              {derivedStatus.replace(/_/g, " ")}
+            </span>
 
             {featureAssignees.length > 0 && (
               <div className="ml-auto flex items-center">

@@ -155,6 +155,7 @@ export class CreateFeatureDto {
 }
 
 export class UpdateFeatureDto {
+  @IsUUID() @IsOptional() epic_id?: string;
   @IsString() @IsOptional() @MaxLength(200) title?: string;
   @IsString() @IsOptional() description?: string;
   @IsNumber() @IsOptional() @Min(0) position?: number;

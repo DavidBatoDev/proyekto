@@ -234,6 +234,7 @@ export interface CreateFeatureDto {
 }
 
 export interface UpdateFeatureDto {
+	epic_id?: string;
 	title?: string;
 	description?: string;
 	position?: number;

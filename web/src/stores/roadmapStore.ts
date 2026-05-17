@@ -128,6 +128,11 @@ interface RoadmapActions {
     orderedFeatureIds: string[],
   ) => void;
   deleteFeature: (featureId: string) => Promise<void>;
+  moveFeatureBetweenEpics: (
+    featureId: string,
+    targetEpicId: string,
+    orderedTargetFeatureIds: string[],
+  ) => Promise<void>;
 
   // Task CRUD
   addTask: (featureId: string, data: Partial<RoadmapTask>) => Promise<void>;
@@ -232,6 +237,35 @@ const patchFeatureById = (
       feature.id === featureId ? patcher(feature) : feature,
     ),
   }));
+
+const moveFeatureAcrossEpics = (
+  epics: RoadmapEpic[],
+  featureId: string,
+  targetEpicId: string,
+  orderedTargetFeatureIds: string[],
+): RoadmapEpic[] => {
+  let movedFeature: RoadmapFeature | undefined;
+  const withoutFeature = epics.map((epic) => ({
+    ...epic,
+    features: (epic.features || []).filter((f) => {
+      if (f.id === featureId) {
+        movedFeature = f;
+        return false;
+      }
+      return true;
+    }),
+  }));
+  if (!movedFeature) return epics;
+  const updatedFeature: RoadmapFeature = { ...movedFeature, epic_id: targetEpicId };
+  return withoutFeature.map((epic) => {
+    if (epic.id !== targetEpicId) return epic;
+    const existingFeatures = (epic.features || []).filter((f) => f.id !== featureId);
+    const reordered = orderedTargetFeatureIds
+      .map((id) => (id === featureId ? updatedFeature : existingFeatures.find((f) => f.id === id)))
+      .filter((f): f is RoadmapFeature => f !== undefined);
+    return { ...epic, features: reordered };
+  });
+};
 
 const patchTaskById = (
   epics: RoadmapEpic[],
@@ -1251,6 +1285,42 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         isLoadingFeature: false,
       });
       throw error;
+    }
+  },
+
+  moveFeatureBetweenEpics: async (
+    featureId: string,
+    targetEpicId: string,
+    orderedTargetFeatureIds: string[],
+  ) => {
+    const { epics } = get();
+    const sourceEpic = epics.find((e) => e.features?.some((f) => f.id === featureId));
+    if (!sourceEpic || sourceEpic.id === targetEpicId) return;
+
+    const rollbackEpics = epics;
+    const targetIndex = orderedTargetFeatureIds.indexOf(featureId);
+    const position = targetIndex >= 0 ? targetIndex * 1000 : 0;
+
+    set((state) => ({
+      pendingFeatureById: { ...state.pendingFeatureById, [featureId]: true },
+      epics: moveFeatureAcrossEpics(
+        state.epics,
+        featureId,
+        targetEpicId,
+        orderedTargetFeatureIds,
+      ),
+    }));
+
+    try {
+      await featureService.update(featureId, { epic_id: targetEpicId, position });
+    } catch (error) {
+      console.error("Failed to move feature between epics:", error);
+      set({ epics: rollbackEpics });
+      throw error;
+    } finally {
+      set((state) => ({
+        pendingFeatureById: { ...state.pendingFeatureById, [featureId]: false },
+      }));
     }
   },
 

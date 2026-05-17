@@ -5,7 +5,11 @@ import {
 	KeyboardSensor,
 	PointerSensor,
 	closestCenter,
+	type CollisionDetection,
 	type DragEndEvent,
+	type DragOverEvent,
+	type DragStartEvent,
+	useDroppable,
 	useSensor,
 	useSensors,
 } from "@dnd-kit/core";
@@ -29,6 +33,7 @@ import {
 	RoadmapStructureHeader,
 } from "./explorer/RoadmapStructureHeader";
 import { FeatureReorderConfirmModal } from "./FeatureReorderConfirmModal";
+import { FeatureMoveConfirmModal } from "./FeatureMoveConfirmModal";
 import { EpicReorderConfirmModal } from "./EpicReorderConfirmModal";
 
 export type { Message } from "./ChatPanel";
@@ -55,6 +60,8 @@ interface RoadmapLeftSidePanelProps {
 const TASK_NAVIGATE_OFFSET_X = 620;
 const FEATURE_REORDER_CONFIRM_SKIP_KEY =
 	"roadmap.leftPanel.skipFeatureReorderConfirm";
+const FEATURE_MOVE_CONFIRM_SKIP_KEY =
+	"roadmap.leftPanel.skipFeatureMoveConfirm";
 const EPIC_REORDER_CONFIRM_SKIP_KEY = "roadmap.leftPanel.skipEpicReorderConfirm";
 
 type PendingFeatureReorder = {
@@ -71,6 +78,14 @@ type PendingEpicReorder = {
 	epicTitle: string;
 	previousOrderIds: string[];
 	nextOrderIds: string[];
+};
+
+type PendingFeatureMove = {
+	featureId: string;
+	featureTitle: string;
+	sourceEpicId: string;
+	targetEpicId: string;
+	orderedTargetFeatureIds: string[];
 };
 
 const areSetsEqual = (a: Set<string>, b: Set<string>) => {
@@ -102,7 +117,7 @@ type SortableEpicRowProps = {
 
 function SortableEpicRow({ epicId, canDrag, children }: SortableEpicRowProps) {
 	const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-		useSortable({ id: epicId });
+		useSortable({ id: epicId, data: { type: 'epic' } });
 
 	return children({
 		setNodeRef,
@@ -119,6 +134,7 @@ function SortableEpicRow({ epicId, canDrag, children }: SortableEpicRowProps) {
 type SortableFeatureRowProps = {
 	feature: RoadmapFeature;
 	epic: RoadmapEpic;
+	currentEpicId: string;
 	canDrag: boolean;
 	isFeatureExpanded: boolean;
 	canCollapseFeature: boolean;
@@ -137,6 +153,7 @@ type SortableFeatureRowProps = {
 function SortableFeatureRow({
 	feature,
 	epic,
+	currentEpicId,
 	canDrag,
 	isFeatureExpanded,
 	canCollapseFeature,
@@ -155,12 +172,12 @@ function SortableFeatureRow({
 		transform,
 		transition,
 		isDragging,
-	} = useSortable({ id: feature.id });
+	} = useSortable({ id: feature.id, data: { type: 'feature', epicId: currentEpicId } });
 
 	const style = {
 		transform: CSS.Transform.toString(transform),
 		transition,
-		opacity: isDragging ? 0.7 : 1,
+		opacity: isDragging ? 0.5 : 1,
 	};
 
 	return (
@@ -229,6 +246,21 @@ function SortableFeatureRow({
 		</div>
 			);
 		}
+
+function DroppableEpicBody({ epicId, isOver, children }: { epicId: string; isOver?: boolean; children: ReactNode }) {
+	const { setNodeRef } = useDroppable({
+		id: `epic-drop-${epicId}`,
+		data: { type: 'epic-drop', epicId },
+	});
+	return (
+		<div
+			ref={setNodeRef}
+			className={`min-h-2 transition-colors ${isOver ? 'bg-blue-50 rounded-md' : ''}`}
+		>
+			{children}
+		</div>
+	);
+}
 
 export function RoadmapLeftSidePanel({
 	messages: _messages,
@@ -306,6 +338,7 @@ function ExplorerPanel({
 		previewFeatureOrderInEpic,
 		reorderEpicsInRoadmap,
 		previewEpicOrderInRoadmap,
+		moveFeatureBetweenEpics,
 	} = useRoadmapStore(
 		useShallow((state) => ({
 			openAddFeatureModal: state.openAddFeatureModal,
@@ -314,6 +347,7 @@ function ExplorerPanel({
 			previewFeatureOrderInEpic: state.previewFeatureOrderInEpic,
 			reorderEpicsInRoadmap: state.reorderEpicsInRoadmap,
 			previewEpicOrderInRoadmap: state.previewEpicOrderInRoadmap,
+			moveFeatureBetweenEpics: state.moveFeatureBetweenEpics,
 		})),
 	);
 	const explorerConfig = ROADMAP_STRUCTURE_EXPLORER_CONFIG.roadmap;
@@ -327,15 +361,26 @@ function ExplorerPanel({
 	);
 	const [pendingFeatureReorder, setPendingFeatureReorder] =
 		useState<PendingFeatureReorder | null>(null);
+	const [pendingFeatureMove, setPendingFeatureMove] =
+		useState<PendingFeatureMove | null>(null);
 	const [pendingEpicReorder, setPendingEpicReorder] =
 		useState<PendingEpicReorder | null>(null);
 	const [isPersistingFeatureReorder, setIsPersistingFeatureReorder] =
 		useState(false);
+	const [isPersistingFeatureMove, setIsPersistingFeatureMove] = useState(false);
 	const [isPersistingEpicReorder, setIsPersistingEpicReorder] = useState(false);
 	const [dontAskFeatureReorderAgainInSession, setDontAskFeatureReorderAgainInSession] =
 		useState(false);
+	const [dontAskFeatureMoveAgainInSession, setDontAskFeatureMoveAgainInSession] =
+		useState(false);
 	const [dontAskEpicReorderAgainInSession, setDontAskEpicReorderAgainInSession] =
 		useState(false);
+	// Cross-epic drag state
+	const [activeId, setActiveId] = useState<string | null>(null);
+	const [activeType, setActiveType] = useState<'epic' | 'feature' | null>(null);
+	const [activeFeatureEpicId, setActiveFeatureEpicId] = useState<string | null>(null);
+	const [workingEpics, setWorkingEpics] = useState<RoadmapEpic[] | null>(null);
+	const [overEpicDropId, setOverEpicDropId] = useState<string | null>(null);
 	const currentUserRole = roadmap?.currentUserRole;
 	const canEditRoadmap =
 		!currentUserRole ||
@@ -541,10 +586,154 @@ function ExplorerPanel({
 		});
 	};
 
+	const customCollisionDetection: CollisionDetection = (args) => {
+		const activeData = args.active.data.current as { type?: string } | undefined;
+		const activeItemType = activeData?.type;
+		const filteredDroppables = args.droppableContainers.filter((container) => {
+			const containerData = container.data.current as { type?: string } | undefined;
+			const containerType = containerData?.type;
+			if (activeItemType === 'epic') return containerType === 'epic';
+			if (activeItemType === 'feature') return containerType === 'feature' || containerType === 'epic-drop';
+			return true;
+		});
+		return closestCenter({ ...args, droppableContainers: filteredDroppables });
+	};
+
+	const handleDragStart = (event: DragStartEvent) => {
+		const data = event.active.data.current as { type?: string; epicId?: string } | undefined;
+		const type = data?.type as 'epic' | 'feature' | undefined;
+		const epicId = data?.epicId;
+		setActiveId(event.active.id as string);
+		setActiveType(type ?? null);
+		setActiveFeatureEpicId(epicId ?? null);
+		setWorkingEpics(sortedEpics.map((epic) => ({
+			...epic,
+			features: [...(epic.features || [])].sort((a, b) => a.position - b.position),
+		})));
+	};
+
+	const handleDragOver = (event: DragOverEvent) => {
+		if (activeType !== 'feature') return;
+		const { active, over } = event;
+		if (!over || active.id === over.id) return;
+
+		const current = workingEpics ?? sortedEpics;
+		const sourceEpic = current.find((e) => e.features?.some((f) => f.id === active.id));
+		if (!sourceEpic) return;
+
+		const overData = over.data.current as { type?: string; epicId?: string } | undefined;
+		let targetEpicId: string | null = null;
+		if (overData?.type === 'feature') {
+			const targetEpic = current.find((e) => e.features?.some((f) => f.id === over.id));
+			targetEpicId = targetEpic?.id ?? null;
+		} else if (overData?.type === 'epic-drop') {
+			targetEpicId = overData.epicId ?? null;
+		}
+
+		setOverEpicDropId(targetEpicId !== sourceEpic.id ? targetEpicId : null);
+
+		if (!targetEpicId || targetEpicId === sourceEpic.id) return;
+
+		const activeFeature = sourceEpic.features!.find((f) => f.id === active.id);
+		if (!activeFeature) return;
+
+		const targetEpic = current.find((e) => e.id === targetEpicId);
+		if (!targetEpic) return;
+
+		const targetFeaturesWithoutActive = (targetEpic.features || []).filter(
+			(f) => f.id !== active.id,
+		);
+		const overIndex = targetFeaturesWithoutActive.findIndex((f) => f.id === over.id);
+		const insertIndex = overIndex >= 0 ? overIndex : targetFeaturesWithoutActive.length;
+
+		const newTargetFeatures = [...targetFeaturesWithoutActive];
+		newTargetFeatures.splice(insertIndex, 0, activeFeature);
+
+		setWorkingEpics(
+			current.map((epic) => {
+				if (epic.id === sourceEpic.id) {
+					return { ...epic, features: (epic.features || []).filter((f) => f.id !== active.id) };
+				}
+				if (epic.id === targetEpicId) {
+					return { ...epic, features: newTargetFeatures };
+				}
+				return epic;
+			}),
+		);
+	};
+
+	const handleDragEnd = (event: DragEndEvent) => {
+		const { active, over } = event;
+		const capturedActiveType = activeType;
+		const capturedActiveFeatureEpicId = activeFeatureEpicId;
+		const capturedWorkingEpics = workingEpics;
+
+		setActiveId(null);
+		setActiveType(null);
+		setActiveFeatureEpicId(null);
+		setWorkingEpics(null);
+		setOverEpicDropId(null);
+
+		if (!canEditRoadmap) return;
+		if (!over || active.id === over.id) return;
+
+		if (capturedActiveType === 'epic') {
+			const currentOrderIds = sortedEpics.map((e) => e.id);
+			const oldIndex = currentOrderIds.indexOf(active.id as string);
+			const newIndex = currentOrderIds.indexOf(over.id as string);
+			if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+			const nextOrderIds = arrayMove(currentOrderIds, oldIndex, newIndex);
+			queueEpicReorderFromDrag(active.id as string, currentOrderIds, nextOrderIds);
+			return;
+		}
+
+		if (capturedActiveType === 'feature') {
+			const sourceEpicId = capturedActiveFeatureEpicId;
+			if (!sourceEpicId) return;
+
+			const current = capturedWorkingEpics ?? sortedEpics;
+			const overData = over.data.current as { type?: string; epicId?: string } | undefined;
+
+			let targetEpicId: string | null = null;
+			if (overData?.type === 'feature') {
+				const targetEpic = current.find((e) => e.features?.some((f) => f.id === over.id));
+				targetEpicId = targetEpic?.id ?? null;
+			} else if (overData?.type === 'epic-drop') {
+				targetEpicId = overData.epicId ?? null;
+			}
+
+			if (!targetEpicId) return;
+
+			if (targetEpicId === sourceEpicId) {
+				const sourceEpic = sortedEpics.find((e) => e.id === sourceEpicId);
+				if (!sourceEpic) return;
+				const features = [...(sourceEpic.features ?? [])].sort((a, b) => a.position - b.position);
+				const currentOrderIds = features.map((f) => f.id);
+				const oldIndex = currentOrderIds.indexOf(active.id as string);
+				const newIndex = currentOrderIds.indexOf(over.id as string);
+				if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+				const nextOrderIds = arrayMove(currentOrderIds, oldIndex, newIndex);
+				queueFeatureReorderFromDrag(sourceEpic, active.id as string, currentOrderIds, nextOrderIds, oldIndex, newIndex);
+			} else {
+				const targetEpicWorking = current.find((e) => e.id === targetEpicId);
+				if (!targetEpicWorking) return;
+				const orderedTargetFeatureIds = (targetEpicWorking.features ?? []).map((f) => f.id);
+				queueFeatureMoveFromDrag(active.id as string, sourceEpicId, targetEpicId, orderedTargetFeatureIds);
+			}
+		}
+	};
+
 	const shouldSkipFeatureReorderConfirm = () => {
 		return (
 			typeof window !== "undefined" &&
 			window.sessionStorage.getItem(FEATURE_REORDER_CONFIRM_SKIP_KEY) === "1"
+		);
+	};
+
+	const shouldSkipFeatureMoveConfirm = () => {
+		return (
+			typeof window !== "undefined" &&
+			window.sessionStorage.getItem(FEATURE_MOVE_CONFIRM_SKIP_KEY) === "1"
 		);
 	};
 
@@ -599,27 +788,63 @@ function ExplorerPanel({
 		setPendingFeatureReorder(change);
 	};
 
-	const handleFeatureDragEnd = (epic: RoadmapEpic, event: DragEndEvent) => {
-		if (!canEditRoadmap) return;
+	const persistFeatureMoveAcrossEpics = async (change: PendingFeatureMove) => {
+		setIsPersistingFeatureMove(true);
+		try {
+			await moveFeatureBetweenEpics(
+				change.featureId,
+				change.targetEpicId,
+				change.orderedTargetFeatureIds,
+			);
+			toast.success(`Moved "${change.featureTitle}"`);
+		} catch {
+			previewFeatureOrderInEpic(change.sourceEpicId, sortedEpics.find((e) => e.id === change.sourceEpicId)?.features?.map((f) => f.id) ?? []);
+		} finally {
+			setIsPersistingFeatureMove(false);
+		}
+	};
 
-		const { active, over } = event;
-		if (!over || active.id === over.id) return;
+	const queueFeatureMoveFromDrag = (
+		featureId: string,
+		sourceEpicId: string,
+		targetEpicId: string,
+		orderedTargetFeatureIds: string[],
+	) => {
+		const sourceEpic = sortedEpics.find((e) => e.id === sourceEpicId);
+		const feature = sourceEpic?.features?.find((f) => f.id === featureId);
+		if (!feature) return;
 
-		const features = (epic.features ?? []).slice().sort((a, b) => a.position - b.position);
-		const currentOrderIds = features.map((feature) => feature.id);
-		const oldIndex = currentOrderIds.indexOf(active.id as string);
-		const newIndex = currentOrderIds.indexOf(over.id as string);
-		if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+		const change: PendingFeatureMove = {
+			featureId,
+			featureTitle: feature.title,
+			sourceEpicId,
+			targetEpicId,
+			orderedTargetFeatureIds,
+		};
 
-		const nextOrderIds = arrayMove(currentOrderIds, oldIndex, newIndex);
-		queueFeatureReorderFromDrag(
-			epic,
-			active.id as string,
-			currentOrderIds,
-			nextOrderIds,
-			oldIndex,
-			newIndex,
-		);
+		if (shouldSkipFeatureMoveConfirm()) {
+			void persistFeatureMoveAcrossEpics(change);
+			return;
+		}
+
+		setDontAskFeatureMoveAgainInSession(false);
+		setPendingFeatureMove(change);
+	};
+
+	const handleCancelFeatureMove = () => {
+		setPendingFeatureMove(null);
+		setDontAskFeatureMoveAgainInSession(false);
+	};
+
+	const handleConfirmFeatureMove = async () => {
+		if (!pendingFeatureMove) return;
+		if (dontAskFeatureMoveAgainInSession && typeof window !== "undefined") {
+			window.sessionStorage.setItem(FEATURE_MOVE_CONFIRM_SKIP_KEY, "1");
+		}
+		const change = pendingFeatureMove;
+		setPendingFeatureMove(null);
+		setDontAskFeatureMoveAgainInSession(false);
+		await persistFeatureMoveAcrossEpics(change);
 	};
 
 	const handleCancelFeatureReorder = () => {
@@ -680,25 +905,6 @@ function ExplorerPanel({
 		setPendingEpicReorder(change);
 	};
 
-	const handleEpicDragEnd = (event: DragEndEvent) => {
-		if (!canEditRoadmap) return;
-
-		const { active, over } = event;
-		if (!over || active.id === over.id) return;
-
-		const currentOrderIds = sortedEpics.map((epic) => epic.id);
-		const oldIndex = currentOrderIds.indexOf(active.id as string);
-		const newIndex = currentOrderIds.indexOf(over.id as string);
-		if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
-
-		const nextOrderIds = arrayMove(currentOrderIds, oldIndex, newIndex);
-		queueEpicReorderFromDrag(
-			active.id as string,
-			currentOrderIds,
-			nextOrderIds,
-		);
-	};
-
 	const handleCancelEpicReorder = () => {
 		if (pendingEpicReorder) {
 			previewEpicOrderInRoadmap(pendingEpicReorder.previousOrderIds);
@@ -717,6 +923,8 @@ function ExplorerPanel({
 		setDontAskEpicReorderAgainInSession(false);
 		await persistEpicReorder(change);
 	};
+
+	const displayedEpics = workingEpics ?? sortedEpics;
 
 	return (
 		<div className="flex flex-col h-full min-w-0 overflow-hidden bg-white ">
@@ -757,19 +965,25 @@ function ExplorerPanel({
 						<div className="space-y-1">
 							<DndContext
 								sensors={sensors}
-								collisionDetection={closestCenter}
-								onDragEnd={handleEpicDragEnd}
+								collisionDetection={customCollisionDetection}
+								onDragStart={handleDragStart}
+								onDragOver={handleDragOver}
+								onDragEnd={handleDragEnd}
 							>
 								<SortableContext
-									items={sortedEpics.map((epic) => epic.id)}
+									items={displayedEpics.map((epic) => epic.id)}
 									strategy={verticalListSortingStrategy}
 								>
-									{sortedEpics.map((epic) => {
-										const features = [...(epic.features || [])].sort(
-											(a, b) => a.position - b.position,
-										);
+									{displayedEpics.map((epic) => {
+										const features = activeId
+											? (epic.features || [])
+											: [...(epic.features || [])].sort(
+												(a, b) => a.position - b.position,
+											);
 										const isEpicExpanded =
-											features.length === 0 || expandedEpics.has(epic.id);
+											features.length === 0 ||
+											expandedEpics.has(epic.id) ||
+											overEpicDropId === epic.id;
 										const isEpicHighlighted = highlightedEpicId === epic.id;
 
 										return (
@@ -871,14 +1085,11 @@ function ExplorerPanel({
 														</div>
 
 														{/* Features */}
-														{isEpicExpanded && features.length > 0 && (
+														{isEpicExpanded && (
 															<div className="ml-6 mt-1.5 space-y-1 pl-3">
-																<DndContext
-																	sensors={sensors}
-																	collisionDetection={closestCenter}
-																	onDragEnd={(event) =>
-																		handleFeatureDragEnd(epic, event)
-																	}
+																<DroppableEpicBody
+																	epicId={epic.id}
+																	isOver={overEpicDropId === epic.id}
 																>
 																	<SortableContext
 																		items={features.map((feature) => feature.id)}
@@ -900,6 +1111,7 @@ function ExplorerPanel({
 																					<SortableFeatureRow
 																						feature={feature}
 																						epic={epic}
+																						currentEpicId={epic.id}
 																						canDrag={canEditRoadmap}
 																						isFeatureExpanded={isFeatureExpanded}
 																						canCollapseFeature={canCollapseFeature}
@@ -973,7 +1185,7 @@ function ExplorerPanel({
 																			);
 																		})}
 																	</SortableContext>
-																</DndContext>
+																</DroppableEpicBody>
 															</div>
 														)}
 													</div>
@@ -982,7 +1194,7 @@ function ExplorerPanel({
 										);
 									})}
 								</SortableContext>
-							</DndContext>
+						</DndContext>
 						</div>
 					)}
 			</div>
@@ -995,6 +1207,20 @@ function ExplorerPanel({
 				onDontAskAgainChange={setDontAskFeatureReorderAgainInSession}
 				onCancel={handleCancelFeatureReorder}
 				onConfirm={handleConfirmFeatureReorder}
+			/>
+			<FeatureMoveConfirmModal
+				isOpen={pendingFeatureMove !== null}
+				isSaving={isPersistingFeatureMove}
+				featureTitle={pendingFeatureMove?.featureTitle ?? null}
+				targetEpicTitle={
+					pendingFeatureMove
+						? (sortedEpics.find((e) => e.id === pendingFeatureMove.targetEpicId)?.title ?? null)
+						: null
+				}
+				dontAskAgain={dontAskFeatureMoveAgainInSession}
+				onDontAskAgainChange={setDontAskFeatureMoveAgainInSession}
+				onCancel={handleCancelFeatureMove}
+				onConfirm={handleConfirmFeatureMove}
 			/>
 			<EpicReorderConfirmModal
 				isOpen={pendingEpicReorder !== null}

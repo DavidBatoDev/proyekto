@@ -1,26 +1,28 @@
-import { ArrowDownUp, X } from "lucide-react";
+import { ArrowRightLeft, X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 
-interface FeatureReorderConfirmModalProps {
+interface FeatureMoveConfirmModalProps {
 	isOpen: boolean;
 	isSaving: boolean;
 	featureTitle: string | null;
+	targetEpicTitle: string | null;
 	dontAskAgain: boolean;
 	onDontAskAgainChange: (value: boolean) => void;
 	onCancel: () => void;
 	onConfirm: () => Promise<void> | void;
 }
 
-export const FeatureReorderConfirmModal = ({
+export const FeatureMoveConfirmModal = ({
 	isOpen,
 	isSaving,
 	featureTitle,
+	targetEpicTitle,
 	dontAskAgain,
 	onDontAskAgainChange,
 	onCancel,
 	onConfirm,
-}: FeatureReorderConfirmModalProps) => {
+}: FeatureMoveConfirmModalProps) => {
 	const checkboxId = useId();
 	const [shouldRender, setShouldRender] = useState(isOpen);
 	const [isVisible, setIsVisible] = useState(isOpen);
@@ -47,18 +49,18 @@ export const FeatureReorderConfirmModal = ({
 			}`}
 		>
 			<div
-				className={`w-full max-w-lg overflow-hidden rounded-2xl border border-orange-100/80 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.35)] transition-all duration-200 ${
+				className={`w-full max-w-lg overflow-hidden rounded-2xl border border-blue-100/80 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.35)] transition-all duration-200 ${
 					isVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-2 scale-95 opacity-0"
 				}`}
 			>
-				<div className="flex items-center justify-between border-b border-orange-100 bg-gradient-to-r from-amber-50 via-orange-50 to-rose-50 px-5 py-4">
+				<div className="flex items-center justify-between border-b border-blue-100 bg-gradient-to-r from-blue-50 via-indigo-50 to-violet-50 px-5 py-4">
 					<div className="flex items-center gap-3">
-						<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500 text-white shadow-sm">
-							<ArrowDownUp size={17} />
+						<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500 text-white shadow-sm">
+							<ArrowRightLeft size={17} />
 						</div>
 						<div>
 							<h3 className="text-base font-semibold text-slate-900">
-								Confirm Feature Reorder
+								Move Feature to Epic
 							</h3>
 							<p className="text-xs text-slate-500">
 								Please confirm this change.
@@ -69,7 +71,7 @@ export const FeatureReorderConfirmModal = ({
 						type="button"
 						onClick={onCancel}
 						className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-white/80 hover:text-slate-700"
-						aria-label="Close reorder confirmation modal"
+						aria-label="Close move confirmation modal"
 					>
 						<X size={16} />
 					</button>
@@ -77,26 +79,34 @@ export const FeatureReorderConfirmModal = ({
 
 				<div className="space-y-4 px-5 py-5 text-sm text-slate-700">
 					<p className="text-[17px] leading-relaxed text-slate-800">
-						Are you sure you want to reorder{" "}
+						Move{" "}
 						<span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-sm font-semibold text-slate-700">
 							{featureTitle}
 						</span>
+						{targetEpicTitle && (
+							<>
+								{" "}to epic{" "}
+								<span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-sm font-semibold text-blue-700">
+									{targetEpicTitle}
+								</span>
+							</>
+						)}
 						?
 					</p>
 					<div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-						This will update the feature order in this epic.
+						This will reassign the feature to the target epic.
 					</div>
 
 					<label
 						htmlFor={checkboxId}
-						className="flex cursor-pointer items-center gap-2 rounded-lg border border-orange-100 bg-orange-50/40 px-3 py-2 text-sm text-slate-700"
+						className="flex cursor-pointer items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2 text-sm text-slate-700"
 					>
 						<input
 							id={checkboxId}
 							type="checkbox"
 							checked={dontAskAgain}
 							onChange={(event) => onDontAskAgainChange(event.target.checked)}
-							className="h-4 w-4 rounded border-slate-300 text-orange-500 focus:ring-orange-400"
+							className="h-4 w-4 rounded border-slate-300 text-blue-500 focus:ring-blue-400"
 						/>
 						<span>Don&apos;t ask again in this session</span>
 					</label>
@@ -115,9 +125,9 @@ export const FeatureReorderConfirmModal = ({
 						type="button"
 						onClick={() => void onConfirm()}
 						disabled={isSaving}
-						className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-105 disabled:opacity-60"
+						className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-105 disabled:opacity-60"
 					>
-						{isSaving ? "Saving..." : "Confirm"}
+						{isSaving ? "Moving..." : "Move Feature"}
 					</button>
 				</div>
 			</div>

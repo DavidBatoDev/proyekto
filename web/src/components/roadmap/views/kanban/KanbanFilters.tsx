@@ -1,4 +1,25 @@
 import { Check, ChevronDown, X } from "lucide-react";
+import { useParams } from "@tanstack/react-router";
+import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
+import { deriveFeatureStatus } from "@/utils/featureStatus";
+import type { FeatureStatus } from "@/types/roadmap";
+
+const getPillBorderColor = (status: FeatureStatus) => {
+	switch (status) {
+		case "completed":
+			return "border-green-300 hover:border-green-400";
+		case "in_progress":
+			return "border-blue-300 hover:border-blue-400";
+		case "in_review":
+			return "border-purple-300 hover:border-purple-400";
+		case "blocked":
+			return "border-red-300 hover:border-red-400";
+		case "not_started":
+		default:
+			return "border-slate-200 hover:border-slate-400";
+	}
+};
+
 import {
 	useEffect,
 	useLayoutEffect,
@@ -13,6 +34,7 @@ import { useRoadmapStore } from "@/stores/roadmapStore";
 interface PillOption {
 	id: string;
 	label: string;
+	borderColorClass?: string;
 }
 
 interface AssigneeOption {
@@ -72,11 +94,13 @@ function AllAssigneesAvatar({ options }: { options: AssigneeOption[] }) {
 	);
 }
 
-function pillClass(isActive: boolean) {
+function pillClass(isActive: boolean, borderColorClass?: string) {
 	return `shrink-0 px-2.5 py-1 rounded-full text-xs font-medium border transition-all duration-150 ${
 		isActive
 			? "bg-slate-900 text-white border-slate-900 shadow-sm"
-			: "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:text-slate-900 hover:bg-slate-50"
+			: `bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 ${
+					borderColorClass || "border-slate-200 hover:border-slate-400"
+			  }`
 	}`;
 }
 
@@ -135,20 +159,37 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
 	);
 }
 
-function SingleSelectGroup({
-	title,
+function FilterRow({
+	tagLabel,
+	tagColor,
 	options,
 	selectedId,
 	onSelect,
 }: {
-	title: string;
+	tagLabel?: string;
+	tagColor?: "slate" | "orange" | "blue" | "black";
 	options: PillOption[];
 	selectedId: string | null;
 	onSelect: (id: string | null) => void;
 }) {
+	const colorClasses = {
+		slate: "bg-slate-100 text-slate-600 border-slate-200",
+		orange: "bg-orange-50 text-orange-600 border-orange-200",
+		blue: "bg-blue-50 text-blue-600 border-blue-200",
+		black: "bg-white text-black border-black",
+	};
+
 	return (
-		<div className="flex items-center gap-2 min-w-0">
-			<GroupLabel>{title}</GroupLabel>
+		<div className="flex items-center gap-2.5 min-w-0 flex-1">
+			{tagLabel && (
+				<span
+					className={`shrink-0 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md border ${
+						tagColor ? colorClasses[tagColor] : colorClasses.slate
+					}`}
+				>
+					{tagLabel}
+				</span>
+			)}
 			<ScrollRow>
 				<button
 					type="button"
@@ -162,7 +203,7 @@ function SingleSelectGroup({
 						key={option.id}
 						type="button"
 						onClick={() => onSelect(option.id)}
-						className={pillClass(selectedId === option.id)}
+						className={pillClass(selectedId === option.id, option.borderColorClass)}
 					>
 						{option.label}
 					</button>
@@ -214,8 +255,6 @@ function AssigneesDropdown({
 		: selectedOption
 			? selectedOption.label
 			: `${selectedCount} selected`;
-
-	if (!options.length) return null;
 
 	return (
 		<div className="flex items-center gap-2 min-w-0">
@@ -298,6 +337,10 @@ function AssigneesDropdown({
 }
 
 export function KanbanFilters() {
+	const { projectId } = useParams({ strict: false }) as { projectId?: string };
+	const membersQuery = useProjectMembersQuery(projectId ?? "");
+	const members = membersQuery.data ?? [];
+
 	const { epics, boardFilters, setBoardFilters, resetBoardFilters } =
 		useRoadmapStore(
 			useShallow((s) => ({
@@ -328,16 +371,37 @@ export function KanbanFilters() {
 			return (selectedEpic.features ?? []).map((f) => ({
 				id: f.id,
 				label: f.title,
+				borderColorClass: getPillBorderColor(deriveFeatureStatus(f.tasks)),
 			}));
 		}
 		// "All" epics: aggregate every feature across all epics.
 		return epics.flatMap((epic) =>
-			(epic.features ?? []).map((f) => ({ id: f.id, label: f.title })),
+			(epic.features ?? []).map((f) => ({
+				id: f.id,
+				label: f.title,
+				borderColorClass: getPillBorderColor(deriveFeatureStatus(f.tasks)),
+			})),
 		);
 	}, [epics, selectedEpic]);
 
 	const assigneeOptions = useMemo<AssigneeOption[]>(() => {
 		const seen = new Map<string, AssigneeOption>();
+
+		for (const m of members) {
+			if (!m.user || !m.user_id) continue;
+			const u = m.user;
+			const label =
+				u.display_name ||
+				[u.first_name, u.last_name].filter(Boolean).join(" ") ||
+				u.email ||
+				"Unknown";
+			seen.set(m.user_id, {
+				id: m.user_id,
+				label,
+				avatarUrl: u.avatar_url ?? null,
+			});
+		}
+
 		for (const epic of epics) {
 			for (const feature of epic.features ?? []) {
 				for (const task of feature.tasks ?? []) {
@@ -358,7 +422,7 @@ export function KanbanFilters() {
 			}
 		}
 		return Array.from(seen.values());
-	}, [epics]);
+	}, [epics, members]);
 
 	const selectEpic = (id: string | null) =>
 		setBoardFilters((prev) => ({
@@ -389,19 +453,24 @@ export function KanbanFilters() {
 
 	return (
 		<div className="grid grid-cols-10 gap-6 px-4 py-3 border-b border-slate-200 bg-linear-to-b from-slate-50 to-white min-h-24">
-			<div className="col-span-7 flex flex-col gap-2.5 pr-6 border-r border-slate-200">
-				<SingleSelectGroup
-					title="Epics"
+			<div className="col-span-7 flex flex-col gap-2.5 pr-6 border-r border-slate-200 relative">
+				<FilterRow
+					tagLabel="Epics"
+					tagColor="black"
 					options={epicOptions}
 					selectedId={selectedEpicId}
 					onSelect={selectEpic}
 				/>
-				<SingleSelectGroup
-					title="Features"
-					options={featureOptions}
-					selectedId={selectedFeatureId}
-					onSelect={selectFeature}
-				/>
+				<div className="relative pl-8 flex items-center min-w-0">
+					<div className="absolute left-4 top-[-23px] w-4 h-[36px] border-l-2 border-b-2 border-slate-300 rounded-bl-xl pointer-events-none" />
+					<FilterRow
+						tagLabel="Features"
+						tagColor="black"
+						options={featureOptions}
+						selectedId={selectedFeatureId}
+						onSelect={selectFeature}
+					/>
+				</div>
 			</div>
 			<div className="col-span-3 flex flex-col justify-between gap-2.5">
 				<AssigneesDropdown
@@ -414,16 +483,16 @@ export function KanbanFilters() {
 					}
 				/>
 				<div className="flex justify-end">
-					{hasAny ? (
-						<button
-							type="button"
-							onClick={resetBoardFilters}
-							className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-100 hover:text-slate-900"
-						>
-							<X className="w-3 h-3" />
-							Clear filters
-						</button>
-					) : null}
+					<button
+						type="button"
+						onClick={resetBoardFilters}
+						className={`inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-100 hover:text-slate-900 ${
+							hasAny ? "" : "invisible"
+						}`}
+					>
+						<X className="w-3 h-3" />
+						Clear filters
+					</button>
 				</div>
 			</div>
 		</div>
