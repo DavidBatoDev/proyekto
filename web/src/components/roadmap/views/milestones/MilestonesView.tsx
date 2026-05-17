@@ -1,4 +1,5 @@
 import { Plus, CalendarClock } from "lucide-react";
+import { dateFromTimelinePx } from "./model/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EpicReorderConfirmModal } from "../../panels/EpicReorderConfirmModal";
 import { FeatureReorderConfirmModal } from "../../panels/FeatureReorderConfirmModal";
@@ -19,6 +20,7 @@ import {
   DATE_HEADER_HEIGHT,
   DEFAULT_EXPLORER_HEADER_HEIGHT,
   type DateChangeConfirmPayload,
+  type EpicDateDraftCommit,
   FeatureDateChangeConfirmModal,
   type FeatureDateDraftCommit,
   type FeatureDateVisualDraft,
@@ -49,6 +51,7 @@ export interface MilestonesViewProps {
   onUpdateMilestone: (milestone: RoadmapMilestone) => Promise<void> | void;
   onDeleteMilestone: (id: string) => Promise<void> | void;
   onUpdateFeature: (feature: RoadmapFeature) => Promise<void> | void;
+  onUpdateEpic?: (epic: RoadmapEpic) => Promise<void> | void;
   onAddFeature?: (epicId: string) => void;
   onOpenFeatureEditor?: (epicId: string, featureId: string) => void;
   canEditTimelineDates?: boolean;
@@ -72,6 +75,11 @@ type PendingDateChange =
   | {
       kind: "milestone";
       change: MilestoneDateDraftCommit;
+      payload: DateChangeConfirmPayload;
+    }
+  | {
+      kind: "epic";
+      change: EpicDateDraftCommit;
       payload: DateChangeConfirmPayload;
     };
 
@@ -102,6 +110,7 @@ export const MilestonesView = ({
   onUpdateMilestone,
   onDeleteMilestone: _onDeleteMilestone,
   onUpdateFeature,
+  onUpdateEpic,
   onAddFeature,
   onOpenFeatureEditor,
   canEditTimelineDates = true,
@@ -121,6 +130,7 @@ export const MilestonesView = ({
     (state) => state.previewEpicOrderInRoadmap,
   );
   const [granularity, setGranularity] = useState<Granularity>("month");
+  const [isDateDrawMode, setIsDateDrawMode] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [leftHeaderHeight, setLeftHeaderHeight] = useState(
     DEFAULT_EXPLORER_HEADER_HEIGHT,
@@ -133,6 +143,9 @@ export const MilestonesView = ({
     useState<PendingEpicReorder | null>(null);
   const [featureDateVisualDrafts, setFeatureDateVisualDrafts] = useState<
     Record<string, FeatureDateVisualDraft>
+  >({});
+  const [epicDateVisualDrafts, setEpicDateVisualDrafts] = useState<
+    Record<string, { startDate: string; endDate: string }>
   >({});
   const [milestoneDateVisualDrafts, setMilestoneDateVisualDrafts] = useState<
     Record<string, string>
@@ -543,9 +556,9 @@ export const MilestonesView = ({
       for (const [featureId, draft] of Object.entries(prev)) {
         const serverDates = featureDatesById.get(featureId);
         if (
-          serverDates &&
-          serverDates.startDate === draft.startDate &&
-          serverDates.endDate === draft.endDate
+          !serverDates ||
+          (serverDates.startDate === draft.startDate &&
+            serverDates.endDate === draft.endDate)
         ) {
           delete next[featureId];
           changed = true;
@@ -569,6 +582,24 @@ export const MilestonesView = ({
       return changed ? next : prev;
     });
   }, [milestoneDatesById]);
+
+  useEffect(() => {
+    setEpicDateVisualDrafts((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [epicId, draft] of Object.entries(prev)) {
+        const epic = sortedEpics.find((e) => e.id === epicId);
+        if (!epic?.start_date || !epic?.end_date) {
+          delete next[epicId];
+          changed = true;
+        } else if (epic.start_date === draft.startDate && epic.end_date === draft.endDate) {
+          delete next[epicId];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [sortedEpics]);
 
   const handleFeatureDateDraftCommit = useCallback(
     (change: FeatureDateDraftCommit) => {
@@ -629,6 +660,73 @@ export const MilestonesView = ({
     ],
   );
 
+  const epicDatePersistTimeoutsRef = useRef<
+    Map<string, ReturnType<typeof setTimeout>>
+  >(new Map());
+
+  const persistEpicDateChange = useCallback(
+    async (change: EpicDateDraftCommit) => {
+      if (!onUpdateEpic) return;
+      try {
+        await onUpdateEpic({
+          ...change.epic,
+          start_date: change.newStartDate,
+          end_date: change.newEndDate,
+        });
+      } catch (error) {
+        console.error("Failed to update epic date range", error);
+        setEpicDateVisualDrafts((prev) => {
+          const next = { ...prev };
+          delete next[change.epic.id];
+          return next;
+        });
+      }
+    },
+    [onUpdateEpic],
+  );
+
+  const queueEpicDatePersist = useCallback(
+    (change: EpicDateDraftCommit) => {
+      const epicId = change.epic.id;
+      const prev = epicDatePersistTimeoutsRef.current.get(epicId);
+      if (prev) clearTimeout(prev);
+      const timeout = setTimeout(() => {
+        epicDatePersistTimeoutsRef.current.delete(epicId);
+        void persistEpicDateChange(change);
+      }, FEATURE_DATE_PERSIST_DEBOUNCE_MS);
+      epicDatePersistTimeoutsRef.current.set(epicId, timeout);
+    },
+    [persistEpicDateChange],
+  );
+
+  const toEpicConfirmPayload = useCallback(
+    (change: EpicDateDraftCommit): DateChangeConfirmPayload => ({
+      entityLabel: change.epic.title,
+      oldStartDate: change.oldStartDate,
+      oldEndDate: change.oldEndDate,
+      newStartDate: change.newStartDate,
+      newEndDate: change.newEndDate,
+    }),
+    [],
+  );
+
+  const handleEpicDateDraftCommit = useCallback(
+    (change: EpicDateDraftCommit) => {
+      if (!canEditTimelineDates) return;
+      setEpicDateVisualDrafts((prev) => ({
+        ...prev,
+        [change.epic.id]: { startDate: change.newStartDate, endDate: change.newEndDate },
+      }));
+      if (shouldSkipDateConfirm()) {
+        queueEpicDatePersist(change);
+        return;
+      }
+      setDontAskDateAgainInSession(false);
+      setPendingDateChange({ kind: "epic", change, payload: toEpicConfirmPayload(change) });
+    },
+    [canEditTimelineDates, queueEpicDatePersist, shouldSkipDateConfirm, toEpicConfirmPayload],
+  );
+
   const handleConfirmDateChange = useCallback(() => {
     if (!pendingDateChange) return;
     if (dontAskDateAgainInSession && typeof window !== "undefined") {
@@ -636,6 +734,8 @@ export const MilestonesView = ({
     }
     if (pendingDateChange.kind === "feature") {
       queueFeatureDatePersist(pendingDateChange.change);
+    } else if (pendingDateChange.kind === "epic") {
+      queueEpicDatePersist(pendingDateChange.change);
     } else {
       queueMilestoneDatePersist(pendingDateChange.change);
     }
@@ -645,6 +745,7 @@ export const MilestonesView = ({
     dontAskDateAgainInSession,
     pendingDateChange,
     queueFeatureDatePersist,
+    queueEpicDatePersist,
     queueMilestoneDatePersist,
   ]);
 
@@ -660,6 +761,13 @@ export const MilestonesView = ({
       setMilestoneDateVisualDrafts((prev) => {
         const next = { ...prev };
         delete next[pendingDateChange.change.milestone.id];
+        return next;
+      });
+    }
+    if (pendingDateChange?.kind === "epic") {
+      setEpicDateVisualDrafts((prev) => {
+        const next = { ...prev };
+        delete next[pendingDateChange.change.epic.id];
         return next;
       });
     }
@@ -796,6 +904,42 @@ export const MilestonesView = ({
     [onOpenFeatureEditor, sortedEpics],
   );
 
+  const clientXToDate = useCallback(
+    (clientX: number): Date => {
+      const el = timelineScrollRef.current;
+      if (!el) return new Date();
+      const px = clientX - el.getBoundingClientRect().left + el.scrollLeft;
+      return dateFromTimelinePx(px, rangeStart, granularity, cw);
+    },
+    [rangeStart, granularity, cw],
+  );
+
+  const handleEpicDateCreate = useCallback(
+    (epic: RoadmapEpic, startDate: string, endDate: string) => {
+      if (!canEditTimelineDates || !onUpdateEpic) return;
+      void onUpdateEpic({
+        ...epic,
+        start_date: startDate,
+        end_date: endDate,
+      });
+    },
+    [canEditTimelineDates, onUpdateEpic],
+  );
+
+  const handleFeatureDateCreate = useCallback(
+    (feature: RoadmapFeature, startDate: string, endDate: string) => {
+      if (!canEditTimelineDates) return;
+      queueFeatureDatePersist({
+        feature,
+        oldStartDate: "",
+        oldEndDate: "",
+        newStartDate: startDate,
+        newEndDate: endDate,
+      });
+    },
+    [canEditTimelineDates, queueFeatureDatePersist],
+  );
+
   const overdueMilestones = useMemo(() => {
     const now = Date.now();
     return sortedMilestones.filter((milestone) => {
@@ -810,6 +954,8 @@ export const MilestonesView = ({
       <MilestonesToolbar
         granularity={granularity}
         onGranularityChange={setGranularity}
+        isDateDrawMode={isDateDrawMode}
+        onToggleDateDrawMode={canEditTimelineDates ? () => setIsDateDrawMode((v) => !v) : undefined}
       />
 
       {overdueMilestones.length > 0 && canEditTimelineDates && (
@@ -898,6 +1044,12 @@ export const MilestonesView = ({
                 featureDateVisualDrafts={featureDateVisualDrafts}
                 onFeatureSelect={handleFeatureSelect}
                 onFeatureDateDraftCommit={handleFeatureDateDraftCommit}
+                isDateDrawMode={isDateDrawMode}
+                clientXToDate={clientXToDate}
+                onEpicDateCreate={handleEpicDateCreate}
+                onFeatureDateCreate={handleFeatureDateCreate}
+                epicDateVisualDrafts={epicDateVisualDrafts}
+                onEpicDateDraftCommit={handleEpicDateDraftCommit}
               />
             </div>
           </div>

@@ -201,15 +201,15 @@ export interface CreateEpicDto {
 
 export interface UpdateEpicDto {
 	title?: string;
-	description?: string;
+	description?: string | null;
 	priority?: EpicPriority;
 	status?: EpicStatus;
 	position?: number;
 	color?: string;
 	estimated_hours?: number;
 	actual_hours?: number;
-	start_date?: string;
-	end_date?: string;
+	start_date?: string | null;
+	end_date?: string | null;
 	completed_date?: string;
 	tags?: string[];
 	labels?: Array<{ id: string; name: string; color: string }>;
@@ -236,13 +236,13 @@ export interface CreateFeatureDto {
 export interface UpdateFeatureDto {
 	epic_id?: string;
 	title?: string;
-	description?: string;
+	description?: string | null;
 	position?: number;
 	is_deliverable?: boolean;
 	estimated_hours?: number;
 	actual_hours?: number;
-	start_date?: string;
-	end_date?: string;
+	start_date?: string | null;
+	end_date?: string | null;
 }
 
 export interface ReorderFeatureDto {

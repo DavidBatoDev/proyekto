@@ -166,6 +166,8 @@ export function computeEpicRange(
 	epic: RoadmapEpic,
 ): { start: Date; end: Date } | null {
 	const ts: number[] = [];
+	if (epic.start_date) ts.push(new Date(epic.start_date).getTime());
+	if (epic.end_date) ts.push(new Date(epic.end_date).getTime());
 	for (const f of epic.features ?? []) {
 		if (f.start_date) ts.push(new Date(f.start_date).getTime());
 		if (f.end_date) ts.push(new Date(f.end_date).getTime());

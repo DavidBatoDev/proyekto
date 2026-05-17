@@ -141,7 +141,7 @@ const SortableMilestoneFeatureRow = ({
 					onClick={(event) => event.stopPropagation()}
 					className={`inline-flex h-6 w-5 shrink-0 items-center justify-center rounded text-gray-400 ${
 						canDrag
-							? "cursor-grab hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
+							? "cursor-pointer hover:bg-gray-100 hover:text-gray-600"
 							: "cursor-default opacity-50"
 					}`}
 					title="Drag to reorder feature"
@@ -290,7 +290,7 @@ export const MilestonesLeftPanel = ({
 														onClick={(event) => event.stopPropagation()}
 														className={`inline-flex h-6 w-5 shrink-0 items-center justify-center rounded text-gray-400 ${
 															canReorderEpics
-																? "cursor-grab hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
+																? "cursor-pointer hover:bg-gray-100 hover:text-gray-600"
 																: "cursor-default opacity-50"
 														}`}
 														title="Drag to reorder epic"

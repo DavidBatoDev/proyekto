@@ -628,8 +628,8 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         color: updatedEpic.color,
         estimated_hours: updatedEpic.estimated_hours,
         actual_hours: updatedEpic.actual_hours,
-        start_date: updatedEpic.start_date,
-        end_date: updatedEpic.end_date,
+        start_date: updatedEpic.start_date ?? null,
+        end_date: updatedEpic.end_date ?? null,
         completed_date: updatedEpic.completed_date,
         tags: updatedEpic.tags,
         labels: updatedEpic.labels,
@@ -1031,8 +1031,8 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         is_deliverable: feature.is_deliverable,
         estimated_hours: feature.estimated_hours,
         actual_hours: feature.actual_hours,
-        start_date: feature.start_date,
-        end_date: feature.end_date,
+        start_date: feature.start_date ?? null,
+        end_date: feature.end_date ?? null,
       });
 
       set((state) => ({
@@ -1041,6 +1041,24 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
           tasks: current.tasks || [],
         })),
       }));
+
+      if (feature.start_date && feature.end_date) {
+        const parentEpic = get().epics.find((e) => e.id === feature.epic_id);
+        if (parentEpic?.start_date && parentEpic?.end_date) {
+          const featureStart = new Date(feature.start_date).getTime();
+          const featureEnd = new Date(feature.end_date).getTime();
+          const epicStart = new Date(parentEpic.start_date).getTime();
+          const epicEnd = new Date(parentEpic.end_date).getTime();
+          if (featureStart < epicStart || featureEnd > epicEnd) {
+            const toISO = (d: Date) => d.toISOString().slice(0, 10);
+            void get().updateEpic({
+              ...parentEpic,
+              start_date: toISO(new Date(Math.min(epicStart, featureStart))),
+              end_date: toISO(new Date(Math.max(epicEnd, featureEnd))),
+            });
+          }
+        }
+      }
     } catch (error) {
       console.error("Failed to update feature:", error);
       set((state) => ({

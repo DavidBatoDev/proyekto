@@ -52,6 +52,23 @@ export type FeatureDateVisualDraft = {
 	endDate: string;
 };
 
+export type EpicDateDraftCommit = {
+	epic: RoadmapEpic;
+	oldStartDate: string;
+	oldEndDate: string;
+	newStartDate: string;
+	newEndDate: string;
+};
+
+type DrawDragState = {
+	kind: "epic" | "feature";
+	entity: RoadmapEpic | RoadmapFeature;
+	anchorDate: Date;
+	draftStartDate: Date;
+	draftEndDate: Date;
+	hasMoved: boolean;
+};
+
 interface MilestonesTimelineRowsProps {
 	sortedEpics: RoadmapEpic[];
 	collapsed: Set<string>;
@@ -66,6 +83,12 @@ interface MilestonesTimelineRowsProps {
 	featureDateVisualDrafts?: Record<string, FeatureDateVisualDraft>;
 	onFeatureSelect?: (feature: RoadmapFeature) => void;
 	onFeatureDateDraftCommit?: (change: FeatureDateDraftCommit) => void;
+	isDateDrawMode?: boolean;
+	clientXToDate?: (clientX: number) => Date;
+	onEpicDateCreate?: (epic: RoadmapEpic, startDate: string, endDate: string) => void;
+	onFeatureDateCreate?: (feature: RoadmapFeature, startDate: string, endDate: string) => void;
+	epicDateVisualDrafts?: Record<string, { startDate: string; endDate: string }>;
+	onEpicDateDraftCommit?: (change: EpicDateDraftCommit) => void;
 }
 
 export const MilestonesTimelineRows = ({
@@ -82,6 +105,12 @@ export const MilestonesTimelineRows = ({
 	featureDateVisualDrafts = {},
 	onFeatureSelect,
 	onFeatureDateDraftCommit,
+	isDateDrawMode = false,
+	clientXToDate,
+	onEpicDateCreate,
+	onFeatureDateCreate,
+	epicDateVisualDrafts = {},
+	onEpicDateDraftCommit,
 }: MilestonesTimelineRowsProps) => {
 	const [dragState, setDragState] = useState<{
 		feature: RoadmapFeature;
@@ -93,6 +122,19 @@ export const MilestonesTimelineRows = ({
 		draftEndDate: Date;
 		hasMoved: boolean;
 	} | null>(null);
+
+	const [epicDragState, setEpicDragState] = useState<{
+		epic: RoadmapEpic;
+		mode: FeatureDragMode;
+		anchorClientX: number;
+		initialStartDate: Date;
+		initialEndDate: Date;
+		draftStartDate: Date;
+		draftEndDate: Date;
+		hasMoved: boolean;
+	} | null>(null);
+
+	const [drawDragState, setDrawDragState] = useState<DrawDragState | null>(null);
 
 	const handleDragStart = useCallback(
 		(
@@ -129,6 +171,64 @@ export const MilestonesTimelineRows = ({
 			});
 		},
 		[canEditDateRanges],
+	);
+
+	const handleEpicDragStart = useCallback(
+		(
+			event: ReactMouseEvent<HTMLDivElement>,
+			epic: RoadmapEpic,
+			mode: FeatureDragMode,
+			effectiveStartDate?: Date | null,
+			effectiveEndDate?: Date | null,
+		) => {
+			if (!canEditDateRanges) return;
+			const startDate = effectiveStartDate
+				? floorToUnit(effectiveStartDate, "day")
+				: epic.start_date
+					? floorToUnit(new Date(epic.start_date), "day")
+					: null;
+			const endDate = effectiveEndDate
+				? floorToUnit(effectiveEndDate, "day")
+				: epic.end_date
+					? floorToUnit(new Date(epic.end_date), "day")
+					: null;
+			if (!startDate || !endDate) return;
+			event.preventDefault();
+			event.stopPropagation();
+			setEpicDragState({
+				epic,
+				mode,
+				anchorClientX: event.clientX,
+				initialStartDate: startDate,
+				initialEndDate: endDate,
+				draftStartDate: startDate,
+				draftEndDate: endDate,
+				hasMoved: false,
+			});
+		},
+		[canEditDateRanges],
+	);
+
+	const handleDrawStart = useCallback(
+		(
+			event: ReactMouseEvent<HTMLDivElement>,
+			kind: "epic" | "feature",
+			entity: RoadmapEpic | RoadmapFeature,
+		) => {
+			if (!isDateDrawMode || !clientXToDate) return;
+			event.preventDefault();
+			event.stopPropagation();
+			const anchorDate = floorToUnit(clientXToDate(event.clientX), "day");
+			setDrawDragState({
+				kind,
+				entity,
+				anchorDate,
+				draftStartDate: anchorDate,
+				draftEndDate: anchorDate,
+				hasMoved: false,
+			});
+		},
+		[isDateDrawMode, clientXToDate],
 	);
 
 	useEffect(() => {
@@ -259,6 +359,120 @@ export const MilestonesTimelineRows = ({
 		};
 	}, [dragState, rangeStart, granularity, cw, onFeatureDateDraftCommit, onFeatureSelect]);
 
+	useEffect(() => {
+		if (!epicDragState) return;
+
+		const handleMouseMove = (event: MouseEvent) => {
+			const dx = event.clientX - epicDragState.anchorClientX;
+			const hasMoved = Math.abs(dx) >= 2;
+			const initialStartPx = toTimelinePx(epicDragState.initialStartDate, rangeStart, granularity, cw);
+			const initialEndPx = toTimelinePx(epicDragState.initialEndDate, rangeStart, granularity, cw);
+
+			if (epicDragState.mode === "move") {
+				const shiftedStart = dateFromTimelinePx(initialStartPx + dx, rangeStart, granularity, cw);
+				const deltaDays = Math.round(daysBetween(epicDragState.initialStartDate, shiftedStart));
+				setEpicDragState((prev) =>
+					prev
+						? {
+								...prev,
+								draftStartDate: addDays(prev.initialStartDate, deltaDays),
+								draftEndDate: addDays(prev.initialEndDate, deltaDays),
+								hasMoved: prev.hasMoved || hasMoved,
+							}
+						: prev,
+				);
+				return;
+			}
+
+			if (epicDragState.mode === "start") {
+				const rawStart = dateFromTimelinePx(initialStartPx + dx, rangeStart, granularity, cw);
+				const nextStart = clampDate(rawStart, undefined, epicDragState.initialEndDate);
+				setEpicDragState((prev) =>
+					prev ? { ...prev, draftStartDate: nextStart, draftEndDate: prev.initialEndDate, hasMoved: prev.hasMoved || hasMoved } : prev,
+				);
+				return;
+			}
+
+			const rawEnd = dateFromTimelinePx(initialEndPx + dx, rangeStart, granularity, cw);
+			const nextEnd = clampDate(rawEnd, epicDragState.initialStartDate, undefined);
+			setEpicDragState((prev) =>
+				prev ? { ...prev, draftStartDate: prev.initialStartDate, draftEndDate: nextEnd, hasMoved: prev.hasMoved || hasMoved } : prev,
+			);
+		};
+
+		const handleMouseUp = () => {
+			const oldStartDate = toISODateString(epicDragState.initialStartDate);
+			const oldEndDate = toISODateString(epicDragState.initialEndDate);
+			const newStartDate = toISODateString(epicDragState.draftStartDate);
+			const newEndDate = toISODateString(epicDragState.draftEndDate);
+			if (
+				epicDragState.hasMoved &&
+				(oldStartDate !== newStartDate || oldEndDate !== newEndDate) &&
+				onEpicDateDraftCommit
+			) {
+				onEpicDateDraftCommit({ epic: epicDragState.epic, oldStartDate, oldEndDate, newStartDate, newEndDate });
+			}
+			setEpicDragState(null);
+		};
+
+		document.body.style.userSelect = "none";
+		window.addEventListener("mousemove", handleMouseMove);
+		window.addEventListener("mouseup", handleMouseUp);
+		return () => {
+			document.body.style.userSelect = "";
+			window.removeEventListener("mousemove", handleMouseMove);
+			window.removeEventListener("mouseup", handleMouseUp);
+		};
+	}, [epicDragState, rangeStart, granularity, cw, onEpicDateDraftCommit]);
+
+	useEffect(() => {
+		if (!drawDragState || !clientXToDate) return;
+
+		document.body.style.userSelect = "none";
+		document.body.style.cursor = "text";
+
+		const handleMouseMove = (event: MouseEvent) => {
+			const currentDate = floorToUnit(clientXToDate(event.clientX), "day");
+			const { anchorDate } = drawDragState;
+			const newStart = currentDate < anchorDate ? currentDate : anchorDate;
+			const newEnd = currentDate < anchorDate ? anchorDate : currentDate;
+			setDrawDragState((prev) =>
+				prev
+					? {
+							...prev,
+							draftStartDate: newStart,
+							draftEndDate: newEnd,
+							hasMoved: true,
+						}
+					: prev,
+			);
+		};
+
+		const handleMouseUp = () => {
+			if (drawDragState.hasMoved) {
+				const startDate = toISODateString(drawDragState.draftStartDate);
+				const endDate = toISODateString(drawDragState.draftEndDate);
+				if (startDate !== endDate) {
+					if (drawDragState.kind === "epic" && onEpicDateCreate) {
+						onEpicDateCreate(drawDragState.entity as RoadmapEpic, startDate, endDate);
+					} else if (drawDragState.kind === "feature" && onFeatureDateCreate) {
+						onFeatureDateCreate(drawDragState.entity as RoadmapFeature, startDate, endDate);
+					}
+				}
+			}
+			setDrawDragState(null);
+		};
+
+		window.addEventListener("mousemove", handleMouseMove);
+		window.addEventListener("mouseup", handleMouseUp);
+		return () => {
+			document.body.style.userSelect = "";
+			document.body.style.cursor = "";
+			window.removeEventListener("mousemove", handleMouseMove);
+			window.removeEventListener("mouseup", handleMouseUp);
+		};
+	}, [drawDragState, clientXToDate, onEpicDateCreate, onFeatureDateCreate]);
+
 	return (
 		<>
 			{sortedEpics.map((epic, epicIndex) => {
@@ -268,6 +482,36 @@ export const MilestonesTimelineRows = ({
 				const features = epic.features ?? [];
 				const epicRowHeight =
 					ROW_HEIGHT + (epicIndex === 0 ? FIRST_EPIC_EXTRA_HEIGHT : 0);
+
+				const epicDragForThis = epicDragState?.epic.id === epic.id ? epicDragState : null;
+				const epicVisualDraft = epicDateVisualDrafts[epic.id];
+				const epicHasStoredDates = !!(epic.start_date && epic.end_date);
+				const epicEffectiveStart = epicDragForThis
+					? epicDragForThis.draftStartDate
+					: epicVisualDraft
+						? floorToUnit(new Date(epicVisualDraft.startDate), "day")
+						: epicHasStoredDates
+							? floorToUnit(new Date(epic.start_date ?? ""), "day")
+							: null;
+				const epicEffectiveEnd = epicDragForThis
+					? epicDragForThis.draftEndDate
+					: epicVisualDraft
+						? floorToUnit(new Date(epicVisualDraft.endDate), "day")
+						: epicHasStoredDates
+							? floorToUnit(new Date(epic.end_date ?? ""), "day")
+							: null;
+				const isDraggingThisEpic = epicDragForThis !== null;
+
+				const isDrawingThisEpic =
+					drawDragState?.kind === "epic" &&
+					(drawDragState.entity as RoadmapEpic).id === epic.id;
+				const epicDrawPreviewLeft = isDrawingThisEpic
+					? toTimelinePx(drawDragState.draftStartDate, rangeStart, granularity, cw)
+					: 0;
+				const epicDrawPreviewRight = isDrawingThisEpic
+					? toTimelinePx(drawDragState.draftEndDate, rangeStart, granularity, cw)
+					: 0;
+				const epicDrawPreviewWidth = Math.max(2, epicDrawPreviewRight - epicDrawPreviewLeft);
 
 				return (
 					<div key={`right-${epic.id}`}>
@@ -290,6 +534,29 @@ export const MilestonesTimelineRows = ({
 									}}
 								/>
 							)}
+
+							{isDateDrawMode && (
+								<div
+									className="absolute inset-0 z-10 cursor-text"
+									data-no-pan="true"
+									onMouseDown={(e) => handleDrawStart(e, "epic", epic)}
+								/>
+							)}
+
+							{isDrawingThisEpic && drawDragState.hasMoved && (
+								<div
+									className="absolute top-1/2 -translate-y-1/2 pointer-events-none z-20 rounded-sm"
+									style={{
+										left: Math.max(0, epicDrawPreviewLeft),
+										width: epicDrawPreviewWidth,
+										height: EPIC_LINE_HEIGHT + 2,
+										backgroundColor: "#2563eb",
+										opacity: 0.35,
+										border: "1.5px dashed #2563eb",
+									}}
+								/>
+							)}
+
 							{epicRange &&
 								(() => {
 									const left = toTimelinePx(
@@ -331,6 +598,48 @@ export const MilestonesTimelineRows = ({
 										</div>
 									);
 								})()}
+
+						{epicEffectiveStart && epicEffectiveEnd && (() => {
+							const barLeft = toTimelinePx(epicEffectiveStart, rangeStart, granularity, cw);
+							const barRight = toTimelinePx(epicEffectiveEnd, rangeStart, granularity, cw);
+							const barWidth = Math.max(6, barRight - barLeft);
+							return (
+								<div
+									className={`absolute top-1/2 rounded-sm group z-10 ${
+										canEditDateRanges
+											? isDraggingThisEpic
+												? "cursor-grabbing"
+												: "cursor-pointer"
+											: "cursor-default"
+									}`}
+									data-no-pan="true"
+									onMouseDown={(e) => handleEpicDragStart(e, epic, "move", epicEffectiveStart, epicEffectiveEnd)}
+									style={{
+										left: Math.max(0, barLeft),
+										width: barWidth,
+										height: 12,
+										marginTop: 0,
+										backgroundColor: epicColor,
+										opacity: 0.85,
+									}}
+								>
+									{canEditDateRanges && (
+										<>
+											<div
+												className="absolute left-0 top-0 bottom-0 z-20 w-2 cursor-ew-resize bg-black/0 hover:bg-black/20 rounded-l-sm"
+												data-no-pan="true"
+												onMouseDown={(e) => handleEpicDragStart(e, epic, "start", epicEffectiveStart, epicEffectiveEnd)}
+											/>
+											<div
+												className="absolute right-0 top-0 bottom-0 z-20 w-2 cursor-ew-resize bg-black/0 hover:bg-black/20 rounded-r-sm"
+												data-no-pan="true"
+												onMouseDown={(e) => handleEpicDragStart(e, epic, "end", epicEffectiveStart, epicEffectiveEnd)}
+											/>
+										</>
+									)}
+								</div>
+							);
+						})()}
 						</div>
 
 						{!isCollapsed &&
@@ -383,6 +692,17 @@ export const MilestonesTimelineRows = ({
 									? `${fmtShort(startTooltipDate)} -> ${fmtShort(endTooltipDate)} | ${clampedProgress}%`
 									: "No dates set";
 
+								const isDrawingThisFeature =
+									drawDragState?.kind === "feature" &&
+									(drawDragState.entity as RoadmapFeature).id === feature.id;
+								const featureDrawLeft = isDrawingThisFeature
+									? toTimelinePx(drawDragState.draftStartDate, rangeStart, granularity, cw)
+									: 0;
+								const featureDrawRight = isDrawingThisFeature
+									? toTimelinePx(drawDragState.draftEndDate, rangeStart, granularity, cw)
+									: 0;
+								const featureDrawWidth = Math.max(2, featureDrawRight - featureDrawLeft);
+
 								return (
 									<div
 										key={`right-feature-${feature.id}`}
@@ -404,6 +724,29 @@ export const MilestonesTimelineRows = ({
 												}}
 											/>
 										)}
+
+										{isDateDrawMode && !hasDates && (
+											<div
+												className="absolute inset-0 z-10 cursor-text"
+												data-no-pan="true"
+												onMouseDown={(e) => handleDrawStart(e, "feature", feature)}
+											/>
+										)}
+
+										{isDrawingThisFeature && drawDragState.hasMoved && (
+											<div
+												className="absolute top-1/2 -translate-y-1/2 pointer-events-none z-20 rounded-sm"
+												style={{
+													left: Math.max(0, featureDrawLeft),
+													width: featureDrawWidth,
+													height: FEATURE_BAR_HEIGHT,
+													backgroundColor: FEATURE_BAR_TRACK_COLOR,
+													opacity: 0.7,
+													border: "1.5px dashed #2563eb",
+												}}
+											/>
+										)}
+
 										{hasDates && (
 											<>
 												<div
@@ -446,7 +789,7 @@ export const MilestonesTimelineRows = ({
 															<div className="pointer-events-none absolute left-0 top-0 bottom-0 z-10 w-px bg-gray-600/70" />
 															<div className="pointer-events-none absolute right-0 top-0 bottom-0 z-10 w-px bg-gray-600/70" />
 															<div
-																className="absolute left-0 top-0 bottom-0 z-20 w-px cursor-ew-resize bg-black/0 hover:bg-black/15"
+																className="absolute left-0 top-0 bottom-0 z-20 w-4 -translate-x-1/2 cursor-ew-resize bg-black/0 hover:bg-black/15 transition-colors"
 																data-no-pan="true"
 																onMouseDown={(event) =>
 																	handleDragStart(
@@ -459,7 +802,7 @@ export const MilestonesTimelineRows = ({
 																}
 															/>
 															<div
-																className="absolute right-0 top-0 bottom-0 z-20 w-px cursor-ew-resize bg-black/0 hover:bg-black/15"
+																className="absolute right-0 top-0 bottom-0 z-20 w-4 translate-x-1/2 cursor-ew-resize bg-black/0 hover:bg-black/15 transition-colors"
 																data-no-pan="true"
 																onMouseDown={(event) =>
 																	handleDragStart(
