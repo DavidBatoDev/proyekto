@@ -143,7 +143,7 @@ function MyLogsTab() {
 	// ─── mutations ─────────────────────────────────────────────────────
 
 	const startMutation = useMutation({
-		mutationFn: (input: { projectId: string; taskId: string }) =>
+		mutationFn: (input: { projectId: string; taskId?: string | null }) =>
 			teamTimeService.startLog(input.projectId, input.taskId),
 		onSuccess: () => {
 			toast.success("Timer started");
@@ -195,7 +195,7 @@ function MyLogsTab() {
 	});
 
 	const taskChangeMutation = useMutation({
-		mutationFn: (input: { id: string; task_id: string }) =>
+		mutationFn: (input: { id: string; task_id: string | null }) =>
 			teamTimeService.updateLog(input.id, { task_id: input.task_id }),
 		onSuccess: () => {
 			toast.success("Task changed");
@@ -224,10 +224,11 @@ function MyLogsTab() {
 	}, []);
 	const handleOpenTaskModal = useCallback((log: TaskTimeLog) => {
 		setTaskModalLog(log);
-		setTaskModalTaskId(log.task_id);
+		setTaskModalTaskId(log.task_id ?? "");
 	}, []);
 	const handleOpenInRoadmap = useCallback(
 		(log: TaskTimeLog) => {
+			if (!log.task_id) return;
 			void navigate({
 				to: "/project/$projectId/roadmap",
 				params: { projectId: log.project_id },
@@ -338,7 +339,7 @@ function MyLogsTab() {
 				onDeleteLog={handleDelete}
 				onEditLog={handleEdit}
 				onOpenTaskInRoadmap={handleOpenInRoadmap}
-				canOpenTaskInRoadmap={() => true}
+				canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
 				onOpenAddLog={() => setAddOpen(true)}
 			/>
 
@@ -361,7 +362,7 @@ function MyLogsTab() {
 				onSave={() =>
 					startMutation.mutate({
 						projectId: addProjectId,
-						taskId: addTaskId,
+						taskId: addTaskId || null,
 					})
 				}
 				onChangeProjectId={(v) => setAddProjectId(v)}
@@ -431,11 +432,11 @@ function MyLogsTab() {
 				}}
 				onSave={() => {
 					if (!taskModalLog) return;
-					if (!taskModalTaskId || taskModalTaskId === taskModalLog.task_id)
-						return;
+					const nextTaskId = taskModalTaskId || null;
+					if (nextTaskId === taskModalLog.task_id) return;
 					taskChangeMutation.mutate({
 						id: taskModalLog.id,
-						task_id: taskModalTaskId,
+						task_id: nextTaskId,
 					});
 				}}
 				onChangeProjectId={() => {

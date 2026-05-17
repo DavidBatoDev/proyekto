@@ -55,7 +55,7 @@ type TeamApprovalsRow = {
 	id: string;
 	date: string;
 	project_label: string;
-	task_id: string;
+	task_id: string | null;
 	task_title: string;
 	time_in: string;
 	status: TaskTimeLog["status"];
@@ -274,7 +274,7 @@ interface TeamApprovalsGridProps {
 		decision: "approved" | "rejected" | "pending",
 	) => void | Promise<void>;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
-	canOpenTaskInRoadmap: (taskId: string) => boolean;
+	canOpenTaskInRoadmap: (taskId: string | null) => boolean;
 }
 
 function statusBadgeClass(status: TaskTimeLog["status"]) {
@@ -455,7 +455,7 @@ export function TeamApprovalsGrid({
 						: FULL_DATE_FORMATTER.format(startedDate),
 				project_label: log.project?.title || log.project_id,
 				task_id: log.task_id,
-				task_title: log.task?.title ?? "Task",
+				task_title: log.task?.title ?? "-",
 				time_in: !hasValidStart
 					? "-"
 					: isMultiDay

@@ -55,7 +55,7 @@ type MyLogGridRow = {
 	id: string;
 	date: string;
 	project_label: string;
-	task_id: string;
+	task_id: string | null;
 	time_in: string;
 	is_running: boolean;
 	log: TaskTimeLog;
@@ -428,7 +428,7 @@ interface TeamMyLogsGridProps {
 	onDeleteLog: (logId: string) => void | Promise<void>;
 	onEditLog: (log: TaskTimeLog) => void;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
-	canOpenTaskInRoadmap: (taskId: string) => boolean;
+	canOpenTaskInRoadmap: (taskId: string | null) => boolean;
 	onOpenAddLog: () => void;
 }
 
@@ -473,7 +473,9 @@ export function TeamMyLogsGrid({
 			const startedDate = new Date(log.started_at);
 			const hasValidStart = !Number.isNaN(startedDate.getTime());
 			const taskTitle =
-				log.task?.title || taskTitleById.get(log.task_id) || "Task";
+				log.task?.title ||
+				(log.task_id ? taskTitleById.get(log.task_id) : undefined) ||
+				"-";
 
 			return {
 				id: log.id,
@@ -482,13 +484,16 @@ export function TeamMyLogsGrid({
 				task_id: log.task_id,
 				time_in: !hasValidStart ? "-" : TIME_FORMATTER.format(startedDate),
 				is_running: !log.ended_at,
-				log: {
-					...log,
-					task: {
-						id: log.task_id,
-						title: taskTitle,
-					},
-				},
+				log:
+					log.task_id === null
+						? { ...log, task: null }
+						: {
+								...log,
+								task: {
+									id: log.task_id,
+									title: taskTitle,
+								},
+							},
 			};
 		});
 		return populatedRows;
@@ -520,8 +525,8 @@ export function TeamMyLogsGrid({
 					const row = info.row.original;
 					const taskTitle =
 						row.log.task?.title ||
-						taskTitleById.get(row.task_id) ||
-						"Untitled task";
+						(row.task_id ? taskTitleById.get(row.task_id) : undefined) ||
+						"-";
 					return (
 						<div className="flex items-center gap-1.5">
 							<span

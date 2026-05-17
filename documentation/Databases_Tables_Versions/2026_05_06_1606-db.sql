@@ -525,7 +525,7 @@ CREATE TABLE public.task_comments (
 CREATE TABLE public.task_time_logs (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   project_id uuid NOT NULL,
-  task_id uuid NOT NULL,
+  task_id uuid,
   member_user_id uuid NOT NULL,
   started_at timestamp with time zone NOT NULL,
   ended_at timestamp with time zone,

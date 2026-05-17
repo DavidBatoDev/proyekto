@@ -191,7 +191,9 @@ function TeamTimeLogDetailRoute() {
 					<FieldRow label="Project">
 						{log.project?.title ?? log.project_id}
 					</FieldRow>
-					<FieldRow label="Task">{log.task?.title ?? log.task_id}</FieldRow>
+					<FieldRow label="Task">
+						{log.task?.title ?? log.task_id ?? "-"}
+					</FieldRow>
 					<FieldRow label="Source">{log.source}</FieldRow>
 					<FieldRow label="Started">
 						{new Date(log.started_at).toLocaleString()}
