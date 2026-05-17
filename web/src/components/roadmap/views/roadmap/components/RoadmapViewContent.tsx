@@ -75,19 +75,13 @@ const TASK_NAVIGATE_OFFSET_X = 620;
 const clampPanelWidth = (value: number, maxAllowed: number) =>
   Math.min(Math.max(value, CHAT_PANEL_MIN_WIDTH), maxAllowed);
 
-type RoadmapUrlView = "roadmapView" | "timelineView" | "boardView";
+type RoadmapUrlView = "roadmapView" | "timelineView";
 
-const toRoadmapUrlView = (mode: CanvasViewMode): RoadmapUrlView => {
-  if (mode === "milestones") return "timelineView";
-  if (mode === "kanban") return "boardView";
-  return "roadmapView";
-};
+const toRoadmapUrlView = (mode: CanvasViewMode): RoadmapUrlView =>
+  mode === "milestones" ? "timelineView" : "roadmapView";
 
-const toCanvasViewMode = (view: RoadmapUrlView): CanvasViewMode => {
-  if (view === "timelineView") return "milestones";
-  if (view === "boardView") return "kanban";
-  return "roadmap";
-};
+const toCanvasViewMode = (view: RoadmapUrlView): CanvasViewMode =>
+  view === "timelineView" ? "milestones" : "roadmap";
 
 type DeepLinkTarget =
   | { kind: "epic"; epicId: string }
@@ -348,7 +342,7 @@ export function RoadmapViewContent({
   useEffect(() => {
     const handleViewportResize = () => {
       const leftPanelWidth =
-        canvasViewMode !== "milestones" && canvasViewMode !== "kanban" ? ROADMAP_LEFT_PANEL_WIDTH : 0;
+        canvasViewMode !== "milestones" ? ROADMAP_LEFT_PANEL_WIDTH : 0;
       const maxAllowed = Math.max(
         CHAT_PANEL_MIN_WIDTH,
         Math.min(
@@ -372,7 +366,7 @@ export function RoadmapViewContent({
     const startX = event.clientX;
     const startWidth = chatPanelWidthRef.current;
     const leftPanelWidth =
-      canvasViewMode !== "milestones" && canvasViewMode !== "kanban" ? ROADMAP_LEFT_PANEL_WIDTH : 0;
+      canvasViewMode !== "milestones" ? ROADMAP_LEFT_PANEL_WIDTH : 0;
     const maxAllowed = Math.max(
       CHAT_PANEL_MIN_WIDTH,
       Math.min(
@@ -748,7 +742,7 @@ export function RoadmapViewContent({
 
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Sidebar — hidden in milestones view */}
-        {canvasViewMode !== "milestones" && canvasViewMode !== "kanban" && (
+        {canvasViewMode !== "milestones" && (
           <motion.div
             id="roadmap-left-panel"
             className="relative h-full border-r border-slate-200 bg-white/95 backdrop-blur"

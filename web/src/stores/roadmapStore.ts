@@ -25,8 +25,7 @@ export type CanvasViewMode =
   | "roadmap"
   | "epic"
   | "milestones"
-  | "artifact"
-  | "kanban";
+  | "artifact";
 
 export interface KanbanBoardFilters {
   epicIds: string[];

@@ -6,7 +6,6 @@ import {
   CalendarDays,
   FileText,
   Boxes,
-  Columns3,
 } from "lucide-react";
 import { useMemo } from "react";
 import {
@@ -171,7 +170,7 @@ export function RoadmapTopBar({
               setViewMode("roadmap");
               setSelectedEpicId(null);
             }}
-            className={`w-1/3 px-3 py-3 font-medium text-sm text-center transition-colors border-b-2 shrink-0 ${
+            className={`w-1/2 px-3 py-3 font-medium text-sm text-center transition-colors border-b-2 shrink-0 ${
               viewMode === "roadmap"
                 ? "text-orange-600 border-orange-600"
                 : "text-gray-600 hover:text-gray-900 border-transparent"
@@ -183,21 +182,8 @@ export function RoadmapTopBar({
             </span>
           </button>
           <button
-            onClick={() => setViewMode("kanban")}
-            className={`w-1/3 px-3 py-3 font-medium text-sm text-center transition-colors border-b-2 shrink-0 ${
-              viewMode === "kanban"
-                ? "text-orange-600 border-orange-600"
-                : "text-gray-600 hover:text-gray-900 border-transparent"
-            }`}
-          >
-            <span className="inline-flex items-center gap-1.5">
-              <Columns3 className="w-4 h-4" />
-              Board
-            </span>
-          </button>
-          <button
             onClick={() => setViewMode("milestones")}
-            className={`w-1/3 px-3 py-3 font-medium text-sm text-center transition-colors border-b-2 shrink-0 ${
+            className={`w-1/2 px-3 py-3 font-medium text-sm text-center transition-colors border-b-2 shrink-0 ${
               viewMode === "milestones"
                 ? "text-orange-600 border-orange-600"
                 : "text-gray-600 hover:text-gray-900 border-transparent"

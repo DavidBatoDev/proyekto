@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 import {
 	useEffect,
 	useLayoutEffect,
@@ -13,6 +13,63 @@ import { useRoadmapStore } from "@/stores/roadmapStore";
 interface PillOption {
 	id: string;
 	label: string;
+}
+
+interface AssigneeOption {
+	id: string;
+	label: string;
+	avatarUrl?: string | null;
+}
+
+function Avatar({
+	name,
+	avatarUrl,
+}: {
+	name: string;
+	avatarUrl?: string | null;
+}) {
+	const initials = name
+		? name
+				.split(/\s+/)
+				.map((part) => part[0] ?? "")
+				.join("")
+				.slice(0, 2)
+				.toUpperCase()
+		: "?";
+	if (avatarUrl) {
+		return (
+			<img
+				src={avatarUrl}
+				alt={name}
+				className="w-6 h-6 rounded-full object-cover ring-1 ring-white"
+			/>
+		);
+	}
+	return (
+		<div className="w-6 h-6 rounded-full bg-linear-to-br from-slate-700 to-slate-900 flex items-center justify-center text-white text-[9px] font-bold ring-1 ring-white shrink-0">
+			{initials}
+		</div>
+	);
+}
+
+function AllAssigneesAvatar({ options }: { options: AssigneeOption[] }) {
+	const visible = options.slice(0, 2);
+	return (
+		<span className="flex items-center">
+			<span className="flex items-center">
+				{visible.map((option, idx) => (
+					<span key={option.id} className={idx > 0 ? "-ml-2" : ""}>
+						<Avatar name={option.label} avatarUrl={option.avatarUrl} />
+					</span>
+				))}
+			</span>
+			{options.length > 0 && (
+				<span className="-ml-2 w-6 h-6 rounded-full border border-white bg-slate-300 text-white text-[10px] font-semibold flex items-center justify-center shrink-0">
+					{options.length}
+				</span>
+			)}
+		</span>
+	);
 }
 
 function pillClass(isActive: boolean) {
@@ -63,7 +120,7 @@ function ScrollRow({ children }: { children: ReactNode }) {
 	return (
 		<div
 			ref={ref}
-			className={`flex items-center gap-2 overflow-x-auto no-scrollbar min-w-0 ${maskClass}`}
+			className={`flex items-center gap-2 overflow-x-auto min-w-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${maskClass}`}
 		>
 			{children}
 		</div>
@@ -115,33 +172,127 @@ function SingleSelectGroup({
 	);
 }
 
-function MultiSelectGroup({
+function AssigneesDropdown({
 	title,
 	options,
 	selected,
 	onToggle,
+	onClear,
 }: {
 	title: string;
-	options: PillOption[];
+	options: AssigneeOption[];
 	selected: string[];
 	onToggle: (id: string) => void;
+	onClear: () => void;
 }) {
+	const [open, setOpen] = useState(false);
+	const ref = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		if (!open) return;
+		const onDown = (event: MouseEvent) => {
+			if (!ref.current?.contains(event.target as Node)) setOpen(false);
+		};
+		const onKey = (event: KeyboardEvent) => {
+			if (event.key === "Escape") setOpen(false);
+		};
+		document.addEventListener("mousedown", onDown);
+		document.addEventListener("keydown", onKey);
+		return () => {
+			document.removeEventListener("mousedown", onDown);
+			document.removeEventListener("keydown", onKey);
+		};
+	}, [open]);
+
+	const selectedCount = selected.length;
+	const selectedOption =
+		selectedCount === 1
+			? options.find((o) => o.id === selected[0]) ?? null
+			: null;
+	const triggerLabel = !selectedCount
+		? "All assignees"
+		: selectedOption
+			? selectedOption.label
+			: `${selectedCount} selected`;
+
 	if (!options.length) return null;
+
 	return (
 		<div className="flex items-center gap-2 min-w-0">
 			<GroupLabel>{title}</GroupLabel>
-			<ScrollRow>
-				{options.map((option) => (
-					<button
-						key={option.id}
-						type="button"
-						onClick={() => onToggle(option.id)}
-						className={pillClass(selected.includes(option.id))}
-					>
-						{option.label}
-					</button>
-				))}
-			</ScrollRow>
+			<div ref={ref} className="relative min-w-0 flex-1">
+				<button
+					type="button"
+					onClick={() => setOpen((prev) => !prev)}
+					className="min-w-[180px] w-full text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 cursor-pointer flex items-center justify-between gap-3 hover:bg-slate-100 transition-colors"
+				>
+					<span className="flex items-center gap-2 min-w-0">
+						{selectedCount === 0 ? (
+							<AllAssigneesAvatar options={options} />
+						) : selectedOption ? (
+							<Avatar
+								name={selectedOption.label}
+								avatarUrl={selectedOption.avatarUrl}
+							/>
+						) : (
+							<AllAssigneesAvatar
+								options={options.filter((o) => selected.includes(o.id))}
+							/>
+						)}
+						<span className="truncate">{triggerLabel}</span>
+					</span>
+					<ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
+				</button>
+
+				{open && (
+					<div className="absolute right-0 mt-1 w-64 rounded-lg border border-slate-200 bg-white shadow-lg z-40 py-1">
+						<button
+							type="button"
+							onClick={() => {
+								onClear();
+								setOpen(false);
+							}}
+							className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 ${
+								selectedCount === 0 ? "bg-slate-50 font-medium" : ""
+							}`}
+						>
+							<span className="flex items-center gap-2">
+								<AllAssigneesAvatar options={options} />
+								All assignees
+							</span>
+						</button>
+
+						{options.length > 0 && (
+							<div className="mt-1 pt-1 border-t border-slate-100 max-h-64 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:var(--color-slate-300)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full">
+								{options.map((option) => {
+									const isSelected = selected.includes(option.id);
+									return (
+										<button
+											key={option.id}
+											type="button"
+											onClick={() => onToggle(option.id)}
+											className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 ${
+												isSelected ? "bg-slate-50 font-medium" : ""
+											}`}
+										>
+											<span className="flex items-center gap-2">
+												<Avatar
+													name={option.label}
+													avatarUrl={option.avatarUrl}
+												/>
+												<span className="truncate">{option.label}</span>
+												{isSelected ? (
+													<Check className="ml-auto w-3.5 h-3.5 text-slate-900 shrink-0" />
+												) : null}
+											</span>
+										</button>
+									);
+								})}
+							</div>
+						)}
+					</div>
+				)}
+			</div>
 		</div>
 	);
 }
@@ -172,17 +323,21 @@ export function KanbanFilters() {
 		[epics, selectedEpicId],
 	);
 
-	const featureOptions = useMemo<PillOption[]>(
-		() =>
-			(selectedEpic?.features ?? []).map((f) => ({
+	const featureOptions = useMemo<PillOption[]>(() => {
+		if (selectedEpic) {
+			return (selectedEpic.features ?? []).map((f) => ({
 				id: f.id,
 				label: f.title,
-			})),
-		[selectedEpic],
-	);
+			}));
+		}
+		// "All" epics: aggregate every feature across all epics.
+		return epics.flatMap((epic) =>
+			(epic.features ?? []).map((f) => ({ id: f.id, label: f.title })),
+		);
+	}, [epics, selectedEpic]);
 
-	const assigneeOptions = useMemo<PillOption[]>(() => {
-		const seen = new Map<string, string>();
+	const assigneeOptions = useMemo<AssigneeOption[]>(() => {
+		const seen = new Map<string, AssigneeOption>();
 		for (const epic of epics) {
 			for (const feature of epic.features ?? []) {
 				for (const task of feature.tasks ?? []) {
@@ -194,11 +349,15 @@ export function KanbanFilters() {
 						[a.first_name, a.last_name].filter(Boolean).join(" ") ||
 						a.email ||
 						"Unknown";
-					seen.set(task.assignee_id, label);
+					seen.set(task.assignee_id, {
+						id: task.assignee_id,
+						label,
+						avatarUrl: a.avatar_url ?? null,
+					});
 				}
 			}
 		}
-		return Array.from(seen.entries()).map(([id, label]) => ({ id, label }));
+		return Array.from(seen.values());
 	}, [epics]);
 
 	const selectEpic = (id: string | null) =>
@@ -237,21 +396,22 @@ export function KanbanFilters() {
 					selectedId={selectedEpicId}
 					onSelect={selectEpic}
 				/>
-				{selectedEpic && (
-					<SingleSelectGroup
-						title="Features"
-						options={featureOptions}
-						selectedId={selectedFeatureId}
-						onSelect={selectFeature}
-					/>
-				)}
+				<SingleSelectGroup
+					title="Features"
+					options={featureOptions}
+					selectedId={selectedFeatureId}
+					onSelect={selectFeature}
+				/>
 			</div>
 			<div className="col-span-3 flex flex-col justify-between gap-2.5">
-				<MultiSelectGroup
+				<AssigneesDropdown
 					title="Assignees"
 					options={assigneeOptions}
 					selected={boardFilters.assigneeIds}
 					onToggle={toggleAssignee}
+					onClear={() =>
+						setBoardFilters((prev) => ({ ...prev, assigneeIds: [] }))
+					}
 				/>
 				<div className="flex justify-end">
 					{hasAny ? (
