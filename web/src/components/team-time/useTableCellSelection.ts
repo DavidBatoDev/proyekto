@@ -270,14 +270,17 @@ export function useTableCellSelection(
 			if (e.button !== 0) return;
 			const target = e.target as HTMLElement;
 
+			// Always let interactive elements handle their own events — this covers
+			// both buttons inside the table and portal menus rendered in document.body.
+			if (target.closest("button") || target.closest("input") || target.closest("a"))
+				return;
+
 			if (!tableRef.current?.contains(target)) {
 				commitSelection(new Set());
 				anchorRef.current = null;
 				baseSelectionRef.current = new Set();
 				return;
 			}
-			if (target.closest("button") || target.closest("input") || target.closest("a"))
-				return;
 
 			const key = keyFromPoint(e.clientX, e.clientY);
 			if (!key) return;
