@@ -11,6 +11,7 @@ import {
   Controls,
   MiniMap,
   Background,
+  BackgroundVariant,
   applyNodeChanges,
   type Node,
   type Edge,
@@ -1197,7 +1198,7 @@ export const RoadmapView = ({
           type: "simplebezier",
         }}
       >
-        <Background variant="dots" />
+        <Background variant={BackgroundVariant.Dots} />
         <Controls position="top-right" />
         {showMiniMap && (
           <MiniMap

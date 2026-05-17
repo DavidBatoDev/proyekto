@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ClipboardCheck, Clock3, FolderOpen, ShieldCheck } from "lucide-react";
+import { FolderOpen, ShieldCheck } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import { getRoadmapFull, getRoadmaps } from "@/api";
 import { type Project, projectService } from "@/services/project.service";
@@ -31,95 +31,6 @@ type TimelineItem = {
 	status?: string;
 	projectId?: string | null;
 };
-
-type DashboardRole = "client" | "consultant" | "freelancer";
-
-const PERSONA_UI: Record<
-	DashboardRole,
-	{
-		badgeLabel: string;
-		badgeClass: string;
-		workloadSubtext: string;
-		primaryMetricLabel: string;
-		secondaryMetricLabel: string;
-		timelineTitle: string;
-		timelineSubtitle: string;
-		timelineEmptyTitle: string;
-		timelineEmptySubtitle: string;
-		attentionTitle: string;
-		attentionSubtitle: string;
-		attentionEmptyTitle: string;
-		attentionEmptySubtitle: string;
-	}
-> = {
-	client: {
-		badgeLabel: "Client View",
-		badgeClass: "border border-slate-200 bg-slate-100 text-slate-700",
-		workloadSubtext:
-			"Here is a quick view of your project portfolio and approval pipeline.",
-		primaryMetricLabel: "ACTIVE PROJECTS",
-		secondaryMetricLabel: "PENDING PROJECTS",
-		timelineTitle: "Upcoming Milestones",
-		timelineSubtitle:
-			"Track upcoming roadmap deadlines and delivery checkpoints.",
-		timelineEmptyTitle: "No upcoming milestones",
-		timelineEmptySubtitle:
-			"Milestones with future target dates will appear here.",
-		attentionTitle: "Activity",
-		attentionSubtitle:
-			"Track open roadmap tasks that need review and coordination.",
-		attentionEmptyTitle: "No activity right now",
-		attentionEmptySubtitle:
-			"Open tasks will appear here when roadmap execution starts.",
-	},
-	consultant: {
-		badgeLabel: "Consultant View",
-		badgeClass: "border border-slate-200 bg-slate-100 text-slate-700",
-		workloadSubtext:
-			"Here is a quick view of your consultant delivery workload and reviews.",
-		primaryMetricLabel: "ACTIVE PROJECTS",
-		secondaryMetricLabel: "TIME TO REVIEW",
-		timelineTitle: "Upcoming Milestones",
-		timelineSubtitle: "Track client commitments and upcoming delivery targets.",
-		timelineEmptyTitle: "No upcoming milestones",
-		timelineEmptySubtitle:
-			"Milestones with future target dates will appear here.",
-		attentionTitle: "Activity",
-		attentionSubtitle: "Track open roadmap tasks that need consultant action.",
-		attentionEmptyTitle: "No activity right now",
-		attentionEmptySubtitle:
-			"Open task activity will appear here as work progresses.",
-	},
-	freelancer: {
-		badgeLabel: "Freelancer View",
-		badgeClass: "border border-slate-200 bg-slate-100 text-slate-700",
-		workloadSubtext:
-			"Here is your delivery view with assigned deadlines and execution hours.",
-		primaryMetricLabel: "ASSIGNED TASKS",
-		secondaryMetricLabel: "HOURS LOGGED",
-		timelineTitle: "My Upcoming Deadlines",
-		timelineSubtitle: "Track your task due dates across active workspaces.",
-		timelineEmptyTitle: "No upcoming deadlines",
-		timelineEmptySubtitle:
-			"Task due dates with upcoming deadlines will appear here.",
-		attentionTitle: "Activity",
-		attentionSubtitle: "Execution-focused open tasks across your workspaces.",
-		attentionEmptyTitle: "No activity right now",
-		attentionEmptySubtitle:
-			"Open assigned task activity will appear here when work is available.",
-	},
-};
-
-function normalizePersona(persona: string | undefined): DashboardRole {
-	if (
-		persona === "consultant" ||
-		persona === "freelancer" ||
-		persona === "client"
-	) {
-		return persona;
-	}
-	return "client";
-}
 
 function formatDateLabel(value: string): string {
 	return new Date(value).toLocaleDateString(undefined, {
@@ -155,17 +66,7 @@ function getInitials(name: string): string {
 	return parts.map((part) => part.charAt(0).toUpperCase()).join("");
 }
 
-function getActivityStatusPriority(
-	persona: DashboardRole,
-	status: string,
-): number {
-	if (persona === "freelancer") {
-		if (status === "todo") return 3;
-		if (status === "in_progress") return 2;
-		if (status === "in_review") return 1;
-		return 0;
-	}
-
+function getActivityStatusPriority(status: string): number {
 	if (status === "in_review") return 3;
 	return 0;
 }
@@ -179,9 +80,6 @@ export function DashboardWidgets({
 }) {
 	const user = useUser();
 	const { profile } = useAuthStore();
-	const persona = normalizePersona(profile?.active_persona);
-	const ui = PERSONA_UI[persona];
-	const isFreelancer = persona === "freelancer";
 	const projectsQuery = useQuery({
 		queryKey: ["dashboard", "projects", "widgets"],
 		queryFn: () => projectService.listDashboardProjects(),
@@ -218,16 +116,11 @@ export function DashboardWidgets({
 	const isProjectsLoading = projectsQuery.isPending;
 	const isMilestonesLoading = timelineQuery.isPending;
 
-	const {
-		upcomingMilestones,
-		upcomingDeadlines,
-		hoursLoggedByProject,
-		hoursLoggedByFreelancerAssignee,
-	} = useMemo(() => {
+	const upcomingMilestones = useMemo(() => {
 		const validRoadmaps = timelineQuery.data ?? [];
 		const today = startOfToday().getTime();
 
-		const milestones = validRoadmaps
+		return validRoadmaps
 			.flatMap((roadmap: any) =>
 				(roadmap.milestones || []).map((milestone: any) => ({
 					id: milestone.id,
@@ -247,56 +140,7 @@ export function DashboardWidgets({
 					new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime(),
 			)
 			.slice(0, 6);
-
-		const deadlines = validRoadmaps
-			.flatMap((roadmap: any) =>
-				(roadmap.epics || []).flatMap((epic: any) =>
-					(epic.features || []).flatMap((feature: any) =>
-						(feature.tasks || []).map((task: any) => ({
-							id: task.id,
-							title: task.title || "Task",
-							roadmapName: roadmap.name,
-							targetDate: task.due_date,
-							assigneeId: task.assignee_id,
-							actualHours: Number(task.actual_hours || 0),
-							status: String(task.status || "").toLowerCase(),
-							projectId: roadmap.project_id || null,
-						})),
-					),
-				),
-			)
-			.filter((item: TimelineItem) => {
-				if (!item.targetDate) return false;
-				const parsed = new Date(item.targetDate).getTime();
-				return Number.isFinite(parsed) && parsed >= today;
-			})
-			.sort(
-				(a: TimelineItem, b: TimelineItem) =>
-					new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime(),
-			)
-			.slice(0, 6);
-
-		const freelancerDeadlines = deadlines.filter((item: TimelineItem) =>
-			user?.id ? item.assigneeId === user.id : true,
-		);
-
-		const totalHours = deadlines.reduce(
-			(sum, task) => sum + Number(task.actualHours || 0),
-			0,
-		);
-
-		const totalFreelancerTaskHours = deadlines.reduce((sum, task) => {
-			if (user?.id && task.assigneeId !== user.id) return sum;
-			return sum + Number(task.actualHours || 0);
-		}, 0);
-
-		return {
-			upcomingMilestones: milestones,
-			upcomingDeadlines: freelancerDeadlines,
-			hoursLoggedByProject: totalHours,
-			hoursLoggedByFreelancerAssignee: totalFreelancerTaskHours,
-		};
-	}, [timelineQuery.data, user?.id]);
+	}, [timelineQuery.data]);
 
 	const projectActiveCount = useMemo(() => projects.length, [projects]);
 
@@ -307,12 +151,6 @@ export function DashboardWidgets({
 			).length,
 		[projects],
 	);
-
-	// Time approvals were removed alongside the project Time page; the
-	// consultant secondary metric just falls through to 0 until a replacement
-	// metric (e.g. open work items) is wired in.
-	const consultantPendingApprovalsCount = 0;
-	const consultantPendingApprovalsLoading = false;
 
 	const projectTitleById = useMemo(() => {
 		const map = new Map<string, string>();
@@ -381,8 +219,8 @@ export function DashboardWidgets({
 				if (assignedDiff !== 0) return assignedDiff;
 
 				const statusDiff =
-					getActivityStatusPriority(persona, b.taskStatus) -
-					getActivityStatusPriority(persona, a.taskStatus);
+					getActivityStatusPriority(b.taskStatus) -
+					getActivityStatusPriority(a.taskStatus);
 				if (statusDiff !== 0) return statusDiff;
 
 				const aDue = a.dueDate
@@ -400,21 +238,11 @@ export function DashboardWidgets({
 				return a.id.localeCompare(b.id);
 			})
 			.slice(0, 5);
-	}, [timelineQuery.data, user?.id, persona, projectTitleById]);
+	}, [timelineQuery.data, user?.id, projectTitleById]);
 
-	const primaryMetricValue = isFreelancer
-		? upcomingDeadlines.length
-		: projectActiveCount;
-	const secondaryMetricValue = isFreelancer
-		? Math.round(hoursLoggedByFreelancerAssignee || hoursLoggedByProject)
-		: persona === "client"
-			? clientPendingProjectsCount
-			: consultantPendingApprovalsCount;
-	const secondaryMetricLoading = isFreelancer
-		? isMilestonesLoading
-		: persona === "consultant"
-			? consultantPendingApprovalsLoading
-			: isProjectsLoading;
+	const primaryMetricValue = projectActiveCount;
+	const secondaryMetricValue = clientPendingProjectsCount;
+	const secondaryMetricLoading = isProjectsLoading;
 	const activityLoading = isMilestonesLoading;
 
 	const greetingName =
@@ -443,28 +271,19 @@ export function DashboardWidgets({
 		}
 	};
 
-	const timelineItems = isFreelancer ? upcomingDeadlines : upcomingMilestones;
-
 	return (
-		<div className="space-y-6 app-slide-up" data-theme={persona}>
+		<div className="space-y-6 app-slide-up">
 			{leadContent}
 
 			<section className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
 				<div className="space-y-6 min-w-0">
 					<div className="app-surface-card-strong p-8">
 						<div className="mb-6">
-							<div className="flex items-center justify-between gap-2">
-								<h2 className="text-[22px] font-semibold tracking-tight text-slate-900">
-									Welcome back, {greetingName}
-								</h2>
-								<span
-									className={`text-[11px] font-semibold px-2 py-1 rounded-full ${ui.badgeClass}`}
-								>
-									{ui.badgeLabel}
-								</span>
-							</div>
+							<h2 className="text-[22px] font-semibold tracking-tight text-slate-900">
+								Welcome back, {greetingName}
+							</h2>
 							<p className="mt-1 text-sm text-slate-600">
-								{ui.workloadSubtext}
+								Here is a quick view of your project portfolio and delivery milestones.
 							</p>
 						</div>
 
@@ -486,12 +305,8 @@ export function DashboardWidgets({
 									{"->"}
 								</span>
 								<p className="relative z-10 mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-600">
-									{isFreelancer ? (
-										<ClipboardCheck className="w-4 h-4 text-slate-400" />
-									) : (
-										<FolderOpen className="w-4 h-4 text-slate-400" />
-									)}
-									{ui.primaryMetricLabel}
+									<FolderOpen className="w-4 h-4 text-slate-400" />
+									ACTIVE PROJECTS
 								</p>
 								<p className="relative z-10 text-4xl font-semibold text-slate-900">
 									{isProjectsLoading ? "..." : primaryMetricValue}
@@ -514,14 +329,8 @@ export function DashboardWidgets({
 									{"->"}
 								</span>
 								<p className="relative z-10 mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-600">
-									{isFreelancer ? (
-										<Clock3 className="w-4 h-4 text-slate-400" />
-									) : persona === "client" ? (
-										<ShieldCheck className="w-4 h-4 text-slate-400" />
-									) : (
-										<Clock3 className="w-4 h-4 text-slate-400" />
-									)}
-									{ui.secondaryMetricLabel}
+									<ShieldCheck className="w-4 h-4 text-slate-400" />
+									PENDING PROJECTS
 								</p>
 								<p className="relative z-10 text-4xl font-semibold text-slate-900">
 									{secondaryMetricLoading ? "..." : secondaryMetricValue}
@@ -537,10 +346,10 @@ export function DashboardWidgets({
 					<div className="app-surface-card p-6">
 						<div className="mb-3">
 							<h3 className="text-[20px] font-semibold tracking-tight text-slate-900">
-								{ui.timelineTitle}
+								Upcoming Milestones
 							</h3>
 							<p className="mt-1 text-xs text-slate-600">
-								{ui.timelineSubtitle}
+								Track upcoming roadmap deadlines and delivery checkpoints.
 							</p>
 						</div>
 
@@ -548,18 +357,18 @@ export function DashboardWidgets({
 							<p className="text-sm text-slate-600">
 								Loading milestone timeline...
 							</p>
-						) : timelineItems.length === 0 ? (
+						) : upcomingMilestones.length === 0 ? (
 							<div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
 								<p className="mb-1 text-sm font-semibold text-slate-900">
-									{ui.timelineEmptyTitle}
+									No upcoming milestones
 								</p>
 								<p className="text-xs text-slate-600">
-									{ui.timelineEmptySubtitle}
+									Milestones with future target dates will appear here.
 								</p>
 							</div>
 						) : (
 							<div className="space-y-5">
-								{timelineItems.map((item, index, arr) => {
+								{upcomingMilestones.map((item, index, arr) => {
 									const isLast = index === arr.length - 1;
 									const isCurrent = index === 0;
 									const isNext = index === 1;
@@ -627,10 +436,10 @@ export function DashboardWidgets({
 					>
 						<div className="mb-3">
 							<h3 className="text-[20px] font-semibold tracking-tight text-slate-900">
-								{ui.attentionTitle}
+								Activity
 							</h3>
 							<p className="mt-1 text-xs text-slate-600">
-								{ui.attentionSubtitle}
+								Track open roadmap tasks that need review and coordination.
 							</p>
 						</div>
 
@@ -639,10 +448,10 @@ export function DashboardWidgets({
 						) : activityItems.length === 0 ? (
 							<div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
 								<p className="mb-1 text-sm font-semibold text-slate-900">
-									{ui.attentionEmptyTitle}
+									No activity right now
 								</p>
 								<p className="text-xs text-slate-600">
-									{ui.attentionEmptySubtitle}
+									Open tasks will appear here when roadmap execution starts.
 								</p>
 							</div>
 						) : (

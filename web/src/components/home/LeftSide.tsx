@@ -1,15 +1,9 @@
-import { useAuthStore } from "@/stores/authStore";
 import { DashboardWidgets } from "./DashboardWidgets";
-import { MyWorkSection } from "./MyWorkSection";
 import { ProjectsGrid } from "./ProjectsGrid";
 import { RoadmapsGrid } from "./RoadmapsGrid";
 import { TeamsGrid } from "./TeamsGrid";
 
 export function PrimaryFlow() {
-	const { profile } = useAuthStore();
-	const persona = profile?.active_persona || "client";
-	const isFreelancer = persona === "freelancer";
-
 	return (
 		<DashboardWidgets>
 			<TeamsGrid />
@@ -17,8 +11,6 @@ export function PrimaryFlow() {
 			<ProjectsGrid />
 
 			<RoadmapsGrid />
-
-			{!isFreelancer ? <MyWorkSection /> : null}
 		</DashboardWidgets>
 	);
 }
@@ -29,7 +21,6 @@ export function LeftSide() {
 			<TeamsGrid />
 			<ProjectsGrid />
 			<RoadmapsGrid />
-			<MyWorkSection />
 		</div>
 	);
 }
