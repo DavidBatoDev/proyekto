@@ -177,12 +177,6 @@ function TeamTimeLayout() {
 				<AppSectionHeader
 					title={`${team.name} — Time`}
 					subtitle="Track time on tasks across this team's projects. Logs are reviewed by team owners and admins."
-					rightSlot={
-						<div
-							aria-hidden
-							className="hidden h-24 w-72 rounded-xl border border-dashed border-slate-300 bg-slate-50/50 sm:block"
-						/>
-					}
 				/>
 
 				<div className="border-b border-slate-200">

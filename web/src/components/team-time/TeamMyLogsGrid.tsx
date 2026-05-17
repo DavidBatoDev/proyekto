@@ -28,6 +28,8 @@ import type {
 	TaskTimeLog,
 } from "@/services/team-time.service";
 import { liveDurationSecondsFromLog, useLiveNowMs } from "./time-utils";
+import { useTableCellSelection } from "./useTableCellSelection";
+import { CellSelectionScoreboard } from "./CellSelectionScoreboard";
 
 // Module-scope formatters: stable references shared across all cells,
 // so they never trigger a re-render via prop identity changes.
@@ -450,6 +452,17 @@ export function TeamMyLogsGrid({
 }: TeamMyLogsGridProps) {
 	const [openMenuRowId, setOpenMenuRowId] = useState<string | null>(null);
 
+	const SELECTABLE_COLS = [
+		"date",
+		"project",
+		"task_id",
+		"time_in",
+		"time_out",
+		"hours_worked",
+		"fees",
+		"status",
+	];
+
 	const hasActiveLog = useMemo(
 		() => logs.some((log) => !log.ended_at),
 		[logs],
@@ -655,10 +668,24 @@ export function TeamMyLogsGrid({
 		getCoreRowModel: getCoreRowModel(),
 	});
 
+	const tableRef = useRef<HTMLTableElement | null>(null);
+	const orderedRowIds = table.getRowModel().rows.map((r) => r.original.id);
+	const { selectedCells, isSelected, getCellDataProps } =
+		useTableCellSelection(orderedRowIds, SELECTABLE_COLS, tableRef);
+
 	if (loadingLogs) return <MyLogsGridSkeleton />;
 	return (
+		<>
+		<CellSelectionScoreboard
+			selectedCells={selectedCells}
+			logs={logs}
+			ownRateByProjectId={ownRateByProjectId}
+		/>
 		<div className="rounded-xl border border-gray-200 bg-white overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-			<table className="w-full min-w-[1050px] table-fixed text-[11px]">
+			<table
+				ref={tableRef}
+				className="w-full min-w-[1050px] table-fixed text-[11px] select-none"
+			>
 				<colgroup>
 					<col className="w-[16%]" />
 					<col className="w-[14%]" />
@@ -715,11 +742,26 @@ export function TeamMyLogsGrid({
 									rowPendingById[row.original.id] ? "bg-amber-50/40" : ""
 								}`}
 							>
-								{row.getVisibleCells().map((cell) => (
-									<td key={cell.id} className="px-2 py-1.5 align-middle">
-										{flexRender(cell.column.columnDef.cell, cell.getContext())}
-									</td>
-								))}
+								{row.getVisibleCells().map((cell) => {
+									const colId = cell.column.id;
+									const selectable = SELECTABLE_COLS.includes(colId);
+									const selected =
+										selectable && isSelected(row.original.id, colId);
+									return (
+										<td
+											key={cell.id}
+											className={`px-2 py-1.5 align-middle ${selectable ? "cursor-cell" : ""} ${selected ? "bg-blue-100" : ""}`}
+											{...(selectable
+												? getCellDataProps(row.original.id, colId)
+												: {})}
+										>
+											{flexRender(
+												cell.column.columnDef.cell,
+												cell.getContext(),
+											)}
+										</td>
+									);
+								})}
 							</tr>
 						))
 					)}
@@ -737,5 +779,6 @@ export function TeamMyLogsGrid({
 				</tbody>
 			</table>
 		</div>
+		</>
 	);
 }
