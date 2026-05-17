@@ -59,7 +59,7 @@ export default function UserMenu() {
             className="w-10 h-10 rounded-full object-cover border border-slate-300"
           />
         ) : (
-          <div className="w-12 h-12 rounded-full bg-linear-to-br from-slate-800 to-slate-900 text-white flex items-center justify-center font-semibold text-lg border border-slate-700">
+          <div className="w-12 h-12 rounded-full bg-black text-white flex items-center justify-center font-semibold text-lg">
             {getDisplayName().charAt(0).toUpperCase()}
           </div>
         )}

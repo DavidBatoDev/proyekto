@@ -73,18 +73,30 @@ export class FeaturesRepositorySupabase implements IFeaturesRepository {
   }
 
   async bulkReorder(epicId: string, dto: BulkReorderDto): Promise<void> {
-    const updates = dto.items.map((item) =>
+    const now = new Date().toISOString();
+    const TEMP_OFFSET = 1_000_000;
+
+    // Phase 1: shift all rows to unique temp positions to break transient conflicts
+    const phase1 = dto.items.map((item, idx) =>
       this.db
         .from('roadmap_features')
-        .update({
-          position: item.position,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ position: TEMP_OFFSET + idx, updated_at: now })
         .eq('id', item.id)
         .eq('epic_id', epicId),
     );
-    const results = await Promise.all(updates);
-    for (const { error } of results) {
+    for (const { error } of await Promise.all(phase1)) {
+      if (error) throw new Error(error.message);
+    }
+
+    // Phase 2: set final positions (all unique, no conflicts)
+    const phase2 = dto.items.map((item) =>
+      this.db
+        .from('roadmap_features')
+        .update({ position: item.position })
+        .eq('id', item.id)
+        .eq('epic_id', epicId),
+    );
+    for (const { error } of await Promise.all(phase2)) {
       if (error) throw new Error(error.message);
     }
   }

@@ -721,7 +721,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     // Step 3: fetch features for those roadmaps
     const { data: features, error: featuresError } = await this.db
       .from('roadmap_features')
-      .select('id, roadmap_id, epic_id, title, position, status')
+      .select('id, roadmap_id, epic_id, title, position')
       .in('roadmap_id', roadmapIds)
       .order('position', { ascending: true });
     if (featuresError) throw new Error(featuresError.message);
@@ -810,7 +810,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
 
     const { data: features, error: featuresError } = await this.db
       .from('roadmap_features')
-      .select('id, roadmap_id, epic_id, title, position, status')
+      .select('id, roadmap_id, epic_id, title, position')
       .in('roadmap_id', roadmapIds)
       .order('position', { ascending: true });
     if (featuresError) throw new Error(featuresError.message);

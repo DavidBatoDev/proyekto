@@ -1,7 +1,8 @@
-import {
+import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type DragEvent,
 } from "react";
@@ -9,15 +10,22 @@ import {
   ReactFlow,
   Controls,
   MiniMap,
+  applyNodeChanges,
   type Node,
   type Edge,
   type NodeTypes,
   type ReactFlowInstance,
+  type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useDraggable } from "@dnd-kit/core";
+import { useRoadmapStore } from "@/stores/roadmapStore";
+import { useShallow } from "zustand/react/shallow";
 import { GripHorizontal, Layers3, ListTodo } from "lucide-react";
 import { EpicWidget, type EpicWidgetData } from "../../widgets/EpicWidget";
+import { EpicReorderConfirmModal } from "../../panels/EpicReorderConfirmModal";
+import { FeatureReorderConfirmModal } from "../../panels/FeatureReorderConfirmModal";
+import { FeatureMoveConfirmModal } from "../../panels/FeatureMoveConfirmModal";
 import {
   FeatureWidget,
   type FeatureWidgetData,
@@ -143,6 +151,15 @@ const getEdgeColor = (status: FeatureStatus) => {
       return "#9ca3af";
   }
 };
+
+const CANVAS_SKIP_EPIC_REORDER_KEY = "roadmap.canvas.skipEpicReorderConfirm";
+const CANVAS_SKIP_FEATURE_REORDER_KEY = "roadmap.canvas.skipFeatureReorderConfirm";
+const CANVAS_SKIP_FEATURE_MOVE_KEY = "roadmap.canvas.skipFeatureMoveConfirm";
+
+type PendingCanvasDrag =
+  | { kind: "epicReorder"; epicId: string; epicTitle: string; newEpicOrder: string[] }
+  | { kind: "featureReorder"; featureId: string; featureTitle: string; epicId: string; newFeatureOrder: string[] }
+  | { kind: "featureMove"; featureId: string; featureTitle: string; sourceEpicId: string; targetEpicId: string; targetEpicTitle: string; newTargetFeatureOrder: string[] };
 
 // Custom layout configuration with centered epic positioning among features
 const getLayoutedElements = (
@@ -344,6 +361,52 @@ export const RoadmapView = ({
   const [toolbarDraggingType, setToolbarDraggingType] =
     useState<ToolbarItemType | null>(null);
 
+  const canEditRoadmap =
+    !roadmap.currentUserRole ||
+    roadmap.currentUserRole === "owner" ||
+    roadmap.currentUserRole === "editor";
+
+  const { reorderEpicsInRoadmap, reorderFeaturesInEpic, moveFeatureBetweenEpics } =
+    useRoadmapStore(
+      useShallow((s) => ({
+        reorderEpicsInRoadmap: s.reorderEpicsInRoadmap,
+        reorderFeaturesInEpic: s.reorderFeaturesInEpic,
+        moveFeatureBetweenEpics: s.moveFeatureBetweenEpics,
+      })),
+    );
+
+  // --- Canvas drag state ---
+  // workingNodesRef is updated synchronously so onNodesChange can read it in the same event cycle
+  const workingNodesRef = useRef<Node[] | null>(null);
+  const [workingNodes, setWorkingNodes] = useState<Node[] | null>(null);
+  const [dragState, setDragState] = useState<{
+    nodeId: string;
+    type: "epic" | "feature";
+    sourceEpicId?: string;
+  } | null>(null);
+  const dragStateRef = useRef(dragState);
+  dragStateRef.current = dragState;
+
+  const workingEdgesRef = useRef<Edge[] | null>(null);
+  const [workingEdges, setWorkingEdges] = useState<Edge[] | null>(null);
+  // For epic drag: maps featureId → initial Y offset relative to the dragged epic
+  const dragStartFeatureRelativeYsRef = useRef<Map<string, number> | null>(null);
+  // Original node positions before any drag — used in onNodeDragStop so preview-animated
+  // positions of non-dragged nodes don't contaminate the final order calculation
+  const dragStartNodesRef = useRef<Node[] | null>(null);
+
+  const [pendingCanvasDrag, setPendingCanvasDrag] = useState<PendingCanvasDrag | null>(null);
+  const [isPersistingCanvasDrag, setIsPersistingCanvasDrag] = useState(false);
+  const [dontAskEpicReorder, setDontAskEpicReorder] = useState(
+    () => sessionStorage.getItem(CANVAS_SKIP_EPIC_REORDER_KEY) === "true",
+  );
+  const [dontAskFeatureReorder, setDontAskFeatureReorder] = useState(
+    () => sessionStorage.getItem(CANVAS_SKIP_FEATURE_REORDER_KEY) === "true",
+  );
+  const [dontAskFeatureMove, setDontAskFeatureMove] = useState(
+    () => sessionStorage.getItem(CANVAS_SKIP_FEATURE_MOVE_KEY) === "true",
+  );
+
   const { avatars: assigneeAvatars } = useRecentAssignees(
     roadmap?.project_id ?? "",
   );
@@ -480,6 +543,7 @@ export const RoadmapView = ({
                   : undefined,
               toolbarDraggingType,
               performanceMode,
+              canEditRoadmap,
             } satisfies EpicWidgetData,
           };
         }
@@ -510,6 +574,7 @@ export const RoadmapView = ({
                 : undefined,
             toolbarDraggingType,
             performanceMode,
+            canEditRoadmap,
           } satisfies FeatureWidgetData,
         };
       }),
@@ -531,6 +596,7 @@ export const RoadmapView = ({
       pulseNodeFocus,
       pulseTaskFocus,
       toolbarDraggingType,
+      canEditRoadmap,
     ],
   );
 
@@ -616,13 +682,401 @@ export const RoadmapView = ({
     ];
   }, [extraRightPadding, layoutedNodes]);
 
-  const onNodesChange = useCallback(() => {
-    // Handle node changes if needed (e.g., dragging)
-  }, []);
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      if (!workingNodesRef.current) return;
+      const updated = applyNodeChanges(changes, workingNodesRef.current);
+      workingNodesRef.current = updated;
+      setWorkingNodes(updated);
+    },
+    [],
+  );
 
   const onEdgesChange = useCallback(() => {
     // Handle edge changes if needed
   }, []);
+
+  // --- Canvas drag helpers ---
+
+  const computeReorderedEpics = useCallback(
+    (currentNodes: Node[], _draggedNodeId: string, sourceEpics: RoadmapEpic[]): RoadmapEpic[] => {
+      const epicNodes = currentNodes.filter((n) => n.type === "epicWidget");
+      const featureNodes = currentNodes.filter((n) => n.type === "featureWidget");
+
+      const ds = dragStateRef.current;
+      if (!ds) return sourceEpics;
+
+      if (ds.type === "epic") {
+        // Sort epics by their current Y position to determine new order
+        const sortedEpicIds = [...epicNodes]
+          .sort((a, b) => a.position.y - b.position.y)
+          .map((n) => n.id);
+        const reorderedEpics: RoadmapEpic[] = [];
+        for (let index = 0; index < sortedEpicIds.length; index++) {
+          const epic = sourceEpics.find((e) => e.id === sortedEpicIds[index]);
+          if (epic) reorderedEpics.push({ ...epic, position: index * 1000 });
+        }
+        return reorderedEpics;
+      }
+
+      // Feature drag:
+      // - Non-dragged features stay anchored to their original epics.
+      //   Reassigning them by Y proximity causes misassignment when they
+      //   happen to be slightly closer to an adjacent epic's midpoint.
+      // - Only the dragged feature is assigned to the closest epic.
+      // - Insertion point within the target epic uses center-Y comparison
+      //   (top-left Y is inaccurate for nodes that are 150–300 px tall).
+
+      const draggedNode = featureNodes.find((n) => n.id === ds.nodeId);
+      if (!draggedNode) return sourceEpics;
+
+      const draggedH = (draggedNode.height as number) ?? 150;
+      const draggedCenterY = draggedNode.position.y + draggedH / 2;
+
+      // Find target epic for the dragged feature (closest center distance)
+      let targetEpicId: string | null = null;
+      let minDist = Infinity;
+      for (const epicNode of epicNodes) {
+        const epicMid = epicNode.position.y + ((epicNode.height as number) ?? 220) / 2;
+        const dist = Math.abs(draggedCenterY - epicMid);
+        if (dist < minDist) {
+          minDist = dist;
+          targetEpicId = epicNode.id;
+        }
+      }
+      if (!targetEpicId) return sourceEpics;
+
+      const allFeatures = sourceEpics.flatMap((e) => e.features ?? []);
+      const draggedFeature = allFeatures.find((f) => f.id === ds.nodeId);
+
+      // Epic order is derived from epic Y positions (handles epic reorder during the same session)
+      const epicOrder = [...epicNodes]
+        .sort((a, b) => a.position.y - b.position.y)
+        .map((n) => n.id);
+
+      const result: RoadmapEpic[] = [];
+      for (let index = 0; index < epicOrder.length; index++) {
+        const epicId = epicOrder[index];
+        if (!epicId) continue;
+        const epic = sourceEpics.find((e) => e.id === epicId);
+        if (!epic) continue;
+
+        // Original features for this epic, excluding the dragged one, in original position order
+        const originalFeatures = (epic.features ?? [])
+          .filter((f) => f.id !== ds.nodeId)
+          .sort((a, b) => a.position - b.position);
+
+        if (epicId !== targetEpicId) {
+          // Features stay as-is (non-target epic just loses the dragged feature if it was here)
+          result.push({
+            ...epic,
+            position: index * 1000,
+            features: originalFeatures.map((f, i) => ({ ...f, position: i * 1000 })),
+          });
+          continue;
+        }
+
+        // Target epic: insert dragged feature at the right position using center-Y comparison
+        let insertIndex = originalFeatures.length; // default: append at end
+        for (let i = 0; i < originalFeatures.length; i++) {
+          const featureNode = featureNodes.find((n) => n.id === originalFeatures[i].id);
+          const featureCenterY = featureNode
+            ? featureNode.position.y + ((featureNode.height as number) ?? 150) / 2
+            : Infinity;
+          if (draggedCenterY < featureCenterY) {
+            insertIndex = i;
+            break;
+          }
+        }
+
+        const orderedFeatures = [...originalFeatures];
+        if (draggedFeature) {
+          orderedFeatures.splice(insertIndex, 0, draggedFeature);
+        }
+        result.push({
+          ...epic,
+          position: index * 1000,
+          features: orderedFeatures.map((f, i) => ({
+            ...f,
+            epic_id: epicId,
+            position: i * 1000,
+          })),
+        });
+      }
+      return result;
+    },
+    [],
+  );
+
+  const clearDragState = useCallback(() => {
+    workingNodesRef.current = null;
+    setWorkingNodes(null);
+    workingEdgesRef.current = null;
+    setWorkingEdges(null);
+    dragStartFeatureRelativeYsRef.current = null;
+    dragStartNodesRef.current = null;
+    dragStateRef.current = null;
+    setDragState(null);
+    setPendingCanvasDrag(null);
+  }, []);
+
+  const persistCanvasDrag = useCallback(
+    async (pending: PendingCanvasDrag) => {
+      workingNodesRef.current = null;
+      workingEdgesRef.current = null;
+      setIsPersistingCanvasDrag(true);
+      try {
+        if (pending.kind === "epicReorder") {
+          await reorderEpicsInRoadmap(pending.newEpicOrder);
+        } else if (pending.kind === "featureReorder") {
+          await reorderFeaturesInEpic(pending.epicId, pending.newFeatureOrder);
+        } else {
+          await moveFeatureBetweenEpics(
+            pending.featureId,
+            pending.targetEpicId,
+            pending.newTargetFeatureOrder,
+          );
+        }
+      } finally {
+        setIsPersistingCanvasDrag(false);
+        setPendingCanvasDrag(null);
+        setWorkingNodes(null);
+        setWorkingEdges(null);
+      }
+    },
+    [reorderEpicsInRoadmap, reorderFeaturesInEpic, moveFeatureBetweenEpics],
+  );
+
+  const onNodeDragStart = useCallback(
+    (_event: React.MouseEvent, node: Node, _nodes: Node[]) => {
+      if (!canEditRoadmap) return;
+      const type: "epic" | "feature" | null =
+        node.type === "epicWidget"
+          ? "epic"
+          : node.type === "featureWidget"
+            ? "feature"
+            : null;
+      if (!type) return;
+      const sourceEpicId =
+        type === "feature"
+          ? (node.data as { feature: { epic_id: string } }).feature.epic_id
+          : undefined;
+      const ds: { nodeId: string; type: "epic" | "feature"; sourceEpicId?: string } = {
+        nodeId: node.id,
+        type,
+        sourceEpicId,
+      };
+      setDragState(ds);
+      dragStateRef.current = ds;
+      const snapshot = nodes.map((n) =>
+        n.id === node.id ? { ...n, zIndex: 1000 } : n,
+      );
+      workingNodesRef.current = snapshot;
+      dragStartNodesRef.current = snapshot;
+      setWorkingNodes(snapshot);
+      // Snapshot edges so we can mutate them during drag
+      workingEdgesRef.current = [...edges];
+      setWorkingEdges([...edges]);
+      // For epic drag: record each belonging feature's Y offset relative to the epic
+      if (type === "epic") {
+        const epicInitialPos = snapshot.find((n) => n.id === node.id)?.position;
+        const epicFeatures = epics.find((e) => e.id === node.id)?.features ?? [];
+        const relativeYs = new Map<string, number>();
+        for (const feature of epicFeatures) {
+          const featureNode = snapshot.find((n) => n.id === feature.id);
+          if (featureNode && epicInitialPos) {
+            relativeYs.set(feature.id, featureNode.position.y - epicInitialPos.y);
+          }
+        }
+        dragStartFeatureRelativeYsRef.current = relativeYs;
+      } else {
+        dragStartFeatureRelativeYsRef.current = null;
+      }
+    },
+    [nodes, edges, epics, canEditRoadmap],
+  );
+
+  const onNodeDrag = useCallback(
+    (_event: React.MouseEvent, node: Node, _nodes: Node[]) => {
+      const ds = dragStateRef.current;
+      if (!ds || !workingNodesRef.current) return;
+      const current = workingNodesRef.current;
+
+      // Use original pre-drag positions for non-dragged nodes so that animated
+      // preview positions from previous frames don't corrupt the epic assignment.
+      const originalNodes = dragStartNodesRef.current ?? current;
+      const nodesForOrder = originalNodes.map((n) =>
+        n.id === node.id ? { ...n, position: node.position } : n,
+      );
+      const reorderedEpics = computeReorderedEpics(nodesForOrder, node.id, epics);
+      const { nodes: previewPositioned } = getLayoutedElements(
+        layoutedNodes,
+        edges,
+        reorderedEpics,
+      );
+
+      let updated: Node[];
+
+      if (ds.type === "epic") {
+        // Features belonging to the dragged epic follow it in Y; other nodes animate to preview
+        const epicCurrentY =
+          current.find((n) => n.id === node.id)?.position.y ?? node.position.y;
+        const relativeYs = dragStartFeatureRelativeYsRef.current;
+        updated = current.map((n) => {
+          if (n.id === node.id) return n; // dragged epic stays at cursor
+          const relY = relativeYs?.get(n.id);
+          if (relY !== undefined) {
+            // Feature of the dragged epic: move with it, also on top
+            return { ...n, zIndex: 999, position: { x: n.position.x, y: epicCurrentY + relY } };
+          }
+          const preview = previewPositioned.find((p) => p.id === n.id);
+          return preview ? { ...n, position: preview.position } : n;
+        });
+      } else {
+        // Feature drag: non-dragged nodes animate to preview positions
+        updated = current.map((n) => {
+          if (n.id === node.id) return n;
+          const preview = previewPositioned.find((p) => p.id === n.id);
+          return preview ? { ...n, position: preview.position } : n;
+        });
+
+        // Derive the target epic from reorderedEpics (same source as the layout preview)
+        const targetEpic = reorderedEpics.find((e) =>
+          e.features?.some((f) => f.id === node.id),
+        );
+        const closestEpicId = targetEpic?.id ?? null;
+        if (closestEpicId) {
+          const isNewEpic = closestEpicId !== ds.sourceEpicId;
+          const updatedEdges = edges.map((e) => {
+            if (e.target !== node.id) return e;
+            return {
+              ...e,
+              id: `epic-feature-${closestEpicId}-${node.id}`,
+              source: closestEpicId!,
+              animated: isNewEpic,
+              style: isNewEpic
+                ? { stroke: "#f59e0b", strokeWidth: 2.5, strokeDasharray: "6,3" }
+                : e.style,
+            };
+          });
+          workingEdgesRef.current = updatedEdges;
+          setWorkingEdges(updatedEdges);
+        }
+      }
+
+      workingNodesRef.current = updated;
+      setWorkingNodes(updated);
+    },
+    [computeReorderedEpics, epics, layoutedNodes, edges],
+  );
+
+  const onNodeDragStop = useCallback(
+    (_event: React.MouseEvent, node: Node, _nodes: Node[]) => {
+      const ds = dragStateRef.current;
+      if (!ds || !workingNodesRef.current) {
+        clearDragState();
+        return;
+      }
+
+      // Reconstruct nodes using original pre-drag positions for every node except the
+      // dropped one (which uses its final drop position). This prevents preview-animated
+      // positions of non-dragged nodes from corrupting the final order calculation.
+      const originalNodes = dragStartNodesRef.current ?? workingNodesRef.current;
+      const nodesForOrder = originalNodes.map((n) =>
+        n.id === node.id ? { ...n, position: node.position } : n,
+      );
+      const reorderedEpics = computeReorderedEpics(nodesForOrder, node.id, epics);
+      setDragState(null);
+      dragStateRef.current = null;
+
+      if (ds.type === "epic") {
+        const newEpicOrder = reorderedEpics.map((e) => e.id);
+        const originalOrder = [...epics]
+          .sort((a, b) => a.position - b.position)
+          .map((e) => e.id);
+        if (JSON.stringify(newEpicOrder) === JSON.stringify(originalOrder)) {
+          clearDragState();
+          return;
+        }
+        const epicTitle = epics.find((e) => e.id === ds.nodeId)?.title ?? "";
+        const pending: PendingCanvasDrag = {
+          kind: "epicReorder",
+          epicId: ds.nodeId,
+          epicTitle,
+          newEpicOrder,
+        };
+        if (dontAskEpicReorder) {
+          void persistCanvasDrag(pending);
+        } else {
+          setPendingCanvasDrag(pending);
+        }
+        return;
+      }
+
+      // Feature drag
+      const targetEpic = reorderedEpics.find((e) =>
+        e.features?.some((f) => f.id === ds.nodeId),
+      );
+      const sameEpic = targetEpic?.id === ds.sourceEpicId;
+      const feature = epics
+        .flatMap((e) => e.features ?? [])
+        .find((f) => f.id === ds.nodeId);
+      if (!feature || !targetEpic) {
+        clearDragState();
+        return;
+      }
+
+      if (sameEpic) {
+        const originalFeatureOrder = [...epics]
+          .find((e) => e.id === ds.sourceEpicId)
+          ?.features?.sort((a, b) => a.position - b.position)
+          .map((f) => f.id) ?? [];
+        const newFeatureOrder = (targetEpic.features ?? []).map((f) => f.id);
+        if (JSON.stringify(newFeatureOrder) === JSON.stringify(originalFeatureOrder)) {
+          clearDragState();
+          return;
+        }
+        const pending: PendingCanvasDrag = {
+          kind: "featureReorder",
+          featureId: ds.nodeId,
+          featureTitle: feature.title ?? "",
+          epicId: targetEpic.id,
+          newFeatureOrder,
+        };
+        if (dontAskFeatureReorder) {
+          void persistCanvasDrag(pending);
+        } else {
+          setPendingCanvasDrag(pending);
+        }
+      } else {
+        const newTargetFeatureOrder = (targetEpic.features ?? []).map((f) => f.id);
+        const pending: PendingCanvasDrag = {
+          kind: "featureMove",
+          featureId: ds.nodeId,
+          featureTitle: feature.title ?? "",
+          sourceEpicId: ds.sourceEpicId ?? "",
+          targetEpicId: targetEpic.id,
+          targetEpicTitle: targetEpic.title ?? "",
+          newTargetFeatureOrder,
+        };
+        if (dontAskFeatureMove) {
+          void persistCanvasDrag(pending);
+        } else {
+          setPendingCanvasDrag(pending);
+        }
+      }
+    },
+    [
+      workingNodes,
+      computeReorderedEpics,
+      epics,
+      clearDragState,
+      persistCanvasDrag,
+      dontAskEpicReorder,
+      dontAskFeatureReorder,
+      dontAskFeatureMove,
+    ],
+  );
 
   const lastEpicId = useMemo(() => {
     if (!epics.length) return null;
@@ -704,12 +1158,15 @@ export const RoadmapView = ({
       onDrop={handleCanvasDrop}
     >
       <ReactFlow
-        nodes={nodes}
-        edges={edges}
+        nodes={(workingNodes as Node<EpicWidgetData | FeatureWidgetData>[] | null) ?? nodes}
+        edges={workingEdges ?? edges}
         nodeTypes={nodeTypes}
         onlyRenderVisibleElements
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeDragStart={onNodeDragStart}
+        onNodeDrag={onNodeDrag}
+        onNodeDragStop={onNodeDragStop}
         onMoveStart={() => {
           setIsPanningCanvas(true);
         }}
@@ -734,7 +1191,7 @@ export const RoadmapView = ({
         zoomOnScroll
         zoomOnPinch
         zoomOnDoubleClick={false}
-        nodesDraggable={false}
+        nodesDraggable={canEditRoadmap}
         defaultEdgeOptions={{
           type: "simplebezier",
         }}
@@ -761,6 +1218,51 @@ export const RoadmapView = ({
           />
         )}
       </ReactFlow>
+
+      <EpicReorderConfirmModal
+        isOpen={pendingCanvasDrag?.kind === "epicReorder"}
+        isSaving={isPersistingCanvasDrag}
+        epicTitle={pendingCanvasDrag?.kind === "epicReorder" ? pendingCanvasDrag.epicTitle : null}
+        dontAskAgain={dontAskEpicReorder}
+        onDontAskAgainChange={(v) => {
+          setDontAskEpicReorder(v);
+          sessionStorage.setItem(CANVAS_SKIP_EPIC_REORDER_KEY, String(v));
+        }}
+        onCancel={clearDragState}
+        onConfirm={() => {
+          if (pendingCanvasDrag) void persistCanvasDrag(pendingCanvasDrag);
+        }}
+      />
+      <FeatureReorderConfirmModal
+        isOpen={pendingCanvasDrag?.kind === "featureReorder"}
+        isSaving={isPersistingCanvasDrag}
+        featureTitle={pendingCanvasDrag?.kind === "featureReorder" ? pendingCanvasDrag.featureTitle : null}
+        dontAskAgain={dontAskFeatureReorder}
+        onDontAskAgainChange={(v) => {
+          setDontAskFeatureReorder(v);
+          sessionStorage.setItem(CANVAS_SKIP_FEATURE_REORDER_KEY, String(v));
+        }}
+        onCancel={clearDragState}
+        onConfirm={() => {
+          if (pendingCanvasDrag) void persistCanvasDrag(pendingCanvasDrag);
+        }}
+      />
+      <FeatureMoveConfirmModal
+        isOpen={pendingCanvasDrag?.kind === "featureMove"}
+        isSaving={isPersistingCanvasDrag}
+        featureTitle={pendingCanvasDrag?.kind === "featureMove" ? pendingCanvasDrag.featureTitle : null}
+        targetEpicTitle={pendingCanvasDrag?.kind === "featureMove" ? pendingCanvasDrag.targetEpicTitle : null}
+        dontAskAgain={dontAskFeatureMove}
+        onDontAskAgainChange={(v) => {
+          setDontAskFeatureMove(v);
+          sessionStorage.setItem(CANVAS_SKIP_FEATURE_MOVE_KEY, String(v));
+        }}
+        onCancel={clearDragState}
+        onConfirm={() => {
+          if (pendingCanvasDrag) void persistCanvasDrag(pendingCanvasDrag);
+        }}
+      />
+
       <div className="absolute bottom-4 right-4 bg-white/90 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-700 shadow-sm">
         Zoom {Math.round(zoom * 100)}%
       </div>

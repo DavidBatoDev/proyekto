@@ -245,7 +245,7 @@ export const FeatureModal = ({
       .toUpperCase();
 
     return (
-      <div className="w-6 h-6 rounded-full bg-gray-200 text-gray-700 text-[9px] font-bold flex items-center justify-center ring-1 ring-white">
+      <div className="w-6 h-6 rounded-full bg-black text-white text-[9px] font-bold flex items-center justify-center ring-1 ring-white">
         {initials}
       </div>
     );

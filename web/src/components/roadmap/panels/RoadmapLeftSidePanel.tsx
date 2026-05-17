@@ -675,9 +675,10 @@ function ExplorerPanel({
 		setOverEpicDropId(null);
 
 		if (!canEditRoadmap) return;
-		if (!over || active.id === over.id) return;
+		if (!over) return;
 
 		if (capturedActiveType === 'epic') {
+			if (active.id === over.id) return;
 			const currentOrderIds = sortedEpics.map((e) => e.id);
 			const oldIndex = currentOrderIds.indexOf(active.id as string);
 			const newIndex = currentOrderIds.indexOf(over.id as string);
@@ -692,14 +693,24 @@ function ExplorerPanel({
 			if (!sourceEpicId) return;
 
 			const current = capturedWorkingEpics ?? sortedEpics;
-			const overData = over.data.current as { type?: string; epicId?: string } | undefined;
 
 			let targetEpicId: string | null = null;
-			if (overData?.type === 'feature') {
-				const targetEpic = current.find((e) => e.features?.some((f) => f.id === over.id));
-				targetEpicId = targetEpic?.id ?? null;
-			} else if (overData?.type === 'epic-drop') {
-				targetEpicId = overData.epicId ?? null;
+
+			if (active.id === over.id) {
+				// The active feature is sitting at its own placeholder position in workingEpics.
+				// This happens when it was moved to another epic via handleDragOver and the user
+				// released at the first row (where the placeholder now lives). Resolve the target
+				// epic from the working state instead of bailing.
+				const workingEpic = current.find((e) => e.features?.some((f) => f.id === active.id));
+				targetEpicId = workingEpic?.id ?? null;
+			} else {
+				const overData = over.data.current as { type?: string; epicId?: string } | undefined;
+				if (overData?.type === 'feature') {
+					const targetEpic = current.find((e) => e.features?.some((f) => f.id === over.id));
+					targetEpicId = targetEpic?.id ?? null;
+				} else if (overData?.type === 'epic-drop') {
+					targetEpicId = overData.epicId ?? null;
+				}
 			}
 
 			if (!targetEpicId) return;

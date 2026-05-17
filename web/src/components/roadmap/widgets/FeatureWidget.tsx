@@ -44,6 +44,7 @@ export interface FeatureWidgetData extends Record<string, unknown> {
   pulseToken?: number;
   toolbarDraggingType?: ToolbarItemType | null;
   performanceMode?: RoadmapPerformanceMode;
+  canEditRoadmap?: boolean;
 }
 
 type FeatureWidgetNode = Node<FeatureWidgetData>;
@@ -63,6 +64,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     pulseToken,
     toolbarDraggingType = null,
     performanceMode = "normal",
+    canEditRoadmap = false,
   } = data;
   const isReducedMotion = performanceMode === "reducedMotion";
   const safelyUpdateTask = (task: RoadmapTask) => {
@@ -206,7 +208,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
       .toUpperCase();
 
     return (
-      <div className="w-6 h-6 rounded-full bg-gray-200 text-gray-700 text-[9px] font-bold flex items-center justify-center ring-1 ring-white">
+      <div className="w-6 h-6 rounded-full bg-black text-white text-[9px] font-bold flex items-center justify-center ring-1 ring-white">
         {initials}
       </div>
     );
@@ -215,7 +217,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   return (
     <>
       <motion.div
-        className={`relative group bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-80 flex flex-col cursor-pointer ${
+        className={`relative group bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-80 flex flex-col ${canEditRoadmap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${
           isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
         } ${isOptimisticFeature ? "opacity-75" : ""} ${
           isCardTaskDropActive

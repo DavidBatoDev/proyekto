@@ -19,6 +19,7 @@ export interface EpicWidgetData extends Record<string, unknown> {
   pulseToken?: number;
   toolbarDraggingType?: ToolbarItemType | null;
   performanceMode?: RoadmapPerformanceMode;
+  canEditRoadmap?: boolean;
 }
 
 type EpicWidgetNode = Node<EpicWidgetData>;
@@ -34,6 +35,7 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
     pulseToken,
     toolbarDraggingType = null,
     performanceMode = "normal",
+    canEditRoadmap = false,
   } = data;
   const isReducedMotion = performanceMode === "reducedMotion";
   const descriptionRef = useRef<HTMLDivElement>(null);
@@ -109,7 +111,7 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
 
   return (
     <motion.div
-      className={`group relative bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-[420px] flex flex-col cursor-pointer ${
+      className={`group relative bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-[420px] flex flex-col ${canEditRoadmap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${
         isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
       } ${isOptimisticEpic ? "opacity-75" : ""} ${
         cardDropType === "epic" || cardDropType === "feature"

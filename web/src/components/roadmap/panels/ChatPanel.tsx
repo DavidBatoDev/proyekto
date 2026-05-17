@@ -157,8 +157,8 @@ export function ChatPanel({
             </div>
 
             {message.role === "user" && (
-              <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center shrink-0">
-                <User className="w-4 h-4 text-gray-600" />
+              <div className="w-6 h-6 rounded-full bg-black flex items-center justify-center shrink-0">
+                <User className="w-4 h-4 text-white" />
               </div>
             )}
           </div>

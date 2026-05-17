@@ -104,7 +104,7 @@ function MemberAvatar({
   }
 
   return (
-    <span className="w-6 h-6 rounded-full bg-gray-200 text-gray-700 text-[10px] font-semibold flex items-center justify-center">
+    <span className="w-6 h-6 rounded-full bg-black text-white text-[10px] font-semibold flex items-center justify-center">
       {initials}
     </span>
   );

@@ -124,7 +124,7 @@ export const Header = () => {
                   <UserMenu />
                   <motion.div whileTap={{ scale: 0.97 }} transition={{ duration: 0.15 }}>
                     <Link to="/dashboard">
-                      <Button variant="contained" colorScheme="primary" className="h-11 rounded-xl px-5 text-sm">
+                      <Button variant="contained" className="h-11 rounded-xl px-5 text-sm bg-black text-white hover:bg-neutral-800">
                         Dashboard
                       </Button>
                     </Link>
@@ -209,8 +209,7 @@ export const Header = () => {
                       <Link to="/dashboard">
                         <Button
                           variant="contained"
-                          colorScheme="primary"
-                          className="w-full rounded-xl bg-slate-900 text-white hover:bg-slate-800"
+                          className="w-full rounded-xl bg-black text-white hover:bg-neutral-800"
                         >
                           Dashboard
                         </Button>

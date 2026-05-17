@@ -66,7 +66,7 @@ export default function ProjectUserMenu({ role }: ProjectUserMenuProps) {
 						className="h-8 w-8 rounded-full border border-amber-400 object-cover"
 					/>
 				) : (
-					<div className="flex h-8 w-8 items-center justify-center rounded-full border border-amber-400 bg-linear-to-br from-amber-400 to-amber-500 text-sm font-medium text-white">
+					<div className="flex h-8 w-8 items-center justify-center rounded-full bg-black text-sm font-medium text-white">
 						{getDisplayName().charAt(0).toUpperCase()}
 					</div>
 				)}

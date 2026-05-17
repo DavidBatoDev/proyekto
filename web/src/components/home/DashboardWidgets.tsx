@@ -661,7 +661,7 @@ export function DashboardWidgets({
 														className="h-6 w-6 rounded-full object-cover"
 													/>
 												) : (
-													<span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-700">
+													<span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-black text-[10px] font-semibold text-white">
 														{getInitials(item.assigneeName)}
 													</span>
 												)}

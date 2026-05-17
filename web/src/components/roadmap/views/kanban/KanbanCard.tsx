@@ -36,11 +36,11 @@ const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(
 			dueDate && task.status !== "done" && dueDate.getTime() < Date.now();
 
 		const base =
-			"bg-white border border-gray-200 rounded-lg p-3 shadow-sm transition";
+			"bg-white rounded-lg p-3 shadow-[0_1px_1px_rgba(9,30,66,0.25)] transition-all group ring-1 ring-transparent";
 		const interactive = overlay
-			? "shadow-lg rotate-1 cursor-grabbing"
-			: "hover:shadow-md cursor-pointer active:cursor-grabbing";
-		const dim = !overlay && dragging ? "opacity-40" : "";
+			? "shadow-[0_8px_16px_-4px_rgba(9,30,66,0.25)] rotate-2 cursor-grabbing ring-gray-200"
+			: "hover:ring-gray-300 cursor-pointer active:cursor-grabbing";
+		const dim = !overlay && dragging ? "opacity-40 bg-gray-50/50" : "";
 
 		return (
 			<div
@@ -52,31 +52,25 @@ const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(
 					{task.title}
 				</div>
 
-				<div className="mt-2 flex flex-col gap-1 items-start">
+				<div className="mt-2.5 flex flex-wrap gap-1.5 items-start">
 					<span
-						className="inline-flex items-center max-w-full px-2 py-0.5 rounded-md text-[11px] font-semibold border truncate"
+						className="inline-flex items-center max-w-full px-2 py-0.5 rounded text-[11px] font-semibold truncate"
 						style={{
-							backgroundColor: (epic.color ?? "#64748b") + "1f",
+							backgroundColor: (epic.color ?? "#64748b") + "26",
 							color: epic.color ?? "#334155",
-							borderColor: (epic.color ?? "#64748b") + "4d",
 						}}
 						title={epic.title}
 					>
 						{epic.title}
 					</span>
-					<div className="flex items-center gap-1 pl-2 max-w-full">
-						<span className="text-slate-300 text-xs leading-none select-none">
-							└
-						</span>
-						<span
-							className="inline-flex items-center max-w-full px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200 truncate"
-							title={feature.title}
-						>
-							{feature.title}
-						</span>
-					</div>
+					<span
+						className="inline-flex items-center max-w-full px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-600 truncate group-hover:bg-slate-200 transition-colors"
+						title={feature.title}
+					>
+						{feature.title}
+					</span>
 					{milestone && (
-						<span className="inline-flex items-center max-w-full px-2 py-0.5 rounded-md text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-100 truncate">
+						<span className="inline-flex items-center max-w-full px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-50 text-indigo-600 truncate">
 							{milestone.title}
 						</span>
 					)}
@@ -104,7 +98,7 @@ const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(
 									className="w-5 h-5 rounded-full"
 								/>
 							) : (
-								<div className="w-5 h-5 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-[10px] font-medium">
+								<div className="w-5 h-5 rounded-full bg-black text-white flex items-center justify-center text-[10px] font-medium">
 									{assigneeLabel.charAt(0).toUpperCase()}
 								</div>
 							)}

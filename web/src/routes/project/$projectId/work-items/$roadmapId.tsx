@@ -6,6 +6,8 @@ import { useRoadmapFullQuery } from "@/hooks/useProjectQueries";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { KanbanView } from "@/components/roadmap/views/kanban/KanbanView";
 import { WorkItemsBrowserModal } from "@/components/roadmap/modals/WorkItemsBrowserModal";
+import { useRoadmapCanvasController } from "@/components/roadmap/views/roadmap/hooks/useRoadmapCanvasController";
+import { RoadmapCanvasOverlays } from "@/components/roadmap/views/roadmap/components/RoadmapCanvasOverlays";
 
 export const Route = createFileRoute(
   "/project/$projectId/work-items/$roadmapId",
@@ -28,6 +30,12 @@ function WorkItemsBoardPage() {
       applyRoadmapSnapshot(roadmapFullQuery.data);
     }
   }, [roadmapFullQuery.data, applyRoadmapSnapshot]);
+
+  const controller = useRoadmapCanvasController({
+    roadmap: roadmapFullQuery.data ?? null,
+    milestones: roadmapFullQuery.data?.milestones ?? [],
+    epics: roadmapFullQuery.data?.epics ?? [],
+  });
 
   const isLoading = roadmapFullQuery.isPending;
   const error = roadmapFullQuery.error;
@@ -91,6 +99,52 @@ function WorkItemsBoardPage() {
         roadmapId={roadmapId}
         isOpen={isBrowserOpen}
         onClose={() => setIsBrowserOpen(false)}
+      />
+
+      <RoadmapCanvasOverlays
+        projectId={roadmapFullQuery.data?.project_id ?? undefined}
+        epics={controller.epics}
+        selectedTask={controller.selectedTask}
+        sidePanelOpen={controller.sidePanelOpen}
+        selectedTaskId={controller.selectedTaskId}
+        targetFeatureForTask={controller.targetFeatureForTask}
+        closeAddTaskPanel={controller.closeAddTaskPanel}
+        setSidePanelOpen={controller.setSidePanelOpen}
+        setSelectedTaskId={controller.setSelectedTaskId}
+        setTargetFeatureForTask={controller.setTargetFeatureForTask}
+        setIsAddFeatureModalOpen={controller.setIsAddFeatureModalOpen}
+        setTargetEpicForFeature={controller.setTargetEpicForFeature}
+        setIsEditFeatureModalOpen={controller.setIsEditFeatureModalOpen}
+        setEditingFeatureId={controller.setEditingFeatureId}
+        setEditingFeatureEpicId={controller.setEditingFeatureEpicId}
+        isTaskLoading={controller.isTaskLoading}
+        isEpicLoading={controller.isEpicLoading}
+        isFeatureLoading={controller.isFeatureLoading}
+        isEditingEpicPending={controller.isEditingEpicPending}
+        isEditingFeaturePending={controller.isEditingFeaturePending}
+        isSelectedTaskPending={controller.isSelectedTaskPending}
+        isAddEpicModalOpen={controller.isAddEpicModalOpen}
+        isEditEpicModalOpen={controller.isEditEpicModalOpen}
+        isAddFeatureModalOpen={controller.isAddFeatureModalOpen}
+        isEditFeatureModalOpen={controller.isEditFeatureModalOpen}
+        editingEpicId={controller.editingEpicId}
+        editingFeatureId={controller.editingFeatureId}
+        editingFeatureEpicId={controller.editingFeatureEpicId}
+        targetEpicForFeature={controller.targetEpicForFeature}
+        deleteConfirm={controller.deleteConfirm}
+        setDeleteConfirm={controller.setDeleteConfirm}
+        setIsAddEpicModalOpen={controller.setIsAddEpicModalOpen}
+        setIsEditEpicModalOpen={controller.setIsEditEpicModalOpen}
+        setEditingEpicId={controller.setEditingEpicId}
+        handleTaskUpdate={controller.handleTaskUpdate}
+        handleTaskDelete={controller.handleTaskDelete}
+        handleTaskCreate={controller.handleTaskCreate}
+        handleCreateEpic={controller.handleCreateEpic}
+        handleUpdateEpicFromModal={controller.handleUpdateEpicFromModal}
+        handleCreateFeature={controller.handleCreateFeature}
+        handleUpdateFeatureFromModal={controller.handleUpdateFeatureFromModal}
+        handleOpenEditFeatureModal={controller.handleOpenEditFeatureModal}
+        handleConfirmDelete={controller.handleConfirmDelete}
       />
     </div>
   );

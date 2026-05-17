@@ -1298,8 +1298,6 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
     if (!sourceEpic || sourceEpic.id === targetEpicId) return;
 
     const rollbackEpics = epics;
-    const targetIndex = orderedTargetFeatureIds.indexOf(featureId);
-    const position = targetIndex >= 0 ? targetIndex * 1000 : 0;
 
     set((state) => ({
       pendingFeatureById: { ...state.pendingFeatureById, [featureId]: true },
@@ -1312,7 +1310,17 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
     }));
 
     try {
-      await featureService.update(featureId, { epic_id: targetEpicId, position });
+      // Step 1: move the feature to the target epic with a safe temp position that
+      // won't collide with any existing feature in the target epic.
+      const safePosition = orderedTargetFeatureIds.length * 1000 + 5000;
+      await featureService.update(featureId, { epic_id: targetEpicId, position: safePosition });
+
+      // Step 2: reorder all features in the target epic so every position is correct.
+      const reorderItems = orderedTargetFeatureIds.map((fid, index) => ({
+        feature_id: fid,
+        new_order_index: index,
+      }));
+      await featureService.reorder(targetEpicId, reorderItems);
     } catch (error) {
       console.error("Failed to move feature between epics:", error);
       set({ epics: rollbackEpics });
