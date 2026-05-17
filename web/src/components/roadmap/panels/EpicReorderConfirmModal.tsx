@@ -123,6 +123,7 @@ export const EpicReorderConfirmModal = ({
 					</button>
 				</div>
 			</div>
-		</div>
+		</div>,
+		document.body
 	);
 };
