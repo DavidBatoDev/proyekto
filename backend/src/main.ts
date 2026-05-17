@@ -5,6 +5,8 @@ import helmet from 'helmet';
 import compression from 'compression';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { RequestLoggingInterceptor } from './common/interceptors/request-logging.interceptor';
+import { RequestTimeoutInterceptor } from './common/interceptors/request-timeout.interceptor';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 
 async function bootstrap() {
@@ -51,14 +53,27 @@ async function bootstrap() {
   // Global exception filter
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  // Global response interceptor (wraps all successful responses in { data: ... })
-  app.useGlobalInterceptors(new ResponseInterceptor());
+  const requestTimeoutMs = config.get<number>('REQUEST_TIMEOUT_MS', 25000);
+  const slowRequestThresholdMs = config.get<number>(
+    'SLOW_REQUEST_THRESHOLD_MS',
+    1500,
+  );
+
+  // Global interceptors:
+  // - timeout protection so hanging work doesn't consume all concurrency slots
+  // - request timings to surface hotspots under load
+  // - success response wrapper
+  app.useGlobalInterceptors(
+    new RequestTimeoutInterceptor(requestTimeoutMs),
+    new RequestLoggingInterceptor(slowRequestThresholdMs),
+    new ResponseInterceptor(),
+  );
 
   // Let Cloud Run's SIGTERM drain in-flight requests via Nest's shutdown hooks.
   app.enableShutdownHooks();
 
   const port = config.get<number>('PORT', 3001);
   await app.listen(port, '0.0.0.0');
-  console.log(`🚀 Backend running on http://localhost:${port}/api`);
+  console.log(`Backend running on http://localhost:${port}/api`);
 }
 bootstrap();

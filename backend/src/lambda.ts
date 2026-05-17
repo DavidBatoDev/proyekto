@@ -8,6 +8,8 @@ import compression from 'compression';
 import express from 'express';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { RequestLoggingInterceptor } from './common/interceptors/request-logging.interceptor';
+import { RequestTimeoutInterceptor } from './common/interceptors/request-timeout.interceptor';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 
 const expressServer = express();
@@ -59,7 +61,18 @@ async function createApp(): Promise<express.Express> {
   );
 
   app.useGlobalFilters(new HttpExceptionFilter());
-  app.useGlobalInterceptors(new ResponseInterceptor());
+
+  const requestTimeoutMs = config.get<number>('REQUEST_TIMEOUT_MS', 25000);
+  const slowRequestThresholdMs = config.get<number>(
+    'SLOW_REQUEST_THRESHOLD_MS',
+    1500,
+  );
+
+  app.useGlobalInterceptors(
+    new RequestTimeoutInterceptor(requestTimeoutMs),
+    new RequestLoggingInterceptor(slowRequestThresholdMs),
+    new ResponseInterceptor(),
+  );
 
   await app.init();
 
