@@ -138,7 +138,7 @@ describe('ProjectsService (resources)', () => {
 
     await expect(
       service.createProjectResourceLink('project-404', 'member-1', {
-        title: 'Prdigy',
+        title: 'Proyekto',
         url: 'https://example.com',
       }),
     ).rejects.toBeInstanceOf(NotFoundException);

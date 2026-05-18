@@ -19,7 +19,7 @@ describe('AppController', () => {
       expect(result).toEqual(
         expect.objectContaining({
           status: 'ok',
-          message: 'Prdigy API is running',
+          message: 'Proyekto API is running',
           environment: expect.any(String),
           timestamp: expect.any(String),
         }),

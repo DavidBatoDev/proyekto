@@ -6,7 +6,7 @@ export class AppController {
   healthCheck() {
     return {
       status: 'ok',
-      message: 'Prdigy API is running',
+      message: 'Proyekto API is running',
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV ?? 'development',
     };
