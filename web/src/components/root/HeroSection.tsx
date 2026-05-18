@@ -9,9 +9,17 @@ export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}
   const { goToSection } = usePresentationContext();
 
   return (
-    <section className="relative flex flex-col py-6">
-      <div className="pointer-events-none absolute -top-20 left-[14%] h-72 w-72 rounded-full bg-cyan-200/40 blur-3xl" />
-      <div className="pointer-events-none absolute -right-14 top-1/3 h-72 w-72 rounded-full bg-indigo-200/50 blur-3xl" />
+    <section className="relative flex flex-col pt-24 pb-6">
+      <motion.div
+        animate={{ scale: [1, 1.18, 1], opacity: [0.4, 0.6, 0.4] }}
+        transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
+        className="pointer-events-none absolute -top-20 left-[14%] h-72 w-72 rounded-full bg-cyan-200/40 blur-3xl"
+      />
+      <motion.div
+        animate={{ scale: [1, 1.22, 1], opacity: [0.5, 0.7, 0.5] }}
+        transition={{ duration: 9, repeat: Infinity, ease: "easeInOut", delay: 1.5 }}
+        className="pointer-events-none absolute -right-14 top-1/3 h-72 w-72 rounded-full bg-indigo-200/50 blur-3xl"
+      />
 
       <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-10">
       <div className="relative grid grid-cols-1 items-center gap-10 lg:grid-cols-[1fr_1.06fr]">
@@ -91,7 +99,19 @@ export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}
           transition={{ duration: 0.45, delay: 0.18 }}
           className="relative"
         >
-          <HeroLivePreview />
+          {/* Ambient glow behind the card */}
+          <motion.div
+            animate={{ opacity: [0.3, 0.55, 0.3], scale: [1, 1.06, 1] }}
+            transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+            className="pointer-events-none absolute -inset-4 rounded-[40px] bg-blue-200/40 blur-2xl"
+          />
+          {/* Floating card */}
+          <motion.div
+            animate={{ y: [0, -10, 0] }}
+            transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
+          >
+            <HeroLivePreview />
+          </motion.div>
         </motion.div>
       </div>
       </div>
