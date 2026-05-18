@@ -23,9 +23,9 @@ export function CTAFooterSection({ isActive = false }: { isActive?: boolean }) {
   const animate = isActive ? "visible" : "hidden";
 
   return (
-    <section className="flex flex-col h-full py-6 overflow-hidden">
-      {/* CTA Block — centered in the upper flex-1 space */}
-      <div className="flex-1 flex flex-col justify-center">
+    <section className="flex flex-col py-6">
+      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-10 flex flex-col">
+      <div className="flex flex-col">
       <motion.div
         variants={{
           hidden: { opacity: 0, y: 72 },
@@ -79,7 +79,7 @@ export function CTAFooterSection({ isActive = false }: { isActive?: boolean }) {
       </div>
 
       {/* Footer */}
-      <div className="mt-8 border-t border-slate-200">
+      <div className="mt-16 border-t border-slate-200">
         <div className="grid grid-cols-1 gap-8 pt-8 md:grid-cols-5">
           <motion.div className="md:col-span-2" variants={colVariants(0)} initial="hidden" animate={animate}>
             <BrandMark className="mb-4 h-10 text-slate-900" />
@@ -146,6 +146,7 @@ export function CTAFooterSection({ isActive = false }: { isActive?: boolean }) {
         >
           <p className="text-sm text-slate-500">© 2026 Proyekto. All rights reserved.</p>
         </motion.div>
+      </div>
       </div>
     </section>
   );

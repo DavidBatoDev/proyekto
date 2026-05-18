@@ -1,5 +1,4 @@
-import { useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { TemplateEntryCard, type TemplateEntry } from "./TemplateEntryCard";
 
@@ -62,18 +61,8 @@ const templates: TemplateEntry[] = [
   },
 ];
 
-const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
-
-const slideVariants = {
-  enter: (dir: number) => ({ x: dir > 0 ? "60%" : "-60%", opacity: 0 }),
-  center: { x: 0, opacity: 1 },
-  exit: (dir: number) => ({ x: dir > 0 ? "-60%" : "60%", opacity: 0 }),
-};
-
-export const TemplatesSection = () => {
+export const TemplatesSection = ({ isActive: _isActive }: { isActive?: boolean } = {}) => {
   const [activeCategory, setActiveCategory] = useState<(typeof categories)[number]>("All");
-  const [direction, setDirection] = useState(0);
-  const activeCategoryIndexRef = useRef(0);
 
   const filteredTemplates = useMemo(
     () =>
@@ -83,23 +72,16 @@ export const TemplatesSection = () => {
     [activeCategory],
   );
 
-  const handleCategoryClick = (category: (typeof categories)[number]) => {
-    const nextIndex = categories.indexOf(category);
-    const dir = nextIndex > activeCategoryIndexRef.current ? 1 : -1;
-    setDirection(dir);
-    activeCategoryIndexRef.current = nextIndex;
-    setActiveCategory(category);
-  };
-
   return (
-    <section id="templates" className="relative flex flex-col h-full py-4 overflow-hidden">
+    <section id="templates" className="relative py-6">
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[62%] bg-[radial-gradient(75%_95%_at_50%_100%,rgba(37,99,235,0.26),rgba(37,99,235,0)_72%)]" />
       <div className="pointer-events-none absolute -left-28 bottom-10 z-0 h-64 w-64 rounded-full bg-blue-400/30 blur-3xl" />
       <div className="pointer-events-none absolute left-1/2 bottom-8 z-0 h-80 w-80 -translate-x-1/2 rounded-full bg-blue-500/22 blur-3xl" />
       <div className="pointer-events-none absolute -right-28 bottom-10 z-0 h-64 w-64 rounded-full bg-indigo-400/30 blur-3xl" />
 
+      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-10">
       <div className="relative z-10 mb-6">
-        <div>
+        <div className="pr-0 sm:pr-80">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Roadmap Templates</p>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
             Start your project with just a few clicks
@@ -115,15 +97,15 @@ export const TemplatesSection = () => {
         </div>
       </div>
 
-      <div className="relative z-10 mb-4 flex flex-wrap gap-2">
+      <div className="relative z-10 mb-6 flex flex-wrap gap-2">
         {categories.map((category) => {
           const isActive = category === activeCategory;
           return (
             <button
               key={category}
               type="button"
-              onClick={() => handleCategoryClick(category)}
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-all duration-200 ${
+              onClick={() => setActiveCategory(category)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${
                 isActive
                   ? "border-slate-900 bg-slate-900 text-white"
                   : "border-slate-300 bg-white text-slate-600 hover:border-slate-900 hover:text-slate-900"
@@ -135,29 +117,13 @@ export const TemplatesSection = () => {
         })}
       </div>
 
-      {/* Clip container — hides the sliding grid during transition */}
-      <div
-        className="relative z-10 flex-1 overflow-hidden rounded-3xl bg-white/55 backdrop-blur-[1px]"
-        style={{ maxHeight: "calc(100vh - 280px)" }}
-      >
-        <AnimatePresence custom={direction} mode="wait" initial={false}>
-          <motion.div
-            key={activeCategory}
-            custom={direction}
-            variants={slideVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ duration: 0.32, ease: EASE }}
-            className="presentation-inner-scroll h-full p-1"
-          >
-            <div className="grid items-start gap-x-3 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
-              {filteredTemplates.map((template, index) => (
-                <TemplateEntryCard key={template.id} template={template} index={index} />
-              ))}
-            </div>
-          </motion.div>
-        </AnimatePresence>
+      <div className="relative z-10 rounded-3xl bg-white/55 p-1 backdrop-blur-[1px]">
+        <div className="grid items-start gap-x-3 gap-y-7 sm:grid-cols-2 xl:grid-cols-3">
+          {filteredTemplates.map((template, index) => (
+            <TemplateEntryCard key={template.id} template={template} index={index} />
+          ))}
+        </div>
+      </div>
       </div>
     </section>
   );

@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import type { KeyboardEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, RotateCcw, Sparkles, ListTodo, GitBranch } from "lucide-react";
+import { Sparkles, ListTodo, GitBranch, Send } from "lucide-react";
 
-type DemoState = "idle" | "thinking" | "done";
+type DemoPhase = "idle" | "typing" | "thinking" | "done";
 
 type MockFeature = {
   title: string;
@@ -23,9 +22,8 @@ type MockRoadmap = {
   epics: MockEpic[];
 };
 
-// Fixed heights to allow precise connecting line calculations
-const FEATURE_H = 108; // px — fixed feature card height
-const FEATURE_GAP = 12; // px — gap-3
+const FEATURE_H = 108;
+const FEATURE_GAP = 12;
 
 const ROADMAPS: Record<string, MockRoadmap> = {
   saas: {
@@ -112,44 +110,14 @@ const ROADMAPS: Record<string, MockRoadmap> = {
       },
     ],
   },
-  default: {
-    name: "Project Roadmap",
-    epics: [
-      {
-        title: "Planning & Execution",
-        description: "Scope definition, team alignment, and delivery of core project work.",
-        features: [
-          { title: "Scope & Team Setup", description: "Agree on scope, assemble the team, lock the timeline.", taskCount: 4, tasks: ["Scope doc", "Team assembly", "Timeline"] },
-          { title: "Core Deliverables", description: "Execute the main body of work with regular reviews.", taskCount: 8, tasks: ["Sprint planning", "Core work", "Reviews"] },
-        ],
-      },
-      {
-        title: "Quality & Delivery",
-        description: "QA, stakeholder feedback, and final handoff with documentation.",
-        features: [
-          { title: "QA & Testing", description: "Run QA, gather stakeholder feedback, and polish.", taskCount: 5, tasks: ["QA process", "Feedback", "Refinements"] },
-          { title: "Final Handoff", description: "Deliver with documentation and a retrospective.", taskCount: 3, tasks: ["Documentation", "Handoff", "Retrospective"] },
-        ],
-      },
-    ],
-  },
 };
 
-const SUGGESTIONS = [
-  "Build a SaaS MVP",
-  "Launch an e-commerce store",
-  "Build a mobile app",
-  "Create a website",
+const CYCLE_SUGGESTIONS: { text: string; roadmapKey: keyof typeof ROADMAPS }[] = [
+  { text: "Build a SaaS MVP", roadmapKey: "saas" },
+  { text: "Launch an e-commerce store", roadmapKey: "ecommerce" },
+  { text: "Build a mobile app", roadmapKey: "mobile" },
+  { text: "Create a website", roadmapKey: "website" },
 ];
-
-function detectRoadmap(text: string): MockRoadmap {
-  const lower = text.toLowerCase();
-  if (/saas|startup|product|software/.test(lower)) return ROADMAPS.saas;
-  if (/mobile|app\b|ios|android/.test(lower)) return ROADMAPS.mobile;
-  if (/ecommerce|e-commerce|store|shop|shopify/.test(lower)) return ROADMAPS.ecommerce;
-  if (/website|landing|web\b|blog/.test(lower)) return ROADMAPS.website;
-  return ROADMAPS.default;
-}
 
 function TypingIndicator() {
   return (
@@ -166,7 +134,6 @@ function TypingIndicator() {
   );
 }
 
-// Draws the ├── connecting lines between the epic and feature cards
 function ConnectorLines({ featureCount }: { featureCount: number }) {
   const totalH = featureCount * FEATURE_H + (featureCount - 1) * FEATURE_GAP;
   const epicCenterY = totalH / 2;
@@ -176,55 +143,25 @@ function ConnectorLines({ featureCount }: { featureCount: number }) {
 
   return (
     <div className="relative w-8 shrink-0" style={{ height: totalH }}>
-      {/* Horizontal from epic to trunk */}
-      <div
-        className="absolute bg-slate-200"
-        style={{ top: epicCenterY - 0.5, left: 0, width: 14, height: 1 }}
-      />
-      {/* Vertical trunk spanning all feature centers */}
+      <div className="absolute bg-slate-200" style={{ top: epicCenterY - 0.5, left: 0, width: 14, height: 1 }} />
       {featureCount > 1 && (
         <div
           className="absolute bg-slate-200"
-          style={{
-            left: 13.5,
-            top: featureCenters[0],
-            height: featureCenters[featureCount - 1] - featureCenters[0],
-            width: 1,
-          }}
+          style={{ left: 13.5, top: featureCenters[0], height: featureCenters[featureCount - 1] - featureCenters[0], width: 1 }}
         />
       )}
-      {/* Horizontal branch to each feature */}
       {featureCenters.map((cy, i) => (
-        <div
-          key={i}
-          className="absolute bg-slate-200"
-          style={{ top: cy - 0.5, left: 14, width: 14, height: 1 }}
-        />
+        <div key={i} className="absolute bg-slate-200" style={{ top: cy - 0.5, left: 14, width: 14, height: 1 }} />
       ))}
     </div>
   );
 }
 
-function EpicCard({
-  epic,
-  featureCount,
-  animated,
-  epicIndex,
-}: {
-  epic: MockEpic | null;
-  featureCount: number;
-  animated: boolean;
-  epicIndex: number;
-}) {
+function EpicCard({ epic, featureCount, animated, epicIndex }: { epic: MockEpic | null; featureCount: number; animated: boolean; epicIndex: number }) {
   const groupH = featureCount * FEATURE_H + (featureCount - 1) * FEATURE_GAP;
 
   if (!epic) {
-    return (
-      <div
-        className="w-[38%] shrink-0 rounded-xl border border-dashed border-slate-200 bg-slate-50/60"
-        style={{ height: groupH }}
-      />
-    );
+    return <div className="w-[38%] shrink-0 rounded-xl border border-dashed border-slate-200 bg-slate-50/60" style={{ height: groupH }} />;
   }
 
   return (
@@ -259,24 +196,9 @@ function EpicCard({
   );
 }
 
-function FeatureCard({
-  feature,
-  animated,
-  epicIndex,
-  featureIndex,
-}: {
-  feature: MockFeature | null;
-  animated: boolean;
-  epicIndex: number;
-  featureIndex: number;
-}) {
+function FeatureCard({ feature, animated, epicIndex, featureIndex }: { feature: MockFeature | null; animated: boolean; epicIndex: number; featureIndex: number }) {
   if (!feature) {
-    return (
-      <div
-        className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60"
-        style={{ height: FEATURE_H }}
-      />
-    );
+    return <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60" style={{ height: FEATURE_H }} />;
   }
 
   return (
@@ -287,16 +209,12 @@ function FeatureCard({
       className="relative rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
       style={{ height: FEATURE_H }}
     >
-      {/* Orange status indicator (matches actual app) */}
       <span className="absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full bg-amber-400" />
-
       <p className="pr-5 text-xs font-semibold text-slate-900 leading-snug">{feature.title}</p>
       <p className="mt-1 text-[10px] leading-relaxed text-slate-500 line-clamp-2">{feature.description}</p>
-
       <span className="mt-1.5 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-medium text-slate-500">
         not started
       </span>
-
       <div className="mt-2">
         <div className="mb-1 flex items-center justify-between">
           <span className="text-[9px] text-slate-400">Progress</span>
@@ -304,7 +222,6 @@ function FeatureCard({
         </div>
         <div className="h-0.5 rounded-full bg-slate-100" />
       </div>
-
       <div className="mt-1.5 flex items-center gap-1">
         <ListTodo className="h-2.5 w-2.5 text-slate-400" />
         <span className="text-[9px] text-slate-400">{feature.taskCount} tasks</span>
@@ -314,17 +231,8 @@ function FeatureCard({
   );
 }
 
-function EpicGroup({
-  epic,
-  epicIndex,
-  animated,
-}: {
-  epic: MockEpic | null;
-  epicIndex: number;
-  animated: boolean;
-}) {
+function EpicGroup({ epic, epicIndex, animated }: { epic: MockEpic | null; epicIndex: number; animated: boolean }) {
   const featureCount = epic ? epic.features.length : 2;
-
   return (
     <div className="flex items-center gap-0">
       <EpicCard epic={epic} featureCount={featureCount} animated={animated} epicIndex={epicIndex} />
@@ -344,20 +252,14 @@ function EpicGroup({
   );
 }
 
-function RoadmapCanvas({
-  roadmap,
-  state,
-}: {
-  roadmap: MockRoadmap | null;
-  state: DemoState;
-}) {
+function RoadmapCanvas({ roadmap, phase }: { roadmap: MockRoadmap | null; phase: DemoPhase }) {
   return (
     <div className="flex flex-col gap-5">
       {[0, 1].map((epicIdx) => {
-        if (state === "idle") {
+        if (phase === "idle" || phase === "typing") {
           return <EpicGroup key={epicIdx} epic={null} epicIndex={epicIdx} animated={false} />;
         }
-        if (state === "thinking") {
+        if (phase === "thinking") {
           return (
             <motion.div
               key={epicIdx}
@@ -368,76 +270,107 @@ function RoadmapCanvas({
             </motion.div>
           );
         }
-        const epic = roadmap?.epics[epicIdx] ?? null;
-        return <EpicGroup key={epicIdx} epic={epic} epicIndex={epicIdx} animated={true} />;
+        return <EpicGroup key={epicIdx} epic={roadmap?.epics[epicIdx] ?? null} epicIndex={epicIdx} animated={true} />;
       })}
     </div>
   );
 }
 
-export function AIDemoSection({ isActive = false }: { isActive?: boolean }) {
-  const [demoState, setDemoState] = useState<DemoState>("idle");
-  const [input, setInput] = useState("");
+
+export function AIDemoSection({ isActive: _isActive }: { isActive?: boolean } = {}) {
+  const sectionRef = useRef<HTMLElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  const [phase, setPhase] = useState<DemoPhase>("idle");
+  const [typedText, setTypedText] = useState("");
   const [submittedInput, setSubmittedInput] = useState("");
   const [activeRoadmap, setActiveRoadmap] = useState<MockRoadmap | null>(null);
   const [aiResponse, setAiResponse] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-  const autoTriggeredRef = useRef(false);
+  const [cycleIndex, setCycleIndex] = useState(0);
 
-  // Auto-trigger the demo once when the section becomes active
+  // Detect when section is actually in the viewport
   useEffect(() => {
-    if (!isActive || autoTriggeredRef.current || demoState !== "idle") return;
-    autoTriggeredRef.current = true;
-    const autoText = "Build a SaaS MVP";
-    const timer = setTimeout(() => {
-      const roadmap = detectRoadmap(autoText);
-      setSubmittedInput(autoText);
-      setInput("");
-      setDemoState("thinking");
-      setTimeout(() => {
-        setActiveRoadmap(roadmap);
-        setAiResponse(
-          `Done! I've mapped out your ${roadmap.name} across 2 epics and ${roadmap.epics.reduce((s, e) => s + e.features.length, 0)} features. Here's your plan:`
-        );
-        setDemoState("done");
-      }, 1800);
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [isActive, demoState]);
+    const el = sectionRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsVisible(entry.isIntersecting && entry.intersectionRatio >= 0.25),
+      { threshold: 0.25 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
-  function handleSend() {
-    const text = input.trim();
-    if (!text || demoState !== "idle") return;
-    const roadmap = detectRoadmap(text);
-    setSubmittedInput(text);
-    setDemoState("thinking");
-    setInput("");
+  // Reset state when section leaves viewport
+  useEffect(() => {
+    if (!isVisible) {
+      setPhase("idle");
+      setTypedText("");
+      setSubmittedInput("");
+      setActiveRoadmap(null);
+      setAiResponse("");
+    }
+  }, [isVisible]);
 
-    setTimeout(() => {
+  // Run the animated cycle
+  useEffect(() => {
+    if (!isVisible) return;
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const t = (ms: number, fn: () => void) => {
+      const id = setTimeout(fn, ms);
+      timers.push(id);
+    };
+
+    const suggestion = CYCLE_SUGGESTIONS[cycleIndex % CYCLE_SUGGESTIONS.length];
+    const roadmap = ROADMAPS[suggestion.roadmapKey];
+    const featureCount = roadmap.epics.reduce((s, e) => s + e.features.length, 0);
+
+    let elapsed = 700;
+
+    // Type each character
+    for (let i = 0; i < suggestion.text.length; i++) {
+      const charI = i;
+      t(elapsed + charI * 52, () => {
+        setPhase("typing");
+        setTypedText(suggestion.text.slice(0, charI + 1));
+      });
+    }
+    elapsed += suggestion.text.length * 52;
+
+    // Send: clear input, show user bubble, start thinking
+    t(elapsed + 380, () => {
+      setSubmittedInput(suggestion.text);
+      setTypedText("");
+      setPhase("thinking");
+    });
+    elapsed += 380;
+
+    // Reveal roadmap
+    t(elapsed + 1900, () => {
       setActiveRoadmap(roadmap);
       setAiResponse(
-        `Done! I've mapped out your ${roadmap.name} across 2 epics and ${roadmap.epics.reduce((s, e) => s + e.features.length, 0)} features. Here's your plan:`
+        `Done! I've mapped out your ${roadmap.name} across ${roadmap.epics.length} epics and ${featureCount} features. Here's your plan:`
       );
-      setDemoState("done");
-    }, 1800);
-  }
+      setPhase("done");
+    });
+    elapsed += 1900;
 
-  function handleReset() {
-    autoTriggeredRef.current = false;
-    setDemoState("idle");
-    setInput("");
-    setSubmittedInput("");
-    setActiveRoadmap(null);
-    setAiResponse("");
-    setTimeout(() => inputRef.current?.focus(), 50);
-  }
+    // Reset for next cycle
+    t(elapsed + 3500, () => {
+      setPhase("idle");
+      setTypedText("");
+      setSubmittedInput("");
+      setActiveRoadmap(null);
+      setAiResponse("");
+      setCycleIndex((i) => (i + 1) % CYCLE_SUGGESTIONS.length);
+    });
 
-  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") handleSend();
-  }
+    return () => timers.forEach(clearTimeout);
+  }, [isVisible, cycleIndex]);
 
   return (
-    <section className="flex flex-col h-full py-4 overflow-hidden">
+    <section ref={sectionRef} className="flex flex-col py-6">
+      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-10 flex flex-col">
       <div className="mb-4 text-center shrink-0">
         <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
           Use It With AI
@@ -450,7 +383,10 @@ export function AIDemoSection({ isActive = false }: { isActive?: boolean }) {
         </p>
       </div>
 
-      <div className="flex-1 flex flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_12px_40px_rgba(16,24,40,0.07)] min-h-0">
+      <div
+        className="flex flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_12px_40px_rgba(16,24,40,0.07)]"
+        style={{ height: "calc(100vh - 280px)", minHeight: "560px" }}
+      >
         {/* Chrome bar */}
         <div className="shrink-0 flex items-center gap-3 border-b border-slate-200 bg-slate-50/60 px-5 py-3">
           <div className="flex gap-1.5">
@@ -469,30 +405,33 @@ export function AIDemoSection({ isActive = false }: { isActive?: boolean }) {
           <div className="overflow-y-auto border-b border-slate-200 p-5 lg:border-b-0 lg:border-r">
             {/* Tab bar */}
             <div className="mb-5 flex items-center gap-1 border-b border-slate-100 pb-3">
-              <button type="button" className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 shadow-sm border border-slate-200">
+              <span className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 shadow-sm">
                 Roadmap
-              </button>
-              <button type="button" className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700">
+              </span>
+              <span className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-500">
                 Milestones
-              </button>
-              {activeRoadmap && (
-                <motion.span
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="ml-auto text-[11px] font-semibold text-slate-500"
-                >
-                  {activeRoadmap.name}
-                </motion.span>
-              )}
+              </span>
+              <AnimatePresence>
+                {activeRoadmap && (
+                  <motion.span
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="ml-auto text-[11px] font-semibold text-slate-500"
+                  >
+                    {activeRoadmap.name}
+                  </motion.span>
+                )}
+              </AnimatePresence>
             </div>
 
-            <RoadmapCanvas roadmap={activeRoadmap} state={demoState} />
+            <RoadmapCanvas roadmap={activeRoadmap} phase={phase} />
           </div>
 
           {/* Right: AI Chat */}
           <div className="flex flex-col bg-slate-50/30">
             {/* Header */}
-            <div className="flex items-center gap-2.5 border-b border-slate-200 bg-white px-4 py-3">
+            <div className="flex items-center gap-2.5 border-b border-slate-200 bg-white px-4 py-3 shrink-0">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600">
                 <Sparkles className="h-3.5 w-3.5 text-white" />
               </div>
@@ -505,6 +444,7 @@ export function AIDemoSection({ isActive = false }: { isActive?: boolean }) {
 
             {/* Messages */}
             <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
+              {/* Initial AI message */}
               <div className="flex items-start gap-2">
                 <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-blue-600">
                   <Sparkles className="h-3 w-3 text-white" />
@@ -514,11 +454,13 @@ export function AIDemoSection({ isActive = false }: { isActive?: boolean }) {
                 </div>
               </div>
 
+              {/* User message */}
               <AnimatePresence>
                 {submittedInput && (
                   <motion.div
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
                     transition={{ duration: 0.22 }}
                     className="flex justify-end"
                   >
@@ -529,8 +471,9 @@ export function AIDemoSection({ isActive = false }: { isActive?: boolean }) {
                 )}
               </AnimatePresence>
 
+              {/* Thinking / response */}
               <AnimatePresence mode="wait">
-                {demoState === "thinking" && (
+                {phase === "thinking" && (
                   <motion.div
                     key="typing"
                     initial={{ opacity: 0, y: 8 }}
@@ -546,7 +489,7 @@ export function AIDemoSection({ isActive = false }: { isActive?: boolean }) {
                     </div>
                   </motion.div>
                 )}
-                {demoState === "done" && aiResponse && (
+                {phase === "done" && aiResponse && (
                   <motion.div
                     key="response"
                     initial={{ opacity: 0, y: 8 }}
@@ -564,67 +507,35 @@ export function AIDemoSection({ isActive = false }: { isActive?: boolean }) {
               </AnimatePresence>
             </div>
 
-            {/* Suggestion chips */}
-            <AnimatePresence>
-              {demoState === "idle" && (
+            {/* Input — automated typing display, not interactive */}
+            <div className="shrink-0 border-t border-slate-200 bg-white p-3">
+              <div className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm">
+                <span className="flex-1 min-w-0 text-sm">
+                  {typedText ? (
+                    <span className="text-slate-900">
+                      {typedText}
+                      <motion.span
+                        animate={{ opacity: [1, 0, 1] }}
+                        transition={{ duration: 0.7, repeat: Infinity }}
+                        className="ml-px inline-block h-3.5 w-0.5 translate-y-px rounded-full bg-slate-700"
+                      />
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">Chat or request roadmap edits...</span>
+                  )}
+                </span>
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0, transition: { duration: 0.12 } }}
-                  className="flex flex-wrap gap-1.5 px-4 pb-2"
+                  animate={phase === "thinking" ? { scale: [1, 1.18, 1], backgroundColor: ["rgb(37,99,235)", "rgb(96,165,250)", "rgb(37,99,235)"] } : {}}
+                  transition={{ duration: 0.4 }}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-600"
                 >
-                  {SUGGESTIONS.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => { setInput(s); inputRef.current?.focus(); }}
-                      className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 shadow-sm transition-colors hover:border-slate-400 hover:text-slate-900"
-                    >
-                      {s}
-                    </button>
-                  ))}
+                  <Send className="h-3.5 w-3.5 text-white" />
                 </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Input */}
-            <div className="border-t border-slate-200 bg-white p-3">
-              {demoState === "done" ? (
-                <motion.button
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  type="button"
-                  onClick={handleReset}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
-                >
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  Try another project
-                </motion.button>
-              ) : (
-                <div className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100">
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    disabled={demoState === "thinking"}
-                    placeholder="Chat or request roadmap edits..."
-                    className="flex-1 bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none disabled:opacity-50"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSend}
-                    disabled={!input.trim() || demoState === "thinking"}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white transition-all hover:bg-blue-500 disabled:opacity-35"
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              )}
+              </div>
             </div>
           </div>
         </div>
+      </div>
       </div>
     </section>
   );

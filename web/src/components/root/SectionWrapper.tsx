@@ -110,25 +110,14 @@ export function SectionWrapper({
   });
 
   return (
-    <div
-      id={id}
-      className="relative overflow-hidden flex flex-col"
-      style={{ height: "100vh", scrollSnapAlign: "start" }}
-    >
-      {/* pt-20 accounts for the 80px fixed header */}
-      <div className="flex-1 flex flex-col pt-20 overflow-hidden">
-        <motion.div
-          className="flex-1 flex flex-col"
-          variants={variants}
-          initial="hidden"
-          animate={isActive ? "visible" : "hidden"}
-        >
-          {/* Centered, padded content container */}
-          <div className="flex-1 flex flex-col max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-10">
-            {childrenWithProps}
-          </div>
-        </motion.div>
-      </div>
+    <div id={id} className="relative pt-20">
+      <motion.div
+        variants={variants}
+        initial="hidden"
+        animate={isActive ? "visible" : "hidden"}
+      >
+        {childrenWithProps}
+      </motion.div>
     </div>
   );
 }
