@@ -320,6 +320,10 @@ function MemberLogsRoute() {
 				}}
 				onOpenTaskInRoadmap={handleOpenInRoadmap}
 				canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
+				onApproveSelected={() => submitDecision("approved")}
+				onRejectSelected={() => submitDecision("rejected")}
+				onResetSelected={() => submitDecision("pending")}
+				approvingSelected={reviewBulkMutation.isPending}
 			/>
 			<ScrollNavButtons />
 		</div>
