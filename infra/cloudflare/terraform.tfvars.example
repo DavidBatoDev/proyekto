@@ -1,0 +1,10 @@
+# Cloudflare zone ID for proyekto.tech
+zone_id = "replace-with-zone-id"
+manage_api_dns_record = false
+
+# Optional override: defaults already match production setup
+# api_hostname       = "api.proyekto.tech"
+# api_record_type    = "CNAME"
+# api_record_content = "ghs.googlehosted.com"
+# api_record_ttl     = 1
+# api_record_proxied = true
