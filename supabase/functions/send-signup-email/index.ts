@@ -1,4 +1,4 @@
-// @ts-expect-error
+﻿// @ts-expect-error
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
@@ -170,7 +170,7 @@ function getVerificationEmailHtml(
                     </p>
                     
                     <p style="margin: 0 0 24px; color: #374151; font-size: 16px; line-height: 1.6;">
-                      Thank you for signing up for Prodigitality. To complete your registration, please enter the verification code below:
+                      Thank you for signing up for Proyekto. To complete your registration, please enter the verification code below:
                     </p>
                     
                     <!-- Verification Code -->
@@ -197,10 +197,10 @@ function getVerificationEmailHtml(
                 <tr>
                   <td style="padding: 24px 40px; border-top: 1px solid #f3f4f6; text-align: center;">
                     <p style="margin: 0 0 8px; color: #6b7280; font-size: 13px;">
-                      Prodigitality Services
+                      Proyekto Services
                     </p>
                     <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                      You're receiving this email because you recently created a Prodigitality account.
+                      You're receiving this email because you recently created a Proyekto account.
                     </p>
                   </td>
                 </tr>
@@ -238,7 +238,7 @@ serve(async (req) => {
     // @ts-ignore
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     // @ts-ignore
-    const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "Prodigy <onboarding@resend.dev>";
+    const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "Proyekto <onboarding@resend.dev>";
 
     if (!resendApiKey) {
       throw new EmailFunctionError(
@@ -308,3 +308,5 @@ serve(async (req) => {
     );
   }
 });
+
+

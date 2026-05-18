@@ -1,4 +1,4 @@
--- Initial schema for Prodigi Work Hub
+﻿-- Initial schema for Proyekto Work Hub
 -- Create custom types
 CREATE TYPE persona_type AS ENUM ('client', 'freelancer', 'consultant', 'admin');
 CREATE TYPE project_status AS ENUM ('draft', 'active', 'paused', 'completed', 'archived');
@@ -179,3 +179,4 @@ CREATE TRIGGER update_chat_messages_updated_at BEFORE UPDATE ON chat_messages
 
 CREATE TRIGGER update_files_updated_at BEFORE UPDATE ON files
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+

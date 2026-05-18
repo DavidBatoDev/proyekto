@@ -1,4 +1,4 @@
--- Row Level Security (RLS) Policies for Prodigi Work Hub
+﻿-- Row Level Security (RLS) Policies for Proyekto Work Hub
 
 -- Enable RLS on all tables
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
@@ -427,3 +427,4 @@ CREATE POLICY "Consultant and uploader can delete files"
             AND projects.consultant_id = auth.uid()
         )
     );
+

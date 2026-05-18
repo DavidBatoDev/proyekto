@@ -1,4 +1,4 @@
-// @ts-expect-error
+﻿// @ts-expect-error
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 // @ts-expect-error
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -187,7 +187,7 @@ function getResetEmailHtml(code: string): string {
                 </tr>
                 <tr>
                   <td style="padding:24px 40px;border-top:1px solid #f3f4f6;text-align:center;">
-                    <p style="margin:0 0 8px;color:#6b7280;font-size:13px;">Prodigitality Services</p>
+                    <p style="margin:0 0 8px;color:#6b7280;font-size:13px;">Proyekto Services</p>
                     <p style="margin:0;color:#9ca3af;font-size:12px;">You are receiving this email because a password reset was requested.</p>
                   </td>
                 </tr>
@@ -221,7 +221,7 @@ serve(async (req) => {
     // @ts-ignore
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     // @ts-ignore
-    const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "Prodigy <onboarding@resend.dev>";
+    const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "Proyekto <onboarding@resend.dev>";
     // @ts-ignore
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     // @ts-ignore
@@ -328,3 +328,5 @@ serve(async (req) => {
     );
   }
 });
+
+

@@ -1,4 +1,4 @@
--- Add Guest Users Support
+﻿-- Add Guest Users Support
 -- Migration: 20260210000000_add_guest_users.sql
 -- Date: February 10, 2026
 -- Description: Adds support for anonymous guest users who can create roadmaps before signing up
@@ -39,7 +39,7 @@ DECLARE
   guest_email TEXT;
 BEGIN
   -- Generate a unique email for the guest (not used for login)
-  guest_email := 'guest_' || session_id || '@temp.prdigy.local';
+  guest_email := 'guest_' || session_id || '@temp.proyekto.local';
   
   -- Create auth user with random password (they won't use it)
   INSERT INTO auth.users (
@@ -158,3 +158,4 @@ COMMENT ON FUNCTION create_guest_user IS 'Creates a new guest user profile with 
 COMMENT ON FUNCTION get_guest_user_id IS 'Retrieves the user ID for a guest session ID';
 COMMENT ON FUNCTION cleanup_old_guest_users IS 'Deletes guest users older than 30 days and their associated data';
 COMMENT ON FUNCTION is_valid_guest_session IS 'Checks if a guest session ID is valid and not expired';
+

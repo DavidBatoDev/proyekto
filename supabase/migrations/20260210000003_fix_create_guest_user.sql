@@ -1,4 +1,4 @@
--- Fix create_guest_user function to work with handle_new_user trigger
+﻿-- Fix create_guest_user function to work with handle_new_user trigger
 -- Migration: 20260210000003_fix_create_guest_user.sql
 -- Date: February 10, 2026
 -- Description: Updates create_guest_user to let the trigger create the profile first
@@ -13,7 +13,7 @@ DECLARE
   guest_email TEXT;
 BEGIN
   -- Generate a unique email for the guest (not used for login)
-  guest_email := 'guest_' || session_id || '@temp.prdigy.local';
+  guest_email := 'guest_' || session_id || '@temp.proyekto.local';
   
   -- Create auth user with random password (they won't use it)
   -- The handle_new_user trigger will automatically create a basic profile
@@ -50,3 +50,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION create_guest_user IS 'Creates a guest user account - relies on handle_new_user trigger to create basic profile, then updates with guest fields';
+
