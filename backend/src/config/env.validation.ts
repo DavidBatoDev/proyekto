@@ -81,6 +81,26 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   ROADMAP_AI_AUTO_TITLE_ENABLED?: string;
+
+  @IsOptional()
+  @IsNumber()
+  CACHE_PUBLIC_MAX_AGE_SECONDS?: number;
+
+  @IsOptional()
+  @IsNumber()
+  CACHE_PUBLIC_S_MAX_AGE_SECONDS?: number;
+
+  @IsOptional()
+  @IsNumber()
+  CACHE_PUBLIC_STALE_WHILE_REVALIDATE_SECONDS?: number;
+
+  @IsOptional()
+  @IsNumber()
+  CACHE_PRIVATE_MAX_AGE_SECONDS?: number;
+
+  @IsOptional()
+  @IsNumber()
+  CACHE_PRIVATE_STALE_WHILE_REVALIDATE_SECONDS?: number;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

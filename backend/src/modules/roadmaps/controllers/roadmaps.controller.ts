@@ -13,7 +13,9 @@ import {
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
+import { SetCachePolicy } from '../../../common/decorators/cache-policy.decorator';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-request.interface';
+import { CACHE_POLICY_PRESETS } from '../../../common/cache/cache-policy';
 import { RoadmapsService } from '../services/roadmaps.service';
 import {
   CreateRoadmapDto,
@@ -66,6 +68,7 @@ export class RoadmapsController {
 
   @Get('templates/public')
   @Public()
+  @SetCachePolicy(CACHE_POLICY_PRESETS.PUBLIC_EDGE_SHORT)
   getPublicTemplates() {
     return this.roadmapsService.findPublicTemplates();
   }

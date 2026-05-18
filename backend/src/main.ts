@@ -1,10 +1,11 @@
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { ValidationPipe, RequestMethod } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import compression from 'compression';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { CachePolicyInterceptor } from './common/interceptors/cache-policy.interceptor';
 import { RequestLoggingInterceptor } from './common/interceptors/request-logging.interceptor';
 import { RequestTimeoutInterceptor } from './common/interceptors/request-timeout.interceptor';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
@@ -58,6 +59,7 @@ async function bootstrap() {
     'SLOW_REQUEST_THRESHOLD_MS',
     1500,
   );
+  const reflector = app.get(Reflector);
 
   // Global interceptors:
   // - timeout protection so hanging work doesn't consume all concurrency slots
@@ -66,6 +68,7 @@ async function bootstrap() {
   app.useGlobalInterceptors(
     new RequestTimeoutInterceptor(requestTimeoutMs),
     new RequestLoggingInterceptor(slowRequestThresholdMs),
+    new CachePolicyInterceptor(reflector),
     new ResponseInterceptor(),
   );
 

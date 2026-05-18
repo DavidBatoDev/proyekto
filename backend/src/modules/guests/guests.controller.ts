@@ -16,7 +16,9 @@ import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { SetCachePolicy } from '../../common/decorators/cache-policy.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
+import { CACHE_POLICY_PRESETS } from '../../common/cache/cache-policy';
 import { CreateGuestDto } from './dto/guest.dto';
 
 @Injectable()
@@ -88,6 +90,7 @@ export class GuestsService {
 
 @Controller('guests')
 @UseGuards(SupabaseAuthGuard)
+@SetCachePolicy(CACHE_POLICY_PRESETS.NO_STORE)
 export class GuestsController {
   constructor(private readonly guestsService: GuestsService) {}
 

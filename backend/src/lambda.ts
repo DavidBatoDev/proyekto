@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { ValidationPipe, RequestMethod } from '@nestjs/common';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
@@ -8,6 +8,7 @@ import compression from 'compression';
 import express from 'express';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { CachePolicyInterceptor } from './common/interceptors/cache-policy.interceptor';
 import { RequestLoggingInterceptor } from './common/interceptors/request-logging.interceptor';
 import { RequestTimeoutInterceptor } from './common/interceptors/request-timeout.interceptor';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
@@ -67,10 +68,12 @@ async function createApp(): Promise<express.Express> {
     'SLOW_REQUEST_THRESHOLD_MS',
     1500,
   );
+  const reflector = app.get(Reflector);
 
   app.useGlobalInterceptors(
     new RequestTimeoutInterceptor(requestTimeoutMs),
     new RequestLoggingInterceptor(slowRequestThresholdMs),
+    new CachePolicyInterceptor(reflector),
     new ResponseInterceptor(),
   );
 

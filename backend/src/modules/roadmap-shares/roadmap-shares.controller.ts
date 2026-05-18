@@ -12,7 +12,9 @@ import {
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import { SetCachePolicy } from '../../common/decorators/cache-policy.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
+import { CACHE_POLICY_PRESETS } from '../../common/cache/cache-policy';
 import { RoadmapSharesService } from './roadmap-shares.service';
 import { CreateShareDto, AddShareCommentDto } from './dto/roadmap-shares.dto';
 
@@ -46,6 +48,7 @@ export class RoadmapSharesController {
 
   @Get('token/:shareToken')
   @Public()
+  @SetCachePolicy(CACHE_POLICY_PRESETS.NO_STORE)
   getByToken(@Param('shareToken') token: string) {
     return this.sharesService.getByToken(token);
   }
