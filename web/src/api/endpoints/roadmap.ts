@@ -3,6 +3,7 @@ import type {
   Roadmap,
   RoadmapEpic,
   RoadmapFeature,
+  RoadmapMilestone,
   RoadmapTask,
 } from "../../types/roadmap";
 
@@ -39,7 +40,17 @@ export interface FullRoadmap extends Roadmap {
   epics: any[];
 }
 
-export interface RoadmapPreview extends Omit<Roadmap, "epics"> {
+export interface RoadmapPreview extends Omit<Roadmap, "epics" | "milestones"> {
+  project?: {
+    id: string;
+    title: string;
+  } | null;
+  milestones: Array<
+    Pick<
+      RoadmapMilestone,
+      "id" | "roadmap_id" | "title" | "target_date" | "status" | "position"
+    >
+  >;
   epics: Array<
     Pick<RoadmapEpic, "id" | "roadmap_id" | "title" | "position" | "status"> & {
       features: Array<
@@ -48,7 +59,18 @@ export interface RoadmapPreview extends Omit<Roadmap, "epics"> {
           "id" | "roadmap_id" | "epic_id" | "title" | "position"
         > & {
           tasks: Array<
-            Pick<RoadmapTask, "id" | "feature_id" | "position" | "status">
+            Pick<
+              RoadmapTask,
+              | "id"
+              | "feature_id"
+              | "title"
+              | "assignee_id"
+              | "position"
+              | "status"
+              | "due_date"
+              | "updated_at"
+              | "assignee"
+            >
           >;
         }
       >;

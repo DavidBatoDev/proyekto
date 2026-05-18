@@ -25,12 +25,18 @@ const DashboardHeader = () => {
 		queryKey: ["notifications", "unread-count"],
 		queryFn: () => notificationsService.unreadCount(),
 		enabled: isAuthenticated,
+		staleTime: 30 * 1000,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
 	});
 
 	const recentNotificationsQuery = useQuery({
 		queryKey: ["notifications", "recent"],
 		queryFn: () => notificationsService.list({ limit: 5 }),
 		enabled: isAuthenticated,
+		staleTime: 30 * 1000,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
 	});
 
 	const markReadMutation = useMutation({

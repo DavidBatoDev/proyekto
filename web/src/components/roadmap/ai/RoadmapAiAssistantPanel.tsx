@@ -475,8 +475,8 @@ const noopUpdateFeature = (_feature: RoadmapFeature) => {};
 const noopDeleteFeature = (_featureId: string) => {};
 const noopUpdateTask = (_task: RoadmapTask) => {};
 
-const TRACE_POLL_INTERVAL_MS = 400;
-const TRACE_POLL_LIMIT = 50;
+const TRACE_POLL_INTERVAL_MS = 1000;
+const TRACE_POLL_LIMIT = 25;
 const TRACE_POLL_TIMEOUT_MS = 90_000;
 const TRACE_NOT_READY_GRACE_MS = 10_000;
 const PROGRESS_DETAIL_MODE: RoadmapAiActivityDetailMode = "structured";

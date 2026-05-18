@@ -726,20 +726,37 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
       .order('position', { ascending: true });
     if (featuresError) throw new Error(featuresError.message);
 
-    // Step 4: fetch tasks for those features (if any)
+    // Step 4: fetch milestones for those roadmaps
+    const { data: milestones, error: milestonesError } = await this.db
+      .from('roadmap_milestones')
+      .select('id, roadmap_id, title, target_date, status, position')
+      .in('roadmap_id', roadmapIds)
+      .order('position', { ascending: true });
+    if (milestonesError) throw new Error(milestonesError.message);
+
+    // Step 5: fetch tasks for those features (if any)
     const featureIds = (features ?? []).map((f) => f.id);
     let tasks: any[] = [];
     if (featureIds.length > 0) {
       const { data: taskData, error: tasksError } = await this.db
         .from('roadmap_tasks')
-        .select('id, feature_id, position, status')
+        .select(
+          'id, feature_id, title, assignee_id, position, status, due_date, updated_at, assignee:profiles(id, display_name, avatar_url, email, first_name, last_name)',
+        )
         .in('feature_id', featureIds)
         .order('position', { ascending: true });
       if (tasksError) throw new Error(tasksError.message);
       tasks = taskData ?? [];
     }
 
-    // Step 5: assemble nested structure
+    // Step 6: assemble nested structure
+    const milestonesByRoadmap = (milestones ?? []).reduce<
+      Record<string, any[]>
+    >((acc, milestone) => {
+      (acc[milestone.roadmap_id] ??= []).push(milestone);
+      return acc;
+    }, {});
+
     const tasksByFeature = tasks.reduce<Record<string, any[]>>((acc, task) => {
       (acc[task.feature_id] ??= []).push(task);
       return acc;
@@ -769,6 +786,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
 
     return roadmaps.map((roadmap) => ({
       ...roadmap,
+      milestones: milestonesByRoadmap[roadmap.id] ?? [],
       epics: epicsByRoadmap[roadmap.id] ?? [],
     }));
   }

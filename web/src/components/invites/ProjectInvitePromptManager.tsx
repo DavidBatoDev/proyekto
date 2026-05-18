@@ -51,12 +51,22 @@ export function ProjectInvitePromptManager() {
     queryKey: ["projects", "my-invites"],
     queryFn: () => projectService.getMyInvites(),
     enabled: isAuthenticated,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const notificationsQuery = useQuery({
     queryKey: ["notifications", "project-invites"],
-    queryFn: () => notificationsService.list({ limit: 100 }),
+    queryFn: () =>
+      notificationsService.list({
+        limit: 30,
+        is_read: false,
+      }),
     enabled: isAuthenticated,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const pendingInvites = useMemo(

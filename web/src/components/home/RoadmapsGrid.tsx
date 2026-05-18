@@ -120,14 +120,9 @@ export function RoadmapsGrid() {
 	const deleteRoadmapMutation = useMutation({
 		mutationFn: (roadmapId: string) => deleteRoadmap(roadmapId),
 		onSuccess: async () => {
-			await Promise.all([
-				queryClient.invalidateQueries({
-					queryKey: ["dashboard", "roadmaps-preview"],
-				}),
-				queryClient.invalidateQueries({
-					queryKey: ["dashboard", "timeline-roadmaps"],
-				}),
-			]);
+			await queryClient.invalidateQueries({
+				queryKey: ["dashboard", "roadmaps-preview"],
+			});
 		},
 	});
 
@@ -160,10 +155,9 @@ export function RoadmapsGrid() {
 	const roadmapsQuery = useQuery({
 		queryKey: ["dashboard", "roadmaps-preview"],
 		queryFn: () => getRoadmapsPreview(),
-		staleTime: 0,
-		refetchOnMount: true,
-		refetchOnWindowFocus: true,
-		refetchOnReconnect: true,
+		staleTime: 30 * 1000,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
 		retry: 1,
 	});
 	const loading = roadmapsQuery.isPending;
