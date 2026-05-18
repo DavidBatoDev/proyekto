@@ -1,6 +1,6 @@
-# Prdigy Backend — NestJS API Documentation
+﻿# Proyekto Backend â€” NestJS API Documentation
 
-> **Framework**: NestJS 11 · **Language**: TypeScript 5.7 · **Database**: Supabase (PostgreSQL)  
+> **Framework**: NestJS 11 Â· **Language**: TypeScript 5.7 Â· **Database**: Supabase (PostgreSQL)  
 > **Base URL**: `http://localhost:3001/api`
 
 ---
@@ -46,9 +46,10 @@ npm run start:dev            # http://localhost:3001/api
 | Concept              | Implementation                                                           |
 | -------------------- | ------------------------------------------------------------------------ |
 | Dependency Injection | Symbol-based DI tokens per module                                        |
-| Authentication       | `SupabaseAuthGuard` — Bearer JWT or `x-guest-user-id` header             |
+| Authentication       | `SupabaseAuthGuard` â€” Bearer JWT or `x-guest-user-id` header             |
 | Authorization        | `PersonaGuard` (active persona) + `AdminGuard` (admin profile)           |
-| Data Access          | Repository pattern — Interface → Supabase implementation                 |
+| Data Access          | Repository pattern â€” Interface â†’ Supabase implementation                 |
 | Validation           | `class-validator` DTOs, global `ValidationPipe` with whitelist           |
 | Response shape       | `{ data: ... }` for success, `{ error: { message, status } }` for errors |
 | Rate limiting        | 100 requests / 60 seconds via `@nestjs/throttler`                        |
+

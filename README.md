@@ -1,22 +1,22 @@
-# Prodigy
+﻿# Proyekto
 
-Prodigy is a managed work delivery platform for digital projects. It combines the speed of freelance hiring with the structure of agency-style execution by introducing a dedicated Consultant layer between Clients and Freelancers.
+Proyekto is a managed work delivery platform for digital projects. It combines the speed of freelance hiring with the structure of agency-style execution by introducing a dedicated Consultant layer between Clients and Freelancers.
 
-Instead of leaving clients to manage technical details alone, Prodigy is designed so project vision, delivery planning, collaboration, and accountability all live in one workspace.
+Instead of leaving clients to manage technical details alone, Proyekto is designed so project vision, delivery planning, collaboration, and accountability all live in one workspace.
 
-## What Prodigy Solves
+## What Proyekto Solves
 
 Traditional freelance marketplaces are flexible but often chaotic. Agency models are structured but can be expensive and rigid.
 
-Prodigy is built to bridge that gap by providing:
+Proyekto is built to bridge that gap by providing:
 - Clear delivery ownership through a Consultant (project lead)
 - Structured roadmap execution from kickoff to completion
 - Shared visibility across client-facing and internal work
 - Milestone-based payment checkpoints tied to progress
 
-## How Prodigy Works
+## How Proyekto Works
 
-Prodigy uses a persona-based model. A single user can operate in different roles across different projects.
+Proyekto uses a persona-based model. A single user can operate in different roles across different projects.
 
 - Client: Defines goals, approves direction, tracks project health
 - Consultant: Translates vision into execution plans and manages delivery
@@ -88,3 +88,5 @@ Each project acts as a structured container for delivery:
 - `backend/`: NestJS API and domain services
 - `infra/`: Infrastructure-as-code definitions
 - `documentation/`: Product, backend, and architecture references
+
+

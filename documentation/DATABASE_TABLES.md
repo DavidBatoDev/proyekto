@@ -1,9 +1,9 @@
-# Database Tables Reference
+﻿# Database Tables Reference
 
 **Generated:** December 29, 2025  
 **Source:** Supabase Local Database
 
-This document provides a quick reference for all database tables in the Prdigy application.
+This document provides a quick reference for all database tables in the Proyekto application.
 
 ---
 
@@ -53,7 +53,7 @@ User profile information linked to authentication.
 
 **Foreign Keys:**
 
-- `id` → `auth.users.id` (ON DELETE CASCADE)
+- `id` â†’ `auth.users.id` (ON DELETE CASCADE)
 
 **Notes:**
 
@@ -78,7 +78,7 @@ User wallet balances for escrow system.
 
 **Foreign Keys:**
 
-- `user_id` → `profiles.id` (ON DELETE CASCADE)
+- `user_id` â†’ `profiles.id` (ON DELETE CASCADE)
 
 **Notes:**
 
@@ -107,9 +107,9 @@ Double-entry ledger for all fund movements (immutable audit trail).
 
 **Foreign Keys:**
 
-- `wallet_id` → `wallets.id` (ON DELETE CASCADE)
-- `project_id` → `projects.id` (ON DELETE SET NULL)
-- `checkpoint_id` → `payment_checkpoints.id` (ON DELETE SET NULL)
+- `wallet_id` â†’ `wallets.id` (ON DELETE CASCADE)
+- `project_id` â†’ `projects.id` (ON DELETE SET NULL)
+- `checkpoint_id` â†’ `payment_checkpoints.id` (ON DELETE SET NULL)
 
 **Transaction Types:**
 
@@ -150,8 +150,8 @@ Main project records.
 
 **Foreign Keys:**
 
-- `client_id` → `profiles.id` (ON DELETE CASCADE)
-- `consultant_id` → `profiles.id` (ON DELETE SET NULL)
+- `client_id` â†’ `profiles.id` (ON DELETE CASCADE)
+- `consultant_id` â†’ `profiles.id` (ON DELETE SET NULL)
 
 **Status Values:**
 
@@ -178,8 +178,8 @@ Project team membership.
 
 **Foreign Keys:**
 
-- `project_id` → `projects.id` (ON DELETE CASCADE)
-- `user_id` → `profiles.id` (ON DELETE CASCADE)
+- `project_id` â†’ `projects.id` (ON DELETE CASCADE)
+- `user_id` â†’ `profiles.id` (ON DELETE CASCADE)
 
 **Unique Constraint:**
 
@@ -204,7 +204,7 @@ Project milestones and checkpoints.
 
 **Foreign Keys:**
 
-- `project_id` → `projects.id` (ON DELETE CASCADE)
+- `project_id` â†’ `projects.id` (ON DELETE CASCADE)
 
 **Status Values:**
 
@@ -234,8 +234,8 @@ Individual work items, tasks, and deliverables.
 
 **Foreign Keys:**
 
-- `project_id` → `projects.id` (ON DELETE CASCADE)
-- `assignee_id` → `profiles.id` (ON DELETE SET NULL)
+- `project_id` â†’ `projects.id` (ON DELETE CASCADE)
+- `assignee_id` â†’ `profiles.id` (ON DELETE SET NULL)
 
 **Type Values:**
 
@@ -267,10 +267,10 @@ Payment tracking for project milestones.
 
 **Foreign Keys:**
 
-- `project_id` → `projects.id` (ON DELETE CASCADE)
-- `milestone_id` → `milestones.id` (ON DELETE SET NULL)
-- `payer_id` → `profiles.id` (ON DELETE CASCADE)
-- `payee_id` → `profiles.id` (ON DELETE CASCADE)
+- `project_id` â†’ `projects.id` (ON DELETE CASCADE)
+- `milestone_id` â†’ `milestones.id` (ON DELETE SET NULL)
+- `payer_id` â†’ `profiles.id` (ON DELETE CASCADE)
+- `payee_id` â†’ `profiles.id` (ON DELETE CASCADE)
 
 **Status Values:**
 
@@ -298,8 +298,8 @@ File storage and version tracking.
 
 **Foreign Keys:**
 
-- `project_id` → `projects.id` (ON DELETE CASCADE)
-- `uploaded_by` → `profiles.id` (ON DELETE CASCADE)
+- `project_id` â†’ `projects.id` (ON DELETE CASCADE)
+- `uploaded_by` â†’ `profiles.id` (ON DELETE CASCADE)
 
 ---
 
@@ -322,8 +322,8 @@ Scheduled meetings and calls.
 
 **Foreign Keys:**
 
-- `project_id` → `projects.id` (ON DELETE CASCADE)
-- `created_by` → `profiles.id` (ON DELETE CASCADE)
+- `project_id` â†’ `projects.id` (ON DELETE CASCADE)
+- `created_by` â†’ `profiles.id` (ON DELETE CASCADE)
 
 **Type Values:**
 
@@ -348,9 +348,9 @@ Project communication messages.
 
 **Foreign Keys:**
 
-- `project_id` → `projects.id` (ON DELETE CASCADE)
-- `sender_id` → `profiles.id` (ON DELETE CASCADE)
-- `recipient_id` → `profiles.id` (ON DELETE CASCADE)
+- `project_id` â†’ `projects.id` (ON DELETE CASCADE)
+- `sender_id` â†’ `profiles.id` (ON DELETE CASCADE)
+- `recipient_id` â†’ `profiles.id` (ON DELETE CASCADE)
 
 **Channel Types:**
 
@@ -386,23 +386,24 @@ Secure password reset token storage.
 
 ```
 auth.users (Supabase Auth)
-    ↓
+    â†“
 profiles (1:1)
-    ↓
-    ├── wallets (1:1) ← NEW
-    │   └── transactions (1:many) ← NEW
-    └── projects (1:many) as client or consultant
-        ↓
-        ├── project_members (many:many with profiles)
-        ├── milestones (1:many)
-        │   └── payment_checkpoints (1:many)
-        │       └── transactions (1:many) ← NEW
-        ├── work_items (1:many)
-        ├── files (1:many)
-        ├── meetings (1:many)
-        └── chat_messages (1:many)
+    â†“
+    â”œâ”€â”€ wallets (1:1) â† NEW
+    â”‚   â””â”€â”€ transactions (1:many) â† NEW
+    â””â”€â”€ projects (1:many) as client or consultant
+        â†“
+        â”œâ”€â”€ project_members (many:many with profiles)
+        â”œâ”€â”€ milestones (1:many)
+        â”‚   â””â”€â”€ payment_checkpoints (1:many)
+        â”‚       â””â”€â”€ transactions (1:many) â† NEW
+        â”œâ”€â”€ work_items (1:many)
+        â”œâ”€â”€ files (1:many)
+        â”œâ”€â”€ meetings (1:many)
+        â””â”€â”€ chat_messages (1:many)
 ```
 
 ---
 
 **For complete schema details including RLS policies, indexes, and functions, see:** [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)
+

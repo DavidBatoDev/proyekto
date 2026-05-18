@@ -1,9 +1,9 @@
-# 1
-Here is the refined **Permission Matrix** and the **Default Templates** for the current state of Prodigi.
+﻿# 1
+Here is the refined **Permission Matrix** and the **Default Templates** for the current state of Proyekto.
 
 ---
 
-## 🏛️ Refined Permission Matrix
+## ðŸ›ï¸ Refined Permission Matrix
 
 | Permission Key | Description |
 | --- | --- |
@@ -17,7 +17,7 @@ Here is the refined **Permission Matrix** and the **Default Templates** for the 
 
 ---
 
-## 🏗️ Updated Default Permission Sets
+## ðŸ—ï¸ Updated Default Permission Sets
 
 ### **1. The Client (The Visionary)**
 
@@ -69,7 +69,7 @@ The engine of the project. They have full control over the execution and team st
 
 ---
 
-## 🔄 Incubation State (Verified Consultant Creator)
+## ðŸ”„ Incubation State (Verified Consultant Creator)
 
 When a Consultant creates an **Incubation Project**, they start with a "Super Set" of permissions so they can behave as the owner until the handshake.
 
@@ -87,7 +87,7 @@ When a Consultant creates an **Incubation Project**, they start with a "Super Se
 
 
 # 2
-In the **Prodigi Work Hub** architecture, project permissions are managed primarily by the **Consultant** and the **Client**, though their authority focuses on different areas of the project lifecycle.
+In the **Proyekto Work Hub** architecture, project permissions are managed primarily by the **Consultant** and the **Client**, though their authority focuses on different areas of the project lifecycle.
 
 Since you are using a **JSONB** column in the `project_members` table, management happens through a "Permission Editor" interface that updates that specific row.
 
@@ -108,7 +108,7 @@ The Consultant is the primary manager of **Technical and Team permissions**.
 The Client holds **Governance authority**.
 
 * **Role:** They oversee the Consultant and have the final say on project membership.
-* **Authority:** They can manage the Consultant’s permissions (though usually, these are fixed by the platform) and can authorize the **Ownership Transfer**.
+* **Authority:** They can manage the Consultantâ€™s permissions (though usually, these are fixed by the platform) and can authorize the **Ownership Transfer**.
 * **In Incubation:** If a Consultant started the project, they act as the "Temporary Client" and manage all permissions until they hand the project over to a real Client.
 
 #### **The Admin (The Governor)**
@@ -133,9 +133,9 @@ Because you are using the **JSONB** approach, managing permissions doesn't requi
 
 | Persona | Can View Permissions? | Can Edit Permissions? |
 | --- | --- | --- |
-| **Client** | ✅ Yes | ✅ Yes (All members) |
-| **Consultant** | ✅ Yes | ✅ Yes (Freelancers & Guest Managers) |
-| **Freelancer** | ❌ No | ❌ No |
+| **Client** | âœ… Yes | âœ… Yes (All members) |
+| **Consultant** | âœ… Yes | âœ… Yes (Freelancers & Guest Managers) |
+| **Freelancer** | âŒ No | âŒ No |
 
 ---
 
@@ -177,7 +177,7 @@ Currently, your app likely has a "Request to Join" or "Invite" flow that require
 
 ---
 
-### 🏛️ Updated Member Management Logic
+### ðŸ›ï¸ Updated Member Management Logic
 
 | Action | Initiator | Target | Approval Required? |
 | --- | --- | --- | --- |
@@ -189,7 +189,7 @@ Currently, your app likely has a "Request to Join" or "Invite" flow that require
 
 ---
 
-### 🛠️ NestJS Implementation Snippet
+### ðŸ› ï¸ NestJS Implementation Snippet
 
 This is how you would enforce the "Locking" and "Auto-Approve" logic in your backend:
 
@@ -216,9 +216,10 @@ async updateMemberPermissions(editorId: string, projectId: string, targetUserId:
 
 ---
 
-### 🎨 UI Feedback
+### ðŸŽ¨ UI Feedback
 
 On the **Members Page**, you should visually communicate this:
 
 * **For Leads:** Disable the "Edit Permissions" toggle and show a "Lead Role" badge.
 * **For Freelancers:** Show the toggle as active for the Consultant, with a tooltip: *"Freelancers you invite are automatically approved."*
+

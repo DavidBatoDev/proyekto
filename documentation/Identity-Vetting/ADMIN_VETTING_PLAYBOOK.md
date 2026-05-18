@@ -1,6 +1,6 @@
-# Admin Vetting Playbook
+﻿# Admin Vetting Playbook
 
-This document describes how an **Admin** uses the Identity & Vetting data to approve a **Consultant** application on Prodigi Work Hub.
+This document describes how an **Admin** uses the Identity & Vetting data to approve a **Consultant** application on Proyekto Work Hub.
 
 ---
 
@@ -8,28 +8,28 @@ This document describes how an **Admin** uses the Identity & Vetting data to app
 
 ```
 User signs up
-      │
-      ▼
+      â”‚
+      â–¼
 Completes profile
 (bio, headline, skills, education...)
-      │
-      ▼
+      â”‚
+      â–¼
 Submits "Apply as Consultant"
-      │
-      ▼
+      â”‚
+      â–¼
 Admin reviews Identity & Vetting data
-      │
-      ├─── Approved ──→ is_consultant_verified = true
-      │                 active_persona can now be 'consultant'
-      │
-      └─── Rejected ──→ user_verifications notes explain why
+      â”‚
+      â”œâ”€â”€â”€ Approved â”€â”€â†’ is_consultant_verified = true
+      â”‚                 active_persona can now be 'consultant'
+      â”‚
+      â””â”€â”€â”€ Rejected â”€â”€â†’ user_verifications notes explain why
 ```
 
 ---
 
 ## Step-by-Step Admin Review
 
-### Step 1 — Identity Checks (`user_verifications`)
+### Step 1 â€” Identity Checks (`user_verifications`)
 
 The Admin dashboard loads `user_verifications` for the applicant.
 
@@ -43,7 +43,7 @@ Admin sets each record to `verified` or `failed` with optional notes.
 
 ---
 
-### Step 2 — Document Review (`user_identity_documents`)
+### Step 2 â€” Document Review (`user_identity_documents`)
 
 Admin accesses the private storage bucket path from `user_identity_documents.storage_path`.
 
@@ -56,7 +56,7 @@ Admin sets `is_verified = true` and `verified_by = <admin_user_id>` + `verified_
 
 ---
 
-### Step 3 — Credentials (`user_certifications`, `user_licenses`)
+### Step 3 â€” Credentials (`user_certifications`, `user_licenses`)
 
 Admin scans `user_certifications`:
 - For high-trust roles (e.g. Tech Lead): look for cloud certs (AWS, GCP), Scrum certifications
@@ -67,7 +67,7 @@ Admin scans `user_licenses` for regulated projects (Legal, Engineering, Healthca
 
 ---
 
-### Step 4 — Skills & Niche Fit (`user_skills`, `user_specializations`)
+### Step 4 â€” Skills & Niche Fit (`user_skills`, `user_specializations`)
 
 Admin cross-references:
 1. Which `skills` does the applicant claim at `expert` proficiency?
@@ -78,20 +78,20 @@ Admin cross-references:
 
 ---
 
-### Step 5 — Track Record (`user_stats`, `user_portfolios`)
+### Step 5 â€” Track Record (`user_stats`, `user_portfolios`)
 
 - `user_stats.avg_rating` and `jobs_completed` reflect their platform history (for returning users)
 - `user_portfolios` provides visual evidence (screenshots, live URLs) for new applicants with no platform history
 
 ---
 
-### Step 6 — Rate Card (`user_rate_settings`)
+### Step 6 â€” Rate Card (`user_rate_settings`)
 
 Admin checks that the applicant has set a realistic `hourly_rate` and `availability`. This data is used when presenting Consultant options to new Clients.
 
 ---
 
-### Step 7 — Approval
+### Step 7 â€” Approval
 
 Once all checks pass:
 
@@ -148,3 +148,4 @@ WHERE p.is_consultant_verified = true
   AND urs.availability != 'unavailable'
 ORDER BY stat.avg_rating DESC, stat.jobs_completed DESC;
 ```
+

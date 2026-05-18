@@ -1,19 +1,19 @@
----
-# Project Overview: Prodigi Work Hub
+﻿---
+# Project Overview: Proyekto Work Hub
 
-Prodigi Work Hub is a managed SaaS platform redefining the gig economy by bridging open freelance marketplaces (like Upwork) and managed agencies. Unlike traditional platforms where clients manage freelancers directly, Prodigi introduces a mandatory Consultant (Project Manager) layer to ensure quality, roadmap adherence, and technical translation between the Client and the Talent.
+Proyekto Work Hub is a managed SaaS platform redefining the gig economy by bridging open freelance marketplaces (like Upwork) and managed agencies. Unlike traditional platforms where clients manage freelancers directly, Proyekto introduces a mandatory Consultant (Project Manager) layer to ensure quality, roadmap adherence, and technical translation between the Client and the Talent.
 ---
 
 ## 1. Core philosophy & authentication
 
 ### The unified identity model
 
-- **Persona-based system** — instead of rigid account types (Client vs. Freelancer), users can activate different personas depending on what they want to do.
-- **Single Sign-On (SSO)** — users sign in once (no separate login pages per role).
-- **Canva-style dashboard** — the dashboard adapts to the active persona:
-  - **"I want to propose a project"** → activates **Client** persona
-  - **"I want to find work"** → activates **Freelancer** persona
-  - **"Manage assigned projects"** → activates **Consultant** persona (requires Admin vetting)
+- **Persona-based system** â€” instead of rigid account types (Client vs. Freelancer), users can activate different personas depending on what they want to do.
+- **Single Sign-On (SSO)** â€” users sign in once (no separate login pages per role).
+- **Canva-style dashboard** â€” the dashboard adapts to the active persona:
+  - **"I want to propose a project"** â†’ activates **Client** persona
+  - **"I want to find work"** â†’ activates **Freelancer** persona
+  - **"Manage assigned projects"** â†’ activates **Consultant** persona (requires Admin vetting)
 
 ---
 
@@ -34,7 +34,7 @@ Prodigi Work Hub is a managed SaaS platform redefining the gig economy by bridgi
 - **Restriction:** Must pass a vetting/KYC process by Admin to act as Consultant.
 - **Capabilities:**
   - Post job offers (fixed/hourly)
-  - Define phases and milestones (roadmap structure: Start → Work Items → Payment Checkpoints → Meetings → End)
+  - Define phases and milestones (roadmap structure: Start â†’ Work Items â†’ Payment Checkpoints â†’ Meetings â†’ End)
   - Approve freelancer work logs and authorize milestone payments
   - Can act as consultant in one project and be hired as a freelancer in another
 
@@ -60,20 +60,20 @@ Prodigi Work Hub is a managed SaaS platform redefining the gig economy by bridgi
 
 The Project Instance is a self-contained ecosystem that includes multiple modules.
 
-### Module A — Hybrid Linear Roadmap (UI/UX)
+### Module A â€” Hybrid Linear Roadmap (UI/UX)
 
 The roadmap is the core view where phases, milestones, and payment checkpoints live.
 
-### Module B — Communications Suite
+### Module B â€” Communications Suite
 
 - **Chat topology:**
   - **All-Hands:** Client + Consultant + Freelancers (Consultant can mute/archive)
   - **Dev-Team:** Consultant + Freelancers (internal technical discussions)
-  - **Direct:** Consultant ↔ Client (1:1)
+  - **Direct:** Consultant â†” Client (1:1)
 - **Smart calendar:** Weekly view similar to Teams
 - **Dynamic logo picker:** If a user pastes a meeting link (e.g., `meet.google.com`, `zoom.us`, `teams.microsoft.com`), show the appropriate meeting icon
 
-### Module C — IAM (Identity & Access Management) Policy Engine
+### Module C â€” IAM (Identity & Access Management) Policy Engine
 
 - Granular permissions inspired by GCP IAM (not just binary allow/deny)
 - **Owner** role has full access
@@ -132,11 +132,12 @@ The roadmap is the core view where phases, milestones, and payment checkpoints l
 - Financial object that appears in the roadmap (does not show amounts in roadmap UI)
 - Tied to Payments tab where amounts live; can be approved/paid/pending
 - Two subtypes:
-  - Client → Consultant checkpoints (funding events, installments, final payments)
-  - Consultant → Freelancers checkpoints (payout requests, completion payouts, monthly recurring payouts)
+  - Client â†’ Consultant checkpoints (funding events, installments, final payments)
+  - Consultant â†’ Freelancers checkpoints (payout requests, completion payouts, monthly recurring payouts)
 
 ### Project brief
 
 - High-level source of truth: summary, scope, requirements, constraints, risks, notes; sections can be client-visible or consultant-only
 
 ---
+

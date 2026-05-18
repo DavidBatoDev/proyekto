@@ -1,11 +1,11 @@
-# Database Schema Documentation
+﻿# Database Schema Documentation
 
 **Generated:** December 29, 2025  
 **Source:** Supabase Local Database
 
 ## Overview
 
-This document provides a comprehensive overview of the database schema for the Prdigy application. The database is built on PostgreSQL with Supabase and includes Row Level Security (RLS) policies for secure data access.
+This document provides a comprehensive overview of the database schema for the Proyekto application. The database is built on PostgreSQL with Supabase and includes Row Level Security (RLS) policies for secure data access.
 
 ---
 
@@ -155,8 +155,8 @@ Main project records.
 
 **Foreign Keys:**
 
-- `client_id` → `profiles.id` (ON DELETE CASCADE)
-- `consultant_id` → `profiles.id` (ON DELETE SET NULL)
+- `client_id` â†’ `profiles.id` (ON DELETE CASCADE)
+- `consultant_id` â†’ `profiles.id` (ON DELETE SET NULL)
 
 ---
 
@@ -175,8 +175,8 @@ Project team membership.
 
 **Foreign Keys:**
 
-- `project_id` → `projects.id` (ON DELETE CASCADE)
-- `user_id` → `profiles.id` (ON DELETE CASCADE)
+- `project_id` â†’ `projects.id` (ON DELETE CASCADE)
+- `user_id` â†’ `profiles.id` (ON DELETE CASCADE)
 
 **Unique Constraint:**
 
@@ -201,7 +201,7 @@ Project milestones and checkpoints.
 
 **Foreign Keys:**
 
-- `project_id` → `projects.id` (ON DELETE CASCADE)
+- `project_id` â†’ `projects.id` (ON DELETE CASCADE)
 
 ---
 
@@ -225,8 +225,8 @@ Individual work items, tasks, and deliverables.
 
 **Foreign Keys:**
 
-- `project_id` → `projects.id` (ON DELETE CASCADE)
-- `assignee_id` → `profiles.id` (ON DELETE SET NULL)
+- `project_id` â†’ `projects.id` (ON DELETE CASCADE)
+- `assignee_id` â†’ `profiles.id` (ON DELETE SET NULL)
 
 ---
 
@@ -250,10 +250,10 @@ Payment tracking for project milestones.
 
 **Foreign Keys:**
 
-- `project_id` → `projects.id` (ON DELETE CASCADE)
-- `milestone_id` → `milestones.id` (ON DELETE SET NULL)
-- `payer_id` → `profiles.id` (ON DELETE CASCADE)
-- `payee_id` → `profiles.id` (ON DELETE CASCADE)
+- `project_id` â†’ `projects.id` (ON DELETE CASCADE)
+- `milestone_id` â†’ `milestones.id` (ON DELETE SET NULL)
+- `payer_id` â†’ `profiles.id` (ON DELETE CASCADE)
+- `payee_id` â†’ `profiles.id` (ON DELETE CASCADE)
 
 ---
 
@@ -276,8 +276,8 @@ File storage and version tracking.
 
 **Foreign Keys:**
 
-- `project_id` → `projects.id` (ON DELETE CASCADE)
-- `uploaded_by` → `profiles.id` (ON DELETE CASCADE)
+- `project_id` â†’ `projects.id` (ON DELETE CASCADE)
+- `uploaded_by` â†’ `profiles.id` (ON DELETE CASCADE)
 
 ---
 
@@ -300,8 +300,8 @@ Scheduled meetings and calls.
 
 **Foreign Keys:**
 
-- `project_id` → `projects.id` (ON DELETE CASCADE)
-- `created_by` → `profiles.id` (ON DELETE CASCADE)
+- `project_id` â†’ `projects.id` (ON DELETE CASCADE)
+- `created_by` â†’ `profiles.id` (ON DELETE CASCADE)
 
 ---
 
@@ -322,9 +322,9 @@ Project communication messages.
 
 **Foreign Keys:**
 
-- `project_id` → `projects.id` (ON DELETE CASCADE)
-- `sender_id` → `profiles.id` (ON DELETE CASCADE)
-- `recipient_id` → `profiles.id` (ON DELETE CASCADE)
+- `project_id` â†’ `projects.id` (ON DELETE CASCADE)
+- `sender_id` â†’ `profiles.id` (ON DELETE CASCADE)
+- `recipient_id` â†’ `profiles.id` (ON DELETE CASCADE)
 
 ---
 
@@ -512,18 +512,18 @@ All tables have RLS enabled. Below are the key policies:
 
 ```
 auth.users (Supabase Auth)
-    ↓
+    â†“
 profiles (1:1)
-    ↓
+    â†“
 projects (1:many) as client or consultant
-    ↓
-    ├── project_members (many:many with profiles)
-    ├── milestones (1:many)
-    │   └── payment_checkpoints (1:many)
-    ├── work_items (1:many)
-    ├── files (1:many)
-    ├── meetings (1:many)
-    └── chat_messages (1:many)
+    â†“
+    â”œâ”€â”€ project_members (many:many with profiles)
+    â”œâ”€â”€ milestones (1:many)
+    â”‚   â””â”€â”€ payment_checkpoints (1:many)
+    â”œâ”€â”€ work_items (1:many)
+    â”œâ”€â”€ files (1:many)
+    â”œâ”€â”€ meetings (1:many)
+    â””â”€â”€ chat_messages (1:many)
 ```
 
 ---
@@ -547,3 +547,4 @@ The complete SQL schema dump is available at: [database-schema.sql](database-sch
 ---
 
 **Last Updated:** December 29, 2025
+

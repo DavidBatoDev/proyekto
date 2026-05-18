@@ -1,4 +1,4 @@
-# Platform Foundations — Requirements
+﻿# Platform Foundations â€” Requirements
 
 ## Why this spec exists
 
@@ -9,7 +9,7 @@ revisited. It does NOT describe code structure (see `design.md`) or the work
 backlog (see `tasks.md`).
 
 If a future change conflicts with anything here, this document needs to be
-updated **first** — not the code.
+updated **first** â€” not the code.
 
 ---
 
@@ -20,7 +20,7 @@ updated **first** — not the code.
 > **Hire a team, not a stranger.**
 >
 > Your project, led by a vetted consultant who plans the roadmap, hires the
-> freelancers, and runs delivery end-to-end. You stay in the loop — not in the
+> freelancers, and runs delivery end-to-end. You stay in the loop â€” not in the
 > weeds.
 
 We sell **delivery**, not access to people. Upwork sells access. Toptal sells
@@ -36,12 +36,12 @@ matchmaking. We sell the team and the consultant who runs it.
 
 ### Brand voice rules
 
-- **Villain word:** *"stranger"* — cheap freelancer platforms put you in the room with strangers; we don't.
+- **Villain word:** *"stranger"* â€” cheap freelancer platforms put you in the room with strangers; we don't.
 - **Avoid on homepage:** "marketplace", "platform" (use only on `/consultant` where supply-side mechanics matter).
 - **Outcome words over feature words:** "ship", "deliver", "run", "lead".
 - **Confident, not corporate.** Sharp short sentences beat enterprise-speak.
 - **Honest about pricing.** Take rate is shown on the homepage, not buried.
-- **Brand name is `Proyekto`.** "Prodigy" / `prdigy/` are legacy folder names only — never appear in user-facing copy.
+- **Brand name is `Proyekto`.** Use this naming consistently across user-facing copy, docs, and system labels.
 
 ---
 
@@ -52,7 +52,7 @@ matchmaking. We sell the team and the consultant who runs it.
 | Take rate | Percentage on every freelancer payout routed through Proyekto. No fee on consultant's own consulting hours; no fee on flat-fee deliverables billed direct. |
 | Consultant subscription | Monthly seat fee per verified consultant. Unlocks the workspace, vetted talent bench, escrow, contracts, invoicing. |
 
-Numeric rates are intentionally `TBD` placeholders in current UI — they
+Numeric rates are intentionally `TBD` placeholders in current UI â€” they
 require explicit pricing decisions before the consultant landing page ships
 publicly.
 
@@ -87,27 +87,27 @@ Implications:
   services, run their own personal-workspace projects).
 - A consultant **can** still appear as a freelancer on engagements they
   choose to take in that mode.
-- Lane upgrade (Client/Freelancer → Consultant) is **additive**: existing
+- Lane upgrade (Client/Freelancer â†’ Consultant) is **additive**: existing
   personas stay; `is_consultant_verified` flips to true on admin approval.
 - Marketplace gates check the **capability flag** (`is_consultant_verified`),
-  never the active persona. This is intentional — switching active_persona
+  never the active persona. This is intentional â€” switching active_persona
   must never affect who can browse the freelancer marketplace.
 
 ### Why soft isolation
 
 Decided by four product answers:
-1. Consultants should be able to act as paying clients — keeps the revenue
+1. Consultants should be able to act as paying clients â€” keeps the revenue
    surface open and matches builder reality.
 2. Brand framing is "platform power-users," not "elite separate tier."
 3. A consultant's own side project lives in their personal workspace and uses
-   normal hiring flows — no second account required.
-4. Lane upgrade should be non-destructive — discouraging good consultants
+   normal hiring flows â€” no second account required.
+4. Lane upgrade should be non-destructive â€” discouraging good consultants
    from applying because they'd lose existing client/freelancer access is the
    wrong tradeoff.
 
 ### What `active_persona` does
 
-Active persona is a **UI mode** — drives sidebar layout, dashboard greeting,
+Active persona is a **UI mode** â€” drives sidebar layout, dashboard greeting,
 default marketplace tab. It has **no authorization consequences**. Switching
 persona never changes what you can do inside a project or what surfaces
 you can access (those are governed by capability flags and project roles).
@@ -123,8 +123,8 @@ without `is_consultant_verified=true`.
 
 | Lane | Entry point | Post-signup destination | Active persona on completion |
 |---|---|---|---|
-| Client/Freelancer | Homepage primary CTAs ("I have a project to ship" / "I'm looking for freelance work") | `/welcome` (4-slide activation deck) → `/dashboard` | `client` |
-| Consultant | Footer / `/consultant` landing → "Apply to lead on Proyekto" | `/welcome` (3-slide orientation deck) → `/consultant/apply` (5-step application form) | `freelancer` (default; flips to `consultant` on approval) |
+| Client/Freelancer | Homepage primary CTAs ("I have a project to ship" / "I'm looking for freelance work") | `/welcome` (4-slide activation deck) â†’ `/dashboard` | `client` |
+| Consultant | Footer / `/consultant` landing â†’ "Apply to lead on Proyekto" | `/welcome` (3-slide orientation deck) â†’ `/consultant/apply` (5-step application form) | `freelancer` (default; flips to `consultant` on approval) |
 
 ### Lane requirements
 
@@ -134,14 +134,14 @@ without `is_consultant_verified=true`.
   homepage CTAs pre-select the right card so the user only has to confirm.
 - Lane choice is editable mid-wizard (sessionStorage carries it across
   refreshes).
-- The lane decision determines post-verify routing — Client/Freelancer-lane
+- The lane decision determines post-verify routing â€” Client/Freelancer-lane
   users see `/welcome`; consultants skip it and land on the application form.
 
 ### Marketplace gating
 
 **Clients never see freelancers directly.** The freelancer marketplace is
 visible only to verified consultants (`is_consultant_verified=true`). The
-client→consultant→freelancer chain is enforced at the API boundary, not just
+clientâ†’consultantâ†’freelancer chain is enforced at the API boundary, not just
 in the UI.
 
 This is the **single most important authorization invariant** in the product
@@ -153,24 +153,24 @@ and must never regress.
 
 Every signup auto-provisions exactly one **personal workspace project** so
 new users can use the product immediately, without waiting for a marketplace
-match. This is the activation lever — the equivalent of Linear's
+match. This is the activation lever â€” the equivalent of Linear's
 "Your first project is ready."
 
 ### Invariants
 
-- **Idempotent provisioning** — `PersonalWorkspaceService.provision(userId)`
+- **Idempotent provisioning** â€” `PersonalWorkspaceService.provision(userId)`
   returns the existing workspace if one already exists; re-running on login
   never creates duplicates. Enforced at the DB level via a partial unique
   index.
-- **Default title** — `"{first_name}'s Workspace"`; user can rename via the
+- **Default title** â€” `"{first_name}'s Workspace"`; user can rename via the
   `/welcome` slide-3 step.
-- **Owner is the user** — the user is the `owner` on `project_shares`
+- **Owner is the user** â€” the user is the `owner` on `project_shares`
   (interim: `project_members.permissions_json={ is_owner: true }` until
   slice 2 lands).
-- **Not deletable** — DELETE on a project where `is_personal_workspace=true`
+- **Not deletable** â€” DELETE on a project where `is_personal_workspace=true`
   is rejected at the API layer. If the row is somehow missing, the next
   login re-provisions.
-- **Everyone gets one** — including consultants (per soft isolation).
+- **Everyone gets one** â€” including consultants (per soft isolation).
   Consultants treat their workspace as a side-project sandbox.
 
 ---
@@ -185,7 +185,7 @@ with a `ForbiddenException`.
 |---|---|---|
 | 1 | Identity verification | At least one row in `user_identity_documents` with `is_verified=true`, OR a `user_verifications` row with `type='identity', status='verified'` |
 | 2 | Rate settings configured | `user_rate_settings` row with `hourly_rate`, `currency`, and `availability` all non-null |
-| 3 | At least 1 portfolio item | `user_portfolios` row count ≥ 1 |
+| 3 | At least 1 portfolio item | `user_portfolios` row count â‰¥ 1 |
 | 4 | Profile basics complete | `profiles.headline`, `profiles.bio`, `profiles.country` all non-null |
 
 ### Why a quality bar
@@ -211,7 +211,7 @@ Inside a project, **persona never determines what you can do**. Authorization
 is governed entirely by your role on that specific project, stored in
 `project_shares`. The presence or absence of an assigned consultant
 (`projects.consultant_id`) **also never determines what features are
-accessible** — it is origin metadata, not a gate.
+accessible** â€” it is origin metadata, not a gate.
 
 ### No consultant gate (locked decision)
 
@@ -222,13 +222,13 @@ roadmap, work items, chat, files, time tracking, settings, etc. The
 removed** in slice 2.
 
 This applies equally to:
-- **Personal workspaces** — the user is the owner; full access on day 1
-- **Marketplace projects waiting for consultant match** — the client is the
+- **Personal workspaces** â€” the user is the owner; full access on day 1
+- **Marketplace projects waiting for consultant match** â€” the client is the
   initial owner; can plan, brief, invite collaborators directly, and prepare
   the work while waiting for matching
 
 Marketplace surfaces (browsing the freelancer pool, proposing freelancers
-into projects) remain gated by **`is_consultant_verified`** — a capability
+into projects) remain gated by **`is_consultant_verified`** â€” a capability
 flag on the user, not a project field. This is the only consultant-related
 gate that survives the refactor.
 
@@ -241,11 +241,11 @@ Personal workspaces never show this card.
 
 | Role | Read | Comment | Edit | Manage members | Manage billing | Delete project |
 |---|---|---|---|---|---|---|
-| owner | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| admin | ✓ | ✓ | ✓ | ✓ | (override) | – |
-| editor | ✓ | ✓ | ✓ | – | – | – |
-| commenter | ✓ | ✓ | – | – | – | – |
-| viewer | ✓ | – | – | – | – | – |
+| owner | âœ“ | âœ“ | âœ“ | âœ“ | âœ“ | âœ“ |
+| admin | âœ“ | âœ“ | âœ“ | âœ“ | (override) | â€“ |
+| editor | âœ“ | âœ“ | âœ“ | â€“ | â€“ | â€“ |
+| commenter | âœ“ | âœ“ | â€“ | â€“ | â€“ | â€“ |
+| viewer | âœ“ | â€“ | â€“ | â€“ | â€“ | â€“ |
 
 Origin metadata on each share row preserves "where did this person come from"
 (`'client' | 'consultant' | 'invited' | 'personal_workspace'`) for analytics
@@ -256,16 +256,16 @@ without polluting authorization.
 Roles cover the common case. A small set of **explicit capability flags**
 handles the rest via JSONB on each share:
 
-- `can_manage_billing` — separable from admin (e.g. an admin who shouldn't see invoices)
-- `can_manage_members` — separable from admin (e.g. read-only HR view)
-- `can_export` — controls bulk data export
+- `can_manage_billing` â€” separable from admin (e.g. an admin who shouldn't see invoices)
+- `can_manage_members` â€” separable from admin (e.g. read-only HR view)
+- `can_export` â€” controls bulk data export
 
 Defaults derive from role. We add new flags only when a concrete need arises.
 
 ### Origin column semantics
 
 `projects.client_id` and `projects.consultant_id` survive the refactor but
-become **origin metadata only** — used for analytics ("how many projects
+become **origin metadata only** â€” used for analytics ("how many projects
 were originated by clients vs consultants"), match attribution, and legacy
 queries. They are NEVER used for authorization decisions after slice 2.
 
@@ -276,9 +276,9 @@ queries. They are NEVER used for authorization decisions after slice 2.
 ### The consultant-mediated chain
 
 ```
-Client posts project → matched with verified consultant →
-  consultant scopes/prices → consultant proposes freelancers from bench →
-  client approves → work begins under consultant's roof
+Client posts project â†’ matched with verified consultant â†’
+  consultant scopes/prices â†’ consultant proposes freelancers from bench â†’
+  client approves â†’ work begins under consultant's roof
 ```
 
 ### Hard rules
@@ -303,11 +303,11 @@ critical regression.
 |---|---|
 | 1 | A new user can complete signup and reach a usable workspace in under 3 minutes |
 | 2 | A user with `active_persona='consultant'` always has `is_consultant_verified=true` (CHECK constraint enforces this) |
-| 3 | Personal workspace count per user is exactly 1 — never 0 (idempotent provisioning), never 2 (partial unique index) |
+| 3 | Personal workspace count per user is exactly 1 â€” never 0 (idempotent provisioning), never 2 (partial unique index) |
 | 4 | A non-consultant user calling the freelancer marketplace endpoint receives 403 |
-| 5 | `switchPersona('freelancer')` rejects when eligibility fails — no silent grants |
+| 5 | `switchPersona('freelancer')` rejects when eligibility fails â€” no silent grants |
 | 6 | A consultant assigned to a project automatically outranks the originating client (owner > admin) |
-| 7 | Removing the last `owner` from a project is rejected — projects can never become orphaned |
+| 7 | Removing the last `owner` from a project is rejected â€” projects can never become orphaned |
 | 8 | Lane choice persists across signup wizard refreshes and OAuth roundtrips |
 | 9 | The marketplace freelancer browse endpoint is reachable only by users with `is_consultant_verified=true`, regardless of their current `active_persona` |
 | 10 | Project sub-routes (Overview, Team, Chat, Resources, Time, Logs, Settings, etc.) are accessible to any user with `editor`+ role on the project, regardless of whether a consultant is assigned. No "page locked until consultant" gates remain. |
@@ -317,7 +317,7 @@ critical regression.
 
 ## Out of scope (explicit non-goals)
 
-- Hard isolation of consultants. Rejected — see "Soft isolation" above.
+- Hard isolation of consultants. Rejected â€” see "Soft isolation" above.
 - Consultant approval auto-revoking client/freelancer personas. Never.
 - Multi-tenant organizations / workspaces above the project level. Future.
 - Lead pipeline / round-robin assignment for consultants. Wait until supply > demand.
@@ -328,12 +328,15 @@ critical regression.
 
 ## Open product questions
 
-These will need answers before they unblock specific work — captured here so
+These will need answers before they unblock specific work â€” captured here so
 the answers don't get lost in chat.
 
 | Question | Blocks |
 |---|---|
 | Consultant seat $/month + take rate % | `/consultant` landing page polish, billing implementation |
 | Email collision policy across lanes (allowed today) | Edge case in signup; requires explicit confirmation |
-| Account deletion behavior — cascade, reassign, hard-delete | GDPR readiness |
+| Account deletion behavior â€” cascade, reassign, hard-delete | GDPR readiness |
 | Lead pipeline mechanics (queue / round-robin / claim) | Consultant retention features past month 6 |
+
+
+

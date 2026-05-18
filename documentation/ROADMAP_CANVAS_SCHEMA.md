@@ -1,9 +1,9 @@
-# Roadmap Canvas Database Schema
+﻿# Roadmap Canvas Database Schema
 
 **Version:** 2.0  
 **Created:** January 11, 2026  
 **Updated:** January 21, 2026  
-**Author:** Prdigy Development Team
+**Author:** Proyekto Development Team
 
 ## Changelog
 
@@ -11,12 +11,12 @@
 
 **Breaking Change:** Milestones now link to **Features**, not Epics.
 
-- ❌ Removed `milestone_epics` junction table
-- ✅ Added `milestone_features` junction table
-- ✅ Added `roadmap_id` to `roadmap_features` (denormalized for performance)
-- ✅ Added `is_deliverable` flag to `roadmap_features`
-- ✅ Updated `get_milestone_progress()` to calculate from features
-- ✅ Updated core principle and documentation
+- âŒ Removed `milestone_epics` junction table
+- âœ… Added `milestone_features` junction table
+- âœ… Added `roadmap_id` to `roadmap_features` (denormalized for performance)
+- âœ… Added `is_deliverable` flag to `roadmap_features`
+- âœ… Updated `get_milestone_progress()` to calculate from features
+- âœ… Updated core principle and documentation
 
 **Rationale:** Epics are too large to track meaningful delivery at milestones. Features are the smallest deliverable unit, enabling partial epic delivery and accurate progress tracking.
 
@@ -169,107 +169,107 @@ CREATE TYPE task_priority AS ENUM (
 ## Entity Relationship Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              ROADMAP CANVAS ERD                              │
-│                                                                             │
-│  Conceptual Model: Epic → Feature ↔ Milestone                               │
-│  Epics are structural containers. Features are the smallest deliverable.    │
-└─────────────────────────────────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                              ROADMAP CANVAS ERD                              â”‚
+â”‚                                                                             â”‚
+â”‚  Conceptual Model: Epic â†’ Feature â†” Milestone                               â”‚
+â”‚  Epics are structural containers. Features are the smallest deliverable.    â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 
-                                 ┌──────────────┐
-                                 │   projects   │
-                                 │──────────────│
-                                 │ id (PK)      │
-                                 │ title        │
-                                 │ client_id    │
-                                 └──────┬───────┘
-                                        │ 1:1
-                                        ▼
-                                 ┌──────────────┐
-                                 │   roadmaps   │
-                                 │──────────────│
-                                 │ id (PK)      │◄──────────────────────┐
-                                 │ project_id   │                       │
-                                 │ name         │                       │
-                                 │ owner_id     │                       │
-                                 │ status       │                       │
-                                 └──────┬───────┘                       │
-                                        │                               │
-                    ┌───────────────────┼───────────────────┐           │
-                    │ 1:N               │ 1:N               │           │
-                    ▼                   ▼                   │           │
-         ┌──────────────────┐   ┌──────────────────┐        │           │
-         │roadmap_milestones│   │  roadmap_epics   │        │           │
-         │──────────────────│   │──────────────────│        │           │
-         │ id (PK)          │   │ id (PK)          │        │           │
-         │ roadmap_id (FK)  │   │ roadmap_id (FK)  │        │           │
-         │ title            │   │ title            │        │           │
-         │ target_date      │   │ priority         │        │           │
-         │ position         │   │ status           │        │           │
-         │ status           │   │ position         │        │           │
-         └────────┬─────────┘   └────────┬─────────┘        │           │
-                  │                      │                  │           │
-                  │                      │ 1:N              │           │
-                  │                      ▼                  │           │
-                  │             ┌──────────────────┐        │           │
-                  │             │ roadmap_features │        │           │
-                  │             │──────────────────│        │           │
-                  │             │ id (PK)          │        │           │
-                  │             │ roadmap_id (FK)  │────────┘           │
-                  │             │ epic_id (FK)     │                    │
-                  │             │ title            │                    │
-                  │             │ status           │                    │
-                  │             │ position         │                    │
-                  │             │ is_deliverable   │                    │
-                  │             └────────┬─────────┘                    │
-                  │                      │                              │
-                  │      N:M             │                              │
-                  │  ┌───────────────────┘                              │
-                  │  │                                                  │
-                  ▼  ▼                                                  │
-         ┌────────────────────┐                                         │
-         │ milestone_features │ (Junction Table)                        │
-         │────────────────────│                                         │
-         │ id (PK)            │                                         │
-         │ milestone_id (FK)  │                                         │
-         │ feature_id (FK)    │                                         │
-         │ position           │                                         │
-         └────────────────────┘                                         │
-                                                                        │
-                               ┌────────────────────────────────────────┘
-                               │ 1:N
-                               ▼
-                      ┌──────────────────┐
-                      │  roadmap_tasks   │
-                      │──────────────────│
-                      │ id (PK)          │
-                      │ feature_id (FK)  │
-                      │ title            │
-                      │ assignee_id (FK) │─────► profiles
-                      │ status           │
-                      │ position         │
-                      └────────┬─────────┘
-                               │
-           ┌───────────────────┼───────────────────┐
-           │ 1:N               │ 1:N               │
-           ▼                   ▼                   │
-  ┌──────────────────┐   ┌──────────────────┐      │
-  │  task_comments   │   │ task_attachments │      │
-  │──────────────────│   │──────────────────│      │
-  │ id (PK)          │   │ id (PK)          │      │
-  │ task_id (FK)     │   │ task_id (FK)     │      │
-  │ author_id (FK)   │   │ file_url         │      │
-  │ content          │   │ uploaded_by (FK) │      │
-  └──────────────────┘   └──────────────────┘      │
-                                                   │
-                                                   │
-                         ┌─────────────────────────┘
-                         │
-                         └──────────────────────────────────────────────────────
+                                 â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                                 â”‚   projects   â”‚
+                                 â”‚â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”‚
+                                 â”‚ id (PK)      â”‚
+                                 â”‚ title        â”‚
+                                 â”‚ client_id    â”‚
+                                 â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”˜
+                                        â”‚ 1:1
+                                        â–¼
+                                 â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                                 â”‚   roadmaps   â”‚
+                                 â”‚â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”‚
+                                 â”‚ id (PK)      â”‚â—„â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                                 â”‚ project_id   â”‚                       â”‚
+                                 â”‚ name         â”‚                       â”‚
+                                 â”‚ owner_id     â”‚                       â”‚
+                                 â”‚ status       â”‚                       â”‚
+                                 â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”˜                       â”‚
+                                        â”‚                               â”‚
+                    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”           â”‚
+                    â”‚ 1:N               â”‚ 1:N               â”‚           â”‚
+                    â–¼                   â–¼                   â”‚           â”‚
+         â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”        â”‚           â”‚
+         â”‚roadmap_milestonesâ”‚   â”‚  roadmap_epics   â”‚        â”‚           â”‚
+         â”‚â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”‚   â”‚â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”‚        â”‚           â”‚
+         â”‚ id (PK)          â”‚   â”‚ id (PK)          â”‚        â”‚           â”‚
+         â”‚ roadmap_id (FK)  â”‚   â”‚ roadmap_id (FK)  â”‚        â”‚           â”‚
+         â”‚ title            â”‚   â”‚ title            â”‚        â”‚           â”‚
+         â”‚ target_date      â”‚   â”‚ priority         â”‚        â”‚           â”‚
+         â”‚ position         â”‚   â”‚ status           â”‚        â”‚           â”‚
+         â”‚ status           â”‚   â”‚ position         â”‚        â”‚           â”‚
+         â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜   â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜        â”‚           â”‚
+                  â”‚                      â”‚                  â”‚           â”‚
+                  â”‚                      â”‚ 1:N              â”‚           â”‚
+                  â”‚                      â–¼                  â”‚           â”‚
+                  â”‚             â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”        â”‚           â”‚
+                  â”‚             â”‚ roadmap_features â”‚        â”‚           â”‚
+                  â”‚             â”‚â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”‚        â”‚           â”‚
+                  â”‚             â”‚ id (PK)          â”‚        â”‚           â”‚
+                  â”‚             â”‚ roadmap_id (FK)  â”‚â”€â”€â”€â”€â”€â”€â”€â”€â”˜           â”‚
+                  â”‚             â”‚ epic_id (FK)     â”‚                    â”‚
+                  â”‚             â”‚ title            â”‚                    â”‚
+                  â”‚             â”‚ status           â”‚                    â”‚
+                  â”‚             â”‚ position         â”‚                    â”‚
+                  â”‚             â”‚ is_deliverable   â”‚                    â”‚
+                  â”‚             â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                    â”‚
+                  â”‚                      â”‚                              â”‚
+                  â”‚      N:M             â”‚                              â”‚
+                  â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                              â”‚
+                  â”‚  â”‚                                                  â”‚
+                  â–¼  â–¼                                                  â”‚
+         â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”                                         â”‚
+         â”‚ milestone_features â”‚ (Junction Table)                        â”‚
+         â”‚â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”‚                                         â”‚
+         â”‚ id (PK)            â”‚                                         â”‚
+         â”‚ milestone_id (FK)  â”‚                                         â”‚
+         â”‚ feature_id (FK)    â”‚                                         â”‚
+         â”‚ position           â”‚                                         â”‚
+         â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                                         â”‚
+                                                                        â”‚
+                               â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                               â”‚ 1:N
+                               â–¼
+                      â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                      â”‚  roadmap_tasks   â”‚
+                      â”‚â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”‚
+                      â”‚ id (PK)          â”‚
+                      â”‚ feature_id (FK)  â”‚
+                      â”‚ title            â”‚
+                      â”‚ assignee_id (FK) â”‚â”€â”€â”€â”€â”€â–º profiles
+                      â”‚ status           â”‚
+                      â”‚ position         â”‚
+                      â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                               â”‚
+           â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+           â”‚ 1:N               â”‚ 1:N               â”‚
+           â–¼                   â–¼                   â”‚
+  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”      â”‚
+  â”‚  task_comments   â”‚   â”‚ task_attachments â”‚      â”‚
+  â”‚â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”‚   â”‚â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”‚      â”‚
+  â”‚ id (PK)          â”‚   â”‚ id (PK)          â”‚      â”‚
+  â”‚ task_id (FK)     â”‚   â”‚ task_id (FK)     â”‚      â”‚
+  â”‚ author_id (FK)   â”‚   â”‚ file_url         â”‚      â”‚
+  â”‚ content          â”‚   â”‚ uploaded_by (FK) â”‚      â”‚
+  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜   â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜      â”‚
+                                                   â”‚
+                                                   â”‚
+                         â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                         â”‚
+                         â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 LEGEND:
-  ─────►  Foreign Key Reference
+  â”€â”€â”€â”€â”€â–º  Foreign Key Reference
   1:N     One-to-Many Relationship
   N:M     Many-to-Many Relationship (via Junction Table)
   1:1     One-to-One Relationship
@@ -299,8 +299,8 @@ The top-level container for a project's roadmap.
 
 **Foreign Keys:**
 
-- `project_id` → `projects.id` (ON DELETE CASCADE)
-- `owner_id` → `profiles.id` (ON DELETE CASCADE)
+- `project_id` â†’ `projects.id` (ON DELETE CASCADE)
+- `owner_id` â†’ `profiles.id` (ON DELETE CASCADE)
 
 **Notes:**
 
@@ -345,7 +345,7 @@ Timeline checkpoints that define success criteria at specific dates.
 
 **Foreign Keys:**
 
-- `roadmap_id` → `roadmaps.id` (ON DELETE CASCADE)
+- `roadmap_id` â†’ `roadmaps.id` (ON DELETE CASCADE)
 
 **Unique Constraint:**
 
@@ -395,7 +395,7 @@ Large work units representing major deliverables. Epics exist independently of m
 
 **Foreign Keys:**
 
-- `roadmap_id` → `roadmaps.id` (ON DELETE CASCADE)
+- `roadmap_id` â†’ `roadmaps.id` (ON DELETE CASCADE)
 
 **Unique Constraint:**
 
@@ -446,8 +446,8 @@ The smallest deliverable unit within an epic. Features are **the key unit for mi
 
 **Foreign Keys:**
 
-- `roadmap_id` → `roadmaps.id` (ON DELETE CASCADE)
-- `epic_id` → `roadmap_epics.id` (ON DELETE CASCADE)
+- `roadmap_id` â†’ `roadmaps.id` (ON DELETE CASCADE)
+- `epic_id` â†’ `roadmap_epics.id` (ON DELETE CASCADE)
 
 **Unique Constraint:**
 
@@ -492,8 +492,8 @@ Junction table linking milestones to features (many-to-many relationship). This 
 
 **Foreign Keys:**
 
-- `milestone_id` → `roadmap_milestones.id` (ON DELETE CASCADE)
-- `feature_id` → `roadmap_features.id` (ON DELETE CASCADE)
+- `milestone_id` â†’ `roadmap_milestones.id` (ON DELETE CASCADE)
+- `feature_id` â†’ `roadmap_features.id` (ON DELETE CASCADE)
 
 **Unique Constraint:**
 
@@ -545,9 +545,9 @@ The smallest unit of work - assignable, trackable, completable items.
 
 **Foreign Keys:**
 
-- `feature_id` → `roadmap_features.id` (ON DELETE CASCADE)
-- `assignee_id` → `profiles.id` (ON DELETE SET NULL)
-- `reporter_id` → `profiles.id` (ON DELETE SET NULL)
+- `feature_id` â†’ `roadmap_features.id` (ON DELETE CASCADE)
+- `assignee_id` â†’ `profiles.id` (ON DELETE SET NULL)
+- `reporter_id` â†’ `profiles.id` (ON DELETE SET NULL)
 
 **Unique Constraint:**
 
@@ -597,8 +597,8 @@ Comments and discussions on tasks (similar to Trello card comments).
 
 **Foreign Keys:**
 
-- `task_id` → `roadmap_tasks.id` (ON DELETE CASCADE)
-- `author_id` → `profiles.id` (ON DELETE CASCADE)
+- `task_id` â†’ `roadmap_tasks.id` (ON DELETE CASCADE)
+- `author_id` â†’ `profiles.id` (ON DELETE CASCADE)
 
 ```sql
 CREATE TABLE task_comments (
@@ -630,8 +630,8 @@ File attachments for tasks.
 
 **Foreign Keys:**
 
-- `task_id` → `roadmap_tasks.id` (ON DELETE CASCADE)
-- `uploaded_by` → `profiles.id` (ON DELETE CASCADE)
+- `task_id` â†’ `roadmap_tasks.id` (ON DELETE CASCADE)
+- `uploaded_by` â†’ `profiles.id` (ON DELETE CASCADE)
 
 ```sql
 CREATE TABLE task_attachments (
@@ -655,31 +655,31 @@ Progress is calculated automatically from the bottom up using database functions
 ### Calculation Formula
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    PROGRESS CALCULATION                          │
-│                                                                 │
-│  Key Change: Milestone progress is calculated from FEATURES,    │
-│  not from Epics. This ensures accurate delivery tracking.       │
-└─────────────────────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                    PROGRESS CALCULATION                          â”‚
+â”‚                                                                 â”‚
+â”‚  Key Change: Milestone progress is calculated from FEATURES,    â”‚
+â”‚  not from Epics. This ensures accurate delivery tracking.       â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 
 Task Progress:
-  ├── todo         = 0%
-  ├── in_progress  = 25%
-  ├── in_review    = 75%
-  ├── done         = 100%
-  └── blocked      = 0%
+  â”œâ”€â”€ todo         = 0%
+  â”œâ”€â”€ in_progress  = 25%
+  â”œâ”€â”€ in_review    = 75%
+  â”œâ”€â”€ done         = 100%
+  â””â”€â”€ blocked      = 0%
 
 Feature Progress:
-  └── AVG(task progress for all tasks in feature)
+  â””â”€â”€ AVG(task progress for all tasks in feature)
 
 Epic Progress:
-  └── AVG(feature progress for all features in epic)
+  â””â”€â”€ AVG(feature progress for all features in epic)
 
-Milestone Progress:  ⭐ KEY CHANGE
-  └── AVG(feature progress for all linked features via milestone_features)
+Milestone Progress:  â­ KEY CHANGE
+  â””â”€â”€ AVG(feature progress for all linked features via milestone_features)
 
 Roadmap Progress:
-  └── AVG(milestone progress for all milestones)
+  â””â”€â”€ AVG(milestone progress for all milestones)
 ```
 
 ### Progress Calculation Functions
@@ -1001,7 +1001,7 @@ CREATE INDEX idx_task_attachments_task_id ON task_attachments(task_id);
 INSERT INTO roadmaps (project_id, name, description, owner_id, start_date, end_date)
 VALUES (
   '550e8400-e29b-41d4-a716-446655440000', -- project_id
-  'Fitness Web App – MVP',
+  'Fitness Web App â€“ MVP',
   'Complete roadmap for launching the MVP of our fitness tracking application',
   '550e8400-e29b-41d4-a716-446655440001', -- owner_id
   '2026-02-01',
@@ -1048,7 +1048,7 @@ CROSS JOIN (VALUES
   ('Organize design assets', 'Set up design system and asset library', 1),
   ('Map user flows', 'Document all user journeys', 2)
 ) AS f(title, description, position)
-WHERE r.name = 'Fitness Web App – MVP'
+WHERE r.name = 'Fitness Web App â€“ MVP'
 AND e.title = 'Low-Fidelity Design';
 
 INSERT INTO roadmap_features (roadmap_id, epic_id, title, description, position)
@@ -1059,7 +1059,7 @@ CROSS JOIN (VALUES
   ('Polish login screens', 'Final login and signup designs', 0),
   ('Polish dashboard', 'Final dashboard visual design', 1)
 ) AS f(title, description, position)
-WHERE r.name = 'Fitness Web App – MVP'
+WHERE r.name = 'Fitness Web App â€“ MVP'
 AND e.title = 'High-Fidelity Design';
 
 -- Now link Features to the Design Ready milestone
@@ -1112,7 +1112,7 @@ WHERE r.id = 'abc123...';
 
 ```json
 {
-  "name": "Fitness Web App – MVP",
+  "name": "Fitness Web App â€“ MVP",
   "status": "active",
   "overall_progress": 35.5,
   "milestones": [
@@ -1135,111 +1135,111 @@ WHERE r.id = 'abc123...';
 ### Correct Mental Model
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    UI MENTAL MODEL                              │
-└─────────────────────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                    UI MENTAL MODEL                              â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 
-✗ WRONG (Old Model):
+âœ— WRONG (Old Model):
   Milestone
-   └── Epic
-       └── Feature
-           └── Task
+   â””â”€â”€ Epic
+       â””â”€â”€ Feature
+           â””â”€â”€ Task
 
-✓ CORRECT (New Model):
+âœ“ CORRECT (New Model):
   Milestone
-   ├── Feature (from Epic A)
-   ├── Feature (from Epic B)
-   └── Feature (from Epic C)
+   â”œâ”€â”€ Feature (from Epic A)
+   â”œâ”€â”€ Feature (from Epic B)
+   â””â”€â”€ Feature (from Epic C)
 
   Epics appear as:
-   • Swimlanes
-   • Group headers / Color coding
-   • Filters
-   • Sidebar navigation
+   â€¢ Swimlanes
+   â€¢ Group headers / Color coding
+   â€¢ Filters
+   â€¢ Sidebar navigation
 ```
 
 ### Milestone View (Delivery-focused)
 
 ```
-📝 Roadmap: Fitness Web App – MVP
-│
-├── 🏔 Milestone: Design Ready (Feb 15) ████████░░ 80%
-│   ├── 📑 Define app structure (Epic: Low-Fi Design) ██████████ 100%
-│   │   ├── ✅ Create login screen wireframe
-│   │   ├── ✅ Create dashboard wireframe
-│   │   └── ✅ Create workout logging wireframe
-│   ├── 📑 Map user flows (Epic: Low-Fi Design) ██████████ 100%
-│   │   ├── ✅ Document signup flow
-│   │   └── ✅ Document workout logging flow
-│   ├── 📑 Polish login screens (Epic: Hi-Fi Design) ██████░░░░ 60%
-│   │   ├── ✅ Final login design
-│   │   └── ⏳ Final signup design
-│   └── 📑 Polish dashboard (Epic: Hi-Fi Design) ██░░░░░░░░ 25%
-│       └── ⏳ Dashboard visual design
-│
-├── 🏔 Milestone: Backend Ready (Mar 10) ███░░░░░░░ 30%
-│   ├── 📑 User registration API (Epic: Auth System)
-│   ├── 📑 Login/logout API (Epic: Auth System)
-│   ├── 📑 Create workout endpoint (Epic: Workout API)
-│   └── ...
-│
-└── 🏔 Milestone: MVP Launch (Apr 1) █░░░░░░░░░ 5%
-    └── ...
+ðŸ“ Roadmap: Fitness Web App â€“ MVP
+â”‚
+â”œâ”€â”€ ðŸ” Milestone: Design Ready (Feb 15) â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘â–‘ 80%
+â”‚   â”œâ”€â”€ ðŸ“‘ Define app structure (Epic: Low-Fi Design) â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆ 100%
+â”‚   â”‚   â”œâ”€â”€ âœ… Create login screen wireframe
+â”‚   â”‚   â”œâ”€â”€ âœ… Create dashboard wireframe
+â”‚   â”‚   â””â”€â”€ âœ… Create workout logging wireframe
+â”‚   â”œâ”€â”€ ðŸ“‘ Map user flows (Epic: Low-Fi Design) â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆ 100%
+â”‚   â”‚   â”œâ”€â”€ âœ… Document signup flow
+â”‚   â”‚   â””â”€â”€ âœ… Document workout logging flow
+â”‚   â”œâ”€â”€ ðŸ“‘ Polish login screens (Epic: Hi-Fi Design) â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘â–‘â–‘â–‘ 60%
+â”‚   â”‚   â”œâ”€â”€ âœ… Final login design
+â”‚   â”‚   â””â”€â”€ â³ Final signup design
+â”‚   â””â”€â”€ ðŸ“‘ Polish dashboard (Epic: Hi-Fi Design) â–ˆâ–ˆâ–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘ 25%
+â”‚       â””â”€â”€ â³ Dashboard visual design
+â”‚
+â”œâ”€â”€ ðŸ” Milestone: Backend Ready (Mar 10) â–ˆâ–ˆâ–ˆâ–‘â–‘â–‘â–‘â–‘â–‘â–‘ 30%
+â”‚   â”œâ”€â”€ ðŸ“‘ User registration API (Epic: Auth System)
+â”‚   â”œâ”€â”€ ðŸ“‘ Login/logout API (Epic: Auth System)
+â”‚   â”œâ”€â”€ ðŸ“‘ Create workout endpoint (Epic: Workout API)
+â”‚   â””â”€â”€ ...
+â”‚
+â””â”€â”€ ðŸ” Milestone: MVP Launch (Apr 1) â–ˆâ–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘ 5%
+    â””â”€â”€ ...
 ```
 
 ### Epic View (Work Organization)
 
 ```
-📦 Epic: Low-Fidelity Design ██████████ 100%
-│  Tags: [design] [ui]
-│  Contributes to: Design Ready
-│
-├── 📑 Feature: Define app structure
-│   ├── ✅ Create login screen wireframe
-│   ├── ✅ Create dashboard wireframe
-│   └── ✅ Create workout logging wireframe
-│
-├── 📑 Feature: Organize design assets
-│   └── ✅ Set up design system
-│
-└── 📑 Feature: Map user flows
-    ├── ✅ Document signup flow
-    └── ✅ Document workout logging flow
+ðŸ“¦ Epic: Low-Fidelity Design â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆ 100%
+â”‚  Tags: [design] [ui]
+â”‚  Contributes to: Design Ready
+â”‚
+â”œâ”€â”€ ðŸ“‘ Feature: Define app structure
+â”‚   â”œâ”€â”€ âœ… Create login screen wireframe
+â”‚   â”œâ”€â”€ âœ… Create dashboard wireframe
+â”‚   â””â”€â”€ âœ… Create workout logging wireframe
+â”‚
+â”œâ”€â”€ ðŸ“‘ Feature: Organize design assets
+â”‚   â””â”€â”€ âœ… Set up design system
+â”‚
+â””â”€â”€ ðŸ“‘ Feature: Map user flows
+    â”œâ”€â”€ âœ… Document signup flow
+    â””â”€â”€ âœ… Document workout logging flow
 
-📦 Epic: High-Fidelity Design ██████░░░░ 60%
-│  Tags: [design] [ui]
-│  Contributes to: Design Ready
-│
-├── 📑 Feature: Polish login screens
-│   ├── ✅ Final login design
-│   └── ⏳ Final signup design
-│
-└── 📑 Feature: Polish dashboard
-    └── ⏳ Dashboard visual design
+ðŸ“¦ Epic: High-Fidelity Design â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘â–‘â–‘â–‘ 60%
+â”‚  Tags: [design] [ui]
+â”‚  Contributes to: Design Ready
+â”‚
+â”œâ”€â”€ ðŸ“‘ Feature: Polish login screens
+â”‚   â”œâ”€â”€ âœ… Final login design
+â”‚   â””â”€â”€ â³ Final signup design
+â”‚
+â””â”€â”€ ðŸ“‘ Feature: Polish dashboard
+    â””â”€â”€ â³ Dashboard visual design
 ```
 
 ### Timeline View
 
 ```
 Feb 1                Feb 15              Mar 10              Mar 25              Apr 1
-  │                    │                   │                   │                   │
-  │──── Low-Fi Design ─┼                   │                   │                   │
-  │────── High-Fi Design ──────────────────│                   │                   │
-  │                    │── Auth System ────┼                   │                   │
-  │                    │── Workout API ────┼                   │                   │
-  │                    │                   │── Auth Screens ───┼                   │
-  │                    │                   │── Dashboard UI ───┼───────────────────│
-  │                    │                   │                   │                   │
-  │                    ▲                   ▲                   ▲                   ▲
-  │               Design Ready       Backend Ready      Frontend Ready       MVP Launch
-  │                   80%                30%                10%                  5%
+  â”‚                    â”‚                   â”‚                   â”‚                   â”‚
+  â”‚â”€â”€â”€â”€ Low-Fi Design â”€â”¼                   â”‚                   â”‚                   â”‚
+  â”‚â”€â”€â”€â”€â”€â”€ High-Fi Design â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”‚                   â”‚                   â”‚
+  â”‚                    â”‚â”€â”€ Auth System â”€â”€â”€â”€â”¼                   â”‚                   â”‚
+  â”‚                    â”‚â”€â”€ Workout API â”€â”€â”€â”€â”¼                   â”‚                   â”‚
+  â”‚                    â”‚                   â”‚â”€â”€ Auth Screens â”€â”€â”€â”¼                   â”‚
+  â”‚                    â”‚                   â”‚â”€â”€ Dashboard UI â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”‚
+  â”‚                    â”‚                   â”‚                   â”‚                   â”‚
+  â”‚                    â–²                   â–²                   â–²                   â–²
+  â”‚               Design Ready       Backend Ready      Frontend Ready       MVP Launch
+  â”‚                   80%                30%                10%                  5%
 ```
 
 ---
 
 ## Why This Schema Works
 
-| ✅ Benefit                      | Description                                                 |
+| âœ… Benefit                      | Description                                                 |
 | ------------------------------- | ----------------------------------------------------------- |
 | **Feature-based delivery**      | Milestones track features (smallest deliverable), not epics |
 | **Partial epic delivery**       | Features from one epic can span multiple milestones         |
@@ -1257,12 +1257,12 @@ Feb 1                Feb 15              Mar 10              Mar 25             
 
 The critical insight is that **milestones should track delivered features, not epics**:
 
-| ❌ Old Model (Problematic)        | ✅ New Model (Correct)                   |
+| âŒ Old Model (Problematic)        | âœ… New Model (Correct)                   |
 | --------------------------------- | ---------------------------------------- |
-| `Milestone ↔ Epic`                | `Milestone ↔ Feature`                    |
+| `Milestone â†” Epic`                | `Milestone â†” Feature`                    |
 | Epics are too large to be "done"  | Features are smallest deliverable unit   |
 | Epic progress inflates milestones | Feature progress is accurate             |
-| Can't do partial epic delivery    | Features from one epic → many milestones |
+| Can't do partial epic delivery    | Features from one epic â†’ many milestones |
 | UI implies epics "belong" to MS   | Epics are structural containers only     |
 
 ---
@@ -1285,3 +1285,4 @@ When implementing, create tables in this order to respect foreign key dependenci
 12. RLS policies
 13. Indexes
 14. Triggers for `updated_at`
+

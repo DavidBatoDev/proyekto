@@ -1,6 +1,9 @@
-# Supabase Infrastructure
+﻿# Infrastructure
 
-This folder contains Terraform configuration for managing Supabase infrastructure across environments.
+This folder contains Terraform configuration for:
+
+- Supabase infrastructure across environments
+- Cloudflare edge/cache setup for the API (`infra/cloudflare`)
 
 ## Prerequisites
 
@@ -10,18 +13,16 @@ This folder contains Terraform configuration for managing Supabase infrastructur
 
 ## Structure
 
-```
+```text
 infra/
-├── modules/          # Reusable Terraform modules
-├── environments/     # Environment-specific configurations
-│   ├── dev/
-│   ├── staging/
-│   └── prod/
-├── shared/          # Shared provider configuration
-└── scripts/         # Deployment scripts
+|- modules/       # Reusable Terraform modules (Supabase)
+|- environments/  # Environment-specific configs (dev/prod)
+|- cloudflare/    # Cloudflare DNS + cache rules for api.proyekto.tech
+|- shared/        # Shared provider configuration
+`- scripts/       # Deployment scripts
 ```
 
-## Setup
+## Supabase Setup
 
 ### 1. Get Supabase Access Token
 
@@ -70,22 +71,24 @@ cd api
 npx supabase migration new migration_name
 ```
 
-## What Terraform Manages
+## What Terraform Manages (Supabase stack)
 
-- ✅ Storage buckets (project-files, avatars)
-- ✅ Storage bucket policies
-- ✅ Project settings
-- ❌ Database schema (use Supabase CLI migrations)
-- ❌ Auth providers (configure via Supabase dashboard)
+- Storage buckets (project-files, avatars)
+- Storage bucket policies
+- Project settings
+- Database schema is **not** managed here (use Supabase CLI migrations)
+- Auth providers are **not** managed here (configure via Supabase dashboard)
 
 ## Environments
 
 ### Development
+
 - Project: `prodigitality-dev-supabase`
 - Ref: `ftuiloyegcipkupbtias`
 - Region: South Asia (Mumbai)
 
 ### Production
+
 - Project: `prodigitality-prod-supabase`
 - Ref: `dlfsqsjzqiuoaekzvhrd`
 - Region: Oceania (Sydney)
@@ -95,3 +98,4 @@ npx supabase migration new migration_name
 - Never commit sensitive values (tokens, passwords) to version control
 - Use `TF_VAR_` environment variables for secrets
 - Storage bucket policies reference database tables, so apply migrations first
+- For Cloudflare rollout instructions, see `infra/cloudflare/README.md`

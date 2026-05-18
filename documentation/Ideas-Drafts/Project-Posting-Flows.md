@@ -1,4 +1,4 @@
-In the **Prodigi Work Hub**, the flow depends on the **Persona** (Client or Consultant) and the **Entry Point** (Project-first or Roadmap-first). Because the platform mandates a **Consultant Layer**, any flow initiated by a Client remains "Pending" or "Draft" until a Consultant is matched.
+﻿In the **Proyekto Work Hub**, the flow depends on the **Persona** (Client or Consultant) and the **Entry Point** (Project-first or Roadmap-first). Because the platform mandates a **Consultant Layer**, any flow initiated by a Client remains "Pending" or "Draft" until a Consultant is matched.
 
 ---
 
@@ -26,7 +26,7 @@ This is the **"Draft-Led"** flow, where a Client wants to outline their own goal
 
 ### 3. Creating a Project first (without a roadmap) by a Consultant
 
-This is the **"Infrastructure-Led"** flow, often used when a Consultant is migrating an existing project to Prodigi.
+This is the **"Infrastructure-Led"** flow, often used when a Consultant is migrating an existing project to Proyekto.
 
 1. **Initialization:** The Consultant creates a project and is assigned as both `consultant_id` and temporary `client_id`.
 2. **Architecture:** The Consultant adds the technical `project_brief` details.
@@ -45,7 +45,7 @@ This is the **"Architecture-Led"** flow, where the Consultant builds a "Package"
 
 ---
 
-### 🎨 Summary Comparison
+### ðŸŽ¨ Summary Comparison
 
 | Flow | Starting Owner | Mandatory Action | Final Outcome |
 | --- | --- | --- | --- |

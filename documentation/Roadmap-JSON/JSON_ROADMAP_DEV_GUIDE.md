@@ -1,8 +1,8 @@
-# JSON Roadmap Developer Guide
+﻿# JSON Roadmap Developer Guide
 
 ## Purpose
 
-This guide explains how developers can create and modify a full roadmap structure using JSON in PRDigy.
+This guide explains how developers can create and modify a full roadmap structure using JSON in Proyekto.
 
 It covers:
 
@@ -267,3 +267,4 @@ Backend:
 Database migration function:
 
 - `supabase/migrations/20260306133000_enforce_owner_id_in_upsert_full_roadmap.sql`
+

@@ -1,16 +1,16 @@
-# Prodigi Work Hub - Infrastructure Setup Guide
+﻿# Proyekto Work Hub - Infrastructure Setup Guide
 
 Complete setup guide for the Supabase + Express.js infrastructure.
 
-## 🎯 Overview
+## ðŸŽ¯ Overview
 
 - **Database & Auth**: Supabase (RLS-based multi-tenant)
-- **Backend**: Express.js (Vercel serverless → Cloud Run)
+- **Backend**: Express.js (Vercel serverless â†’ Cloud Run)
 - **Frontend**: React + Vite + TanStack
 - **Infrastructure**: Terraform (storage buckets, policies)
 - **Migrations**: Supabase CLI (version-controlled SQL)
 
-## 📋 Prerequisites
+## ðŸ“‹ Prerequisites
 
 - Node.js >= 20.16.0
 - Terraform >= 1.5.0
@@ -18,13 +18,13 @@ Complete setup guide for the Supabase + Express.js infrastructure.
   - `prodigitality-dev-supabase` (ftuiloyegcipkupbtias)
   - `prodigitality-prod-supabase` (dlfsqsjzqiuoaekzvhrd)
 
-## 🚀 Quick Start
+## ðŸš€ Quick Start
 
 ### 1. Clone and Install
 
 ```bash
 git clone <repo-url>
-cd prdigy
+cd proyekto
 
 # Install API dependencies
 cd api
@@ -56,17 +56,17 @@ npm run db:push
 
 This creates:
 
-- ✅ All database tables (profiles, projects, work_items, etc.)
-- ✅ All RLS policies
-- ✅ Indexes and triggers
+- âœ… All database tables (profiles, projects, work_items, etc.)
+- âœ… All RLS policies
+- âœ… Indexes and triggers
 
 ### 4. Get Supabase Credentials
 
 Go to [Supabase Dashboard](https://supabase.com/dashboard/project/ftuiloyegcipkupbtias/settings/api):
 
-- Copy **Project URL** → `SUPABASE_URL`
-- Copy **anon public** key → `SUPABASE_ANON_KEY`
-- Copy **service_role** key → `SUPABASE_SERVICE_ROLE_KEY`
+- Copy **Project URL** â†’ `SUPABASE_URL`
+- Copy **anon public** key â†’ `SUPABASE_ANON_KEY`
+- Copy **service_role** key â†’ `SUPABASE_SERVICE_ROLE_KEY`
 
 ### 5. Configure API Environment
 
@@ -113,7 +113,7 @@ cd web
 npm run dev
 ```
 
-## 🏗️ Terraform Setup (Optional - Storage Buckets)
+## ðŸ—ï¸ Terraform Setup (Optional - Storage Buckets)
 
 ### 1. Get Supabase Access Token
 
@@ -145,11 +145,11 @@ terraform apply
 
 This creates:
 
-- ✅ `project-files` storage bucket (private)
-- ✅ `avatars` storage bucket (public)
-- ✅ Storage bucket policies
+- âœ… `project-files` storage bucket (private)
+- âœ… `avatars` storage bucket (public)
+- âœ… Storage bucket policies
 
-## 📊 Database Schema
+## ðŸ“Š Database Schema
 
 ### Core Tables
 
@@ -173,7 +173,7 @@ This creates:
 - **Chat**: Channel-based (dev-team excludes client)
 - **Payments**: Members read, Consultant/Admin write
 
-## 🔑 Authentication Flow
+## ðŸ”‘ Authentication Flow
 
 ### 1. User Registration (Supabase Auth)
 
@@ -218,7 +218,7 @@ const response = await fetch("/api/auth/persona", {
 });
 ```
 
-## 🧪 Testing the Setup
+## ðŸ§ª Testing the Setup
 
 ### 1. Test Auth Endpoint
 
@@ -242,36 +242,36 @@ curl -H "Authorization: Bearer <jwt>" \
   http://localhost:3000/api/users/me
 ```
 
-## 📁 Project Structure
+## ðŸ“ Project Structure
 
 ```
-prdigy/
-├── api/                    # Express.js backend
-│   ├── src/
-│   │   ├── app.js         # Express app
-│   │   ├── index.js       # Cloud Run entry
-│   │   ├── lib/           # Supabase clients
-│   │   ├── middleware/    # Auth middleware
-│   │   └── routes/        # API routes
-│   ├── api/
-│   │   └── index.js       # Vercel serverless entry
-│   ├── supabase/
-│   │   ├── config.toml
-│   │   └── migrations/    # SQL migrations
-│   └── vercel.json
-├── web/                    # React frontend
-│   └── src/
-│       ├── lib/
-│       │   └── supabase.ts
-│       └── routes/
-├── infra/                  # Terraform IaC
-│   ├── modules/           # Reusable modules
-│   ├── environments/      # Dev/Prod configs
-│   └── shared/            # Provider config
-└── documentation/          # Project docs
+proyekto/
+â”œâ”€â”€ api/                    # Express.js backend
+â”‚   â”œâ”€â”€ src/
+â”‚   â”‚   â”œâ”€â”€ app.js         # Express app
+â”‚   â”‚   â”œâ”€â”€ index.js       # Cloud Run entry
+â”‚   â”‚   â”œâ”€â”€ lib/           # Supabase clients
+â”‚   â”‚   â”œâ”€â”€ middleware/    # Auth middleware
+â”‚   â”‚   â””â”€â”€ routes/        # API routes
+â”‚   â”œâ”€â”€ api/
+â”‚   â”‚   â””â”€â”€ index.js       # Vercel serverless entry
+â”‚   â”œâ”€â”€ supabase/
+â”‚   â”‚   â”œâ”€â”€ config.toml
+â”‚   â”‚   â””â”€â”€ migrations/    # SQL migrations
+â”‚   â””â”€â”€ vercel.json
+â”œâ”€â”€ web/                    # React frontend
+â”‚   â””â”€â”€ src/
+â”‚       â”œâ”€â”€ lib/
+â”‚       â”‚   â””â”€â”€ supabase.ts
+â”‚       â””â”€â”€ routes/
+â”œâ”€â”€ infra/                  # Terraform IaC
+â”‚   â”œâ”€â”€ modules/           # Reusable modules
+â”‚   â”œâ”€â”€ environments/      # Dev/Prod configs
+â”‚   â””â”€â”€ shared/            # Provider config
+â””â”€â”€ documentation/          # Project docs
 ```
 
-## 🚢 Deployment
+## ðŸš¢ Deployment
 
 ### Vercel (Current)
 
@@ -310,7 +310,7 @@ gcloud run deploy prodigi-api \
   --region us-central1
 ```
 
-## 🔧 Common Tasks
+## ðŸ”§ Common Tasks
 
 ### Add New Migration
 
@@ -337,8 +337,10 @@ npx supabase link --project-ref dlfsqsjzqiuoaekzvhrd
 npm run db:push
 ```
 
-## 📞 Support
+## ðŸ“ž Support
 
 - [Supabase Docs](https://supabase.com/docs)
 - [Express.js Docs](https://expressjs.com/)
 - [Terraform Supabase Provider](https://registry.terraform.io/providers/supabase/supabase/latest/docs)
+
+

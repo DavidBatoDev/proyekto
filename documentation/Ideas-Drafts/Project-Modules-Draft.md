@@ -1,8 +1,8 @@
-Based on your current schema and the **Prodigi Work Hub** architecture, the project environment is divided into several specialized modules. Each module serves a specific persona (Client, Consultant, or Freelancer) while maintaining the **Consultant-as-a-Bridge** governance model.
+﻿Based on your current schema and the **Proyekto Work Hub** architecture, the project environment is divided into several specialized modules. Each module serves a specific persona (Client, Consultant, or Freelancer) while maintaining the **Consultant-as-a-Bridge** governance model.
 
 ---
 
-### 🏛️ 1. Project Strategy & Governance Module
+### ðŸ›ï¸ 1. Project Strategy & Governance Module
 
 This is the "Executive" layer where the project's identity and high-level boundaries are defined.
 
@@ -11,7 +11,7 @@ This is the "Executive" layer where the project's identity and high-level bounda
 * **Risk Register:** A managed list of technical and business risks with visibility controls to keep internal concerns hidden from the Client when necessary.
 * **Ownership & Transfer Logic:** Handles the transition of a project from a Consultant-led "Incubation" phase to a Client-funded "Active" phase.
 
-### 🏗️ 2. Execution & Roadmap Module
+### ðŸ—ï¸ 2. Execution & Roadmap Module
 
 This is the "Engine Room" where the technical work is organized into a four-tier hierarchy.
 
@@ -20,7 +20,7 @@ This is the "Engine Room" where the technical work is organized into a four-tier
 * **Versioned Roadmaps:** Allows for "Standalone Roadmaps" that can be promoted to project instances once a Consultant is matched.
 * **Deliverable Tracking:** A boolean system (`is_deliverable`) to distinguish between internal work and client-facing milestones.
 
-### 💰 3. Financial & Escrow Module
+### ðŸ’° 3. Financial & Escrow Module
 
 This module manages the "Financial Cascade," ensuring everyone is paid automatically based on verified work.
 
@@ -29,7 +29,7 @@ This module manages the "Financial Cascade," ensuring everyone is paid automatic
 * **Fee Management:** Calculates and distributes the `platform_fee_percent` and `consultant_fee_percent` during the payout cascade.
 * **Budget Tracking:** Provides the Client with transparency on "Burn Rate" and remaining funds.
 
-### 🤝 4. Team & Member Management Module
+### ðŸ¤ 4. Team & Member Management Module
 
 This module governs who can enter the project and what they can do.
 
@@ -38,7 +38,7 @@ This module governs who can enter the project and what they can do.
 * **Consultant Marketplace (Internal):** Allows Consultants to scout and invite vetted Freelancers to join the project team.
 * **Role Transitions:** Facilitates the "Handshake" where a Consultant transfers project ownership to a Client.
 
-### 💬 5. Communication & Collaboration Module
+### ðŸ’¬ 5. Communication & Collaboration Module
 
 This ensures alignment through structured, tiered channels.
 
