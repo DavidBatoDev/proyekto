@@ -4,8 +4,30 @@
 import { supabase } from "./supabase";
 import { apiClient } from "@/api";
 
-const GUEST_SESSION_KEY = "prdigy_guest_session_id";
-const GUEST_USER_ID_KEY = "prdigy_guest_user_id";
+const GUEST_SESSION_KEY = "proyekto_guest_session_id";
+const LEGACY_GUEST_SESSION_KEY = "prdigy_guest_session_id";
+const GUEST_USER_ID_KEY = "proyekto_guest_user_id";
+const LEGACY_GUEST_USER_ID_KEY = "prdigy_guest_user_id";
+
+function getStorageItemWithLegacyFallback(
+  primaryKey: string,
+  legacyKey: string,
+): string | null {
+  if (typeof window === "undefined") return null;
+
+  const primaryValue = localStorage.getItem(primaryKey);
+  if (primaryValue !== null) {
+    return primaryValue;
+  }
+
+  const legacyValue = localStorage.getItem(legacyKey);
+  if (legacyValue !== null) {
+    localStorage.setItem(primaryKey, legacyValue);
+    localStorage.removeItem(legacyKey);
+  }
+
+  return legacyValue;
+}
 
 // Cache for in-flight guest user creation promise to prevent concurrent duplicates
 let guestUserCreationPromise: Promise<string | null> | null = null;
@@ -21,8 +43,10 @@ export function generateGuestSessionId(): string {
  * Gets the current guest session ID from localStorage
  */
 export function getGuestSessionId(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(GUEST_SESSION_KEY);
+  return getStorageItemWithLegacyFallback(
+    GUEST_SESSION_KEY,
+    LEGACY_GUEST_SESSION_KEY,
+  );
 }
 
 /**
@@ -37,8 +61,10 @@ export function setGuestSessionId(sessionId: string): void {
  * Gets the cached guest user ID from localStorage
  */
 export function getCachedGuestUserId(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(GUEST_USER_ID_KEY);
+  return getStorageItemWithLegacyFallback(
+    GUEST_USER_ID_KEY,
+    LEGACY_GUEST_USER_ID_KEY,
+  );
 }
 
 /**
@@ -56,6 +82,8 @@ export function clearGuestSession(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem(GUEST_SESSION_KEY);
   localStorage.removeItem(GUEST_USER_ID_KEY);
+  localStorage.removeItem(LEGACY_GUEST_SESSION_KEY);
+  localStorage.removeItem(LEGACY_GUEST_USER_ID_KEY);
 }
 
 /**

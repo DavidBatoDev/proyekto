@@ -42,7 +42,15 @@ apiClient.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`;
       } else {
         // No auth session, check for guest user
-        const guestUserId = localStorage.getItem("prdigy_guest_user_id");
+        const guestUserId =
+          localStorage.getItem("proyekto_guest_user_id") ??
+          localStorage.getItem("prdigy_guest_user_id");
+        if (
+          guestUserId &&
+          localStorage.getItem("proyekto_guest_user_id") === null
+        ) {
+          localStorage.setItem("proyekto_guest_user_id", guestUserId);
+        }
         if (guestUserId && config.headers) {
           config.headers["X-Guest-User-Id"] = guestUserId;
         }

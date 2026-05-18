@@ -50,7 +50,8 @@ function handleError(error: unknown, operation: string): never {
 }
 
 class MigrationService {
-  private readonly MIGRATION_STATUS_KEY = "prdigy_migration_status";
+  private readonly MIGRATION_STATUS_KEY = "proyekto_migration_status";
+  private readonly LEGACY_MIGRATION_STATUS_KEY = "prdigy_migration_status";
 
   /**
    * Check if there are guest roadmaps to migrate
@@ -140,6 +141,7 @@ class MigrationService {
   resetMigrationStatus(): void {
     if (typeof window === "undefined") return;
     localStorage.removeItem(this.MIGRATION_STATUS_KEY);
+    localStorage.removeItem(this.LEGACY_MIGRATION_STATUS_KEY);
   }
 
   /**
@@ -148,7 +150,18 @@ class MigrationService {
   private getMigrationStatus(): any {
     if (typeof window === "undefined") return null;
     const stored = localStorage.getItem(this.MIGRATION_STATUS_KEY);
-    return stored ? JSON.parse(stored) : null;
+    if (stored) {
+      return JSON.parse(stored);
+    }
+
+    const legacyStored = localStorage.getItem(this.LEGACY_MIGRATION_STATUS_KEY);
+    if (!legacyStored) {
+      return null;
+    }
+
+    localStorage.setItem(this.MIGRATION_STATUS_KEY, legacyStored);
+    localStorage.removeItem(this.LEGACY_MIGRATION_STATUS_KEY);
+    return JSON.parse(legacyStored);
   }
 
   /**
