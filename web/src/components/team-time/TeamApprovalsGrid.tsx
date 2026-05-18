@@ -689,10 +689,8 @@ export function TeamApprovalsGrid({
 
 	const tableRef = useRef<HTMLTableElement | null>(null);
 	const orderedRowIds = table.getRowModel().rows.map((r) => r.original.id);
-	const { selectedCells, isSelected, getCellDataProps } =
-		useTableCellSelection(orderedRowIds, SELECTABLE_COLS, tableRef);
 
-	// Stable refs so the effect below never goes stale without re-running
+	// Stable refs used inside callbacks so they never go stale
 	const logsRef = useRef(logs);
 	logsRef.current = logs;
 	const currentUserIdRef = useRef(currentUserId);
@@ -703,23 +701,32 @@ export function TeamApprovalsGrid({
 	rowPendingByIdRef.current = rowPendingById;
 	const onToggleSelectLogRef = useRef(onToggleSelectLog);
 	onToggleSelectLogRef.current = onToggleSelectLog;
+	const onToggleSelectAllRef = useRef(onToggleSelectAll);
+	onToggleSelectAllRef.current = onToggleSelectAll;
 
-	// Auto-check rows when their checkbox cell is highlighted
-	useEffect(() => {
-		for (const key of selectedCells) {
-			const [rowId, colId] = key.split(":");
-			if (colId !== "select") continue;
-			const log = logsRef.current.find((l) => l.id === rowId);
-			if (!log) continue;
-			const isRunning = !log.ended_at;
-			const isSelf =
-				currentUserIdRef.current !== null &&
-				log.member_user_id === currentUserIdRef.current;
-			if (isRunning || isSelf) continue;
-			if (selectedLogIdsRef.current.has(rowId) || rowPendingByIdRef.current[rowId]) continue;
-			onToggleSelectLogRef.current(rowId, true);
-		}
-	}, [selectedCells]);
+	const { selectedCells, isSelected, getCellDataProps } =
+		useTableCellSelection(orderedRowIds, SELECTABLE_COLS, tableRef, {
+			// Fires on every drag frame — auto-check eligible "select" column cells immediately
+			onLiveSelectionChange(cells) {
+				for (const key of cells) {
+					const [rowId, colId] = key.split(":");
+					if (colId !== "select") continue;
+					const log = logsRef.current.find((l) => l.id === rowId);
+					if (!log) continue;
+					const isRunning = !log.ended_at;
+					const isSelf =
+						currentUserIdRef.current !== null &&
+						log.member_user_id === currentUserIdRef.current;
+					if (isRunning || isSelf) continue;
+					if (selectedLogIdsRef.current.has(rowId) || rowPendingByIdRef.current[rowId]) continue;
+					onToggleSelectLogRef.current(rowId, true);
+				}
+			},
+			// Click outside table → clear both highlights and checkbox selections
+			onClickOutside() {
+				onToggleSelectAllRef.current(false, []);
+			},
+		});
 
 	if (loadingLogs) return <TeamApprovalsGridSkeleton />;
 

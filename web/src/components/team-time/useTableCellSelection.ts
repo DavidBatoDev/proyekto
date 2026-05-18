@@ -78,6 +78,11 @@ function axisSpeed(
 
 const SELECTION_BG = "rgb(219 234 254)"; // bg-blue-100
 
+export interface TableCellSelectionOptions {
+	onLiveSelectionChange?: (cells: Set<CellKey>) => void;
+	onClickOutside?: () => void;
+}
+
 export interface TableCellSelectionResult {
 	selectedCells: Set<CellKey>;
 	hasSelection: boolean;
@@ -90,6 +95,7 @@ export function useTableCellSelection(
 	orderedRowIds: string[],
 	orderedColIds: string[],
 	tableRef: RefObject<HTMLTableElement | null>,
+	options?: TableCellSelectionOptions,
 ): TableCellSelectionResult {
 	const [selectedCells, setSelectedCellsState] = useState<Set<CellKey>>(new Set());
 
@@ -100,6 +106,11 @@ export function useTableCellSelection(
 	rowIdsRef.current = orderedRowIds;
 	const colIdsRef = useRef(orderedColIds);
 	colIdsRef.current = orderedColIds;
+
+	const onLiveSelectionChangeRef = useRef(options?.onLiveSelectionChange);
+	onLiveSelectionChangeRef.current = options?.onLiveSelectionChange;
+	const onClickOutsideRef = useRef(options?.onClickOutside);
+	onClickOutsideRef.current = options?.onClickOutside;
 
 	const isDraggingRef = useRef(false);
 	const anchorRef = useRef<CellKey | null>(null);
@@ -134,6 +145,7 @@ export function useTableCellSelection(
 					el.style.backgroundColor = SELECTION_BG;
 				}
 			}
+			onLiveSelectionChangeRef.current?.(next);
 		},
 		[tableRef],
 	);
@@ -279,6 +291,7 @@ export function useTableCellSelection(
 				commitSelection(new Set());
 				anchorRef.current = null;
 				baseSelectionRef.current = new Set();
+				onClickOutsideRef.current?.();
 				return;
 			}
 
