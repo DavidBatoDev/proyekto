@@ -53,7 +53,7 @@ const About = () => {
                   letterSpacing: "1px",
                 }}
               >
-                PRODIGITALITY
+                PROYEKTO
               </div>
             </div>
           </div>
@@ -72,18 +72,18 @@ const About = () => {
               <span className="text-orange-500 font-semibold">
                 Pro
               </span>ductive.{" "}
-              <span className="text-orange-500 font-semibold">Pro</span>digy.
+              <span className="text-orange-500 font-semibold">Pro</span>yekto.
               The new standard for managed delivery.
             </p>
             <p className="text-base text-gray-600 leading-relaxed">
-              Prodigy is the first managed work hub designed for high-stakes
+              Proyekto is the first managed work hub designed for high-stakes
               delivery. We bridge the gap between open marketplaces and
               traditional agencies by integrating expert project management
               directly into the workflow.
             </p>
             <p className="text-base text-gray-600 leading-relaxed">
               We combine top-tier talent with AI-driven oversight to ensure
-              clarity, security, and velocity. With Prodigi, you don't just hire
+              clarity, security, and velocity. With Proyekto, you don't just hire
               a freelancer; you deploy a fully managed, architectural-grade
               team.
             </p>

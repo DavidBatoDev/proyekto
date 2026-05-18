@@ -46,7 +46,7 @@ const Services = () => {
           </div>
           <div className="flex items-center">
             <p className="text-base text-gray-600 leading-relaxed">
-              At Prodigi, we don't just connect you with freelancers; we manage
+              At Proyekto, we don't just connect you with freelancers; we manage
               the entire delivery lifecycle. By combining expert human oversight
               with AI-driven roadmaps, we ensure your project is built
               correctly, on time, and within budget.

@@ -12,7 +12,7 @@ const References = () => {
           <div className="flex flex-col justify-center">
             <p className="text-base text-gray-600 leading-relaxed mb-6">
               Our managed approach eliminates the risks of remote development. See
-              how Prodigi Consultants have helped businesses ship complex software
+              how Proyekto Consultants have helped businesses ship complex software
               on time and without the chaos.
             </p>
             <button className="bg-orange-500 hover:bg-orange-600 text-white font-semibold px-6 py-3 rounded-lg w-fit transition-colors">
@@ -32,7 +32,7 @@ const References = () => {
                   Healthcare Data Migration.
                 </h3>
                 <p className="text-gray-600 leading-relaxed mb-6">
-                  A clinic network needed to move to the cloud securely. Their dedicated Prodigi team handled HIPAA compliance and executed a zero-downtime migration.
+                  A clinic network needed to move to the cloud securely. Their dedicated Proyekto team handled HIPAA compliance and executed a zero-downtime migration.
                 </p>
               </div>
               <div className="flex justify-end">
@@ -72,7 +72,7 @@ const References = () => {
                   Fintech App Launch.
                 </h3>
                 <p className="text-gray-600 leading-relaxed mb-6">
-                  A unified payments startup was struggling with technical debt. A Prodigi architect took control, restructured the team, and shipped the MVP in just 6 weeks.
+                  A unified payments startup was struggling with technical debt. A Proyekto architect took control, restructured the team, and shipped the MVP in just 6 weeks.
                 </p>
               </div>
               <div className="flex justify-end">
@@ -92,7 +92,7 @@ const References = () => {
                   SaaS MVP Under Budget.
                 </h3>
                 <p className="text-gray-600 leading-relaxed mb-6">
-                  By using Prodigi's Linear Roadmap, a logistics founder eliminated vague requirements. The project finished with $15k saved in avoided "scope creep."
+                  By using Proyekto's Linear Roadmap, a logistics founder eliminated vague requirements. The project finished with $15k saved in avoided "scope creep."
                 </p>
               </div>
               <div className="flex justify-end">

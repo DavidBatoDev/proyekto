@@ -13,7 +13,7 @@ console.log("Gemini API Key loaded:", GEMINI_API_KEY);
 // Initialize the Google GenAI client
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-const PRODIGI_SYSTEM_PROMPT = `You are Prodigi, an expert AI assistant specializing in roadmap creation and project planning. Your role is to help users build clear, achievable roadmaps for their projects.
+const PROYEKTO_SYSTEM_PROMPT = `You are Proyekto, an expert AI assistant specializing in roadmap creation and project planning. Your role is to help users build clear, achievable roadmaps for their projects.
 
 Primary focus:
 - Defining Epics and Features
@@ -45,8 +45,8 @@ export async function callGeminiAPI(
 ): Promise<string> {
   try {
     const systemInstruction = projectBrief?.trim()
-      ? `${PRODIGI_SYSTEM_PROMPT}\n\nProject Brief:\n${projectBrief.trim()}`
-      : PRODIGI_SYSTEM_PROMPT;
+      ? `${PROYEKTO_SYSTEM_PROMPT}\n\nProject Brief:\n${projectBrief.trim()}`
+      : PROYEKTO_SYSTEM_PROMPT;
 
     // Get the model instance with system prompt
     const model = genAI.getGenerativeModel({

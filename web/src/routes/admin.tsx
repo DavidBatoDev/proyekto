@@ -115,7 +115,7 @@ function AdminLayout() {
             {adminProfile.access_level}
           </span>
         </div>
-        <span className="text-xs text-white/70">Prodigi Work Hub</span>
+        <span className="text-xs text-white/70">Proyekto Work Hub</span>
       </div>
 
       <div className="flex flex-1 overflow-hidden">

@@ -57,7 +57,7 @@ export function ExperienceModal({ isOpen, onClose, onSave, isSaving, initialData
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Company <span className="text-red-400">*</span></label>
-            <input value={form.company} onChange={e => set("company", e.target.value)} className={cls} placeholder="e.g. Prodigi Inc." />
+            <input value={form.company} onChange={e => set("company", e.target.value)} className={cls} placeholder="e.g. Proyekto Inc." />
           </div>
         </div>
 
