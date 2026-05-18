@@ -10,6 +10,8 @@ import {
   ReactFlow,
   Controls,
   MiniMap,
+  Background,
+  BackgroundVariant,
   applyNodeChanges,
   type Node,
   type Edge,
@@ -1196,6 +1198,7 @@ export const RoadmapView = ({
           type: "simplebezier",
         }}
       >
+        <Background variant={BackgroundVariant.Dots} />
         <Controls position="top-right" />
         {showMiniMap && (
           <MiniMap

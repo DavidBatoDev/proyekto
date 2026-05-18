@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
@@ -12,6 +12,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 
 export const TIME_LOG_STATUSES = ['pending', 'approved', 'rejected'] as const;
@@ -25,12 +26,24 @@ export const TIME_LOG_REVIEW_DECISIONS = [
 export type TimeLogReviewDecision =
   (typeof TIME_LOG_REVIEW_DECISIONS)[number];
 
+const normalizeNullableTaskId = ({ value }: { value: unknown }) => {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const lower = trimmed.toLowerCase();
+  if (lower === 'null' || lower === 'undefined') return null;
+  return trimmed;
+};
+
 export class StartTimeLogDto {
   @IsUUID()
   project_id!: string;
 
+  @Transform(normalizeNullableTaskId)
+  @ValidateIf((_, value) => value !== '' && value !== null && value !== undefined)
+  @IsOptional()
   @IsUUID()
-  task_id!: string;
+  task_id?: string | null;
 }
 
 export class StopTimeLogDto {
@@ -40,9 +53,11 @@ export class StopTimeLogDto {
 }
 
 export class UpdateTimeLogDto {
+  @Transform(normalizeNullableTaskId)
+  @ValidateIf((_, value) => value !== '' && value !== null && value !== undefined)
   @IsOptional()
   @IsUUID()
-  task_id?: string;
+  task_id?: string | null;
 
   @IsOptional()
   @IsDateString()
@@ -57,8 +72,11 @@ export class CreateManualTimeLogDto {
   @IsUUID()
   project_id!: string;
 
+  @Transform(normalizeNullableTaskId)
+  @ValidateIf((_, value) => value !== '' && value !== null && value !== undefined)
+  @IsOptional()
   @IsUUID()
-  task_id!: string;
+  task_id?: string | null;
 
   @IsDateString()
   started_at!: string;

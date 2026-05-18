@@ -22,6 +22,34 @@ class EnvironmentVariables {
   @IsNumber()
   PORT: number = 3001;
 
+  @IsOptional()
+  @IsNumber()
+  REQUEST_TIMEOUT_MS: number = 25000;
+
+  @IsOptional()
+  @IsNumber()
+  SLOW_REQUEST_THRESHOLD_MS: number = 1500;
+
+  @IsOptional()
+  @IsNumber()
+  SUPABASE_FETCH_TIMEOUT_MS: number = 12000;
+
+  @IsOptional()
+  @IsString()
+  ENABLE_CLOUD_TRACE?: string;
+
+  @IsOptional()
+  @IsString()
+  CLOUD_TRACE_SAMPLE_RATIO?: string;
+
+  @IsOptional()
+  @IsString()
+  OTEL_SERVICE_NAME?: string;
+
+  @IsOptional()
+  @IsString()
+  OTEL_DEBUG_LOGS?: string;
+
   @IsUrl({ require_tld: false })
   SUPABASE_URL: string;
 

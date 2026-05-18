@@ -11,7 +11,6 @@ import {
 import { useEffect, useId, useMemo, useState } from "react";
 import { deleteRoadmap, getRoadmapsPreview } from "@/api";
 import type { RoadmapPreview } from "@/api/endpoints/roadmap";
-import { useAuthStore } from "@/stores/authStore";
 
 const ROADMAP_TAG_CLASS: Record<string, string> = {
 	Active: "bg-emerald-100 text-emerald-700",
@@ -86,12 +85,8 @@ function getProjectSettingsPath(projectId: string): string {
 }
 
 export function RoadmapsGrid() {
-	const { profile } = useAuthStore();
 	const queryClient = useQueryClient();
 	const roadmapsSectionId = useId();
-	const persona = profile?.active_persona || "client";
-	const freelancerRoleLabel =
-		profile?.headline?.trim() || "Freelancer Contributor";
 	const [openMenuRoadmapId, setOpenMenuRoadmapId] = useState<string | null>(
 		null,
 	);
@@ -205,22 +200,18 @@ export function RoadmapsGrid() {
 					<div className="flex items-center gap-2">
 						<div className="h-[18px] w-[18px] rounded-full bg-slate-900" />
 						<h2 className="text-[20px] font-semibold tracking-tight text-slate-900">
-							{persona === "freelancer" ? "ACTIVE WORKSPACES" : "MY ROADMAPS"}
+							MY ROADMAPS
 						</h2>
 					</div>
-					{persona !== "freelancer" ? (
-						<button
-							type="button"
-							className="text-base font-semibold text-slate-700 transition-colors hover:text-slate-900"
-						>
-							{"View All \u2192"}
-						</button>
-					) : null}
+					<button
+						type="button"
+						className="text-base font-semibold text-slate-700 transition-colors hover:text-slate-900"
+					>
+						{"View All \u2192"}
+					</button>
 				</div>
 				<p className="mt-1 text-xs text-slate-600">
-					{persona === "freelancer"
-						? "Workspaces assigned to you for active delivery and milestone execution."
-						: "Each matched project unlocks a consultant-led roadmap for structured execution"}
+					Each matched project unlocks a consultant-led roadmap for structured execution
 				</p>
 			</div>
 
@@ -234,15 +225,8 @@ export function RoadmapsGrid() {
 						Your roadmap workspace is preparing
 					</p>
 					<p className="text-sm text-slate-600">
-						{persona === "freelancer"
-							? "This is where your milestone roadmap will appear once you're matched."
-							: "After consultant matching starts, your roadmap appears here with milestones and execution phases."}
+						After consultant matching starts, your roadmap appears here with milestones and execution phases.
 					</p>
-					{persona === "freelancer" ? (
-						<p className="mt-2 text-xs text-slate-500">
-							Your roadmap is being prepared based on your project assignment.
-						</p>
-					) : null}
 				</div>
 			) : templates.length === 0 ? (
 				<div className="rounded-2xl border border-dashed border-slate-300 bg-white py-12 text-center shadow-sm">
@@ -250,15 +234,8 @@ export function RoadmapsGrid() {
 						Your first roadmap is taking shape
 					</p>
 					<p className="text-sm text-slate-600">
-						{persona === "freelancer"
-							? "This is where your milestone roadmap will appear once you're matched."
-							: "Post your project vision to trigger consultant matching and automatically generate your roadmap."}
+						Post your project vision to trigger consultant matching and automatically generate your roadmap.
 					</p>
-					{persona === "freelancer" ? (
-						<p className="mt-2 text-xs text-slate-500">
-							Your roadmap is being prepared based on your project assignment.
-						</p>
-					) : null}
 				</div>
 			) : (
 				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
@@ -348,11 +325,6 @@ export function RoadmapsGrid() {
 									<p className="mt-2 line-clamp-2 text-[14px] text-slate-600">
 										{template.category}
 									</p>
-									{persona === "freelancer" ? (
-										<p className="mt-2 text-sm text-slate-600">
-											Role: {freelancerRoleLabel}
-										</p>
-									) : null}
 									{template.preview.project_id && (
 										<div className="mt-3 mb-2 flex w-fit items-center gap-1.5 rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-600">
 											<Briefcase className="w-3 h-3" />
@@ -362,11 +334,7 @@ export function RoadmapsGrid() {
 									<div className="mt-auto border-t border-slate-100 pt-4 mt-4 flex justify-end">
 										<span className="inline-flex items-center gap-1 whitespace-nowrap text-[14px] font-semibold uppercase text-slate-700 transition-colors group-hover:text-slate-900">
 											<CheckCircle2 className="w-3 h-3" />
-											{persona === "client"
-												? "TRACK PROGRESS \u2192"
-												: persona === "freelancer"
-													? "ENTER WORKSPACE \u2192"
-													: "VIEW PLAN \u2192"}
+											TRACK PROGRESS \u2192
 										</span>
 									</div>
 								</div>

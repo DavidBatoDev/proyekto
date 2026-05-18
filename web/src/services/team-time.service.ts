@@ -15,7 +15,7 @@ export interface ProfileMini {
 export interface TaskTimeLog {
 	id: string;
 	project_id: string;
-	task_id: string;
+	task_id: string | null;
 	member_user_id: string;
 	team_id: string | null;
 	started_at: string;
@@ -102,15 +102,29 @@ function extractError(error: unknown, fallback: string): Error {
 	return wrapped;
 }
 
+function normalizeNullableUuid(value?: string | null): string | null {
+	if (!value) return null;
+	const trimmed = value.trim();
+	if (trimmed.length === 0) return null;
+	const lower = trimmed.toLowerCase();
+	if (lower === "null" || lower === "undefined") return null;
+	const uuidV4Like =
+		/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+	return uuidV4Like.test(trimmed) ? trimmed : null;
+}
+
 export const teamTimeService = {
 	async startLog(
 		projectId: string,
-		taskId: string,
+		taskId?: string | null,
 	): Promise<TaskTimeLog> {
 		try {
 			const res = await apiClient.post<ApiResponse<TaskTimeLog>>(
 				"/api/team-time/logs/start",
-				{ project_id: projectId, task_id: taskId },
+				{
+					project_id: projectId,
+					task_id: normalizeNullableUuid(taskId),
+				},
 			);
 			return res.data.data;
 		} catch (e) {
@@ -132,12 +146,23 @@ export const teamTimeService = {
 
 	async updateLog(
 		logId: string,
-		payload: { task_id?: string; started_at?: string; ended_at?: string },
+		payload: {
+			task_id?: string | null;
+			started_at?: string;
+			ended_at?: string;
+		},
 	): Promise<TaskTimeLog> {
 		try {
+			const normalizedPayload =
+				Object.prototype.hasOwnProperty.call(payload, "task_id")
+					? {
+							...payload,
+							task_id: normalizeNullableUuid(payload.task_id),
+						}
+					: payload;
 			const res = await apiClient.patch<ApiResponse<TaskTimeLog>>(
 				`/api/team-time/logs/${logId}`,
-				payload,
+				normalizedPayload,
 			);
 			return res.data.data;
 		} catch (e) {
@@ -155,14 +180,18 @@ export const teamTimeService = {
 
 	async createManualLog(payload: {
 		project_id: string;
-		task_id: string;
+		task_id?: string | null;
 		started_at: string;
 		ended_at: string;
 	}): Promise<TaskTimeLog> {
 		try {
+			const normalizedPayload = {
+				...payload,
+				task_id: normalizeNullableUuid(payload.task_id),
+			};
 			const res = await apiClient.post<ApiResponse<TaskTimeLog>>(
 				"/api/team-time/logs/manual",
-				payload,
+				normalizedPayload,
 			);
 			return res.data.data;
 		} catch (e) {

@@ -50,9 +50,6 @@ export default function UserMenu() {
 		return profile?.email?.split("@")[0] || "User";
 	};
 
-	const getPersonaLabel = (persona: string) =>
-		persona.charAt(0).toUpperCase() + persona.slice(1);
-
 	const handleLogout = async () => {
 		await signOut();
 		setIsOpen(false);
@@ -91,9 +88,6 @@ export default function UserMenu() {
 				<div className="flex flex-col items-start leading-tight">
 					<span className="max-w-[120px] truncate text-sm font-semibold text-slate-900">
 						{getDisplayName()}
-					</span>
-					<span className="text-[10px] text-slate-500">
-						{getPersonaLabel(profile?.active_persona || "client")}
 					</span>
 				</div>
 

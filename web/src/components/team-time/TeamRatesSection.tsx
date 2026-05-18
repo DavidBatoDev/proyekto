@@ -12,14 +12,24 @@ function memberDisplayName(m: TeamMember): string {
 
 function RateCardSkeleton() {
 	return (
-		<div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden animate-pulse">
-			<div className="h-16 bg-gray-100" />
-			<div className="px-4 pb-4 -mt-8">
-				<div className="mx-auto h-16 w-16 rounded-full border-4 border-white bg-gray-200" />
-				<div className="mt-3 space-y-2 text-center">
+		<div className="w-full sm:w-[240px] rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden animate-pulse min-h-[280px] flex flex-col">
+			<div className="h-14 bg-gray-100" />
+			<div className="px-3 pb-3 -mt-7 flex-1 flex flex-col">
+				<div className="mx-auto h-14 w-14 rounded-full border-4 border-white bg-gray-200 shadow-sm" />
+				
+				<div className="mt-2.5 space-y-2 text-center">
 					<div className="mx-auto h-4 w-32 rounded bg-gray-200" />
 					<div className="mx-auto h-3 w-40 rounded bg-gray-100" />
-					<div className="mx-auto h-7 w-24 rounded-full bg-gray-100" />
+				</div>
+
+				<div className="mt-3 rounded-lg border border-gray-100 bg-gray-50/70 p-2">
+					<div className="mx-auto h-4 w-24 rounded bg-gray-200" />
+					<div className="mx-auto h-3 w-16 rounded bg-gray-100 mt-1.5" />
+				</div>
+
+				<div className="mt-auto pt-3 border-t border-gray-100 flex items-center justify-center gap-1.5">
+					<div className="h-6 w-16 rounded bg-gray-200" />
+					<div className="h-6 w-16 rounded bg-gray-200" />
 				</div>
 			</div>
 		</div>

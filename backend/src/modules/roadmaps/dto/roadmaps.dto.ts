@@ -116,7 +116,7 @@ export class CreateEpicDto {
 
 export class UpdateEpicDto {
   @IsString() @IsOptional() @MaxLength(200) title?: string;
-  @IsString() @IsOptional() description?: string;
+  @IsString() @IsOptional() description?: string | null;
   @IsEnum(['critical', 'high', 'medium', 'low', 'nice_to_have'])
   @IsOptional()
   priority?: string;
@@ -134,8 +134,8 @@ export class UpdateEpicDto {
   @IsString() @IsOptional() color?: string;
   @IsNumber() @IsOptional() @Min(0) estimated_hours?: number;
   @IsNumber() @IsOptional() @Min(0) actual_hours?: number;
-  @IsDateString() @IsOptional() start_date?: string;
-  @IsDateString() @IsOptional() end_date?: string;
+  @IsDateString() @IsOptional() start_date?: string | null;
+  @IsDateString() @IsOptional() end_date?: string | null;
   @IsDateString() @IsOptional() completed_date?: string;
   @IsArray() @IsOptional() tags?: string[];
   @IsArray() @IsOptional() labels?: any[];
@@ -157,13 +157,13 @@ export class CreateFeatureDto {
 export class UpdateFeatureDto {
   @IsUUID() @IsOptional() epic_id?: string;
   @IsString() @IsOptional() @MaxLength(200) title?: string;
-  @IsString() @IsOptional() description?: string;
+  @IsString() @IsOptional() description?: string | null;
   @IsNumber() @IsOptional() @Min(0) position?: number;
   @IsBoolean() @IsOptional() is_deliverable?: boolean;
   @IsNumber() @IsOptional() @Min(0) estimated_hours?: number;
   @IsNumber() @IsOptional() @Min(0) actual_hours?: number;
-  @IsDateString() @IsOptional() start_date?: string;
-  @IsDateString() @IsOptional() end_date?: string;
+  @IsDateString() @IsOptional() start_date?: string | null;
+  @IsDateString() @IsOptional() end_date?: string | null;
 }
 
 export class LinkMilestoneDto {

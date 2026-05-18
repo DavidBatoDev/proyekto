@@ -382,6 +382,7 @@ const RoadmapCanvas = ({
             onAddMilestone={onAddMilestone}
             onUpdateMilestone={onUpdateMilestone}
             onDeleteMilestone={onDeleteMilestone}
+            onUpdateEpic={onUpdateEpic}
             onUpdateFeature={onUpdateFeature}
             onAddFeature={handleOpenAddFeatureModal}
             onOpenFeatureEditor={handleOpenEditFeatureModal}

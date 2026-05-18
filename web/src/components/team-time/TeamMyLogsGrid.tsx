@@ -28,6 +28,8 @@ import type {
 	TaskTimeLog,
 } from "@/services/team-time.service";
 import { liveDurationSecondsFromLog, useLiveNowMs } from "./time-utils";
+import { useTableCellSelection } from "./useTableCellSelection";
+import { CellSelectionScoreboard } from "./CellSelectionScoreboard";
 
 // Module-scope formatters: stable references shared across all cells,
 // so they never trigger a re-render via prop identity changes.
@@ -55,7 +57,7 @@ type MyLogGridRow = {
 	id: string;
 	date: string;
 	project_label: string;
-	task_id: string;
+	task_id: string | null;
 	time_in: string;
 	is_running: boolean;
 	log: TaskTimeLog;
@@ -428,7 +430,7 @@ interface TeamMyLogsGridProps {
 	onDeleteLog: (logId: string) => void | Promise<void>;
 	onEditLog: (log: TaskTimeLog) => void;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
-	canOpenTaskInRoadmap: (taskId: string) => boolean;
+	canOpenTaskInRoadmap: (taskId: string | null) => boolean;
 	onOpenAddLog: () => void;
 }
 
@@ -449,6 +451,17 @@ export function TeamMyLogsGrid({
 	onOpenAddLog,
 }: TeamMyLogsGridProps) {
 	const [openMenuRowId, setOpenMenuRowId] = useState<string | null>(null);
+
+	const SELECTABLE_COLS = [
+		"date",
+		"project",
+		"task_id",
+		"time_in",
+		"time_out",
+		"hours_worked",
+		"fees",
+		"status",
+	];
 
 	const hasActiveLog = useMemo(
 		() => logs.some((log) => !log.ended_at),
@@ -473,7 +486,9 @@ export function TeamMyLogsGrid({
 			const startedDate = new Date(log.started_at);
 			const hasValidStart = !Number.isNaN(startedDate.getTime());
 			const taskTitle =
-				log.task?.title || taskTitleById.get(log.task_id) || "Task";
+				log.task?.title ||
+				(log.task_id ? taskTitleById.get(log.task_id) : undefined) ||
+				"-";
 
 			return {
 				id: log.id,
@@ -482,13 +497,16 @@ export function TeamMyLogsGrid({
 				task_id: log.task_id,
 				time_in: !hasValidStart ? "-" : TIME_FORMATTER.format(startedDate),
 				is_running: !log.ended_at,
-				log: {
-					...log,
-					task: {
-						id: log.task_id,
-						title: taskTitle,
-					},
-				},
+				log:
+					log.task_id === null
+						? { ...log, task: null }
+						: {
+								...log,
+								task: {
+									id: log.task_id,
+									title: taskTitle,
+								},
+							},
 			};
 		});
 		return populatedRows;
@@ -520,8 +538,8 @@ export function TeamMyLogsGrid({
 					const row = info.row.original;
 					const taskTitle =
 						row.log.task?.title ||
-						taskTitleById.get(row.task_id) ||
-						"Untitled task";
+						(row.task_id ? taskTitleById.get(row.task_id) : undefined) ||
+						"-";
 					return (
 						<div className="flex items-center gap-1.5">
 							<span
@@ -650,10 +668,24 @@ export function TeamMyLogsGrid({
 		getCoreRowModel: getCoreRowModel(),
 	});
 
+	const tableRef = useRef<HTMLTableElement | null>(null);
+	const orderedRowIds = table.getRowModel().rows.map((r) => r.original.id);
+	const { selectedCells, isSelected, getCellDataProps } =
+		useTableCellSelection(orderedRowIds, SELECTABLE_COLS, tableRef);
+
 	if (loadingLogs) return <MyLogsGridSkeleton />;
 	return (
+		<>
+		<CellSelectionScoreboard
+			selectedCells={selectedCells}
+			logs={logs}
+			ownRateByProjectId={ownRateByProjectId}
+		/>
 		<div className="rounded-xl border border-gray-200 bg-white overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-			<table className="w-full min-w-[1050px] table-fixed text-[11px]">
+			<table
+				ref={tableRef}
+				className="w-full min-w-[1050px] table-fixed text-[11px] select-none"
+			>
 				<colgroup>
 					<col className="w-[16%]" />
 					<col className="w-[14%]" />
@@ -710,11 +742,26 @@ export function TeamMyLogsGrid({
 									rowPendingById[row.original.id] ? "bg-amber-50/40" : ""
 								}`}
 							>
-								{row.getVisibleCells().map((cell) => (
-									<td key={cell.id} className="px-2 py-1.5 align-middle">
-										{flexRender(cell.column.columnDef.cell, cell.getContext())}
-									</td>
-								))}
+								{row.getVisibleCells().map((cell) => {
+									const colId = cell.column.id;
+									const selectable = SELECTABLE_COLS.includes(colId);
+									const selected =
+										selectable && isSelected(row.original.id, colId);
+									return (
+										<td
+											key={cell.id}
+											className={`px-2 py-1.5 align-middle ${selectable ? "cursor-cell" : ""} ${selected ? "bg-blue-100" : ""}`}
+											{...(selectable
+												? getCellDataProps(row.original.id, colId)
+												: {})}
+										>
+											{flexRender(
+												cell.column.columnDef.cell,
+												cell.getContext(),
+											)}
+										</td>
+									);
+								})}
 							</tr>
 						))
 					)}
@@ -732,5 +779,6 @@ export function TeamMyLogsGrid({
 				</tbody>
 			</table>
 		</div>
+		</>
 	);
 }

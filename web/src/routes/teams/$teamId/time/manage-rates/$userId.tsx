@@ -155,6 +155,7 @@ function MemberLogsRoute() {
 	const reviewSyncById = rowPendingById;
 
 	const handleOpenInRoadmap = (log: TaskTimeLog) => {
+		if (!log.task_id) return;
 		void navigate({
 			to: "/project/$projectId/roadmap",
 			params: { projectId: log.project_id },
@@ -317,7 +318,7 @@ function MemberLogsRoute() {
 					await reviewSingleMutation.mutateAsync({ logId, decision });
 				}}
 				onOpenTaskInRoadmap={handleOpenInRoadmap}
-				canOpenTaskInRoadmap={() => true}
+				canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
 			/>
 		</div>
 	);

@@ -24,6 +24,8 @@ import {
 } from "@tanstack/react-table";
 import type { TaskTimeLog } from "@/services/team-time.service";
 import { liveDurationSecondsFromLog, useLiveNowMs } from "./time-utils";
+import { useTableCellSelection } from "./useTableCellSelection";
+import { CellSelectionScoreboard } from "./CellSelectionScoreboard";
 
 // Module-scope formatters: stable references shared across all cells.
 const FULL_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
@@ -55,7 +57,7 @@ type TeamApprovalsRow = {
 	id: string;
 	date: string;
 	project_label: string;
-	task_id: string;
+	task_id: string | null;
 	task_title: string;
 	time_in: string;
 	status: TaskTimeLog["status"];
@@ -274,7 +276,7 @@ interface TeamApprovalsGridProps {
 		decision: "approved" | "rejected" | "pending",
 	) => void | Promise<void>;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
-	canOpenTaskInRoadmap: (taskId: string) => boolean;
+	canOpenTaskInRoadmap: (taskId: string | null) => boolean;
 }
 
 function statusBadgeClass(status: TaskTimeLog["status"]) {
@@ -422,6 +424,17 @@ export function TeamApprovalsGrid({
 }: TeamApprovalsGridProps) {
 	const [openMenuRowId, setOpenMenuRowId] = useState<string | null>(null);
 
+	const SELECTABLE_COLS = [
+		"date",
+		"project",
+		"task_id",
+		"time_in",
+		"time_out",
+		"hours_worked",
+		"fees",
+		"status",
+	];
+
 	const rows = useMemo<TeamApprovalsRow[]>(() => {
 		const sortedLogs = [...logs].sort((a, b) => {
 			const aMs = new Date(a.started_at).getTime();
@@ -455,7 +468,7 @@ export function TeamApprovalsGrid({
 						: FULL_DATE_FORMATTER.format(startedDate),
 				project_label: log.project?.title || log.project_id,
 				task_id: log.task_id,
-				task_title: log.task?.title ?? "Task",
+				task_title: log.task?.title ?? "-",
 				time_in: !hasValidStart
 					? "-"
 					: isMultiDay
@@ -665,11 +678,21 @@ export function TeamApprovalsGrid({
 		getCoreRowModel: getCoreRowModel(),
 	});
 
+	const tableRef = useRef<HTMLTableElement | null>(null);
+	const orderedRowIds = table.getRowModel().rows.map((r) => r.original.id);
+	const { selectedCells, isSelected, getCellDataProps } =
+		useTableCellSelection(orderedRowIds, SELECTABLE_COLS, tableRef);
+
 	if (loadingLogs) return <TeamApprovalsGridSkeleton />;
 
 	return (
+		<>
+		<CellSelectionScoreboard selectedCells={selectedCells} logs={logs} />
 		<div className="rounded-xl border border-gray-200 bg-white overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-			<table className="w-full min-w-[1100px] table-fixed text-[11px]">
+			<table
+				ref={tableRef}
+				className="w-full min-w-[1100px] table-fixed text-[11px] select-none"
+			>
 				<colgroup>
 					<col className="w-[3%]" />
 					<col className="w-[16%]" />
@@ -739,15 +762,24 @@ export function TeamApprovalsGrid({
 									}`}
 								>
 									{row.getVisibleCells().map((cell) => {
-										const isSticky = cell.column.id === "select";
+										const colId = cell.column.id;
+										const isSticky = colId === "select";
+										const selectable = SELECTABLE_COLS.includes(colId);
+										const selected =
+											selectable && isSelected(row.original.id, colId);
 										return (
 											<td
 												key={cell.id}
 												className={`px-2 py-1.5 align-middle ${
 													isSticky
 														? `sticky left-0 z-10 ${pending ? "bg-amber-50" : "bg-white"}`
-														: ""
-												}`}
+														: selectable && selected
+															? "bg-blue-100"
+															: ""
+												} ${selectable ? "cursor-cell" : ""}`}
+												{...(selectable
+													? getCellDataProps(row.original.id, colId)
+													: {})}
 											>
 												{flexRender(
 													cell.column.columnDef.cell,
@@ -763,5 +795,6 @@ export function TeamApprovalsGrid({
 				</tbody>
 			</table>
 		</div>
+		</>
 	);
 }

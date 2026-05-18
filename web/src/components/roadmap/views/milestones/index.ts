@@ -6,6 +6,7 @@ export { MilestoneEditorModal } from "./components/MilestoneEditorModal";
 export { MilestonesLeftPanel } from "./components/MilestonesLeftPanel";
 export {
 	MilestonesTimelineRows,
+	type EpicDateDraftCommit,
 	type FeatureDateDraftCommit,
 	type FeatureDateVisualDraft,
 } from "./components/MilestonesTimelineRows";

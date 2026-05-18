@@ -33,7 +33,7 @@ const TIME_LOG_SELECT = `
 export interface TimeLogRow {
   id: string;
   project_id: string;
-  task_id: string;
+  task_id: string | null;
   member_user_id: string;
   team_id: string | null;
   started_at: string;
@@ -68,8 +68,11 @@ export class TeamTimeService {
   // ─── log mutations ───────────────────────────────────────────────────
 
   async startLog(callerId: string, dto: StartTimeLogDto): Promise<TimeLogRow> {
+    const taskId = dto.task_id?.trim() || null;
     await this.projectAuth.assertRole(callerId, dto.project_id, 'viewer');
-    await this.assertTaskInProject(dto.task_id, dto.project_id);
+    if (taskId) {
+      await this.assertTaskInProject(taskId, dto.project_id);
+    }
     await this.assertProjectHasTimeTrackingTeam(dto.project_id);
 
     const { data: running } = await this.supabase
@@ -90,7 +93,7 @@ export class TeamTimeService {
       .from('task_time_logs')
       .insert({
         project_id: dto.project_id,
-        task_id: dto.task_id,
+        task_id: taskId,
         member_user_id: callerId,
         team_id: rate?.team_id ?? null,
         started_at: new Date().toISOString(),
@@ -156,16 +159,22 @@ export class TeamTimeService {
       updated_at: new Date().toISOString(),
     };
 
-    if (dto.task_id && dto.task_id !== log.task_id) {
-      const newProjectId = await this.projectIdForTask(dto.task_id);
-      patch.task_id = dto.task_id;
-      if (newProjectId !== log.project_id) {
-        await this.projectAuth.assertRole(callerId, newProjectId, 'viewer');
-        const rate = await this.resolveTeamRate(newProjectId, callerId);
-        patch.project_id = newProjectId;
-        patch.team_id = rate?.team_id ?? null;
-        patch.rate_snapshot = rate?.hourly_rate ?? 0;
-        patch.currency_snapshot = rate?.currency ?? 'USD';
+    const hasTaskIdPatch = Object.prototype.hasOwnProperty.call(dto, 'task_id');
+    if (hasTaskIdPatch) {
+      const requestedTaskId = dto.task_id?.trim() || null;
+      if (requestedTaskId !== log.task_id) {
+        patch.task_id = requestedTaskId;
+      }
+      if (requestedTaskId) {
+        const newProjectId = await this.projectIdForTask(requestedTaskId);
+        if (newProjectId !== log.project_id) {
+          await this.projectAuth.assertRole(callerId, newProjectId, 'viewer');
+          const rate = await this.resolveTeamRate(newProjectId, callerId);
+          patch.project_id = newProjectId;
+          patch.team_id = rate?.team_id ?? null;
+          patch.rate_snapshot = rate?.hourly_rate ?? 0;
+          patch.currency_snapshot = rate?.currency ?? 'USD';
+        }
       }
     }
 
@@ -218,8 +227,11 @@ export class TeamTimeService {
     callerId: string,
     dto: CreateManualTimeLogDto,
   ): Promise<TimeLogRow> {
+    const taskId = dto.task_id?.trim() || null;
     await this.projectAuth.assertRole(callerId, dto.project_id, 'viewer');
-    await this.assertTaskInProject(dto.task_id, dto.project_id);
+    if (taskId) {
+      await this.assertTaskInProject(taskId, dto.project_id);
+    }
     await this.assertProjectHasTimeTrackingTeam(dto.project_id);
 
     const start = new Date(dto.started_at).getTime();
@@ -236,7 +248,7 @@ export class TeamTimeService {
       .from('task_time_logs')
       .insert({
         project_id: dto.project_id,
-        task_id: dto.task_id,
+        task_id: taskId,
         member_user_id: callerId,
         team_id: rate?.team_id ?? null,
         started_at: dto.started_at,
