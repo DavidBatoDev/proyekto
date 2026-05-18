@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # Deploy infrastructure to production using Terraform
 # This replaces the manual migration deployment approach
 
@@ -7,7 +7,7 @@ param(
     [switch]$AutoApprove = $false
 )
 
-Write-Host "Prodigi Work Hub - Terraform Production Deployment" -ForegroundColor Cyan
+Write-Host "Proyekto Work Hub - Terraform Production Deployment" -ForegroundColor Cyan
 Write-Host "=====================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -41,7 +41,7 @@ Set-Location infra/environments/prod
 
 # Initialize if needed
 if (-Not (Test-Path ".terraform")) {
-    Write-Host "🔧 Initializing Terraform..." -ForegroundColor Yellow
+    Write-Host "ðŸ”§ Initializing Terraform..." -ForegroundColor Yellow
     terraform init
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Terraform init failed" -ForegroundColor Red
@@ -52,7 +52,7 @@ if (-Not (Test-Path ".terraform")) {
 
 # Validate configuration
 Write-Host ""
-Write-Host "✅ Validating Terraform configuration..." -ForegroundColor Yellow
+Write-Host "âœ… Validating Terraform configuration..." -ForegroundColor Yellow
 terraform validate
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Terraform validation failed" -ForegroundColor Red
@@ -82,11 +82,11 @@ if ($LASTEXITCODE -ne 0) {
 # Confirmation
 if (-Not $AutoApprove) {
     Write-Host ""
-    Write-Host "⚠️  WARNING: You are about to deploy to PRODUCTION!" -ForegroundColor Yellow
+    Write-Host "âš ï¸  WARNING: You are about to deploy to PRODUCTION!" -ForegroundColor Yellow
     Write-Host "   This will:" -ForegroundColor Yellow
-    Write-Host "   • Create storage buckets" -ForegroundColor White
-    Write-Host "   • Apply database migrations" -ForegroundColor White
-    Write-Host "   • Configure RLS policies" -ForegroundColor White
+    Write-Host "   â€¢ Create storage buckets" -ForegroundColor White
+    Write-Host "   â€¢ Apply database migrations" -ForegroundColor White
+    Write-Host "   â€¢ Configure RLS policies" -ForegroundColor White
     Write-Host ""
     $confirmation = Read-Host "Type 'APPLY' to continue"
     
@@ -100,7 +100,7 @@ if (-Not $AutoApprove) {
 
 # Apply terraform
 Write-Host ""
-Write-Host "🚀 Applying Terraform plan..." -ForegroundColor Yellow
+Write-Host "ðŸš€ Applying Terraform plan..." -ForegroundColor Yellow
 terraform apply prod.tfplan
 
 if ($LASTEXITCODE -ne 0) {
@@ -127,3 +127,4 @@ Write-Host "   3. Deploy frontend to Vercel" -ForegroundColor White
 Write-Host ""
 
 Set-Location ../../..
+

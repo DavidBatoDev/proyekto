@@ -1,6 +1,6 @@
-{
+﻿{
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://prodigy.local/schemas/roadmap-ai-operations.schema.json",
+  "$id": "https://proyekto.local/schemas/roadmap-ai-operations.schema.json",
   "title": "Roadmap AI Operations",
   "description": "Canonical per-operation validation contract shared between the Python agent planner, the NestJS backend DTO, and the planner tool JSON schema shown to the LLM. Changes here must be mirrored by npm run check:roadmap-ai-schema.",
   "definitions": {
@@ -101,3 +101,5 @@
     }
   }
 }
+
+
