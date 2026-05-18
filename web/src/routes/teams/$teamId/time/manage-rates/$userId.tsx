@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/useToast";
 import { useUser } from "@/stores/authStore";
+import { ScrollNavButtons } from "@/components/common/ScrollNavButtons";
 import {
 	listMemberRates,
 	listTeamMembers,
@@ -319,7 +320,12 @@ function MemberLogsRoute() {
 				}}
 				onOpenTaskInRoadmap={handleOpenInRoadmap}
 				canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
+				onApproveSelected={() => submitDecision("approved")}
+				onRejectSelected={() => submitDecision("rejected")}
+				onResetSelected={() => submitDecision("pending")}
+				approvingSelected={reviewBulkMutation.isPending}
 			/>
+			<ScrollNavButtons />
 		</div>
 	);
 }

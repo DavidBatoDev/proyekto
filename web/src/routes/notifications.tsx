@@ -65,6 +65,9 @@ function NotificationsPage() {
   const notificationsQuery = useQuery({
     queryKey: ["notifications", "page"],
     queryFn: () => notificationsService.list({ limit: 100 }),
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const markReadMutation = useMutation({

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { FolderOpen, ShieldCheck } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
-import { getRoadmapFull, getRoadmaps } from "@/api";
+import { getRoadmapsPreview, type RoadmapPreview } from "@/api/endpoints/roadmap";
 import { type Project, projectService } from "@/services/project.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
 
@@ -80,36 +80,22 @@ export function DashboardWidgets({
 }) {
 	const user = useUser();
 	const { profile } = useAuthStore();
+	const projectsQueryKey = ["dashboard", "projects", user?.id ?? "anonymous"] as const;
 	const projectsQuery = useQuery({
-		queryKey: ["dashboard", "projects", "widgets"],
+		queryKey: projectsQueryKey,
 		queryFn: () => projectService.listDashboardProjects(),
-		staleTime: 0,
-		refetchOnMount: true,
-		refetchOnWindowFocus: true,
-		refetchOnReconnect: true,
+		enabled: Boolean(user?.id),
+		staleTime: 30_000,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
 		retry: 1,
 	});
 	const timelineQuery = useQuery({
-		queryKey: ["dashboard", "timeline-roadmaps"],
-		queryFn: async () => {
-			const roadmaps = await getRoadmaps();
-			const roadmapDetails = await Promise.all(
-				roadmaps.map(async (roadmap) => {
-					try {
-						return await getRoadmapFull(roadmap.id);
-					} catch {
-						return null;
-					}
-				}),
-			);
-			return roadmapDetails.filter(
-				(roadmap): roadmap is NonNullable<typeof roadmap> => Boolean(roadmap),
-			);
-		},
-		staleTime: 0,
-		refetchOnMount: true,
-		refetchOnWindowFocus: true,
-		refetchOnReconnect: true,
+		queryKey: ["dashboard", "roadmaps-preview"],
+		queryFn: () => getRoadmapsPreview(),
+		staleTime: 30_000,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
 		retry: 1,
 	});
 	const projects = (projectsQuery.data as Project[] | undefined) ?? [];
@@ -117,12 +103,12 @@ export function DashboardWidgets({
 	const isMilestonesLoading = timelineQuery.isPending;
 
 	const upcomingMilestones = useMemo(() => {
-		const validRoadmaps = timelineQuery.data ?? [];
+		const validRoadmaps = (timelineQuery.data ?? []) as RoadmapPreview[];
 		const today = startOfToday().getTime();
 
 		return validRoadmaps
-			.flatMap((roadmap: any) =>
-				(roadmap.milestones || []).map((milestone: any) => ({
+			.flatMap((roadmap) =>
+				(roadmap.milestones || []).map((milestone) => ({
 					id: milestone.id,
 					title: milestone.title,
 					roadmapName: roadmap.name,
@@ -161,19 +147,19 @@ export function DashboardWidgets({
 	}, [projects]);
 
 	const activityItems = useMemo(() => {
-		const validRoadmaps = timelineQuery.data ?? [];
+		const validRoadmaps = (timelineQuery.data ?? []) as RoadmapPreview[];
 		const currentUserId = user?.id ?? null;
 
 		const flattened = validRoadmaps.flatMap(
-			(roadmap: any, roadmapIndex: number) =>
-				(roadmap.epics || []).flatMap((epic: any, epicIndex: number) =>
-					(epic.features || []).flatMap((feature: any, featureIndex: number) =>
+			(roadmap, roadmapIndex: number) =>
+				(roadmap.epics || []).flatMap((epic, epicIndex: number) =>
+					(epic.features || []).flatMap((feature, featureIndex: number) =>
 						(feature.tasks || [])
 							.filter(
-								(task: any) =>
+								(task) =>
 									String(task.status || "").toLowerCase() !== "done",
 							)
-							.map((task: any, taskIndex: number) => {
+							.map((task, taskIndex: number) => {
 								const taskStatus = String(task.status || "").toLowerCase();
 								const assigneeName =
 									task.assignee?.display_name ||

@@ -44,12 +44,14 @@ interface CellSelectionScoreboardProps {
 	selectedCells: Set<string>;
 	logs: TaskTimeLog[];
 	ownRateByProjectId?: Record<string, { hourly_rate: number; currency: string }>;
+	asPortal?: boolean;
 }
 
 export function CellSelectionScoreboard({
 	selectedCells,
 	logs,
 	ownRateByProjectId,
+	asPortal = true,
 }: CellSelectionScoreboardProps) {
 	const logById = useMemo(() => {
 		const m = new Map<string, TaskTimeLog>();
@@ -113,9 +115,9 @@ export function CellSelectionScoreboard({
 
 	if (selectedCells.size === 0) return null;
 
-	return createPortal(
+	const card = (
 		<div
-			className="fixed top-4 right-4 z-50 min-w-[220px] max-w-[280px] rounded-xl border border-black bg-white shadow-lg p-3 space-y-3"
+			className="min-w-[220px] max-w-[280px] rounded-xl border border-black bg-white shadow-lg p-3 space-y-3"
 			style={{ pointerEvents: "none" }}
 		>
 			{/* Header */}
@@ -161,7 +163,12 @@ export function CellSelectionScoreboard({
 			{!hoursStats && !feesByCurrency && (
 				<StatRow label="Count" value={String(cellCount)} />
 			)}
-		</div>,
+		</div>
+	);
+
+	if (!asPortal) return card;
+	return createPortal(
+		<div className="fixed top-4 right-4 z-50">{card}</div>,
 		document.body,
 	);
 }

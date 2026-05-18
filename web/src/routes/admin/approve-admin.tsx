@@ -8,6 +8,7 @@ import {
   type AdminProfile,
 } from "@/services/admin.service";
 import { useToast } from "@/hooks/useToast";
+import { ScrollNavButtons } from "@/components/common/ScrollNavButtons";
 
 export const Route = createFileRoute("/admin/approve-admin")({
   component: ApproveAdminPage,
@@ -332,6 +333,7 @@ function ApproveAdminPage() {
           )}
         </div>
       </div>
+      <ScrollNavButtons />
     </div>
   );
 }

@@ -81,10 +81,9 @@ export function ProjectsGrid() {
 		queryKey: projectsQueryKey,
 		queryFn: () => projectService.listDashboardProjects(),
 		enabled: Boolean(user?.id),
-		staleTime: 0,
-		refetchOnMount: true,
-		refetchOnWindowFocus: true,
-		refetchOnReconnect: true,
+		staleTime: 30 * 1000,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
 		retry: 1,
 	});
 	const projects = (projectsQuery.data as Project[] | undefined) ?? [];
@@ -92,10 +91,9 @@ export function ProjectsGrid() {
 		queryKey: ["projects", "my-invites"],
 		queryFn: () => projectService.getMyInvites(),
 		enabled: Boolean(user?.id),
-		staleTime: 0,
-		refetchOnMount: true,
-		refetchOnWindowFocus: true,
-		refetchOnReconnect: true,
+		staleTime: 30 * 1000,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
 		retry: 1,
 	});
 	const pendingInvites = useMemo(

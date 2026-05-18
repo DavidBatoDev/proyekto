@@ -277,6 +277,10 @@ interface TeamApprovalsGridProps {
 	) => void | Promise<void>;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
 	canOpenTaskInRoadmap: (taskId: string | null) => boolean;
+	onApproveSelected?: () => void;
+	onRejectSelected?: () => void;
+	onResetSelected?: () => void;
+	approvingSelected?: boolean;
 }
 
 function statusBadgeClass(status: TaskTimeLog["status"]) {
@@ -421,10 +425,15 @@ export function TeamApprovalsGrid({
 	onReviewLog,
 	onOpenTaskInRoadmap,
 	canOpenTaskInRoadmap,
+	onApproveSelected,
+	onRejectSelected,
+	onResetSelected,
+	approvingSelected,
 }: TeamApprovalsGridProps) {
 	const [openMenuRowId, setOpenMenuRowId] = useState<string | null>(null);
 
 	const SELECTABLE_COLS = [
+		"select",
 		"date",
 		"project",
 		"task_id",
@@ -680,14 +689,101 @@ export function TeamApprovalsGrid({
 
 	const tableRef = useRef<HTMLTableElement | null>(null);
 	const orderedRowIds = table.getRowModel().rows.map((r) => r.original.id);
+
+	// Stable refs used inside callbacks so they never go stale
+	const logsRef = useRef(logs);
+	logsRef.current = logs;
+	const currentUserIdRef = useRef(currentUserId);
+	currentUserIdRef.current = currentUserId;
+	const selectedLogIdsRef = useRef(selectedLogIds);
+	selectedLogIdsRef.current = selectedLogIds;
+	const rowPendingByIdRef = useRef(rowPendingById);
+	rowPendingByIdRef.current = rowPendingById;
+	const onToggleSelectLogRef = useRef(onToggleSelectLog);
+	onToggleSelectLogRef.current = onToggleSelectLog;
+	const onToggleSelectAllRef = useRef(onToggleSelectAll);
+	onToggleSelectAllRef.current = onToggleSelectAll;
+
 	const { selectedCells, isSelected, getCellDataProps } =
-		useTableCellSelection(orderedRowIds, SELECTABLE_COLS, tableRef);
+		useTableCellSelection(orderedRowIds, SELECTABLE_COLS, tableRef, {
+			// Fires on every drag frame — auto-check eligible "select" column cells immediately
+			onLiveSelectionChange(cells) {
+				for (const key of cells) {
+					const [rowId, colId] = key.split(":");
+					if (colId !== "select") continue;
+					const log = logsRef.current.find((l) => l.id === rowId);
+					if (!log) continue;
+					const isRunning = !log.ended_at;
+					const isSelf =
+						currentUserIdRef.current !== null &&
+						log.member_user_id === currentUserIdRef.current;
+					if (isRunning || isSelf) continue;
+					if (selectedLogIdsRef.current.has(rowId) || rowPendingByIdRef.current[rowId]) continue;
+					onToggleSelectLogRef.current(rowId, true);
+				}
+			},
+			// Click outside table → clear both highlights and checkbox selections
+			onClickOutside() {
+				onToggleSelectAllRef.current(false, []);
+			},
+		});
 
 	if (loadingLogs) return <TeamApprovalsGridSkeleton />;
 
 	return (
 		<>
-		<CellSelectionScoreboard selectedCells={selectedCells} logs={logs} />
+		{(selectedCells.size > 0 || selectedLogIds.size > 0) &&
+			createPortal(
+				<div className="fixed top-4 right-4 z-50 flex flex-row-reverse items-start gap-3">
+					{selectedCells.size > 0 && (
+						<CellSelectionScoreboard
+							selectedCells={selectedCells}
+							logs={logs}
+							asPortal={false}
+						/>
+					)}
+					{selectedLogIds.size > 0 && onApproveSelected && (
+						<div className="min-w-40 rounded-xl border border-black bg-white shadow-lg p-3 space-y-3">
+							<div className="flex items-center justify-between border-b border-black pb-2">
+								<span className="text-[11px] font-bold text-black uppercase tracking-widest">
+									Approval
+								</span>
+								<span className="text-[10px] text-slate-500">
+									{selectedLogIds.size}{" "}
+									{selectedLogIds.size === 1 ? "row" : "rows"}
+								</span>
+							</div>
+							<div className="space-y-1.5">
+								<button
+									onClick={onApproveSelected}
+									disabled={approvingSelected}
+									className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-50"
+								>
+									<Check className="h-3.5 w-3.5 shrink-0" />
+									Approve
+								</button>
+								<button
+									onClick={onRejectSelected}
+									disabled={approvingSelected}
+									className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 transition-colors disabled:opacity-50"
+								>
+									<X className="h-3.5 w-3.5 shrink-0" />
+									Reject
+								</button>
+								<button
+									onClick={onResetSelected}
+									disabled={approvingSelected}
+									className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
+								>
+									<RotateCcw className="h-3.5 w-3.5 shrink-0" />
+									Reset
+								</button>
+							</div>
+						</div>
+					)}
+				</div>,
+				document.body,
+			)}
 		<div className="rounded-xl border border-gray-200 bg-white overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 			<table
 				ref={tableRef}

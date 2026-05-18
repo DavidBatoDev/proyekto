@@ -27,6 +27,7 @@ import {
 	fromLocalDateTimeInput,
 	toLocalDateTimeInput,
 } from "@/components/team-time/time-utils";
+import { ScrollNavButtons } from "@/components/common/ScrollNavButtons";
 
 export const Route = createFileRoute("/teams/$teamId/time/my-logs")({
 	component: MyLogsTab,
@@ -444,6 +445,8 @@ function MyLogsTab() {
 				}}
 				onChangeTaskId={(v) => setTaskModalTaskId(v)}
 			/>
+
+			<ScrollNavButtons />
 		</>
 	);
 }
