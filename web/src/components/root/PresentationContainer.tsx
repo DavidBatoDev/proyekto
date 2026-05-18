@@ -10,12 +10,6 @@ import { Header } from "@/components/root/Header";
 import { SectionNavDots } from "@/components/root/SectionNavDots";
 
 const TOTAL = SECTION_IDS.length;
-const COOLDOWN_MS = 720;
-
-function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
 
 interface PresentationContainerProps {
   children: React.ReactNode;
@@ -23,91 +17,49 @@ interface PresentationContainerProps {
 
 export function PresentationContainer({ children }: PresentationContainerProps) {
   const [activeSection, setActiveSection] = useState(0);
-  const [isTransitioning, setIsTransitioning] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const isScrollingRef = useRef(false);
-  const touchStartYRef = useRef(0);
 
-  const scrollToSection = useCallback((index: number) => {
+  const goToSection = useCallback((index: number) => {
     if (!scrollRef.current) return;
-    const behavior = prefersReducedMotion() ? "instant" : "smooth";
+    const next = Math.max(0, Math.min(TOTAL - 1, index));
+    const id = SECTION_IDS[next];
+    const el = scrollRef.current.querySelector(`#${id}`) as HTMLElement | null;
+    if (!el) return;
+    const containerRect = scrollRef.current.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
     scrollRef.current.scrollTo({
-      top: index * window.innerHeight,
-      behavior: behavior as ScrollBehavior,
+      top: scrollRef.current.scrollTop + (elRect.top - containerRect.top),
+      behavior: "smooth",
     });
   }, []);
-
-  const goToSection = useCallback(
-    (index: number) => {
-      if (isScrollingRef.current) return;
-      const next = Math.max(0, Math.min(TOTAL - 1, index));
-      if (next === activeSection) return;
-      isScrollingRef.current = true;
-      setIsTransitioning(true);
-      setActiveSection(next);
-      scrollToSection(next);
-      setTimeout(() => {
-        isScrollingRef.current = false;
-        setIsTransitioning(false);
-      }, COOLDOWN_MS);
-    },
-    [activeSection, scrollToSection],
-  );
 
   const goNext = useCallback(() => goToSection(activeSection + 1), [activeSection, goToSection]);
   const goPrev = useCallback(() => goToSection(activeSection - 1), [activeSection, goToSection]);
 
-  // Non-passive wheel listener
+  // Track active section via IntersectionObserver (no scroll hijacking)
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const handler = (e: WheelEvent) => {
-      // Let horizontal scroll pass through (for carousels)
-      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
 
-      // When cursor is inside an inner-scrollable section, only scroll that
-      // container — never trigger section navigation, even at the boundary
-      const innerScroll = (e.target as HTMLElement).closest<HTMLElement>(".presentation-inner-scroll");
-      if (innerScroll) {
-        e.preventDefault();
-        let delta = e.deltaY;
-        if (e.deltaMode === 1) delta *= 40;
-        if (e.deltaMode === 2) delta *= innerScroll.clientHeight;
-        innerScroll.scrollTop += delta;
-        return;
-      }
+    const sectionEls = SECTION_IDS.map((id) => el.querySelector(`#${id}`)).filter(Boolean) as HTMLElement[];
 
-      e.preventDefault();
-      if (e.deltaY > 0) goNext();
-      else goPrev();
-    };
-    el.addEventListener("wheel", handler, { passive: false });
-    return () => el.removeEventListener("wheel", handler);
-  }, [goNext, goPrev]);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+            const index = sectionEls.indexOf(entry.target as HTMLElement);
+            if (index !== -1) setActiveSection(index);
+          }
+        }
+      },
+      { root: el, threshold: 0.5 },
+    );
 
-  // Touch support
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const onStart = (e: TouchEvent) => {
-      touchStartYRef.current = e.touches[0].clientY;
-    };
-    const onEnd = (e: TouchEvent) => {
-      const delta = touchStartYRef.current - e.changedTouches[0].clientY;
-      if (Math.abs(delta) > 50) {
-        if (delta > 0) goNext();
-        else goPrev();
-      }
-    };
-    el.addEventListener("touchstart", onStart, { passive: true });
-    el.addEventListener("touchend", onEnd, { passive: true });
-    return () => {
-      el.removeEventListener("touchstart", onStart);
-      el.removeEventListener("touchend", onEnd);
-    };
-  }, [goNext, goPrev]);
+    sectionEls.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
+  }, []);
 
-  // Keyboard navigation
+  // Keyboard section jumping (arrow keys / page keys)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "ArrowDown" || e.key === "PageDown") {
@@ -128,24 +80,17 @@ export function PresentationContainer({ children }: PresentationContainerProps) 
     return () => window.removeEventListener("keydown", handler);
   }, [goNext, goPrev, goToSection]);
 
-  // Body overflow lock
-  useEffect(() => {
-    document.body.classList.add("presentation-mode");
-    return () => document.body.classList.remove("presentation-mode");
-  }, []);
-
   const ctxValue: PresentationContextValue = {
     activeSection,
     totalSections: TOTAL,
     goToSection,
     goNext,
     goPrev,
-    isTransitioning,
+    isTransitioning: false,
     sectionIds: SECTION_IDS,
     sectionLabels: SECTION_LABELS,
   };
 
-  // Clone children, injecting isActive and sectionIndex props
   const sections = React.Children.toArray(children);
 
   return (
@@ -153,12 +98,11 @@ export function PresentationContainer({ children }: PresentationContainerProps) 
       <div
         ref={scrollRef}
         className="h-screen overflow-y-scroll overflow-x-hidden presentation-scroll-container"
-        style={{ scrollSnapType: "y mandatory" }}
       >
         {sections.map((child, i) =>
           React.isValidElement(child)
             ? React.cloneElement(child as React.ReactElement<{ isActive?: boolean; sectionIndex?: number }>, {
-                isActive: activeSection === i,
+                isActive: true,
                 sectionIndex: i,
               })
             : child,

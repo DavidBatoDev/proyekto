@@ -121,30 +121,28 @@ function SmallFeatureTile({
 }) {
   return (
     <div
-      className={`group relative bg-white/80 px-2 py-3 text-center shadow-[inset_0_0_0_1px_rgba(59,130,246,0.12)] transition-all duration-200 hover:z-10 hover:bg-white hover:shadow-[inset_0_0_0_1px_rgba(59,130,246,0.36),0_4px_16px_rgba(37,99,235,0.10)] ${className ?? ""}`}
+      className={`bg-white/80 px-3 py-6 text-center shadow-[inset_0_0_0_1px_rgba(59,130,246,0.14)] transition-all duration-200 hover:bg-white hover:shadow-[inset_0_0_0_1.5px_rgba(59,130,246,0.72)] ${className ?? ""}`}
     >
-      {/* Blue top accent bar — slides in on hover */}
-      <span className="absolute inset-x-0 top-0 h-0.5 scale-x-0 bg-blue-500 transition-transform duration-200 group-hover:scale-x-100" />
-      <Icon className="mx-auto h-4 w-4 text-slate-400 transition-colors duration-200 group-hover:text-blue-500" />
-      <p className="mt-1.5 text-[11px] font-medium leading-tight text-slate-600 transition-colors duration-200 group-hover:text-slate-900">{label}</p>
+      <Icon className="mx-auto h-5 w-5 text-slate-500" />
+      <p className="mt-2 text-sm font-medium text-slate-700">{label}</p>
     </div>
   );
 }
 
 export function ProductExperienceSection({ isActive: _isActive }: { isActive?: boolean } = {}) {
   return (
-    <section id="features" className="relative flex flex-col h-full py-4 overflow-hidden">
-      <div className="text-center shrink-0">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400">Proyekto Features</p>
+    <section id="features" className="relative py-6">
+      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-10">
+      <div className="text-center">
         <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-          Everything you need in one place
+          Proyekto Features
         </h2>
-        <p className="mx-auto mt-2 max-w-3xl text-sm text-slate-600 sm:text-base">
-          100+ features to plan, execute, and stay aligned — without switching tools.
+        <p className="mx-auto mt-3 max-w-3xl text-sm text-slate-600 sm:text-base">
+          Plan, execute, and run delivery with roadmap, collaboration, operations, and marketplace tools in one connected system.
         </p>
       </div>
 
-      <div className="relative mt-6 presentation-inner-scroll flex-1" style={{ maxHeight: "calc(100vh - 260px)" }}>
+      <div className="relative mt-10 overflow-hidden">
         <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-36 bg-[linear-gradient(to_right,rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(to_bottom,rgba(59,130,246,0.12)_1px,transparent_1px)] bg-[size:100%_92px]" />
         <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-36 bg-[linear-gradient(to_right,rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(to_bottom,rgba(59,130,246,0.12)_1px,transparent_1px)] bg-[size:100%_92px]" />
         <div className="pointer-events-none absolute inset-y-0 left-0 z-20 w-44 bg-linear-to-r from-[#fcfcfd] via-[#fcfcfd]/84 to-transparent" />
@@ -171,19 +169,17 @@ export function ProductExperienceSection({ isActive: _isActive }: { isActive?: b
           {coreFeatures.map((feature) => (
             <div
               key={feature.title}
-              className={`group relative flex flex-col justify-center overflow-hidden bg-linear-to-br ${feature.tone} p-5 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.14)] transition-shadow duration-300 hover:shadow-[inset_0_0_0_1px_rgba(59,130,246,0.32),0_8px_32px_rgba(37,99,235,0.10)] md:col-span-2 md:min-h-80`}
+              className={`flex flex-col justify-center bg-linear-to-br ${feature.tone} p-5 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.14)] md:col-span-2 md:min-h-[416px]`}
             >
-              {/* Left accent bar */}
-              <span className="absolute inset-y-0 left-0 w-0.5 origin-top scale-y-0 bg-blue-500 transition-transform duration-300 group-hover:scale-y-100" />
               <h3 className="text-2xl font-semibold tracking-tight text-slate-900">
                 {feature.title}
               </h3>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600">{feature.copy}</p>
+              <p className="mt-2 text-sm leading-relaxed text-slate-700">{feature.copy}</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {feature.chips.map((chip) => (
                   <span
                     key={chip}
-                    className="rounded-full border border-blue-200 bg-white/80 px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors duration-150 group-hover:border-blue-400 group-hover:bg-white group-hover:text-blue-700"
+                    className="rounded-full border border-blue-200 bg-white/80 px-2.5 py-1 text-xs font-medium text-slate-700"
                   >
                     {chip}
                   </span>
@@ -209,6 +205,7 @@ export function ProductExperienceSection({ isActive: _isActive }: { isActive?: b
             <SmallFeatureTile key={tile.label} label={tile.label} Icon={tile.icon} />
           ))}
         </div>
+      </div>
       </div>
     </section>
   );

@@ -30,7 +30,7 @@ export function TemplateEntryCard({ template, index }: Props) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-30px" }}
       transition={{ duration: 0.26, delay: index * 0.04 }}
-      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_2px_8px_rgba(15,23,42,0.06)] transition-[border-color,box-shadow] duration-200 hover:border-blue-200 hover:shadow-[0_8px_24px_rgba(37,99,235,0.12)]"
+      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_2px_8px_rgba(15,23,42,0.06)] transition-[border-color,box-shadow] duration-200 hover:border-blue-400 hover:shadow-[0_8px_24px_rgba(37,99,235,0.18)]"
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
@@ -79,10 +79,10 @@ export function TemplateEntryCard({ template, index }: Props) {
         </div>
       </div>
 
-      <Link to="/auth/signup" search={{ redirect: window.location.pathname }} className="mt-4 block">
-        <span className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:bg-slate-700">
+      <Link to="/auth/signup" search={{ redirect: window.location.pathname }} className="group mt-4 block">
+        <span className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:border-slate-700 hover:bg-slate-700">
           Use Template
-          <ArrowUpRight className="h-4 w-4" />
+          <ArrowUpRight className="h-4 w-4 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
         </span>
       </Link>
     </motion.article>

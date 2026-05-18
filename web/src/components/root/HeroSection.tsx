@@ -9,10 +9,11 @@ export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}
   const { goToSection } = usePresentationContext();
 
   return (
-    <section className="relative flex flex-col h-full justify-center pt-4 overflow-hidden">
+    <section className="relative flex flex-col py-6">
       <div className="pointer-events-none absolute -top-20 left-[14%] h-72 w-72 rounded-full bg-cyan-200/40 blur-3xl" />
       <div className="pointer-events-none absolute -right-14 top-1/3 h-72 w-72 rounded-full bg-indigo-200/50 blur-3xl" />
 
+      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-10">
       <div className="relative grid grid-cols-1 items-center gap-10 lg:grid-cols-[1fr_1.06fr]">
         <div className="flex flex-col justify-center">
           <motion.div
@@ -92,6 +93,7 @@ export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}
         >
           <HeroLivePreview />
         </motion.div>
+      </div>
       </div>
     </section>
   );
