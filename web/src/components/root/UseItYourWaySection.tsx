@@ -101,10 +101,26 @@ export function UseItYourWaySection() {
             className="relative h-full overflow-hidden rounded-3xl p-6"
             style={{ background: "linear-gradient(135deg, rgb(37,99,235), rgb(67,56,202))" }}
           >
-            <div className="pointer-events-none absolute -right-10 -top-10 h-48 w-48 rounded-full bg-white/10" />
-            <div className="pointer-events-none absolute -bottom-6 right-4 h-32 w-32 rounded-full bg-black/10" />
-            <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-blue-300/25 blur-2xl" />
-            <div className="pointer-events-none absolute -bottom-14 -left-14 h-40 w-40 rounded-full bg-indigo-400/20 blur-3xl" />
+            <motion.div
+              animate={{ scale: [1, 1.12, 1], x: [0, 6, 0], y: [0, -8, 0] }}
+              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+              className="pointer-events-none absolute -right-10 -top-10 h-48 w-48 rounded-full bg-white/10"
+            />
+            <motion.div
+              animate={{ scale: [1, 1.18, 1], x: [0, -8, 0], y: [0, 6, 0] }}
+              transition={{ duration: 7, repeat: Infinity, ease: "easeInOut", delay: 1.2 }}
+              className="pointer-events-none absolute -bottom-6 right-4 h-32 w-32 rounded-full bg-black/10"
+            />
+            <motion.div
+              animate={{ opacity: [0.25, 0.45, 0.25] }}
+              transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
+              className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-blue-300/25 blur-2xl"
+            />
+            <motion.div
+              animate={{ opacity: [0.2, 0.4, 0.2] }}
+              transition={{ duration: 8, repeat: Infinity, ease: "easeInOut", delay: 2 }}
+              className="pointer-events-none absolute -bottom-14 -left-14 h-40 w-40 rounded-full bg-indigo-400/20 blur-3xl"
+            />
 
             <div className="relative z-10 flex h-full flex-col">
               <span className="inline-flex w-fit items-center gap-2 rounded-full border border-white/20 bg-white/15 px-3 py-1 text-xs font-semibold text-white/90">

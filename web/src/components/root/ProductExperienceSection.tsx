@@ -1,4 +1,5 @@
-import type { ComponentType } from "react";
+import { useRef, type ComponentType } from "react";
+import { motion, useInView } from "framer-motion";
 import {
   Bell,
   BellRing,
@@ -130,82 +131,121 @@ function SmallFeatureTile({
 }
 
 export function ProductExperienceSection({ isActive: _isActive }: { isActive?: boolean } = {}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { once: true, margin: "-80px" });
+
   return (
     <section id="features" className="relative py-6">
-      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-10">
-      <div className="text-center">
-        <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-          Proyekto Features
-        </h2>
-        <p className="mx-auto mt-3 max-w-3xl text-sm text-slate-600 sm:text-base">
-          Plan, execute, and run delivery with roadmap, collaboration, operations, and marketplace tools in one connected system.
-        </p>
-      </div>
+      <div ref={ref} className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-10">
+        <motion.div
+          className="text-center"
+          initial={{ opacity: 0, y: 20 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.5 }}
+        >
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">Proyekto Features</p>
+          <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+            Everything you need in one place
+          </h2>
+          <p className="mx-auto mt-3 max-w-3xl text-sm text-slate-600 sm:text-base">
+            Plan, execute, and run delivery with roadmap, collaboration, operations, and marketplace tools in one connected system.
+          </p>
+        </motion.div>
 
-      <div className="relative mt-10 overflow-hidden">
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-36 bg-[linear-gradient(to_right,rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(to_bottom,rgba(59,130,246,0.12)_1px,transparent_1px)] bg-[size:100%_92px]" />
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-36 bg-[linear-gradient(to_right,rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(to_bottom,rgba(59,130,246,0.12)_1px,transparent_1px)] bg-[size:100%_92px]" />
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-20 w-44 bg-linear-to-r from-[#fcfcfd] via-[#fcfcfd]/84 to-transparent" />
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-44 bg-linear-to-l from-[#fcfcfd] via-[#fcfcfd]/84 to-transparent" />
-
-        <div className="relative grid md:grid-cols-12">
-          {topRowTiles.map((tile) => (
-            <SmallFeatureTile key={tile.label} label={tile.label} Icon={tile.icon} />
-          ))}
-        </div>
-
-        <div className="relative mt-px grid md:grid-cols-12">
-          <div className="grid md:col-span-3 md:auto-rows-[104px] md:grid-cols-3">
-            {middleSideLeftTiles.map((tile) => (
-              <SmallFeatureTile
-                key={tile.label}
-                label={tile.label}
-                Icon={tile.icon}
-                className="md:min-h-[104px]"
-              />
+        <motion.div
+          initial={{ opacity: 0, y: 28 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.55, delay: 0.2 }}
+        >
+          {/* Mobile layout — clean cards only */}
+          <div className="mt-8 grid gap-4 md:hidden">
+            {coreFeatures.map((feature) => (
+              <div
+                key={feature.title}
+                className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+              >
+                <h3 className="text-xl font-semibold tracking-tight text-slate-900">{feature.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">{feature.copy}</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {feature.chips.map((chip) => (
+                    <span
+                      key={chip}
+                      className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-slate-700"
+                    >
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
 
-          {coreFeatures.map((feature) => (
-            <div
-              key={feature.title}
-              className={`flex flex-col justify-center bg-linear-to-br ${feature.tone} p-5 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.14)] md:col-span-2 md:min-h-[416px]`}
-            >
-              <h3 className="text-2xl font-semibold tracking-tight text-slate-900">
-                {feature.title}
-              </h3>
-              <p className="mt-2 text-sm leading-relaxed text-slate-700">{feature.copy}</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {feature.chips.map((chip) => (
-                  <span
-                    key={chip}
-                    className="rounded-full border border-blue-200 bg-white/80 px-2.5 py-1 text-xs font-medium text-slate-700"
-                  >
-                    {chip}
-                  </span>
+          {/* Desktop layout — full tile grid */}
+          <div className="relative mt-10 hidden overflow-hidden md:block">
+            <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-36 bg-[linear-gradient(to_right,rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(to_bottom,rgba(59,130,246,0.12)_1px,transparent_1px)] bg-size-[100%_92px]" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-36 bg-[linear-gradient(to_right,rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(to_bottom,rgba(59,130,246,0.12)_1px,transparent_1px)] bg-size-[100%_92px]" />
+            <div className="pointer-events-none absolute inset-y-0 left-0 z-20 w-44 bg-linear-to-r from-[#fcfcfd] via-[#fcfcfd]/84 to-transparent" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-44 bg-linear-to-l from-[#fcfcfd] via-[#fcfcfd]/84 to-transparent" />
+
+            <div className="relative grid md:grid-cols-12">
+              {topRowTiles.map((tile) => (
+                <SmallFeatureTile key={tile.label} label={tile.label} Icon={tile.icon} />
+              ))}
+            </div>
+
+            <div className="relative mt-px grid md:grid-cols-12">
+              <div className="grid md:col-span-3 md:auto-rows-[104px] md:grid-cols-3">
+                {middleSideLeftTiles.map((tile) => (
+                  <SmallFeatureTile
+                    key={tile.label}
+                    label={tile.label}
+                    Icon={tile.icon}
+                    className="md:min-h-[104px]"
+                  />
+                ))}
+              </div>
+
+              {coreFeatures.map((feature) => (
+                <div
+                  key={feature.title}
+                  className={`flex flex-col justify-center bg-linear-to-br ${feature.tone} p-5 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.14)] md:col-span-2 md:min-h-[416px]`}
+                >
+                  <h3 className="text-2xl font-semibold tracking-tight text-slate-900">
+                    {feature.title}
+                  </h3>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-700">{feature.copy}</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {feature.chips.map((chip) => (
+                      <span
+                        key={chip}
+                        className="rounded-full border border-blue-200 bg-white/80 px-2.5 py-1 text-xs font-medium text-slate-700"
+                      >
+                        {chip}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              <div className="grid md:col-span-3 md:auto-rows-[104px] md:grid-cols-3">
+                {middleSideRightTiles.map((tile) => (
+                  <SmallFeatureTile
+                    key={tile.label}
+                    label={tile.label}
+                    Icon={tile.icon}
+                    className="md:min-h-[104px]"
+                  />
                 ))}
               </div>
             </div>
-          ))}
 
-          <div className="grid md:col-span-3 md:auto-rows-[104px] md:grid-cols-3">
-            {middleSideRightTiles.map((tile) => (
-              <SmallFeatureTile
-                key={tile.label}
-                label={tile.label}
-                Icon={tile.icon}
-                className="md:min-h-[104px]"
-              />
-            ))}
+            <div className="relative mt-px grid md:grid-cols-12">
+              {bottomRowTiles.map((tile) => (
+                <SmallFeatureTile key={tile.label} label={tile.label} Icon={tile.icon} />
+              ))}
+            </div>
           </div>
-        </div>
-
-        <div className="relative mt-px grid md:grid-cols-12">
-          {bottomRowTiles.map((tile) => (
-            <SmallFeatureTile key={tile.label} label={tile.label} Icon={tile.icon} />
-          ))}
-        </div>
-      </div>
+        </motion.div>
       </div>
     </section>
   );
