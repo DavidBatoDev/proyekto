@@ -26,6 +26,7 @@ jobs:
 
     env:
       IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_AR_REPO }}/backend:${{ github.sha }}
+      PUBLIC_API_URL: ${{ vars.PUBLIC_API_URL }}
 
     steps:
       - name: Checkout
@@ -59,6 +60,7 @@ jobs:
             --cpu-boost \
             --service-account="${{ vars.GCP_RUNTIME_SA }}" \
             --allow-unauthenticated \
+            --no-default-url \
             --port=8080 \
             --memory=1Gi \
             --cpu=1 \
@@ -70,19 +72,18 @@ jobs:
             --set-secrets="SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_ANON_KEY=SUPABASE_ANON_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,CLIENT_URL=CLIENT_URL:latest,CORS_ORIGINS=CORS_ORIGINS:latest,UPSTASH_REDIS_REST_URL=UPSTASH_REDIS_REST_URL:latest,UPSTASH_REDIS_REST_TOKEN=UPSTASH_REDIS_REST_TOKEN:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest" \
             --quiet
 
-      - name: Print service URL
+      - name: Print public endpoint
         run: |
-          URL=$(gcloud run services describe "${{ vars.GCP_SERVICE_NAME }}" \
-            --region="${{ vars.GCP_REGION }}" --format='value(status.url)')
-          echo "Service URL: $URL"
+          URL="${PUBLIC_API_URL:-https://api.proyekto.tech}"
+          echo "Public URL: $URL"
           echo "### Deployed" >> "$GITHUB_STEP_SUMMARY"
           echo "- Image: \`$IMAGE\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- URL: $URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Rollback command: \`gcloud run services update \"${{ vars.GCP_SERVICE_NAME }}\" --region=\"${{ vars.GCP_REGION }}\" --default-url\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke test health endpoint
         run: |
-          URL=$(gcloud run services describe "${{ vars.GCP_SERVICE_NAME }}" \
-            --region="${{ vars.GCP_REGION }}" --format='value(status.url)')
+          URL="${PUBLIC_API_URL:-https://api.proyekto.tech}"
           for i in 1 2 3 4 5; do
             if curl -fsS "$URL/" | grep -q '"status":"ok"'; then
               echo "Health check passed"
