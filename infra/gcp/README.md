@@ -130,6 +130,9 @@ echo -n "<value>" | gcloud secrets create CORS_ORIGINS              --data-file=
 echo -n "<value>" | gcloud secrets create UPSTASH_REDIS_REST_URL    --data-file=-
 echo -n "<value>" | gcloud secrets create UPSTASH_REDIS_REST_TOKEN  --data-file=-
 
+# Cloudflare runtime purge token (recommended for cache-consistency hardening)
+echo -n "<value>" | gcloud secrets create CLOUDFLARE_PURGE_API_TOKEN --data-file=-
+
 # Optional
 echo -n "<value>" | gcloud secrets create OPENAI_API_KEY            --data-file=-
 ```
@@ -149,6 +152,7 @@ In the GitHub repo → **Settings → Secrets and variables → Actions → Vari
 | `GCP_RUNTIME_SA` | `proyekto-backend-sa@planar-rarity-494104-n4.iam.gserviceaccount.com` |
 | `GCP_AR_REPO` | `proyekto` |
 | `GCP_SERVICE_NAME` | `proyekto-backend` |
+| `CLOUDFLARE_ZONE_ID` | `3e1059b12bb0962437a68f86630a3f5f` |
 | `GCP_AGENT_SERVICE_NAME` | `proyekto-agent` *(only needed for agent deploy)* |
 | `GCP_AGENT_RUNTIME_SA` | `proyekto-agent-sa@planar-rarity-494104-n4.iam.gserviceaccount.com` *(only needed for agent deploy)* |
 
@@ -329,3 +333,4 @@ gcloud run services update-traffic "$SERVICE_NAME" \
 ```
 
 If the issue is platform-wide rather than a bad revision, flip the web client's API base URL back to the Vercel deployment (which stays live until Phase 3 cleanup per the migration plan).
+

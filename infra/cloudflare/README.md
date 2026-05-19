@@ -33,6 +33,11 @@ Create a Cloudflare API token with zone-scoped permissions:
 - `DNS:Edit`
 - `Cache Rules:Edit`
 
+For backend runtime edge purge (separate token, stored in GCP Secret Manager as `CLOUDFLARE_PURGE_API_TOKEN`), use least privilege:
+
+- `Zone:Read`
+- `Cache Purge:Edit`
+
 ## Usage
 
 1. Copy and edit example variables:

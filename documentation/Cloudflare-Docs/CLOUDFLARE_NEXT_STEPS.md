@@ -10,11 +10,16 @@ This checklist is the exact sequence to finish rollout in production.
 
 ## 2) Create Cloudflare API Token
 
-Create a token scoped to the `proyekto.tech` zone with:
+Create a Terraform token scoped to the `proyekto.tech` zone with:
 
 - `Zone:Read`
 - `DNS:Edit`
 - `Cache Rules:Edit`
+
+Create a separate runtime purge token (least privilege) with:
+
+- `Zone:Read`
+- `Cache Purge:Edit`
 
 ## 3) Apply Cloudflare Terraform
 
@@ -61,6 +66,11 @@ Expected outcome:
 - Cloud Run deploy succeeds
 - Deploy uses `--no-default-url`
 - Smoke check passes against `https://api.proyekto.tech/`
+- Runtime env includes:
+  - `CLOUDFLARE_PURGE_ENABLED=true`
+  - `CLOUDFLARE_ZONE_ID`
+  - `CLOUDFLARE_PURGE_TIMEOUT_MS`
+  - secret `CLOUDFLARE_PURGE_API_TOKEN`
 
 ## 6) Validate Cache Behavior
 
@@ -102,8 +112,15 @@ Track:
 Goal:
 
 - Higher edge hit ratio and lower origin load/cost on public routes.
+- No sustained `edge_purge status=failed` events in Cloud Run logs.
 
-## 9) Rollback (if needed)
+## 9) Staged Rollout Safety
+
+1. Stage 1 (canary): enable `REDIS_CACHE_DEBUG_HEADERS=true` and validate `X-App-Cache` + `CF-Cache-Status`.
+2. Stage 2 (global): keep purge enabled and monitor 24-48h.
+3. Stage 3 (steady state): set `REDIS_CACHE_DEBUG_HEADERS=false`, keep alerts enabled.
+
+## 10) Rollback (if needed)
 
 - Re-enable default Cloud Run URL:
 
@@ -112,7 +129,8 @@ gcloud run services update "$SERVICE_NAME" --region="$REGION" --default-url
 ```
 
 - Temporarily set `api` DNS to DNS-only (gray cloud), or disable cache rules.
+- Disable edge purge quickly with `CLOUDFLARE_PURGE_ENABLED=false` and redeploy.
 
 ---
 
-For detailed procedures, see: `documentation/CLOUDFLARE_CACHE_FIRST_RUNBOOK.md`.
+For detailed procedures, see: `documentation/Cloudflare-Docs/CLOUDFLARE_CACHE_FIRST_RUNBOOK.md`.
