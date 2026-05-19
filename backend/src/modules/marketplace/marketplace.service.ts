@@ -8,6 +8,15 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
+  AppCacheStatus,
+  RedisDataCacheService,
+} from '../../common/cache/redis-data-cache.service';
+import {
+  buildMarketplaceFreelancersCacheKey,
+  REDIS_CACHE_KEYS,
+} from '../../common/cache/redis-cache.keys';
+import { RedisCacheInvalidationService } from '../../common/cache/redis-cache-invalidation.service';
+import {
   InviteFreelancerDto,
   MarketplaceQueryDto,
   RespondInviteDto,
@@ -49,12 +58,18 @@ export interface MarketplaceInviteItem {
   } | null;
 }
 
+interface CacheReadOptions {
+  onCacheStatus?: (status: AppCacheStatus) => void;
+}
+
 @Injectable()
 export class MarketplaceService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly notificationsService: NotificationsService,
     private readonly authorization: ProjectAuthorizationService,
+    private readonly cache: RedisDataCacheService,
+    private readonly cacheInvalidation: RedisCacheInvalidationService,
   ) {}
 
   private async emitNotification(
@@ -82,135 +97,150 @@ export class MarketplaceService {
   async getFreelancers(
     userId: string,
     query: MarketplaceQueryDto,
+    options?: CacheReadOptions,
   ): Promise<MarketplaceFreelancerCard[]> {
     await this.ensureConsultant(userId);
 
-    let profilesQuery = this.supabase
-      .from('profiles')
-      .select('id, display_name, avatar_url, headline, is_email_verified')
-      .eq('is_public', true)
-      .eq('active_persona', 'freelancer');
+    const cacheKey = buildMarketplaceFreelancersCacheKey(query);
+    return this.cache.rememberJson(
+      cacheKey,
+      this.cache.getAuthTtlSeconds(),
+      async () => {
+        let profilesQuery = this.supabase
+          .from('profiles')
+          .select('id, display_name, avatar_url, headline, is_email_verified')
+          .eq('is_public', true)
+          .eq('active_persona', 'freelancer');
 
-    if (query.search) {
-      const escaped = query.search.replace(/[%_]/g, '');
-      profilesQuery = profilesQuery.or(
-        `display_name.ilike.%${escaped}%,headline.ilike.%${escaped}%`,
-      );
-    }
+        if (query.search) {
+          const escaped = query.search.replace(/[%_]/g, '');
+          profilesQuery = profilesQuery.or(
+            `display_name.ilike.%${escaped}%,headline.ilike.%${escaped}%`,
+          );
+        }
 
-    const { data: profiles, error: profilesError } = await profilesQuery;
+        const { data: profiles, error: profilesError } = await profilesQuery;
 
-    if (profilesError) {
-      throw new BadRequestException(profilesError.message);
-    }
+        if (profilesError) {
+          throw new BadRequestException(profilesError.message);
+        }
 
-    if (!profiles?.length) return [];
+        if (!profiles?.length) return [];
 
-    const userIds = profiles.map((p) => p.id);
+        const userIds = profiles.map((p) => p.id);
 
-    const [rateRes, statsRes, specsRes, skillsRes] = await Promise.all([
-      this.supabase
-        .from('user_rate_settings')
-        .select('user_id, availability, hourly_rate, currency')
-        .in('user_id', userIds),
-      this.supabase
-        .from('user_stats')
-        .select('user_id, avg_rating')
-        .in('user_id', userIds),
-      this.supabase
-        .from('user_specializations')
-        .select('user_id, category')
-        .in('user_id', userIds),
-      this.supabase
-        .from('user_skills')
-        .select('user_id, skill:skills(id, name, slug)')
-        .in('user_id', userIds),
-    ]);
+        const [rateRes, statsRes, specsRes, skillsRes] = await Promise.all([
+          this.supabase
+            .from('user_rate_settings')
+            .select('user_id, availability, hourly_rate, currency')
+            .in('user_id', userIds),
+          this.supabase
+            .from('user_stats')
+            .select('user_id, avg_rating')
+            .in('user_id', userIds),
+          this.supabase
+            .from('user_specializations')
+            .select('user_id, category')
+            .in('user_id', userIds),
+          this.supabase
+            .from('user_skills')
+            .select('user_id, skill:skills(id, name, slug)')
+            .in('user_id', userIds),
+        ]);
 
-    const rateByUser = new Map(
-      (rateRes.data || []).map((row) => [row.user_id, row]),
+        const rateByUser = new Map(
+          (rateRes.data || []).map((row) => [row.user_id, row]),
+        );
+        const statsByUser = new Map(
+          (statsRes.data || []).map((row) => [row.user_id, row]),
+        );
+
+        const specsByUser = new Map<string, string[]>();
+        for (const row of specsRes.data || []) {
+          const existing = specsByUser.get(row.user_id) || [];
+          existing.push(row.category);
+          specsByUser.set(row.user_id, existing);
+        }
+
+        const skillsByUser = new Map<
+          string,
+          Array<{ id: string; name: string; slug: string }>
+        >();
+        for (const row of skillsRes.data || []) {
+          const relation = (row.skill || []) as Array<{
+            id: string;
+            name: string;
+            slug: string;
+          }>;
+          const skill = relation[0];
+          if (!skill) continue;
+          const existing = skillsByUser.get(row.user_id) || [];
+          existing.push(skill);
+          skillsByUser.set(row.user_id, existing);
+        }
+
+        let cards: MarketplaceFreelancerCard[] = profiles.map((profile) => {
+          const rate = rateByUser.get(profile.id);
+          const stats = statsByUser.get(profile.id);
+          const specializations = specsByUser.get(profile.id) || [];
+          const skills = skillsByUser.get(profile.id) || [];
+
+          return {
+            id: profile.id,
+            display_name: profile.display_name,
+            avatar_url: profile.avatar_url,
+            headline: profile.headline,
+            is_email_verified: Boolean(profile.is_email_verified),
+            avg_rating: Number(stats?.avg_rating || 0),
+            availability: String(rate?.availability || 'unavailable'),
+            hourly_rate: rate?.hourly_rate ?? null,
+            currency: String(rate?.currency || 'USD'),
+            specialization: specializations[0] || null,
+            skills,
+          };
+        });
+
+        if (query.availability) {
+          cards = cards.filter(
+            (card) => card.availability === query.availability,
+          );
+        }
+
+        if (query.specialization) {
+          const target = query.specialization.toLowerCase();
+          cards = cards.filter(
+            (card) => (card.specialization || '').toLowerCase() === target,
+          );
+        }
+
+        if (query.skill) {
+          const target = query.skill.toLowerCase();
+          cards = cards.filter((card) =>
+            card.skills.some(
+              (skill) =>
+                skill.name.toLowerCase().includes(target) ||
+                skill.slug.toLowerCase().includes(target),
+            ),
+          );
+        }
+
+        const sortMode = query.sort || 'rating_desc';
+        if (sortMode === 'rate_asc') {
+          cards.sort((a, b) => (a.hourly_rate || 0) - (b.hourly_rate || 0));
+        } else if (sortMode === 'rate_desc') {
+          cards.sort((a, b) => (b.hourly_rate || 0) - (a.hourly_rate || 0));
+        } else {
+          cards.sort((a, b) => b.avg_rating - a.avg_rating);
+        }
+
+        return cards;
+      },
+      {
+        onStatus: options?.onCacheStatus,
+        indexKey: REDIS_CACHE_KEYS.marketplaceFreelancersIndex,
+        indexTtlSeconds: this.cache.getMarketplaceIndexTtlSeconds(),
+      },
     );
-    const statsByUser = new Map(
-      (statsRes.data || []).map((row) => [row.user_id, row]),
-    );
-
-    const specsByUser = new Map<string, string[]>();
-    for (const row of specsRes.data || []) {
-      const existing = specsByUser.get(row.user_id) || [];
-      existing.push(row.category);
-      specsByUser.set(row.user_id, existing);
-    }
-
-    const skillsByUser = new Map<
-      string,
-      Array<{ id: string; name: string; slug: string }>
-    >();
-    for (const row of skillsRes.data || []) {
-      const relation = (row.skill || []) as Array<{
-        id: string;
-        name: string;
-        slug: string;
-      }>;
-      const skill = relation[0];
-      if (!skill) continue;
-      const existing = skillsByUser.get(row.user_id) || [];
-      existing.push(skill);
-      skillsByUser.set(row.user_id, existing);
-    }
-
-    let cards: MarketplaceFreelancerCard[] = profiles.map((profile) => {
-      const rate = rateByUser.get(profile.id);
-      const stats = statsByUser.get(profile.id);
-      const specializations = specsByUser.get(profile.id) || [];
-      const skills = skillsByUser.get(profile.id) || [];
-
-      return {
-        id: profile.id,
-        display_name: profile.display_name,
-        avatar_url: profile.avatar_url,
-        headline: profile.headline,
-        is_email_verified: Boolean(profile.is_email_verified),
-        avg_rating: Number(stats?.avg_rating || 0),
-        availability: String(rate?.availability || 'unavailable'),
-        hourly_rate: rate?.hourly_rate ?? null,
-        currency: String(rate?.currency || 'USD'),
-        specialization: specializations[0] || null,
-        skills,
-      };
-    });
-
-    if (query.availability) {
-      cards = cards.filter((card) => card.availability === query.availability);
-    }
-
-    if (query.specialization) {
-      const target = query.specialization.toLowerCase();
-      cards = cards.filter(
-        (card) => (card.specialization || '').toLowerCase() === target,
-      );
-    }
-
-    if (query.skill) {
-      const target = query.skill.toLowerCase();
-      cards = cards.filter((card) =>
-        card.skills.some(
-          (skill) =>
-            skill.name.toLowerCase().includes(target) ||
-            skill.slug.toLowerCase().includes(target),
-        ),
-      );
-    }
-
-    const sortMode = query.sort || 'rating_desc';
-    if (sortMode === 'rate_asc') {
-      cards.sort((a, b) => (a.hourly_rate || 0) - (b.hourly_rate || 0));
-    } else if (sortMode === 'rate_desc') {
-      cards.sort((a, b) => (b.hourly_rate || 0) - (a.hourly_rate || 0));
-    } else {
-      cards.sort((a, b) => b.avg_rating - a.avg_rating);
-    }
-
-    return cards;
   }
 
   async goLive(userId: string): Promise<{ is_public: boolean }> {
@@ -235,6 +265,7 @@ export class MarketplaceService {
       link_url: '/freelancer/profile',
     });
 
+    await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
     return { is_public: data.is_public as boolean };
   }
 
@@ -461,6 +492,7 @@ export class MarketplaceService {
       link_url: '/consultant/marketplace',
     });
 
+    await this.cacheInvalidation.invalidateAllDashboardCache();
     return {
       id: updatedInvite.id as string,
       status: updatedInvite.status as string,

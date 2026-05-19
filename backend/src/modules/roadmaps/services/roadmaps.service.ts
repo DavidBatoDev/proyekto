@@ -8,6 +8,12 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
+import {
+  AppCacheStatus,
+  RedisDataCacheService,
+} from '../../../common/cache/redis-data-cache.service';
+import { REDIS_CACHE_KEYS } from '../../../common/cache/redis-cache.keys';
+import { RedisCacheInvalidationService } from '../../../common/cache/redis-cache-invalidation.service';
 import { MissingPermissionException } from '../../projects/authorization/missing-permission.exception';
 import type { IRoadmapsRepository } from '../repositories/roadmaps.repository.interface';
 import {
@@ -19,6 +25,10 @@ import { RoadmapAuthorizationService } from './roadmap-authorization.service';
 
 export const ROADMAPS_REPOSITORY = Symbol('ROADMAPS_REPOSITORY');
 
+interface CacheReadOptions {
+  onCacheStatus?: (status: AppCacheStatus) => void;
+}
+
 @Injectable()
 export class RoadmapsService {
   private readonly logger = new Logger(RoadmapsService.name);
@@ -27,7 +37,13 @@ export class RoadmapsService {
     @Inject(ROADMAPS_REPOSITORY) private readonly repo: IRoadmapsRepository,
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
+    private readonly cache: RedisDataCacheService,
+    private readonly cacheInvalidation: RedisCacheInvalidationService,
   ) {}
+
+  private async invalidatePublicTemplatesCache(): Promise<void> {
+    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
+  }
 
   async replaceProjectRoadmap(
     projectId: string,
@@ -129,6 +145,7 @@ export class RoadmapsService {
       );
     }
 
+    await this.invalidatePublicTemplatesCache();
     return linked;
   }
 
@@ -187,7 +204,9 @@ export class RoadmapsService {
         'roadmap.edit',
       );
     }
-    return this.repo.create(dto, userId);
+    const created = await this.repo.create(dto, userId);
+    await this.invalidatePublicTemplatesCache();
+    return created;
   }
 
   async findConsultantTemplateRoadmaps(userId: string) {
@@ -195,8 +214,13 @@ export class RoadmapsService {
     return this.repo.findConsultantProjectless(userId);
   }
 
-  async findPublicTemplates() {
-    return this.repo.findPublicTemplatePreviews();
+  async findPublicTemplates(options?: CacheReadOptions) {
+    return this.cache.rememberJson(
+      REDIS_CACHE_KEYS.publicRoadmapTemplates,
+      this.cache.getPublicTtlSeconds(),
+      async () => this.repo.findPublicTemplatePreviews(),
+      { onStatus: options?.onCacheStatus },
+    );
   }
 
   async updateTemplateSettings(
@@ -215,7 +239,9 @@ export class RoadmapsService {
         userId,
         'roadmap.edit',
       );
-      return this.repo.update(id, dto);
+      const updated = await this.repo.update(id, dto);
+      await this.invalidatePublicTemplatesCache();
+      return updated;
     }
 
     if (existing.owner_id !== userId) {
@@ -226,11 +252,15 @@ export class RoadmapsService {
       });
     }
 
-    return this.repo.update(id, dto);
+    const updated = await this.repo.update(id, dto);
+    await this.invalidatePublicTemplatesCache();
+    return updated;
   }
 
   async cloneFromTemplate(templateId: string, userId: string) {
-    return this.repo.cloneFromTemplate(templateId, userId);
+    const cloned = await this.repo.cloneFromTemplate(templateId, userId);
+    await this.invalidatePublicTemplatesCache();
+    return cloned;
   }
 
   async update(id: string, dto: UpdateRoadmapDto, userId: string) {
@@ -243,7 +273,9 @@ export class RoadmapsService {
         userId,
         'roadmap.edit',
       );
-      return this.repo.update(id, dto);
+      const updated = await this.repo.update(id, dto);
+      await this.invalidatePublicTemplatesCache();
+      return updated;
     }
 
     if (existing.owner_id !== userId)
@@ -252,7 +284,9 @@ export class RoadmapsService {
         requiredRole: 'owner',
         label: 'modify this roadmap',
       });
-    return this.repo.update(id, dto);
+    const updated = await this.repo.update(id, dto);
+    await this.invalidatePublicTemplatesCache();
+    return updated;
   }
 
   async remove(id: string, userId: string) {
@@ -265,7 +299,9 @@ export class RoadmapsService {
         userId,
         'roadmap.edit',
       );
-      return this.repo.remove(id);
+      await this.repo.remove(id);
+      await this.invalidatePublicTemplatesCache();
+      return;
     }
 
     if (existing.owner_id !== userId)
@@ -274,7 +310,8 @@ export class RoadmapsService {
         requiredRole: 'owner',
         label: 'modify this roadmap',
       });
-    return this.repo.remove(id);
+    await this.repo.remove(id);
+    await this.invalidatePublicTemplatesCache();
   }
 
   async migrateGuestRoadmaps(sessionId: string, userId: string) {

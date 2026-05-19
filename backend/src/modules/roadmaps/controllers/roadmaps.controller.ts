@@ -6,16 +6,22 @@ import {
   Delete,
   Body,
   Param,
+  Res,
   UseGuards,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
 import { SetCachePolicy } from '../../../common/decorators/cache-policy.decorator';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-request.interface';
 import { CACHE_POLICY_PRESETS } from '../../../common/cache/cache-policy';
+import {
+  AppCacheStatus,
+  RedisDataCacheService,
+} from '../../../common/cache/redis-data-cache.service';
 import { RoadmapsService } from '../services/roadmaps.service';
 import {
   CreateRoadmapDto,
@@ -27,7 +33,15 @@ import {
 @Controller('roadmaps')
 @UseGuards(SupabaseAuthGuard)
 export class RoadmapsController {
-  constructor(private readonly roadmapsService: RoadmapsService) {}
+  constructor(
+    private readonly roadmapsService: RoadmapsService,
+    private readonly dataCache: RedisDataCacheService,
+  ) {}
+
+  private setCacheHeader(response: Response, status: AppCacheStatus): void {
+    if (!this.dataCache.isDebugHeadersEnabled()) return;
+    response.setHeader('X-App-Cache', status);
+  }
 
   @Get()
   getAll(@CurrentUser() user: AuthenticatedUser) {
@@ -69,8 +83,10 @@ export class RoadmapsController {
   @Get('templates/public')
   @Public()
   @SetCachePolicy(CACHE_POLICY_PRESETS.PUBLIC_EDGE_SHORT)
-  getPublicTemplates() {
-    return this.roadmapsService.findPublicTemplates();
+  getPublicTemplates(@Res({ passthrough: true }) response: Response) {
+    return this.roadmapsService.findPublicTemplates({
+      onCacheStatus: (status) => this.setCacheHeader(response, status),
+    });
   }
 
   @Get(':id')

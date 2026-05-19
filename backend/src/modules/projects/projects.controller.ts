@@ -9,13 +9,19 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ProjectsService } from './projects.service';
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
 import { AdminGuard } from '../../common/guards/admin.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
+import {
+  AppCacheStatus,
+  RedisDataCacheService,
+} from '../../common/cache/redis-data-cache.service';
 import {
   AddProjectMemberDto,
   AssignConsultantDto,
@@ -41,7 +47,15 @@ import {
 @Controller('projects')
 @UseGuards(SupabaseAuthGuard)
 export class ProjectsController {
-  constructor(private readonly projectsService: ProjectsService) {}
+  constructor(
+    private readonly projectsService: ProjectsService,
+    private readonly dataCache: RedisDataCacheService,
+  ) {}
+
+  private setCacheHeader(response: Response, status: AppCacheStatus): void {
+    if (!this.dataCache.isDebugHeadersEnabled()) return;
+    response.setHeader('X-App-Cache', status);
+  }
 
   @Get()
   listProjects(@CurrentUser() user: AuthenticatedUser) {
@@ -49,8 +63,13 @@ export class ProjectsController {
   }
 
   @Get('dashboard')
-  listDashboardProjects(@CurrentUser() user: AuthenticatedUser) {
-    return this.projectsService.listDashboardProjects(user.id);
+  listDashboardProjects(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    return this.projectsService.listDashboardProjects(user.id, {
+      onCacheStatus: (status) => this.setCacheHeader(response, status),
+    });
   }
 
   @Post()

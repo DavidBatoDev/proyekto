@@ -1,0 +1,1 @@
+export const UPSTASH_REDIS_CLIENT = Symbol('UPSTASH_REDIS_CLIENT');

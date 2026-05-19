@@ -6,6 +6,7 @@ import {
   BulkReorderDto,
 } from '../dto/roadmaps.dto';
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
+import { RedisCacheInvalidationService } from '../../../common/cache/redis-cache-invalidation.service';
 
 export const TASKS_REPOSITORY = Symbol('TASKS_REPOSITORY');
 
@@ -14,6 +15,7 @@ export class TasksService {
   constructor(
     @Inject(TASKS_REPOSITORY) private readonly repo: ITasksRepository,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
+    private readonly cacheInvalidation: RedisCacheInvalidationService,
   ) {}
 
   async findByFeature(featureId: string) {
@@ -36,14 +38,18 @@ export class TasksService {
       userId,
       'roadmap.edit',
     );
-    return this.repo.create(dto, userId);
+    const task = await this.repo.create(dto, userId);
+    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
+    return task;
   }
 
   async update(id: string, dto: UpdateTaskDto, userId: string) {
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Task not found');
     await this.roadmapAuthz.assertTaskPermission(id, userId, 'roadmap.edit');
-    return this.repo.update(id, dto);
+    const task = await this.repo.update(id, dto);
+    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
+    return task;
   }
 
   async bulkReorder(featureId: string, dto: BulkReorderDto, userId: string) {
@@ -52,13 +58,16 @@ export class TasksService {
       userId,
       'roadmap.edit',
     );
-    return this.repo.bulkReorder(featureId, dto);
+    const reordered = await this.repo.bulkReorder(featureId, dto);
+    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
+    return reordered;
   }
 
   async remove(id: string, userId: string) {
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Task not found');
     await this.roadmapAuthz.assertTaskPermission(id, userId, 'roadmap.edit');
-    return this.repo.remove(id);
+    await this.repo.remove(id);
+    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
   }
 }
