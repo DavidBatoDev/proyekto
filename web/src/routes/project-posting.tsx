@@ -38,7 +38,7 @@ interface FormData extends BaseFormData {
   // Step 3 additional fields
   roadmapFile: File | null;
   budgetRange: string;
-  fundingStatus: string;
+  currency: string;
   startDate: string;
   customStartDate: string;
 }
@@ -68,17 +68,16 @@ function ProjectPostingPage() {
   const [primaryTeamId, setPrimaryTeamId] = useState<string | null>(null);
   const fromRoadmap = Boolean(searchParams.roadmapId);
   const [formData, setFormData] = useState<FormData>({
-    title: "",
-    category: "",
+    clientName: "",
+    category: [],
     description: "",
-    problemSolving: "",
-    projectState: "idea",
+    engagementStage: "discovery_call",
     skills: [],
     customSkills: [],
     duration: "1-3_months",
     roadmapFile: null,
     budgetRange: "< $1,000",
-    fundingStatus: "",
+    currency: "AUD",
     startDate: "immediately",
     customStartDate: "",
   });
@@ -146,6 +145,25 @@ function ProjectPostingPage() {
     if (currentStep > 1) setCurrentStep(currentStep - 1);
   };
 
+  const generateTitle = (): string => {
+    const categoryLabels: Record<string, string> = {
+      strategy: "Strategy",
+      "digital-transformation": "Digital Transformation",
+      web: "Web Dev",
+      mobile: "Mobile",
+      design: "UX/UI Design",
+      data: "Data & Analytics",
+      ai: "AI/ML",
+      other: "Other",
+    };
+    const parts: string[] = [];
+    if (formData.clientName) parts.push(formData.clientName);
+    if (formData.category.length > 0) {
+      parts.push(formData.category.map((c) => categoryLabels[c] ?? c).join(" / "));
+    }
+    return parts.length > 0 ? parts.join(" – ") : "Untitled Project";
+  };
+
   const handleSubmit = async () => {
     console.log("Project submitted:", formData);
     const projectStatus =
@@ -162,14 +180,15 @@ function ProjectPostingPage() {
         // discarded.
         const { project } = await projectService.create({
           creation_mode: effectiveIntent,
-          title: formData.title || "Untitled Project",
+          title: generateTitle(),
+          client_name: formData.clientName || undefined,
           description: formData.description,
-          category: formData.category,
-          project_state: formData.projectState,
+          category: formData.category.join(","),
+          project_state: formData.engagementStage,
           skills: [...formData.skills, ...formData.customSkills],
           duration: formData.duration,
           budget_range: formData.budgetRange,
-          funding_status: formData.fundingStatus,
+          currency: formData.currency,
           start_date: formData.startDate,
           custom_start_date: formData.customStartDate || undefined,
           status: projectStatus,
@@ -666,6 +685,29 @@ function Step3({
 }) {
   return (
     <div className="space-y-6">
+      {/* Currency */}
+      <div>
+        <label className="block text-sm font-semibold text-[#333438] mb-2">
+          Currency
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {["AUD", "USD", "PHP", "GBP", "EUR", "SGD"].map((cur) => (
+            <button
+              key={cur}
+              type="button"
+              onClick={() => updateFormData({ currency: cur })}
+              className={`px-4 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+                formData.currency === cur
+                  ? "border-[#ff9933] bg-orange-50 text-[#ff9933]"
+                  : "border-gray-200 bg-white text-[#333438] hover:border-[#ff9933]"
+              }`}
+            >
+              {cur}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Budget Range (repeated from Step 2) */}
       <div>
         <label className="block text-sm font-semibold text-[#333438] mb-4">
@@ -715,24 +757,6 @@ function Step3({
             />
           </div>
         </div>
-      </div>
-      {/* Funding Status */}
-      <div>
-        <label className="block text-sm font-semibold text-[#333438] mb-2">
-          Funding Status
-        </label>
-        <select
-          value={formData.fundingStatus}
-          onChange={(e) => updateFormData({ fundingStatus: e.target.value })}
-          className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ff9933] focus:border-transparent shadow-sm"
-        >
-          <option value="">Select...</option>
-          <option value="self-funded">Self-funded</option>
-          <option value="seed">Seed Round</option>
-          <option value="series-a">Series A</option>
-          <option value="series-b">Series B+</option>
-          <option value="bootstrapped">Bootstrapped</option>
-        </select>
       </div>
       {/* Start Date */}
       <div>

@@ -288,12 +288,12 @@ export function Step2({
         )}
       </div>
 
-      {/* Expected Duration */}
+      {/* Duration of Engagement */}
       <div>
         <label
           className={`block font-semibold text-[#333438] ${compact ? "text-sm mb-2.5" : "text-sm mb-4"}`}
         >
-          Expected Duration
+          Duration of Engagement
         </label>
         <div className={`grid grid-cols-2 ${gridGap}`}>
           <TileOption
@@ -326,6 +326,14 @@ export function Step2({
             label="More than 6 months"
             checked={formData.duration === "6+_months"}
             onChange={() => updateFormData({ duration: "6+_months" })}
+            compact={compact}
+          />
+          <TileOption
+            name="duration"
+            value="1_year"
+            label="1 Year"
+            checked={formData.duration === "1_year"}
+            onChange={() => updateFormData({ duration: "1_year" })}
             compact={compact}
           />
         </div>

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { FolderOpen, ShieldCheck } from "lucide-react";
+import { FolderOpen, ShieldCheck, Plus } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { type ReactNode, useMemo } from "react";
 import { getRoadmapsPreview, type RoadmapPreview } from "@/api/endpoints/roadmap";
 import { type Project, projectService } from "@/services/project.service";
@@ -323,6 +324,19 @@ export function DashboardWidgets({
 								</p>
 							</button>
 						</div>
+
+						<Link
+							to="/project-posting"
+							className="group relative mt-4 flex items-center justify-between overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 px-6 py-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+						>
+							<span className="flex items-center gap-3 text-white">
+								<span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
+									<Plus className="h-4 w-4" />
+								</span>
+								<span className="text-sm font-semibold tracking-wide">New Project</span>
+							</span>
+							<span className="text-slate-400 transition-colors duration-200 group-hover:text-white">{"→"}</span>
+						</Link>
 					</div>
 
 					{children ? <div className="space-y-8">{children}</div> : null}

@@ -150,7 +150,8 @@ export class CreateProjectDto {
   @IsArray() @IsOptional() skills?: unknown[];
   @IsString() @IsOptional() duration?: string;
   @IsString() @IsOptional() budget_range?: string;
-  @IsString() @IsOptional() funding_status?: string;
+  @IsString() @IsOptional() currency?: string;
+  @IsString() @IsOptional() client_name?: string;
   @IsString() @IsOptional() start_date?: string;
   @IsString() @IsOptional() custom_start_date?: string;
 
@@ -162,6 +163,7 @@ export class CreateProjectDto {
 
 export class UpdateProjectDto {
   @IsString() @IsOptional() @MaxLength(200) title?: string;
+  @IsString() @IsOptional() client_name?: string;
   @IsString() @IsOptional() @MaxLength(500) brief?: string;
   @IsString() @IsOptional() @MaxLength(2000) description?: string;
   @IsEnum(['draft', 'bidding', 'active', 'paused', 'completed', 'archived'])
@@ -172,7 +174,7 @@ export class UpdateProjectDto {
   @IsArray() @IsOptional() skills?: unknown[];
   @IsString() @IsOptional() duration?: string;
   @IsString() @IsOptional() budget_range?: string;
-  @IsString() @IsOptional() funding_status?: string;
+  @IsString() @IsOptional() currency?: string;
   @IsString() @IsOptional() start_date?: string;
   @IsString() @IsOptional() custom_start_date?: string;
 }

@@ -4,6 +4,7 @@ import { extractApiErrorMessage } from "@/lib/permissionErrors";
 export interface CreateProjectData {
   creation_mode?: "client" | "consultant";
   title: string;
+  client_name?: string;
   brief?: string;
   description?: string;
   category?: string;
@@ -11,7 +12,7 @@ export interface CreateProjectData {
   skills?: string[];
   duration?: string;
   budget_range?: string;
-  funding_status?: string;
+  currency?: string;
   start_date?: string;
   custom_start_date?: string;
   status?: "draft" | "active" | "bidding" | "paused" | "completed" | "archived";
@@ -26,6 +27,7 @@ export interface CreateProjectData {
 export interface Project {
   id: string;
   title: string;
+  client_name?: string;
   brief?: string;
   description?: string;
   category?: string;
@@ -33,7 +35,7 @@ export interface Project {
   skills?: string[];
   duration?: string;
   budget_range?: string;
-  funding_status?: string;
+  currency?: string;
   start_date?: string;
   custom_start_date?: string;
   status: "draft" | "active" | "bidding" | "paused" | "completed" | "archived";

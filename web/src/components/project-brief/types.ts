@@ -1,16 +1,20 @@
-export type ProjectState = "idea" | "sketches" | "design" | "codebase";
+export type EngagementStage =
+  | "discovery_call"
+  | "proposal_creation"
+  | "active_delivery"
+  | "project_closure";
 
 export interface FormData {
   // Step 1
-  title: string;
-  category: string;
+  clientName: string;
+  category: string[];
   description: string;
-  problemSolving: string;
-  projectState: ProjectState;
+  problemSolving?: string;
+  engagementStage: EngagementStage;
 
   // Step 2
   skills: string[];
   customSkills: string[];
   duration: string;
-  preview_url?: string; // Optional roadmap thumbnail image
+  preview_url?: string;
 }

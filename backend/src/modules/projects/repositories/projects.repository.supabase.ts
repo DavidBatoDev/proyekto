@@ -71,8 +71,8 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     if (dto.skills !== undefined) payload.skills = dto.skills;
     if (dto.duration !== undefined) payload.duration = dto.duration;
     if (dto.budget_range !== undefined) payload.budget_range = dto.budget_range;
-    if (dto.funding_status !== undefined)
-      payload.funding_status = dto.funding_status;
+    if (dto.currency !== undefined) payload.currency = dto.currency;
+    if (dto.client_name !== undefined) payload.client_name = dto.client_name;
     if (dto.start_date !== undefined) payload.start_date = dto.start_date;
     if (dto.custom_start_date !== undefined)
       payload.custom_start_date = dto.custom_start_date;
