@@ -42,14 +42,16 @@ function TeamsIndexPage() {
 					title="Your teams"
 					subtitle="Reusable groups of people you can attach to any project. Rate / billing fields appear on team members when the team owner is consultant-verified."
 					rightSlot={
-						<button
-							type="button"
-							onClick={() => setCreateOpen(true)}
-							className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
-						>
-							<Plus className="h-4 w-4" />
-							Create team
-						</button>
+						teams && teams.length > 0 ? (
+							<button
+								type="button"
+								onClick={() => setCreateOpen(true)}
+								className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+							>
+								<Plus className="h-4 w-4" />
+								Create team
+							</button>
+						) : undefined
 					}
 				/>
 

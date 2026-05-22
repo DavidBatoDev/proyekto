@@ -1,4 +1,4 @@
-import { Plus, CalendarClock } from "lucide-react";
+import { CalendarDays, CalendarClock, Link2, PenLine, Plus } from "lucide-react";
 import { dateFromTimelinePx } from "./model/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EpicReorderConfirmModal } from "../../panels/EpicReorderConfirmModal";
@@ -24,13 +24,14 @@ import {
   FeatureDateChangeConfirmModal,
   type FeatureDateDraftCommit,
   type FeatureDateVisualDraft,
+  G_LABELS,
   type Granularity,
+  GRANULARITIES,
   type MilestoneDateDraftCommit,
   MilestoneEditorModal,
   MilestonesLeftPanel,
   MilestonesTimelineHeader,
   MilestonesTimelineRows,
-  MilestonesToolbar,
   RIGHT_HEADER_HEIGHT,
   useMilestoneEditor,
   useMilestonesPan,
@@ -56,6 +57,8 @@ export interface MilestonesViewProps {
   onOpenFeatureEditor?: (epicId: string, featureId: string) => void;
   canEditTimelineDates?: boolean;
   onNavigateToEpic?: (epicId: string) => void;
+  onAddEpic?: () => void;
+  onLinkRoadmap?: () => void;
 }
 
 const FEATURE_DATE_CONFIRM_SKIP_KEY = "roadmap.timeline.skipDragDateConfirm";
@@ -102,6 +105,7 @@ type PendingEpicReorder = {
   nextOrderIds: string[];
 };
 
+
 export const MilestonesView = ({
   roadmap: _roadmap,
   milestones,
@@ -115,6 +119,8 @@ export const MilestonesView = ({
   onOpenFeatureEditor,
   canEditTimelineDates = true,
   onNavigateToEpic,
+  onAddEpic,
+  onLinkRoadmap,
 }: MilestonesViewProps) => {
   const toast = useToast();
   const reorderFeaturesInEpic = useRoadmapStore(
@@ -234,10 +240,7 @@ export const MilestonesView = ({
   );
 
   const stickyHeaderHeight = Math.max(leftHeaderHeight, RIGHT_HEADER_HEIGHT);
-  const rightHeaderTopHeight = Math.max(
-    0,
-    leftHeaderHeight - DATE_HEADER_HEIGHT,
-  );
+  const rightHeaderTopHeight = Math.max(0, leftHeaderHeight - DATE_HEADER_HEIGHT);
 
   const getEpicRowKey = useCallback((epicId: string) => `epic:${epicId}`, []);
   const getFeatureRowKey = useCallback(
@@ -352,6 +355,7 @@ export const MilestonesView = ({
     sortedMilestones: effectiveSortedMilestones,
     granularity,
   });
+
 
   const {
     milestoneModalMode,
@@ -951,13 +955,6 @@ export const MilestonesView = ({
 
   return (
     <div className="absolute inset-0 bg-white">
-      <MilestonesToolbar
-        granularity={granularity}
-        onGranularityChange={setGranularity}
-        isDateDrawMode={isDateDrawMode}
-        onToggleDateDrawMode={canEditTimelineDates ? () => setIsDateDrawMode((v) => !v) : undefined}
-      />
-
       {overdueMilestones.length > 0 && canEditTimelineDates && (
         <div className="border-b border-amber-200 bg-amber-50 px-4 py-2">
           <div className="flex items-center gap-2 flex-wrap text-xs text-amber-900">
@@ -982,7 +979,7 @@ export const MilestonesView = ({
         ref={verticalScrollRef}
         className="absolute inset-0 overflow-y-auto overflow-x-hidden bg-white hide-scrollbar"
       >
-        <div className="flex min-w-0">
+        <div className="flex min-w-0 min-h-full">
           <MilestonesLeftPanel
             leftHeaderRef={leftHeaderRef}
             sortedEpics={sortedEpics}
@@ -1004,67 +1001,146 @@ export const MilestonesView = ({
             onEpicReorderDraft={handleEpicReorderDraft}
           />
 
-          <div
-            ref={timelineScrollRef}
-            className={`min-w-0 flex-1 overflow-x-auto overflow-y-visible hide-scrollbar ${
-              isPanningTimeline ? "cursor-grabbing select-none" : "cursor-grab"
-            }`}
-          >
-            <div className="relative" style={{ width: totalWidth }}>
-              <MilestonesTimelineHeader
-                totalWidth={totalWidth}
-                rightHeaderTopHeight={rightHeaderTopHeight}
-                cw={cw}
-                columns={columns}
-                superGroups={superGroups}
-                todayColIndex={todayColIndex}
-                granularity={granularity}
-                gridBg={gridBg}
-                milestoneMarkers={milestoneMarkers}
-                rangeStart={rangeStart}
-                canEditDateRanges={canEditTimelineDates}
-                onMilestoneSelect={(marker) =>
-                  startEditMilestone(marker.milestone)
-                }
-                onMilestoneDateDraftCommit={handleMilestoneDateDraftCommit}
-              />
-
-
-              <MilestonesTimelineRows
-                sortedEpics={sortedEpics}
-                collapsed={collapsed}
-                totalWidth={totalWidth}
-                gridBg={gridBg}
-                todayColInRange={todayColInRange}
-                todayColLeft={todayColLeft}
-                cw={cw}
-                rangeStart={rangeStart}
-                granularity={granularity}
-                canEditDateRanges={canEditTimelineDates}
-                featureDateVisualDrafts={featureDateVisualDrafts}
-                onFeatureSelect={handleFeatureSelect}
-                onFeatureDateDraftCommit={handleFeatureDateDraftCommit}
-                isDateDrawMode={isDateDrawMode}
-                clientXToDate={clientXToDate}
-                onEpicDateCreate={handleEpicDateCreate}
-                onFeatureDateCreate={handleFeatureDateCreate}
-                epicDateVisualDrafts={epicDateVisualDrafts}
-                onEpicDateDraftCommit={handleEpicDateDraftCommit}
-              />
+          <div className="min-w-0 flex-1 flex flex-col relative">
+            {/* Floating toolbar — zero height, sticky vertically, outside overflow-x-auto */}
+            <div className="sticky top-0 z-50 h-0 overflow-visible pointer-events-none">
+              <div className="absolute right-3 top-2 pointer-events-auto">
+                <div className="inline-flex items-center gap-0.5 rounded-lg border border-gray-200 bg-white px-1 shadow-sm">
+                  {GRANULARITIES.map((item) => (
+                    <button
+                      type="button"
+                      key={item}
+                      onClick={() => setGranularity(item)}
+                      className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                        granularity === item
+                          ? "bg-gray-900 text-white"
+                          : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                      }`}
+                    >
+                      {G_LABELS[item]}
+                    </button>
+                  ))}
+                  {canEditTimelineDates && (
+                    <>
+                      <div className="w-px h-3 bg-gray-200 mx-0.5" />
+                      <button
+                        type="button"
+                        onClick={() => setIsDateDrawMode((v) => !v)}
+                        title={isDateDrawMode ? "Exit draw mode" : "Draw date ranges"}
+                        className={`flex items-center gap-1.5 px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                          isDateDrawMode
+                            ? "bg-gray-900 text-white"
+                            : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                        }`}
+                      >
+                        <PenLine className="w-3.5 h-3.5" />
+                        Draw dates
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
+
+            {/* Horizontally scrollable timeline */}
+            <div
+              ref={timelineScrollRef}
+              className={`overflow-x-auto overflow-y-visible hide-scrollbar ${
+                isPanningTimeline ? "cursor-grabbing select-none" : "cursor-grab"
+              }`}
+            >
+              <div className="relative" style={{ width: totalWidth }}>
+                <MilestonesTimelineHeader
+                  totalWidth={totalWidth}
+                  rightHeaderTopHeight={rightHeaderTopHeight}
+                  cw={cw}
+                  columns={columns}
+                  superGroups={superGroups}
+                  todayColIndex={todayColIndex}
+                  granularity={granularity}
+                  gridBg={gridBg}
+                  milestoneMarkers={milestoneMarkers}
+                  rangeStart={rangeStart}
+                  canEditDateRanges={canEditTimelineDates}
+                  onMilestoneSelect={(marker) =>
+                    startEditMilestone(marker.milestone)
+                  }
+                  onMilestoneDateDraftCommit={handleMilestoneDateDraftCommit}
+                  stickyTop={0}
+                />
+
+                <MilestonesTimelineRows
+                  sortedEpics={sortedEpics}
+                  collapsed={collapsed}
+                  totalWidth={totalWidth}
+                  gridBg={gridBg}
+                  todayColInRange={todayColInRange}
+                  todayColLeft={todayColLeft}
+                  cw={cw}
+                  rangeStart={rangeStart}
+                  granularity={granularity}
+                  canEditDateRanges={canEditTimelineDates}
+                  featureDateVisualDrafts={featureDateVisualDrafts}
+                  onFeatureSelect={handleFeatureSelect}
+                  onFeatureDateDraftCommit={handleFeatureDateDraftCommit}
+                  isDateDrawMode={isDateDrawMode}
+                  clientXToDate={clientXToDate}
+                  onEpicDateCreate={handleEpicDateCreate}
+                  onFeatureDateCreate={handleFeatureDateCreate}
+                  epicDateVisualDrafts={epicDateVisualDrafts}
+                  onEpicDateDraftCommit={handleEpicDateDraftCommit}
+                />
+              </div>
+            </div>
+
+            {/* Empty state */}
+            {sortedEpics.length === 0 && (
+              <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
+                <div className="text-center max-w-md">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CalendarDays className="w-8 h-8 text-gray-400" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    No Milestones Yet
+                  </h3>
+                  <p className="text-gray-600 mb-6">
+                    Add epics and milestones to your roadmap to see them on the
+                    timeline.
+                  </p>
+                  <div className="flex items-center justify-center gap-3">
+                    {onAddEpic && (
+                      <button
+                        onClick={onAddEpic}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white rounded-md hover:bg-gray-700 transition-colors text-sm font-medium"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Epic
+                      </button>
+                    )}
+                    {onLinkRoadmap && (
+                      <button
+                        onClick={onLinkRoadmap}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50 transition-colors text-sm font-medium"
+                      >
+                        <Link2 className="w-4 h-4" />
+                        Link Existing Roadmap
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {sortedMilestones.length > 0 && (
-          <button
-            type="button"
-            onClick={startCreateMilestone}
-            className="fixed bottom-6 left-1/2 z-40 inline-flex -translate-x-1/2 items-center gap-2 rounded-full bg-orange-500 px-6 py-3 text-base font-semibold text-white shadow-lg transition-colors hover:bg-orange-600"
-          >
-            <Plus size={18} />
-            Add Milestone
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={startCreateMilestone}
+          className="fixed bottom-6 left-1/2 z-40 inline-flex -translate-x-1/2 items-center gap-2 rounded-full bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-lg transition-colors hover:bg-gray-700"
+        >
+          <Plus size={18} />
+          Add Milestone
+        </button>
 
         <MilestoneEditorModal
           isOpen={isMilestoneModalOpen}
