@@ -1,13 +1,13 @@
+import { ChevronRight, ListChecks, Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Plus, X, ChevronRight, ListChecks } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
-import { useRoadmapStore } from "@/stores/roadmapStore";
 import type { FullRoadmapWithProject } from "@/services/roadmap.service";
+import { useRoadmapStore } from "@/stores/roadmapStore";
+import type { RoadmapTask } from "@/types/roadmap";
+import { SidePanel } from "../panels/SidePanel";
 import { EpicModal } from "./EpicModal";
 import { FeatureModal } from "./FeatureModal";
-import { SidePanel } from "../panels/SidePanel";
-import type { RoadmapTask } from "@/types/roadmap";
 
 interface WorkItemsBrowserModalProps {
 	projectId: string;
@@ -20,13 +20,7 @@ interface WorkItemsBrowserModalProps {
 const SCROLLBAR =
 	"[scrollbar-width:thin] [scrollbar-color:var(--color-slate-300)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full";
 
-function ColumnHeader({
-	title,
-	count,
-}: {
-	title: string;
-	count: number;
-}) {
+function ColumnHeader({ title, count }: { title: string; count: number }) {
 	return (
 		<div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-200 bg-slate-50">
 			<div className="flex items-center gap-2 min-w-0">
@@ -122,18 +116,21 @@ export function WorkItemsBrowserModal({
 	onClose,
 	roadmaps,
 }: WorkItemsBrowserModalProps) {
-	const { epics, addEpic, addFeature, addTask, applyRoadmapSnapshot } = useRoadmapStore(
-		useShallow((s) => ({
-			epics: s.epics,
-			addEpic: s.addEpic,
-			addFeature: s.addFeature,
-			addTask: s.addTask,
-			applyRoadmapSnapshot: s.applyRoadmapSnapshot,
-		})),
-	);
+	const { epics, addEpic, addFeature, addTask, applyRoadmapSnapshot } =
+		useRoadmapStore(
+			useShallow((s) => ({
+				epics: s.epics,
+				addEpic: s.addEpic,
+				addFeature: s.addFeature,
+				addTask: s.addTask,
+				applyRoadmapSnapshot: s.applyRoadmapSnapshot,
+			})),
+		);
 
 	const showProjectColumn = (roadmaps?.length ?? 0) > 1;
-	const [selectedRoadmapId, setSelectedRoadmapId] = useState<string | null>(null);
+	const [selectedRoadmapId, setSelectedRoadmapId] = useState<string | null>(
+		null,
+	);
 
 	const handleSelectProject = (roadmap: FullRoadmapWithProject) => {
 		applyRoadmapSnapshot(roadmap);
@@ -180,7 +177,9 @@ export function WorkItemsBrowserModal({
 
 	const selectedEpic = useMemo(
 		() =>
-			selectedEpicId ? epics.find((e) => e.id === selectedEpicId) ?? null : null,
+			selectedEpicId
+				? (epics.find((e) => e.id === selectedEpicId) ?? null)
+				: null,
 		[epics, selectedEpicId],
 	);
 
@@ -244,9 +243,7 @@ export function WorkItemsBrowserModal({
 		const epicBefore = useRoadmapStore
 			.getState()
 			.epics.find((e) => e.id === selectedEpicId);
-		const beforeIds = new Set(
-			(epicBefore?.features ?? []).map((f) => f.id),
-		);
+		const beforeIds = new Set((epicBefore?.features ?? []).map((f) => f.id));
 		await addFeature(selectedEpicId, {
 			title: data.title,
 			description: data.description,
@@ -307,13 +304,17 @@ export function WorkItemsBrowserModal({
 				</div>
 
 				{/* Columns */}
-				<div className={`flex-1 min-h-0 grid ${showProjectColumn ? "grid-cols-4" : "grid-cols-3"}`}>
+				<div
+					className={`flex-1 min-h-0 grid ${showProjectColumn ? "grid-cols-4" : "grid-cols-3"}`}
+				>
 					{/* Projects (global view only) */}
 					{showProjectColumn && (
 						<div className="flex flex-col min-h-0 border-r border-slate-200">
-							<ColumnHeader title="Projects" count={roadmaps!.length} />
-							<div className={`flex-1 overflow-y-auto divide-y divide-slate-100 ${SCROLLBAR}`}>
-								{roadmaps!.map((roadmap) => (
+							<ColumnHeader title="Projects" count={roadmaps?.length ?? 0} />
+							<div
+								className={`flex-1 overflow-y-auto divide-y divide-slate-100 ${SCROLLBAR}`}
+							>
+								{(roadmaps ?? []).map((roadmap) => (
 									<ColumnRow
 										key={roadmap.id}
 										label={roadmap.project?.title ?? roadmap.name}
@@ -328,7 +329,10 @@ export function WorkItemsBrowserModal({
 
 					{/* Epics */}
 					<div className="flex flex-col min-h-0 border-r border-slate-200">
-						<ColumnHeader title="Epics" count={showProjectColumn && !selectedRoadmapId ? 0 : epics.length} />
+						<ColumnHeader
+							title="Epics"
+							count={showProjectColumn && !selectedRoadmapId ? 0 : epics.length}
+						/>
 						<div
 							className={`flex-1 overflow-y-auto divide-y divide-slate-100 ${SCROLLBAR}`}
 						>
