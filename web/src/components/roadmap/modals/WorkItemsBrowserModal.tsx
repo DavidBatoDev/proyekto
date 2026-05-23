@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Plus, X, ChevronRight, ListChecks } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useRoadmapStore } from "@/stores/roadmapStore";
+import type { FullRoadmapWithProject } from "@/services/roadmap.service";
 import { EpicModal } from "./EpicModal";
 import { FeatureModal } from "./FeatureModal";
 import { SidePanel } from "../panels/SidePanel";
@@ -13,6 +14,7 @@ interface WorkItemsBrowserModalProps {
 	roadmapId: string;
 	isOpen: boolean;
 	onClose: () => void;
+	roadmaps?: FullRoadmapWithProject[];
 }
 
 const SCROLLBAR =
@@ -118,15 +120,27 @@ export function WorkItemsBrowserModal({
 	projectId,
 	isOpen,
 	onClose,
+	roadmaps,
 }: WorkItemsBrowserModalProps) {
-	const { epics, addEpic, addFeature, addTask } = useRoadmapStore(
+	const { epics, addEpic, addFeature, addTask, applyRoadmapSnapshot } = useRoadmapStore(
 		useShallow((s) => ({
 			epics: s.epics,
 			addEpic: s.addEpic,
 			addFeature: s.addFeature,
 			addTask: s.addTask,
+			applyRoadmapSnapshot: s.applyRoadmapSnapshot,
 		})),
 	);
+
+	const showProjectColumn = (roadmaps?.length ?? 0) > 1;
+	const [selectedRoadmapId, setSelectedRoadmapId] = useState<string | null>(null);
+
+	const handleSelectProject = (roadmap: FullRoadmapWithProject) => {
+		applyRoadmapSnapshot(roadmap);
+		setSelectedRoadmapId(roadmap.id);
+		setSelectedEpicId(null);
+		setSelectedFeatureId(null);
+	};
 
 	const [selectedEpicId, setSelectedEpicId] = useState<string | null>(null);
 	const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(
@@ -139,6 +153,7 @@ export function WorkItemsBrowserModal({
 
 	useEffect(() => {
 		if (!isOpen) {
+			setSelectedRoadmapId(null);
 			setSelectedEpicId(null);
 			setSelectedFeatureId(null);
 			setIsAddEpicOpen(false);
@@ -292,14 +307,34 @@ export function WorkItemsBrowserModal({
 				</div>
 
 				{/* Columns */}
-				<div className="flex-1 min-h-0 grid grid-cols-3">
+				<div className={`flex-1 min-h-0 grid ${showProjectColumn ? "grid-cols-4" : "grid-cols-3"}`}>
+					{/* Projects (global view only) */}
+					{showProjectColumn && (
+						<div className="flex flex-col min-h-0 border-r border-slate-200">
+							<ColumnHeader title="Projects" count={roadmaps!.length} />
+							<div className={`flex-1 overflow-y-auto divide-y divide-slate-100 ${SCROLLBAR}`}>
+								{roadmaps!.map((roadmap) => (
+									<ColumnRow
+										key={roadmap.id}
+										label={roadmap.project?.title ?? roadmap.name}
+										subLabel={`${roadmap.epics?.length ?? 0} epic${(roadmap.epics?.length ?? 0) === 1 ? "" : "s"}`}
+										isActive={selectedRoadmapId === roadmap.id}
+										onClick={() => handleSelectProject(roadmap)}
+									/>
+								))}
+							</div>
+						</div>
+					)}
+
 					{/* Epics */}
 					<div className="flex flex-col min-h-0 border-r border-slate-200">
-						<ColumnHeader title="Epics" count={epics.length} />
+						<ColumnHeader title="Epics" count={showProjectColumn && !selectedRoadmapId ? 0 : epics.length} />
 						<div
 							className={`flex-1 overflow-y-auto divide-y divide-slate-100 ${SCROLLBAR}`}
 						>
-							{epics.length === 0 ? (
+							{showProjectColumn && !selectedRoadmapId ? (
+								<EmptyState message="Select a project to see its epics." />
+							) : epics.length === 0 ? (
 								<EmptyState message="No epics yet. Click Add Epic below." />
 							) : (
 								epics.map((epic) => (
@@ -322,6 +357,8 @@ export function WorkItemsBrowserModal({
 							<ColumnAddRow
 								label="Add epic"
 								onAdd={() => setIsAddEpicOpen(true)}
+								disabled={showProjectColumn && !selectedRoadmapId}
+								disabledHint="Select a project first"
 							/>
 						</div>
 					</div>

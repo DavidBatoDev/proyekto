@@ -119,9 +119,13 @@ function resolveContainer(
 
 interface GlobalKanbanViewProps {
 	roadmaps: FullRoadmapWithProject[];
+	onActiveRoadmapChange?: (roadmap: FullRoadmapWithProject | null) => void;
 }
 
-export function GlobalKanbanView({ roadmaps }: GlobalKanbanViewProps) {
+export function GlobalKanbanView({
+	roadmaps,
+	onActiveRoadmapChange,
+}: GlobalKanbanViewProps) {
 	const toast = useToast();
 	const navigate = useNavigate();
 	const currentUser = useUser();
@@ -129,6 +133,18 @@ export function GlobalKanbanView({ roadmaps }: GlobalKanbanViewProps) {
 		...EMPTY_FILTERS,
 		assigneeIds: currentUser?.id ? [currentUser.id] : [],
 	}));
+
+	useEffect(() => {
+		if (!onActiveRoadmapChange) return;
+		if (roadmaps.length === 1) {
+			onActiveRoadmapChange(roadmaps[0]);
+			return;
+		}
+		const active = filters.projectId
+			? (roadmaps.find((r) => r.project?.id === filters.projectId) ?? null)
+			: null;
+		onActiveRoadmapChange(active);
+	}, [filters.projectId, roadmaps, onActiveRoadmapChange]);
 	const [localRows, setLocalRows] = useState<KanbanTaskContext[]>([]);
 
 	const allRows = useMemo(() => buildAllRows(roadmaps), [roadmaps]);
