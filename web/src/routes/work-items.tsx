@@ -5,12 +5,16 @@ import { useCallback, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { WorkItemsBrowserModal } from "@/components/roadmap/modals/WorkItemsBrowserModal";
+import { SidePanel } from "@/components/roadmap/panels/SidePanel";
 import { GlobalKanbanView } from "@/components/roadmap/views/kanban/GlobalKanbanView";
+import type { KanbanTaskContext } from "@/components/roadmap/views/kanban/types";
 import { useAllRoadmapsFullQuery } from "@/hooks/useProjectQueries";
 import { projectKeys } from "@/queries/project";
 import type { FullRoadmapWithProject } from "@/services/roadmap.service";
+import { taskService } from "@/services/roadmap.service";
 import { useAuthStore } from "@/stores/authStore";
 import { useRoadmapStore } from "@/stores/roadmapStore";
+import type { RoadmapTask } from "@/types/roadmap";
 
 export const Route = createFileRoute("/work-items")({
 	beforeLoad: () => {
@@ -29,6 +33,12 @@ function WorkItemsPage() {
 		useState<FullRoadmapWithProject | null>(null);
 	const [isBrowserOpen, setIsBrowserOpen] = useState(false);
 
+	// Task detail side panel
+	const [selectedTask, setSelectedTask] = useState<RoadmapTask | null>(null);
+	const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+	const [sidePanelOpen, setSidePanelOpen] = useState(false);
+	const [isTaskLoading, setIsTaskLoading] = useState(false);
+
 	const { applyRoadmapSnapshot } = useRoadmapStore(
 		useShallow((s) => ({ applyRoadmapSnapshot: s.applyRoadmapSnapshot })),
 	);
@@ -41,8 +51,6 @@ function WorkItemsPage() {
 	const multiRoadmap = (query.data?.length ?? 0) > 1;
 
 	const handleOpenBrowser = () => {
-		// Single roadmap: pre-load into store so the modal's epic list is ready immediately.
-		// Multi-roadmap: the modal shows a project column and loads on project selection.
 		if (!multiRoadmap && activeRoadmap) {
 			applyRoadmapSnapshot(activeRoadmap);
 		}
@@ -55,6 +63,56 @@ function WorkItemsPage() {
 			queryKey: projectKeys.allRoadmapsFull,
 		});
 	};
+
+	const handleTaskClick = useCallback((row: KanbanTaskContext) => {
+		setSelectedTask(row.task);
+		setSelectedProjectId(row.project?.id ?? "");
+		setSidePanelOpen(true);
+	}, []);
+
+	const handleClosePanel = useCallback(() => {
+		setSidePanelOpen(false);
+		setSelectedTask(null);
+	}, []);
+
+	const handleUpdateTask = useCallback(
+		async (updatedTask: RoadmapTask) => {
+			setIsTaskLoading(true);
+			try {
+				const saved = await taskService.update(updatedTask.id, {
+					title: updatedTask.title,
+					status: updatedTask.status,
+					priority: updatedTask.priority,
+					assignee_id: updatedTask.assignee_id,
+					due_date: updatedTask.due_date,
+				});
+				setSelectedTask(saved);
+				void queryClient.invalidateQueries({
+					queryKey: projectKeys.allRoadmapsFull,
+				});
+			} finally {
+				setIsTaskLoading(false);
+			}
+		},
+		[queryClient],
+	);
+
+	const handleDeleteTask = useCallback(
+		async (taskId: string) => {
+			setIsTaskLoading(true);
+			try {
+				await taskService.delete(taskId);
+				setSidePanelOpen(false);
+				setSelectedTask(null);
+				void queryClient.invalidateQueries({
+					queryKey: projectKeys.allRoadmapsFull,
+				});
+			} finally {
+				setIsTaskLoading(false);
+			}
+		},
+		[queryClient],
+	);
 
 	return (
 		<DashboardShell>
@@ -112,6 +170,7 @@ function WorkItemsPage() {
 						<GlobalKanbanView
 							roadmaps={query.data ?? []}
 							onActiveRoadmapChange={handleActiveRoadmapChange}
+							onTaskClick={handleTaskClick}
 						/>
 					)}
 				</div>
@@ -123,6 +182,16 @@ function WorkItemsPage() {
 				isOpen={isBrowserOpen}
 				onClose={handleCloseBrowser}
 				roadmaps={multiRoadmap ? (query.data ?? []) : undefined}
+			/>
+
+			<SidePanel
+				task={selectedTask}
+				isOpen={sidePanelOpen}
+				projectId={selectedProjectId}
+				onClose={handleClosePanel}
+				onUpdateTask={handleUpdateTask}
+				onDeleteTask={handleDeleteTask}
+				isLoading={isTaskLoading}
 			/>
 		</DashboardShell>
 	);

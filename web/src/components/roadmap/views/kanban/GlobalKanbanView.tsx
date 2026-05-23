@@ -12,8 +12,7 @@ import {
 	useSensors,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "@/hooks/useToast";
 import type { FullRoadmapWithProject } from "@/services/roadmap.service";
 import { taskService } from "@/services/roadmap.service";
@@ -120,14 +119,15 @@ function resolveContainer(
 interface GlobalKanbanViewProps {
 	roadmaps: FullRoadmapWithProject[];
 	onActiveRoadmapChange?: (roadmap: FullRoadmapWithProject | null) => void;
+	onTaskClick?: (row: KanbanTaskContext) => void;
 }
 
 export function GlobalKanbanView({
 	roadmaps,
 	onActiveRoadmapChange,
+	onTaskClick,
 }: GlobalKanbanViewProps) {
 	const toast = useToast();
-	const navigate = useNavigate();
 	const currentUser = useUser();
 	const [filters, setFilters] = useState<GlobalBoardFilters>(() => ({
 		...EMPTY_FILTERS,
@@ -145,19 +145,29 @@ export function GlobalKanbanView({
 			: null;
 		onActiveRoadmapChange(active);
 	}, [filters.projectId, roadmaps, onActiveRoadmapChange]);
-	const [localRows, setLocalRows] = useState<KanbanTaskContext[]>([]);
 
+	const [localRows, setLocalRows] = useState<KanbanTaskContext[]>([]);
 	const allRows = useMemo(() => buildAllRows(roadmaps), [roadmaps]);
 
-	// Sync local rows from the query data whenever not dragging
+	// Tracks in-flight status updates so a background refetch can't overwrite them.
+	const pendingUpdates = useRef(new Map<string, TaskStatus>());
+
+	// Sync from server data; preserve any in-flight optimistic statuses.
 	const [activeId, setActiveId] = useState<string | null>(null);
 	useEffect(() => {
-		if (activeId === null) setLocalRows(allRows);
-	}, [allRows, activeId]);
+		setLocalRows(
+			allRows.map((row) => {
+				const pending = pendingUpdates.current.get(row.task.id);
+				return pending !== undefined
+					? { ...row, task: { ...row.task, status: pending } }
+					: row;
+			}),
+		);
+	}, [allRows]);
 
 	const filteredRows = useMemo(
-		() => applyFilters(activeId === null ? allRows : localRows, filters),
-		[allRows, localRows, filters, activeId],
+		() => applyFilters(localRows, filters),
+		[localRows, filters],
 	);
 
 	const storeColumns = useMemo(
@@ -231,10 +241,17 @@ export function GlobalKanbanView({
 		setActiveId(null);
 		if (!finalColumn) return;
 
-		const originalRow = allRows.find((r) => r.task.id === taskId);
-		if (!originalRow || originalRow.task.status === finalColumn) return;
+		// Use localRows (current displayed state) — not allRows (server state) — so
+		// we don't silently skip a drag whose target matches the server's stale status.
+		const currentRow = localRows.find((r) => r.task.id === taskId);
+		if (!currentRow || currentRow.task.status === finalColumn) return;
 
-		// Optimistic update
+		const previousStatus = currentRow.task.status;
+
+		// Register pending update before optimistic state change so any concurrent
+		// server refetch preserves our intended status.
+		pendingUpdates.current.set(taskId, finalColumn);
+
 		setLocalRows((prev) =>
 			prev.map((r) =>
 				r.task.id === taskId
@@ -243,19 +260,24 @@ export function GlobalKanbanView({
 			),
 		);
 
-		taskService.update(taskId, { status: finalColumn }).catch((error) => {
-			// Rollback
-			setLocalRows((prev) =>
-				prev.map((r) =>
-					r.task.id === taskId
-						? { ...r, task: { ...r.task, status: originalRow.task.status } }
-						: r,
-				),
-			);
-			toast.error(
-				error instanceof Error ? error.message : "Failed to update task status",
-			);
-		});
+		taskService
+			.update(taskId, { status: finalColumn })
+			.then(() => {
+				pendingUpdates.current.delete(taskId);
+			})
+			.catch((error) => {
+				pendingUpdates.current.delete(taskId);
+				setLocalRows((prev) =>
+					prev.map((r) =>
+						r.task.id === taskId
+							? { ...r, task: { ...r.task, status: previousStatus } }
+							: r,
+					),
+				);
+				toast.error(
+					error instanceof Error ? error.message : "Failed to update task status",
+				);
+			});
 	};
 
 	const handleDragCancel = () => {
@@ -265,11 +287,8 @@ export function GlobalKanbanView({
 
 	const handleCardClick = (taskId: string) => {
 		const row = allRows.find((r) => r.task.id === taskId);
-		if (!row?.project?.id || !row.roadmapId) return;
-		void navigate({
-			to: "/project/$projectId/work-items/$roadmapId",
-			params: { projectId: row.project.id, roadmapId: row.roadmapId },
-		});
+		if (!row) return;
+		onTaskClick?.(row);
 	};
 
 	return (
