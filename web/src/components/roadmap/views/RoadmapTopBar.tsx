@@ -140,7 +140,9 @@ export function RoadmapTopBar({
   );
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
@@ -172,7 +174,7 @@ export function RoadmapTopBar({
             }}
             className={`w-1/2 px-3 py-3 font-medium text-sm text-center transition-colors border-b-2 shrink-0 ${
               viewMode === "roadmap"
-                ? "text-orange-600 border-orange-600"
+                ? "text-gray-900 border-gray-900"
                 : "text-gray-600 hover:text-gray-900 border-transparent"
             }`}
           >
@@ -185,7 +187,7 @@ export function RoadmapTopBar({
             onClick={() => setViewMode("milestones")}
             className={`w-1/2 px-3 py-3 font-medium text-sm text-center transition-colors border-b-2 shrink-0 ${
               viewMode === "milestones"
-                ? "text-orange-600 border-orange-600"
+                ? "text-gray-900 border-gray-900"
                 : "text-gray-600 hover:text-gray-900 border-transparent"
             }`}
           >

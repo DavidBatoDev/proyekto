@@ -49,13 +49,13 @@ export const FeatureMoveConfirmModal = ({
 			}`}
 		>
 			<div
-				className={`w-full max-w-lg overflow-hidden rounded-2xl border border-blue-100/80 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.35)] transition-all duration-200 ${
+				className={`w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.35)] transition-all duration-200 ${
 					isVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-2 scale-95 opacity-0"
 				}`}
 			>
-				<div className="flex items-center justify-between border-b border-blue-100 bg-gradient-to-r from-blue-50 via-indigo-50 to-violet-50 px-5 py-4">
+				<div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
 					<div className="flex items-center gap-3">
-						<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500 text-white shadow-sm">
+						<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
 							<ArrowRightLeft size={17} />
 						</div>
 						<div>
@@ -86,7 +86,7 @@ export const FeatureMoveConfirmModal = ({
 						{targetEpicTitle && (
 							<>
 								{" "}to epic{" "}
-								<span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-sm font-semibold text-blue-700">
+								<span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-sm font-semibold text-gray-700">
 									{targetEpicTitle}
 								</span>
 							</>
@@ -99,14 +99,14 @@ export const FeatureMoveConfirmModal = ({
 
 					<label
 						htmlFor={checkboxId}
-						className="flex cursor-pointer items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2 text-sm text-slate-700"
+						className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-slate-700"
 					>
 						<input
 							id={checkboxId}
 							type="checkbox"
 							checked={dontAskAgain}
 							onChange={(event) => onDontAskAgainChange(event.target.checked)}
-							className="h-4 w-4 rounded border-slate-300 text-blue-500 focus:ring-blue-400"
+							className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
 						/>
 						<span>Don&apos;t ask again in this session</span>
 					</label>
@@ -125,7 +125,7 @@ export const FeatureMoveConfirmModal = ({
 						type="button"
 						onClick={() => void onConfirm()}
 						disabled={isSaving}
-						className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-105 disabled:opacity-60"
+						className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 disabled:opacity-60"
 					>
 						{isSaving ? "Moving..." : "Move Feature"}
 					</button>

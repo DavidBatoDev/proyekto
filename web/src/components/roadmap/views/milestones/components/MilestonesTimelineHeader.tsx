@@ -41,6 +41,7 @@ interface MilestonesTimelineHeaderProps {
 	canEditDateRanges?: boolean;
 	onMilestoneSelect: (marker: MilestoneMarker) => void;
 	onMilestoneDateDraftCommit?: (change: MilestoneDateDraftCommit) => void;
+	stickyTop?: number;
 }
 
 const MilestoneLines = ({
@@ -72,7 +73,7 @@ const MilestoneLines = ({
 			<div
 				className="absolute top-0 bottom-0 w-0.5"
 				style={{
-					backgroundImage: `repeating-linear-gradient(to bottom, ${milestone.color ?? "#f97316"} 0px, ${milestone.color ?? "#f97316"} 7px, transparent 7px, transparent 12px)`,
+					backgroundImage: `repeating-linear-gradient(to bottom, ${milestone.color ?? "#6366f1"} 0px, ${milestone.color ?? "#6366f1"} 7px, transparent 7px, transparent 12px)`,
 					opacity: 0.95,
 				}}
 			/>
@@ -94,6 +95,7 @@ export const MilestonesTimelineHeader = ({
 	canEditDateRanges = true,
 	onMilestoneSelect,
 	onMilestoneDateDraftCommit,
+	stickyTop = 0,
 }: MilestonesTimelineHeaderProps) => {
 	const [dragState, setDragState] = useState<{
 		marker: MilestoneMarker;
@@ -206,7 +208,7 @@ export const MilestonesTimelineHeader = ({
 				/>
 			</div>
 
-			<div className="sticky top-0 z-30 bg-white border-b border-gray-200">
+			<div className="sticky z-30 bg-white border-b border-gray-200" style={{ top: stickyTop }}>
 				{rightHeaderTopHeight > 0 && (
 					<div
 						className="relative border-b border-gray-100 bg-white"
@@ -244,14 +246,14 @@ export const MilestonesTimelineHeader = ({
 									>
 										<span
 											className="text-[11px] font-semibold whitespace-nowrap px-2 py-0.5 rounded bg-white/80"
-											style={{ color: marker.milestone.color ?? "#f97316" }}
+											style={{ color: marker.milestone.color ?? "#6366f1" }}
 										>
 											{marker.milestone.title}
 										</span>
 										<span
 											className="h-3 w-3 rotate-45 rounded-[2px]"
 											style={{
-												backgroundColor: marker.milestone.color ?? "#f97316",
+												backgroundColor: marker.milestone.color ?? "#6366f1",
 											}}
 										/>
 									</button>

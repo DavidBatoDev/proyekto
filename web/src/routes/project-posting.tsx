@@ -465,7 +465,7 @@ function ProjectPostingPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setShowIntentModal(false)}
+              onClick={() => window.history.back()}
             />
             <motion.div
               className="relative w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
@@ -490,7 +490,7 @@ function ProjectPostingPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setShowIntentModal(false)}
+                    onClick={() => window.history.back()}
                     className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
                     aria-label="Close intent modal"
                   >
