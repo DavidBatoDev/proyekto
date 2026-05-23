@@ -170,6 +170,10 @@ export class RoadmapsService {
     return this.repo.findAll(userId);
   }
 
+  async getAllFull(userId: string) {
+    return this.repo.findAllFull(userId);
+  }
+
   async findPreviews(userId: string) {
     return this.repo.findPreviews(userId);
   }

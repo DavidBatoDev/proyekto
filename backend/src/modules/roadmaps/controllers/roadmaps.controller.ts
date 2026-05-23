@@ -89,6 +89,11 @@ export class RoadmapsController {
     });
   }
 
+  @Get('all-full')
+  getAllFull(@CurrentUser() user: AuthenticatedUser) {
+    return this.roadmapsService.getAllFull(user.id);
+  }
+
   @Get(':id')
   getOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.roadmapsService.findById(id, user.id);

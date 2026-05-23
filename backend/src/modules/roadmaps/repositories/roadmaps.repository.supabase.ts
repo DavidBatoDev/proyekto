@@ -257,6 +257,54 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     return this.normalizeFullRoadmapOrdering(data);
   }
 
+  async findAllFull(userId: string): Promise<any[]> {
+    const accessibleProjectIds = await this.getAccessibleProjectIds(userId);
+
+    const ownedRoadmapQuery = this.db
+      .from('roadmaps')
+      .select('id')
+      .eq('owner_id', userId);
+
+    const { data: ownedRows, error: ownedError } = await ownedRoadmapQuery;
+    if (ownedError) throw new Error(ownedError.message);
+
+    const roadmapIds = new Set<string>(
+      (ownedRows ?? []).map((r: any) => String(r.id)),
+    );
+
+    if (accessibleProjectIds.length > 0) {
+      const { data: sharedRows, error: sharedError } = await this.db
+        .from('roadmaps')
+        .select('id')
+        .in('project_id', accessibleProjectIds);
+      if (sharedError) throw new Error(sharedError.message);
+      for (const r of sharedRows ?? []) {
+        if (r?.id) roadmapIds.add(String(r.id));
+      }
+    }
+
+    if (roadmapIds.size === 0) return [];
+
+    const { data, error } = await this.db
+      .from('roadmaps')
+      .select(
+        `
+        *,
+        project:projects(id, title),
+        milestones:roadmap_milestones(*),
+        epics:roadmap_epics(*, features:roadmap_features(*, tasks:roadmap_tasks(*, assignee:profiles(id, display_name, avatar_url, email, first_name, last_name))))
+      `,
+      )
+      .in('id', [...roadmapIds])
+      .order('updated_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+
+    return (data ?? []).map((roadmap: any) =>
+      this.normalizeFullRoadmapOrdering(roadmap),
+    );
+  }
+
   async findByUser(userId: string): Promise<any[]> {
     const { data, error } = await this.db
       .from('roadmaps')
