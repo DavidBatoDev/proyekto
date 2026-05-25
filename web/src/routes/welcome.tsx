@@ -4,14 +4,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight,
   ArrowLeft,
-  BookOpen,
   CheckCircle2,
-  Clock,
-  Crown,
   Plus,
   Sparkles,
   Trash2,
-  UserCheck,
   Users,
   Wallet,
   Workflow,
@@ -19,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/ui/button";
 import { useAuthStore } from "@/stores/authStore";
+import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { supabase } from "@/lib/supabase";
 import { apiClient } from "@/api";
 import { useToast } from "@/hooks/useToast";
@@ -33,15 +30,13 @@ export const Route = createFileRoute("/welcome")({
   component: WelcomePage,
 });
 
-// ─── Page shell — branches on lane ──────────────────────────────────────────
+// ─── Page shell ─────────────────────────────────────────────────────────────
 
 function WelcomePage() {
+  const { isLoading: profileLoading } = useProfileQuery();
   const profile = useAuthStore((s) => s.profile);
 
-  // Wait for profile hydration before deciding the lane. Guessing a default
-  // here causes a flicker between decks when the user lands on /welcome
-  // immediately after signup (profile arrives async via onAuthStateChange).
-  if (!profile) {
+  if (!profile || profileLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#fcfcfd]">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-900" />
@@ -57,34 +52,44 @@ function WelcomePage() {
     profile.display_name ||
     "there";
 
-  if (lane === "consultant") {
-    return <ConsultantWelcomeDeck firstName={firstName} />;
-  }
-  return <ClientFreelancerWelcomeDeck firstName={firstName} />;
+  return <UnifiedWelcomeDeck firstName={firstName} lane={lane} />;
 }
 
-// ─── Client/Freelancer 4-slide deck ─────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-type InviteRole = "editor" | "viewer";
+type TeamInviteRole = "admin" | "member";
 
 interface InviteRow {
   id: string;
   email: string;
-  role: InviteRole;
+  role: TeamInviteRole;
 }
 
 function newInviteRow(): InviteRow {
-  return { id: crypto.randomUUID(), email: "", role: "editor" };
+  return { id: crypto.randomUUID(), email: "", role: "member" };
 }
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
-function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
+// ─── Unified 4-slide deck ────────────────────────────────────────────────────
+
+function UnifiedWelcomeDeck({
+  firstName,
+  lane,
+}: {
+  firstName: string;
+  lane: string;
+}) {
   const navigate = useNavigate();
   const toast = useToast();
   const user = useAuthStore((s) => s.user);
+
+  // ── Team lookup ──────────────────────────────────────────────────────────
+  const [teamId, setTeamId] = useState<string | null>(null);
+  const [teamName, setTeamName] = useState<string>("");
+  const [teamLoadFailed, setTeamLoadFailed] = useState(false);
 
   // ── Workspace lookup ─────────────────────────────────────────────────────
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -94,21 +99,70 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
   useEffect(() => {
     if (!user?.id) return;
     let cancelled = false;
+
     (async () => {
-      const { data, error } = await supabase
-        .from("projects")
-        .select("id, title")
-        .eq("client_id", user.id)
-        .eq("is_personal_workspace", true)
-        .maybeSingle();
+      let [teamRes, workspaceRes] = await Promise.all([
+        supabase
+          .from("teams")
+          .select("id, name")
+          .eq("owner_id", user.id)
+          .eq("is_personal", true)
+          .maybeSingle(),
+        supabase
+          .from("projects")
+          .select("id, title")
+          .eq("client_id", user.id)
+          .eq("is_personal_workspace", true)
+          .maybeSingle(),
+      ]);
+
       if (cancelled) return;
-      if (error || !data) {
-        setWorkspaceLoadFailed(true);
-        return;
+
+      // If either artifact is missing (e.g. existing users from before the
+      // unified provisioning change), trigger a backend provision call which
+      // idempotently creates both, then re-query.
+      const needsProvision =
+        (!teamRes.error && !teamRes.data) ||
+        (!workspaceRes.error && !workspaceRes.data);
+
+      if (needsProvision) {
+        try {
+          await apiClient.post("/api/auth/provision", {});
+          [teamRes, workspaceRes] = await Promise.all([
+            supabase
+              .from("teams")
+              .select("id, name")
+              .eq("owner_id", user.id)
+              .eq("is_personal", true)
+              .maybeSingle(),
+            supabase
+              .from("projects")
+              .select("id, title")
+              .eq("client_id", user.id)
+              .eq("is_personal_workspace", true)
+              .maybeSingle(),
+          ]);
+          if (cancelled) return;
+        } catch (err) {
+          console.error("Failed to provision missing artifacts:", err);
+        }
       }
-      setWorkspaceId(data.id as string);
-      setWorkspaceTitle((data.title as string) ?? "");
+
+      if (teamRes.error || !teamRes.data) {
+        setTeamLoadFailed(true);
+      } else {
+        setTeamId(teamRes.data.id as string);
+        setTeamName((teamRes.data.name as string) ?? "");
+      }
+
+      if (workspaceRes.error || !workspaceRes.data) {
+        setWorkspaceLoadFailed(true);
+      } else {
+        setWorkspaceId(workspaceRes.data.id as string);
+        setWorkspaceTitle((workspaceRes.data.title as string) ?? "");
+      }
     })();
+
     return () => {
       cancelled = true;
     };
@@ -130,147 +184,225 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
     }
   };
 
-  // ── Slide 3: workspace name ──────────────────────────────────────────────
+  // ── Slide 3: team name + invites ─────────────────────────────────────────
+  const [draftTeamName, setDraftTeamName] = useState<string>("");
+  useEffect(() => {
+    setDraftTeamName(teamName);
+  }, [teamName]);
+
+  const [teamInvites, setTeamInvites] = useState<InviteRow[]>(() => [
+    newInviteRow(),
+  ]);
+  const [submittingTeam, setSubmittingTeam] = useState(false);
+
+  const addTeamInviteRow = () =>
+    setTeamInvites((prev) => [...prev, newInviteRow()]);
+  const removeTeamInviteRow = (id: string) =>
+    setTeamInvites((prev) =>
+      prev.length === 1 ? [newInviteRow()] : prev.filter((r) => r.id !== id),
+    );
+  const updateTeamInviteRow = (id: string, patch: Partial<InviteRow>) =>
+    setTeamInvites((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+    );
+
+  const saveTeamAndInvites = async () => {
+    setSubmittingTeam(true);
+    try {
+      if (teamId) {
+        const trimmed = draftTeamName.trim();
+        if (!trimmed) {
+          toast.error("Team name can't be empty");
+          setSubmittingTeam(false);
+          return;
+        }
+        if (trimmed !== teamName) {
+          await apiClient.patch(`/api/teams/${teamId}`, { name: trimmed });
+          setTeamName(trimmed);
+        }
+
+        const validInvites = teamInvites.filter((r) =>
+          isValidEmail(r.email),
+        );
+        let failures = 0;
+        for (const row of validInvites) {
+          try {
+            await apiClient.post(`/api/teams/${teamId}/invites`, {
+              email: row.email.trim(),
+              role: row.role,
+            });
+          } catch {
+            failures += 1;
+          }
+        }
+        if (failures > 0) {
+          toast.error(
+            failures === validInvites.length
+              ? "All team invites failed. You can retry from team settings."
+              : `${failures} of ${validInvites.length} invites failed.`,
+          );
+        } else if (validInvites.length > 0) {
+          toast.success(
+            `${validInvites.length} invite${validInvites.length === 1 ? "" : "s"} sent`,
+          );
+        }
+      }
+    } catch (err) {
+      console.error("Failed to save team:", err);
+      toast.error("Couldn't save team name. Try again.");
+      setSubmittingTeam(false);
+      return;
+    }
+    setSubmittingTeam(false);
+    goNext();
+  };
+
+  // ── Slide 4: project name + attach team ──────────────────────────────────
   const [draftTitle, setDraftTitle] = useState<string>("");
   useEffect(() => {
     setDraftTitle(workspaceTitle);
   }, [workspaceTitle]);
 
-  const persistTitleIfChanged = async () => {
-    if (!workspaceId) return;
-    const trimmed = draftTitle.trim();
-    if (!trimmed) {
-      toast.error("Workspace name can't be empty");
-      throw new Error("empty title");
-    }
-    if (trimmed === workspaceTitle) return;
+  const [attachTeam, setAttachTeam] = useState(true);
+  const [submittingProject, setSubmittingProject] = useState(false);
+
+  const saveProjectAndFinish = async () => {
+    setSubmittingProject(true);
     try {
-      await apiClient.patch(`/api/projects/${workspaceId}`, { title: trimmed });
-      setWorkspaceTitle(trimmed);
+      if (workspaceId) {
+        const trimmed = draftTitle.trim();
+        if (!trimmed) {
+          toast.error("Project name can't be empty");
+          setSubmittingProject(false);
+          return;
+        }
+        if (trimmed !== workspaceTitle) {
+          await apiClient.patch(`/api/projects/${workspaceId}`, {
+            title: trimmed,
+          });
+        }
+
+        if (attachTeam && teamId) {
+          try {
+            await apiClient.post(`/api/projects/${workspaceId}/teams`, {
+              team_id: teamId,
+              is_primary: true,
+              members: [],
+            });
+          } catch (err) {
+            console.error("Failed to attach team to project:", err);
+            toast.error(
+              "Couldn't attach team to project — you can do it from project settings later.",
+            );
+          }
+        }
+      }
     } catch (err) {
-      console.error("Failed to rename workspace:", err);
-      toast.error("Couldn't save the workspace name. Try again.");
-      throw err;
-    }
-  };
-
-  // ── Slide 4: invites ─────────────────────────────────────────────────────
-  const [invites, setInvites] = useState<InviteRow[]>(() => [newInviteRow()]);
-  const [submittingInvites, setSubmittingInvites] = useState(false);
-
-  const addInviteRow = () => setInvites((prev) => [...prev, newInviteRow()]);
-  const removeInviteRow = (id: string) =>
-    setInvites((prev) =>
-      prev.length === 1 ? [newInviteRow()] : prev.filter((r) => r.id !== id),
-    );
-  const updateInviteRow = (id: string, patch: Partial<InviteRow>) =>
-    setInvites((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, ...patch } : r)),
-    );
-
-  const sendInvitesAndFinish = async () => {
-    if (!workspaceId) {
-      toast.error("Your workspace isn't ready yet. Try again in a moment.");
+      console.error("Failed to save project:", err);
+      toast.error("Couldn't save project name. Try again.");
+      setSubmittingProject(false);
       return;
     }
-    setSubmittingInvites(true);
-    const valid = invites.filter((r) => isValidEmail(r.email));
-    let failures = 0;
-    for (const row of valid) {
-      try {
-        await apiClient.post(`/api/projects/${workspaceId}/invites`, {
-          email: row.email.trim(),
-          default_role: row.role,
-          role: "member",
-        });
-      } catch (err) {
-        failures += 1;
-        console.error(`Invite for ${row.email} failed:`, err);
-      }
+    setSubmittingProject(false);
+
+    if (lane === "consultant") {
+      navigate({ to: "/consultant/apply" });
+    } else {
+      navigate({ to: "/dashboard" });
     }
-    setSubmittingInvites(false);
-    if (failures > 0) {
-      toast.error(
-        failures === valid.length
-          ? "All invites failed. You can retry from the workspace settings later."
-          : `${failures} of ${valid.length} invites failed.`,
-      );
-    } else if (valid.length > 0) {
-      toast.success(`${valid.length} invite${valid.length === 1 ? "" : "s"} sent`);
-    }
-    navigate({ to: "/dashboard" });
   };
 
-  const skipInvitesAndFinish = () => navigate({ to: "/dashboard" });
+  const skipAndFinish = () => {
+    if (lane === "consultant") {
+      navigate({ to: "/consultant/apply" });
+    } else {
+      navigate({ to: "/dashboard" });
+    }
+  };
 
-  // ── Slide 1: close confirmation ──────────────────────────────────────────
+  // ── Close confirmation ───────────────────────────────────────────────────
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const handleClose = () => {
     if (slide === 1) setShowCloseConfirm(true);
     else goBack();
   };
 
+  const footerNode =
+    lane === "consultant" ? (
+      <>
+        Want to use Proyekto as a client first?{" "}
+        <button
+          type="button"
+          onClick={() => navigate({ to: "/dashboard" })}
+          className="font-semibold text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-slate-900 hover:decoration-slate-700"
+        >
+          Open my workspace →
+        </button>
+      </>
+    ) : (
+      <>
+        Considering becoming a consultant?{" "}
+        <a
+          href="/consultant"
+          className="font-semibold text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-slate-900 hover:decoration-slate-700"
+        >
+          Apply to lead →
+        </a>
+      </>
+    );
+
   return (
     <DeckShell
       stepper={<Stepper current={slide} total={4} onClose={handleClose} />}
-      footer={
-        <>
-          Considering becoming a consultant?{" "}
-          <a
-            href="/consultant"
-            className="font-semibold text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-slate-900 hover:decoration-slate-700"
-          >
-            Apply to lead →
-          </a>
-        </>
-      }
+      footer={footerNode}
     >
       <AnimatePresence mode="wait" initial={false} custom={direction}>
         {slide === 1 && (
-          <SlideOneCF
-            key="cf-1"
+          <SlideWelcome
+            key="u-1"
             firstName={firstName}
             onNext={goNext}
             direction={direction}
           />
         )}
         {slide === 2 && (
-          <SlideTwoCF
-            key="cf-2"
+          <SlideCapabilities
+            key="u-2"
             onBack={goBack}
             onNext={goNext}
             direction={direction}
           />
         )}
         {slide === 3 && (
-          <SlideThreeCF
-            key="cf-3"
-            draftTitle={draftTitle}
-            setDraftTitle={setDraftTitle}
+          <SlideTeamSetup
+            key="u-3"
+            draftTeamName={draftTeamName}
+            setDraftTeamName={setDraftTeamName}
+            teamLoadFailed={teamLoadFailed}
+            invites={teamInvites}
+            addInviteRow={addTeamInviteRow}
+            removeInviteRow={removeTeamInviteRow}
+            updateInviteRow={updateTeamInviteRow}
             onBack={goBack}
-            onNext={async () => {
-              try {
-                await persistTitleIfChanged();
-                goNext();
-              } catch {
-                /* toast already shown */
-              }
-            }}
-            workspaceLoadFailed={workspaceLoadFailed}
+            onNext={saveTeamAndInvites}
+            submitting={submittingTeam}
             direction={direction}
           />
         )}
         {slide === 4 && (
-          <SlideFourCF
-            key="cf-4"
-            invites={invites}
-            addInviteRow={addInviteRow}
-            removeInviteRow={removeInviteRow}
-            updateInviteRow={updateInviteRow}
+          <SlideProjectSetup
+            key="u-4"
+            draftTitle={draftTitle}
+            setDraftTitle={setDraftTitle}
+            workspaceLoadFailed={workspaceLoadFailed}
+            teamName={draftTeamName || teamName}
+            attachTeam={attachTeam}
+            setAttachTeam={setAttachTeam}
+            teamAvailable={!!teamId}
             onBack={goBack}
-            onSkip={skipInvitesAndFinish}
-            onFinish={sendInvitesAndFinish}
-            submittingInvites={submittingInvites}
+            onSkip={skipAndFinish}
+            onFinish={saveProjectAndFinish}
+            submitting={submittingProject}
             direction={direction}
           />
         )}
@@ -279,174 +411,18 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
       {showCloseConfirm && (
         <CloseConfirmModal
           title="Skip the welcome tour?"
-          description="You can always come back to set up your workspace later from your dashboard."
+          description="You can always set up your team and workspace from your dashboard later."
           onCancel={() => setShowCloseConfirm(false)}
-          onConfirm={() => navigate({ to: "/dashboard" })}
+          onConfirm={skipAndFinish}
         />
       )}
     </DeckShell>
   );
 }
 
-// ─── Consultant 3-slide deck ────────────────────────────────────────────────
+// ─── Slide 1: Welcome ────────────────────────────────────────────────────────
 
-function ConsultantWelcomeDeck({ firstName }: { firstName: string }) {
-  const navigate = useNavigate();
-
-  const [slide, setSlide] = useState<1 | 2 | 3>(1);
-  const [direction, setDirection] = useState<1 | -1>(1);
-  const goNext = () => {
-    if (slide < 3) {
-      setDirection(1);
-      setSlide(((slide as number) + 1) as 1 | 2 | 3);
-    }
-  };
-  const goBack = () => {
-    if (slide > 1) {
-      setDirection(-1);
-      setSlide(((slide as number) - 1) as 1 | 2 | 3);
-    }
-  };
-
-  const startApplication = () => navigate({ to: "/consultant/apply" });
-
-  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
-  const handleClose = () => {
-    if (slide === 1) setShowCloseConfirm(true);
-    else goBack();
-  };
-
-  return (
-    <DeckShell
-      stepper={<Stepper current={slide} total={3} onClose={handleClose} />}
-      footer={
-        <>
-          Want to use Proyekto as a client first?{" "}
-          <button
-            type="button"
-            onClick={() => navigate({ to: "/dashboard" })}
-            className="font-semibold text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-slate-900 hover:decoration-slate-700"
-          >
-            Open my workspace →
-          </button>
-        </>
-      }
-    >
-      <AnimatePresence mode="wait" initial={false} custom={direction}>
-        {slide === 1 && (
-          <SlideOneConsultant
-            key="c-1"
-            firstName={firstName}
-            onNext={goNext}
-            direction={direction}
-          />
-        )}
-        {slide === 2 && (
-          <SlideTwoConsultant
-            key="c-2"
-            onBack={goBack}
-            onNext={goNext}
-            direction={direction}
-          />
-        )}
-        {slide === 3 && (
-          <SlideThreeConsultant
-            key="c-3"
-            onBack={goBack}
-            onStart={startApplication}
-            direction={direction}
-          />
-        )}
-      </AnimatePresence>
-
-      {showCloseConfirm && (
-        <CloseConfirmModal
-          title="Apply later?"
-          description="You can pick up the application anytime from your dashboard. Your workspace is ready in the meantime."
-          confirmLabel="Open workspace"
-          onCancel={() => setShowCloseConfirm(false)}
-          onConfirm={() => navigate({ to: "/dashboard" })}
-        />
-      )}
-    </DeckShell>
-  );
-}
-
-// ─── Shared deck shell (background, layout, footer) ────────────────────────
-
-function DeckShell({
-  stepper,
-  footer,
-  children,
-}: {
-  stepper: React.ReactNode;
-  footer: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="min-h-screen bg-[#fcfcfd]">
-      <div className="pointer-events-none absolute -top-20 left-[10%] h-72 w-72 rounded-full bg-cyan-200/35 blur-3xl" />
-      <div className="pointer-events-none absolute -right-12 top-1/3 h-72 w-72 rounded-full bg-indigo-200/40 blur-3xl" />
-
-      <div className="relative mx-auto flex min-h-screen max-w-3xl flex-col px-4 py-8 sm:px-6 lg:px-10">
-        {stepper}
-        <div className="relative mt-12 flex-1">{children}</div>
-        <p className="mt-8 text-center text-xs text-slate-500">{footer}</p>
-      </div>
-    </div>
-  );
-}
-
-// ─── Stepper ────────────────────────────────────────────────────────────────
-
-function Stepper({
-  current,
-  total,
-  onClose,
-}: {
-  current: number;
-  total: number;
-  onClose: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <div className="flex flex-1 items-center gap-2">
-        {Array.from({ length: total }, (_, i) => i + 1).map((n) => (
-          <div
-            key={n}
-            className={`h-1.5 flex-1 rounded-full transition-colors ${
-              n <= current ? "bg-slate-900" : "bg-slate-200"
-            }`}
-          />
-        ))}
-        <span className="ml-3 shrink-0 text-xs font-semibold text-slate-500">
-          {current} of {total}
-        </span>
-      </div>
-      <button
-        type="button"
-        onClick={onClose}
-        className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-        aria-label="Close"
-      >
-        <X className="h-4 w-4" />
-      </button>
-    </div>
-  );
-}
-
-// ─── Slide motion variants ──────────────────────────────────────────────────
-
-const slideVariants = {
-  enter: (dir: 1 | -1) => ({ x: dir === 1 ? 24 : -24, opacity: 0 }),
-  center: { x: 0, opacity: 1 },
-  exit: (dir: 1 | -1) => ({ x: dir === 1 ? -24 : 24, opacity: 0 }),
-};
-const slideTransition = { duration: 0.25, ease: "easeOut" as const };
-
-// ─── C/F Slide 1: Welcome ───────────────────────────────────────────────────
-
-function SlideOneCF({
+function SlideWelcome({
   firstName,
   onNext,
   direction,
@@ -489,9 +465,9 @@ function SlideOneCF({
   );
 }
 
-// ─── C/F Slide 2: Capabilities ──────────────────────────────────────────────
+// ─── Slide 2: Capabilities ───────────────────────────────────────────────────
 
-const cfCapabilities = [
+const capabilities = [
   {
     icon: Sparkles,
     title: "Plan with AI",
@@ -500,19 +476,25 @@ const cfCapabilities = [
   },
   {
     icon: Users,
-    title: "Bring in a vetted consultant",
+    title: "Build and manage your team",
     description:
-      "When you're ready, request a vetted lead. They scope, price, and propose a team within 48 hours.",
+      "Invite collaborators, assign roles, and keep everyone aligned in one shared workspace.",
+  },
+  {
+    icon: Wallet,
+    title: "Escrow, contracts, invoicing",
+    description:
+      "Built-in commercial layer. Stop chasing wire transfers and reconciling spreadsheets.",
   },
   {
     icon: Workflow,
-    title: "Ship together in one workspace",
+    title: "Ship together",
     description:
       "Roadmap, chat, files, and time tracking on one canvas. Pay through escrow on milestones.",
   },
 ];
 
-function SlideTwoCF({
+function SlideCapabilities({
   onBack,
   onNext,
   direction,
@@ -534,11 +516,11 @@ function SlideTwoCF({
         What you can do here
       </h1>
       <p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
-        Three things Proyekto does well — so you don't have to juggle five tools.
+        Everything you need to scope, build, and ship — in one place.
       </p>
 
       <div className="mx-auto mt-8 max-w-xl space-y-3">
-        {cfCapabilities.map((cap) => {
+        {capabilities.map((cap) => {
           const Icon = cap.icon;
           return (
             <article
@@ -566,93 +548,33 @@ function SlideTwoCF({
   );
 }
 
-// ─── C/F Slide 3: Workspace name ────────────────────────────────────────────
+// ─── Slide 3: Team setup ─────────────────────────────────────────────────────
 
-function SlideThreeCF({
-  draftTitle,
-  setDraftTitle,
-  onBack,
-  onNext,
-  workspaceLoadFailed,
-  direction,
-}: {
-  draftTitle: string;
-  setDraftTitle: (v: string) => void;
-  onBack: () => void;
-  onNext: () => void;
-  workspaceLoadFailed: boolean;
-  direction: 1 | -1;
-}) {
-  return (
-    <motion.div
-      custom={direction}
-      variants={slideVariants}
-      initial="enter"
-      animate="center"
-      exit="exit"
-      transition={slideTransition}
-    >
-      <h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-        Your workspace is ready
-      </h1>
-      <p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
-        Give it a name that fits how you'll use it. You can change it anytime.
-      </p>
-
-      <div className="mx-auto mt-8 max-w-md">
-        <label
-          htmlFor="workspace-title"
-          className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500"
-        >
-          Workspace name
-        </label>
-        <input
-          id="workspace-title"
-          type="text"
-          value={draftTitle}
-          onChange={(e) => setDraftTitle(e.target.value)}
-          maxLength={120}
-          disabled={workspaceLoadFailed}
-          placeholder={workspaceLoadFailed ? "Loading…" : "My Workspace"}
-          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 disabled:cursor-wait disabled:opacity-60"
-        />
-        {workspaceLoadFailed && (
-          <p className="mt-2 text-xs text-amber-700">
-            We couldn't load your workspace just yet. You can still continue —
-            we'll save the name on the next step.
-          </p>
-        )}
-      </div>
-
-      <NavRow onBack={onBack} onNext={onNext} nextLabel="Next" />
-    </motion.div>
-  );
-}
-
-// ─── C/F Slide 4: Invite ────────────────────────────────────────────────────
-
-function SlideFourCF({
+function SlideTeamSetup({
+  draftTeamName,
+  setDraftTeamName,
+  teamLoadFailed,
   invites,
   addInviteRow,
   removeInviteRow,
   updateInviteRow,
   onBack,
-  onSkip,
-  onFinish,
-  submittingInvites,
+  onNext,
+  submitting,
   direction,
 }: {
+  draftTeamName: string;
+  setDraftTeamName: (v: string) => void;
+  teamLoadFailed: boolean;
   invites: InviteRow[];
   addInviteRow: () => void;
   removeInviteRow: (id: string) => void;
   updateInviteRow: (id: string, patch: Partial<InviteRow>) => void;
   onBack: () => void;
-  onSkip: () => void;
-  onFinish: () => void;
-  submittingInvites: boolean;
+  onNext: () => void;
+  submitting: boolean;
   direction: 1 | -1;
 }) {
-  const validCount = invites.filter((r) => isValidEmail(r.email)).length;
   return (
     <motion.div
       custom={direction}
@@ -663,55 +585,210 @@ function SlideFourCF({
       transition={slideTransition}
     >
       <h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-        Invite your team
+        Set up your team
       </h1>
       <p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
-        Add the people you want collaborating on this workspace. You can skip and add them later.
+        Give your team a name, then invite anyone you want to collaborate with.
       </p>
 
-      <div className="mx-auto mt-8 max-w-xl space-y-3">
-        {invites.map((row) => (
-          <div
-            key={row.id}
-            className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_4px_12px_rgba(15,23,42,0.04)] sm:flex-nowrap"
+      <div className="mx-auto mt-8 max-w-xl space-y-5">
+        <div>
+          <label
+            htmlFor="team-name"
+            className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500"
           >
-            <input
-              type="email"
-              value={row.email}
-              onChange={(e) => updateInviteRow(row.id, { email: e.target.value })}
-              placeholder="teammate@company.com"
-              className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
-            />
-            <RoleToggle
-              role={row.role}
-              onChange={(role) => updateInviteRow(row.id, { role })}
-            />
+            Team name
+          </label>
+          <input
+            id="team-name"
+            type="text"
+            value={draftTeamName}
+            onChange={(e) => setDraftTeamName(e.target.value)}
+            maxLength={120}
+            disabled={teamLoadFailed}
+            placeholder={teamLoadFailed ? "Loading…" : "My Team"}
+            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 disabled:cursor-wait disabled:opacity-60"
+          />
+          {teamLoadFailed && (
+            <p className="mt-2 text-xs text-amber-700">
+              We couldn't load your team just yet. You can still continue — name
+              it from your dashboard.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+            Invite teammates (optional)
+          </p>
+          <div className="space-y-3">
+            {invites.map((row) => (
+              <div
+                key={row.id}
+                className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_4px_12px_rgba(15,23,42,0.04)] sm:flex-nowrap"
+              >
+                <input
+                  type="email"
+                  value={row.email}
+                  onChange={(e) =>
+                    updateInviteRow(row.id, { email: e.target.value })
+                  }
+                  placeholder="teammate@company.com"
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
+                />
+                <TeamRoleToggle
+                  role={row.role}
+                  onChange={(role) => updateInviteRow(row.id, { role })}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeInviteRow(row.id)}
+                  className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                  aria-label="Remove invite row"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+
             <button
               type="button"
-              onClick={() => removeInviteRow(row.id)}
-              className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-              aria-label="Remove invite row"
+              onClick={addInviteRow}
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
             >
-              <Trash2 className="h-4 w-4" />
+              <Plus className="h-4 w-4" />
+              Add another
             </button>
           </div>
-        ))}
-
-        <button
-          type="button"
-          onClick={addInviteRow}
-          className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
-        >
-          <Plus className="h-4 w-4" />
-          Add another
-        </button>
+        </div>
       </div>
 
-      <div className="mx-auto mt-10 flex max-w-xl flex-wrap items-center justify-between gap-3">
+      <div className="mx-auto mt-10 flex max-w-xl items-center justify-between gap-3">
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:border-slate-900 hover:text-slate-900"
+          disabled={submitting}
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:border-slate-900 hover:text-slate-900 disabled:opacity-60"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </button>
+        <Button
+          variant="contained"
+          colorScheme="primary"
+          onClick={onNext}
+          disabled={submitting}
+          className="rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800 disabled:opacity-60"
+        >
+          {submitting ? "Saving…" : "Next"}
+          {!submitting && <ArrowRight className="ml-2 h-4 w-4" />}
+        </Button>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Slide 4: Project setup ──────────────────────────────────────────────────
+
+function SlideProjectSetup({
+  draftTitle,
+  setDraftTitle,
+  workspaceLoadFailed,
+  teamName,
+  attachTeam,
+  setAttachTeam,
+  teamAvailable,
+  onBack,
+  onSkip,
+  onFinish,
+  submitting,
+  direction,
+}: {
+  draftTitle: string;
+  setDraftTitle: (v: string) => void;
+  workspaceLoadFailed: boolean;
+  teamName: string;
+  attachTeam: boolean;
+  setAttachTeam: (v: boolean) => void;
+  teamAvailable: boolean;
+  onBack: () => void;
+  onSkip: () => void;
+  onFinish: () => void;
+  submitting: boolean;
+  direction: 1 | -1;
+}) {
+  return (
+    <motion.div
+      custom={direction}
+      variants={slideVariants}
+      initial="enter"
+      animate="center"
+      exit="exit"
+      transition={slideTransition}
+    >
+      <h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+        Your project workspace
+      </h1>
+      <p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
+        Name your first project and optionally link your team to it right away.
+      </p>
+
+      <div className="mx-auto mt-8 max-w-md space-y-5">
+        <div>
+          <label
+            htmlFor="workspace-title"
+            className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500"
+          >
+            Project name
+          </label>
+          <input
+            id="workspace-title"
+            type="text"
+            value={draftTitle}
+            onChange={(e) => setDraftTitle(e.target.value)}
+            maxLength={120}
+            disabled={workspaceLoadFailed}
+            placeholder={workspaceLoadFailed ? "Loading…" : "My Project"}
+            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 disabled:cursor-wait disabled:opacity-60"
+          />
+          {workspaceLoadFailed && (
+            <p className="mt-2 text-xs text-amber-700">
+              We couldn't load your project just yet. You can name it from your
+              dashboard.
+            </p>
+          )}
+        </div>
+
+        {teamAvailable && (
+          <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_4px_12px_rgba(15,23,42,0.04)] transition-colors hover:border-slate-300">
+            <input
+              type="checkbox"
+              checked={attachTeam}
+              onChange={(e) => setAttachTeam(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-slate-900"
+            />
+            <div>
+              <p className="text-sm font-semibold text-slate-900">
+                Attach{" "}
+                <span className="text-slate-600">
+                  {teamName || "my team"}
+                </span>{" "}
+                to this project
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Your team will have access to this project from the start.
+              </p>
+            </div>
+          </label>
+        )}
+      </div>
+
+      <div className="mx-auto mt-10 flex max-w-md flex-wrap items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={submitting}
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:border-slate-900 hover:text-slate-900 disabled:opacity-60"
         >
           <ArrowLeft className="h-4 w-4" />
           Back
@@ -720,7 +797,7 @@ function SlideFourCF({
           <button
             type="button"
             onClick={onSkip}
-            disabled={submittingInvites}
+            disabled={submitting}
             className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Skip for now
@@ -729,15 +806,11 @@ function SlideFourCF({
             variant="contained"
             colorScheme="primary"
             onClick={onFinish}
-            disabled={submittingInvites}
+            disabled={submitting}
             className="rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800 disabled:opacity-60"
           >
-            {submittingInvites
-              ? "Sending…"
-              : validCount > 0
-                ? `Send ${validCount} invite${validCount === 1 ? "" : "s"} & finish`
-                : "Finish"}
-            {!submittingInvites && <ArrowRight className="ml-2 h-4 w-4" />}
+            {submitting ? "Saving…" : "Finish"}
+            {!submitting && <ArrowRight className="ml-2 h-4 w-4" />}
           </Button>
         </div>
       </div>
@@ -745,217 +818,18 @@ function SlideFourCF({
   );
 }
 
-// ─── Consultant Slide 1: Welcome ────────────────────────────────────────────
+// ─── Team role toggle ─────────────────────────────────────────────────────────
 
-function SlideOneConsultant({
-  firstName,
-  onNext,
-  direction,
-}: {
-  firstName: string;
-  onNext: () => void;
-  direction: 1 | -1;
-}) {
-  return (
-    <motion.div
-      custom={direction}
-      variants={slideVariants}
-      initial="enter"
-      animate="center"
-      exit="exit"
-      transition={slideTransition}
-      className="text-center"
-    >
-      <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 shadow-[0_8px_18px_rgba(245,158,11,0.12)]">
-        <Crown className="h-6 w-6 text-amber-600" />
-      </div>
-      <h1 className="mt-6 text-balance text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-        Welcome to Proyekto, {firstName}.
-      </h1>
-      <p className="mx-auto mt-3 max-w-md text-balance text-sm text-slate-600 sm:text-base">
-        Let's get you ready to apply.
-      </p>
-      <div className="mt-10 flex justify-center">
-        <Button
-          variant="contained"
-          colorScheme="primary"
-          onClick={onNext}
-          className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800"
-        >
-          Get started
-          <ArrowRight className="ml-2 h-4 w-4" />
-        </Button>
-      </div>
-    </motion.div>
-  );
-}
-
-// ─── Consultant Slide 2: What you're applying for ───────────────────────────
-
-const consultantBenefits = [
-  {
-    icon: Sparkles,
-    title: "Client workspace + AI planning",
-    description:
-      "Roadmap canvas, chat, files, time tracking. White-glove enough for your enterprise clients.",
-  },
-  {
-    icon: Users,
-    title: "Vetted talent bench",
-    description:
-      "Search and propose freelancers your clients can't see directly. Identity, portfolio, and rate verified by us.",
-  },
-  {
-    icon: Wallet,
-    title: "Escrow, contracts, invoicing",
-    description:
-      "Built-in commercial layer. Stop chasing wire transfers and reconciling spreadsheets.",
-  },
-];
-
-function SlideTwoConsultant({
-  onBack,
-  onNext,
-  direction,
-}: {
-  onBack: () => void;
-  onNext: () => void;
-  direction: 1 | -1;
-}) {
-  return (
-    <motion.div
-      custom={direction}
-      variants={slideVariants}
-      initial="enter"
-      animate="center"
-      exit="exit"
-      transition={slideTransition}
-    >
-      <h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-        What you're applying for
-      </h1>
-      <p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
-        If approved, you'll get the operator's toolkit.
-      </p>
-
-      <div className="mx-auto mt-8 max-w-xl space-y-3">
-        {consultantBenefits.map((b) => {
-          const Icon = b.icon;
-          return (
-            <article
-              key={b.title}
-              className="flex gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_4px_12px_rgba(15,23,42,0.04)]"
-            >
-              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
-                <Icon className="h-5 w-5" />
-              </span>
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">
-                  {b.title}
-                </h3>
-                <p className="mt-1 text-sm leading-relaxed text-slate-600">
-                  {b.description}
-                </p>
-              </div>
-            </article>
-          );
-        })}
-      </div>
-
-      <NavRow onBack={onBack} onNext={onNext} nextLabel="Next" />
-    </motion.div>
-  );
-}
-
-// ─── Consultant Slide 3: What to expect → Start application ─────────────────
-
-const consultantExpectations = [
-  {
-    icon: Clock,
-    title: "5-step application — about 15 minutes",
-    description:
-      "Identity, experience, profile sections, a short cover letter, and references.",
-  },
-  {
-    icon: UserCheck,
-    title: "Reviewed by a human within 5 business days",
-    description:
-      "Every application is read by our team. We'll email you with a decision.",
-  },
-  {
-    icon: BookOpen,
-    title: "Save and resume — no need to finish in one sitting",
-    description:
-      "Drafts auto-save. Come back from any device to pick up where you left off.",
-  },
-];
-
-function SlideThreeConsultant({
-  onBack,
-  onStart,
-  direction,
-}: {
-  onBack: () => void;
-  onStart: () => void;
-  direction: 1 | -1;
-}) {
-  return (
-    <motion.div
-      custom={direction}
-      variants={slideVariants}
-      initial="enter"
-      animate="center"
-      exit="exit"
-      transition={slideTransition}
-    >
-      <h1 className="text-balance text-center text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-        What to expect
-      </h1>
-      <p className="mx-auto mt-3 max-w-lg text-center text-balance text-sm text-slate-600 sm:text-base">
-        Quick application, fast decision.
-      </p>
-
-      <div className="mx-auto mt-8 max-w-xl space-y-3">
-        {consultantExpectations.map((e) => {
-          const Icon = e.icon;
-          return (
-            <article
-              key={e.title}
-              className="flex gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_4px_12px_rgba(15,23,42,0.04)]"
-            >
-              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
-                <Icon className="h-5 w-5" />
-              </span>
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">
-                  {e.title}
-                </h3>
-                <p className="mt-1 text-sm leading-relaxed text-slate-600">
-                  {e.description}
-                </p>
-              </div>
-            </article>
-          );
-        })}
-      </div>
-
-      <NavRow onBack={onBack} onNext={onStart} nextLabel="Start application" />
-    </motion.div>
-  );
-}
-
-// ─── Role toggle ────────────────────────────────────────────────────────────
-
-function RoleToggle({
+function TeamRoleToggle({
   role,
   onChange,
 }: {
-  role: InviteRole;
-  onChange: (role: InviteRole) => void;
+  role: TeamInviteRole;
+  onChange: (role: TeamInviteRole) => void;
 }) {
   return (
     <div className="flex shrink-0 rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs font-semibold">
-      {(["editor", "viewer"] as InviteRole[]).map((r) => (
+      {(["admin", "member"] as TeamInviteRole[]).map((r) => (
         <button
           key={r}
           type="button"
@@ -966,14 +840,86 @@ function RoleToggle({
               : "text-slate-500 hover:text-slate-700"
           }`}
         >
-          {r === "editor" ? "Editor" : "Viewer"}
+          {r === "admin" ? "Admin" : "Member"}
         </button>
       ))}
     </div>
   );
 }
 
-// ─── Reusable nav row (Back / Next) ─────────────────────────────────────────
+// ─── Shared deck shell ────────────────────────────────────────────────────────
+
+function DeckShell({
+  stepper,
+  footer,
+  children,
+}: {
+  stepper: React.ReactNode;
+  footer: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-h-screen bg-[#fcfcfd]">
+      <div className="pointer-events-none absolute -top-20 left-[10%] h-72 w-72 rounded-full bg-cyan-200/35 blur-3xl" />
+      <div className="pointer-events-none absolute -right-12 top-1/3 h-72 w-72 rounded-full bg-indigo-200/40 blur-3xl" />
+
+      <div className="relative mx-auto flex min-h-screen max-w-3xl flex-col px-4 py-8 sm:px-6 lg:px-10">
+        {stepper}
+        <div className="relative mt-12 flex-1">{children}</div>
+        <p className="mt-8 text-center text-xs text-slate-500">{footer}</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Stepper ─────────────────────────────────────────────────────────────────
+
+function Stepper({
+  current,
+  total,
+  onClose,
+}: {
+  current: number;
+  total: number;
+  onClose: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-1 items-center gap-2">
+        {Array.from({ length: total }, (_, i) => i + 1).map((n) => (
+          <div
+            key={n}
+            className={`h-1.5 flex-1 rounded-full transition-colors ${
+              n <= current ? "bg-slate-900" : "bg-slate-200"
+            }`}
+          />
+        ))}
+        <span className="ml-3 shrink-0 text-xs font-semibold text-slate-500">
+          {current} of {total}
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+        aria-label="Close"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+// ─── Slide motion variants ────────────────────────────────────────────────────
+
+const slideVariants = {
+  enter: (dir: 1 | -1) => ({ x: dir === 1 ? 24 : -24, opacity: 0 }),
+  center: { x: 0, opacity: 1 },
+  exit: (dir: 1 | -1) => ({ x: dir === 1 ? -24 : 24, opacity: 0 }),
+};
+const slideTransition = { duration: 0.25, ease: "easeOut" as const };
+
+// ─── Reusable nav row ─────────────────────────────────────────────────────────
 
 function NavRow({
   onBack,
@@ -1007,7 +953,7 @@ function NavRow({
   );
 }
 
-// ─── Close confirmation modal ───────────────────────────────────────────────
+// ─── Close confirmation modal ─────────────────────────────────────────────────
 
 function CloseConfirmModal({
   title,
