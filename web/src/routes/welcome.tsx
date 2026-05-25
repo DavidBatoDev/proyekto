@@ -167,9 +167,9 @@ function UnifiedWelcomeDeck({
 
   // ── Slide 3: team name + invites ─────────────────────────────────────────
   const [teamSetupCompleted, setTeamSetupCompleted] = useState(false);
-  const [draftTeamName, setDraftTeamName] = useState<string>("");
+  const [draftTeamName, setDraftTeamName] = useState<string>(`${firstName}'s Team`);
   useEffect(() => {
-    setDraftTeamName(teamName);
+    if (teamName) setDraftTeamName(teamName);
   }, [teamName]);
 
   const [teamInvites, setTeamInvites] = useState<InviteRow[]>(() => [
@@ -246,9 +246,9 @@ function UnifiedWelcomeDeck({
   };
 
   // ── Slide 4: project name + attach team ──────────────────────────────────
-  const [draftTitle, setDraftTitle] = useState<string>("");
+  const [draftTitle, setDraftTitle] = useState<string>(`${firstName}'s Project`);
   useEffect(() => {
-    setDraftTitle(workspaceTitle);
+    if (workspaceTitle) setDraftTitle(workspaceTitle);
   }, [workspaceTitle]);
 
   const [attachTeam, setAttachTeam] = useState(true);
