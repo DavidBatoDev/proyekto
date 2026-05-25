@@ -89,8 +89,6 @@ function UnifiedWelcomeDeck({
   // ── Artifacts: team + workspace loaded via backend (admin client, no RLS) ──
   const [teamId, setTeamId] = useState<string | null>(null);
   const [teamName, setTeamName] = useState<string>("");
-  const [teamLoadFailed, setTeamLoadFailed] = useState(false);
-
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [workspaceTitle, setWorkspaceTitle] = useState<string>("");
   const [workspaceLoadFailed, setWorkspaceLoadFailed] = useState(false);
@@ -132,8 +130,6 @@ function UnifiedWelcomeDeck({
           if (teamRes.data) {
             setTeamId(teamRes.data.id as string);
             setTeamName((teamRes.data.name as string) ?? "");
-          } else {
-            setTeamLoadFailed(true);
           }
           if (workspaceRes.data) {
             setWorkspaceId(workspaceRes.data.id as string);
@@ -143,7 +139,6 @@ function UnifiedWelcomeDeck({
           }
         } catch {
           if (cancelled) return;
-          setTeamLoadFailed(true);
           setWorkspaceLoadFailed(true);
         }
       }
@@ -371,7 +366,6 @@ function UnifiedWelcomeDeck({
             key="u-3"
             draftTeamName={draftTeamName}
             setDraftTeamName={setDraftTeamName}
-            teamLoadFailed={teamLoadFailed}
             invites={teamInvites}
             addInviteRow={addTeamInviteRow}
             removeInviteRow={removeTeamInviteRow}
@@ -547,7 +541,6 @@ function SlideCapabilities({
 function SlideTeamSetup({
   draftTeamName,
   setDraftTeamName,
-  teamLoadFailed,
   invites,
   addInviteRow,
   removeInviteRow,
@@ -560,7 +553,6 @@ function SlideTeamSetup({
 }: {
   draftTeamName: string;
   setDraftTeamName: (v: string) => void;
-  teamLoadFailed: boolean;
   invites: InviteRow[];
   addInviteRow: () => void;
   removeInviteRow: (id: string) => void;
@@ -604,12 +596,6 @@ function SlideTeamSetup({
             placeholder="My Team"
             className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
           />
-          {teamLoadFailed && (
-            <p className="mt-2 text-xs text-amber-700">
-              Couldn't connect to your team service — you can still set a name
-              above. Changes will sync once reconnected.
-            </p>
-          )}
         </div>
 
         <div>
