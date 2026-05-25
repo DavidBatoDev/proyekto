@@ -8,7 +8,7 @@ import {
 	Square,
 	Timer,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useToast } from "@/contexts/ToastContext";
 import { teamTimeService } from "@/services/team-time.service";
 import { useUser } from "@/stores/authStore";
@@ -23,9 +23,15 @@ const TIMER_VISIBLE_PATH_PREFIXES = [
 	"/projects",
 ];
 
-const TIMER_POSITION_STORAGE_KEY = "floating-timer-position";
+const TIMER_ANCHOR_STORAGE_KEY = "floating-timer-anchor";
 const TIMER_COLLAPSED_STORAGE_KEY = "floating-timer-collapsed";
-const TIMER_DRAG_MARGIN = 12;
+const TIMER_ANCHORS = [
+	"top-left",
+	"top-right",
+	"bottom-left",
+	"bottom-right",
+] as const;
+type TimerAnchor = (typeof TIMER_ANCHORS)[number];
 
 function shouldShowOnPath(pathname: string): boolean {
 	return TIMER_VISIBLE_PATH_PREFIXES.some((prefix) =>
@@ -55,15 +61,7 @@ export function FloatingActiveTimer() {
 	const queryClient = useQueryClient();
 	const pathname = useRouterState({ select: (s) => s.location.pathname });
 	const shouldRender = shouldShowOnPath(pathname);
-	const containerRef = useRef<HTMLDivElement | null>(null);
-	const dragStateRef = useRef({
-		isDragging: false,
-		offsetX: 0,
-		offsetY: 0,
-	});
-	const [position, setPosition] = useState<{ x: number; y: number } | null>(
-		null,
-	);
+	const [anchor, setAnchor] = useState<TimerAnchor>("bottom-right");
 	const [isCollapsed, setIsCollapsed] = useState(false);
 
 	const runningQuery = useQuery({
@@ -104,24 +102,11 @@ export function FloatingActiveTimer() {
 
 	useEffect(() => {
 		if (typeof window === "undefined") return;
-		const storedPosition = window.localStorage.getItem(
-			TIMER_POSITION_STORAGE_KEY,
+		const storedAnchor = window.localStorage.getItem(
+			TIMER_ANCHOR_STORAGE_KEY,
 		);
-		if (storedPosition) {
-			try {
-				const parsed = JSON.parse(storedPosition) as {
-					x: number;
-					y: number;
-				};
-				if (
-					Number.isFinite(parsed?.x) &&
-					Number.isFinite(parsed?.y)
-				) {
-					setPosition({ x: parsed.x, y: parsed.y });
-				}
-			} catch {
-				// Ignore invalid stored value.
-			}
+		if (storedAnchor && TIMER_ANCHORS.includes(storedAnchor as TimerAnchor)) {
+			setAnchor(storedAnchor as TimerAnchor);
 		}
 		const storedCollapsed = window.localStorage.getItem(
 			TIMER_COLLAPSED_STORAGE_KEY,
@@ -132,12 +117,12 @@ export function FloatingActiveTimer() {
 	}, []);
 
 	useEffect(() => {
-		if (typeof window === "undefined" || !position) return;
+		if (typeof window === "undefined") return;
 		window.localStorage.setItem(
-			TIMER_POSITION_STORAGE_KEY,
-			JSON.stringify(position),
+			TIMER_ANCHOR_STORAGE_KEY,
+			anchor,
 		);
-	}, [position]);
+	}, [anchor]);
 
 	useEffect(() => {
 		if (typeof window === "undefined") return;
@@ -147,67 +132,23 @@ export function FloatingActiveTimer() {
 		);
 	}, [isCollapsed]);
 
-	const handlePointerDown = useCallback(
-		(event: React.PointerEvent<HTMLDivElement>) => {
-			if (event.button !== 0) return;
-			const target = event.target as HTMLElement | null;
-			if (target?.closest("[data-no-drag]")) return;
-			const rect = containerRef.current?.getBoundingClientRect();
-			if (!rect) return;
-			dragStateRef.current = {
-				isDragging: true,
-				offsetX: event.clientX - rect.left,
-				offsetY: event.clientY - rect.top,
-			};
-			containerRef.current?.setPointerCapture(event.pointerId);
-		},
-		[],
-	);
-
-	const handlePointerMove = useCallback(
-		(event: React.PointerEvent<HTMLDivElement>) => {
-			if (!dragStateRef.current.isDragging) return;
-			const rect = containerRef.current?.getBoundingClientRect();
-			if (!rect) return;
-			const width = rect.width;
-			const height = rect.height;
-			const maxX = Math.max(TIMER_DRAG_MARGIN, window.innerWidth - width - TIMER_DRAG_MARGIN);
-			const maxY = Math.max(TIMER_DRAG_MARGIN, window.innerHeight - height - TIMER_DRAG_MARGIN);
-			const nextX = event.clientX - dragStateRef.current.offsetX;
-			const nextY = event.clientY - dragStateRef.current.offsetY;
-			const clampedX = Math.min(Math.max(nextX, TIMER_DRAG_MARGIN), maxX);
-			const clampedY = Math.min(Math.max(nextY, TIMER_DRAG_MARGIN), maxY);
-			setPosition({ x: clampedX, y: clampedY });
-		},
-		[],
-	);
-
-	const handlePointerUp = useCallback(
-		(event: React.PointerEvent<HTMLDivElement>) => {
-			if (!dragStateRef.current.isDragging) return;
-			dragStateRef.current.isDragging = false;
-			containerRef.current?.releasePointerCapture(event.pointerId);
-		},
-		[],
-	);
-
 	if (!user?.id || !shouldRender || !log) return null;
 
-	const containerStyle = position
-		? { left: position.x, top: position.y }
-		: undefined;
+	const anchorClass =
+		anchor === "top-left"
+			? "absolute top-4 left-4"
+			: anchor === "top-right"
+				? "absolute top-4 right-4"
+				: anchor === "bottom-left"
+					? "absolute bottom-4 left-4"
+					: "absolute bottom-4 right-4";
 
 	return (
-		<div className="pointer-events-none fixed inset-0 z-[80]">
+		<div className="pointer-events-none fixed inset-0 z-80">
 			<div
-				ref={containerRef}
-				style={containerStyle}
-				onPointerDown={handlePointerDown}
-				onPointerMove={handlePointerMove}
-				onPointerUp={handlePointerUp}
 				className={`pointer-events-auto flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-xl shadow-slate-900/10 ${
-					position ? "" : "absolute bottom-4 right-4"
-				} cursor-grab select-none active:cursor-grabbing`}
+					anchorClass
+				}`}
 			>
 				<div className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
 					<Timer className="h-4 w-4" />
@@ -235,6 +176,31 @@ export function FloatingActiveTimer() {
 					) : null}
 				</div>
 				<div className="flex items-center gap-2" data-no-drag>
+					<div
+						className={`grid grid-cols-2 gap-1 transition duration-300 ease-out ${
+							isCollapsed
+								? "pointer-events-none -translate-y-1 scale-95 opacity-0"
+								: "translate-y-0 scale-100 opacity-100"
+						}`}
+						role="group"
+						aria-label="Timer position"
+					>
+						{TIMER_ANCHORS.map((option) => (
+							<button
+								key={option}
+								type="button"
+								onClick={() => setAnchor(option)}
+								className={`h-4 w-4 rounded border transition-colors ${
+									anchor === option
+										? "border-emerald-500 bg-emerald-200"
+										: "border-slate-300 bg-white hover:bg-slate-50"
+								}`}
+								title={option.replace("-", " ")}
+								aria-pressed={anchor === option}
+								aria-label={option.replace("-", " ")}
+							/>
+						))}
+					</div>
 					<button
 						type="button"
 						onClick={() => setIsCollapsed((prev) => !prev)}

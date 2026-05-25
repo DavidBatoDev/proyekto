@@ -1164,9 +1164,9 @@ export function AddLogModal({
 												>
 													<span className="truncate pr-2">{project.title || "(untitled)"}</span>
 													{selectedProjectId === project.id ? (
-														<CheckCircle2 className="w-4 h-4 text-slate-900 flex-shrink-0" />
+														<CheckCircle2 className="w-4 h-4 text-slate-900 shrink-0" />
 													) : (
-														<ChevronRight className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+														<ChevronRight className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
 													)}
 												</button>
 											))
@@ -1214,9 +1214,9 @@ export function AddLogModal({
 														)}
 													</div>
 													{selectedEpic === epic.epicTitle ? (
-														<CheckCircle2 className="w-4 h-4 text-slate-900 flex-shrink-0" />
+														<CheckCircle2 className="w-4 h-4 text-slate-900 shrink-0" />
 													) : (
-														<ChevronRight className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+														<ChevronRight className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
 													)}
 												</button>
 											))
@@ -1265,9 +1265,9 @@ export function AddLogModal({
 														)}
 													</div>
 													{selectedFeature === feature.featureTitle ? (
-														<CheckCircle2 className="w-4 h-4 text-slate-900 flex-shrink-0" />
+														<CheckCircle2 className="w-4 h-4 text-slate-900 shrink-0" />
 													) : (
-														<ChevronRight className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+														<ChevronRight className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
 													)}
 												</button>
 											))
@@ -1336,7 +1336,7 @@ export function AddLogModal({
 													}`}
 												>
 													<span>General Time / No Task</span>
-													{!selectedTaskId && <CheckCircle2 className="w-4 h-4 text-white flex-shrink-0" />}
+														{!selectedTaskId && <CheckCircle2 className="w-4 h-4 text-white shrink-0" />}
 												</button>
 												
 												<div className="h-px bg-slate-100 w-full my-2"></div>
@@ -1357,7 +1357,7 @@ export function AddLogModal({
 														>
 															<span className="truncate pr-2">{task.title || "Untitled task"}</span>
 															{selectedTaskId === task.id && (
-																<CheckCircle2 className="w-4 h-4 text-slate-900 flex-shrink-0" />
+																<CheckCircle2 className="w-4 h-4 text-slate-900 shrink-0" />
 															)}
 														</button>
 													))
