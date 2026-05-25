@@ -139,6 +139,7 @@ function UnifiedWelcomeDeck({
   };
 
   // ── Slide 3: team name + invites ─────────────────────────────────────────
+  const [teamSetupCompleted, setTeamSetupCompleted] = useState(false);
   const [draftTeamName, setDraftTeamName] = useState<string>("");
   useEffect(() => {
     setDraftTeamName(teamName);
@@ -207,7 +208,13 @@ function UnifiedWelcomeDeck({
       setSubmittingTeam(false);
       return;
     }
+    setTeamSetupCompleted(true);
     setSubmittingTeam(false);
+    goNext();
+  };
+
+  const skipTeamSetup = () => {
+    setTeamSetupCompleted(false);
     goNext();
   };
 
@@ -338,6 +345,7 @@ function UnifiedWelcomeDeck({
             removeInviteRow={removeTeamInviteRow}
             updateInviteRow={updateTeamInviteRow}
             onBack={goBack}
+            onSkip={skipTeamSetup}
             onNext={saveTeamAndInvites}
             submitting={submittingTeam}
             direction={direction}
@@ -352,7 +360,7 @@ function UnifiedWelcomeDeck({
             teamName={draftTeamName || teamName}
             attachTeam={attachTeam}
             setAttachTeam={setAttachTeam}
-            teamAvailable={!!teamId}
+            teamSetupDone={teamSetupCompleted}
             onBack={goBack}
             onSkip={skipAndFinish}
             onFinish={saveProjectAndFinish}
@@ -513,6 +521,7 @@ function SlideTeamSetup({
   removeInviteRow,
   updateInviteRow,
   onBack,
+  onSkip,
   onNext,
   submitting,
   direction,
@@ -525,6 +534,7 @@ function SlideTeamSetup({
   removeInviteRow: (id: string) => void;
   updateInviteRow: (id: string, patch: Partial<InviteRow>) => void;
   onBack: () => void;
+  onSkip: () => void;
   onNext: () => void;
   submitting: boolean;
   direction: 1 | -1;
@@ -617,7 +627,7 @@ function SlideTeamSetup({
         </div>
       </div>
 
-      <div className="mx-auto mt-10 flex max-w-xl items-center justify-between gap-3">
+      <div className="mx-auto mt-10 flex max-w-xl flex-wrap items-center justify-between gap-3">
         <button
           type="button"
           onClick={onBack}
@@ -627,16 +637,26 @@ function SlideTeamSetup({
           <ArrowLeft className="h-4 w-4" />
           Back
         </button>
-        <Button
-          variant="contained"
-          colorScheme="primary"
-          onClick={onNext}
-          disabled={submitting}
-          className="rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800 disabled:opacity-60"
-        >
-          {submitting ? "Saving…" : "Next"}
-          {!submitting && <ArrowRight className="ml-2 h-4 w-4" />}
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={onSkip}
+            disabled={submitting}
+            className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Skip for now
+          </button>
+          <Button
+            variant="contained"
+            colorScheme="primary"
+            onClick={onNext}
+            disabled={submitting}
+            className="rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800 disabled:opacity-60"
+          >
+            {submitting ? "Saving…" : "Next"}
+            {!submitting && <ArrowRight className="ml-2 h-4 w-4" />}
+          </Button>
+        </div>
       </div>
     </motion.div>
   );
@@ -651,7 +671,7 @@ function SlideProjectSetup({
   teamName,
   attachTeam,
   setAttachTeam,
-  teamAvailable,
+  teamSetupDone,
   onBack,
   onSkip,
   onFinish,
@@ -664,7 +684,7 @@ function SlideProjectSetup({
   teamName: string;
   attachTeam: boolean;
   setAttachTeam: (v: boolean) => void;
-  teamAvailable: boolean;
+  teamSetupDone: boolean;
   onBack: () => void;
   onSkip: () => void;
   onFinish: () => void;
@@ -713,7 +733,7 @@ function SlideProjectSetup({
           )}
         </div>
 
-        {teamAvailable && (
+        {teamSetupDone && (
           <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_4px_12px_rgba(15,23,42,0.04)] transition-colors hover:border-slate-300">
             <input
               type="checkbox"
