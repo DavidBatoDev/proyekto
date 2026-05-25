@@ -6,6 +6,7 @@ import React, {
   useState,
   type DragEvent,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ReactFlow,
   Controls,
@@ -45,6 +46,8 @@ import {
   useRecentAssignees,
   type DockAvatar,
 } from "@/hooks/useRecentAssignees";
+import { teamTimeService } from "@/services/team-time.service";
+import { useUser } from "@/stores/authStore";
 
 const getAvatarInitials = (name: string) =>
   name
@@ -338,6 +341,7 @@ export const RoadmapView = ({
   focusNodeOffsetX = 0,
   performanceMode = "normal",
 }: RoadmapViewProps) => {
+  const user = useUser();
   const DEFAULT_ZOOM = 0.67;
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [isPanningCanvas, setIsPanningCanvas] = useState(false);
@@ -358,6 +362,15 @@ export const RoadmapView = ({
   const DEFAULT_VIEWPORT_X = -50;
   const DEFAULT_VIEWPORT_Y = 0;
   const MAX_ZOOM = 1.0;
+  const runningLogQuery = useQuery({
+    queryKey: ["team-time", "running-log", user?.id ?? "anonymous"],
+    queryFn: () => teamTimeService.getMyRunningLog(),
+    enabled: Boolean(user?.id),
+    refetchInterval: 3_000,
+    refetchIntervalInBackground: true,
+    retry: 1,
+  });
+  const runningTaskId = runningLogQuery.data?.task_id ?? null;
   const MIN_ZOOM = minZoom;
   const isReducedMotion = performanceMode === "reducedMotion";
   const [toolbarDraggingType, setToolbarDraggingType] =
@@ -562,6 +575,7 @@ export const RoadmapView = ({
             onAddTask,
             onSelectTask,
             onUpdateTask,
+            runningTaskId,
             pulseTaskId:
               pulseTaskFocus?.featureId === feature.id
                 ? pulseTaskFocus.taskId
@@ -599,6 +613,7 @@ export const RoadmapView = ({
       pulseTaskFocus,
       toolbarDraggingType,
       canEditRoadmap,
+      runningTaskId,
     ],
   );
 
@@ -618,8 +633,10 @@ export const RoadmapView = ({
     const centerX = targetNode.position.x + nodeWidth / 2 + focusNodeOffsetX;
     const centerY = targetNode.position.y + nodeHeight / 2;
 
+    const viewport = reactFlowInstance.getViewport?.();
+    const nextZoom = viewport?.zoom ?? zoom;
     reactFlowInstance.setCenter(centerX, centerY, {
-      zoom: 0.8,
+      zoom: nextZoom,
       duration: isReducedMotion ? 0 : 600,
     });
 
@@ -652,6 +669,7 @@ export const RoadmapView = ({
     isReducedMotion,
     onFocusComplete,
     reactFlowInstance,
+    zoom,
   ]);
 
   const extraRightPadding = useMemo(() => {

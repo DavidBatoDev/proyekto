@@ -48,6 +48,7 @@ interface TaskListItemProps {
   onUpdateStatus?: (taskId: string, status: TaskStatus) => void;
   density?: "normal" | "compact";
   pulseToken?: number;
+  isRunning?: boolean;
 }
 
 const STATUS_OPTIONS: TaskStatus[] = [
@@ -123,6 +124,7 @@ export const TaskListItem = memo(
     onUpdateStatus,
     density = "normal",
     pulseToken,
+      isRunning = false,
   }: TaskListItemProps) => {
     const isCompleted = task.status === "done";
     const isOptimisticTask = task.id.startsWith("temp-");
@@ -361,7 +363,9 @@ export const TaskListItem = memo(
         } ${
           isAssigneeDragOver
             ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-300"
-            : "border-transparent hover:border-gray-200 hover:bg-gray-50"
+            : isRunning
+              ? "border-emerald-300 bg-emerald-50/70 ring-1 ring-emerald-200"
+              : "border-transparent hover:border-gray-200 hover:bg-gray-50"
         }`}
         onClick={() => onClick?.(task)}
       >

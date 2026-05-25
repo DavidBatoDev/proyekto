@@ -142,10 +142,20 @@ export function TeamLogsStatsCard({
 						)}
 						<span className="inline-flex items-center gap-1.5">
 							<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-								Rate
+								Work
 							</span>
 							<span className="text-sm font-semibold text-slate-900">
 								{Number(rate.hourly_rate).toFixed(2)} {rate.currency || "USD"}
+								<span className="font-normal text-slate-500">/hr</span>
+							</span>
+						</span>
+						<span className="inline-flex items-center gap-1.5">
+							<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+								Training
+							</span>
+							<span className="text-sm font-semibold text-slate-900">
+								{Number(rate.training_hourly_rate).toFixed(2)}{" "}
+								{rate.currency || "USD"}
 								<span className="font-normal text-slate-500">/hr</span>
 							</span>
 						</span>

@@ -59,19 +59,24 @@ function formatRateSummary(
 	if (rates.length === 1) {
 		const r = rates[0];
 		const title = projectTitleById[r.project_id] ?? "Project";
+		const real = Number(r.hourly_rate).toFixed(2);
+		const training = Number(r.training_hourly_rate).toFixed(2);
 		return {
-			headline: `${Number(r.hourly_rate).toFixed(2)} ${r.currency || "USD"}/hr`,
-			sub: title || "(untitled project)",
+			headline: `Work ${real} ${r.currency || "USD"}/hr`,
+			sub: `Training ${training} ${r.currency || "USD"}/hr · ${title || "(untitled project)"}`,
 		};
 	}
 	const distinctValues = new Set(
-		rates.map((r) => `${Number(r.hourly_rate).toFixed(2)}-${r.currency}`),
+		rates.map(
+			(r) =>
+				`${Number(r.hourly_rate).toFixed(2)}-${Number(r.training_hourly_rate).toFixed(2)}-${r.currency}`,
+		),
 	);
 	if (distinctValues.size === 1) {
 		const r = rates[0];
 		return {
-			headline: `${Number(r.hourly_rate).toFixed(2)} ${r.currency || "USD"}/hr`,
-			sub: `${rates.length} projects`,
+			headline: `Work ${Number(r.hourly_rate).toFixed(2)} ${r.currency || "USD"}/hr`,
+			sub: `Training ${Number(r.training_hourly_rate).toFixed(2)} ${r.currency || "USD"}/hr · ${rates.length} projects`,
 		};
 	}
 	return {
@@ -204,20 +209,21 @@ export function TeamRatesSection({
 											</div>
 											{rates.length > 1 && (
 												<div className="mt-2 space-y-0.5 border-t border-gray-100 pt-2">
-													{preview.map((r) => (
-														<div
-															key={r.id}
-															className="flex items-center justify-between gap-2 text-[10.5px]"
-														>
-															<span className="truncate text-slate-500">
-																{projectTitleById[r.project_id] ?? "Project"}
-															</span>
-															<span className="font-medium text-slate-700 tabular-nums">
-																{Number(r.hourly_rate).toFixed(2)}{" "}
-																{r.currency || "USD"}
-															</span>
-														</div>
-													))}
+							{preview.map((r) => (
+								<div
+									key={r.id}
+									className="flex items-center justify-between gap-2 text-[10.5px]"
+								>
+									<span className="truncate text-slate-500">
+										{projectTitleById[r.project_id] ?? "Project"}
+									</span>
+									<span className="font-medium text-slate-700 tabular-nums">
+										Work {Number(r.hourly_rate).toFixed(2)} / Training{" "}
+										{Number(r.training_hourly_rate).toFixed(2)}{" "}
+										{r.currency || "USD"}
+									</span>
+								</div>
+							))}
 													{remaining > 0 && (
 														<p className="text-[10.5px] text-slate-400 text-center">
 															+{remaining} more

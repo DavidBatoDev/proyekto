@@ -12,8 +12,10 @@ import {
 	teamTimeService,
 	type TaskTimeLog,
 } from "@/services/team-time.service";
+import { roadmapService, taskService } from "@/services/roadmap.service";
 import { TeamMyLogsGrid } from "@/components/team-time/TeamMyLogsGrid";
 import { TeamMemberRateHistoryDrawer } from "@/components/team-time/TeamMemberRateHistoryDrawer";
+import { TeamLogsPeriodFilter } from "@/components/team-time/TeamLogsPeriodFilter";
 import {
 	TeamLogsStatsCard,
 	computeLogStats,
@@ -23,13 +25,24 @@ import {
 	DeleteTimeLogModal,
 	EditLogModal,
 } from "@/components/team-time/TeamTimeModals";
+import { SidePanel } from "@/components/roadmap/panels/SidePanel";
 import {
 	fromLocalDateTimeInput,
 	toLocalDateTimeInput,
 } from "@/components/team-time/time-utils";
+import {
+	buildCustomPeriodFromDateInputs,
+	buildTeamLogPeriodSearch,
+	parseTeamLogPeriodSearch,
+	resolveTeamLogPeriod,
+	type CutoffHalf,
+	type LogPeriodPreset,
+} from "@/components/team-time/log-period";
+import type { RoadmapTask } from "@/types/roadmap";
 import { ScrollNavButtons } from "@/components/common/ScrollNavButtons";
 
 export const Route = createFileRoute("/teams/$teamId/time/my-logs")({
+	validateSearch: parseTeamLogPeriodSearch,
 	component: MyLogsTab,
 	beforeLoad: async ({ params }) => {
 		// Visibility gate is the team-time/route.tsx layout, but it can't
@@ -42,14 +55,35 @@ export const Route = createFileRoute("/teams/$teamId/time/my-logs")({
 
 function MyLogsTab() {
 	const { teamId } = Route.useParams();
+	const search = Route.useSearch();
 	const user = useUser();
 	const toast = useToast();
 	const qc = useQueryClient();
-	const navigate = useNavigate();
+	const navigate = useNavigate({ from: Route.fullPath });
+	const period = useMemo(() => resolveTeamLogPeriod(search), [search]);
+
+	useEffect(() => {
+		if (search.preset && search.from && search.to) return;
+		void navigate({
+			to: "/teams/$teamId/time/my-logs",
+			params: { teamId },
+			search: buildTeamLogPeriodSearch(period),
+			replace: true,
+		});
+	}, [navigate, period, search.from, search.preset, search.to, teamId]);
 
 	const [addOpen, setAddOpen] = useState(false);
 	const [addProjectId, setAddProjectId] = useState("");
 	const [addTaskId, setAddTaskId] = useState("");
+	const [isCreateTaskPanelOpen, setIsCreateTaskPanelOpen] = useState(false);
+	const [createTaskFeatureId, setCreateTaskFeatureId] = useState<
+		string | null
+	>(null);
+	const [createTaskContext, setCreateTaskContext] = useState<{
+		featureId: string | null;
+		epicTitle: string | null;
+		featureTitle: string | null;
+	} | null>(null);
 
 	const [editingLog, setEditingLog] = useState<TaskTimeLog | null>(null);
 	const [editStartedAt, setEditStartedAt] = useState("");
@@ -74,9 +108,13 @@ function MyLogsTab() {
 	const [historyOpen, setHistoryOpen] = useState(false);
 
 	const logsQuery = useQuery({
-		queryKey: ["team-time", teamId, "my-logs", user?.id],
+		queryKey: ["team-time", teamId, "my-logs", user?.id, period.fromIso, period.toIso],
 		queryFn: () =>
-			teamTimeService.listMyTeamLogs(teamId, { limit: 200 }),
+			teamTimeService.listMyTeamLogs(teamId, {
+				from: period.fromIso,
+				to: period.toIso,
+				limit: 200,
+			}),
 	});
 
 	const projectsQuery = useQuery({
@@ -90,6 +128,12 @@ function MyLogsTab() {
 			teamTimeService.listTeamProjectTasks(teamId, addProjectId),
 		enabled: Boolean(addProjectId),
 	});
+
+	const normalizePathLabel = (value?: string | null) =>
+		(value ?? "")
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, " ")
+			.trim();
 
 	const tasksForRowQuery = useQuery({
 		queryKey: [
@@ -206,6 +250,84 @@ function MyLogsTab() {
 		onError: (e: Error) => toast.error(e.message),
 	});
 
+	const createTaskMutation = useMutation({
+		mutationFn: async (input: {
+			taskData: Partial<RoadmapTask>;
+			featureId: string | null;
+			context: {
+				featureId: string | null;
+				epicTitle: string | null;
+				featureTitle: string | null;
+			} | null;
+			projectId: string;
+		}) => {
+			const { taskData, context, projectId } = input;
+			const resolveFeatureIdFromContext = async (): Promise<string | null> => {
+				const ctx = context;
+				const normalizedFeatureTitle = normalizePathLabel(ctx?.featureTitle);
+				const normalizedEpicTitle = normalizePathLabel(ctx?.epicTitle);
+				if (!normalizedFeatureTitle) return null;
+
+				const matchedTask = (tasksForAddQuery.data ?? []).find((task) => {
+					const taskFeatureTitle = normalizePathLabel(task.feature_title);
+					const taskEpicTitle = normalizePathLabel(task.epic_title);
+					if (taskFeatureTitle !== normalizedFeatureTitle) return false;
+					if (!normalizedEpicTitle) return true;
+					return taskEpicTitle === normalizedEpicTitle;
+				});
+				if (matchedTask?.feature_id) return matchedTask.feature_id;
+
+				if (!projectId) return null;
+				const roadmap = await roadmapService.getByProjectId(projectId);
+				if (!roadmap?.id) return null;
+				const fullRoadmap = await roadmapService.getFull(roadmap.id);
+
+				for (const epic of fullRoadmap.epics ?? []) {
+					const epicTitle = normalizePathLabel(epic.title);
+					if (normalizedEpicTitle && epicTitle !== normalizedEpicTitle) continue;
+					const match = (epic.features ?? []).find(
+						(feature) =>
+							normalizePathLabel(feature.title) === normalizedFeatureTitle,
+					);
+					if (match?.id) return match.id;
+				}
+				return null;
+			};
+
+			let featureId = input.featureId?.trim() ?? "";
+			if (!featureId) {
+				featureId = (await resolveFeatureIdFromContext()) ?? "";
+			}
+			if (!featureId) {
+				throw new Error("Select a feature before creating a task.");
+			}
+
+			const title = (taskData.title ?? "").trim();
+			return taskService.create({
+				feature_id: featureId,
+				title: title || "Untitled task",
+				status: taskData.status ?? "todo",
+				priority: taskData.priority ?? "medium",
+				work_type: taskData.work_type ?? "real_work",
+				assignee_id: taskData.assignee_id ?? null,
+				due_date: taskData.due_date || undefined,
+			});
+		},
+		onSuccess: async (createdTask) => {
+			toast.success("Task created");
+			await qc.invalidateQueries({
+				queryKey: ["team-time", teamId, "project-tasks", addProjectId],
+			});
+			setAddTaskId(createdTask.id);
+		},
+		onError: (e: Error) => toast.error(e.message),
+		onSettled: () => {
+			setIsCreateTaskPanelOpen(false);
+			setCreateTaskFeatureId(null);
+			setCreateTaskContext(null);
+		},
+	});
+
 	// ─── handlers ─────────────────────────────────────────────────────
 
 	const handleStop = useCallback(
@@ -237,6 +359,34 @@ function MyLogsTab() {
 			});
 		},
 		[navigate],
+	);
+	const handleOpenCreateTaskPanel = useCallback(
+		(context: {
+			featureId: string | null;
+			epicTitle: string | null;
+			featureTitle: string | null;
+		}) => {
+			if (!context.featureId && !context.featureTitle) {
+				toast.error("Select a feature before creating a task.");
+				return;
+			}
+			setCreateTaskContext(context);
+			setCreateTaskFeatureId(context.featureId?.trim() || null);
+			setIsCreateTaskPanelOpen(true);
+		},
+		[toast],
+	);
+
+	const handleCreateTaskFromTimer = useCallback(
+		async (taskData: Partial<RoadmapTask>) => {
+			await createTaskMutation.mutateAsync({
+				taskData,
+				featureId: createTaskFeatureId,
+				context: createTaskContext,
+				projectId: addProjectId,
+			});
+		},
+		[addProjectId, createTaskContext, createTaskFeatureId, createTaskMutation],
 	);
 
 	const rowPendingById = useMemo<Record<string, boolean>>(() => {
@@ -300,8 +450,51 @@ function MyLogsTab() {
 	// beyond the currently active set.
 	const hasRateHistory = rateHistory.length > activeRateCount;
 
+	const updatePeriod = (preset: LogPeriodPreset, overrides?: Partial<typeof period>) => {
+		const next = resolveTeamLogPeriod({
+			preset,
+			from: overrides?.fromIso ?? period.fromIso,
+			to: overrides?.toIso ?? period.toIso,
+			cutoff_month: overrides?.cutoffMonth ?? period.cutoffMonth,
+			cutoff_half: overrides?.cutoffHalf ?? period.cutoffHalf,
+		});
+		void navigate({
+			to: "/teams/$teamId/time/my-logs",
+			params: { teamId },
+			search: buildTeamLogPeriodSearch(next),
+			replace: true,
+		});
+	};
+
+	const onPresetChange = (preset: LogPeriodPreset) => updatePeriod(preset);
+
+	const onCutoffMonthChange = (month: string) => {
+		updatePeriod("cutoff", { cutoffMonth: month });
+	};
+
+	const onCutoffHalfChange = (half: CutoffHalf) => {
+		updatePeriod("cutoff", { cutoffHalf: half });
+	};
+
+	const onApplyCustomRange = (fromDate: string, toDate: string) => {
+		const next = buildCustomPeriodFromDateInputs(fromDate, toDate);
+		if (!next) {
+			toast.error("Enter a valid custom date range.");
+			return;
+		}
+		updatePeriod("custom", { fromIso: next.fromIso, toIso: next.toIso });
+	};
+
 	return (
 		<>
+			<TeamLogsPeriodFilter
+				period={period}
+				onPresetChange={onPresetChange}
+				onCutoffMonthChange={onCutoffMonthChange}
+				onCutoffHalfChange={onCutoffHalfChange}
+				onApplyCustomRange={onApplyCustomRange}
+			/>
+
 			<TeamLogsStatsCard
 				rate={activeRate}
 				canShowHistory={hasRateHistory}
@@ -368,6 +561,26 @@ function MyLogsTab() {
 				}
 				onChangeProjectId={(v) => setAddProjectId(v)}
 				onChangeTaskId={(v) => setAddTaskId(v)}
+				onRequestCreateTask={handleOpenCreateTaskPanel}
+				creatingTask={createTaskMutation.isPending}
+			/>
+
+			<SidePanel
+				task={null}
+				isOpen={isCreateTaskPanelOpen}
+				isCreating
+				projectId={addProjectId}
+				onClose={() => {
+					if (createTaskMutation.isPending) return;
+					setIsCreateTaskPanelOpen(false);
+					setCreateTaskFeatureId(null);
+					setCreateTaskContext(null);
+				}}
+				onUpdateTask={() => {}}
+				onDeleteTask={() => {}}
+				onCreateTask={handleCreateTaskFromTimer}
+				isLoading={createTaskMutation.isPending}
+				zIndexBase={180}
 			/>
 
 			<EditLogModal

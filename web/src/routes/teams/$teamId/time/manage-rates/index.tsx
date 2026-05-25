@@ -121,6 +121,7 @@ function ManageRatesTab() {
 	const [addUserId, setAddUserId] = useState("");
 	const [addCustomId, setAddCustomId] = useState("");
 	const [addValue, setAddValue] = useState("");
+	const [addTrainingValue, setAddTrainingValue] = useState("");
 	const [addCurrency, setAddCurrency] = useState("USD");
 	const [addStartDate, setAddStartDate] = useState("");
 	const [addEndDate, setAddEndDate] = useState("");
@@ -146,6 +147,7 @@ function ManageRatesTab() {
 	const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
 	const [editCustomId, setEditCustomId] = useState("");
 	const [editValue, setEditValue] = useState("");
+	const [editTrainingValue, setEditTrainingValue] = useState("");
 	const [editCurrency, setEditCurrency] = useState("USD");
 	const [editStartDate, setEditStartDate] = useState("");
 	const [editEndDate, setEditEndDate] = useState("");
@@ -179,6 +181,7 @@ function ManageRatesTab() {
 			setAddUserId("");
 			setAddCustomId("");
 			setAddValue("");
+			setAddTrainingValue("");
 			setAddCurrency("USD");
 			setAddStartDate("");
 			setAddEndDate("");
@@ -268,6 +271,7 @@ function ManageRatesTab() {
 			payload: {
 				project_ids: projectIds,
 				hourly_rate: Number(addValue),
+				training_hourly_rate: Number(addTrainingValue),
 				currency: addCurrency || "USD",
 				custom_id: addCustomId || undefined,
 				start_date: addStartDate || undefined,
@@ -281,6 +285,7 @@ function ManageRatesTab() {
 		setEditingMember(member);
 		setEditCustomId(rate.custom_id ?? "");
 		setEditValue(String(rate.hourly_rate));
+		setEditTrainingValue(String(rate.training_hourly_rate));
 		setEditCurrency(rate.currency || "USD");
 		setEditStartDate(rate.start_date ?? "");
 		setEditEndDate(rate.end_date ?? "");
@@ -293,6 +298,8 @@ function ManageRatesTab() {
 			rateId: editing.id,
 			patch: {
 				hourly_rate: editValue === "" ? undefined : Number(editValue),
+				training_hourly_rate:
+					editTrainingValue === "" ? undefined : Number(editTrainingValue),
 				currency: editCurrency || undefined,
 				custom_id: editCustomId || undefined,
 				start_date: editStartDate || undefined,
@@ -360,6 +367,7 @@ function ManageRatesTab() {
 				newRateMemberUserId={addUserId}
 				newRateCustomId={addCustomId}
 				newRateValue={addValue}
+				newRateTrainingValue={addTrainingValue}
 				newRateCurrency={addCurrency}
 				newRateStartDate={addStartDate}
 				newRateEndDate={addEndDate}
@@ -375,6 +383,7 @@ function ManageRatesTab() {
 				onChangeMemberUserId={setAddUserId}
 				onChangeCustomId={setAddCustomId}
 				onChangeRateValue={setAddValue}
+				onChangeRateTrainingValue={setAddTrainingValue}
 				onChangeRateCurrency={setAddCurrency}
 				onChangeStartDate={setAddStartDate}
 				onChangeEndDate={setAddEndDate}
@@ -389,6 +398,7 @@ function ManageRatesTab() {
 				memberLabel={memberDisplayLabel(editingMember)}
 				editingRateCustomId={editCustomId}
 				editingRateValue={editValue}
+				editingRateTrainingValue={editTrainingValue}
 				editingRateCurrency={editCurrency}
 				editingRateStartDate={editStartDate}
 				editingRateEndDate={editEndDate}
@@ -409,6 +419,7 @@ function ManageRatesTab() {
 				}}
 				onChangeCustomId={setEditCustomId}
 				onChangeRateValue={setEditValue}
+				onChangeRateTrainingValue={setEditTrainingValue}
 				onChangeRateCurrency={setEditCurrency}
 				onChangeStartDate={setEditStartDate}
 				onChangeEndDate={setEditEndDate}

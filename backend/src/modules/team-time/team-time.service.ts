@@ -23,12 +23,14 @@ import {
 const TIME_LOG_SELECT = `
   id, project_id, task_id, member_user_id, team_id, started_at, ended_at,
   duration_seconds, status, reviewed_by, reviewed_at, review_note, source,
-  rate_snapshot, currency_snapshot, created_at, updated_at,
-  task:roadmap_tasks!task_time_logs_task_id_fkey(id, title),
+  rate_snapshot, currency_snapshot, work_type_snapshot, created_at, updated_at,
+  task:roadmap_tasks!task_time_logs_task_id_fkey(id, title, work_type),
   member:profiles!task_time_logs_member_user_id_fkey(id, display_name, avatar_url, first_name, last_name, email),
   reviewer:profiles!task_time_logs_reviewed_by_fkey(id, display_name, avatar_url),
   project:projects!task_time_logs_project_id_fkey(id, title)
 `;
+
+type TaskWorkType = 'real_work' | 'training';
 
 export interface TimeLogRow {
   id: string;
@@ -46,6 +48,7 @@ export interface TimeLogRow {
   source: 'timer' | 'manual';
   rate_snapshot: number;
   currency_snapshot: string;
+  work_type_snapshot: TaskWorkType;
   created_at: string;
   updated_at: string;
 }
@@ -53,6 +56,7 @@ export interface TimeLogRow {
 export interface ResolvedTeamRate {
   team_id: string;
   hourly_rate: number;
+  training_hourly_rate: number;
   currency: string;
 }
 
@@ -70,8 +74,9 @@ export class TeamTimeService {
   async startLog(callerId: string, dto: StartTimeLogDto): Promise<TimeLogRow> {
     const taskId = dto.task_id?.trim() || null;
     await this.projectAuth.assertRole(callerId, dto.project_id, 'viewer');
+    let workType: TaskWorkType = 'real_work';
     if (taskId) {
-      await this.assertTaskInProject(taskId, dto.project_id);
+      workType = await this.assertTaskInProject(taskId, dto.project_id);
     }
     await this.assertProjectHasTimeTrackingTeam(dto.project_id);
 
@@ -88,6 +93,7 @@ export class TeamTimeService {
     }
 
     const rate = await this.resolveTeamRate(dto.project_id, callerId);
+    const resolvedRate = this.pickRateForWorkType(rate, workType);
 
     const { data, error } = await this.supabase
       .from('task_time_logs')
@@ -99,8 +105,9 @@ export class TeamTimeService {
         started_at: new Date().toISOString(),
         status: 'pending',
         source: 'timer',
-        rate_snapshot: rate?.hourly_rate ?? 0,
+        rate_snapshot: resolvedRate,
         currency_snapshot: rate?.currency ?? 'USD',
+        work_type_snapshot: workType,
       })
       .select(TIME_LOG_SELECT)
       .single();
@@ -164,16 +171,26 @@ export class TeamTimeService {
       const requestedTaskId = dto.task_id?.trim() || null;
       if (requestedTaskId !== log.task_id) {
         patch.task_id = requestedTaskId;
-      }
-      if (requestedTaskId) {
-        const newProjectId = await this.projectIdForTask(requestedTaskId);
-        if (newProjectId !== log.project_id) {
-          await this.projectAuth.assertRole(callerId, newProjectId, 'viewer');
-          const rate = await this.resolveTeamRate(newProjectId, callerId);
-          patch.project_id = newProjectId;
+        if (requestedTaskId) {
+          const taskContext = await this.fetchTaskContextOrThrow(requestedTaskId);
+          await this.projectAuth.assertRole(
+            callerId,
+            taskContext.project_id,
+            'viewer',
+          );
+          const rate = await this.resolveTeamRate(taskContext.project_id, callerId);
+          patch.project_id = taskContext.project_id;
           patch.team_id = rate?.team_id ?? null;
-          patch.rate_snapshot = rate?.hourly_rate ?? 0;
+          patch.rate_snapshot = this.pickRateForWorkType(rate, taskContext.work_type);
           patch.currency_snapshot = rate?.currency ?? 'USD';
+          patch.work_type_snapshot = taskContext.work_type;
+        } else {
+          const rate = await this.resolveTeamRate(log.project_id, callerId);
+          patch.project_id = log.project_id;
+          patch.team_id = rate?.team_id ?? null;
+          patch.rate_snapshot = this.pickRateForWorkType(rate, 'real_work');
+          patch.currency_snapshot = rate?.currency ?? 'USD';
+          patch.work_type_snapshot = 'real_work';
         }
       }
     }
@@ -229,8 +246,9 @@ export class TeamTimeService {
   ): Promise<TimeLogRow> {
     const taskId = dto.task_id?.trim() || null;
     await this.projectAuth.assertRole(callerId, dto.project_id, 'viewer');
+    let workType: TaskWorkType = 'real_work';
     if (taskId) {
-      await this.assertTaskInProject(taskId, dto.project_id);
+      workType = await this.assertTaskInProject(taskId, dto.project_id);
     }
     await this.assertProjectHasTimeTrackingTeam(dto.project_id);
 
@@ -243,6 +261,7 @@ export class TeamTimeService {
     }
 
     const rate = await this.resolveTeamRate(dto.project_id, callerId);
+    const resolvedRate = this.pickRateForWorkType(rate, workType);
 
     const { data, error } = await this.supabase
       .from('task_time_logs')
@@ -256,8 +275,9 @@ export class TeamTimeService {
         duration_seconds: Math.floor((end - start) / 1000),
         status: 'pending',
         source: 'manual',
-        rate_snapshot: rate?.hourly_rate ?? 0,
+        rate_snapshot: resolvedRate,
         currency_snapshot: rate?.currency ?? 'USD',
+        work_type_snapshot: workType,
       })
       .select(TIME_LOG_SELECT)
       .single();
@@ -286,6 +306,23 @@ export class TeamTimeService {
       return log;
     }
     throw new ForbiddenException('You cannot view this time log.');
+  }
+
+  /**
+   * Returns the caller's current running log across all teams/projects.
+   * startLog enforces one active timer per member, so this is null or one row.
+   */
+  async getMyRunningLog(callerId: string): Promise<TimeLogRow | null> {
+    const { data, error } = await this.supabase
+      .from('task_time_logs')
+      .select(TIME_LOG_SELECT)
+      .eq('member_user_id', callerId)
+      .is('ended_at', null)
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return (data as unknown as TimeLogRow | null) ?? null;
   }
 
   // ─── lists ───────────────────────────────────────────────────────────
@@ -440,6 +477,7 @@ export class TeamTimeService {
     Array<{
       id: string;
       title: string;
+      work_type: TaskWorkType;
       feature_id: string;
       feature_title: string | null;
       epic_id: string | null;
@@ -452,7 +490,7 @@ export class TeamTimeService {
     const { data, error } = await this.supabase
       .from('roadmap_tasks')
       .select(
-        `id, title, feature_id,
+        `id, title, work_type, feature_id,
          feature:roadmap_features!roadmap_tasks_feature_id_fkey(
            id, title, epic_id,
            epic:roadmap_epics!roadmap_features_epic_id_fkey(
@@ -465,6 +503,7 @@ export class TeamTimeService {
     const rows = (data ?? []) as unknown as Array<{
       id: string;
       title: string;
+      work_type: TaskWorkType | null;
       feature_id: string;
       feature: {
         id: string;
@@ -482,6 +521,7 @@ export class TeamTimeService {
       .map((r) => ({
         id: r.id,
         title: r.title,
+        work_type: r.work_type ?? 'real_work',
         feature_id: r.feature_id,
         feature_title: r.feature?.title ?? null,
         epic_id: r.feature?.epic?.id ?? null,
@@ -576,20 +616,25 @@ export class TeamTimeService {
   private async assertTaskInProject(
     taskId: string,
     projectId: string,
-  ): Promise<void> {
-    const resolvedProject = await this.projectIdForTask(taskId);
-    if (resolvedProject !== projectId) {
+  ): Promise<TaskWorkType> {
+    const taskContext = await this.fetchTaskContextOrThrow(taskId);
+    if (taskContext.project_id !== projectId) {
       throw new BadRequestException(
         'Task does not belong to the given project.',
       );
     }
+    return taskContext.work_type;
   }
 
-  private async projectIdForTask(taskId: string): Promise<string> {
+  private async fetchTaskContextOrThrow(taskId: string): Promise<{
+    project_id: string;
+    work_type: TaskWorkType;
+  }> {
     const { data, error } = await this.supabase
       .from('roadmap_tasks')
       .select(
-        `feature:roadmap_features!roadmap_tasks_feature_id_fkey(
+        `work_type,
+         feature:roadmap_features!roadmap_tasks_feature_id_fkey(
            epic:roadmap_epics!roadmap_features_epic_id_fkey(
              roadmap:roadmaps!roadmap_epics_roadmap_id_fkey(project_id)
            )
@@ -598,24 +643,30 @@ export class TeamTimeService {
       .eq('id', taskId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    const projectId = (
+    const row = (
       data as unknown as {
+        work_type: TaskWorkType | null;
         feature: {
           epic: { roadmap: { project_id: string | null } | null } | null;
         } | null;
       } | null
-    )?.feature?.epic?.roadmap?.project_id;
+    ) ?? null;
+    const projectId = row?.feature?.epic?.roadmap?.project_id;
     if (!projectId) throw new NotFoundException('Task not found');
-    return projectId;
+    return {
+      project_id: projectId,
+      work_type: row?.work_type ?? 'real_work',
+    };
   }
 
   /**
    * Pick the team whose rate snapshots onto a new log for `userId` on
    * `projectId`. Primary team wins; otherwise any contributor team
    * (deterministic by attached_at). The chosen team's *active* rate
-   * (the team_member_rates row with end_date IS NULL) supplies the
-   * hourly_rate + currency. Returns null when there is no curation
-   * row OR no active rate — caller treats that as a 0-rate log.
+   * (the team_member_rates row with end_date IS NULL) supplies both
+   * real-work and training rates plus currency. Returns null when there
+   * is no curation row OR no active rate — caller treats that as a
+   * 0-rate log.
    */
   private async resolveTeamRate(
     projectId: string,
@@ -647,7 +698,7 @@ export class TeamTimeService {
 
     const { data: rateRow, error: rateErr } = await this.supabase
       .from('team_member_rates')
-      .select('hourly_rate, currency')
+      .select('hourly_rate, training_hourly_rate, currency')
       .eq('team_id', chosen.team_id)
       .eq('user_id', userId)
       .eq('project_id', projectId)
@@ -658,8 +709,18 @@ export class TeamTimeService {
     return {
       team_id: chosen.team_id,
       hourly_rate: Number(rateRow?.hourly_rate ?? 0),
+      training_hourly_rate: Number(rateRow?.training_hourly_rate ?? 0),
       currency: rateRow?.currency ?? 'USD',
     };
+  }
+
+  private pickRateForWorkType(
+    rate: ResolvedTeamRate | null,
+    workType: TaskWorkType,
+  ): number {
+    if (!rate) return 0;
+    if (workType === 'training') return Number(rate.training_hourly_rate ?? 0);
+    return Number(rate.hourly_rate ?? 0);
   }
 
   private async assertTeamApprover(

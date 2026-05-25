@@ -89,6 +89,11 @@ export class TeamTimeController {
     return this.service.deleteLog(user.id, logId);
   }
 
+  @Get('logs/me/running')
+  getMyRunningLog(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.getMyRunningLog(user.id);
+  }
+
   @Get('logs/:logId')
   getLog(
     @Param('logId') logId: string,

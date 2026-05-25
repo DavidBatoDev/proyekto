@@ -27,12 +27,15 @@ export const Route = createFileRoute("/teams/$teamId/time")({
 	component: TeamTimeLayout,
 });
 
-type TabId = "my-logs" | "manage-rates";
+type TabId = "my-logs" | "team-logs" | "manage-rates";
 
 interface TabSpec {
 	id: TabId;
 	label: string;
-	to: "/teams/$teamId/time/my-logs" | "/teams/$teamId/time/manage-rates";
+	to:
+		| "/teams/$teamId/time/my-logs"
+		| "/teams/$teamId/time/team-logs"
+		| "/teams/$teamId/time/manage-rates";
 	icon: typeof Clock;
 }
 
@@ -127,6 +130,14 @@ function TeamTimeLayout() {
 	}
 	if (isApprover) {
 		tabs.push({
+			id: "team-logs",
+			label: "Team Logs",
+			to: "/teams/$teamId/time/team-logs",
+			icon: Clock,
+		});
+	}
+	if (isApprover) {
+		tabs.push({
 			id: "manage-rates",
 			label: "Manage Rates",
 			to: "/teams/$teamId/time/manage-rates",
@@ -165,6 +176,7 @@ function TeamTimeLayout() {
 	const activeTabId: TabId | null = (() => {
 		const path = location.pathname;
 		if (path.includes("/time/my-logs")) return "my-logs";
+		if (path.includes("/time/team-logs")) return "team-logs";
 		if (path.includes("/time/manage-rates")) return "manage-rates";
 		// On a log detail page or the bare /time route, no tab highlights
 		// (the redirector at index.tsx will route /time to a tab).

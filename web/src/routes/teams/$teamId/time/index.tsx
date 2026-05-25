@@ -60,12 +60,13 @@ function TimeIndexRedirect() {
 
 	const target:
 		| "/teams/$teamId/time/my-logs"
+		| "/teams/$teamId/time/team-logs"
 		| "/teams/$teamId/time/manage-rates"
 		| null = allLoaded
 		? hasOwnRate
 			? "/teams/$teamId/time/my-logs"
 			: isApprover
-				? "/teams/$teamId/time/manage-rates"
+				? "/teams/$teamId/time/team-logs"
 				: null
 		: null;
 

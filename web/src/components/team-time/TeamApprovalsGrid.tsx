@@ -56,6 +56,7 @@ const SHORT_DATE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
 type TeamApprovalsRow = {
 	id: string;
 	date: string;
+	member_label: string;
 	project_label: string;
 	task_id: string | null;
 	task_title: string;
@@ -265,6 +266,7 @@ interface TeamApprovalsGridProps {
 	logs: TaskTimeLog[];
 	loadingLogs: boolean;
 	canApprove: boolean;
+	showMemberColumn?: boolean;
 	currentUserId: string | null;
 	selectedLogIds: Set<string>;
 	rowPendingById: Record<string, boolean>;
@@ -416,6 +418,7 @@ export function TeamApprovalsGrid({
 	logs,
 	loadingLogs,
 	canApprove,
+	showMemberColumn = false,
 	currentUserId,
 	selectedLogIds,
 	rowPendingById,
@@ -435,6 +438,7 @@ export function TeamApprovalsGrid({
 	const SELECTABLE_COLS = [
 		"select",
 		"date",
+		...(showMemberColumn ? ["member"] : []),
 		"project",
 		"task_id",
 		"time_in",
@@ -475,6 +479,14 @@ export function TeamApprovalsGrid({
 					: isMultiDay
 						? `${SHORT_DATE_FORMATTER.format(startedDate)} - ${SHORT_DATE_FORMATTER.format(endedDateValue as Date)}`
 						: FULL_DATE_FORMATTER.format(startedDate),
+				member_label:
+					log.member?.display_name ||
+					[log.member?.first_name, log.member?.last_name]
+						.filter(Boolean)
+						.join(" ")
+						.trim() ||
+					log.member?.email ||
+					log.member_user_id,
 				project_label: log.project?.title || log.project_id,
 				task_id: log.task_id,
 				task_title: log.task?.title ?? "-",
@@ -557,6 +569,19 @@ export function TeamApprovalsGrid({
 				header: "Dates",
 				cell: (info) => info.getValue(),
 			}),
+			...(showMemberColumn
+				? [
+						columnHelper.accessor("member_label", {
+							id: "member",
+							header: "Member",
+							cell: (info) => (
+								<span className="block truncate" title={info.getValue()}>
+									{info.getValue()}
+								</span>
+							),
+						}),
+					]
+				: []),
 			columnHelper.accessor("project_label", {
 				id: "project",
 				header: "Project",
@@ -677,6 +702,7 @@ export function TeamApprovalsGrid({
 			reviewSyncById,
 			rowPendingById,
 			selectedLogIds,
+			showMemberColumn,
 			someEligibleSelected,
 		],
 	);

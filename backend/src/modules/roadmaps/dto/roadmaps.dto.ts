@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -188,6 +189,7 @@ export class CreateTaskDto {
   @IsUUID() @IsOptional() assignee_id?: string;
   @IsDateString() @IsOptional() due_date?: string;
   @IsNumber() @IsOptional() @Min(0) position?: number;
+  @IsIn(['real_work', 'training']) @IsOptional() work_type?: 'real_work' | 'training';
 }
 
 export class UpdateTaskDto {
@@ -200,6 +202,7 @@ export class UpdateTaskDto {
   @IsNumber() @IsOptional() @Min(0) position?: number;
   @IsDateString() @IsOptional() due_date?: string;
   @IsDateString() @IsOptional() completed_at?: string;
+  @IsIn(['real_work', 'training']) @IsOptional() work_type?: 'real_work' | 'training';
 }
 
 // Comment/Attachment DTOs

@@ -147,6 +147,7 @@ export function WorkItemsBrowserModal({
 	const [isAddEpicOpen, setIsAddEpicOpen] = useState(false);
 	const [isAddFeatureOpen, setIsAddFeatureOpen] = useState(false);
 	const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
+	const isChildModalOpen = isAddEpicOpen || isAddFeatureOpen || isAddTaskOpen;
 
 	useEffect(() => {
 		if (!isOpen) {
@@ -182,6 +183,22 @@ export function WorkItemsBrowserModal({
 				: null,
 		[epics, selectedEpicId],
 	);
+
+	const selectedRoadmap = useMemo(() => {
+		if (!selectedRoadmapId) return null;
+		return (roadmaps ?? []).find((roadmap) => roadmap.id === selectedRoadmapId) ?? null;
+	}, [roadmaps, selectedRoadmapId]);
+
+	const effectiveProjectId = useMemo(() => {
+		if (showProjectColumn) {
+			return selectedRoadmap?.project?.id ?? "";
+		}
+		if (projectId) return projectId;
+		if ((roadmaps?.length ?? 0) === 1) {
+			return roadmaps?.[0]?.project?.id ?? "";
+		}
+		return "";
+	}, [projectId, roadmaps, selectedRoadmap?.project?.id, showProjectColumn]);
 
 	const selectedFeature = useMemo(() => {
 		if (!selectedEpic || !selectedFeatureId) return null;
@@ -272,7 +289,11 @@ export function WorkItemsBrowserModal({
 	const content = (
 		<div
 			className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60"
-			onClick={onClose}
+			onClick={(event) => {
+				if (isChildModalOpen) return;
+				if (event.target !== event.currentTarget) return;
+				onClose();
+			}}
 		>
 			<div
 				className="bg-white w-[95vw] max-w-6xl h-[80vh] rounded-xl shadow-2xl ring-1 ring-black/5 flex flex-col overflow-hidden"
@@ -458,7 +479,7 @@ export function WorkItemsBrowserModal({
 					onUpdateTask={() => {}}
 					onDeleteTask={() => {}}
 					onCreateTask={handleSubmitTask}
-					projectId={projectId}
+					projectId={effectiveProjectId}
 				/>
 			)}
 		</div>

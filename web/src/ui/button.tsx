@@ -28,7 +28,7 @@ const buttonVariants = {
       secondary:
         "border-2 border-secondary text-secondary hover:bg-secondary hover:text-secondary-foreground hover:-translate-y-0.5",
       destructive:
-        "border-2 border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground hover:-translate-y-0.5",
+        "border-2 border-destructive text-destructive hover:bg-destructive hover:text-white hover:-translate-y-0.5",
       accent:
         "border-2 border-accent text-accent-foreground hover:bg-accent hover:-translate-y-0.5",
       muted:

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   X,
   Calendar,
@@ -9,15 +10,20 @@ import {
   Search,
   ChevronDown,
   Check,
+  Play,
+  Square,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Comment, RoadmapTask } from "@/types/roadmap";
 import { projectService, type ProjectMember } from "@/services/project.service";
 import { commentsService } from "@/services/roadmap.service";
+import { teamTimeService } from "@/services/team-time.service";
+import { useToast } from "@/hooks/useToast";
 import { CommentsSection } from "../shared/CommentsSection";
 import { UnsavedChangesConfirmModal } from "../shared/UnsavedChangesConfirmModal";
 import { Button } from "@/ui/button";
 import { useUser } from "@/stores/authStore";
+import { liveDurationSecondsFromLog, useLiveNowMs } from "@/components/team-time/time-utils";
 
 interface SidePanelProps {
   task: RoadmapTask | null;
@@ -31,6 +37,7 @@ interface SidePanelProps {
   projectId?: string;
   projectMembers?: ProjectMember[];
   isLoading?: boolean;
+  zIndexBase?: number;
 }
 
 type TabType = "details" | "comments";
@@ -39,6 +46,7 @@ type TaskDraftSnapshot = {
   title: string;
   status: RoadmapTask["status"];
   priority: RoadmapTask["priority"];
+  workType: RoadmapTask["work_type"];
   assigneeId?: string;
   dueDate: string;
 };
@@ -47,6 +55,7 @@ const TASK_CREATE_DEFAULTS: TaskDraftSnapshot = {
   title: "",
   status: "todo",
   priority: "medium",
+  workType: "real_work",
   assigneeId: undefined,
   dueDate: "",
 };
@@ -57,6 +66,7 @@ const buildTaskDraftSnapshot = (
   title: taskData.title ?? "",
   status: (taskData.status as RoadmapTask["status"]) ?? "todo",
   priority: (taskData.priority as RoadmapTask["priority"]) ?? "medium",
+  workType: taskData.work_type ?? "real_work",
   assigneeId: taskData.assignee_id ?? taskData.assignee?.id,
   dueDate: toDateInputValue(taskData.due_date),
 });
@@ -68,6 +78,7 @@ const isSameTaskDraftSnapshot = (
   left.title === right.title &&
   left.status === right.status &&
   left.priority === right.priority &&
+  left.workType === right.workType &&
   left.assigneeId === right.assigneeId &&
   left.dueDate === right.dueDate;
 
@@ -77,6 +88,18 @@ const toDateInputValue = (value?: string) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "";
   return parsed.toISOString().slice(0, 10);
+};
+
+const formatTimer = (totalSeconds: number): string => {
+  const safe = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(safe / 3600)
+    .toString()
+    .padStart(2, "0");
+  const minutes = Math.floor((safe % 3600) / 60)
+    .toString()
+    .padStart(2, "0");
+  const seconds = (safe % 60).toString().padStart(2, "0");
+  return `${hours}:${minutes}:${seconds}`;
 };
 
 function MemberAvatar({
@@ -122,16 +145,21 @@ export const SidePanel = ({
   projectId,
   projectMembers = [],
   isLoading = false,
+  zIndexBase = 120,
 }: SidePanelProps) => {
   const user = useUser();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<TabType>("details");
   const [editedTask, setEditedTask] = useState<RoadmapTask | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
+  const [isStartingTimer, setIsStartingTimer] = useState(false);
+  const [isStoppingTimer, setIsStoppingTimer] = useState(false);
   const [newTaskData, setNewTaskData] = useState<Partial<RoadmapTask>>({
     title: "",
     status: "todo",
     priority: "medium",
+    work_type: "real_work",
   });
   const [isAssigneeMenuOpen, setIsAssigneeMenuOpen] = useState(false);
   const [assigneeSearch, setAssigneeSearch] = useState("");
@@ -148,6 +176,27 @@ export const SidePanel = ({
   const isCreateMode = isCreating || (!!isOpen && !task);
   const isReadOnlyPending = !isCreateMode && isPendingCreate;
   const isInteractionDisabled = isLoading || isReadOnlyPending;
+  const canQueryTimer = Boolean(user?.id) && isOpen && !isCreateMode;
+  const runningLogQuery = useQuery({
+    queryKey: ["team-time", "running-log", user?.id ?? "anonymous"],
+    queryFn: () => teamTimeService.getMyRunningLog(),
+    enabled: canQueryTimer,
+    refetchInterval: 3_000,
+    refetchIntervalInBackground: true,
+    retry: 1,
+  });
+  const runningLog = runningLogQuery.data ?? null;
+  const isTaskRunning =
+    Boolean(runningLog?.task_id) &&
+    runningLog?.task_id === editedTask?.id;
+  const nowMs = useLiveNowMs(isTaskRunning);
+  const elapsedSeconds = useMemo(
+    () =>
+      isTaskRunning && runningLog
+        ? liveDurationSecondsFromLog(runningLog, nowMs)
+        : 0,
+    [isTaskRunning, nowMs, runningLog],
+  );
 
   // Initialize state when task or isCreating changes
   useEffect(() => {
@@ -157,10 +206,12 @@ export const SidePanel = ({
         title: "",
         status: "todo",
         priority: "medium",
+        work_type: "real_work",
       });
     } else if (task) {
       const normalizedTask = {
         ...task,
+        work_type: task.work_type ?? "real_work",
         due_date: toDateInputValue(task.due_date) || undefined,
       };
       editSnapshotRef.current = buildTaskDraftSnapshot(normalizedTask);
@@ -367,6 +418,7 @@ export const SidePanel = ({
         title: "",
         status: "todo",
         priority: "medium",
+        work_type: "real_work",
       });
     }
     setShowUnsavedChangesConfirm(false);
@@ -387,6 +439,40 @@ export const SidePanel = ({
     const didSave = handleSave();
     if (didSave) {
       setShowUnsavedChangesConfirm(false);
+    }
+  };
+
+  const canStartTimer = Boolean(!isCreateMode && editedTask?.id && projectId);
+
+  const handleStartTimer = async () => {
+    if (!canStartTimer || !editedTask?.id || !projectId || isStartingTimer)
+      return;
+
+    try {
+      setIsStartingTimer(true);
+      await teamTimeService.startLog(projectId, editedTask.id);
+      toast.success("Timer started");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to start timer";
+      toast.error(message);
+    } finally {
+      setIsStartingTimer(false);
+    }
+  };
+
+  const handleStopTimer = async () => {
+    if (!runningLog?.id || isStoppingTimer) return;
+    try {
+      setIsStoppingTimer(true);
+      await teamTimeService.stopLog(runningLog.id);
+      toast.success("Timer stopped");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to stop timer";
+      toast.error(message);
+    } finally {
+      setIsStoppingTimer(false);
     }
   };
 
@@ -429,7 +515,8 @@ export const SidePanel = ({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2, ease: "easeInOut" }}
               onClick={handleRequestClose}
-              className="fixed inset-0 z-120 bg-black/15 cursor-default"
+              className="fixed inset-0 bg-black/15 cursor-default"
+              style={{ zIndex: zIndexBase }}
             />
           )}
           {isOpen && (
@@ -439,7 +526,8 @@ export const SidePanel = ({
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ duration: 0.3, ease: "easeInOut" }}
-              className="fixed top-0 right-0 bottom-0 w-[560px] bg-white border-l border-gray-200 shadow-2xl z-130 flex flex-col"
+              className="fixed top-0 right-0 bottom-0 w-[560px] bg-white border-l border-gray-200 shadow-2xl flex flex-col"
+              style={{ zIndex: zIndexBase + 10 }}
             >
               {/* Header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
@@ -491,6 +579,37 @@ export const SidePanel = ({
                   <Calendar className="w-4 h-4" />
                   <span>Dates</span>
                 </button>
+                {!isCreateMode && isTaskRunning ? (
+                  <>
+                    <span className="inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="tabular-nums">
+                        {formatTimer(elapsedSeconds)}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void handleStopTimer()}
+                      disabled={isStoppingTimer}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-rose-200 bg-rose-50 hover:bg-rose-100 transition-colors text-rose-700 disabled:opacity-50"
+                      title="Stop timer for this task"
+                    >
+                      <Square className="w-4 h-4" />
+                      <span>{isStoppingTimer ? "Stopping..." : "Stop Timer"}</span>
+                    </button>
+                  </>
+                ) : !isCreateMode ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleStartTimer()}
+                    disabled={!canStartTimer || isStartingTimer}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-gray-200 bg-white hover:bg-gray-100 transition-colors text-gray-700 disabled:opacity-50"
+                    title="Start timer for this task"
+                  >
+                    <Play className="w-4 h-4" />
+                    <span>{isStartingTimer ? "Starting..." : "Start Timer"}</span>
+                  </button>
+                ) : null}
               </div>
 
               {/* Tabs - only show in edit mode (not creating) */}
@@ -585,6 +704,39 @@ export const SidePanel = ({
                         <option value="medium">Medium</option>
                         <option value="high">High</option>
                         <option value="urgent">Urgent</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="flex text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5 items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5" />
+                        Work Type
+                      </label>
+                      <select
+                        value={
+                          isCreateMode
+                            ? newTaskData.work_type ?? "real_work"
+                            : editedTask?.work_type ?? "real_work"
+                        }
+                        onChange={(e) => {
+                          const workType = e.target.value as
+                            | "real_work"
+                            | "training";
+                          if (isCreateMode) {
+                            setNewTaskData({ ...newTaskData, work_type: workType });
+                          } else {
+                            setEditedTask(
+                              editedTask
+                                ? { ...editedTask, work_type: workType }
+                                : null,
+                            );
+                          }
+                        }}
+                        disabled={isInteractionDisabled}
+                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/25 disabled:opacity-50 disabled:bg-gray-50 text-sm"
+                      >
+                        <option value="real_work">Work</option>
+                        <option value="training">Training</option>
                       </select>
                     </div>
 

@@ -123,6 +123,10 @@ export class CreateTeamMemberRateDto {
   @Min(0)
   hourly_rate!: number;
 
+  @IsNumber()
+  @Min(0)
+  training_hourly_rate!: number;
+
   @IsOptional()
   @IsString()
   @MaxLength(8)
@@ -147,6 +151,11 @@ export class UpdateTeamMemberRateDto {
   @IsNumber()
   @Min(0)
   hourly_rate?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  training_hourly_rate?: number;
 
   @IsOptional()
   @IsString()

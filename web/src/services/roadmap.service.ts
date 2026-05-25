@@ -17,6 +17,7 @@ import type {
 	RoadmapTask,
 	TaskPriority,
 	TaskStatus,
+	TaskWorkType,
 } from "@/types/roadmap";
 
 // ============================================================================
@@ -128,6 +129,7 @@ export interface UpsertFullRoadmapTaskDto {
 	description?: string;
 	status?: TaskStatus;
 	priority?: TaskPriority;
+	work_type?: TaskWorkType;
 	assignee_id?: string;
 	due_date?: string;
 	position?: number;
@@ -266,6 +268,7 @@ export interface CreateTaskDto {
 	title: string;
 	status?: TaskStatus;
 	priority?: TaskPriority;
+	work_type?: TaskWorkType;
 	position?: number;
 	assignee_id?: string | null;
 	due_date?: string;
@@ -275,6 +278,7 @@ export interface UpdateTaskDto {
 	title?: string;
 	status?: TaskStatus;
 	priority?: TaskPriority;
+	work_type?: TaskWorkType;
 	position?: number;
 	assignee_id?: string | null;
 	due_date?: string | null;

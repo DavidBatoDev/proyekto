@@ -789,7 +789,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
       const { data: taskData, error: tasksError } = await this.db
         .from('roadmap_tasks')
         .select(
-          'id, feature_id, title, assignee_id, position, status, due_date, updated_at, assignee:profiles(id, display_name, avatar_url, email, first_name, last_name)',
+          'id, feature_id, title, assignee_id, position, status, work_type, due_date, updated_at, assignee:profiles(id, display_name, avatar_url, email, first_name, last_name)',
         )
         .in('feature_id', featureIds)
         .order('position', { ascending: true });
@@ -886,7 +886,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     if (featureIds.length > 0) {
       const { data: taskData, error: tasksError } = await this.db
         .from('roadmap_tasks')
-        .select('id, feature_id, position, status')
+        .select('id, feature_id, position, status, work_type')
         .in('feature_id', featureIds)
         .order('position', { ascending: true });
       if (tasksError) throw new Error(tasksError.message);
@@ -1031,6 +1031,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
             title: task.title,
             status: task.status,
             priority: task.priority,
+            work_type: task.work_type,
             position: task.position,
             due_date: task.due_date,
           })),

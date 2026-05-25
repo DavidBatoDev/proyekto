@@ -19,6 +19,7 @@ export interface TeamMemberRateRow {
   user_id: string;
   project_id: string;
   hourly_rate: number;
+  training_hourly_rate: number;
   currency: string;
   custom_id: string | null;
   start_date: string | null;
@@ -123,6 +124,7 @@ export class TeamMemberRatesService {
         user_id: userId,
         project_id: projectId,
         hourly_rate: dto.hourly_rate,
+        training_hourly_rate: dto.training_hourly_rate,
         currency: (dto.currency ?? 'USD').toUpperCase(),
         custom_id: dto.custom_id ?? null,
         start_date: dto.start_date ?? null,
@@ -155,6 +157,9 @@ export class TeamMemberRatesService {
 
     const patch: Record<string, unknown> = {};
     if (dto.hourly_rate !== undefined) patch.hourly_rate = dto.hourly_rate;
+    if (dto.training_hourly_rate !== undefined) {
+      patch.training_hourly_rate = dto.training_hourly_rate;
+    }
     if (dto.currency !== undefined)
       patch.currency = dto.currency.toUpperCase() || 'USD';
     if (dto.custom_id !== undefined) patch.custom_id = dto.custom_id || null;

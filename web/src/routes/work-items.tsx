@@ -181,7 +181,7 @@ function WorkItemsPage() {
 				roadmapId={activeRoadmap?.id ?? ""}
 				isOpen={isBrowserOpen}
 				onClose={handleCloseBrowser}
-				roadmaps={multiRoadmap ? (query.data ?? []) : undefined}
+				roadmaps={query.data ?? []}
 			/>
 
 			<SidePanel

@@ -88,6 +88,7 @@ export class TasksRepositorySupabase implements ITasksRepository {
       assignee_id: dto.assignee_id,
       due_date: dto.due_date,
       position: resolvedPosition,
+      work_type: dto.work_type ?? 'real_work',
     };
     const { data, error } = await this.db
       .from('roadmap_tasks')
@@ -110,6 +111,7 @@ export class TasksRepositorySupabase implements ITasksRepository {
       ...(dto.position !== undefined && { position: dto.position }),
       ...(dto.due_date !== undefined && { due_date: dto.due_date }),
       ...(dto.completed_at !== undefined && { completed_at: dto.completed_at }),
+      ...(dto.work_type !== undefined && { work_type: dto.work_type }),
       updated_at: new Date().toISOString(),
     };
     const { data, error } = await this.db
