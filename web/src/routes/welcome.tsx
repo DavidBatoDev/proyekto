@@ -16,6 +16,7 @@ import {
 import { Button } from "@/ui/button";
 import { useAuthStore } from "@/stores/authStore";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
+import { supabase } from "@/lib/supabase";
 import { apiClient } from "@/api";
 import { useToast } from "@/hooks/useToast";
 
@@ -109,11 +110,42 @@ function UnifiedWelcomeDeck({
         setTeamName(res.data.team.name);
         setWorkspaceId(res.data.workspace.id);
         setWorkspaceTitle(res.data.workspace.title);
-      } catch (err) {
-        console.error("Failed to load or provision artifacts:", err);
-        if (cancelled) return;
-        setTeamLoadFailed(true);
-        setWorkspaceLoadFailed(true);
+      } catch {
+        // Provision endpoint unavailable (e.g. not yet deployed). Fall back to
+        // direct Supabase queries which work as long as the user's session is valid.
+        try {
+          const [teamRes, workspaceRes] = await Promise.all([
+            supabase
+              .from("teams")
+              .select("id, name")
+              .eq("owner_id", user.id)
+              .eq("is_personal", true)
+              .maybeSingle(),
+            supabase
+              .from("projects")
+              .select("id, title")
+              .eq("client_id", user.id)
+              .eq("is_personal_workspace", true)
+              .maybeSingle(),
+          ]);
+          if (cancelled) return;
+          if (teamRes.data) {
+            setTeamId(teamRes.data.id as string);
+            setTeamName((teamRes.data.name as string) ?? "");
+          } else {
+            setTeamLoadFailed(true);
+          }
+          if (workspaceRes.data) {
+            setWorkspaceId(workspaceRes.data.id as string);
+            setWorkspaceTitle((workspaceRes.data.title as string) ?? "");
+          } else {
+            setWorkspaceLoadFailed(true);
+          }
+        } catch {
+          if (cancelled) return;
+          setTeamLoadFailed(true);
+          setWorkspaceLoadFailed(true);
+        }
       }
     })();
 
@@ -569,14 +601,13 @@ function SlideTeamSetup({
             value={draftTeamName}
             onChange={(e) => setDraftTeamName(e.target.value)}
             maxLength={120}
-            disabled={teamLoadFailed}
-            placeholder={teamLoadFailed ? "Loading…" : "My Team"}
-            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 disabled:cursor-wait disabled:opacity-60"
+            placeholder="My Team"
+            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
           />
           {teamLoadFailed && (
             <p className="mt-2 text-xs text-amber-700">
-              We couldn't load your team just yet. You can still continue — name
-              it from your dashboard.
+              Couldn't connect to your team service — you can still set a name
+              above. Changes will sync once reconnected.
             </p>
           )}
         </div>
