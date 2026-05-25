@@ -16,7 +16,6 @@ import {
 import { Button } from "@/ui/button";
 import { useAuthStore } from "@/stores/authStore";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
-import { supabase } from "@/lib/supabase";
 import { apiClient } from "@/api";
 import { useToast } from "@/hooks/useToast";
 
@@ -86,12 +85,11 @@ function UnifiedWelcomeDeck({
   const toast = useToast();
   const user = useAuthStore((s) => s.user);
 
-  // ── Team lookup ──────────────────────────────────────────────────────────
+  // ── Artifacts: team + workspace loaded via backend (admin client, no RLS) ──
   const [teamId, setTeamId] = useState<string | null>(null);
   const [teamName, setTeamName] = useState<string>("");
   const [teamLoadFailed, setTeamLoadFailed] = useState(false);
 
-  // ── Workspace lookup ─────────────────────────────────────────────────────
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [workspaceTitle, setWorkspaceTitle] = useState<string>("");
   const [workspaceLoadFailed, setWorkspaceLoadFailed] = useState(false);
@@ -101,65 +99,21 @@ function UnifiedWelcomeDeck({
     let cancelled = false;
 
     (async () => {
-      let [teamRes, workspaceRes] = await Promise.all([
-        supabase
-          .from("teams")
-          .select("id, name")
-          .eq("owner_id", user.id)
-          .eq("is_personal", true)
-          .maybeSingle(),
-        supabase
-          .from("projects")
-          .select("id, title")
-          .eq("client_id", user.id)
-          .eq("is_personal_workspace", true)
-          .maybeSingle(),
-      ]);
-
-      if (cancelled) return;
-
-      // If either artifact is missing (e.g. existing users from before the
-      // unified provisioning change), trigger a backend provision call which
-      // idempotently creates both, then re-query.
-      const needsProvision =
-        (!teamRes.error && !teamRes.data) ||
-        (!workspaceRes.error && !workspaceRes.data);
-
-      if (needsProvision) {
-        try {
-          await apiClient.post("/api/auth/provision", {});
-          [teamRes, workspaceRes] = await Promise.all([
-            supabase
-              .from("teams")
-              .select("id, name")
-              .eq("owner_id", user.id)
-              .eq("is_personal", true)
-              .maybeSingle(),
-            supabase
-              .from("projects")
-              .select("id, title")
-              .eq("client_id", user.id)
-              .eq("is_personal_workspace", true)
-              .maybeSingle(),
-          ]);
-          if (cancelled) return;
-        } catch (err) {
-          console.error("Failed to provision missing artifacts:", err);
-        }
-      }
-
-      if (teamRes.error || !teamRes.data) {
+      try {
+        const res = await apiClient.post<{
+          workspace: { id: string; title: string };
+          team: { id: string; name: string };
+        }>("/api/auth/provision", {});
+        if (cancelled) return;
+        setTeamId(res.data.team.id);
+        setTeamName(res.data.team.name);
+        setWorkspaceId(res.data.workspace.id);
+        setWorkspaceTitle(res.data.workspace.title);
+      } catch (err) {
+        console.error("Failed to load or provision artifacts:", err);
+        if (cancelled) return;
         setTeamLoadFailed(true);
-      } else {
-        setTeamId(teamRes.data.id as string);
-        setTeamName((teamRes.data.name as string) ?? "");
-      }
-
-      if (workspaceRes.error || !workspaceRes.data) {
         setWorkspaceLoadFailed(true);
-      } else {
-        setWorkspaceId(workspaceRes.data.id as string);
-        setWorkspaceTitle((workspaceRes.data.title as string) ?? "");
       }
     })();
 

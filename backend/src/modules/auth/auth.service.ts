@@ -127,16 +127,17 @@ export class AuthService {
     return this.authRepo.switchPersona(userId, dto.persona);
   }
 
-  async provisionArtifacts(
-    userId: string,
-  ): Promise<{ personal_workspace_id: string; personal_team_id: string }> {
+  async provisionArtifacts(userId: string): Promise<{
+    workspace: { id: string; title: string };
+    team: { id: string; name: string };
+  }> {
     const [workspace, team] = await Promise.all([
       this.personalWorkspaceService.provision(userId),
       this.teamsService.provisionPersonalTeam(userId),
     ]);
     return {
-      personal_workspace_id: workspace.id,
-      personal_team_id: team.id,
+      workspace: { id: workspace.id, title: workspace.title },
+      team: { id: team.id, name: team.name },
     };
   }
 
