@@ -1,22 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-	addDays,
-	addMonths,
-	addWeeks,
-	eachDayOfInterval,
-	endOfDay,
-	endOfMonth,
-	endOfWeek,
-	format,
-	startOfDay,
-	startOfMonth,
-	startOfWeek,
-	subDays,
-	subMonths,
-	subWeeks,
-} from "date-fns";
 import { useToast } from "@/hooks/useToast";
 import { useUser } from "@/stores/authStore";
 import {
@@ -40,10 +24,7 @@ import {
 	fromLocalDateTimeInput,
 	toLocalDateTimeInput,
 } from "@/components/team-time/time-utils";
-import {
-	MyLogsTimesheet,
-	type ViewMode,
-} from "@/components/team-time/MyLogsTimesheet";
+import { TeamMyLogsGrid } from "@/components/team-time/TeamMyLogsGrid";
 import type { RoadmapTask } from "@/types/roadmap";
 import { ScrollNavButtons } from "@/components/common/ScrollNavButtons";
 
@@ -60,64 +41,6 @@ function MyLogsTab() {
 	const toast = useToast();
 	const qc = useQueryClient();
 	const navigate = useNavigate();
-
-	// ─── View / period state ────────────────────────────────────────────────
-	const [viewMode, setViewMode] = useState<ViewMode>("week");
-	const [anchorDate, setAnchorDate] = useState(() => new Date());
-
-	const { fromIso, toIso, dates, periodLabel } = useMemo(() => {
-		if (viewMode === "today") {
-			const from = startOfDay(anchorDate);
-			const to = endOfDay(anchorDate);
-			return {
-				fromIso: from.toISOString(),
-				toIso: to.toISOString(),
-				dates: [from],
-				periodLabel: format(anchorDate, "EEEE, MMM d, yyyy"),
-			};
-		}
-		if (viewMode === "week") {
-			const from = startOfWeek(anchorDate, { weekStartsOn: 1 });
-			const to = endOfWeek(anchorDate, { weekStartsOn: 1 });
-			return {
-				fromIso: from.toISOString(),
-				toIso: to.toISOString(),
-				dates: eachDayOfInterval({ start: from, end: to }),
-				periodLabel:
-					from.getMonth() === to.getMonth()
-						? `${format(from, "MMM d")} – ${format(to, "d, yyyy")}`
-						: `${format(from, "MMM d")} – ${format(to, "MMM d, yyyy")}`,
-			};
-		}
-		// month
-		const from = startOfMonth(anchorDate);
-		const to = endOfMonth(anchorDate);
-		return {
-			fromIso: from.toISOString(),
-			toIso: to.toISOString(),
-			dates: eachDayOfInterval({ start: from, end: to }),
-			periodLabel: format(anchorDate, "MMMM yyyy"),
-		};
-	}, [viewMode, anchorDate]);
-
-	const handlePrev = useCallback(() => {
-		setAnchorDate((prev) => {
-			if (viewMode === "today") return subDays(prev, 1);
-			if (viewMode === "week") return subWeeks(prev, 1);
-			return subMonths(prev, 1);
-		});
-	}, [viewMode]);
-
-	const handleNext = useCallback(() => {
-		setAnchorDate((prev) => {
-			if (viewMode === "today") return addDays(prev, 1);
-			if (viewMode === "week") return addWeeks(prev, 1);
-			return addMonths(prev, 1);
-		});
-	}, [viewMode]);
-
-	const handleToday = useCallback(() => setAnchorDate(new Date()), []);
-
 	// ─── Modal / form state ─────────────────────────────────────────────────
 	const [addOpen, setAddOpen] = useState(false);
 	const [addProjectId, setAddProjectId] = useState("");
@@ -147,11 +70,9 @@ function MyLogsTab() {
 	});
 
 	const logsQuery = useQuery({
-		queryKey: ["team-time", teamId, "my-logs", user?.id, fromIso, toIso],
+		queryKey: ["team-time", teamId, "my-logs", user?.id],
 		queryFn: () =>
 			teamTimeService.listMyTeamLogs(teamId, {
-				from: fromIso,
-				to: toIso,
 				limit: 200,
 			}),
 		enabled: Boolean(user?.id),
@@ -199,7 +120,6 @@ function MyLogsTab() {
 	);
 
 	const allLogs = logsQuery.data?.items ?? [];
-	void ownRateByProjectId; // used by modals indirectly
 
 	// Prefill project when add modal opens
 	useEffect(() => {
@@ -445,25 +365,22 @@ function MyLogsTab() {
 				</div>
 			)}
 
-			{/* Timesheet grid */}
-			<MyLogsTimesheet
+			{/* Logs table */}
+			<TeamMyLogsGrid
 				logs={allLogs}
+				tasks={tasksForRowQuery.data ?? []}
+				ownRateByProjectId={ownRateByProjectId}
 				loadingLogs={logsQuery.isPending}
-				dates={dates}
-				viewMode={viewMode}
-				periodLabel={periodLabel}
+				loadingTasks={tasksForRowQuery.isFetching}
+				taskSyncById={{}}
 				rowPendingById={rowPendingById}
-				onChangeViewMode={(m) => { setViewMode(m); }}
-				onPrev={handlePrev}
-				onNext={handleNext}
-				onToday={handleToday}
-				onAddLog={() => setAddOpen(true)}
-				onStop={handleStop}
-				onEdit={handleEdit}
-				onDelete={handleDelete}
 				onOpenTaskModal={handleOpenTaskModal}
-				onOpenInRoadmap={handleOpenInRoadmap}
+				onStopLog={handleStop}
+				onDeleteLog={handleDelete}
+				onEditLog={handleEdit}
+				onOpenTaskInRoadmap={handleOpenInRoadmap}
 				canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
+				onOpenAddLog={() => setAddOpen(true)}
 			/>
 
 			{/* Rate history drawer */}
