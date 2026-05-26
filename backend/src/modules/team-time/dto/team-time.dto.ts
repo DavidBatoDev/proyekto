@@ -15,12 +15,18 @@ import {
   ValidateIf,
 } from 'class-validator';
 
-export const TIME_LOG_STATUSES = ['pending', 'approved', 'rejected'] as const;
+export const TIME_LOG_STATUSES = [
+  'pending',
+  'approved',
+  'paid',
+  'rejected',
+] as const;
 export type TimeLogStatus = (typeof TIME_LOG_STATUSES)[number];
 
 export const TIME_LOG_REVIEW_DECISIONS = [
   'pending',
   'approved',
+  'paid',
   'rejected',
 ] as const;
 export type TimeLogReviewDecision =

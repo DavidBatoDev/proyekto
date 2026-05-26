@@ -5,6 +5,7 @@ import type { TeamMemberRate } from "@/services/teams.service";
 type Bucket = {
 	pendingFees: number;
 	approvedFees: number;
+	paidFees: number;
 	rejectedFees: number;
 	totalFees: number;
 };
@@ -23,6 +24,7 @@ export function computeLogStats(logs: TaskTimeLog[]): LogStats {
 			buckets[cur] = {
 				pendingFees: 0,
 				approvedFees: 0,
+				paidFees: 0,
 				rejectedFees: 0,
 				totalFees: 0,
 			};
@@ -40,6 +42,7 @@ export function computeLogStats(logs: TaskTimeLog[]): LogStats {
 		bucket.totalFees += fees;
 		if (log.status === "pending") bucket.pendingFees += fees;
 		else if (log.status === "approved") bucket.approvedFees += fees;
+		else if (log.status === "paid") bucket.paidFees += fees;
 		else if (log.status === "rejected") bucket.rejectedFees += fees;
 	}
 	return {
@@ -78,7 +81,12 @@ export function TeamLogsStatsCard({
 	const renderCurrencies =
 		stats.currencies.length > 0 ? stats.currencies : [fallbackCurrency];
 	const pick = (
-		field: "pendingFees" | "approvedFees" | "rejectedFees" | "totalFees",
+		field:
+			| "pendingFees"
+			| "approvedFees"
+			| "paidFees"
+			| "rejectedFees"
+			| "totalFees",
 		cur: string,
 	) => stats.buckets[cur]?.[field] ?? 0;
 	const columns: {
@@ -100,6 +108,13 @@ export function TeamLogsStatsCard({
 			values: renderCurrencies.map((c) => ({
 				currency: c,
 				amount: pick("approvedFees", c),
+			})),
+		},
+		{
+			label: "Paid",
+			values: renderCurrencies.map((c) => ({
+				currency: c,
+				amount: pick("paidFees", c),
 			})),
 		},
 		{

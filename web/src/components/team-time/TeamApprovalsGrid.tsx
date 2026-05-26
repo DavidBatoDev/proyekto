@@ -10,6 +10,7 @@ import {
 import {
 	Check,
 	ClipboardCheck,
+	Coins,
 	ExternalLink,
 	Loader2,
 	MoreHorizontal,
@@ -67,7 +68,7 @@ type TeamApprovalsRow = {
 
 type GroupDimensionId = "date" | "member" | "project" | "task_id";
 
-type MenuTone = "default" | "success" | "warning" | "danger";
+type MenuTone = "default" | "success" | "warning" | "danger" | "info";
 
 type ActionMenuItem = {
 	id: string;
@@ -222,7 +223,7 @@ interface TeamApprovalsActionsCellProps {
 	onSetOpenMenuRowId: (id: string | null) => void;
 	onReviewLog: (
 		logId: string,
-		decision: "approved" | "rejected" | "pending",
+		decision: "approved" | "rejected" | "pending" | "paid",
 	) => void | Promise<void>;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
 }
@@ -252,6 +253,15 @@ const TeamApprovalsActionsCell = memo(function TeamApprovalsActionsCell({
 						logIds.forEach((id) => void onReviewLog(id, "approved")),
 					disabled: disableReview,
 					tone: "success",
+				},
+				{
+					id: "set-paid",
+					label: "Set paid",
+					icon: <Coins className="h-3.5 w-3.5" />,
+					onSelect: () =>
+						logIds.forEach((id) => void onReviewLog(id, "paid")),
+					disabled: disableReview,
+					tone: "info",
 				},
 				{
 					id: "set-rejected",
@@ -316,7 +326,7 @@ interface TeamApprovalsGridProps {
 	onToggleSelectAll: (checked: boolean, eligibleLogIds: string[]) => void;
 	onReviewLog: (
 		logId: string,
-		decision: "approved" | "rejected" | "pending",
+		decision: "approved" | "rejected" | "pending" | "paid",
 	) => void | Promise<void>;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
 	canOpenTaskInRoadmap: (taskId: string | null) => boolean;
@@ -326,8 +336,9 @@ interface TeamApprovalsGridProps {
 	approvingSelected?: boolean;
 }
 
-function statusBadgeClass(status: TaskTimeLog["status"]) {
+function statusBadgeClass(status: string) {
 	if (status === "approved") return "bg-emerald-100 text-emerald-700";
+	if (status === "paid") return "bg-indigo-100 text-indigo-700";
 	if (status === "rejected") return "bg-rose-100 text-rose-700";
 	return "bg-amber-100 text-amber-700";
 }
@@ -394,6 +405,7 @@ function RowActionsMenu({
 
 	const toneClass = (tone: MenuTone | undefined) => {
 		if (tone === "success") return "text-emerald-700 hover:bg-emerald-50";
+		if (tone === "info") return "text-indigo-700 hover:bg-indigo-50";
 		if (tone === "warning") return "text-amber-700 hover:bg-amber-50";
 		if (tone === "danger") return "text-rose-700 hover:bg-rose-50";
 		return "text-slate-700 hover:bg-slate-50";

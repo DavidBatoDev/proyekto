@@ -41,7 +41,7 @@ export interface TimeLogRow {
   started_at: string;
   ended_at: string | null;
   duration_seconds: number | null;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'paid' | 'rejected';
   reviewed_by: string | null;
   reviewed_at: string | null;
   review_note: string | null;
@@ -573,6 +573,41 @@ export class TeamTimeService {
     decision: TimeLogReviewDecision,
     reason: string | undefined,
   ): Promise<TimeLogRow> {
+    const { data: currentRows, error: currentErr } = await this.supabase
+      .from('task_time_logs')
+      .select('id, status')
+      .in('id', logIds);
+    if (currentErr) throw new Error(currentErr.message);
+    const current = (currentRows ?? []) as Array<{
+      id: string;
+      status: TimeLogReviewDecision;
+    }>;
+    if (current.length !== logIds.length) {
+      throw new NotFoundException('One or more logs were not found.');
+    }
+
+    const isAllowedTransition = (
+      from: TimeLogReviewDecision,
+      to: TimeLogReviewDecision,
+    ) => {
+      if (to === 'pending') return true;
+      if (to === 'approved' || to === 'rejected') return from === 'pending';
+      if (to === 'paid') return from === 'approved';
+      return false;
+    };
+
+    const invalid = current.filter((row) =>
+      !isAllowedTransition(row.status, decision),
+    );
+    if (invalid.length > 0) {
+      const fromStatuses = Array.from(
+        new Set(invalid.map((row) => row.status)),
+      ).join(', ');
+      throw new BadRequestException(
+        `Cannot set status to ${decision} from ${fromStatuses}.`,
+      );
+    }
+
     const now = new Date().toISOString();
     const patch: Record<string, unknown> = {
       status: decision,

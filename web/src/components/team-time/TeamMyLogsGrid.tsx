@@ -76,6 +76,7 @@ type ActionMenuItem = {
 
 function statusBadgeClass(status: TaskTimeLog["status"]) {
 	if (status === "approved") return "bg-emerald-100 text-emerald-700";
+	if (status === "paid") return "bg-indigo-100 text-indigo-700";
 	if (status === "rejected") return "bg-rose-100 text-rose-700";
 	return "bg-amber-100 text-amber-700";
 }

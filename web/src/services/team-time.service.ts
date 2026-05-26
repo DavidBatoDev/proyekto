@@ -1,7 +1,7 @@
 import apiClient from "@/api/axios";
 
-export type TimeLogStatus = "pending" | "approved" | "rejected";
-export type TimeLogReviewDecision = "pending" | "approved" | "rejected";
+export type TimeLogStatus = "pending" | "approved" | "paid" | "rejected";
+export type TimeLogReviewDecision = "pending" | "approved" | "paid" | "rejected";
 export type TaskWorkType = "real_work" | "training";
 
 export interface ProfileMini {

@@ -227,6 +227,7 @@ function TeamLogsRoute() {
 							{ value: "all", label: "All" },
 							{ value: "pending", label: "Pending" },
 							{ value: "approved", label: "Approved" },
+							{ value: "paid", label: "Paid" },
 							{ value: "rejected", label: "Rejected" },
 						] as const
 					).map((opt) => {
