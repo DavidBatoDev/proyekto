@@ -14,6 +14,7 @@ import {
 	Loader2,
 	MoreHorizontal,
 	RotateCcw,
+	Settings2,
 	X,
 } from "lucide-react";
 import {
@@ -39,11 +40,6 @@ const TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
 	minute: "2-digit",
 	second: "2-digit",
 });
-const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
-	month: "short",
-	day: "numeric",
-	year: "numeric",
-});
 const SHORT_DATE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
 	month: "short",
 	day: "numeric",
@@ -55,17 +51,21 @@ const SHORT_DATE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
 
 type TeamApprovalsRow = {
 	id: string;
+	logIds: string[];
+	logs: TaskTimeLog[];
 	date: string;
 	member_label: string;
 	project_label: string;
 	task_id: string | null;
 	task_title: string;
 	time_in: string;
-	status: TaskTimeLog["status"];
+	status: TaskTimeLog["status"] | "mixed";
 	is_running: boolean;
 	is_self: boolean;
-	log: TaskTimeLog;
+	eligibleLogIds: string[];
 };
+
+type GroupDimensionId = "date" | "member" | "project" | "task_id";
 
 type MenuTone = "default" | "success" | "warning" | "danger";
 
@@ -77,6 +77,21 @@ type ActionMenuItem = {
 	disabled?: boolean;
 	tone?: MenuTone;
 };
+
+type ColumnOption = {
+	id: string;
+	label: string;
+	canHide?: boolean;
+};
+
+function makeLocalDateKey(value: string): string {
+	const parsed = new Date(value);
+	if (Number.isNaN(parsed.getTime())) return "invalid";
+	const yyyy = parsed.getFullYear();
+	const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+	const dd = String(parsed.getDate()).padStart(2, "0");
+	return `${yyyy}-${mm}-${dd}`;
+}
 
 /**
  * Memoized actions cell. The grid re-renders every second to advance
@@ -93,35 +108,49 @@ type ActionMenuItem = {
 // action-menu don't reconcile every second.
 
 const LiveTimeOutCell = memo(function LiveTimeOutCell({
-	log,
+	logs,
 }: {
-	log: TaskTimeLog;
+	logs: TaskTimeLog[];
 }) {
-	const isRunning = !log.ended_at;
-	const nowMs = useLiveNowMs(isRunning);
-	const startedDate = new Date(log.started_at);
-	const endedDate = log.ended_at ? new Date(log.ended_at) : null;
+	const safeLogs = Array.isArray(logs) ? logs : [];
+	const hasRunning = safeLogs.some((log) => !log.ended_at);
+	const nowMs = useLiveNowMs(hasRunning);
 	const nowDate = new Date(nowMs);
-	const hasValidStart = !Number.isNaN(startedDate.getTime());
-	const hasValidEnd = Boolean(endedDate && !Number.isNaN(endedDate.getTime()));
-	const hasValidNow = !Number.isNaN(nowDate.getTime());
-	const endedDateValue = hasValidEnd ? (endedDate as Date) : undefined;
-	const isMultiDay =
-		hasValidStart &&
-		hasValidEnd &&
-		startedDate.toDateString() !== endedDateValue?.toDateString();
+	let earliestStart: Date | null = null;
+	let latestEnd: Date | null = null;
+	let hasValidNow = !Number.isNaN(nowDate.getTime());
+
+	for (const log of safeLogs) {
+		const startedDate = new Date(log.started_at);
+		if (!Number.isNaN(startedDate.getTime())) {
+			if (!earliestStart || startedDate < earliestStart) {
+				earliestStart = startedDate;
+			}
+		}
+		const endedDate = log.ended_at ? new Date(log.ended_at) : null;
+		if (endedDate && !Number.isNaN(endedDate.getTime())) {
+			if (!latestEnd || endedDate > latestEnd) {
+				latestEnd = endedDate;
+			}
+		}
+	}
+
+	const effectiveEnd = hasRunning && hasValidNow ? nowDate : latestEnd;
+	const hasValidEnd = Boolean(effectiveEnd);
+	const isMultiDay = Boolean(
+		earliestStart &&
+		effectiveEnd &&
+		earliestStart.toDateString() !== effectiveEnd.toDateString(),
+	);
 
 	let label: string;
 	if (hasValidEnd) {
 		label = isMultiDay
-			? SHORT_DATE_TIME_FORMATTER.format(endedDateValue as Date)
-			: TIME_FORMATTER.format(endedDateValue as Date);
+			? SHORT_DATE_TIME_FORMATTER.format(effectiveEnd as Date)
+			: TIME_FORMATTER.format(effectiveEnd as Date);
 	} else if (!hasValidNow) {
 		label = "-";
-	} else if (
-		hasValidStart &&
-		startedDate.toDateString() !== nowDate.toDateString()
-	) {
+	} else if (earliestStart && earliestStart.toDateString() !== nowDate.toDateString()) {
 		label = SHORT_DATE_TIME_FORMATTER.format(nowDate);
 	} else {
 		label = TIME_FORMATTER.format(nowDate);
@@ -130,40 +159,60 @@ const LiveTimeOutCell = memo(function LiveTimeOutCell({
 });
 
 const LiveHoursCell = memo(function LiveHoursCell({
-	log,
+	logs,
 }: {
-	log: TaskTimeLog;
+	logs: TaskTimeLog[];
 }) {
-	const isRunning = !log.ended_at;
-	const nowMs = useLiveNowMs(isRunning);
-	const hours = (liveDurationSecondsFromLog(log, nowMs) / 3600).toFixed(2);
+	const safeLogs = Array.isArray(logs) ? logs : [];
+	const hasRunning = safeLogs.some((log) => !log.ended_at);
+	const nowMs = useLiveNowMs(hasRunning);
+	const totalSeconds = safeLogs.reduce(
+		(sum, log) => sum + liveDurationSecondsFromLog(log, nowMs),
+		0,
+	);
+	const hours = (totalSeconds / 3600).toFixed(2);
 	return (
 		<span className="text-xs font-semibold text-gray-700">{hours}</span>
 	);
 });
 
 const LiveFeesCell = memo(function LiveFeesCell({
-	log,
+	logs,
 }: {
-	log: TaskTimeLog;
+	logs: TaskTimeLog[];
 }) {
-	const isRunning = !log.ended_at;
-	const nowMs = useLiveNowMs(isRunning);
-	const hourlyRate = Number(log.rate_snapshot ?? 0);
-	if (!Number.isFinite(hourlyRate) || hourlyRate <= 0) {
+	const safeLogs = Array.isArray(logs) ? logs : [];
+	const hasRunning = safeLogs.some((log) => !log.ended_at);
+	const nowMs = useLiveNowMs(hasRunning);
+	const totals = new Map<string, number>();
+
+	for (const log of safeLogs) {
+		const hourlyRate = Number(log.rate_snapshot ?? 0);
+		if (!Number.isFinite(hourlyRate) || hourlyRate <= 0) continue;
+		const hours = liveDurationSecondsFromLog(log, nowMs) / 3600;
+		const currency = log.currency_snapshot || "USD";
+		const next = (totals.get(currency) ?? 0) + hours * hourlyRate;
+		totals.set(currency, next);
+	}
+
+	if (totals.size === 0) {
 		return <span className="text-xs font-semibold text-emerald-700">-</span>;
 	}
-	const hours = liveDurationSecondsFromLog(log, nowMs) / 3600;
-	const currency = log.currency_snapshot || "USD";
+
 	return (
-		<span className="text-xs font-semibold text-emerald-700">
-			{(hours * hourlyRate).toFixed(2)} {currency}
-		</span>
+		<div className="text-xs font-semibold text-emerald-700">
+			{Array.from(totals.entries()).map(([currency, amount]) => (
+				<div key={currency} className="tabular-nums">
+					{amount.toFixed(2)} {currency}
+				</div>
+			))}
+		</div>
 	);
 });
 
 interface TeamApprovalsActionsCellProps {
-	log: TaskTimeLog;
+	logIds: string[];
+	logs: TaskTimeLog[];
 	rowId: string;
 	canApprove: boolean;
 	disableReview: boolean;
@@ -179,7 +228,8 @@ interface TeamApprovalsActionsCellProps {
 }
 
 const TeamApprovalsActionsCell = memo(function TeamApprovalsActionsCell({
-	log,
+	logIds,
+	logs,
 	rowId,
 	canApprove,
 	disableReview,
@@ -198,7 +248,8 @@ const TeamApprovalsActionsCell = memo(function TeamApprovalsActionsCell({
 					id: "set-approved",
 					label: "Set approved",
 					icon: <Check className="h-3.5 w-3.5" />,
-					onSelect: () => void onReviewLog(rowId, "approved"),
+					onSelect: () =>
+						logIds.forEach((id) => void onReviewLog(id, "approved")),
 					disabled: disableReview,
 					tone: "success",
 				},
@@ -206,7 +257,8 @@ const TeamApprovalsActionsCell = memo(function TeamApprovalsActionsCell({
 					id: "set-rejected",
 					label: "Set rejected",
 					icon: <X className="h-3.5 w-3.5" />,
-					onSelect: () => void onReviewLog(rowId, "rejected"),
+					onSelect: () =>
+						logIds.forEach((id) => void onReviewLog(id, "rejected")),
 					disabled: disableReview,
 					tone: "warning",
 				},
@@ -214,7 +266,8 @@ const TeamApprovalsActionsCell = memo(function TeamApprovalsActionsCell({
 					id: "set-pending",
 					label: "Set pending",
 					icon: <RotateCcw className="h-3.5 w-3.5" />,
-					onSelect: () => void onReviewLog(rowId, "pending"),
+					onSelect: () =>
+						logIds.forEach((id) => void onReviewLog(id, "pending")),
 					disabled: disableReview,
 				},
 			);
@@ -223,7 +276,7 @@ const TeamApprovalsActionsCell = memo(function TeamApprovalsActionsCell({
 			id: "open-roadmap-task",
 			label: "Open task in roadmap",
 			icon: <ExternalLink className="h-3.5 w-3.5" />,
-			onSelect: () => onOpenTaskInRoadmap(log),
+			onSelect: () => onOpenTaskInRoadmap(logs[0]),
 			disabled: loading || !canOpenInRoadmap,
 		});
 		return items;
@@ -232,7 +285,8 @@ const TeamApprovalsActionsCell = memo(function TeamApprovalsActionsCell({
 		disableReview,
 		canOpenInRoadmap,
 		loading,
-		log,
+		logIds,
+		logs,
 		rowId,
 		onReviewLog,
 		onOpenTaskInRoadmap,
@@ -248,19 +302,6 @@ const TeamApprovalsActionsCell = memo(function TeamApprovalsActionsCell({
 		/>
 	);
 });
-
-function TeamApprovalsGridSkeleton() {
-	return (
-		<div className="rounded-xl border border-gray-200 overflow-hidden bg-white animate-pulse">
-			<div className="h-10 border-b border-gray-200 bg-gray-100" />
-			<div className="p-3 space-y-2">
-				{Array.from({ length: 7 }).map((_, idx) => (
-					<div key={idx} className="h-8 rounded bg-gray-100" />
-				))}
-			</div>
-		</div>
-	);
-}
 
 interface TeamApprovalsGridProps {
 	logs: TaskTimeLog[];
@@ -414,6 +455,19 @@ function RowActionsMenu({
 	);
 }
 
+function TeamApprovalsGridSkeleton() {
+	return (
+		<div className="rounded-xl border border-gray-200 overflow-hidden bg-white animate-pulse">
+			<div className="h-10 border-b border-gray-200 bg-gray-100" />
+			<div className="p-3 space-y-2">
+				{Array.from({ length: 7 }).map((_, idx) => (
+					<div key={idx} className="h-8 rounded bg-gray-100" />
+				))}
+			</div>
+		</div>
+	);
+}
+
 export function TeamApprovalsGrid({
 	logs,
 	loadingLogs,
@@ -434,6 +488,14 @@ export function TeamApprovalsGrid({
 	approvingSelected,
 }: TeamApprovalsGridProps) {
 	const [openMenuRowId, setOpenMenuRowId] = useState<string | null>(null);
+	const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
+	const columnsButtonRef = useRef<HTMLButtonElement | null>(null);
+	const columnsMenuRef = useRef<HTMLDivElement | null>(null);
+	const [columnsMenuPosition, setColumnsMenuPosition] = useState({
+		top: 0,
+		left: 0,
+		openUpward: false,
+	});
 
 	const SELECTABLE_COLS = [
 		"select",
@@ -448,6 +510,33 @@ export function TeamApprovalsGrid({
 		"status",
 	];
 
+	const columnWidthClassById: Record<string, string> = {
+		select: "w-[3%]",
+		date: "w-[16%]",
+		member: "w-[17%]",
+		project: "w-[12%]",
+		task_id: "w-[10%]",
+		time_in: "w-[10%]",
+		time_out: "w-[6%]",
+		hours_worked: "w-[9%]",
+		fees: "w-[11%]",
+		status: "w-[6%]",
+		actions: "w-[8%]",
+	};
+
+	const [columnVisibility, setColumnVisibility] = useState<
+		Record<string, boolean>
+	>({});
+
+	const activeDimensionIds = useMemo<GroupDimensionId[]>(() => {
+		const next: GroupDimensionId[] = [];
+		if (columnVisibility.date !== false) next.push("date");
+		if (showMemberColumn && columnVisibility.member !== false) next.push("member");
+		if (columnVisibility.project !== false) next.push("project");
+		if (columnVisibility.task_id !== false) next.push("task_id");
+		return next;
+	}, [columnVisibility, showMemberColumn]);
+
 	const rows = useMemo<TeamApprovalsRow[]>(() => {
 		const sortedLogs = [...logs].sort((a, b) => {
 			const aMs = new Date(a.started_at).getTime();
@@ -455,68 +544,148 @@ export function TeamApprovalsGrid({
 			return aMs - bMs;
 		});
 
-		// Static fields only — anything that needs the running timer is
-		// computed inside the live cell components below.
-		return sortedLogs.map<TeamApprovalsRow>((log) => {
-			const startedDate = new Date(log.started_at);
-			const endedDate = log.ended_at ? new Date(log.ended_at) : null;
-			const hasValidStart = !Number.isNaN(startedDate.getTime());
-			const hasValidEnd = Boolean(
-				endedDate && !Number.isNaN(endedDate.getTime()),
-			);
-			const endedDateValue: Date | undefined = hasValidEnd
-				? (endedDate as Date)
-				: undefined;
+		const groupMap = new Map<string, TaskTimeLog[]>();
+		for (const log of sortedLogs) {
+			const dimensionValueById: Record<GroupDimensionId, string> = {
+				date: makeLocalDateKey(log.started_at),
+				member: log.member_user_id || "unknown-member",
+				project: log.project_id || "unknown-project",
+				task_id: log.task_id || "no-task",
+			};
+			const key =
+				activeDimensionIds.length === 0
+					? "__all__"
+					: activeDimensionIds
+							.map((dimId) => `${dimId}:${dimensionValueById[dimId]}`)
+							.join("::");
+			const bucket = groupMap.get(key);
+			if (bucket) bucket.push(log);
+			else groupMap.set(key, [log]);
+		}
+
+		const groupedRows: TeamApprovalsRow[] = [];
+
+		for (const [key, groupLogs] of groupMap.entries()) {
+			const firstLog = groupLogs[0];
+			let earliestStart: Date | null = null;
+			let latestEnd: Date | null = null;
+			let hasValidStart = false;
+			let hasValidEnd = false;
+			let isRunning = false;
+
+			for (const log of groupLogs) {
+				const startedDate = new Date(log.started_at);
+				if (!Number.isNaN(startedDate.getTime())) {
+					hasValidStart = true;
+					if (!earliestStart || startedDate < earliestStart) {
+						earliestStart = startedDate;
+					}
+				}
+				const endedDate = log.ended_at ? new Date(log.ended_at) : null;
+				if (endedDate && !Number.isNaN(endedDate.getTime())) {
+					hasValidEnd = true;
+					if (!latestEnd || endedDate > latestEnd) {
+						latestEnd = endedDate;
+					}
+				}
+				if (!log.ended_at) isRunning = true;
+			}
+
 			const isMultiDay =
 				hasValidStart &&
 				hasValidEnd &&
-				startedDate.toDateString() !== endedDateValue?.toDateString();
+				earliestStart &&
+				latestEnd &&
+				earliestStart.toDateString() !== latestEnd.toDateString();
 
-			return {
-				id: log.id,
-				date: !hasValidStart
-					? "-"
-					: isMultiDay
-						? `${SHORT_DATE_FORMATTER.format(startedDate)} - ${SHORT_DATE_FORMATTER.format(endedDateValue as Date)}`
-						: FULL_DATE_FORMATTER.format(startedDate),
-				member_label:
-					log.member?.display_name ||
-					[log.member?.first_name, log.member?.last_name]
-						.filter(Boolean)
-						.join(" ")
-						.trim() ||
-					log.member?.email ||
-					log.member_user_id,
-				project_label: log.project?.title || log.project_id,
-				task_id: log.task_id,
-				task_title: log.task?.title ?? "-",
-				time_in: !hasValidStart
-					? "-"
-					: isMultiDay
-						? SHORT_DATE_TIME_FORMATTER.format(startedDate)
-						: TIME_FORMATTER.format(startedDate),
-				status: log.status,
-				is_running: !log.ended_at,
-				is_self: currentUserId !== null && log.member_user_id === currentUserId,
-				log,
-			};
-		});
-	}, [logs, currentUserId]);
+			const dateLabel = !earliestStart
+				? "-"
+				: FULL_DATE_FORMATTER.format(earliestStart);
+
+			const timeInLabel = !earliestStart
+				? "-"
+				: isMultiDay
+					? SHORT_DATE_TIME_FORMATTER.format(earliestStart)
+					: TIME_FORMATTER.format(earliestStart);
+
+			const distinctProjectIds = new Set(
+				groupLogs.map((log) => log.project_id || "unknown-project"),
+			);
+			const distinctTaskIds = new Set(
+				groupLogs.map((log) => log.task_id || "no-task"),
+			);
+			const singleTaskId =
+				distinctTaskIds.size === 1
+					? (groupLogs[0].task_id ?? null)
+					: null;
+			const taskTitle =
+				distinctTaskIds.size > 1
+					? `${distinctTaskIds.size} tasks`
+					: firstLog.task?.title ?? "-";
+
+			const memberLabel =
+				firstLog.member?.display_name ||
+				[firstLog.member?.first_name, firstLog.member?.last_name]
+					.filter(Boolean)
+					.join(" ")
+					.trim() ||
+				firstLog.member?.email ||
+				firstLog.member_user_id ||
+				"unknown-member";
+
+			const statusValues = new Set(groupLogs.map((log) => log.status));
+			const statusValue =
+				statusValues.size === 1
+					? (groupLogs[0].status as TaskTimeLog["status"])
+					: "mixed";
+
+			const eligibleLogIds = groupLogs
+				.filter((log) => {
+					const isSelf =
+						currentUserId !== null && log.member_user_id === currentUserId;
+					return !isSelf && Boolean(log.ended_at);
+				})
+				.map((log) => log.id);
+
+			groupedRows.push({
+				id: key,
+				logIds: groupLogs.map((log) => log.id),
+				logs: groupLogs,
+				date: dateLabel,
+				member_label: memberLabel,
+				project_label:
+					distinctProjectIds.size > 1
+						? `${distinctProjectIds.size} projects`
+						: firstLog.project?.title || firstLog.project_id || "unknown-project",
+				task_id: singleTaskId,
+				task_title: taskTitle,
+				time_in: timeInLabel,
+				status: statusValue,
+				is_running: isRunning,
+				is_self:
+					currentUserId !== null && firstLog.member_user_id === currentUserId,
+				eligibleLogIds,
+			});
+		}
+
+		return groupedRows;
+	}, [activeDimensionIds, logs, currentUserId]);
 
 	const columnHelper = createColumnHelper<TeamApprovalsRow>();
-	// Self-rows are not eligible for selection (caller can't review own logs).
-	const eligibleRowIds = useMemo(
-		() =>
-			rows
-				.filter((row) => !row.is_running && !row.is_self)
-				.map((row) => row.id),
-		[rows],
-	);
+	const eligibleLogIds = useMemo(() => {
+		const next = new Set<string>();
+		for (const row of rows) {
+			for (const logId of row.eligibleLogIds) {
+				next.add(logId);
+			}
+		}
+		return Array.from(next);
+	}, [rows]);
 	const allEligibleSelected =
-		eligibleRowIds.length > 0 &&
-		eligibleRowIds.every((id) => selectedLogIds.has(id));
+		eligibleLogIds.length > 0 &&
+		eligibleLogIds.every((id) => selectedLogIds.has(id));
 	const someEligibleSelected =
-		eligibleRowIds.some((id) => selectedLogIds.has(id)) &&
+		eligibleLogIds.some((id) => selectedLogIds.has(id)) &&
 		!allEligibleSelected;
 
 	const columns = useMemo(
@@ -532,9 +701,9 @@ export function TeamApprovalsGrid({
 							ref={(el) => {
 								if (el) el.indeterminate = someEligibleSelected;
 							}}
-							disabled={eligibleRowIds.length === 0}
+							disabled={eligibleLogIds.length === 0}
 							onChange={(event) =>
-								onToggleSelectAll(event.currentTarget.checked, eligibleRowIds)
+								onToggleSelectAll(event.currentTarget.checked, eligibleLogIds)
 							}
 							className="h-3.5 w-3.5 rounded border-gray-300"
 						/>
@@ -542,22 +711,36 @@ export function TeamApprovalsGrid({
 				cell: (info) => {
 					const row = info.row.original;
 					if (!canApprove) return null;
-					const isEligible = !row.is_running && !row.is_self;
+					const eligibleIds = row.eligibleLogIds;
+					const isEligible = eligibleIds.length > 0;
+					const isChecked =
+						isEligible &&
+						eligibleIds.every((id) => selectedLogIds.has(id));
+					const isIndeterminate =
+						isEligible &&
+						eligibleIds.some((id) => selectedLogIds.has(id)) &&
+						!isChecked;
+					const isPending = row.logIds.some((id) => rowPendingById[id]);
 					return (
 						<input
 							type="checkbox"
 							aria-label="Select log row"
-							checked={selectedLogIds.has(row.id)}
-							disabled={!isEligible || rowPendingById[row.id]}
+							checked={isChecked}
+							ref={(el) => {
+								if (el) el.indeterminate = isIndeterminate;
+							}}
+							disabled={!isEligible || isPending}
 							title={
 								row.is_self
 									? "You cannot review your own logs."
 									: row.is_running
-										? "Running logs cannot be reviewed."
+										? "Running logs are skipped."
 										: undefined
 							}
 							onChange={(event) =>
-								onToggleSelectLog(row.id, event.currentTarget.checked)
+								eligibleIds.forEach((id) =>
+									onToggleSelectLog(id, event.currentTarget.checked),
+								)
 							}
 							className="h-3.5 w-3.5 rounded border-gray-300"
 						/>
@@ -613,25 +796,27 @@ export function TeamApprovalsGrid({
 			columnHelper.display({
 				id: "time_out",
 				header: "Time-Out",
-				cell: (info) => <LiveTimeOutCell log={info.row.original.log} />,
+				cell: (info) => <LiveTimeOutCell logs={info.row.original.logs} />,
 			}),
 			columnHelper.display({
 				id: "hours_worked",
 				header: "Hours",
-				cell: (info) => <LiveHoursCell log={info.row.original.log} />,
+				cell: (info) => <LiveHoursCell logs={info.row.original.logs} />,
 			}),
 			columnHelper.display({
 				id: "fees",
 				header: "Fees",
-				cell: (info) => <LiveFeesCell log={info.row.original.log} />,
+				cell: (info) => <LiveFeesCell logs={info.row.original.logs} />,
 			}),
 			columnHelper.accessor("status", {
 				id: "status",
 				header: "Status",
 				cell: (info) => {
 					const row = info.row.original;
-					const syncing =
-						rowPendingById[row.id] || reviewSyncById[row.id];
+					const status = row.status;
+					const syncing = row.logIds.some(
+						(id) => rowPendingById[id] || reviewSyncById[id],
+					);
 					// While running, the review status (always 'pending' until
 					// the log is stopped) is noise — collapse to one badge.
 					return (
@@ -642,11 +827,13 @@ export function TeamApprovalsGrid({
 								</span>
 							) : (
 								<span
-									className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusBadgeClass(
-										info.getValue(),
-									)}`}
+									className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+										status === "mixed"
+											? "bg-slate-100 text-slate-700"
+											: statusBadgeClass(status)
+									}`}
 								>
-									{info.getValue()}
+									{status}
 								</span>
 							)}
 							{syncing && (
@@ -664,11 +851,12 @@ export function TeamApprovalsGrid({
 				header: "Actions",
 				cell: (info) => {
 					const row = info.row.original;
-					const isPending = Boolean(rowPendingById[row.id]);
-					const isReviewSyncing = Boolean(reviewSyncById[row.id]);
+					const isPending = row.logIds.some((id) => rowPendingById[id]);
+					const isReviewSyncing = row.logIds.some((id) => reviewSyncById[id]);
 					return (
 						<TeamApprovalsActionsCell
-							log={row.log}
+							logIds={row.logIds}
+							logs={row.logs}
 							rowId={row.id}
 							canApprove={canApprove}
 							disableReview={
@@ -677,7 +865,7 @@ export function TeamApprovalsGrid({
 								isPending ||
 								isReviewSyncing
 							}
-							canOpenInRoadmap={canOpenTaskInRoadmap(row.log.task_id)}
+							canOpenInRoadmap={canOpenTaskInRoadmap(row.task_id)}
 							loading={isPending || isReviewSyncing}
 							openMenuRowId={openMenuRowId}
 							onSetOpenMenuRowId={setOpenMenuRowId}
@@ -693,7 +881,7 @@ export function TeamApprovalsGrid({
 			canApprove,
 			canOpenTaskInRoadmap,
 			columnHelper,
-			eligibleRowIds,
+			eligibleLogIds,
 			onOpenTaskInRoadmap,
 			onReviewLog,
 			onToggleSelectAll,
@@ -707,20 +895,50 @@ export function TeamApprovalsGrid({
 		],
 	);
 
+	const columnOptions = useMemo<ColumnOption[]>(() => {
+		const base: ColumnOption[] = [
+			{ id: "date", label: "Dates", canHide: true },
+			{ id: "member", label: "Member", canHide: true },
+			{ id: "project", label: "Project", canHide: true },
+			{ id: "task_id", label: "Task", canHide: true },
+			{ id: "time_in", label: "Time-in", canHide: true },
+			{ id: "time_out", label: "Time-out", canHide: true },
+			{ id: "hours_worked", label: "Hours", canHide: true },
+			{ id: "fees", label: "Fees", canHide: true },
+			{ id: "status", label: "Status", canHide: true },
+		];
+		if (!showMemberColumn) {
+			return base.filter((col) => col.id !== "member");
+		}
+		return base;
+	}, [showMemberColumn]);
+
 	const table = useReactTable({
 		data: rows,
 		columns,
 		getCoreRowModel: getCoreRowModel(),
+		state: { columnVisibility },
+		onColumnVisibilityChange: setColumnVisibility,
 	});
 
 	const tableRef = useRef<HTMLTableElement | null>(null);
 	const orderedRowIds = table.getRowModel().rows.map((r) => r.original.id);
+	const selectableColIdSet = useMemo(
+		() => new Set(SELECTABLE_COLS),
+		[SELECTABLE_COLS],
+	);
+	const orderedSelectableColIds = useMemo(
+		() =>
+			table
+				.getVisibleLeafColumns()
+				.map((col) => col.id)
+				.filter((colId) => selectableColIdSet.has(colId)),
+		[table, selectableColIdSet, columnVisibility],
+	);
 
 	// Stable refs used inside callbacks so they never go stale
-	const logsRef = useRef(logs);
-	logsRef.current = logs;
-	const currentUserIdRef = useRef(currentUserId);
-	currentUserIdRef.current = currentUserId;
+	const rowsRef = useRef(rows);
+	rowsRef.current = rows;
 	const selectedLogIdsRef = useRef(selectedLogIds);
 	selectedLogIdsRef.current = selectedLogIds;
 	const rowPendingByIdRef = useRef(rowPendingById);
@@ -731,21 +949,22 @@ export function TeamApprovalsGrid({
 	onToggleSelectAllRef.current = onToggleSelectAll;
 
 	const { selectedCells, isSelected, getCellDataProps } =
-		useTableCellSelection(orderedRowIds, SELECTABLE_COLS, tableRef, {
+		useTableCellSelection(orderedRowIds, orderedSelectableColIds, tableRef, {
 			// Fires on every drag frame — auto-check eligible "select" column cells immediately
 			onLiveSelectionChange(cells) {
 				for (const key of cells) {
 					const [rowId, colId] = key.split(":");
 					if (colId !== "select") continue;
-					const log = logsRef.current.find((l) => l.id === rowId);
-					if (!log) continue;
-					const isRunning = !log.ended_at;
-					const isSelf =
-						currentUserIdRef.current !== null &&
-						log.member_user_id === currentUserIdRef.current;
-					if (isRunning || isSelf) continue;
-					if (selectedLogIdsRef.current.has(rowId) || rowPendingByIdRef.current[rowId]) continue;
-					onToggleSelectLogRef.current(rowId, true);
+					const row = rowsRef.current.find((candidate) => candidate.id === rowId);
+					if (!row) continue;
+					for (const logId of row.eligibleLogIds) {
+						if (
+							selectedLogIdsRef.current.has(logId) ||
+							rowPendingByIdRef.current[logId]
+						)
+							continue;
+						onToggleSelectLogRef.current(logId, true);
+					}
 				}
 			},
 			// Click outside table → clear both highlights and checkbox selections
@@ -753,6 +972,48 @@ export function TeamApprovalsGrid({
 				onToggleSelectAllRef.current(false, []);
 			},
 		});
+
+	const rowIdToLogIds = useMemo(() => {
+		const next: Record<string, string[]> = {};
+		for (const row of rows) next[row.id] = row.logIds;
+		return next;
+	}, [rows]);
+
+	useEffect(() => {
+		if (!columnsMenuOpen) return;
+		const updatePosition = () => {
+			if (!columnsButtonRef.current) return;
+			const rect = columnsButtonRef.current.getBoundingClientRect();
+			const estimatedHeight = Math.max(140, columnOptions.length * 32 + 16);
+			const openUpward =
+				rect.bottom + estimatedHeight > window.innerHeight - 12;
+			setColumnsMenuPosition({
+				top: openUpward ? rect.top - 6 : rect.bottom + 6,
+				left: rect.right,
+				openUpward,
+			});
+		};
+		const handlePointer = (event: MouseEvent) => {
+			const target = event.target as Node;
+			const inTrigger = columnsButtonRef.current?.contains(target);
+			const inMenu = columnsMenuRef.current?.contains(target);
+			if (!inTrigger && !inMenu) setColumnsMenuOpen(false);
+		};
+		const handleEscape = (event: KeyboardEvent) => {
+			if (event.key === "Escape") setColumnsMenuOpen(false);
+		};
+		updatePosition();
+		document.addEventListener("mousedown", handlePointer);
+		document.addEventListener("keydown", handleEscape);
+		window.addEventListener("resize", updatePosition);
+		window.addEventListener("scroll", updatePosition, true);
+		return () => {
+			document.removeEventListener("mousedown", handlePointer);
+			document.removeEventListener("keydown", handleEscape);
+			window.removeEventListener("resize", updatePosition);
+			window.removeEventListener("scroll", updatePosition, true);
+		};
+	}, [columnOptions.length, columnsMenuOpen]);
 
 	if (loadingLogs) return <TeamApprovalsGridSkeleton />;
 
@@ -765,6 +1026,7 @@ export function TeamApprovalsGrid({
 						<CellSelectionScoreboard
 							selectedCells={selectedCells}
 							logs={logs}
+							rowIdToLogIds={rowIdToLogIds}
 							asPortal={false}
 						/>
 					)}
@@ -810,22 +1072,75 @@ export function TeamApprovalsGrid({
 				</div>,
 				document.body,
 			)}
+		<div className="flex items-center justify-end pb-2">
+			<button
+				ref={columnsButtonRef}
+				type="button"
+				onClick={() => setColumnsMenuOpen((open) => !open)}
+				className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+			>
+				<Settings2 className="h-3.5 w-3.5" />
+				Edit columns
+			</button>
+			{columnsMenuOpen
+				? createPortal(
+						<div
+							ref={columnsMenuRef}
+							className="fixed z-70 min-w-[200px] rounded-lg border border-slate-200 bg-white p-2 shadow-lg"
+							style={{
+								top: columnsMenuPosition.top,
+								left: columnsMenuPosition.left,
+								transform: columnsMenuPosition.openUpward
+									? "translate(-100%, -100%)"
+									: "translateX(-100%)",
+							}}
+						>
+							<div className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+								Columns
+							</div>
+							<div className="space-y-1">
+								{columnOptions.map((option) => {
+									const column = table.getColumn(option.id);
+									const isVisible = column?.getIsVisible() ?? true;
+									const canHide = option.canHide !== false;
+									return (
+										<label
+											key={option.id}
+											className={`flex items-center justify-between gap-2 rounded-md px-2 py-1 text-xs text-slate-700 ${
+												canHide ? "hover:bg-slate-50" : "opacity-60"
+											}`}
+										>
+											<span>{option.label}</span>
+											<input
+												type="checkbox"
+												checked={isVisible}
+												disabled={!canHide}
+												onChange={(event) =>
+													column?.toggleVisibility(event.currentTarget.checked)
+												}
+												className="h-3 w-3 rounded border-gray-300"
+											/>
+										</label>
+									);
+								})}
+							</div>
+						</div>,
+						document.body,
+					)
+				: null}
+		</div>
 		<div className="rounded-xl border border-gray-200 bg-white overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 			<table
 				ref={tableRef}
 				className="w-full min-w-[1100px] table-fixed text-[11px] select-none"
 			>
 				<colgroup>
-					<col className="w-[3%]" />
-					<col className="w-[16%]" />
-					<col className="w-[17%]" />
-					<col className="w-[12%]" />
-					<col className="w-[10%]" />
-					<col className="w-[10%]" />
-					<col className="w-[6%]" />
-					<col className="w-[9%]" />
-					<col className="w-[11%]" />
-					<col className="w-[6%]" />
+					{table.getVisibleLeafColumns().map((col) => (
+						<col
+							key={col.id}
+							className={columnWidthClassById[col.id] ?? "w-auto"}
+						/>
+					))}
 				</colgroup>
 				<thead className="bg-slate-900 text-white">
 					{table.getHeaderGroups().map((headerGroup) => (
@@ -854,7 +1169,10 @@ export function TeamApprovalsGrid({
 				<tbody>
 					{rows.length === 0 ? (
 						<tr className="border-t border-gray-200">
-							<td colSpan={10} className="px-6 py-20">
+							<td
+								colSpan={table.getVisibleLeafColumns().length}
+								className="px-6 py-20"
+							>
 								<div className="mx-auto flex max-w-sm flex-col items-center text-center">
 									<div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
 										<ClipboardCheck className="h-7 w-7 text-slate-500" />
@@ -875,7 +1193,9 @@ export function TeamApprovalsGrid({
 						</tr>
 					) : (
 						table.getRowModel().rows.map((row) => {
-							const pending = Boolean(rowPendingById[row.original.id]);
+							const pending = row.original.logIds.some(
+								(id) => rowPendingById[id],
+							);
 							return (
 								<tr
 									key={row.id}
