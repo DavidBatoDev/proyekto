@@ -16,34 +16,108 @@ import { useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { useToast } from "@/hooks/useToast";
-import type { TaskStatus } from "@/types/roadmap";
+import type { TaskStatus, WorkflowColumn } from "@/types/roadmap";
 import { KanbanCard } from "./KanbanCard";
 import { KanbanColumn } from "./KanbanColumn";
 import { KanbanFilters } from "./KanbanFilters";
-import { KANBAN_COLUMNS, type KanbanTaskContext } from "./types";
+import {
+	DEFAULT_KANBAN_COLUMNS,
+	type KanbanColumnDef,
+	type KanbanTaskContext,
+} from "./types";
 import {
 	applyBoardFilters,
 	selectAllTasksWithContext,
 } from "./selectors";
 
-type ColumnMap = Record<TaskStatus, KanbanTaskContext[]>;
+type ColumnMap = Record<string, KanbanTaskContext[]>;
 
-function groupRowsByStatus(rows: KanbanTaskContext[]): ColumnMap {
-	const map = {} as ColumnMap;
-	for (const column of KANBAN_COLUMNS) map[column.id] = [];
-	for (const row of rows) {
-		const bucket = map[row.task.status];
-		if (bucket) bucket.push(row);
+const ACCENT_CLASS_BY_BUCKET: Record<TaskStatus, string> = {
+	todo: "bg-gray-400",
+	in_progress: "bg-blue-500",
+	in_review: "bg-amber-500",
+	done: "bg-emerald-500",
+	blocked: "bg-red-500",
+};
+
+function buildKanbanColumns(
+	workflowColumns: WorkflowColumn[] | undefined,
+): KanbanColumnDef[] {
+	if (!Array.isArray(workflowColumns) || workflowColumns.length === 0) {
+		return DEFAULT_KANBAN_COLUMNS;
 	}
+
+	return [...workflowColumns]
+		.sort((a, b) => {
+			if (a.position !== b.position) return a.position - b.position;
+			return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+		})
+		.map((column) => ({
+			id: column.id,
+			label: column.name,
+			accent: ACCENT_CLASS_BY_BUCKET[column.bucket_status] ?? "bg-slate-400",
+			bucketStatus: column.bucket_status,
+			color: column.color,
+			isSystem: column.is_system,
+		}));
+}
+
+function firstColumnByBucket(columns: KanbanColumnDef[]): Map<TaskStatus, string> {
+	const map = new Map<TaskStatus, string>();
+	for (const column of columns) {
+		if (!map.has(column.bucketStatus)) {
+			map.set(column.bucketStatus, column.id);
+		}
+	}
+	const firstColumnId = columns[0]?.id;
+	if (firstColumnId) {
+		const statuses: TaskStatus[] = [
+			"todo",
+			"in_progress",
+			"in_review",
+			"done",
+			"blocked",
+		];
+		for (const status of statuses) {
+			if (!map.has(status)) {
+				map.set(status, firstColumnId);
+			}
+		}
+	}
+	return map;
+}
+
+function groupRowsByColumn(
+	rows: KanbanTaskContext[],
+	columns: KanbanColumnDef[],
+): ColumnMap {
+	const map: ColumnMap = {};
+	for (const column of columns) map[column.id] = [];
+
+	const knownColumnIds = new Set(columns.map((column) => column.id));
+	const fallbackColumnByBucket = firstColumnByBucket(columns);
+
+	for (const row of rows) {
+		const explicitColumnId = row.task.workflow_column_id;
+		const targetColumnId =
+			explicitColumnId && knownColumnIds.has(explicitColumnId)
+				? explicitColumnId
+				: fallbackColumnByBucket.get(row.task.status) ?? columns[0]?.id;
+		if (!targetColumnId) continue;
+		if (!map[targetColumnId]) map[targetColumnId] = [];
+		map[targetColumnId].push(row);
+	}
+
 	return map;
 }
 
 function findContainerForTask(
 	columns: ColumnMap,
 	taskId: string,
-): TaskStatus | null {
-	for (const column of KANBAN_COLUMNS) {
-		if (columns[column.id].some((row) => row.task.id === taskId)) {
+	columnDefs: KanbanColumnDef[],
+): string | null {
+	for (const column of columnDefs) {
+		if (columns[column.id]?.some((row) => row.task.id === taskId)) {
 			return column.id;
 		}
 	}
@@ -53,19 +127,21 @@ function findContainerForTask(
 function resolveContainer(
 	columns: ColumnMap,
 	overId: string | null,
-): TaskStatus | null {
+	columnDefs: KanbanColumnDef[],
+): string | null {
 	if (!overId) return null;
-	if (KANBAN_COLUMNS.some((column) => column.id === overId)) {
-		return overId as TaskStatus;
+	if (columnDefs.some((column) => column.id === overId)) {
+		return overId;
 	}
-	return findContainerForTask(columns, overId);
+	return findContainerForTask(columns, overId, columnDefs);
 }
 
 export function KanbanView() {
 	const toast = useToast();
-	const { epics, milestones, boardFilters, updateTaskStatusIntent } =
+	const { roadmap, epics, milestones, boardFilters, updateTaskStatusIntent } =
 		useRoadmapStore(
 			useShallow((s) => ({
+				roadmap: s.roadmap,
 				epics: s.epics,
 				milestones: s.milestones,
 				boardFilters: s.boardFilters,
@@ -82,9 +158,21 @@ export function KanbanView() {
 		[allRows, boardFilters],
 	);
 
+	const kanbanColumns = useMemo(
+		() => buildKanbanColumns(roadmap?.workflow_columns),
+		[roadmap?.workflow_columns],
+	);
+	const columnsById = useMemo(
+		() =>
+			new Map<string, KanbanColumnDef>(
+				kanbanColumns.map((column) => [column.id, column]),
+			),
+		[kanbanColumns],
+	);
+
 	const storeColumns = useMemo(
-		() => groupRowsByStatus(filteredRows),
-		[filteredRows],
+		() => groupRowsByColumn(filteredRows, kanbanColumns),
+		[filteredRows, kanbanColumns],
 	);
 
 	// Local mirror so cross-column drag-over can render movement before commit.
@@ -98,12 +186,12 @@ export function KanbanView() {
 
 	const activeRow = useMemo<KanbanTaskContext | null>(() => {
 		if (!activeId) return null;
-		for (const column of KANBAN_COLUMNS) {
-			const found = columns[column.id].find((row) => row.task.id === activeId);
+		for (const column of kanbanColumns) {
+			const found = columns[column.id]?.find((row) => row.task.id === activeId);
 			if (found) return found;
 		}
 		return null;
-	}, [activeId, columns]);
+	}, [activeId, columns, kanbanColumns]);
 
 	const sensors = useSensors(
 		useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
@@ -125,13 +213,13 @@ export function KanbanView() {
 		const activeTaskId = String(active.id);
 		const overId = String(over.id);
 
-		const fromColumn = findContainerForTask(columns, activeTaskId);
-		const toColumn = resolveContainer(columns, overId);
+		const fromColumn = findContainerForTask(columns, activeTaskId, kanbanColumns);
+		const toColumn = resolveContainer(columns, overId, kanbanColumns);
 		if (!fromColumn || !toColumn || fromColumn === toColumn) return;
 
 		setColumns((prev) => {
-			const sourceList = prev[fromColumn];
-			const destList = prev[toColumn];
+			const sourceList = prev[fromColumn] ?? [];
+			const destList = prev[toColumn] ?? [];
 			const movingIndex = sourceList.findIndex(
 				(row) => row.task.id === activeTaskId,
 			);
@@ -156,14 +244,24 @@ export function KanbanView() {
 	const handleDragEnd = (event: DragEndEvent) => {
 		const { active } = event;
 		const taskId = String(active.id);
-		const finalColumn = findContainerForTask(columns, taskId);
+		const finalColumnId = findContainerForTask(columns, taskId, kanbanColumns);
 		setActiveId(null);
+		if (!finalColumnId) return;
+
+		const finalColumn = columnsById.get(finalColumnId);
 		if (!finalColumn) return;
 
 		const originalRow = filteredRows.find((row) => row.task.id === taskId);
-		if (!originalRow || originalRow.task.status === finalColumn) return;
+		if (!originalRow) return;
 
-		void updateTaskStatusIntent(taskId, finalColumn).catch((error) => {
+		const unchanged =
+			originalRow.task.status === finalColumn.bucketStatus &&
+			(originalRow.task.workflow_column_id ?? null) === finalColumn.id;
+		if (unchanged) return;
+
+		void updateTaskStatusIntent(taskId, finalColumn.bucketStatus, {
+			workflowColumnId: finalColumn.id,
+		}).catch((error) => {
 			toast.error(
 				error instanceof Error
 					? error.message
@@ -190,11 +288,11 @@ export function KanbanView() {
 			>
 				<div className="flex-1 overflow-x-hidden overflow-y-hidden">
 					<div className="flex gap-2 p-2 h-full w-full">
-						{KANBAN_COLUMNS.map((column) => (
+						{kanbanColumns.map((column) => (
 							<KanbanColumn
 								key={column.id}
 								column={column}
-								rows={columns[column.id]}
+								rows={columns[column.id] ?? []}
 							/>
 						))}
 					</div>

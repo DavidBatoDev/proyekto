@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
 	Inbox,
 	LayoutDashboard,
@@ -8,10 +8,14 @@ import {
 	Users,
 	UserPlus,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Project, projectService } from "@/services/project.service";
-import { listMyTeams, type Team } from "@/services/teams.service";
-import { useUser } from "@/stores/authStore";
+import {
+	listMyTeams,
+	type Team,
+	updateWorkspaceDefaults,
+} from "@/services/teams.service";
+import { useProfile, useUser } from "@/stores/authStore";
 import {
 	SidebarNavLink,
 	SidebarSectionHeader,
@@ -46,6 +50,7 @@ function saveOpenTeam(id: string | null) {
 
 export function DashboardSidebar() {
 	const user = useUser();
+	const profile = useProfile();
 	const routerState = useRouterState();
 	const currentPath = routerState.location.pathname;
 
@@ -64,6 +69,27 @@ export function DashboardSidebar() {
 		staleTime: 30 * 1000,
 	});
 	const teams = (teamsQuery.data as Team[] | undefined) ?? [];
+	const workspaceDefaults = (() => {
+		const settings = profile?.settings;
+		if (!settings || typeof settings !== "object") return null;
+		const raw = (settings as Record<string, unknown>).workspace_defaults;
+		if (!raw || typeof raw !== "object") return null;
+		return raw as {
+			default_team_id?: string | null;
+			default_project_id?: string | null;
+			last_team_id?: string | null;
+		};
+	})();
+	const preferredTeamId =
+		workspaceDefaults?.default_team_id ?? workspaceDefaults?.last_team_id ?? null;
+	const preferredProjectId = workspaceDefaults?.default_project_id ?? null;
+
+	const orderedProjects = useMemo(() => {
+		if (!preferredProjectId) return projects;
+		const preferred = projects.find((project) => project.id === preferredProjectId);
+		if (!preferred) return projects;
+		return [preferred, ...projects.filter((project) => project.id !== preferred.id)];
+	}, [projects, preferredProjectId]);
 
 	const activeTeamId = (() => {
 		const match =
@@ -75,6 +101,11 @@ export function DashboardSidebar() {
 	const [openTeamId, setOpenTeamId] = useState<string | null>(
 		() => loadOpenTeam(),
 	);
+	const persistDefaultsMutation = useMutation({
+		mutationFn: (lastTeamId: string | null) =>
+			updateWorkspaceDefaults({ last_team_id: lastTeamId }),
+	});
+	const lastPersistedTeamIdRef = useRef<string | null>(null);
 
 	const lastSyncedActiveTeamId = useRef<string | null>(null);
 	useEffect(() => {
@@ -82,16 +113,35 @@ export function DashboardSidebar() {
 			lastSyncedActiveTeamId.current = activeTeamId;
 			setOpenTeamId(activeTeamId);
 			saveOpenTeam(activeTeamId);
+			if (lastPersistedTeamIdRef.current !== activeTeamId) {
+				lastPersistedTeamIdRef.current = activeTeamId;
+				persistDefaultsMutation.mutate(activeTeamId);
+			}
 		}
-	}, [activeTeamId]);
+	}, [activeTeamId, persistDefaultsMutation]);
+
+	useEffect(() => {
+		if (activeTeamId || openTeamId || teams.length === 0) return;
+		const preferred =
+			(preferredTeamId && teams.find((team) => team.id === preferredTeamId)?.id) ??
+			teams[0]?.id ??
+			null;
+		if (!preferred) return;
+		setOpenTeamId(preferred);
+		saveOpenTeam(preferred);
+	}, [activeTeamId, openTeamId, preferredTeamId, teams]);
 
 	const toggleTeamExpanded = useCallback(
 		(teamId: string, currentlyExpanded: boolean) => {
 			const next = currentlyExpanded ? null : teamId;
 			setOpenTeamId(next);
 			saveOpenTeam(next);
+			if (next && lastPersistedTeamIdRef.current !== next) {
+				lastPersistedTeamIdRef.current = next;
+				persistDefaultsMutation.mutate(next);
+			}
 		},
-		[],
+		[persistDefaultsMutation],
 	);
 
 	return (
@@ -196,7 +246,7 @@ export function DashboardSidebar() {
 						/>
 					) : (
 						<div className="space-y-0.5">
-							{projects.map((p) => (
+							{orderedProjects.map((p) => (
 								<ProjectSidebarLink
 									key={p.id}
 									project={p}

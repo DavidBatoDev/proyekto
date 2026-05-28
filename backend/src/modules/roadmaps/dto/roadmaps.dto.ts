@@ -186,9 +186,19 @@ export class CreateTaskDto {
   @IsEnum(['todo', 'in_progress', 'in_review', 'done', 'blocked'])
   @IsOptional()
   status?: string;
+  @IsUUID() @IsOptional() workflow_column_id?: string;
   @IsUUID() @IsOptional() assignee_id?: string;
   @IsDateString() @IsOptional() due_date?: string;
   @IsNumber() @IsOptional() @Min(0) position?: number;
+  @IsIn(['real_work', 'training']) @IsOptional() work_type?: 'real_work' | 'training';
+}
+
+export class QuickCreateTaskFromTimerDto {
+  @IsUUID() project_id: string;
+  @IsString() @MaxLength(200) title: string;
+  @IsUUID() @IsOptional() assignee_id?: string;
+  @IsDateString() @IsOptional() due_date?: string;
+  @IsIn(['timer']) @IsOptional() source?: 'timer';
   @IsIn(['real_work', 'training']) @IsOptional() work_type?: 'real_work' | 'training';
 }
 
@@ -198,11 +208,52 @@ export class UpdateTaskDto {
   @IsEnum(['todo', 'in_progress', 'in_review', 'done', 'blocked'])
   @IsOptional()
   status?: string;
+  @IsUUID() @IsOptional() workflow_column_id?: string;
   @IsUUID() @IsOptional() assignee_id?: string;
   @IsNumber() @IsOptional() @Min(0) position?: number;
   @IsDateString() @IsOptional() due_date?: string;
   @IsDateString() @IsOptional() completed_at?: string;
   @IsIn(['real_work', 'training']) @IsOptional() work_type?: 'real_work' | 'training';
+}
+
+export class CreateWorkflowColumnDto {
+  @IsString()
+  @MaxLength(80)
+  name: string;
+
+  @IsEnum(['todo', 'in_progress', 'in_review', 'done', 'blocked'])
+  bucket_status: 'todo' | 'in_progress' | 'in_review' | 'done' | 'blocked';
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  position?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(24)
+  color?: string;
+}
+
+export class UpdateWorkflowColumnDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  name?: string;
+
+  @IsOptional()
+  @IsEnum(['todo', 'in_progress', 'in_review', 'done', 'blocked'])
+  bucket_status?: 'todo' | 'in_progress' | 'in_review' | 'done' | 'blocked';
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  position?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(24)
+  color?: string;
 }
 
 // Comment/Attachment DTOs

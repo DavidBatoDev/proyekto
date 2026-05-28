@@ -87,6 +87,8 @@ export class RoadmapAuthorizationService {
     userId: string,
     permission:
       | 'roadmap.edit'
+      | 'roadmap.create_tasks'
+      | 'roadmap.edit_tasks'
       | 'roadmap.view_internal'
       | 'roadmap.comment'
       | 'roadmap.promote',
@@ -120,6 +122,8 @@ export class RoadmapAuthorizationService {
     userId: string,
     permission:
       | 'roadmap.edit'
+      | 'roadmap.create_tasks'
+      | 'roadmap.edit_tasks'
       | 'roadmap.view_internal'
       | 'roadmap.comment'
       | 'roadmap.promote',
@@ -136,6 +140,8 @@ export class RoadmapAuthorizationService {
     userId: string,
     permission:
       | 'roadmap.edit'
+      | 'roadmap.create_tasks'
+      | 'roadmap.edit_tasks'
       | 'roadmap.view_internal'
       | 'roadmap.comment'
       | 'roadmap.promote',
@@ -150,6 +156,8 @@ export class RoadmapAuthorizationService {
     userId: string,
     permission:
       | 'roadmap.edit'
+      | 'roadmap.create_tasks'
+      | 'roadmap.edit_tasks'
       | 'roadmap.view_internal'
       | 'roadmap.comment'
       | 'roadmap.promote',
@@ -164,6 +172,8 @@ export class RoadmapAuthorizationService {
     userId: string,
     permission:
       | 'roadmap.edit'
+      | 'roadmap.create_tasks'
+      | 'roadmap.edit_tasks'
       | 'roadmap.view_internal'
       | 'roadmap.comment'
       | 'roadmap.promote',
@@ -178,6 +188,8 @@ export class RoadmapAuthorizationService {
     userId: string,
     permission:
       | 'roadmap.edit'
+      | 'roadmap.create_tasks'
+      | 'roadmap.edit_tasks'
       | 'roadmap.view_internal'
       | 'roadmap.comment'
       | 'roadmap.promote',

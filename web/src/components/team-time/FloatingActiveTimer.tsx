@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useToast } from "@/contexts/ToastContext";
+import { useRoadmapStore } from "@/stores/roadmapStore";
 import { teamTimeService } from "@/services/team-time.service";
 import { useUser } from "@/stores/authStore";
 import { liveDurationSecondsFromLog, useLiveNowMs } from "./time-utils";
@@ -75,6 +76,16 @@ export function FloatingActiveTimer() {
 
 	const stopMutation = useMutation({
 		mutationFn: (logId: string) => teamTimeService.stopLog(logId),
+		onMutate: async () => {
+			if (!user?.id) return;
+			await queryClient.cancelQueries({
+				queryKey: ["team-time", "running-log", user.id] as const,
+			});
+			queryClient.setQueryData(
+				["team-time", "running-log", user.id] as const,
+				null,
+			);
+		},
 		onSuccess: () => {
 			if (user?.id) {
 				queryClient.setQueryData(
@@ -89,6 +100,7 @@ export function FloatingActiveTimer() {
 			const message =
 				error instanceof Error ? error.message : "Failed to stop timer";
 			toast.error(message);
+			void queryClient.invalidateQueries({ queryKey: ["team-time"] });
 		},
 	});
 
@@ -118,10 +130,7 @@ export function FloatingActiveTimer() {
 
 	useEffect(() => {
 		if (typeof window === "undefined") return;
-		window.localStorage.setItem(
-			TIMER_ANCHOR_STORAGE_KEY,
-			anchor,
-		);
+		window.localStorage.setItem(TIMER_ANCHOR_STORAGE_KEY, anchor);
 	}, [anchor]);
 
 	useEffect(() => {
@@ -146,9 +155,7 @@ export function FloatingActiveTimer() {
 	return (
 		<div className="pointer-events-none fixed inset-0 z-80">
 			<div
-				className={`pointer-events-auto flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-xl shadow-slate-900/10 ${
-					anchorClass
-				}`}
+				className={`pointer-events-auto flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-xl shadow-slate-900/10 ${anchorClass}`}
 			>
 				<div className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
 					<Timer className="h-4 w-4" />
@@ -222,16 +229,36 @@ export function FloatingActiveTimer() {
 							My Logs
 						</Link>
 					) : null}
-					{!isCollapsed && log.task_id ? (
-						<Link
-							to="/project/$projectId/roadmap"
-							params={{ projectId: log.project_id }}
-							search={{ taskId: log.task_id } as never}
-							className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-						>
-							<ExternalLink className="h-3.5 w-3.5" />
-							Roadmap
-						</Link>
+					{!isCollapsed ? (
+						log.task_id ? (
+							<Link
+								to="/project/$projectId/roadmap"
+								params={{ projectId: log.project_id }}
+								search={
+									{
+										nodeId: log.task_id,
+										view: "roadmapView",
+									} as never
+								}
+								onClick={() => {
+									if (log.task_id) useRoadmapStore.getState().openTaskDetail(log.task_id);
+								}}
+								className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+							>
+								<ExternalLink className="h-3.5 w-3.5" />
+								Roadmap
+							</Link>
+						) : (
+							<Link
+								to="/project/$projectId/roadmap"
+								params={{ projectId: log.project_id }}
+								className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+								title="No task linked yet. Open roadmap."
+							>
+								<ExternalLink className="h-3.5 w-3.5" />
+								Roadmap
+							</Link>
+						)
 					) : null}
 					<button
 						type="button"

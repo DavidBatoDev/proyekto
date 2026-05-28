@@ -18,6 +18,7 @@ import {
   TeamMemberRole,
   UpdateTeamDto,
   UpdateTeamMemberDto,
+  UpdateWorkspaceDefaultsDto,
 } from './dto/teams.dto';
 
 export interface TeamMemberPreview {
@@ -37,6 +38,7 @@ export interface TeamRow {
   avatar_url: string | null;
   is_personal: boolean;
   time_tracking_enabled: boolean;
+  retroactive_log_days: number | null;
   created_at: string;
   updated_at: string;
   // Populated by listMyTeams for the team-list UI. Other endpoints that
@@ -340,6 +342,9 @@ export class TeamsService {
       }
       patch.time_tracking_enabled = dto.time_tracking_enabled;
     }
+    if (dto.retroactive_log_days !== undefined) {
+      patch.retroactive_log_days = dto.retroactive_log_days;
+    }
 
     const { data, error } = await this.supabase
       .from('teams')
@@ -445,6 +450,104 @@ export class TeamsService {
       .eq('team_id', teamId);
     if (error) throw new Error(error.message);
     return (data ?? []) as TeamMemberRow[];
+  }
+
+  async updateWorkspaceDefaults(
+    userId: string,
+    dto: UpdateWorkspaceDefaultsDto,
+  ): Promise<{
+    workspace_defaults: {
+      default_team_id: string | null;
+      default_project_id: string | null;
+      last_team_id: string | null;
+    };
+  }> {
+    if (dto.default_team_id) {
+      const team = await this.fetchTeamOrThrow(dto.default_team_id);
+      await this.assertCanRead(team, userId);
+    }
+    if (dto.last_team_id) {
+      const team = await this.fetchTeamOrThrow(dto.last_team_id);
+      await this.assertCanRead(team, userId);
+    }
+
+    if (dto.default_project_id) {
+      const { data: access, error: accessErr } = await this.supabase
+        .from('project_access')
+        .select('project_id')
+        .eq('project_id', dto.default_project_id)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (accessErr) throw new Error(accessErr.message);
+      if (!access) {
+        throw new ForbiddenException(
+          'You do not have access to this default project.',
+        );
+      }
+
+      if (dto.default_team_id) {
+        const { count, error: teamProjErr } = await this.supabase
+          .from('project_teams')
+          .select('*', { count: 'exact', head: true })
+          .eq('project_id', dto.default_project_id)
+          .eq('team_id', dto.default_team_id);
+        if (teamProjErr) throw new Error(teamProjErr.message);
+        if (!count) {
+          throw new BadRequestException(
+            'default_project_id is not attached to default_team_id.',
+          );
+        }
+      }
+    }
+
+    const { data: profile, error: profileErr } = await this.supabase
+      .from('profiles')
+      .select('settings')
+      .eq('id', userId)
+      .maybeSingle();
+    if (profileErr) throw new Error(profileErr.message);
+
+    const currentSettings =
+      profile && typeof profile.settings === 'object' && profile.settings
+        ? (profile.settings as Record<string, unknown>)
+        : {};
+    const currentDefaultsRaw = currentSettings.workspace_defaults;
+    const currentDefaults =
+      currentDefaultsRaw && typeof currentDefaultsRaw === 'object'
+        ? (currentDefaultsRaw as Record<string, unknown>)
+        : {};
+
+    const workspaceDefaults = {
+      default_team_id:
+        dto.default_team_id !== undefined
+          ? dto.default_team_id ?? null
+          : (currentDefaults.default_team_id as string | null | undefined) ?? null,
+      default_project_id:
+        dto.default_project_id !== undefined
+          ? dto.default_project_id ?? null
+          : (currentDefaults.default_project_id as string | null | undefined) ??
+            null,
+      last_team_id:
+        dto.last_team_id !== undefined
+          ? dto.last_team_id ?? null
+          : (currentDefaults.last_team_id as string | null | undefined) ?? null,
+    };
+
+    const nextSettings = {
+      ...currentSettings,
+      workspace_defaults: workspaceDefaults,
+    };
+
+    const { error: updateErr } = await this.supabase
+      .from('profiles')
+      .update({
+        settings: nextSettings,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId);
+    if (updateErr) throw new Error(updateErr.message);
+
+    return { workspace_defaults: workspaceDefaults };
   }
 
   async addMember(

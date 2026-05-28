@@ -11,6 +11,44 @@ import { Button } from "@/ui/button";
 import { BrandMark } from "@/components/brand/BrandMark";
 import UserMenu from "./UserMenu";
 
+function notificationTitle(typeName?: string) {
+	if (typeName === "project_invite_received") return "New project invite";
+	if (typeName === "project_invite_responded") return "Invite response";
+	if (typeName === "marketplace_profile_live") return "Profile is live";
+	if (typeName === "task_assigned") return "Task assigned";
+	if (typeName === "time_log_approval_requested") return "Time approval requested";
+	if (typeName === "time_log_approved") return "Time log approved";
+	if (typeName === "time_log_rejected") return "Time log rejected";
+	if (typeName === "time_log_pending") return "Time log reset to pending";
+	if (typeName === "time_log_day_rejected") return "Daily logs rejected";
+	if (typeName === "time_log_comment_added") return "Time log comment";
+	return "Notification";
+}
+
+function notificationBody(content: Record<string, unknown> | null | undefined) {
+	const messageValue = content?.message;
+	if (typeof messageValue === "string" && messageValue.trim()) {
+		return messageValue;
+	}
+	const reasonValue = content?.reason;
+	if (typeof reasonValue === "string" && reasonValue.trim()) {
+		return `Reason: ${reasonValue}`;
+	}
+	const dayValue = content?.day;
+	if (typeof dayValue === "string" && dayValue.trim()) {
+		return `Day: ${dayValue}`;
+	}
+	const statusValue = content?.status;
+	if (typeof statusValue === "string") {
+		if (statusValue === "approved") return "Your logged time was approved.";
+		if (statusValue === "rejected") return "Your logged time was rejected.";
+		if (statusValue === "pending")
+			return "A time log was moved back to pending.";
+		return `Invite was ${statusValue}.`;
+	}
+	return "You have a new update.";
+}
+
 const DashboardHeader = () => {
 	const { isAuthenticated, profile } = useAuthStore();
 	const isAuthLoading = useIsLoading();
@@ -194,24 +232,10 @@ const DashboardHeader = () => {
 							) : (
 								recentNotifications.map((notification) => {
 									const typeName = notification.type?.name;
-									const title =
-										typeName === "project_invite_received"
-											? "New project invite"
-											: typeName === "project_invite_responded"
-												? "Invite response"
-												: typeName === "marketplace_profile_live"
-													? "Profile is live"
-													: "Notification";
+									const title = notificationTitle(typeName);
 
-									const messageValue = notification.content?.message;
-									const statusValue = notification.content?.status;
 									const inviteIdValue = notification.content?.invite_id;
-									const message =
-										typeof messageValue === "string" && messageValue.trim()
-											? messageValue
-											: typeof statusValue === "string"
-												? `Invite was ${statusValue}.`
-												: "You have a new update.";
+									const message = notificationBody(notification.content ?? null);
 
 									return (
 										<MenuItem

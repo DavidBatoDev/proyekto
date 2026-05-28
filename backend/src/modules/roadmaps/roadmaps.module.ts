@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ProjectsModule } from '../projects/projects.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 // Controllers
 import { RoadmapsController } from './controllers/roadmaps.controller';
@@ -11,6 +12,7 @@ import { TaskExtrasController } from './controllers/task-extras.controller';
 import { RoadmapPatchController } from './controllers/roadmap-patch.controller';
 import { RoadmapAiController } from './controllers/roadmap-ai.controller';
 import { RoadmapAiSessionsController } from './controllers/roadmap-ai-sessions.controller';
+import { WorkflowColumnsController } from './controllers/workflow-columns.controller';
 
 // Services & tokens
 import {
@@ -39,6 +41,7 @@ import { RoadmapAiService } from './services/roadmap-ai.service';
 import { RoadmapAiPreviewStoreService } from './services/roadmap-ai-preview-store.service';
 import { RoadmapAiSessionsService } from './services/roadmap-ai-sessions.service';
 import { RoadmapAiTitleGeneratorService } from './services/roadmap-ai-title-generator.service';
+import { WorkflowColumnsService } from './services/workflow-columns.service';
 
 // Repository implementations
 import { RoadmapsRepositorySupabase } from './repositories/roadmaps.repository.supabase';
@@ -52,7 +55,7 @@ import { RoadmapJsonPatchProcessor } from './patch/roadmap-json-patch.processor'
 import { RoadmapAuthorizationService } from './services/roadmap-authorization.service';
 
 @Module({
-  imports: [ProjectsModule],
+  imports: [ProjectsModule, NotificationsModule],
   controllers: [
     RoadmapsController,
     MilestonesController,
@@ -63,6 +66,7 @@ import { RoadmapAuthorizationService } from './services/roadmap-authorization.se
     RoadmapPatchController,
     RoadmapAiController,
     RoadmapAiSessionsController,
+    WorkflowColumnsController,
   ],
   providers: [
     RoadmapsService,
@@ -78,6 +82,7 @@ import { RoadmapAuthorizationService } from './services/roadmap-authorization.se
     },
     RoadmapJsonPatchProcessor,
     RoadmapAuthorizationService,
+    WorkflowColumnsService,
     MilestonesService,
     { provide: MILESTONES_REPOSITORY, useClass: MilestonesRepositorySupabase },
     EpicsService,

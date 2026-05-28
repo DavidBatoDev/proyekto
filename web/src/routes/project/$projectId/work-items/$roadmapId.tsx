@@ -1,9 +1,20 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useMutation } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ListChecks, AlertCircle, Loader2, Plus } from "lucide-react";
+import {
+	ListChecks,
+	AlertCircle,
+	Loader2,
+	Plus,
+	ReceiptText,
+	Sparkles,
+} from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useRoadmapFullQuery } from "@/hooks/useProjectQueries";
+import { useToast } from "@/hooks/useToast";
+import { taskService } from "@/services/roadmap.service";
 import { useRoadmapStore } from "@/stores/roadmapStore";
+import type { TaskStatus } from "@/types/roadmap";
 import { KanbanView } from "@/components/roadmap/views/kanban/KanbanView";
 import { WorkItemsBrowserModal } from "@/components/roadmap/modals/WorkItemsBrowserModal";
 import { useRoadmapCanvasController } from "@/components/roadmap/views/roadmap/hooks/useRoadmapCanvasController";
@@ -16,19 +27,58 @@ export const Route = createFileRoute(
 });
 
 function WorkItemsBoardPage() {
-  const { projectId, roadmapId } = Route.useParams();
-  const [isBrowserOpen, setIsBrowserOpen] = useState(false);
-  const roadmapFullQuery = useRoadmapFullQuery(roadmapId);
-  const { applyRoadmapSnapshot } = useRoadmapStore(
-    useShallow((s) => ({
-      applyRoadmapSnapshot: s.applyRoadmapSnapshot,
-    })),
-  );
+	const { projectId, roadmapId } = Route.useParams();
+	const navigate = useNavigate();
+	const toast = useToast();
+	const [isBrowserOpen, setIsBrowserOpen] = useState(false);
+	const [templateKey, setTemplateKey] = useState<
+		"discovery_call" | "proposal" | "onboarding"
+	>("discovery_call");
+	const [columnName, setColumnName] = useState("");
+	const [columnBucket, setColumnBucket] = useState<TaskStatus>("todo");
+	const roadmapFullQuery = useRoadmapFullQuery(roadmapId);
+	const { applyRoadmapSnapshot } = useRoadmapStore(
+		useShallow((s) => ({
+			applyRoadmapSnapshot: s.applyRoadmapSnapshot,
+		})),
+	);
+	const applyTemplateMutation = useMutation({
+		mutationFn: (key: "discovery_call" | "proposal" | "onboarding") =>
+			taskService.applyWorkflowTemplate(roadmapId, key),
+		onSuccess: async (result) => {
+			await roadmapFullQuery.refetch();
+			toast.success(
+				`Template applied: ${result.created_columns} column(s), ${result.created_tasks} task(s)`,
+			);
+		},
+		onError: (error) => {
+			toast.error(
+				error instanceof Error ? error.message : "Failed to apply template",
+			);
+		},
+	});
+	const createColumnMutation = useMutation({
+		mutationFn: () =>
+			taskService.createWorkflowColumn(roadmapId, {
+				name: columnName.trim(),
+				bucket_status: columnBucket,
+			}),
+		onSuccess: async () => {
+			setColumnName("");
+			await roadmapFullQuery.refetch();
+			toast.success("Workflow column added");
+		},
+		onError: (error) => {
+			toast.error(
+				error instanceof Error ? error.message : "Failed to create column",
+			);
+		},
+	});
 
-  useEffect(() => {
-    if (roadmapFullQuery.data) {
-      applyRoadmapSnapshot(roadmapFullQuery.data);
-    }
+	useEffect(() => {
+		if (roadmapFullQuery.data) {
+			applyRoadmapSnapshot(roadmapFullQuery.data);
+		}
   }, [roadmapFullQuery.data, applyRoadmapSnapshot]);
 
   const controller = useRoadmapCanvasController({
@@ -54,12 +104,84 @@ function WorkItemsBoardPage() {
                 Work Items
               </h1>
               <p className="text-[11px] text-slate-400">
-                Board view of every task in this roadmap
-              </p>
-            </div>
-          </div>
+				Board view of every task in this roadmap
+				</p>
+			</div>
+		</div>
 
-          <div className="flex items-center gap-2 shrink-0">
+					<div className="flex items-center gap-2 shrink-0">
+						<div className="hidden items-center gap-1.5 xl:flex">
+							<select
+								value={templateKey}
+								onChange={(event) =>
+									setTemplateKey(
+										event.target.value as
+											| "discovery_call"
+											| "proposal"
+											| "onboarding",
+									)
+								}
+								className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-700"
+							>
+								<option value="discovery_call">Discovery Template</option>
+								<option value="proposal">Proposal Template</option>
+								<option value="onboarding">Onboarding Template</option>
+							</select>
+							<button
+								type="button"
+								onClick={() => applyTemplateMutation.mutate(templateKey)}
+								disabled={applyTemplateMutation.isPending || isLoading}
+								className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+							>
+								<Sparkles className="w-3.5 h-3.5" />
+								{applyTemplateMutation.isPending ? "Applying..." : "Apply template"}
+							</button>
+						</div>
+						<div className="hidden items-center gap-1.5 xl:flex">
+							<input
+								value={columnName}
+								onChange={(event) => setColumnName(event.target.value)}
+								placeholder="New column"
+								className="h-8 w-28 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-700"
+							/>
+							<select
+								value={columnBucket}
+								onChange={(event) =>
+									setColumnBucket(event.target.value as TaskStatus)
+								}
+								className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-700"
+							>
+								<option value="todo">To do</option>
+								<option value="in_progress">In progress</option>
+								<option value="in_review">In review</option>
+								<option value="done">Done</option>
+								<option value="blocked">Blocked</option>
+							</select>
+							<button
+								type="button"
+								onClick={() => createColumnMutation.mutate()}
+								disabled={
+									createColumnMutation.isPending || isLoading || !columnName.trim()
+								}
+								className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+							>
+								<Plus className="w-3.5 h-3.5" />
+								{createColumnMutation.isPending ? "Adding..." : "Add column"}
+							</button>
+						</div>
+						<button
+							type="button"
+							onClick={() =>
+								navigate({
+									to: "/project/$projectId/payments",
+                  params: { projectId },
+                })
+              }
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              <ReceiptText className="w-3.5 h-3.5" />
+              Invoices
+            </button>
             <button
               type="button"
               onClick={() => setIsBrowserOpen(true)}

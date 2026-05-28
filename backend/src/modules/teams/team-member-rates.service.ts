@@ -24,6 +24,9 @@ export interface TeamMemberRateRow {
   custom_id: string | null;
   start_date: string | null;
   end_date: string | null;
+  weekly_limit_hours: number | null;
+  monthly_limit_hours: number | null;
+  overtime_requires_approval: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -129,6 +132,9 @@ export class TeamMemberRatesService {
         custom_id: dto.custom_id ?? null,
         start_date: dto.start_date ?? null,
         end_date: dto.end_date ?? null,
+        weekly_limit_hours: dto.weekly_limit_hours ?? null,
+        monthly_limit_hours: dto.monthly_limit_hours ?? null,
+        overtime_requires_approval: dto.overtime_requires_approval ?? false,
       };
       const { data, error } = await this.supabase
         .from('team_member_rates')
@@ -165,6 +171,15 @@ export class TeamMemberRatesService {
     if (dto.custom_id !== undefined) patch.custom_id = dto.custom_id || null;
     if (dto.start_date !== undefined) patch.start_date = dto.start_date || null;
     if (dto.end_date !== undefined) patch.end_date = dto.end_date || null;
+    if (dto.weekly_limit_hours !== undefined) {
+      patch.weekly_limit_hours = dto.weekly_limit_hours ?? null;
+    }
+    if (dto.monthly_limit_hours !== undefined) {
+      patch.monthly_limit_hours = dto.monthly_limit_hours ?? null;
+    }
+    if (dto.overtime_requires_approval !== undefined) {
+      patch.overtime_requires_approval = dto.overtime_requires_approval;
+    }
 
     // If moving this row from closed → open-ended, pre-close any sibling
     // open-ended row on the same project to keep the partial unique index intact.

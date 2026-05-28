@@ -191,6 +191,34 @@ export interface ProjectResourcesPayload {
   uncategorized_links: ProjectResourceLink[];
 }
 
+export interface DashboardSummaryFilters {
+  from: string | null;
+  to: string | null;
+  project_id: string | null;
+  team_id: string | null;
+  member_user_id: string | null;
+}
+
+export interface DashboardSummary {
+  filters: DashboardSummaryFilters;
+  time: {
+    total_logs: number;
+    total_seconds: number;
+    total_hours: number;
+    status_counts: Record<string, number>;
+    total_fees: number;
+  };
+  overtime: {
+    over_limit_windows: number;
+    overage_hours_total: number;
+  };
+  invoices: {
+    total_count: number;
+    total_amount: number;
+    status_counts: Record<string, number>;
+  };
+}
+
 export interface ProjectInvite {
   id: string;
   project_id: string;
@@ -420,6 +448,50 @@ class ProjectService {
 
     const result = await response.json();
     return result.data;
+  }
+
+  async getDashboardSummary(params?: {
+    from?: string;
+    to?: string;
+    project_id?: string;
+    team_id?: string;
+    member_user_id?: string;
+  }): Promise<DashboardSummary> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      throw new Error("Authentication required");
+    }
+
+    const search = new URLSearchParams();
+    if (params?.from) search.set("from", params.from);
+    if (params?.to) search.set("to", params.to);
+    if (params?.project_id) search.set("project_id", params.project_id);
+    if (params?.team_id) search.set("team_id", params.team_id);
+    if (params?.member_user_id) search.set("member_user_id", params.member_user_id);
+    const query = search.toString();
+
+    const response = await fetch(
+      `${import.meta.env.VITE_API_URL}/api/projects/dashboard/summary${query ? `?${query}` : ""}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(
+        extractApiErrorMessage(error, "Failed to fetch dashboard summary"),
+      );
+    }
+
+    const result = await response.json();
+    return result.data as DashboardSummary;
   }
 
   async getMembers(projectId: string): Promise<ProjectMember[]> {

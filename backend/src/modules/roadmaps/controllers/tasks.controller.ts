@@ -19,6 +19,7 @@ import {
   CreateTaskDto,
   UpdateTaskDto,
   BulkReorderDto,
+  QuickCreateTaskFromTimerDto,
 } from '../dto/roadmaps.dto';
 
 @Controller('tasks')
@@ -44,6 +45,14 @@ export class TasksController {
   @Post()
   create(@Body() dto: CreateTaskDto, @CurrentUser() user: AuthenticatedUser) {
     return this.tasksService.create(dto, user.id);
+  }
+
+  @Post('quick-create')
+  quickCreate(
+    @Body() dto: QuickCreateTaskFromTimerDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.tasksService.quickCreateFromTimer(dto, user.id);
   }
 
   @Patch('reorder')

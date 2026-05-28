@@ -21,7 +21,7 @@ import type { TaskStatus } from "@/types/roadmap";
 import { GlobalKanbanFilters } from "./GlobalKanbanFilters";
 import { KanbanCard } from "./KanbanCard";
 import { KanbanColumn } from "./KanbanColumn";
-import { KANBAN_COLUMNS, type KanbanTaskContext } from "./types";
+import { DEFAULT_KANBAN_COLUMNS, type KanbanTaskContext } from "./types";
 
 export interface GlobalBoardFilters {
 	projectId: string | null;
@@ -37,7 +37,7 @@ const EMPTY_FILTERS: GlobalBoardFilters = {
 	assigneeIds: [],
 };
 
-type ColumnMap = Record<TaskStatus, KanbanTaskContext[]>;
+type ColumnMap = Record<string, KanbanTaskContext[]>;
 
 function buildAllRows(roadmaps: FullRoadmapWithProject[]): KanbanTaskContext[] {
 	const result: KanbanTaskContext[] = [];
@@ -88,8 +88,8 @@ function applyFilters(
 }
 
 function groupByStatus(rows: KanbanTaskContext[]): ColumnMap {
-	const map = {} as ColumnMap;
-	for (const col of KANBAN_COLUMNS) map[col.id] = [];
+	const map: ColumnMap = {};
+	for (const col of DEFAULT_KANBAN_COLUMNS) map[col.id] = [];
 	for (const row of rows) {
 		const bucket = map[row.task.status];
 		if (bucket) bucket.push(row);
@@ -101,8 +101,10 @@ function findContainerForTask(
 	columns: ColumnMap,
 	taskId: string,
 ): TaskStatus | null {
-	for (const col of KANBAN_COLUMNS) {
-		if (columns[col.id].some((r) => r.task.id === taskId)) return col.id;
+	for (const col of DEFAULT_KANBAN_COLUMNS) {
+		if (columns[col.id]?.some((r) => r.task.id === taskId)) {
+			return col.id as TaskStatus;
+		}
 	}
 	return null;
 }
@@ -112,7 +114,8 @@ function resolveContainer(
 	overId: string | null,
 ): TaskStatus | null {
 	if (!overId) return null;
-	if (KANBAN_COLUMNS.some((c) => c.id === overId)) return overId as TaskStatus;
+	if (DEFAULT_KANBAN_COLUMNS.some((c) => c.id === overId))
+		return overId as TaskStatus;
 	return findContainerForTask(columns, overId);
 }
 
@@ -182,8 +185,8 @@ export function GlobalKanbanView({
 
 	const activeRow = useMemo<KanbanTaskContext | null>(() => {
 		if (!activeId) return null;
-		for (const col of KANBAN_COLUMNS) {
-			const found = columns[col.id].find((r) => r.task.id === activeId);
+		for (const col of DEFAULT_KANBAN_COLUMNS) {
+			const found = columns[col.id]?.find((r) => r.task.id === activeId);
 			if (found) return found;
 		}
 		return null;
@@ -213,8 +216,8 @@ export function GlobalKanbanView({
 		if (!fromColumn || !toColumn || fromColumn === toColumn) return;
 
 		setColumns((prev) => {
-			const sourceList = prev[fromColumn];
-			const destList = prev[toColumn];
+			const sourceList = prev[fromColumn] ?? [];
+			const destList = prev[toColumn] ?? [];
 			const movingIndex = sourceList.findIndex(
 				(r) => r.task.id === activeTaskId,
 			);
@@ -308,11 +311,11 @@ export function GlobalKanbanView({
 			>
 				<div className="flex-1 overflow-x-hidden overflow-y-hidden">
 					<div className="flex gap-2 p-2 h-full w-full">
-						{KANBAN_COLUMNS.map((column) => (
+						{DEFAULT_KANBAN_COLUMNS.map((column) => (
 							<KanbanColumn
 								key={column.id}
 								column={column}
-								rows={columns[column.id]}
+								rows={columns[column.id] ?? []}
 								onCardClick={handleCardClick}
 							/>
 						))}

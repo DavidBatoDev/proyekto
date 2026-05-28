@@ -25,6 +25,9 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
   }
 
   private normalizeFullRoadmapOrdering(roadmap: any): any {
+    const workflowColumns = this.sortByPosition(
+      Array.isArray(roadmap?.workflow_columns) ? roadmap.workflow_columns : [],
+    );
     const epics = this.sortByPosition(
       Array.isArray(roadmap?.epics) ? roadmap.epics : [],
     ).map((epic: any) => {
@@ -45,6 +48,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
 
     return {
       ...roadmap,
+      workflow_columns: workflowColumns,
       epics,
     };
   }
@@ -238,6 +242,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
         `
         *,
         project:projects(id, title),
+        workflow_columns:roadmap_workflow_columns(*),
         milestones:roadmap_milestones(*),
         epics:roadmap_epics(*, features:roadmap_features(*, ${taskSelect}))
       `,
@@ -291,6 +296,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
         `
         *,
         project:projects(id, title),
+        workflow_columns:roadmap_workflow_columns(*),
         milestones:roadmap_milestones(*),
         epics:roadmap_epics(*, features:roadmap_features(*, tasks:roadmap_tasks(*, assignee:profiles(id, display_name, avatar_url, email, first_name, last_name))))
       `,
@@ -933,6 +939,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
         `
         *,
         project:projects(id, title),
+        workflow_columns:roadmap_workflow_columns(*),
         epics:roadmap_epics(*, features:roadmap_features(*, tasks:roadmap_tasks(*)))
       `,
       )

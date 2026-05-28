@@ -40,6 +40,17 @@ export type TaskStatus =
   | "blocked";
 export type TaskPriority = "urgent" | "high" | "medium" | "low";
 export type TaskWorkType = "real_work" | "training";
+export interface WorkflowColumn {
+  id: string;
+  roadmap_id: string;
+  name: string;
+  position: number;
+  color?: string | null;
+  bucket_status: TaskStatus;
+  is_system: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface Roadmap {
   id: string;
@@ -68,6 +79,7 @@ export interface Roadmap {
     avatar_url?: string;
     headline?: string;
   };
+  workflow_columns?: WorkflowColumn[];
 }
 
 export interface RoadmapMilestone {
@@ -150,6 +162,7 @@ export interface RoadmapTask {
   feature_id: string;
   title: string;
   assignee_id?: string | null;
+  workflow_column_id?: string | null;
   status: TaskStatus;
   priority: TaskPriority;
   position: number;

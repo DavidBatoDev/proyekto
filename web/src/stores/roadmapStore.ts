@@ -50,7 +50,7 @@ interface RoadmapState {
   pendingEpicById: Record<string, boolean>;
   pendingFeatureById: Record<string, boolean>;
   pendingTaskById: Record<string, boolean>;
-  queuedTaskStatusIntentById: Record<string, RoadmapTask["status"]>;
+  queuedTaskStatusIntentById: Record<string, TaskStatusIntent>;
   activeTaskStatusSyncById: Record<string, boolean>;
   taskStatusRollbackById: Partial<Record<string, RoadmapTask>>;
 
@@ -140,6 +140,7 @@ interface RoadmapActions {
   updateTaskStatusIntent: (
     taskId: string,
     nextStatus: RoadmapTask["status"],
+    options?: { workflowColumnId?: string | null },
   ) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
 
@@ -208,6 +209,10 @@ interface RoadmapActions {
 }
 
 type RoadmapStore = RoadmapState & RoadmapActions;
+type TaskStatusIntent = {
+  status: RoadmapTask["status"];
+  workflowColumnId?: string | null;
+};
 
 const clearPendingKey = <T>(
   record: Record<string, T>,
@@ -1568,6 +1573,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
   updateTaskStatusIntent: async (
     taskId: string,
     nextStatus: RoadmapTask["status"],
+    options?: { workflowColumnId?: string | null },
   ) => {
     const taskBeforeIntent = findTaskById(get().epics, taskId);
     if (!taskBeforeIntent) return;
@@ -1578,10 +1584,17 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
       epics: patchTaskById(state.epics, taskId, (task) => ({
         ...task,
         status: nextStatus,
+        workflow_column_id:
+          options?.workflowColumnId !== undefined
+            ? options.workflowColumnId
+            : task.workflow_column_id,
       })),
       queuedTaskStatusIntentById: {
         ...state.queuedTaskStatusIntentById,
-        [taskId]: nextStatus,
+        [taskId]: {
+          status: nextStatus,
+          workflowColumnId: options?.workflowColumnId,
+        },
       },
       taskStatusRollbackById: {
         ...state.taskStatusRollbackById,
@@ -1615,7 +1628,8 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         try {
           const updated = await taskService.update(taskId, {
             title: taskForRequest.title,
-            status: intentStatus,
+            status: intentStatus.status,
+            workflow_column_id: intentStatus.workflowColumnId,
             priority: taskForRequest.priority,
             position: taskForRequest.position,
             assignee_id: taskForRequest.assignee_id,

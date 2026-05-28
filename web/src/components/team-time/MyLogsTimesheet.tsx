@@ -74,7 +74,6 @@ function statusBadgeClass(status: string) {
 
 function buildGridData(
 	logs: TaskTimeLog[],
-	dates: Date[],
 	nowMs: number,
 ): { projectGroups: ProjectGroup[]; dailyTotals: Record<string, number>; maxCellHours: number } {
 	const rowMap = new Map<
@@ -219,10 +218,9 @@ type MenuItem = {
 };
 
 function ActionsMenu({
-	rowId,
 	items,
 	loading,
-}: { rowId: string; items: MenuItem[]; loading?: boolean }) {
+}: { items: MenuItem[]; loading?: boolean }) {
 	const [open, setOpen] = useState(false);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	const menuRef = useRef<HTMLDivElement>(null);
@@ -269,7 +267,7 @@ function ActionsMenu({
 				createPortal(
 					<div
 						ref={menuRef}
-						className="fixed z-[70] min-w-[180px] rounded-lg border border-slate-200 bg-white p-1 shadow-lg"
+						className="fixed z-70 min-w-[180px] rounded-lg border border-slate-200 bg-white p-1 shadow-lg"
 						style={{
 							top: pos.top,
 							left: pos.left,
@@ -393,9 +391,14 @@ function ExpandedLogEntry({
 			>
 				{isRunning ? "running" : log.status}
 			</span>
+			{log.limit_context?.over_limit ? (
+				<span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+					Over {log.limit_context.limit_window ?? "limit"}
+				</span>
+			) : null}
 			{/* Actions */}
 			<div className="ml-auto shrink-0">
-				<ActionsMenu rowId={log.id} items={menuItems} loading={isPending} />
+				<ActionsMenu items={menuItems} loading={isPending} />
 			</div>
 		</div>
 	);
@@ -452,7 +455,7 @@ export function MyLogsTimesheet({
 	const hasActiveLog = hasRunning;
 
 	const { projectGroups, dailyTotals, maxCellHours } = useMemo(
-		() => buildGridData(logs, dates, nowMs),
+		() => buildGridData(logs, nowMs),
 		[logs, dates, nowMs],
 	);
 

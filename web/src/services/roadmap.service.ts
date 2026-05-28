@@ -15,6 +15,7 @@ import type {
 	RoadmapMilestone,
 	RoadmapStatus,
 	RoadmapTask,
+	WorkflowColumn,
 	TaskPriority,
 	TaskStatus,
 	TaskWorkType,
@@ -85,6 +86,7 @@ export interface ApiResponse<T> {
 export interface FullRoadmap extends Roadmap {
 	milestones: RoadmapMilestone[];
 	epics: RoadmapEpic[];
+	workflow_columns?: WorkflowColumn[];
 }
 
 // Full roadmap with embedded project info (returned by /api/roadmaps/all-full)
@@ -267,6 +269,7 @@ export interface CreateTaskDto {
 	feature_id: string;
 	title: string;
 	status?: TaskStatus;
+	workflow_column_id?: string | null;
 	priority?: TaskPriority;
 	work_type?: TaskWorkType;
 	position?: number;
@@ -274,15 +277,39 @@ export interface CreateTaskDto {
 	due_date?: string;
 }
 
+export interface QuickCreateTaskFromTimerDto {
+	project_id: string;
+	title: string;
+	assignee_id?: string | null;
+	due_date?: string;
+	source?: "timer";
+	work_type?: TaskWorkType;
+}
+
 export interface UpdateTaskDto {
 	title?: string;
 	status?: TaskStatus;
+	workflow_column_id?: string | null;
 	priority?: TaskPriority;
 	work_type?: TaskWorkType;
 	position?: number;
 	assignee_id?: string | null;
 	due_date?: string | null;
 	completed_at?: string;
+}
+
+export interface CreateWorkflowColumnDto {
+	name: string;
+	bucket_status: TaskStatus;
+	position?: number;
+	color?: string;
+}
+
+export interface UpdateWorkflowColumnDto {
+	name?: string;
+	bucket_status?: TaskStatus;
+	position?: number;
+	color?: string;
 }
 
 export interface ReorderTaskDto {
@@ -883,6 +910,107 @@ export const taskService = {
 			return response.data.data;
 		} catch (error) {
 			throw handleServiceError(error, "Create task");
+		}
+	},
+
+	async listWorkflowColumns(roadmapId: string): Promise<WorkflowColumn[]> {
+		try {
+			const response = await apiClient.get<ApiResponse<WorkflowColumn[]>>(
+				`/api/roadmaps/${roadmapId}/workflow-columns`,
+			);
+			return response.data.data ?? [];
+		} catch (error) {
+			throw handleServiceError(error, `List workflow columns for ${roadmapId}`);
+		}
+	},
+
+	async createWorkflowColumn(
+		roadmapId: string,
+		payload: CreateWorkflowColumnDto,
+	): Promise<WorkflowColumn> {
+		try {
+			const response = await apiClient.post<ApiResponse<WorkflowColumn>>(
+				`/api/roadmaps/${roadmapId}/workflow-columns`,
+				payload,
+			);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(error, `Create workflow column for ${roadmapId}`);
+		}
+	},
+
+	async updateWorkflowColumn(
+		roadmapId: string,
+		columnId: string,
+		payload: UpdateWorkflowColumnDto,
+	): Promise<WorkflowColumn> {
+		try {
+			const response = await apiClient.patch<ApiResponse<WorkflowColumn>>(
+				`/api/roadmaps/${roadmapId}/workflow-columns/${columnId}`,
+				payload,
+			);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(
+				error,
+				`Update workflow column ${columnId} for ${roadmapId}`,
+			);
+		}
+	},
+
+	async deleteWorkflowColumn(
+		roadmapId: string,
+		columnId: string,
+	): Promise<{ deleted: true }> {
+		try {
+			const response = await apiClient.delete<ApiResponse<{ deleted: true }>>(
+				`/api/roadmaps/${roadmapId}/workflow-columns/${columnId}`,
+			);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(
+				error,
+				`Delete workflow column ${columnId} for ${roadmapId}`,
+			);
+		}
+	},
+
+	async applyWorkflowTemplate(
+		roadmapId: string,
+		templateKey: "discovery_call" | "proposal" | "onboarding",
+	): Promise<{
+		applied_template: string;
+		created_columns: number;
+		created_tasks: number;
+	}> {
+		try {
+			const response = await apiClient.post<
+				ApiResponse<{
+					applied_template: string;
+					created_columns: number;
+					created_tasks: number;
+				}>
+			>(`/api/roadmaps/${roadmapId}/workflow-templates/${templateKey}/apply`);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(
+				error,
+				`Apply workflow template ${templateKey} for ${roadmapId}`,
+			);
+		}
+	},
+
+	async quickCreateFromTimer(
+		data: QuickCreateTaskFromTimerDto,
+	): Promise<RoadmapTask> {
+		try {
+			const response = await apiClient.post<ApiResponse<RoadmapTask>>(
+				"/api/tasks/quick-create",
+				data,
+			);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(error, "Quick create task from timer");
 		}
 	},
 

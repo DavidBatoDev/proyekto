@@ -14,6 +14,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
 import { TeamTimeService } from './team-time.service';
 import {
+  CreateTimeLogCommentDto,
   CreateManualTimeLogDto,
   ListLogsQueryDto,
   ReviewTimeLogDto,
@@ -70,6 +71,23 @@ export class TeamTimeController {
     @Body() dto: ReviewTimeLogDto,
   ) {
     return this.service.reviewLog(user.id, logId, dto);
+  }
+
+  @Get('logs/:logId/comments')
+  listLogComments(
+    @Param('logId') logId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.listLogComments(user.id, logId);
+  }
+
+  @Post('logs/:logId/comments')
+  createLogComment(
+    @Param('logId') logId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateTimeLogCommentDto,
+  ) {
+    return this.service.createLogComment(user.id, logId, dto);
   }
 
   @Patch('logs/:logId')

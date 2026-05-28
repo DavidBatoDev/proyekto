@@ -1,32 +1,36 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useToast } from "@/hooks/useToast";
-import { useUser } from "@/stores/authStore";
+import { ScrollNavButtons } from "@/components/common/ScrollNavButtons";
+import { SidePanel } from "@/components/roadmap/panels/SidePanel";
 import {
-	listMemberRates,
-	type TeamMember,
-	type TeamMemberRate,
-} from "@/services/teams.service";
-import {
-	teamTimeService,
-	type TaskTimeLog,
-} from "@/services/team-time.service";
-import { roadmapService, taskService } from "@/services/roadmap.service";
+	computeLogStats,
+	TeamLogsStatsCard,
+} from "@/components/team-time/TeamLogsStatsCard";
 import { TeamMemberRateHistoryDrawer } from "@/components/team-time/TeamMemberRateHistoryDrawer";
+import { TeamMyLogsGrid } from "@/components/team-time/TeamMyLogsGrid";
 import {
 	AddLogModal,
 	DeleteTimeLogModal,
 	EditLogModal,
 } from "@/components/team-time/TeamTimeModals";
-import { SidePanel } from "@/components/roadmap/panels/SidePanel";
 import {
 	fromLocalDateTimeInput,
 	toLocalDateTimeInput,
 } from "@/components/team-time/time-utils";
-import { TeamMyLogsGrid } from "@/components/team-time/TeamMyLogsGrid";
+import { useToast } from "@/hooks/useToast";
+import { roadmapService, taskService } from "@/services/roadmap.service";
+import {
+	type TaskTimeLog,
+	teamTimeService,
+} from "@/services/team-time.service";
+import {
+	listMemberRates,
+	type TeamMember,
+	type TeamMemberRate,
+} from "@/services/teams.service";
+import { useUser } from "@/stores/authStore";
 import type { RoadmapTask } from "@/types/roadmap";
-import { ScrollNavButtons } from "@/components/common/ScrollNavButtons";
 
 export const Route = createFileRoute("/teams/$teamId/time/my-logs")({
 	component: MyLogsTab,
@@ -46,7 +50,9 @@ function MyLogsTab() {
 	const [addProjectId, setAddProjectId] = useState("");
 	const [addTaskId, setAddTaskId] = useState("");
 	const [isCreateTaskPanelOpen, setIsCreateTaskPanelOpen] = useState(false);
-	const [createTaskFeatureId, setCreateTaskFeatureId] = useState<string | null>(null);
+	const [createTaskFeatureId, setCreateTaskFeatureId] = useState<string | null>(
+		null,
+	);
 	const [createTaskContext, setCreateTaskContext] = useState<{
 		featureId: string | null;
 		epicTitle: string | null;
@@ -56,7 +62,9 @@ function MyLogsTab() {
 	const [editStartedAt, setEditStartedAt] = useState("");
 	const [editEndedAt, setEditEndedAt] = useState("");
 	const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
-	const [deletingLogLabel, setDeletingLogLabel] = useState<string | undefined>();
+	const [deletingLogLabel, setDeletingLogLabel] = useState<
+		string | undefined
+	>();
 	const [taskModalLog, setTaskModalLog] = useState<TaskTimeLog | null>(null);
 	const [taskModalTaskId, setTaskModalTaskId] = useState("");
 	const [historyOpen, setHistoryOpen] = useState(false);
@@ -120,6 +128,7 @@ function MyLogsTab() {
 	);
 
 	const allLogs = logsQuery.data?.items ?? [];
+	const stats = useMemo(() => computeLogStats(allLogs), [allLogs]);
 
 	// Prefill project when add modal opens
 	useEffect(() => {
@@ -128,8 +137,7 @@ function MyLogsTab() {
 			(a, b) =>
 				new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
 		);
-		const next =
-			sortedByRecent[0]?.project_id ?? projectsQuery.data?.[0]?.id;
+		const next = sortedByRecent[0]?.project_id ?? projectsQuery.data?.[0]?.id;
 		if (next) setAddProjectId(next);
 	}, [addOpen, addProjectId, allLogs, projectsQuery.data]);
 
@@ -171,7 +179,11 @@ function MyLogsTab() {
 	});
 
 	const editMutation = useMutation({
-		mutationFn: (input: { id: string; started_at?: string; ended_at?: string }) =>
+		mutationFn: (input: {
+			id: string;
+			started_at?: string;
+			ended_at?: string;
+		}) =>
 			teamTimeService.updateLog(input.id, {
 				started_at: input.started_at,
 				ended_at: input.ended_at,
@@ -205,7 +217,11 @@ function MyLogsTab() {
 		mutationFn: async (input: {
 			taskData: Partial<RoadmapTask>;
 			featureId: string | null;
-			context: { featureId: string | null; epicTitle: string | null; featureTitle: string | null } | null;
+			context: {
+				featureId: string | null;
+				epicTitle: string | null;
+				featureTitle: string | null;
+			} | null;
 			projectId: string;
 		}) => {
 			const { taskData, context, projectId } = input;
@@ -234,7 +250,8 @@ function MyLogsTab() {
 			};
 			let featureId = input.featureId?.trim() ?? "";
 			if (!featureId) featureId = (await resolveFeature()) ?? "";
-			if (!featureId) throw new Error("Select a feature before creating a task.");
+			if (!featureId)
+				throw new Error("Select a feature before creating a task.");
 			const title = (taskData.title ?? "").trim();
 			return taskService.create({
 				feature_id: featureId,
@@ -264,15 +281,20 @@ function MyLogsTab() {
 	// ─── Handlers ───────────────────────────────────────────────────────────
 
 	const handleStop = useCallback(
-		async (id: string) => { await stopMutation.mutateAsync(id); },
+		async (id: string) => {
+			await stopMutation.mutateAsync(id);
+		},
 		[stopMutation],
 	);
-	const handleDelete = useCallback((id: string) => {
-		const label = allLogs.find((l) => l.id === id)?.task?.title ?? undefined;
-		setDeletingLogLabel(label);
-		setDeletingLogId(id);
-		return Promise.resolve();
-	}, [allLogs]);
+	const handleDelete = useCallback(
+		(id: string) => {
+			const label = allLogs.find((l) => l.id === id)?.task?.title ?? undefined;
+			setDeletingLogLabel(label);
+			setDeletingLogId(id);
+			return Promise.resolve();
+		},
+		[allLogs],
+	);
 	const handleEdit = useCallback((log: TaskTimeLog) => {
 		setEditingLog(log);
 		setEditStartedAt(toLocalDateTimeInput(log.started_at));
@@ -294,7 +316,11 @@ function MyLogsTab() {
 		[navigate],
 	);
 	const handleOpenCreateTaskPanel = useCallback(
-		(ctx: { featureId: string | null; epicTitle: string | null; featureTitle: string | null }) => {
+		(ctx: {
+			featureId: string | null;
+			epicTitle: string | null;
+			featureTitle: string | null;
+		}) => {
 			if (!ctx.featureId && !ctx.featureTitle) {
 				toast.error("Select a feature before creating a task.");
 				return;
@@ -327,44 +353,35 @@ function MyLogsTab() {
 			map[taskChangeMutation.variables.id] = true;
 		return map;
 	}, [
-		stopMutation.isPending, stopMutation.variables,
-		editMutation.isPending, editMutation.variables,
-		taskChangeMutation.isPending, taskChangeMutation.variables,
+		stopMutation.isPending,
+		stopMutation.variables,
+		editMutation.isPending,
+		editMutation.variables,
+		taskChangeMutation.isPending,
+		taskChangeMutation.variables,
 	]);
 
 	const activeRate = firstActiveRate;
 	const rateHistory = myAllRates;
-	const hasRateHistory = rateHistory.filter((r) => r.end_date === null).length < rateHistory.length;
+	const hasRateHistory =
+		rateHistory.filter((r) => r.end_date === null).length < rateHistory.length;
 
 	// ─── Render ─────────────────────────────────────────────────────────────
 
 	return (
 		<>
-			{/* Compact rate / stats bar */}
-			{activeRate && (
-				<div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs shadow-sm">
-					<span className="font-semibold text-slate-700">
-						{Number(activeRate.hourly_rate).toFixed(2)}{" "}
-						{activeRate.currency || "USD"}/hr
-					</span>
-					<span className="text-slate-300">·</span>
-					<span className="text-slate-500">
-						Training:{" "}
-						{Number(activeRate.training_hourly_rate).toFixed(2)}{" "}
-						{activeRate.currency || "USD"}/hr
-					</span>
-					{hasRateHistory && (
-						<button
-							type="button"
-							onClick={() => setHistoryOpen(true)}
-							className="ml-auto text-xs font-medium text-blue-600 hover:underline"
-						>
-							View rate history
-						</button>
-					)}
-				</div>
-			)}
-
+			{/* Legacy-style rate + totals card */}
+			<TeamLogsStatsCard
+				rate={activeRate}
+				stats={stats}
+				fallbackCurrency={activeRate?.currency || "USD"}
+				loading={logsQuery.isPending}
+				canShowHistory={hasRateHistory}
+				onOpenHistory={hasRateHistory ? () => setHistoryOpen(true) : undefined}
+				includePaidColumn={false}
+				includeTrainingRate={false}
+				rateLabel="Rate"
+			/>
 			{/* Logs table */}
 			<TeamMyLogsGrid
 				logs={allLogs}
@@ -412,8 +429,17 @@ function MyLogsTab() {
 				saveLabel="Start Timer"
 				title="Start a timer"
 				description="Pick a project, then a task to start logging."
-				onClose={() => { if (startMutation.isPending) return; setAddOpen(false); setAddTaskId(""); }}
-				onSave={() => startMutation.mutate({ projectId: addProjectId, taskId: addTaskId || null })}
+				onClose={() => {
+					if (startMutation.isPending) return;
+					setAddOpen(false);
+					setAddTaskId("");
+				}}
+				onSave={() =>
+					startMutation.mutate({
+						projectId: addProjectId,
+						taskId: addTaskId || null,
+					})
+				}
 				onChangeProjectId={(v) => setAddProjectId(v)}
 				onChangeTaskId={(v) => setAddTaskId(v)}
 				onRequestCreateTask={handleOpenCreateTaskPanel}
@@ -445,7 +471,10 @@ function MyLogsTab() {
 				startedAt={editStartedAt}
 				endedAt={editEndedAt}
 				saving={editMutation.isPending}
-				onClose={() => { if (editMutation.isPending) return; setEditingLog(null); }}
+				onClose={() => {
+					if (editMutation.isPending) return;
+					setEditingLog(null);
+				}}
 				onSave={() => {
 					if (!editingLog) return;
 					editMutation.mutate({
@@ -463,8 +492,13 @@ function MyLogsTab() {
 				isOpen={Boolean(deletingLogId)}
 				deleting={deleteMutation.isPending}
 				taskLabel={deletingLogLabel}
-				onClose={() => { if (deleteMutation.isPending) return; setDeletingLogId(null); }}
-				onConfirm={() => { if (deletingLogId) deleteMutation.mutate(deletingLogId); }}
+				onClose={() => {
+					if (deleteMutation.isPending) return;
+					setDeletingLogId(null);
+				}}
+				onConfirm={() => {
+					if (deletingLogId) deleteMutation.mutate(deletingLogId);
+				}}
 			/>
 
 			{/* Change task modal */}
@@ -472,7 +506,12 @@ function MyLogsTab() {
 				isOpen={Boolean(taskModalLog)}
 				projects={
 					taskModalLog
-						? [{ id: taskModalLog.project_id, title: taskModalLog.project?.title ?? "Current project" }]
+						? [
+								{
+									id: taskModalLog.project_id,
+									title: taskModalLog.project?.title ?? "Current project",
+								},
+							]
 						: []
 				}
 				tasks={tasksForRowQuery.data ?? []}
@@ -483,7 +522,10 @@ function MyLogsTab() {
 				title="Change task"
 				description="Reassign this log to another task in the same project."
 				saveLabel="Change task"
-				onClose={() => { if (taskChangeMutation.isPending) return; setTaskModalLog(null); }}
+				onClose={() => {
+					if (taskChangeMutation.isPending) return;
+					setTaskModalLog(null);
+				}}
 				onSave={() => {
 					if (!taskModalLog) return;
 					const next = taskModalTaskId || null;

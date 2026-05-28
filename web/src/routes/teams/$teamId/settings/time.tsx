@@ -1,6 +1,7 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Clock, Loader2, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
 import { TeamSettingsLayout } from "@/components/team/TeamSettingsLayout";
 import { useToast } from "@/hooks/useToast";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
@@ -30,6 +31,10 @@ function TeamTimeSettings() {
 	});
 
 	const team = teamQuery.data;
+	const [retroDays, setRetroDays] = useState(0);
+	useEffect(() => {
+		setRetroDays(Number(team?.retroactive_log_days ?? 0));
+	}, [team?.retroactive_log_days]);
 	const isOwner = team?.owner_id === user?.id;
 	// The flag can only be flipped by the team owner, and only when that
 	// owner is a consultant-verified profile. For viewers who are not
@@ -52,6 +57,17 @@ function TeamTimeSettings() {
 			// Sidebar reads from listMyTeams; refetch so the new "Time"
 			// sub-link appears (or disappears) immediately.
 			qc.invalidateQueries({ queryKey: ["teams", "mine"] });
+		},
+		onError: (e: Error) => toast.error(e.message),
+	});
+
+	const retroPolicyMutation = useMutation({
+		mutationFn: (days: number) =>
+			updateTeam(teamId, { retroactive_log_days: Math.max(0, days) }),
+		onSuccess: () => {
+			toast.success("Retroactive logging policy updated");
+			qc.invalidateQueries({ queryKey: ["teams", "detail", teamId] });
+			qc.invalidateQueries({ queryKey: ["team", teamId] });
 		},
 		onError: (e: Error) => toast.error(e.message),
 	});
@@ -106,6 +122,11 @@ function TeamTimeSettings() {
 									aria-checked={enabled}
 									disabled={!canToggle || toggleMutation.isPending}
 									onClick={() => toggleMutation.mutate(!enabled)}
+									title={
+										enabled
+											? "Time tracking is currently enabled"
+											: "Time tracking is currently disabled"
+									}
 									className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
 										enabled ? "bg-emerald-500" : "bg-slate-300"
 									}`}
@@ -156,6 +177,44 @@ function TeamTimeSettings() {
 									>
 										Manage rates
 									</Link>
+								</div>
+							)}
+
+							<div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+								Default behavior: teams start with time tracking off until the
+								owner enables it. Once enabled, members with rates can log time
+								and admins can review logs.
+							</div>
+
+							{enabled && isOwner && (
+								<div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+									<p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+										Retroactive manual logs
+									</p>
+									<p className="mt-1 text-xs text-slate-500">
+										Set how many days back members can manually add or edit logs.
+										Set to <span className="font-semibold">0</span> for no limit.
+									</p>
+									<div className="mt-3 flex items-center gap-2">
+										<input
+											type="number"
+											min={0}
+											value={retroDays}
+											onChange={(e) =>
+												setRetroDays(Math.max(0, Number(e.target.value || 0)))
+											}
+											className="w-28 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+										/>
+										<span className="text-xs text-slate-500">days</span>
+										<button
+											type="button"
+											onClick={() => retroPolicyMutation.mutate(retroDays)}
+											disabled={retroPolicyMutation.isPending}
+											className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+										>
+											{retroPolicyMutation.isPending ? "Saving..." : "Save policy"}
+										</button>
+									</div>
 								</div>
 							)}
 						</div>

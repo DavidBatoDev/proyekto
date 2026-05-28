@@ -5,7 +5,6 @@ import { Loader2 } from "lucide-react";
 import { AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { useUser } from "@/stores/authStore";
 import {
-	hasAnyActiveRate,
 	getTeam,
 	listTeamMembers,
 } from "@/services/teams.service";
@@ -51,7 +50,7 @@ function TimeIndexRedirect() {
 		team?.owner_id === user?.id ||
 		myMembership?.role === "admin" ||
 		myMembership?.role === "owner";
-	const hasOwnRate = myActiveRateQuery.data === true;
+	const isTeamMember = Boolean(myMembership);
 
 	const allLoaded =
 		teamQuery.isSuccess &&
@@ -63,7 +62,7 @@ function TimeIndexRedirect() {
 		| "/teams/$teamId/time/team-logs"
 		| "/teams/$teamId/time/manage-rates"
 		| null = allLoaded
-		? hasOwnRate
+		? isTeamMember
 			? "/teams/$teamId/time/my-logs"
 			: isApprover
 				? "/teams/$teamId/time/team-logs"
@@ -92,8 +91,7 @@ function TimeIndexRedirect() {
 		<AppSurfaceCard>
 			<div className="space-y-3 p-6 text-sm text-slate-600">
 				<p>
-					You don't have a rate set on this team yet, and you're not an admin.
-					Ask the team owner to give you a rate so you can start logging time.
+					You don't have access to time tracking on this team.
 				</p>
 				<Link
 					to="/teams/$teamId"

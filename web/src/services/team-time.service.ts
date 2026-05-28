@@ -32,10 +32,44 @@ export interface TaskTimeLog {
 	work_type_snapshot: TaskWorkType;
 	created_at: string;
 	updated_at: string;
+	limit_context?: TimeLogLimitContext;
 	task?: { id: string; title: string; work_type?: TaskWorkType } | null;
 	member?: ProfileMini | null;
 	reviewer?: Pick<ProfileMini, "id" | "display_name" | "avatar_url"> | null;
 	project?: { id: string; title: string | null } | null;
+	day_review_summary?: TimeLogDaySummary;
+	review_comments?: TimeLogComment[];
+}
+
+export interface TimeLogComment {
+	id: string;
+	log_id: string;
+	author_user_id: string;
+	body: string;
+	created_at: string;
+	updated_at: string;
+	author?: ProfileMini | null;
+}
+
+export interface TimeLogDaySummary {
+	day: string;
+	total_logs: number;
+	pending_logs: number;
+	approved_logs: number;
+	paid_logs: number;
+	rejected_logs: number;
+	total_seconds: number;
+	limit_context?: TimeLogLimitContext;
+}
+
+export interface TimeLogLimitContext {
+	over_limit: boolean;
+	limit_window: "weekly" | "monthly" | null;
+	limit_hours: number | null;
+	logged_hours_in_window: number | null;
+	overtime_requires_approval: boolean;
+	window_start: string | null;
+	window_end: string | null;
 }
 
 export interface TimeLogListResult {
@@ -48,6 +82,9 @@ export interface ResolvedTeamRate {
 	hourly_rate: number;
 	training_hourly_rate: number;
 	currency: string;
+	weekly_limit_hours: number | null;
+	monthly_limit_hours: number | null;
+	overtime_requires_approval: boolean;
 }
 
 export interface ProjectTaskOption {
@@ -245,7 +282,7 @@ export const teamTimeService = {
 		logIds: string[],
 		decision: TimeLogReviewDecision,
 		reason?: string,
-	): Promise<{ reviewed: number }> {
+	): Promise<{ reviewed: number; day_summaries?: TimeLogDaySummary[] }> {
 		try {
 			const res = await apiClient.post<ApiResponse<{ reviewed: number }>>(
 				"/api/team-time/logs/review-bulk",
@@ -254,6 +291,32 @@ export const teamTimeService = {
 			return res.data.data;
 		} catch (e) {
 			throw extractError(e, "Failed to review time logs");
+		}
+	},
+
+	async listLogComments(logId: string): Promise<TimeLogComment[]> {
+		try {
+			const res = await apiClient.get<ApiResponse<TimeLogComment[]>>(
+				`/api/team-time/logs/${logId}/comments`,
+			);
+			return res.data.data ?? [];
+		} catch (e) {
+			throw extractError(e, "Failed to fetch log comments");
+		}
+	},
+
+	async createLogComment(
+		logId: string,
+		body: string,
+	): Promise<TimeLogComment> {
+		try {
+			const res = await apiClient.post<ApiResponse<TimeLogComment>>(
+				`/api/team-time/logs/${logId}/comments`,
+				{ body },
+			);
+			return res.data.data;
+		} catch (e) {
+			throw extractError(e, "Failed to add log comment");
 		}
 	},
 

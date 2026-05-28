@@ -116,6 +116,12 @@ export class ReviewTimeLogsBulkDto {
   reason?: string;
 }
 
+export class CreateTimeLogCommentDto {
+  @IsString()
+  @MaxLength(2000)
+  body!: string;
+}
+
 export class ListLogsQueryDto {
   @IsOptional()
   @IsIn(TIME_LOG_STATUSES)

@@ -68,6 +68,9 @@ interface TeamLogsStatsCardProps {
 	loading: boolean;
 	canShowHistory?: boolean;
 	onOpenHistory?: () => void;
+	includePaidColumn?: boolean;
+	includeTrainingRate?: boolean;
+	rateLabel?: string;
 }
 
 export function TeamLogsStatsCard({
@@ -77,6 +80,9 @@ export function TeamLogsStatsCard({
 	loading,
 	canShowHistory = false,
 	onOpenHistory,
+	includePaidColumn = true,
+	includeTrainingRate = true,
+	rateLabel = "Work",
 }: TeamLogsStatsCardProps) {
 	const renderCurrencies =
 		stats.currencies.length > 0 ? stats.currencies : [fallbackCurrency];
@@ -110,13 +116,17 @@ export function TeamLogsStatsCard({
 				amount: pick("approvedFees", c),
 			})),
 		},
-		{
-			label: "Paid",
-			values: renderCurrencies.map((c) => ({
-				currency: c,
-				amount: pick("paidFees", c),
-			})),
-		},
+		...(includePaidColumn
+			? [
+					{
+						label: "Paid",
+						values: renderCurrencies.map((c) => ({
+							currency: c,
+							amount: pick("paidFees", c),
+						})),
+					},
+				]
+			: []),
 		{
 			label: "Rejected",
 			values: renderCurrencies.map((c) => ({
@@ -157,23 +167,25 @@ export function TeamLogsStatsCard({
 						)}
 						<span className="inline-flex items-center gap-1.5">
 							<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-								Work
+								{rateLabel}
 							</span>
 							<span className="text-sm font-semibold text-slate-900">
 								{Number(rate.hourly_rate).toFixed(2)} {rate.currency || "USD"}
 								<span className="font-normal text-slate-500">/hr</span>
 							</span>
 						</span>
-						<span className="inline-flex items-center gap-1.5">
-							<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-								Training
+						{includeTrainingRate && (
+							<span className="inline-flex items-center gap-1.5">
+								<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+									Training
+								</span>
+								<span className="text-sm font-semibold text-slate-900">
+									{Number(rate.training_hourly_rate).toFixed(2)}{" "}
+									{rate.currency || "USD"}
+									<span className="font-normal text-slate-500">/hr</span>
+								</span>
 							</span>
-							<span className="text-sm font-semibold text-slate-900">
-								{Number(rate.training_hourly_rate).toFixed(2)}{" "}
-								{rate.currency || "USD"}
-								<span className="font-normal text-slate-500">/hr</span>
-							</span>
-						</span>
+						)}
 						{rate.start_date && (
 							<span className="text-slate-400">
 								since {formatRateDate(rate.start_date)}

@@ -22,6 +22,7 @@ export interface Team {
 	avatar_url: string | null;
 	is_personal: boolean;
 	time_tracking_enabled: boolean;
+	retroactive_log_days?: number | null;
 	created_at: string;
 	updated_at: string;
 	// Populated by listMyTeams. Other endpoints that return a single
@@ -64,8 +65,17 @@ export interface TeamMemberRate {
 	custom_id: string | null;
 	start_date: string | null;
 	end_date: string | null;
+	weekly_limit_hours: number | null;
+	monthly_limit_hours: number | null;
+	overtime_requires_approval: boolean;
 	created_at: string;
 	updated_at: string;
+}
+
+export interface WorkspaceDefaults {
+	default_team_id: string | null;
+	default_project_id: string | null;
+	last_team_id: string | null;
 }
 
 export interface ProjectTeam {
@@ -182,6 +192,7 @@ export async function updateTeam(
 		description?: string;
 		avatar_url?: string;
 		time_tracking_enabled?: boolean;
+		retroactive_log_days?: number;
 	},
 ): Promise<Team> {
 	try {
@@ -264,6 +275,9 @@ export interface CreateTeamMemberRatePayload {
 	custom_id?: string;
 	start_date?: string;
 	end_date?: string;
+	weekly_limit_hours?: number;
+	monthly_limit_hours?: number;
+	overtime_requires_approval?: boolean;
 }
 
 export interface UpdateTeamMemberRatePayload {
@@ -273,6 +287,27 @@ export interface UpdateTeamMemberRatePayload {
 	custom_id?: string;
 	start_date?: string;
 	end_date?: string | null;
+	weekly_limit_hours?: number;
+	monthly_limit_hours?: number;
+	overtime_requires_approval?: boolean;
+}
+
+export async function updateWorkspaceDefaults(
+	patch: Partial<WorkspaceDefaults>,
+): Promise<{ workspace_defaults: WorkspaceDefaults }> {
+	try {
+		const { data } = await apiClient.patch<{
+			data: { workspace_defaults: WorkspaceDefaults };
+		}>("/api/teams/preferences/defaults", patch);
+		return data.data;
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to update workspace defaults",
+			),
+		);
+	}
 }
 
 export async function listMemberRates(

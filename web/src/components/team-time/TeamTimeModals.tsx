@@ -463,8 +463,7 @@ export function AddRateModal({
 					</div>
 
 					<div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-						Members with no rate row cannot use the My Logs tab or timer
-						actions.
+						Members with no rate row cannot start timers or add new logs.
 					</div>
 				</div>
 

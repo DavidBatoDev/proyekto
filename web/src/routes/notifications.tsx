@@ -7,6 +7,9 @@ import {
   CheckCircle2,
   Briefcase,
   Info,
+  XCircle,
+  MessageCircle,
+  Clock3,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -29,14 +32,32 @@ function getNotificationTitle(item: NotificationItem) {
   if (name === "project_invite_received") return "New project invite";
   if (name === "project_invite_responded") return "Invite response";
   if (name === "marketplace_profile_live") return "Profile is live";
+  if (name === "task_assigned") return "Task assigned";
+  if (name === "time_log_approval_requested") return "Time approval requested";
+  if (name === "time_log_approved") return "Time log approved";
+  if (name === "time_log_rejected") return "Time log rejected";
+  if (name === "time_log_pending") return "Time log reset to pending";
+  if (name === "time_log_day_rejected") return "Daily logs rejected";
+  if (name === "time_log_comment_added") return "Time log comment";
   return "Notification";
 }
 
 function getNotificationBody(item: NotificationItem) {
   const message = item.content?.message;
   if (typeof message === "string" && message.trim()) return message;
+  const reason = item.content?.reason;
+  if (typeof reason === "string" && reason.trim()) {
+    return `Reason: ${reason}`;
+  }
+  const day = item.content?.day;
+  if (typeof day === "string" && day.trim()) {
+    return `Day: ${day}`;
+  }
   const status = item.content?.status;
   if (typeof status === "string") {
+    if (status === "approved") return "Your logged time was approved.";
+    if (status === "rejected") return "Your logged time was rejected.";
+    if (status === "pending") return "A time log was moved back to pending.";
     return `Invite was ${status}.`;
   }
   return "You have an update.";
@@ -52,6 +73,21 @@ function getNotificationIcon(item: NotificationItem) {
   }
   if (name === "marketplace_profile_live") {
     return <CheckCircle2 className="w-5 h-5 text-emerald-500" />;
+  }
+  if (name === "task_assigned") {
+    return <Briefcase className="w-5 h-5 text-sky-600" />;
+  }
+  if (name === "time_log_approval_requested") {
+    return <Clock3 className="w-5 h-5 text-amber-600" />;
+  }
+  if (name === "time_log_approved") {
+    return <CheckCircle2 className="w-5 h-5 text-emerald-500" />;
+  }
+  if (name === "time_log_rejected" || name === "time_log_day_rejected") {
+    return <XCircle className="w-5 h-5 text-rose-500" />;
+  }
+  if (name === "time_log_comment_added") {
+    return <MessageCircle className="w-5 h-5 text-orange-500" />;
   }
   return <Info className="w-5 h-5 text-gray-400" />;
 }

@@ -352,6 +352,7 @@ function ProjectsEmptyState({
 			</p>
 			<Link
 				to="/project-posting"
+				search={{ roadmapId: undefined }}
 				className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
 			>
 				<Plus className="h-4 w-4" />
