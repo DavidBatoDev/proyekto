@@ -784,19 +784,44 @@ export class TeamTimeService {
   }
 
   private async attachLimitContextBatch(logs: TimeLogRow[]): Promise<TimeLogRow[]> {
-    const cache = new Map<string, TimeLogLimitContext>();
-    const enriched: TimeLogRow[] = [];
-    for (const log of logs) {
-      const context = await this.resolveLimitContextForLog(log, cache);
-      enriched.push({
-        ...log,
-        limit_context: context,
-        day_review_summary: log.day_review_summary
-          ? { ...log.day_review_summary, limit_context: context }
-          : log.day_review_summary,
-      });
-    }
-    return enriched;
+    // Pre-fetch all unique (project, member) rates in parallel to eliminate N+1 on resolveTeamRate.
+    const rateCache = new Map<string, ResolvedTeamRate | null>();
+    const uniquePairs = [
+      ...new Set(logs.map((l) => `${l.project_id}|${l.member_user_id}`)),
+    ];
+    await Promise.all(
+      uniquePairs.map(async (key) => {
+        const sep = key.indexOf('|');
+        const rate = await this.resolveTeamRate(
+          key.slice(0, sep),
+          key.slice(sep + 1),
+        );
+        rateCache.set(key, rate);
+      }),
+    );
+
+    // Promise-based window-sum cache: stores the in-flight Promise so parallel
+    // calls for the same window share the same DB round-trip instead of each
+    // firing their own.
+    const windowSumPromises = new Map<string, Promise<number>>();
+
+    return Promise.all(
+      logs.map(async (log) => {
+        const context = await this.resolveLimitContextForLog(
+          log,
+          undefined,
+          rateCache,
+          windowSumPromises,
+        );
+        return {
+          ...log,
+          limit_context: context,
+          day_review_summary: log.day_review_summary
+            ? { ...log.day_review_summary, limit_context: context }
+            : log.day_review_summary,
+        };
+      }),
+    );
   }
 
   private getWeekWindowUtc(iso: string): { start: string; end: string } | null {
@@ -885,7 +910,9 @@ export class TeamTimeService {
 
   private async resolveLimitContextForLog(
     log: TimeLogRow,
-    cache?: Map<string, TimeLogLimitContext>,
+    _legacyCache?: Map<string, TimeLogLimitContext>,
+    rateCache?: Map<string, ResolvedTeamRate | null>,
+    windowSumPromises?: Map<string, Promise<number>>,
   ): Promise<TimeLogLimitContext> {
     if (!log.team_id) {
       return {
@@ -899,7 +926,10 @@ export class TeamTimeService {
       };
     }
 
-    const rate = await this.resolveTeamRate(log.project_id, log.member_user_id);
+    const rateCacheKey = `${log.project_id}|${log.member_user_id}`;
+    const rate = rateCache?.has(rateCacheKey)
+      ? (rateCache.get(rateCacheKey) ?? null)
+      : await this.resolveTeamRate(log.project_id, log.member_user_id);
     if (!rate) {
       return {
         over_limit: false,
@@ -968,29 +998,24 @@ export class TeamTimeService {
 
     for (const window of windows) {
       const cacheKey = this.buildLimitCacheKey(log, window.key, window.start, window.end);
-      let cached = cache?.get(cacheKey) ?? null;
-      if (!cached) {
-        const hours = await this.sumLoggedHoursInWindow(log, window.start, window.end);
-        const context: TimeLogLimitContext = {
-          over_limit: hours > Number(window.limit ?? 0),
-          limit_window: window.key,
-          limit_hours: Number(window.limit ?? 0),
-          logged_hours_in_window: hours,
-          overtime_requires_approval: Boolean(rate.overtime_requires_approval),
-          window_start: window.start,
-          window_end: window.end,
-        };
-        if (cache) cache.set(cacheKey, context);
-        cached = context;
+      // Use the promise cache so parallel calls for the same window share one DB round-trip.
+      if (windowSumPromises && !windowSumPromises.has(cacheKey)) {
+        windowSumPromises.set(
+          cacheKey,
+          this.sumLoggedHoursInWindow(log, window.start, window.end),
+        );
       }
+      const hours = windowSumPromises
+        ? await windowSumPromises.get(cacheKey)!
+        : await this.sumLoggedHoursInWindow(log, window.start, window.end);
 
       const candidate = {
         key: window.key,
-        limit: Number(cached.limit_hours ?? 0),
-        start: cached.window_start ?? window.start,
-        end: cached.window_end ?? window.end,
-        hours: Number(cached.logged_hours_in_window ?? 0),
-        over: cached.over_limit,
+        limit: Number(window.limit ?? 0),
+        start: window.start,
+        end: window.end,
+        hours,
+        over: hours > Number(window.limit ?? 0),
       };
 
       if (!selected) {

@@ -15,6 +15,7 @@ import { DashboardShell } from "@/components/layout/DashboardShell";
 import { useAuthStore, useUser } from "@/stores/authStore";
 import {
 	getTeam,
+	hasAnyActiveRate,
 	listTeamMembers,
 } from "@/services/teams.service";
 

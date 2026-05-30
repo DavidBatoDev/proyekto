@@ -6,6 +6,7 @@ import { AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { useUser } from "@/stores/authStore";
 import {
 	getTeam,
+	hasAnyActiveRate,
 	listTeamMembers,
 } from "@/services/teams.service";
 
