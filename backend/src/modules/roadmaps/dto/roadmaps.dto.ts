@@ -217,7 +217,7 @@ export class UpdateCommentDto {
 export class AddAttachmentDto {
   @IsString() file_name: string;
   @IsString() @IsOptional() file_url?: string | null;
-  @IsString() @IsOptional() file_type?: string;
+  @IsString() @IsOptional() mime_type?: string;
   @IsNumber() @IsOptional() @Min(0) file_size?: number;
 }
 

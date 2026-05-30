@@ -25,25 +25,27 @@
 BEGIN;
 
 -- ── client_id backfill ──────────────────────────────────────────────────────
-INSERT INTO public.project_access (project_id, user_id, role, origin)
+INSERT INTO public.project_access (project_id, user_id, role, origin, has_direct_grant)
 SELECT
   p.id AS project_id,
   p.client_id AS user_id,
   'owner'::share_role AS role,
-  'legacy' AS origin
+  'legacy' AS origin,
+  true AS has_direct_grant
 FROM public.projects p
 WHERE p.client_id IS NOT NULL
-ON CONFLICT (project_id, user_id, origin) DO NOTHING;
+ON CONFLICT (project_id, user_id) DO NOTHING;
 
 -- ── consultant_id backfill ──────────────────────────────────────────────────
-INSERT INTO public.project_access (project_id, user_id, role, origin)
+INSERT INTO public.project_access (project_id, user_id, role, origin, has_direct_grant)
 SELECT
   p.id AS project_id,
   p.consultant_id AS user_id,
   'owner'::share_role AS role,
-  'legacy' AS origin
+  'legacy' AS origin,
+  true AS has_direct_grant
 FROM public.projects p
 WHERE p.consultant_id IS NOT NULL
-ON CONFLICT (project_id, user_id, origin) DO NOTHING;
+ON CONFLICT (project_id, user_id) DO NOTHING;
 
 COMMIT;

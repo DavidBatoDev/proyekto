@@ -287,7 +287,7 @@ export interface UpdateTaskDto {
 export interface AddTaskAttachmentDto {
 	file_name: string;
 	file_size?: number;
-	file_type?: string;
+	mime_type?: string;
 }
 
 export interface ReorderTaskDto {
