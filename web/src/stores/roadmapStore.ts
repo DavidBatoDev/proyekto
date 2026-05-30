@@ -1447,11 +1447,13 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
       const newTask = await taskService.create({
         feature_id: featureId,
         title,
+        description: data.description,
         status: data.status || "todo",
         priority: data.priority || "medium",
         assignee_id: data.assignee_id,
         position: optimisticPosition,
         due_date: data.due_date,
+        checklist: data.checklist ?? [],
       });
 
       set((state) => ({
@@ -1537,12 +1539,14 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
     try {
       const updated = await taskService.update(taskId, {
         title: task.title,
+        description: task.description,
         status: task.status,
         priority: task.priority,
-        position: task.position,
-        assignee_id: task.assignee_id,
-        due_date: task.due_date,
-        completed_at: task.completed_at,
+        position: task.position ?? undefined,
+        assignee_id: task.assignee_id ?? undefined,
+        due_date: task.due_date ?? undefined,
+        completed_at: task.completed_at ?? undefined,
+        checklist: task.checklist,
       });
 
       set((state) => ({

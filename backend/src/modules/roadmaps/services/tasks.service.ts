@@ -43,7 +43,11 @@ export class TasksService {
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Task not found');
     await this.roadmapAuthz.assertTaskPermission(id, userId, 'roadmap.edit');
-    return this.repo.update(id, dto);
+    return this.repo.update(id, dto, userId);
+  }
+
+  async getHistory(id: string) {
+    return this.repo.getHistory(id);
   }
 
   async bulkReorder(featureId: string, dto: BulkReorderDto, userId: string) {

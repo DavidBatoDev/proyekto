@@ -41,6 +41,11 @@ export class TasksController {
     return this.tasksService.findById(id);
   }
 
+  @Get(':id/history')
+  getHistory(@Param('id') id: string) {
+    return this.tasksService.getHistory(id);
+  }
+
   @Post()
   create(@Body() dto: CreateTaskDto, @CurrentUser() user: AuthenticatedUser) {
     return this.tasksService.create(dto, user.id);

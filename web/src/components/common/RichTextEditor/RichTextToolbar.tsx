@@ -16,6 +16,7 @@ export function RichTextToolbar({
   tools,
   onCommand,
   activeFormats,
+  compact = false,
 }: RichTextToolbarProps) {
   const handleInsertLink = () => {
     const url = prompt("Enter URL:");
@@ -78,7 +79,7 @@ export function RichTextToolbar({
   };
 
   return (
-    <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-200 bg-gray-50 rounded-t-lg flex-wrap">
+    <div className={`flex items-center gap-1 border-b border-gray-200 bg-gray-50 rounded-t-lg flex-wrap ${compact ? "px-2 py-1" : "px-3 py-2"}`}>
       {/* Left side tools */}
       <div className="flex items-center gap-1">
         {tools

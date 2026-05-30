@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ProjectsModule } from '../projects/projects.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 // Controllers
 import { RoadmapsController } from './controllers/roadmaps.controller';
@@ -52,7 +53,7 @@ import { RoadmapJsonPatchProcessor } from './patch/roadmap-json-patch.processor'
 import { RoadmapAuthorizationService } from './services/roadmap-authorization.service';
 
 @Module({
-  imports: [ProjectsModule],
+  imports: [ProjectsModule, NotificationsModule],
   controllers: [
     RoadmapsController,
     MilestonesController,

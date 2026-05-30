@@ -2,6 +2,7 @@ import {
 	ChevronDown,
 	ChevronRight,
 	ExternalLink,
+	FolderOpen,
 	GripVertical,
 	Plus,
 } from "lucide-react";
@@ -234,7 +235,7 @@ export const MilestonesLeftPanel = ({
 
 	return (
 		<div
-			className="shrink-0 border-r border-gray-200 bg-white"
+			className="shrink-0 border-r border-gray-200 bg-white flex flex-col"
 			style={{ width: LEFT_WIDTH }}
 		>
 			<div className="sticky top-0 z-40 border-b border-gray-200 bg-white">
@@ -378,6 +379,20 @@ export const MilestonesLeftPanel = ({
 					})}
 				</SortableContext>
 			</DndContext>
+			{sortedEpics.length === 0 && (
+				<div className="flex-1 flex flex-col items-center justify-center px-4 text-center">
+					<div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+						<FolderOpen className="w-8 h-8 text-gray-400" />
+					</div>
+					<h3 className="text-sm font-semibold text-gray-900 mb-1">
+						No roadmap structure yet
+					</h3>
+					<p className="text-xs text-gray-500 leading-relaxed">
+						Your epics, features, and tasks will appear here once you start
+						building your roadmap.
+					</p>
+				</div>
+			)}
 		</div>
 	);
 };

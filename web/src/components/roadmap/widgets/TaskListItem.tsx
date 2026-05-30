@@ -431,6 +431,7 @@ export const TaskListItem = memo(
         {/* Task Title */}
         <div className="flex-1 min-w-0">
           <p
+            title={task.title}
             className={`truncate ${
               isCompact ? "text-xs" : "text-sm"
             } font-medium ${
@@ -618,7 +619,7 @@ export const TaskListItem = memo(
             createPortal(
               <div
                 ref={dropdownMenuRef}
-                className="fixed bg-white border border-gray-300 rounded shadow-lg z-70"
+                className="fixed bg-white border border-gray-300 rounded shadow-lg z-200"
                 style={{
                   top: dropdownPosition.top,
                   left: dropdownPosition.left,

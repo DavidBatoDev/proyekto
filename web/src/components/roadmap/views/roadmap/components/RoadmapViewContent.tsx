@@ -150,7 +150,7 @@ const buildRoadmapJsonDocument = (roadmap: Roadmap): UpsertFullRoadmapDto => ({
       roadmap_tasks: (feature.tasks ?? []).map((task) => ({
         id: task.id,
         title: task.title,
-        description: task.description,
+        description: task.description ?? undefined,
         status: task.status,
         priority: task.priority,
         assignee_id: task.assignee_id ?? undefined,

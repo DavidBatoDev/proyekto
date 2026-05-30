@@ -50,6 +50,19 @@ const BUCKET_CONFIG: Record<
     maxSize: 10 * 1024 * 1024,
     allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
   },
+  task_attachments: {
+    maxSize: 25 * 1024 * 1024,
+    allowedTypes: [
+      'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain', 'text/csv',
+      'application/zip',
+    ],
+  },
 };
 
 @Injectable()

@@ -73,21 +73,50 @@ export class TasksRepositorySupabase implements ITasksRepository {
     return data ?? null;
   }
 
+  private async logChanges(
+    taskId: string,
+    userId: string,
+    changes: Array<{ field: string; old: string | null; new: string | null }>,
+  ): Promise<void> {
+    if (!changes.length) return;
+    await this.db.from('task_activity_log').insert(
+      changes.map((c) => ({
+        task_id: taskId,
+        changed_by: userId,
+        field_name: c.field,
+        old_value: c.old,
+        new_value: c.new,
+      })),
+    );
+  }
+
+  async getHistory(taskId: string): Promise<any[]> {
+    const { data, error } = await this.db
+      .from('task_activity_log')
+      .select('*, changed_by_user:profiles(id, display_name, avatar_url)')
+      .eq('task_id', taskId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  }
+
   async create(dto: CreateTaskDto, userId: string): Promise<any> {
     const resolvedPosition =
       typeof dto.position === 'number'
         ? dto.position
         : await this.getNextPosition(dto.feature_id);
 
-    // Only persist columns that exist in roadmap_tasks
     const dbPayload = {
       feature_id: dto.feature_id,
       title: dto.title,
+      description: dto.description ?? null,
       priority: dto.priority,
       status: dto.status,
       assignee_id: dto.assignee_id,
       due_date: dto.due_date,
       position: resolvedPosition,
+      checklist: dto.checklist ?? [],
     };
     const { data, error } = await this.db
       .from('roadmap_tasks')
@@ -97,19 +126,32 @@ export class TasksRepositorySupabase implements ITasksRepository {
       )
       .single();
     if (error) throw new Error(error.message);
+
+    // Log creation
+    await this.logChanges(data.id, userId, [
+      { field: 'created', old: null, new: dto.title },
+    ]).catch(() => {});
+
     return data;
   }
 
-  async update(id: string, dto: UpdateTaskDto): Promise<any> {
-    // Only persist columns that exist in roadmap_tasks
+  async update(id: string, dto: UpdateTaskDto, userId?: string): Promise<any> {
+    // Fetch current state for audit diff
+    let existing: any = null;
+    if (userId) {
+      existing = await this.findById(id);
+    }
+
     const dbPayload = {
       ...(dto.title !== undefined && { title: dto.title }),
+      ...(dto.description !== undefined && { description: dto.description }),
       ...(dto.priority !== undefined && { priority: dto.priority }),
       ...(dto.status !== undefined && { status: dto.status }),
       ...(dto.assignee_id !== undefined && { assignee_id: dto.assignee_id }),
       ...(dto.position !== undefined && { position: dto.position }),
       ...(dto.due_date !== undefined && { due_date: dto.due_date }),
       ...(dto.completed_at !== undefined && { completed_at: dto.completed_at }),
+      ...(dto.checklist !== undefined && { checklist: dto.checklist }),
       updated_at: new Date().toISOString(),
     };
     const { data, error } = await this.db
@@ -121,6 +163,25 @@ export class TasksRepositorySupabase implements ITasksRepository {
       )
       .single();
     if (error) throw new Error(error.message);
+
+    // Audit log — only tracked fields
+    if (userId && existing) {
+      const tracked: Array<{ field: string; old: string | null; new: string | null }> = [];
+      const check = (field: string, getter: (t: any) => string | null | undefined) => {
+        const oldVal = getter(existing) ?? null;
+        const newVal = getter(dto) ?? null;
+        if (newVal !== null && newVal !== oldVal) {
+          tracked.push({ field, old: oldVal, new: newVal });
+        }
+      };
+      check('status', (t) => t.status);
+      check('priority', (t) => t.priority);
+      check('assignee_id', (t) => t.assignee_id);
+      check('due_date', (t) => t.due_date);
+      check('title', (t) => t.title);
+      await this.logChanges(id, userId, tracked).catch(() => {});
+    }
+
     return data;
   }
 

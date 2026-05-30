@@ -60,6 +60,10 @@ function RoadmapPageBody() {
     return <RoadmapPageSkeleton />;
   }
 
+  if (linkedRoadmapQuery.data?.id) {
+    return <RoadmapPageSkeleton />;
+  }
+
   return (
     <div className="app-shell-bg h-full w-full overflow-y-auto">
       <div className="mx-auto w-full max-w-4xl px-5 py-6 md:px-8 md:py-8">

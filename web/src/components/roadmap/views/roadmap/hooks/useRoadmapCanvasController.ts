@@ -329,8 +329,8 @@ export function useRoadmapCanvasController({
       }
 
       try {
-        toast.success("Task updated");
         await onUpdateTaskBase(...args);
+        toast.success("Task updated");
       } catch (error) {
         toast.error(getErrorMessage(error, "Failed to update task"));
         throw error;

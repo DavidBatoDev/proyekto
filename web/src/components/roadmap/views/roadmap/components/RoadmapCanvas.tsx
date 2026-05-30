@@ -257,17 +257,17 @@ const RoadmapCanvas = ({
               <div className="flex items-center justify-center gap-3">
                 <button
                   onClick={() => setIsAddEpicModalOpen(true)}
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white rounded-md hover:bg-gray-700 transition-colors text-sm font-medium"
                 >
-                  <Plus className="w-5 h-5" />
+                  <Plus className="w-4 h-4" />
                   Add Epic
                 </button>
                 {canLinkExisting && (
                   <button
                     onClick={() => setIsLinkRoadmapModalOpen(true)}
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors font-medium"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50 transition-colors text-sm font-medium"
                   >
-                    <Link2 className="w-5 h-5" />
+                    <Link2 className="w-4 h-4" />
                     Link Existing Roadmap
                   </button>
                 )}
@@ -388,6 +388,8 @@ const RoadmapCanvas = ({
             onOpenFeatureEditor={handleOpenEditFeatureModal}
             canEditTimelineDates={canEditTimelineDates}
             onNavigateToEpic={handleNavigateToEpicTab}
+            onAddEpic={() => setIsAddEpicModalOpen(true)}
+            onLinkRoadmap={canLinkExisting ? () => setIsLinkRoadmapModalOpen(true) : undefined}
           />
         )}
 

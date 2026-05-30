@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { FolderOpen, ShieldCheck } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { FolderOpen, Plus, ShieldCheck } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import { getRoadmapsPreview, type RoadmapPreview } from "@/api/endpoints/roadmap";
 import { type Project, projectService } from "@/services/project.service";
@@ -231,6 +232,8 @@ export function DashboardWidgets({
 	const secondaryMetricLoading = isProjectsLoading;
 	const activityLoading = isMilestonesLoading;
 
+	const navigate = useNavigate();
+
 	const greetingName =
 		profile?.display_name ||
 		profile?.first_name ||
@@ -264,13 +267,23 @@ export function DashboardWidgets({
 			<section className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
 				<div className="space-y-6 min-w-0">
 					<div className="app-surface-card-strong p-8">
-						<div className="mb-6">
-							<h2 className="text-[22px] font-semibold tracking-tight text-slate-900">
-								Welcome back, {greetingName}
-							</h2>
-							<p className="mt-1 text-sm text-slate-600">
-								Here is a quick view of your project portfolio and delivery milestones.
-							</p>
+						<div className="mb-6 flex items-start justify-between gap-4">
+							<div>
+								<h2 className="text-[22px] font-semibold tracking-tight text-slate-900">
+									Welcome back, {greetingName}
+								</h2>
+								<p className="mt-1 text-sm text-slate-600">
+									Here is a quick view of your project portfolio and delivery milestones.
+								</p>
+							</div>
+							<button
+								type="button"
+								onClick={() => navigate({ to: "/project-posting" })}
+								className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
+							>
+								<Plus className="h-3.5 w-3.5" />
+								Create project
+							</button>
 						</div>
 
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">

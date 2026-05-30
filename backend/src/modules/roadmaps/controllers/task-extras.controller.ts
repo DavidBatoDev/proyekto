@@ -18,6 +18,7 @@ import {
   AddCommentDto,
   UpdateCommentDto,
   AddAttachmentDto,
+  AddDependencyDto,
 } from '../dto/roadmaps.dto';
 
 @Controller('tasks')
@@ -78,5 +79,25 @@ export class TaskExtrasController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.taskExtrasService.deleteAttachment(attachmentId, user.id);
+  }
+
+  @Get(':taskId/dependencies')
+  getDependencies(@Param('taskId') taskId: string) {
+    return this.taskExtrasService.getDependencies(taskId);
+  }
+
+  @Post(':taskId/dependencies')
+  addDependency(
+    @Param('taskId') taskId: string,
+    @Body() dto: AddDependencyDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.taskExtrasService.addDependency(taskId, dto.blocking_task_id, user.id);
+  }
+
+  @Delete(':taskId/dependencies/:dependencyId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeDependency(@Param('dependencyId') dependencyId: string) {
+    return this.taskExtrasService.removeDependency(dependencyId);
   }
 }
