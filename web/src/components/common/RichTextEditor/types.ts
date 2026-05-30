@@ -31,6 +31,12 @@ export interface ToolConfig {
   options?: ToolOption[];
 }
 
+export interface MentionUser {
+  id: string;
+  display_name: string;
+  avatar_url?: string | null;
+}
+
 export interface RichTextEditorProps {
   value: string;
   onChange: (value: string) => void;
@@ -41,12 +47,15 @@ export interface RichTextEditorProps {
   className?: string;
   disabled?: boolean;
   autoFocus?: boolean;
+  mentionUsers?: MentionUser[];
+  compact?: boolean;
 }
 
 export interface RichTextToolbarProps {
   tools: ToolType[];
   onCommand: (command: string, value?: string) => void;
   activeFormats: Set<string>;
+  compact?: boolean;
 }
 
 export type FormatCommand =
