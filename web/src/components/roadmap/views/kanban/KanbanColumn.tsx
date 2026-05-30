@@ -10,9 +10,10 @@ import type { KanbanColumnDef, KanbanTaskContext } from "./types";
 interface KanbanColumnProps {
 	column: KanbanColumnDef;
 	rows: KanbanTaskContext[];
+	onCardClick?: (taskId: string) => void;
 }
 
-export function KanbanColumn({ column, rows }: KanbanColumnProps) {
+export function KanbanColumn({ column, rows, onCardClick }: KanbanColumnProps) {
 	const { setNodeRef, isOver } = useDroppable({
 		id: column.id,
 		data: { type: "column", status: column.id },
@@ -24,7 +25,9 @@ export function KanbanColumn({ column, rows }: KanbanColumnProps) {
 		<div className="flex-1 min-w-0 basis-0 flex flex-col bg-[#f1f2f4] rounded-xl">
 			<div className="flex items-center justify-between gap-2 px-3 py-3 min-w-0">
 				<div className="flex items-center gap-2 min-w-0">
-					<span className={`w-2.5 h-2.5 rounded-full shrink-0 ${column.accent}`} />
+					<span
+						className={`w-2.5 h-2.5 rounded-full shrink-0 ${column.accent}`}
+					/>
 					<span className="text-sm font-semibold text-[#172b4d] truncate">
 						{column.label}
 					</span>
@@ -41,7 +44,7 @@ export function KanbanColumn({ column, rows }: KanbanColumnProps) {
 					}`}
 				>
 					{rows.map((row) => (
-						<KanbanCard key={row.task.id} row={row} />
+						<KanbanCard key={row.task.id} row={row} onCardClick={onCardClick} />
 					))}
 					{rows.length === 0 && (
 						<div className="text-xs text-gray-400 text-center py-6 border border-dashed border-gray-200 rounded">

@@ -6,7 +6,11 @@ import {
   type ProjectPermissions,
   type ProjectResourcesPayload,
 } from "@/services/project.service";
-import { roadmapService, type FullRoadmap } from "@/services/roadmap.service";
+import {
+  roadmapService,
+  type FullRoadmap,
+  type FullRoadmapWithProject,
+} from "@/services/roadmap.service";
 import type { Roadmap } from "@/types/roadmap";
 
 // New flat brief shape (post-2026_05_07_*_summary_and_custom_fields):
@@ -44,6 +48,7 @@ export const projectKeys = {
   brief: (projectId: string) => ["project", "brief", projectId] as const,
   roadmapFull: (roadmapId: string) =>
     ["project", "roadmap-full", roadmapId] as const,
+  allRoadmapsFull: ["project", "all-roadmaps-full"] as const,
 };
 
 export const briefSelect = "project_summary, custom_fields";
@@ -112,3 +117,9 @@ export async function fetchProjectBrief(projectId: string): Promise<ProjectBrief
 export async function fetchRoadmapFull(roadmapId: string): Promise<FullRoadmap> {
   return roadmapService.getFull(roadmapId);
 }
+
+export async function fetchAllRoadmapsFull(): Promise<FullRoadmapWithProject[]> {
+  return roadmapService.getAllFull();
+}
+
+export type { FullRoadmapWithProject };

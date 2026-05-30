@@ -12,13 +12,8 @@ export class ThrottlerStorageRedisService implements ThrottlerStorage {
   >();
   private readonly localBlocks = new Map<string, number>();
 
-  constructor(redisUrl?: string, redisToken?: string) {
-    if (redisUrl && redisToken) {
-      this.redis = new Redis({ url: redisUrl, token: redisToken });
-      return;
-    }
-
-    this.redis = null;
+  constructor(redisClient: Redis | null) {
+    this.redis = redisClient;
   }
 
   async increment(

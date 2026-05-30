@@ -47,6 +47,11 @@ export class AuthController {
     return this.authService.switchPersona(user.id, dto);
   }
 
+  @Post('provision')
+  provisionArtifacts(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.provisionArtifacts(user.id);
+  }
+
   @Patch('profile')
   updateProfile(
     @CurrentUser() user: AuthenticatedUser,

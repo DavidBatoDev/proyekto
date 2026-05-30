@@ -90,6 +90,11 @@ export interface FullRoadmap extends Roadmap {
 	epics: RoadmapEpic[];
 }
 
+// Full roadmap with embedded project info (returned by /api/roadmaps/all-full)
+export interface FullRoadmapWithProject extends FullRoadmap {
+	project: { id: string; title: string } | null;
+}
+
 // Roadmap DTOs
 export interface CreateRoadmapDto {
 	name: string;
@@ -385,6 +390,20 @@ export const roadmapService = {
 			return response.data.data;
 		} catch (error) {
 			throw handleServiceError(error, `Get full roadmap ${id}`);
+		}
+	},
+
+	/**
+	 * Get all accessible roadmaps with full nested data (cross-project global view)
+	 */
+	async getAllFull(): Promise<FullRoadmapWithProject[]> {
+		try {
+			const response = await apiClient.get<ApiResponse<FullRoadmapWithProject[]>>(
+				"/api/roadmaps/all-full",
+			);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(error, "Get all roadmaps full");
 		}
 	},
 

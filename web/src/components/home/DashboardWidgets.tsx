@@ -278,7 +278,7 @@ export function DashboardWidgets({
 							</div>
 							<button
 								type="button"
-								onClick={() => navigate({ to: "/project-posting" })}
+								onClick={() => navigate({ to: "/project-posting", search: { roadmapId: undefined } })}
 								className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
 							>
 								<Plus className="h-3.5 w-3.5" />

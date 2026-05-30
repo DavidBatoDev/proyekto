@@ -8,6 +8,7 @@ import {
   fetchProjectMembers,
   fetchProjectResources,
   fetchRoadmapFull,
+  fetchAllRoadmapsFull,
   projectKeys,
 } from "@/queries/project";
 
@@ -85,6 +86,16 @@ export function useRoadmapFullQuery(roadmapId: string) {
     queryKey: projectKeys.roadmapFull(roadmapId),
     queryFn: () => fetchRoadmapFull(roadmapId),
     enabled: Boolean(roadmapId),
+    staleTime: STALE_30S,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  });
+}
+
+export function useAllRoadmapsFullQuery() {
+  return useQuery({
+    queryKey: projectKeys.allRoadmapsFull,
+    queryFn: fetchAllRoadmapsFull,
     staleTime: STALE_30S,
     refetchOnWindowFocus: true,
     retry: 1,

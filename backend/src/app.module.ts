@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { validateEnv } from './config/env.validation';
+import { Redis } from '@upstash/redis';
 import { SupabaseModule } from './config/supabase.module';
 import { ThrottlerStorageRedisService } from './config/throttler-storage.service';
+import { RedisModule } from './config/redis.module';
+import { UPSTASH_REDIS_CLIENT } from './config/redis.tokens';
 
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -28,14 +31,13 @@ import { AppController } from './app.controller';
   controllers: [AppController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    RedisModule,
     ThrottlerModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
+      imports: [RedisModule],
+      inject: [UPSTASH_REDIS_CLIENT],
+      useFactory: (redisClient: Redis | null) => ({
         throttlers: [{ ttl: 60_000, limit: 100 }],
-        storage: new ThrottlerStorageRedisService(
-          configService.get<string>('UPSTASH_REDIS_REST_URL'),
-          configService.get<string>('UPSTASH_REDIS_REST_TOKEN'),
-        ),
+        storage: new ThrottlerStorageRedisService(redisClient),
       }),
     }),
     SupabaseModule,

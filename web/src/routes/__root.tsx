@@ -6,7 +6,6 @@ import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
 import { ToastProvider } from "../contexts/ToastContext";
 import { MigrationHandler } from "../components/migration";
 import Header from "../components/layout/Header";
-import { FreelancerSystemStatusLayer } from "../components/layout/FreelancerSystemStatusLayer";
 
 interface MyRouterContext {
   queryClient: QueryClient;
@@ -20,7 +19,6 @@ function RootLayout() {
   return (
     <ToastProvider>
       <Header />
-      <FreelancerSystemStatusLayer />
       <Outlet />
       <MigrationHandler />
       <TanStackDevtools

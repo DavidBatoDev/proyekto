@@ -8,6 +8,7 @@ This runbook covers rollout, validation, and rollback for the Cloudflare Free ca
 - Edge/CDN: Cloudflare Free on `api.proyekto.tech`
 - Cache scope: public, cache-safe GET routes only
 - Sensitive/auth/session routes: explicit bypass/no-store
+- Consistency hardening: Redis cache-aside + best-effort Cloudflare URL purge on critical public mutations
 
 ## 1. One-time setup
 
@@ -37,6 +38,8 @@ Remove-Item Env:TF_VAR_cloudflare_api_token
 - Backend CI deploy now:
   - uses `--no-default-url` (disables public `run.app` URL)
   - smoke-checks `https://api.proyekto.tech/` (or `PUBLIC_API_URL` GitHub variable if set)
+  - injects Cloudflare purge runtime controls (`CLOUDFLARE_PURGE_ENABLED`, `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_PURGE_TIMEOUT_MS`)
+  - injects secret `CLOUDFLARE_PURGE_API_TOKEN` from Secret Manager
 - Rollback to re-enable default URL:
 
 ```bash
@@ -99,6 +102,17 @@ Expected:
   - `Cache-Control: no-store`
   - `CF-Cache-Status` should be `BYPASS` or `DYNAMIC`
 
+### Mutation consistency check (edge purge)
+
+After a write that affects a public resource (consultant profile update, consultant approval, roadmap template mutation):
+
+1. call the corresponding read endpoint immediately
+2. verify response reflects new state
+3. if `REDIS_CACHE_DEBUG_HEADERS=true`, inspect `X-App-Cache` transition (`MISS/HIT`)
+4. inspect Cloud Run logs for:
+   - `cache_invalidate ...`
+   - `edge_purge status=success ...`
+
 ## 4. Revalidation check (ETag / 304)
 
 ```bash
@@ -134,5 +148,26 @@ curl.exe -sS -I $url -H "@$ifNoneMatchFile" | Select-String -Pattern '^HTTP/'
   - Request count
   - p95 latency
   - Egress trend
+  - log lines:
+    - `cache_outcome status=HIT|MISS|BYPASS|ERROR`
+    - `edge_purge status=success|failed|misconfigured|disabled`
+
+### Suggested log-based metrics/alerts
+
+Create log-based counters in Cloud Logging:
+
+- `cache_error_count`: filter `textPayload:"cache_outcome status=ERROR"`
+- `edge_purge_failure_count`: filter `textPayload:"edge_purge status=failed"`
+
+Create alert policies on:
+
+- cache error rate spike (e.g., >2% of cache outcomes for 5 min)
+- any sustained edge purge failures (e.g., >5 failures over 5 min)
+- sudden hit-rate drop on target endpoints in Cloudflare analytics
+
+### Kill switches
+
+- Disable Redis data cache: set `REDIS_DATA_CACHE_ENABLED=false` and redeploy.
+- Disable edge purge: set `CLOUDFLARE_PURGE_ENABLED=false` and redeploy.
 
 Compare 7-day before vs after rollout to verify cost and latency impact.

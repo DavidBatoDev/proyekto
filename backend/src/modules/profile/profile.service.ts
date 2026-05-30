@@ -1,5 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 export const PROFILE_REPOSITORY = Symbol('PROFILE_REPOSITORY');
+import { RedisCacheInvalidationService } from '../../common/cache/redis-cache-invalidation.service';
 import type {
   ProfileRepository,
   FullProfile,
@@ -43,6 +44,7 @@ import {
 export class ProfileService {
   constructor(
     @Inject(PROFILE_REPOSITORY) private readonly profileRepo: ProfileRepository,
+    private readonly cacheInvalidation: RedisCacheInvalidationService,
   ) {}
 
   async getFullProfile(userId: string): Promise<Record<string, unknown>> {
@@ -55,7 +57,9 @@ export class ProfileService {
   }
 
   async updateBasic(userId: string, dto: UpdateProfileBasicDto) {
-    return this.profileRepo.updateBasic(userId, dto);
+    const updated = await this.profileRepo.updateBasic(userId, dto);
+    await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
+    return updated;
   }
 
   async getAllSkills(): Promise<Skill[]> {
@@ -70,7 +74,9 @@ export class ProfileService {
     userId: string,
     dto: ReplaceSkillsDto,
   ): Promise<UserSkill[]> {
-    return this.profileRepo.replaceUserSkills(userId, dto.skills);
+    const skills = await this.profileRepo.replaceUserSkills(userId, dto.skills);
+    await this.cacheInvalidation.invalidateMarketplaceFreelancersCache();
+    return skills;
   }
 
   async addLanguage(
@@ -172,7 +178,9 @@ export class ProfileService {
     userId: string,
     dto: UpsertRateSettingsDto,
   ): Promise<UserRateSettings> {
-    return this.profileRepo.upsertRateSettings(userId, dto);
+    const settings = await this.profileRepo.upsertRateSettings(userId, dto);
+    await this.cacheInvalidation.invalidateMarketplaceFreelancersCache();
+    return settings;
   }
 
   async addLicense(userId: string, dto: AddLicenseDto): Promise<UserLicense> {
@@ -195,7 +203,9 @@ export class ProfileService {
     userId: string,
     dto: AddSpecializationDto,
   ): Promise<UserSpecialization> {
-    return this.profileRepo.addSpecialization(userId, dto);
+    const specialization = await this.profileRepo.addSpecialization(userId, dto);
+    await this.cacheInvalidation.invalidateMarketplaceFreelancersCache();
+    return specialization;
   }
 
   async updateSpecialization(
@@ -203,11 +213,18 @@ export class ProfileService {
     userId: string,
     dto: UpdateSpecializationDto,
   ): Promise<UserSpecialization> {
-    return this.profileRepo.updateSpecialization(id, userId, dto);
+    const specialization = await this.profileRepo.updateSpecialization(
+      id,
+      userId,
+      dto,
+    );
+    await this.cacheInvalidation.invalidateMarketplaceFreelancersCache();
+    return specialization;
   }
 
   async deleteSpecialization(id: string, userId: string): Promise<void> {
-    return this.profileRepo.deleteSpecialization(id, userId);
+    await this.profileRepo.deleteSpecialization(id, userId);
+    await this.cacheInvalidation.invalidateMarketplaceFreelancersCache();
   }
 
   async addIdentityDocument(

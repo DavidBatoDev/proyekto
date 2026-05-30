@@ -76,6 +76,10 @@ class EnvironmentVariables {
 
   @IsOptional()
   @IsString()
+  PUBLIC_API_URL?: string;
+
+  @IsOptional()
+  @IsString()
   OPENAI_API_KEY?: string;
 
   @IsOptional()
@@ -101,6 +105,46 @@ class EnvironmentVariables {
   @IsOptional()
   @IsNumber()
   CACHE_PRIVATE_STALE_WHILE_REVALIDATE_SECONDS?: number;
+
+  @IsOptional()
+  @IsString()
+  REDIS_DATA_CACHE_ENABLED?: string;
+
+  @IsOptional()
+  @IsNumber()
+  REDIS_CACHE_PUBLIC_TTL_SECONDS?: number;
+
+  @IsOptional()
+  @IsNumber()
+  REDIS_CACHE_AUTH_TTL_SECONDS?: number;
+
+  @IsOptional()
+  @IsString()
+  REDIS_CACHE_DEBUG_HEADERS?: string;
+
+  @IsOptional()
+  @IsNumber()
+  REDIS_CACHE_MARKETPLACE_INDEX_TTL_SECONDS?: number;
+
+  @IsOptional()
+  @IsNumber()
+  REDIS_CACHE_TTL_JITTER_PERCENT?: number;
+
+  @IsOptional()
+  @IsString()
+  CLOUDFLARE_PURGE_ENABLED?: string;
+
+  @IsOptional()
+  @IsString()
+  CLOUDFLARE_ZONE_ID?: string;
+
+  @IsOptional()
+  @IsString()
+  CLOUDFLARE_PURGE_API_TOKEN?: string;
+
+  @IsOptional()
+  @IsNumber()
+  CLOUDFLARE_PURGE_TIMEOUT_MS?: number;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

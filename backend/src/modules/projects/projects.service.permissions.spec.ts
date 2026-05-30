@@ -22,6 +22,15 @@ describe('ProjectsService (permissions)', () => {
   const notificationsService = {
     createNotification: jest.fn(),
   };
+  const dataCache = {
+    getAuthTtlSeconds: jest.fn().mockReturnValue(45),
+    rememberJson: jest.fn(async (_key: string, _ttl: number, loader: any) =>
+      loader(),
+    ),
+  };
+  const cacheInvalidation = {
+    invalidateAllDashboardCache: jest.fn().mockResolvedValue(undefined),
+  };
 
   // Default authorization stub: caller has no project_shares grant. Tests
   // that exercise the role-based bypass should override `getUserProjectRole`.
@@ -63,11 +72,40 @@ describe('ProjectsService (permissions)', () => {
       projectTeams,
       accessSync,
       { from: jest.fn() } as any,
+      dataCache as any,
+      cacheInvalidation as any,
     );
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('uses user-scoped dashboard cache keys', async () => {
+    const repo = {
+      findDashboardByUser: jest.fn().mockResolvedValue([]),
+    };
+    const service = buildService(repo);
+
+    await service.listDashboardProjects('user-a');
+    await service.listDashboardProjects('user-b');
+
+    expect(dataCache.rememberJson).toHaveBeenCalledWith(
+      'cache:v1:projects:dashboard:user:user-a',
+      expect.any(Number),
+      expect.any(Function),
+      expect.objectContaining({
+        indexKey: 'cache:v1:index:projects:dashboard',
+      }),
+    );
+    expect(dataCache.rememberJson).toHaveBeenCalledWith(
+      'cache:v1:projects:dashboard:user:user-b',
+      expect.any(Number),
+      expect.any(Function),
+      expect.objectContaining({
+        indexKey: 'cache:v1:index:projects:dashboard',
+      }),
+    );
   });
 
   // Tech-debt cleanup: legacy member-template behavior is gone. The

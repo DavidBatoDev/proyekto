@@ -1,13 +1,14 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { CalendarDays } from "lucide-react";
-import { forwardRef, type CSSProperties, type HTMLAttributes } from "react";
+import { type CSSProperties, forwardRef, type HTMLAttributes } from "react";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import type { KanbanTaskContext } from "./types";
 
 interface KanbanCardProps {
 	row: KanbanTaskContext;
 	overlay?: boolean;
+	onCardClick?: (taskId: string) => void;
 }
 
 interface CardSurfaceProps extends HTMLAttributes<HTMLDivElement> {
@@ -22,7 +23,7 @@ interface CardSurfaceProps extends HTMLAttributes<HTMLDivElement> {
  */
 const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(
 	function CardSurface({ row, overlay, dragging, className, ...rest }, ref) {
-		const { task, feature, epic, milestone } = row;
+		const { task, feature, epic, milestone, project } = row;
 
 		const assigneeLabel =
 			task.assignee?.display_name ||
@@ -48,6 +49,13 @@ const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(
 				{...rest}
 				className={`${base} ${interactive} ${dim} ${className ?? ""}`}
 			>
+				{project && (
+					<div className="mb-1.5">
+						<span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500 truncate max-w-full">
+							{project.title}
+						</span>
+					</div>
+				)}
 				<div className="text-sm font-medium text-gray-900 line-clamp-2">
 					{task.title}
 				</div>
@@ -56,7 +64,7 @@ const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(
 					<span
 						className="inline-flex items-center max-w-full px-2 py-0.5 rounded text-[11px] font-semibold truncate"
 						style={{
-							backgroundColor: (epic.color ?? "#64748b") + "26",
+							backgroundColor: `${epic.color ?? "#64748b"}26`,
 							color: epic.color ?? "#334155",
 						}}
 						title={epic.title}
@@ -110,7 +118,11 @@ const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(
 	},
 );
 
-export function KanbanCard({ row, overlay = false }: KanbanCardProps) {
+export function KanbanCard({
+	row,
+	overlay = false,
+	onCardClick,
+}: KanbanCardProps) {
 	const openTaskDetail = useRoadmapStore((s) => s.openTaskDetail);
 
 	const {
@@ -143,7 +155,7 @@ export function KanbanCard({ row, overlay = false }: KanbanCardProps) {
 			style={style}
 			{...attributes}
 			{...listeners}
-			onClick={() => openTaskDetail(row.task.id)}
+			onClick={() => (onCardClick ?? openTaskDetail)(row.task.id)}
 		/>
 	);
 }

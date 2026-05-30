@@ -17,6 +17,7 @@ export type FindFullRoadmapOptions = {
 
 export interface IRoadmapsRepository {
   findAll(userId: string): Promise<any[]>;
+  findAllFull(userId: string): Promise<any[]>;
   findByProjectId(projectId: string, userId?: string): Promise<any | null>;
   findById(id: string, userId?: string): Promise<any | null>;
   findUpdatedAt(id: string): Promise<string | null>;

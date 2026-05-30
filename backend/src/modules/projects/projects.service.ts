@@ -9,6 +9,12 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
+import {
+  AppCacheStatus,
+  RedisDataCacheService,
+} from '../../common/cache/redis-data-cache.service';
+import { REDIS_CACHE_KEYS } from '../../common/cache/redis-cache.keys';
+import { RedisCacheInvalidationService } from '../../common/cache/redis-cache-invalidation.service';
 import { ProjectTeamsService } from '../teams/project-teams.service';
 export const PROJECTS_REPOSITORY = Symbol('PROJECTS_REPOSITORY');
 import type { ProjectsRepository } from './repositories/projects.repository.interface';
@@ -54,6 +60,10 @@ import type {
   ProjectResourcesPayload,
 } from './repositories/projects.repository.interface';
 
+interface CacheReadOptions {
+  onCacheStatus?: (status: AppCacheStatus) => void;
+}
+
 @Injectable()
 export class ProjectsService {
   private readonly logger = new Logger(ProjectsService.name);
@@ -67,7 +77,13 @@ export class ProjectsService {
     private readonly projectTeams: ProjectTeamsService,
     private readonly accessSync: ProjectAccessSyncService,
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
+    private readonly cache: RedisDataCacheService,
+    private readonly cacheInvalidation: RedisCacheInvalidationService,
   ) {}
+
+  private async invalidateDashboardCache(): Promise<void> {
+    await this.cacheInvalidation.invalidateAllDashboardCache();
+  }
 
   private async createDefaultRoadmap(
     projectId: string,
@@ -329,8 +345,19 @@ export class ProjectsService {
     return this.projectsRepo.findByUser(userId);
   }
 
-  async listDashboardProjects(userId: string): Promise<Project[]> {
-    return this.projectsRepo.findDashboardByUser(userId);
+  async listDashboardProjects(
+    userId: string,
+    options?: CacheReadOptions,
+  ): Promise<Project[]> {
+    return this.cache.rememberJson(
+      REDIS_CACHE_KEYS.projectsDashboardByUser(userId),
+      this.cache.getAuthTtlSeconds(),
+      async () => this.projectsRepo.findDashboardByUser(userId),
+      {
+        onStatus: options?.onCacheStatus,
+        indexKey: REDIS_CACHE_KEYS.projectsDashboardIndex,
+      },
+    );
   }
 
   async getProject(id: string) {
@@ -377,6 +404,7 @@ export class ProjectsService {
         userId,
         project.title,
       );
+      await this.invalidateDashboardCache();
       return { project, roadmap };
     }
 
@@ -433,6 +461,7 @@ export class ProjectsService {
       userId,
       project.title,
     );
+    await this.invalidateDashboardCache();
     return { project, roadmap };
   }
 
@@ -478,7 +507,9 @@ export class ProjectsService {
         requiredRole: 'owner',
         label: 'update this project',
       });
-    return this.projectsRepo.update(id, dto);
+    const updated = await this.projectsRepo.update(id, dto);
+    await this.invalidateDashboardCache();
+    return updated;
   }
 
   async deleteProject(id: string, userId: string): Promise<void> {
@@ -493,6 +524,7 @@ export class ProjectsService {
     }
 
     await this.projectsRepo.deleteProject(id);
+    await this.invalidateDashboardCache();
   }
 
   async transferProjectOwner(
@@ -548,6 +580,7 @@ export class ProjectsService {
       link_url: `/project/${projectId}/team`,
     });
 
+    await this.invalidateDashboardCache();
     return updatedProject;
   }
 
@@ -571,6 +604,7 @@ export class ProjectsService {
       grantedBy: consultantId,
     });
     await this.safeSync(projectId, consultantId);
+    await this.invalidateDashboardCache();
     return project;
   }
 
@@ -667,6 +701,7 @@ export class ProjectsService {
       link_url: `/project/${projectId}/team`,
     });
 
+    await this.invalidateDashboardCache();
     return updatedProject;
   }
 
@@ -677,7 +712,9 @@ export class ProjectsService {
   ): Promise<unknown> {
     const project = await this.getProjectOrThrow(projectId);
     await this.assertCanManageMembers(project, callerId);
-    return this.projectsRepo.addMember(projectId, dto);
+    const member = await this.projectsRepo.addMember(projectId, dto);
+    await this.invalidateDashboardCache();
+    return member;
   }
 
   async inviteByEmail(
@@ -755,6 +792,7 @@ export class ProjectsService {
       });
     }
 
+    await this.invalidateDashboardCache();
     return invite;
   }
 
@@ -823,6 +861,7 @@ export class ProjectsService {
       });
     }
 
+    await this.invalidateDashboardCache();
     return result;
   }
 
@@ -841,6 +880,7 @@ export class ProjectsService {
   ): Promise<void> {
     await this.assertProjectPermission(projectId, callerId, 'members.manage');
     await this.projectsRepo.cancelInvite(projectId, inviteId);
+    await this.invalidateDashboardCache();
   }
 
   async getRolePermissions(
@@ -973,7 +1013,13 @@ export class ProjectsService {
   ): Promise<unknown> {
     const project = await this.getProjectOrThrow(projectId);
     await this.assertCanManageMembers(project, callerId);
-    return this.projectsRepo.updateMember(projectId, memberId, dto);
+    const updatedMember = await this.projectsRepo.updateMember(
+      projectId,
+      memberId,
+      dto,
+    );
+    await this.invalidateDashboardCache();
+    return updatedMember;
   }
 
   async removeMember(
@@ -1040,6 +1086,7 @@ export class ProjectsService {
         link_url: `/project/${projectId}/team`,
       });
     }
+    await this.invalidateDashboardCache();
   }
 
   async leaveProject(
@@ -1076,6 +1123,7 @@ export class ProjectsService {
 
     await this.projectsRepo.removeMember(projectId, member.id);
 
+    await this.invalidateDashboardCache();
     return { unassigned_task_count: unassignedTaskCount };
   }
 
@@ -1221,13 +1269,17 @@ export class ProjectsService {
     if (!syncedUserId) {
       // Fallback: shouldn't happen in practice (the row exists; we
       // verified above), but keep the per-row write as a safety net.
-      return this.projectsRepo.updateMemberCapabilities(
+      const fallbackResult = await this.projectsRepo.updateMemberCapabilities(
         projectId,
         memberId,
         newCapabilities,
       );
+      await this.invalidateDashboardCache();
+      return fallbackResult;
     }
-    return this.projectsRepo.getMemberById(projectId, memberId);
+    const member = await this.projectsRepo.getMemberById(projectId, memberId);
+    await this.invalidateDashboardCache();
+    return member;
   }
 
   /**
@@ -1261,10 +1313,12 @@ export class ProjectsService {
     if (trimmed.length > 80) {
       throw new BadRequestException('Position must be 80 characters or fewer.');
     }
-    return this.projectsRepo.updateMemberPosition(
+    const updatedMember = await this.projectsRepo.updateMemberPosition(
       projectId,
       memberId,
       trimmed.length === 0 ? null : trimmed,
     );
+    await this.invalidateDashboardCache();
+    return updatedMember;
   }
 }

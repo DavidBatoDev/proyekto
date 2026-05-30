@@ -10,6 +10,7 @@ import {
   UpdateCommentDto,
 } from '../dto/roadmaps.dto';
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
+import { RedisCacheInvalidationService } from '../../../common/cache/redis-cache-invalidation.service';
 
 export const FEATURES_REPOSITORY = Symbol('FEATURES_REPOSITORY');
 
@@ -18,6 +19,7 @@ export class FeaturesService {
   constructor(
     @Inject(FEATURES_REPOSITORY) private readonly repo: IFeaturesRepository,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
+    private readonly cacheInvalidation: RedisCacheInvalidationService,
   ) {}
 
   async findByEpic(epicId: string) {
@@ -40,7 +42,9 @@ export class FeaturesService {
       userId,
       'roadmap.edit',
     );
-    return this.repo.create(dto, userId);
+    const feature = await this.repo.create(dto, userId);
+    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
+    return feature;
   }
 
   async update(id: string, dto: UpdateFeatureDto, userId: string) {
@@ -50,7 +54,9 @@ export class FeaturesService {
     if (dto.epic_id && dto.epic_id !== existing.epic_id) {
       await this.roadmapAuthz.assertEpicPermission(dto.epic_id, userId, 'roadmap.edit');
     }
-    return this.repo.update(id, dto);
+    const feature = await this.repo.update(id, dto);
+    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
+    return feature;
   }
 
   async bulkReorder(epicId: string, dto: BulkReorderDto, userId: string) {
@@ -59,7 +65,9 @@ export class FeaturesService {
       userId,
       'roadmap.edit',
     );
-    return this.repo.bulkReorder(epicId, dto);
+    const reordered = await this.repo.bulkReorder(epicId, dto);
+    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
+    return reordered;
   }
 
   async findComments(featureId: string) {
@@ -89,7 +97,9 @@ export class FeaturesService {
       userId,
       'roadmap.edit',
     );
-    return this.repo.linkMilestone(dto);
+    const linked = await this.repo.linkMilestone(dto);
+    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
+    return linked;
   }
 
   async unlinkMilestone(dto: UnlinkMilestoneDto, userId: string) {
@@ -98,13 +108,16 @@ export class FeaturesService {
       userId,
       'roadmap.edit',
     );
-    return this.repo.unlinkMilestone(dto);
+    const unlinked = await this.repo.unlinkMilestone(dto);
+    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
+    return unlinked;
   }
 
   async remove(id: string, userId: string) {
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Feature not found');
     await this.roadmapAuthz.assertFeaturePermission(id, userId, 'roadmap.edit');
-    return this.repo.remove(id);
+    await this.repo.remove(id);
+    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
   }
 }

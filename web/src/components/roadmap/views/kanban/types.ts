@@ -11,6 +11,8 @@ export interface KanbanTaskContext {
 	feature: RoadmapFeature;
 	epic: RoadmapEpic;
 	milestone: RoadmapMilestone | null;
+	project?: { id: string; title: string } | null;
+	roadmapId?: string;
 }
 
 export interface KanbanColumnDef {

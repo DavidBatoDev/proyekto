@@ -8,6 +8,7 @@ import {
   UpdateCommentDto,
 } from '../dto/roadmaps.dto';
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
+import { RedisCacheInvalidationService } from '../../../common/cache/redis-cache-invalidation.service';
 
 export const EPICS_REPOSITORY = Symbol('EPICS_REPOSITORY');
 const TEMP_EPIC_ID_PREFIX = 'temp-epic-';
@@ -17,6 +18,7 @@ export class EpicsService {
   constructor(
     @Inject(EPICS_REPOSITORY) private readonly repo: IEpicsRepository,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
+    private readonly cacheInvalidation: RedisCacheInvalidationService,
   ) {}
 
   async findByRoadmap(roadmapId: string) {
@@ -35,14 +37,18 @@ export class EpicsService {
       userId,
       'roadmap.edit',
     );
-    return this.repo.create(dto, userId);
+    const epic = await this.repo.create(dto, userId);
+    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
+    return epic;
   }
 
   async update(id: string, dto: UpdateEpicDto, userId: string) {
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Epic not found');
     await this.roadmapAuthz.assertEpicPermission(id, userId, 'roadmap.edit');
-    return this.repo.update(id, dto);
+    const epic = await this.repo.update(id, dto);
+    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
+    return epic;
   }
 
   async bulkReorder(roadmapId: string, dto: BulkReorderDto, userId: string) {
@@ -51,7 +57,9 @@ export class EpicsService {
       userId,
       'roadmap.edit',
     );
-    return this.repo.bulkReorder(roadmapId, dto);
+    const reordered = await this.repo.bulkReorder(roadmapId, dto);
+    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
+    return reordered;
   }
 
   async findComments(epicId: string) {
@@ -85,6 +93,7 @@ export class EpicsService {
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Epic not found');
     await this.roadmapAuthz.assertEpicPermission(id, userId, 'roadmap.edit');
-    return this.repo.remove(id);
+    await this.repo.remove(id);
+    await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
   }
 }

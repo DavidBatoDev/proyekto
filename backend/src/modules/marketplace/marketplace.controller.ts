@@ -6,13 +6,19 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { MarketplaceService } from './marketplace.service';
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
 import { ConsultantOnlyGuard } from '../../common/guards/consultant-only.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
+import {
+  AppCacheStatus,
+  RedisDataCacheService,
+} from '../../common/cache/redis-data-cache.service';
 import {
   InviteFreelancerDto,
   MarketplaceQueryDto,
@@ -22,7 +28,15 @@ import {
 @Controller('marketplace')
 @UseGuards(SupabaseAuthGuard)
 export class MarketplaceController {
-  constructor(private readonly marketplaceService: MarketplaceService) {}
+  constructor(
+    private readonly marketplaceService: MarketplaceService,
+    private readonly dataCache: RedisDataCacheService,
+  ) {}
+
+  private setCacheHeader(response: Response, status: AppCacheStatus): void {
+    if (!this.dataCache.isDebugHeadersEnabled()) return;
+    response.setHeader('X-App-Cache', status);
+  }
 
   /**
    * Browse the freelancer pool. Gated by the ConsultantOnlyGuard so only
@@ -35,8 +49,11 @@ export class MarketplaceController {
   getFreelancers(
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: MarketplaceQueryDto,
+    @Res({ passthrough: true }) response: Response,
   ) {
-    return this.marketplaceService.getFreelancers(user.id, query);
+    return this.marketplaceService.getFreelancers(user.id, query, {
+      onCacheStatus: (status) => this.setCacheHeader(response, status),
+    });
   }
 
   @Post('go-live')

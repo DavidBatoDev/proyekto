@@ -22,6 +22,15 @@ describe('ProjectsService (resources)', () => {
   const notificationsService = {
     createNotification: jest.fn(),
   };
+  const dataCache = {
+    getAuthTtlSeconds: jest.fn().mockReturnValue(45),
+    rememberJson: jest.fn(async (_key: string, _ttl: number, loader: any) =>
+      loader(),
+    ),
+  };
+  const cacheInvalidation = {
+    invalidateAllDashboardCache: jest.fn().mockResolvedValue(undefined),
+  };
 
   // Default authorization: no role grants. Override per-test where the
   // legacy "client/consultant bypass" path is being exercised.
@@ -60,6 +69,8 @@ describe('ProjectsService (resources)', () => {
       projectTeams,
       accessSync,
       { from: jest.fn() } as any,
+      dataCache as any,
+      cacheInvalidation as any,
     );
   };
 

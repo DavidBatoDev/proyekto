@@ -1,21 +1,12 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { Redis } from '@upstash/redis';
+import { UPSTASH_REDIS_CLIENT } from '../../../config/redis.tokens';
 
 @Injectable()
 export class RoadmapAiPreviewStoreService {
-  private readonly redis: Redis | null;
-
-  constructor(private readonly configService: ConfigService) {
-    const redisUrl = this.configService.get<string>('UPSTASH_REDIS_REST_URL');
-    const redisToken = this.configService.get<string>(
-      'UPSTASH_REDIS_REST_TOKEN',
-    );
-    this.redis =
-      redisUrl && redisToken
-        ? new Redis({ url: redisUrl, token: redisToken })
-        : null;
-  }
+  constructor(
+    @Inject(UPSTASH_REDIS_CLIENT) private readonly redis: Redis | null,
+  ) {}
 
   async setPreview<T extends Record<string, unknown>>(
     previewId: string,
