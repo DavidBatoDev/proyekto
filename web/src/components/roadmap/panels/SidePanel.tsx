@@ -488,7 +488,7 @@ export const SidePanel = ({
     const dto: AddTaskAttachmentDto = {
       file_name: file.name,
       file_size: file.size,
-      file_type: file.type || undefined,
+      mime_type: file.type || undefined,
     };
     // Optimistic: show chip immediately with a temp id
     const tempId = `temp-${Date.now()}`;
