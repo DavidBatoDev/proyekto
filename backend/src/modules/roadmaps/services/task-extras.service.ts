@@ -6,6 +6,8 @@ import {
   AddAttachmentDto,
 } from '../dto/roadmaps.dto';
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
+import { NotificationsService } from '../../notifications/notifications.service';
+import { extractMentionedUserIds } from '../utils/mention-parser';
 
 export const TASK_EXTRAS_REPOSITORY = Symbol('TASK_EXTRAS_REPOSITORY');
 
@@ -15,6 +17,7 @@ export class TaskExtrasService {
     @Inject(TASK_EXTRAS_REPOSITORY)
     private readonly repo: ITaskExtrasRepository,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async findComments(taskId: string) {
@@ -23,7 +26,36 @@ export class TaskExtrasService {
 
   async addComment(taskId: string, dto: AddCommentDto, userId: string) {
     await this.roadmapAuthz.assertTaskCommentPermission(taskId, userId);
-    return this.repo.addComment(taskId, dto, userId);
+    const comment = await this.repo.addComment(taskId, dto, userId);
+
+    // Fire in-app notifications for @mentioned users (best-effort, non-blocking)
+    void this.fireMentionNotifications(taskId, dto.content, userId).catch(
+      () => {},
+    );
+
+    return comment;
+  }
+
+  private async fireMentionNotifications(
+    taskId: string,
+    html: string,
+    authorId: string,
+  ): Promise<void> {
+    const mentionedIds = extractMentionedUserIds(html).filter(
+      (id) => id !== authorId,
+    );
+    if (!mentionedIds.length) return;
+
+    await Promise.allSettled(
+      mentionedIds.map((userId) =>
+        this.notificationsService.createNotification({
+          user_id: userId,
+          actor_id: authorId,
+          type_name: 'task_comment_mention',
+          content: { task_id: taskId },
+        }),
+      ),
+    );
   }
 
   async updateComment(
@@ -53,5 +85,26 @@ export class TaskExtrasService {
 
   async deleteAttachment(attachmentId: string, userId: string) {
     return this.repo.deleteAttachment(attachmentId, userId);
+  }
+
+  async getDependencies(taskId: string) {
+    return this.repo.getDependencies(taskId);
+  }
+
+  async addDependency(
+    taskId: string,
+    blockingTaskId: string,
+    userId: string,
+  ) {
+    await this.roadmapAuthz.assertTaskPermission(
+      taskId,
+      userId,
+      'roadmap.edit',
+    );
+    return this.repo.addDependency(taskId, blockingTaskId, userId);
+  }
+
+  async removeDependency(dependencyId: string) {
+    return this.repo.removeDependency(dependencyId);
   }
 }
