@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import {
   Edit2,
@@ -7,16 +7,20 @@ import {
   CheckCircle2,
   Clock,
   User,
+  Maximize2,
 } from "lucide-react";
 import type { RoadmapTask, ChecklistItem } from "@/types/roadmap";
+import { SidePanel } from "@/components/roadmap/panels/SidePanel";
 
 export interface TaskWidgetData extends Record<string, unknown> {
   task: RoadmapTask;
   onEdit?: (task: RoadmapTask) => void;
   onDelete?: (taskId: string) => void;
   onClick?: (task: RoadmapTask) => void;
+  onUpdateTask?: (task: RoadmapTask) => void;
   showHandles?: boolean;
   variant?: "flow" | "epic";
+  projectId?: string;
 }
 
 type TaskWidgetNode = Node<TaskWidgetData>;
@@ -71,6 +75,7 @@ interface TaskCardProps {
   onEdit?: (task: RoadmapTask) => void;
   onDelete?: (taskId: string) => void;
   onClick?: (task: RoadmapTask) => void;
+  onExpand?: (task: RoadmapTask) => void;
   selected?: boolean;
   variant?: "flow" | "epic";
 }
@@ -81,6 +86,7 @@ export const TaskCard = memo(
     onEdit,
     onDelete,
     onClick,
+    onExpand,
     selected = false,
     variant = "epic",
   }: TaskCardProps) => {
@@ -130,13 +136,28 @@ export const TaskCard = memo(
                   </span>
                 )}
               </div>
-              <h5 className="font-semibold text-gray-900 text-sm leading-tight wrap-break-word">
+              <h5
+                title={task.title}
+                className="font-semibold text-gray-900 text-sm leading-tight wrap-break-word"
+              >
                 {task.title}
               </h5>
             </div>
 
             {/* Actions */}
             <div className="flex items-center gap-1 shrink-0">
+              {onExpand && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onExpand(task);
+                  }}
+                  className="p-1 hover:bg-blue-100 rounded transition-colors"
+                  title="Expand task"
+                >
+                  <Maximize2 className="w-3 h-3 text-blue-600" />
+                </button>
+              )}
               {onEdit && (
                 <button
                   onClick={(e) => {
@@ -167,7 +188,7 @@ export const TaskCard = memo(
           {/* Description */}
           {task.description && (
             <p className="text-xs text-gray-600 mb-2 line-clamp-1">
-              {task.description}
+              {task.description.replace(/<[^>]+>/g, "")}
             </p>
           )}
 
@@ -251,13 +272,27 @@ export const TaskWidget = memo(
       onEdit,
       onDelete,
       onClick,
+      onUpdateTask,
       showHandles = false,
       variant = "flow",
+      projectId,
     } = data;
+
+    const [expandedTask, setExpandedTask] = useState<RoadmapTask | null>(null);
+
+    const handleExpand = (t: RoadmapTask) => setExpandedTask(t);
+    const handleCloseExpand = () => setExpandedTask(null);
+    const handleUpdateExpanded = (updated: RoadmapTask) => {
+      onUpdateTask?.(updated);
+      setExpandedTask(null);
+    };
+    const handleDeleteExpanded = (taskId: string) => {
+      onDelete?.(taskId);
+      setExpandedTask(null);
+    };
 
     return (
       <div>
-        {/* Handle for connecting from features */}
         {showHandles && (
           <Handle
             type="target"
@@ -271,9 +306,22 @@ export const TaskWidget = memo(
           onEdit={onEdit}
           onDelete={onDelete}
           onClick={onClick}
+          onExpand={onUpdateTask ? handleExpand : undefined}
           selected={selected}
           variant={variant}
         />
+
+        {expandedTask && (
+          <SidePanel
+            task={expandedTask}
+            isOpen={true}
+            onClose={handleCloseExpand}
+            onUpdateTask={handleUpdateExpanded}
+            onDeleteTask={handleDeleteExpanded}
+            projectId={projectId}
+            asModal
+          />
+        )}
       </div>
     );
   },

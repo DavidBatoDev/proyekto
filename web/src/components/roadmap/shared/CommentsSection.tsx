@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import type { Comment } from "@/types/roadmap";
+import type { MentionUser } from "@/components/common/RichTextEditor/types";
 import { formatDistanceToNow } from "date-fns";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { cleanHTML } from "@/components/common/RichTextEditor/utils/formatting";
@@ -15,6 +16,7 @@ interface CommentsSectionProps {
   disabledMessage?: string;
   isLoading?: boolean;
   emptyMessage?: string;
+  mentionUsers?: MentionUser[];
 }
 
 export const CommentsSection = ({
@@ -27,6 +29,7 @@ export const CommentsSection = ({
   disabledMessage = "You need commenter or editor access to add comments",
   isLoading = false,
   emptyMessage = "No comments yet. Be the first to comment!",
+  mentionUsers,
 }: CommentsSectionProps) => {
   const [commentInput, setCommentInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -161,79 +164,6 @@ export const CommentsSection = ({
 
   return (
     <div className="space-y-4">
-      {/* Comment Compose */}
-      {canComment && (
-        <div className="space-y-2">
-          {!isComposerOpen && !isPreparingComposer ? (
-            <button
-              type="button"
-              onClick={openComposer}
-              className="w-full text-left px-3 py-2.5 text-sm text-gray-500 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Write a comment...
-            </button>
-          ) : isPreparingComposer ? (
-            <div className="w-full rounded-lg border border-gray-300 bg-white px-3 py-3 text-sm text-gray-500 flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
-              Opening editor...
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-2">
-              <RichTextEditor
-                value={commentInput}
-                onChange={setCommentInput}
-                placeholder="Write a comment..."
-                minHeight="96px"
-                maxHeight="240px"
-                tools={[
-                  "textFormat",
-                  "bold",
-                  "italic",
-                  "more",
-                  "separator",
-                  "bulletList",
-                  "numberedList",
-                  "separator",
-                  "link",
-                ]}
-                disabled={isSubmitting}
-                autoFocus
-              />
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="submit"
-                  disabled={!canSubmitNewComment}
-                  className="px-3 py-1.5 text-sm font-medium bg-primary text-white rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
-                >
-                  {isSubmitting && (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  )}
-                  {isSubmitting ? "Posting..." : "Save"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsComposerOpen(false);
-                    setCommentInput("");
-                  }}
-                  disabled={isSubmitting}
-                  className="px-3 py-1.5 text-sm font-medium bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          )}
-        </div>
-      )}
-
-      {!canComment && (
-        <div className="text-center py-4 bg-gray-50 border border-gray-200 rounded-md">
-          <p className="text-sm text-gray-500">{disabledMessage}</p>
-        </div>
-      )}
-
       {/* Comments List */}
       {isLoading ? (
         <div className="flex items-center justify-center py-8">
@@ -307,6 +237,7 @@ export const CommentsSection = ({
                           "link",
                         ]}
                         disabled={isMutatingCommentId === comment.id}
+                        mentionUsers={mentionUsers}
                       />
                       <div className="flex items-center gap-2">
                         <button
@@ -386,6 +317,80 @@ export const CommentsSection = ({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {!canComment && (
+        <div className="text-center py-4 bg-gray-50 border border-gray-200 rounded-md">
+          <p className="text-sm text-gray-500">{disabledMessage}</p>
+        </div>
+      )}
+
+      {/* Comment Compose — at bottom */}
+      {canComment && (
+        <div className="space-y-2">
+          {!isComposerOpen && !isPreparingComposer ? (
+            <button
+              type="button"
+              onClick={openComposer}
+              className="w-full text-left px-3 py-2.5 text-sm text-gray-500 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Write a comment...
+            </button>
+          ) : isPreparingComposer ? (
+            <div className="w-full rounded-lg border border-gray-300 bg-white px-3 py-3 text-sm text-gray-500 flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+              Opening editor...
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-2">
+              <RichTextEditor
+                value={commentInput}
+                onChange={setCommentInput}
+                placeholder="Write a comment... (type @ to mention)"
+                minHeight="96px"
+                maxHeight="240px"
+                tools={[
+                  "textFormat",
+                  "bold",
+                  "italic",
+                  "more",
+                  "separator",
+                  "bulletList",
+                  "numberedList",
+                  "separator",
+                  "link",
+                ]}
+                disabled={isSubmitting}
+                autoFocus
+                mentionUsers={mentionUsers}
+              />
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={!canSubmitNewComment}
+                  className="px-3 py-1.5 text-sm font-medium bg-primary text-white rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                >
+                  {isSubmitting && (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  )}
+                  {isSubmitting ? "Posting..." : "Save"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsComposerOpen(false);
+                    setCommentInput("");
+                  }}
+                  disabled={isSubmitting}
+                  className="px-3 py-1.5 text-sm font-medium bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       )}
     </div>

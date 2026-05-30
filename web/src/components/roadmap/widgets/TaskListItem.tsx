@@ -431,6 +431,7 @@ export const TaskListItem = memo(
         {/* Task Title */}
         <div className="flex-1 min-w-0">
           <p
+            title={task.title}
             className={`truncate ${
               isCompact ? "text-xs" : "text-sm"
             } font-medium ${

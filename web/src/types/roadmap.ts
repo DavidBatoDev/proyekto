@@ -157,7 +157,7 @@ export interface RoadmapTask {
   created_at: string;
   updated_at: string;
   // Additional optional fields
-  description?: string;
+  description?: string | null;
   checklist?: ChecklistItem[];
   assignee?: {
     id: string;
@@ -168,6 +168,25 @@ export interface RoadmapTask {
     last_name?: string;
   };
   labels?: string[];
+}
+
+export interface TaskActivityEntry {
+  id: string;
+  task_id: string;
+  field_name: string;
+  old_value: string | null;
+  new_value: string | null;
+  created_at: string;
+  changed_by_user?: { id: string; display_name?: string; avatar_url?: string };
+}
+
+export interface TaskDependency {
+  id: string;
+  blocking_task_id: string;
+  blocked_task_id: string;
+  created_at: string;
+  blocking_task?: { id: string; title: string; status: TaskStatus };
+  blocked_task?: { id: string; title: string; status: TaskStatus };
 }
 
 export interface TaskComment {
@@ -190,7 +209,7 @@ export interface TaskAttachment {
   task_id: string;
   uploaded_by: string;
   file_name: string;
-  file_url: string;
+  file_url: string | null;
   file_size?: number;
   mime_type?: string;
   created_at: string;

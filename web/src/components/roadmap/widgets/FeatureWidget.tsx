@@ -17,10 +17,12 @@ import {
   List,
   Plus,
   Calendar,
+  Maximize2,
 } from "lucide-react";
 import type { FeatureStatus, RoadmapFeature, RoadmapTask } from "@/types/roadmap";
 import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
 import { TaskListItem } from "./TaskListItem";
+import { TaskListModal } from "../modals/TaskListModal";
 import {
   calculateFeatureProgressFromTasks,
   getCompletedTaskCount,
@@ -76,6 +78,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   const [isPulsing, setIsPulsing] = useState(false);
   const [isCardTaskDropActive, setIsCardTaskDropActive] = useState(false);
   const [isAddTaskDropActive, setIsAddTaskDropActive] = useState(false);
+  const [isTaskListModalOpen, setIsTaskListModalOpen] = useState(false);
   const derivedStatus = deriveFeatureStatus(feature.tasks);
 
   const getWidgetBorderColor = (status: FeatureStatus) => {
@@ -475,43 +478,74 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
           <div className="absolute top-1/2 -translate-y-1/2 left-[500px] w-10 h-0.5 bg-emerald-400" />
 
           {/* Task List - positioned to the right */}
-          <div className="absolute top-1/2 -translate-y-1/2 left-[540px] max-h-60 overflow-y-auto rounded-xl border border-gray-200 bg-white p-1.5 shadow-sm">
-            <div className="grid grid-flow-col grid-rows-3 gap-1.5 auto-cols-max">
-              {feature.tasks?.slice(0, 9).map((task) => (
-                <div key={task.id} className="w-[190px]">
-                  <TaskListItem
-                    task={task}
-                    density="compact"
-                    pulseToken={
-                      pulseTaskId === task.id ? pulseTaskToken : undefined
-                    }
-                    onClick={onSelectTask}
-                    onToggleComplete={(taskId) => {
-                      const taskToUpdate = feature.tasks?.find(
-                        (t) => t.id === taskId,
-                      );
-                      if (!taskToUpdate) return;
-                      safelyUpdateTask({
-                        ...taskToUpdate,
-                        status:
-                          taskToUpdate.status === "done" ? "todo" : "done",
-                      });
-                    }}
-                    onUpdateStatus={(taskId, status) => {
-                      const taskToUpdate = feature.tasks?.find(
-                        (t) => t.id === taskId,
-                      );
-                      if (!taskToUpdate) return;
-                      safelyUpdateTask({
-                        ...taskToUpdate,
-                        status,
-                      });
-                    }}
-                  />
-                </div>
-              ))}
+          <div className="absolute top-1/2 -translate-y-1/2 left-[540px] rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+            {/* Task list header with expand button */}
+            <div className="flex items-center justify-between px-2.5 pt-2 pb-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                Tasks · {feature.tasks?.length ?? 0}
+              </span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsTaskListModalOpen(true);
+                }}
+                className="p-1 hover:bg-gray-100 rounded transition-colors"
+                title="View all tasks"
+              >
+                <Maximize2 className="w-3 h-3 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="max-h-56 overflow-y-auto p-1.5 pt-0">
+              <div className="grid grid-flow-col grid-rows-3 gap-1.5 auto-cols-max">
+                {feature.tasks?.slice(0, 9).map((task) => (
+                  <div key={task.id} className="w-[190px]">
+                    <TaskListItem
+                      task={task}
+                      density="compact"
+                      pulseToken={
+                        pulseTaskId === task.id ? pulseTaskToken : undefined
+                      }
+                      onClick={onSelectTask}
+                      onToggleComplete={(taskId) => {
+                        const taskToUpdate = feature.tasks?.find(
+                          (t) => t.id === taskId,
+                        );
+                        if (!taskToUpdate) return;
+                        safelyUpdateTask({
+                          ...taskToUpdate,
+                          status:
+                            taskToUpdate.status === "done" ? "todo" : "done",
+                        });
+                      }}
+                      onUpdateStatus={(taskId, status) => {
+                        const taskToUpdate = feature.tasks?.find(
+                          (t) => t.id === taskId,
+                        );
+                        if (!taskToUpdate) return;
+                        safelyUpdateTask({
+                          ...taskToUpdate,
+                          status,
+                        });
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
+
+          {isTaskListModalOpen && (
+            <TaskListModal
+              feature={feature}
+              onClose={() => setIsTaskListModalOpen(false)}
+              onUpdateTask={safelyUpdateTask}
+              onSelectTask={onSelectTask ? (task) => {
+                setIsTaskListModalOpen(false);
+                onSelectTask(task);
+              } : undefined}
+            />
+          )}
         </>
       )}
     </>

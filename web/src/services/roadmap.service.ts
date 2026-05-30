@@ -6,6 +6,7 @@
 import { isAxiosError } from "axios";
 import { apiClient } from "@/api";
 import type {
+	ChecklistItem,
 	Comment,
 	EpicPriority,
 	EpicStatus,
@@ -15,6 +16,9 @@ import type {
 	RoadmapMilestone,
 	RoadmapStatus,
 	RoadmapTask,
+	TaskActivityEntry,
+	TaskAttachment,
+	TaskDependency,
 	TaskPriority,
 	TaskStatus,
 } from "@/types/roadmap";
@@ -259,21 +263,31 @@ export interface LinkFeatureToMilestoneDto {
 export interface CreateTaskDto {
 	feature_id: string;
 	title: string;
+	description?: string | null;
 	status?: TaskStatus;
 	priority?: TaskPriority;
 	position?: number;
 	assignee_id?: string | null;
 	due_date?: string;
+	checklist?: ChecklistItem[];
 }
 
 export interface UpdateTaskDto {
 	title?: string;
+	description?: string | null;
 	status?: TaskStatus;
 	priority?: TaskPriority;
 	position?: number;
 	assignee_id?: string | null;
 	due_date?: string | null;
 	completed_at?: string;
+	checklist?: ChecklistItem[];
+}
+
+export interface AddTaskAttachmentDto {
+	file_name: string;
+	file_size?: number;
+	file_type?: string;
 }
 
 export interface ReorderTaskDto {
@@ -937,6 +951,48 @@ export const taskService = {
 			throw handleServiceError(error, `Delete task ${id}`);
 		}
 	},
+
+	async getHistory(taskId: string): Promise<TaskActivityEntry[]> {
+		try {
+			const response = await apiClient.get<ApiResponse<TaskActivityEntry[]>>(
+				`/api/tasks/${taskId}/history`,
+			);
+			return response.data.data ?? [];
+		} catch (error) {
+			throw handleServiceError(error, `Get history for task ${taskId}`);
+		}
+	},
+
+	async getDependencies(taskId: string): Promise<{ blocking: TaskDependency[]; blocked_by: TaskDependency[] }> {
+		try {
+			const response = await apiClient.get<ApiResponse<{ blocking: TaskDependency[]; blocked_by: TaskDependency[] }>>(
+				`/api/tasks/${taskId}/dependencies`,
+			);
+			return response.data.data ?? { blocking: [], blocked_by: [] };
+		} catch (error) {
+			throw handleServiceError(error, `Get dependencies for task ${taskId}`);
+		}
+	},
+
+	async addDependency(taskId: string, blockingTaskId: string): Promise<TaskDependency> {
+		try {
+			const response = await apiClient.post<ApiResponse<TaskDependency>>(
+				`/api/tasks/${taskId}/dependencies`,
+				{ blocking_task_id: blockingTaskId },
+			);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(error, `Add dependency for task ${taskId}`);
+		}
+	},
+
+	async removeDependency(taskId: string, dependencyId: string): Promise<void> {
+		try {
+			await apiClient.delete(`/api/tasks/${taskId}/dependencies/${dependencyId}`);
+		} catch (error) {
+			throw handleServiceError(error, `Remove dependency ${dependencyId}`);
+		}
+	},
 };
 
 export const commentsService = {
@@ -1103,6 +1159,48 @@ export const commentsService = {
 			throw handleServiceError(
 				error,
 				`Delete comment ${commentId} on task ${taskId}`,
+			);
+		}
+	},
+
+	async getTaskAttachments(taskId: string): Promise<TaskAttachment[]> {
+		try {
+			const response = await apiClient.get<ApiResponse<TaskAttachment[]>>(
+				`/api/tasks/${taskId}/attachments`,
+			);
+			return response.data.data ?? [];
+		} catch (error) {
+			throw handleServiceError(error, `Get attachments for task ${taskId}`);
+		}
+	},
+
+	async addTaskAttachment(
+		taskId: string,
+		dto: AddTaskAttachmentDto,
+	): Promise<TaskAttachment> {
+		try {
+			const response = await apiClient.post<ApiResponse<TaskAttachment>>(
+				`/api/tasks/${taskId}/attachments`,
+				dto,
+			);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(error, `Add attachment to task ${taskId}`);
+		}
+	},
+
+	async deleteTaskAttachment(
+		taskId: string,
+		attachmentId: string,
+	): Promise<void> {
+		try {
+			await apiClient.delete(
+				`/api/tasks/${taskId}/attachments/${attachmentId}`,
+			);
+		} catch (error) {
+			throw handleServiceError(
+				error,
+				`Delete attachment ${attachmentId} on task ${taskId}`,
 			);
 		}
 	},
