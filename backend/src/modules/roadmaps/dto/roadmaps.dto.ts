@@ -9,8 +9,15 @@ import {
   IsUUID,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+
+export class ChecklistItemDto {
+  @IsString() @IsOptional() id?: string;
+  @IsString() title: string;
+  @IsBoolean() completed: boolean;
+}
 
 // Roadmap DTOs
 export class CreateRoadmapDto {
@@ -188,7 +195,8 @@ export class CreateTaskDto {
   @IsUUID() @IsOptional() assignee_id?: string;
   @IsDateString() @IsOptional() due_date?: string;
   @IsNumber() @IsOptional() @Min(0) position?: number;
-  @IsArray() @IsOptional() checklist?: { id?: string; title: string; completed: boolean }[];
+  @IsArray() @IsOptional() @ValidateNested({ each: true }) @Type(() => ChecklistItemDto)
+  checklist?: ChecklistItemDto[];
 }
 
 export class UpdateTaskDto {
@@ -202,7 +210,8 @@ export class UpdateTaskDto {
   @IsNumber() @IsOptional() @Min(0) position?: number;
   @IsDateString() @IsOptional() due_date?: string;
   @IsDateString() @IsOptional() completed_at?: string;
-  @IsArray() @IsOptional() checklist?: { id?: string; title: string; completed: boolean }[];
+  @IsArray() @IsOptional() @ValidateNested({ each: true }) @Type(() => ChecklistItemDto)
+  checklist?: ChecklistItemDto[];
 }
 
 // Comment/Attachment DTOs

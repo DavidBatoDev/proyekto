@@ -619,7 +619,7 @@ export const TaskListItem = memo(
             createPortal(
               <div
                 ref={dropdownMenuRef}
-                className="fixed bg-white border border-gray-300 rounded shadow-lg z-70"
+                className="fixed bg-white border border-gray-300 rounded shadow-lg z-200"
                 style={{
                   top: dropdownPosition.top,
                   left: dropdownPosition.left,

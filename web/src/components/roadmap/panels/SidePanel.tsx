@@ -313,12 +313,35 @@ export const SidePanel = ({
 
   const handleAddDependency = async (blockingTaskId: string) => {
     if (!task?.id) return;
-    try {
-      const dep = await taskService.addDependency(task.id, blockingTaskId);
-      setDependencies((prev) => ({ ...prev, blocked_by: [...prev.blocked_by, dep] }));
-    } catch { /* ignore */ }
+    const taskInfo = allRoadmapTasks.find((t) => t.id === blockingTaskId);
+    const optimisticDep: TaskDependency = {
+      id: `temp-${blockingTaskId}`,
+      blocking_task_id: blockingTaskId,
+      blocked_task_id: task.id,
+      created_at: new Date().toISOString(),
+      blocking_task: taskInfo
+        ? { id: taskInfo.id, title: taskInfo.title, status: taskInfo.status }
+        : undefined,
+    };
+    setDependencies((prev) => ({ ...prev, blocked_by: [...prev.blocked_by, optimisticDep] }));
     setDepSearchQuery("");
     setIsDepSearchOpen(false);
+    try {
+      const created = await taskService.addDependency(task.id, blockingTaskId);
+      setDependencies((prev) => ({
+        ...prev,
+        blocked_by: prev.blocked_by.map((d) =>
+          d.id === optimisticDep.id ? (created ?? optimisticDep) : d,
+        ),
+      }));
+    } catch (err) {
+      setDependencies((prev) => ({
+        ...prev,
+        blocked_by: prev.blocked_by.filter((d) => d.id !== optimisticDep.id),
+      }));
+      console.error("[SidePanel] addDependency failed:", err);
+      alert("Failed to add dependency. Please try again.");
+    }
   };
 
   const handleRemoveDependency = async (depId: string) => {
@@ -525,8 +548,7 @@ export const SidePanel = ({
         }
         void Promise.resolve(
           onUpdateTask({ ...editedTask, description: descriptionDraft || null, checklist: checklistItems }),
-        ).catch(() => undefined);
-        onClose();
+        ).then(() => onClose()).catch(() => undefined);
         return true;
       }
     }
@@ -671,7 +693,7 @@ export const SidePanel = ({
               }
             }}
             disabled={isInteractionDisabled}
-            className="appearance-none pl-2.5 pr-6 py-1 text-xs font-medium rounded-full border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-primary/30 cursor-pointer disabled:opacity-50"
+            className="appearance-none pl-2.5 pr-6 h-7 text-xs font-medium rounded-full border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-primary/30 cursor-pointer disabled:opacity-50"
           >
             <option value="todo">To Do</option>
             <option value="in_progress">In Progress</option>
@@ -695,7 +717,7 @@ export const SidePanel = ({
               }
             }}
             disabled={isInteractionDisabled}
-            className="appearance-none pl-2.5 pr-6 py-1 text-xs font-medium rounded-full border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-primary/30 cursor-pointer disabled:opacity-50"
+            className="appearance-none pl-2.5 pr-6 h-7 text-xs font-medium rounded-full border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-primary/30 cursor-pointer disabled:opacity-50"
           >
             <option value="low">Low</option>
             <option value="medium">Medium</option>
@@ -711,7 +733,7 @@ export const SidePanel = ({
             type="button"
             onClick={() => setIsAssigneeMenuOpen((prev) => !prev)}
             disabled={isInteractionDisabled}
-            className="flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 text-xs font-medium rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 pl-1.5 pr-2.5 h-7 text-xs font-medium rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
           >
             <MemberAvatar
               name={selectedMember?.user?.display_name || selectedMember?.user?.email || "Unassigned"}
@@ -777,7 +799,7 @@ export const SidePanel = ({
         </div>
 
         {/* Due Date */}
-        <div className="relative flex items-center gap-1.5 pl-2 pr-2.5 py-1 text-xs font-medium rounded-full border border-gray-200 bg-white cursor-pointer hover:bg-gray-50 transition-colors">
+        <div className="relative flex items-center gap-1.5 pl-2 pr-2.5 h-7 text-xs font-medium rounded-full border border-gray-200 bg-white cursor-pointer hover:bg-gray-50 transition-colors">
           <Calendar className="w-3 h-3 text-gray-400 shrink-0" />
           <span
             className={
@@ -1141,13 +1163,13 @@ export const SidePanel = ({
                         className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20"
                       />
                       {isDepSearchOpen && (
-                        <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                        <div className="absolute z-20 left-0 right-0 bottom-full mb-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-y-auto">
                           {filteredDepTasks.length > 0 ? (
                             filteredDepTasks.map((t) => (
                               <button
                                 key={t.id}
                                 type="button"
-                                onClick={() => void handleAddDependency(t.id)}
+                                onMouseDown={(e) => { e.preventDefault(); void handleAddDependency(t.id); }}
                                 className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 truncate"
                               >
                                 {t.title}
@@ -1280,38 +1302,36 @@ export const SidePanel = ({
             </Button>
           </div>
         ) : (
-          (activeTab === "details") && (
-            <div className="flex items-center gap-2 w-full">
-              <Button
-                onClick={handleSave}
-                variant="contained"
-                colorScheme="primary"
-                size="md"
-                className="flex-1 flex items-center justify-center gap-2"
-                disabled={isInteractionDisabled}
-              >
-                {isLoading && (
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                )}
-                {isLoading ? "Saving..." : "Save Changes"}
-              </Button>
-              <Button
-                onClick={() => {
-                  if (task) {
-                    if (isReadOnlyPending) return;
-                    onDeleteTask(task.id);
-                    onClose();
-                  }
-                }}
-                variant="outlined"
-                colorScheme="destructive"
-                size="md"
-                disabled={isInteractionDisabled}
-              >
-                Delete
-              </Button>
-            </div>
-          )
+          <div className="flex items-center gap-2 w-full">
+            <Button
+              onClick={handleSave}
+              variant="contained"
+              colorScheme="primary"
+              size="md"
+              className="flex-1 flex items-center justify-center gap-2"
+              disabled={isInteractionDisabled}
+            >
+              {isLoading && (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              )}
+              {isLoading ? "Saving..." : "Save Changes"}
+            </Button>
+            <Button
+              onClick={() => {
+                if (task) {
+                  if (isReadOnlyPending) return;
+                  onDeleteTask(task.id);
+                  onClose();
+                }
+              }}
+              variant="outlined"
+              colorScheme="destructive"
+              size="md"
+              disabled={isInteractionDisabled}
+            >
+              Delete
+            </Button>
+          </div>
         )}
         <p className="text-xs text-gray-500 mt-2 text-center">
           Press Esc to close | Ctrl+Enter to save

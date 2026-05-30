@@ -1542,10 +1542,10 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         description: task.description,
         status: task.status,
         priority: task.priority,
-        position: task.position,
-        assignee_id: task.assignee_id,
-        due_date: task.due_date,
-        completed_at: task.completed_at,
+        position: task.position ?? undefined,
+        assignee_id: task.assignee_id ?? undefined,
+        due_date: task.due_date ?? undefined,
+        completed_at: task.completed_at ?? undefined,
         checklist: task.checklist,
       });
 
