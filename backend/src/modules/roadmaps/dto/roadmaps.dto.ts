@@ -177,10 +177,10 @@ export class UnlinkMilestoneDto {
 }
 
 // Task DTOs
-// roadmap_tasks columns: title, status, priority, position, due_date, completed_at
 export class CreateTaskDto {
   @IsUUID() feature_id: string;
   @IsString() @MaxLength(200) title: string;
+  @IsString() @IsOptional() description?: string | null;
   @IsEnum(['urgent', 'high', 'medium', 'low']) @IsOptional() priority?: string;
   @IsEnum(['todo', 'in_progress', 'in_review', 'done', 'blocked'])
   @IsOptional()
@@ -188,10 +188,12 @@ export class CreateTaskDto {
   @IsUUID() @IsOptional() assignee_id?: string;
   @IsDateString() @IsOptional() due_date?: string;
   @IsNumber() @IsOptional() @Min(0) position?: number;
+  @IsArray() @IsOptional() checklist?: { id?: string; title: string; completed: boolean }[];
 }
 
 export class UpdateTaskDto {
   @IsString() @IsOptional() @MaxLength(200) title?: string;
+  @IsString() @IsOptional() description?: string | null;
   @IsEnum(['urgent', 'high', 'medium', 'low']) @IsOptional() priority?: string;
   @IsEnum(['todo', 'in_progress', 'in_review', 'done', 'blocked'])
   @IsOptional()
@@ -200,6 +202,7 @@ export class UpdateTaskDto {
   @IsNumber() @IsOptional() @Min(0) position?: number;
   @IsDateString() @IsOptional() due_date?: string;
   @IsDateString() @IsOptional() completed_at?: string;
+  @IsArray() @IsOptional() checklist?: { id?: string; title: string; completed: boolean }[];
 }
 
 // Comment/Attachment DTOs
@@ -213,7 +216,12 @@ export class UpdateCommentDto {
 
 export class AddAttachmentDto {
   @IsString() file_name: string;
-  @IsString() file_url: string;
+  @IsString() @IsOptional() file_url?: string | null;
   @IsString() @IsOptional() file_type?: string;
   @IsNumber() @IsOptional() @Min(0) file_size?: number;
+}
+
+// Dependency DTOs
+export class AddDependencyDto {
+  @IsUUID() blocking_task_id: string;
 }
