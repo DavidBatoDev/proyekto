@@ -394,6 +394,7 @@ export class TeamsService {
       is_primary: boolean;
       attached_at: string;
       viewer_has_access: boolean;
+      viewer_role: string | null;
       project: {
         id: string;
         title: string | null;
@@ -401,6 +402,8 @@ export class TeamsService {
         start_date: string | null;
         custom_start_date: string | null;
         banner_url: string | null;
+        client_id: string | null;
+        consultant_id: string | null;
         client: {
           id: string;
           display_name: string | null;
@@ -416,7 +419,7 @@ export class TeamsService {
       .select(
         `project_id, team_id, is_primary, attached_at,
          project:projects!project_teams_project_id_fkey(
-           id, title, status, start_date, custom_start_date, banner_url,
+           id, title, status, start_date, custom_start_date, banner_url, client_id, consultant_id,
            client:profiles!projects_client_id_fkey(id, display_name, avatar_url)
          )`,
       )
@@ -435,6 +438,8 @@ export class TeamsService {
         start_date: string | null;
         custom_start_date: string | null;
         banner_url: string | null;
+        client_id: string | null;
+        consultant_id: string | null;
         client: {
           id: string;
           display_name: string | null;
@@ -444,15 +449,21 @@ export class TeamsService {
     }>;
     const projectIds = rows.map((r) => r.project_id).filter(Boolean);
     let accessSet = new Set<string>();
+    let roleMap = new Map<string, string>();
     if (projectIds.length > 0) {
       const { data: accessRows } = await this.supabase
         .from('project_access')
-        .select('project_id')
+        .select('project_id, role')
         .eq('user_id', callerId)
         .in('project_id', projectIds);
       accessSet = new Set((accessRows ?? []).map((r) => r.project_id));
+      roleMap = new Map((accessRows ?? []).map((r) => [r.project_id, r.role]));
     }
-    return rows.map((r) => ({ ...r, viewer_has_access: accessSet.has(r.project_id) }));
+    return rows.map((r) => ({
+      ...r,
+      viewer_has_access: accessSet.has(r.project_id),
+      viewer_role: roleMap.get(r.project_id) ?? null,
+    }));
   }
 
   async listMembers(teamId: string, userId: string): Promise<TeamMemberRow[]> {

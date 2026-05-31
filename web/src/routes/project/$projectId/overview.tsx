@@ -1,8 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { uploadService } from "@/services/upload.service";
 import { useUser } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Check, ChevronDown, Loader2 } from "lucide-react";
+import { projectService } from "@/services/project.service";
+import { PROJECT_STATUS_CONFIG } from "@/components/home/ProjectsGrid";
 import {
   OverviewLoadingSkeleton,
   OverviewBanner,
@@ -21,6 +25,80 @@ import {
   useProjectMembersQuery,
   useRoadmapFullQuery,
 } from "@/hooks/useProjectQueries";
+
+function StatusBadgeSelector({
+  projectId,
+  currentStatus,
+  canEdit,
+}: {
+  projectId: string;
+  currentStatus: string | null;
+  canEdit: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const mutation = useMutation({
+    mutationFn: (status: string) =>
+      projectService.update(projectId, {
+        status: status as "draft" | "active" | "bidding" | "paused" | "completed" | "archived",
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["project", "detail", projectId] });
+      setOpen(false);
+    },
+  });
+
+  const statusKey = (currentStatus ?? "draft").toLowerCase();
+  const cfg = PROJECT_STATUS_CONFIG[statusKey] ?? PROJECT_STATUS_CONFIG.draft;
+
+  return (
+    <div ref={ref} className="relative inline-flex">
+      <button
+        type="button"
+        disabled={!canEdit || mutation.isPending}
+        onClick={() => canEdit && setOpen((v) => !v)}
+        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${cfg.badgeClass} ${canEdit ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
+      >
+        {mutation.isPending ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: cfg.color }} />
+        )}
+        {cfg.label}
+        {canEdit && <ChevronDown className="h-3 w-3 opacity-60" />}
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1.5 w-44 rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+          {Object.entries(PROJECT_STATUS_CONFIG).map(([key, c]) => (
+            <button
+              key={key}
+              type="button"
+              disabled={mutation.isPending}
+              onClick={() => mutation.mutate(key)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: c.color }} />
+              <span className="flex-1">{c.label}</span>
+              {statusKey === key && <Check className="h-3.5 w-3.5 text-slate-500" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export const Route = createFileRoute("/project/$projectId/overview")({
   component: OverviewPage,
@@ -214,6 +292,14 @@ function OverviewPage() {
             </div>
 
             <div className="app-surface-card app-slide-up p-5 md:p-7">
+              <div className="mb-4 flex items-center gap-2">
+                <span className="text-xs font-medium text-slate-500">Status</span>
+                <StatusBadgeSelector
+                  projectId={projectId}
+                  currentStatus={project.status}
+                  canEdit={isOwnerOnProject}
+                />
+              </div>
               <OverviewContent
                 projectTitle={project.title}
                 clientName={project.client?.display_name}

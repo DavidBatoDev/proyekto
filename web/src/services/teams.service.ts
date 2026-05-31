@@ -446,6 +446,7 @@ export interface TeamProjectAttachment {
 	is_primary: boolean;
 	attached_at: string;
 	viewer_has_access?: boolean;
+	viewer_role?: string | null;
 	project: {
 		id: string;
 		title: string | null;
@@ -453,6 +454,8 @@ export interface TeamProjectAttachment {
 		start_date: string | null;
 		custom_start_date: string | null;
 		banner_url: string | null;
+		client_id: string | null;
+		consultant_id: string | null;
 		client: {
 			id: string;
 			display_name: string | null;

@@ -1,10 +1,13 @@
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+	Check,
+	ChevronRight,
 	Loader2,
 	Lock,
 	Mail,
+	MoreHorizontal,
 	Pencil,
 	Plus,
 	Trash2,
@@ -32,6 +35,7 @@ import {
 	type TeamRole,
 } from "@/services/teams.service";
 import { PROJECT_STATUS_CONFIG } from "@/components/home/ProjectsGrid";
+import { projectService } from "@/services/project.service";
 
 /**
  * Blue chip for the free-form member position (e.g. "Backend Developer").
@@ -59,6 +63,135 @@ function RoleChip({ role }: { role: TeamRole }) {
 	)
 }
 
+function CardActionMenu({
+	projectId,
+	teamId,
+	canSetStatus,
+	currentStatus,
+}: {
+	projectId: string;
+	teamId: string;
+	canSetStatus: boolean;
+	currentStatus: string | null;
+}) {
+	const [open, setOpen] = useState(false);
+	const [statusOpen, setStatusOpen] = useState(false);
+	const wrapperRef = useRef<HTMLDivElement>(null);
+	const navigate = useNavigate();
+	const queryClient = useQueryClient();
+	const toast = useToast();
+
+	useEffect(() => {
+		if (!open) return;
+		const handler = (e: MouseEvent) => {
+			if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+				setOpen(false);
+				setStatusOpen(false);
+			}
+		};
+		document.addEventListener("mousedown", handler);
+		return () => document.removeEventListener("mousedown", handler);
+	}, [open]);
+
+	const statusMutation = useMutation({
+		mutationFn: (status: string) => projectService.update(projectId, {
+			status: status as "draft" | "active" | "bidding" | "paused" | "completed" | "archived",
+		}),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: ["teams", "projects", teamId] });
+			toast.success("Status updated");
+			setOpen(false);
+			setStatusOpen(false);
+		},
+		onError: (err) => toast.error((err as Error).message),
+	});
+
+	const statuses = Object.entries(PROJECT_STATUS_CONFIG);
+
+	return (
+		<div ref={wrapperRef} className="absolute right-2 top-2 z-20">
+			<button
+				type="button"
+				aria-label="Card actions"
+				onClick={(e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					setOpen((v) => !v);
+					setStatusOpen(false);
+				}}
+				className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-white/80 hover:text-slate-700 transition-colors"
+			>
+				<MoreHorizontal className="h-4 w-4" />
+			</button>
+
+			{open && (
+				<div
+					className="absolute right-0 top-8 z-50 w-44 overflow-visible rounded-xl border border-slate-200 bg-white py-1 shadow-xl"
+					onClick={(e) => e.stopPropagation()}
+				>
+					{/* Go to Project */}
+					<button
+						type="button"
+						className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+						onClick={(e) => {
+							e.preventDefault();
+							e.stopPropagation();
+							void navigate({ to: "/project/$projectId/roadmap", params: { projectId } });
+						}}
+					>
+						Go to Project
+					</button>
+
+					{/* Set Status */}
+					{canSetStatus && (
+						<div className="relative">
+							<button
+								type="button"
+								className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+								onClick={(e) => {
+									e.preventDefault();
+									e.stopPropagation();
+									setStatusOpen((v) => !v);
+								}}
+							>
+								Set Status
+								<ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+							</button>
+
+							{statusOpen && (
+								<div className="absolute left-full top-0 ml-1 w-40 rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+									{statuses.map(([key, cfg]) => (
+										<button
+											key={key}
+											type="button"
+											disabled={statusMutation.isPending}
+											className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+											onClick={(e) => {
+												e.preventDefault();
+												e.stopPropagation();
+												statusMutation.mutate(key);
+											}}
+										>
+											<span
+												className="h-2 w-2 shrink-0 rounded-full"
+												style={{ backgroundColor: cfg.color }}
+											/>
+											<span className="flex-1">{cfg.label}</span>
+											{currentStatus?.toLowerCase() === key && (
+												<Check className="h-3.5 w-3.5 text-slate-500" />
+											)}
+										</button>
+									))}
+								</div>
+							)}
+						</div>
+					)}
+				</div>
+			)}
+		</div>
+	);
+}
+
 function MemberAvatar({ member, size = 6 }: { member: ProjectTeamMember; size?: number }) {
 	const initial = (
 		member.user?.display_name ||
@@ -82,6 +215,7 @@ function MemberAvatar({ member, size = 6 }: { member: ProjectTeamMember; size?: 
 function CompactProjectCard({
 	number,
 	projectId,
+	teamId,
 	title,
 	client,
 	status,
@@ -91,10 +225,12 @@ function CompactProjectCard({
 	progressColor,
 	bannerUrl = null,
 	isLocked = false,
+	canSetStatus = false,
 	members = [],
 }: {
 	number: number;
 	projectId: string;
+	teamId: string;
 	title: string;
 	client: string;
 	status: string;
@@ -104,6 +240,7 @@ function CompactProjectCard({
 	progressColor: string;
 	bannerUrl?: string | null;
 	isLocked?: boolean;
+	canSetStatus?: boolean;
 	members?: ProjectTeamMember[];
 }) {
 	const isDraft = status.toLowerCase() === "draft";
@@ -195,6 +332,12 @@ function CompactProjectCard({
 				backgroundImage: `linear-gradient(to bottom, white 92%, ${statusColor}14)`,
 			}}
 		>
+			<CardActionMenu
+				projectId={projectId}
+				teamId={teamId}
+				canSetStatus={canSetStatus}
+				currentStatus={status}
+			/>
 			{bannerUrl && (
 				<div className="relative h-20 w-full shrink-0 overflow-hidden rounded-t-xl">
 					<img src={bannerUrl} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
@@ -368,6 +511,7 @@ function TeamDetailPage() {
 										key={row.project.id}
 										number={index + 1}
 										projectId={row.project.id}
+										teamId={teamId}
 										title={row.project.title ?? "Untitled project"}
 										client={row.project.client?.display_name || "Assigned"}
 										status={statusConfig.label}
@@ -379,6 +523,11 @@ function TeamDetailPage() {
 										progressColor={statusConfig.color}
 										bannerUrl={row.project.banner_url}
 										isLocked={!row.viewer_has_access}
+										canSetStatus={
+											!!user?.id &&
+											(row.project.client_id === user.id ||
+												row.project.consultant_id === user.id)
+										}
 										members={projectMembersMap.get(row.project.id)}
 									/>
 								);

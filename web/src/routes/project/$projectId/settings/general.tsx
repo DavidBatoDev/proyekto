@@ -24,6 +24,7 @@ import {
   type ProjectMember,
 } from "@/services/project.service";
 import { useUser } from "@/stores/authStore";
+import { PROJECT_STATUS_CONFIG } from "@/components/home/ProjectsGrid";
 
 export const Route = createFileRoute("/project/$projectId/settings/general")({
   component: SettingsGeneralPage,
@@ -167,6 +168,7 @@ function SettingsGeneralPage() {
     useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteText, setDeleteText] = useState("");
+  const [isSavingStatus, setIsSavingStatus] = useState(false);
   const [isDeleteSaving, setIsDeleteSaving] = useState(false);
   const [isLeaveOpen, setIsLeaveOpen] = useState(false);
   const [isLeaveSaving, setIsLeaveSaving] = useState(false);
@@ -325,6 +327,22 @@ function SettingsGeneralPage() {
       );
     } finally {
       setIsSavingTitle(false);
+    }
+  };
+
+  const saveStatus = async (status: string) => {
+    if (!project) return;
+    setIsSavingStatus(true);
+    try {
+      const updated = await projectService.update(project.id, {
+        status: status as "draft" | "active" | "bidding" | "paused" | "completed" | "archived",
+      });
+      setProject(updated);
+      toast.success("Project status updated.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update status.");
+    } finally {
+      setIsSavingStatus(false);
     }
   };
 
@@ -615,6 +633,34 @@ function SettingsGeneralPage() {
                   />
                 )}
               </section>
+
+              {(isOwner || isConsultant) && (
+                <section className="pt-6 border-t border-slate-200">
+                  <h3 className="text-[18px] font-semibold text-slate-900 mb-2.5">
+                    Project Status
+                  </h3>
+                  <p className="text-sm text-slate-500 mb-3">
+                    Set the current lifecycle stage of this project.
+                  </p>
+                  <div className="relative max-w-xs">
+                    <select
+                      value={project?.status ?? "draft"}
+                      disabled={isSavingStatus}
+                      onChange={(e) => void saveStatus(e.target.value)}
+                      className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-9 text-sm text-slate-800 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30 disabled:opacity-50"
+                    >
+                      {Object.entries(PROJECT_STATUS_CONFIG).map(([key, cfg]) => (
+                        <option key={key} value={key}>{cfg.label}</option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                      {isSavingStatus
+                        ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                        : <Check className="h-4 w-4 text-slate-300" />}
+                    </div>
+                  </div>
+                </section>
+              )}
             </div>
           </div>
         </section>
