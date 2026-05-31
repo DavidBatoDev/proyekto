@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useQuery } from "@tanstack/react-query";
 import {
   X,
   Calendar,
@@ -15,8 +14,6 @@ import {
   Link2,
   History,
   AlertCircle,
-  Play,
-  Square,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type {
@@ -31,7 +28,6 @@ import { projectService, type ProjectMember } from "@/services/project.service";
 import { commentsService, taskService } from "@/services/roadmap.service";
 import type { AddTaskAttachmentDto } from "@/services/roadmap.service";
 import { uploadService } from "@/services/upload.service";
-import { teamTimeService } from "@/services/team-time.service";
 import { useToast } from "@/hooks/useToast";
 import { CommentsSection } from "../shared/CommentsSection";
 import { UnsavedChangesConfirmModal } from "../shared/UnsavedChangesConfirmModal";
@@ -39,7 +35,6 @@ import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { Button } from "@/ui/button";
 import { useUser } from "@/stores/authStore";
 import { useRoadmapStore } from "@/stores/roadmapStore";
-import { liveDurationSecondsFromLog, useLiveNowMs } from "@/components/team-time/time-utils";
 
 interface SidePanelProps {
   task: RoadmapTask | null;
@@ -129,17 +124,6 @@ const formatFileSize = (bytes?: number) => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const formatTimer = (totalSeconds: number): string => {
-  const safe = Math.max(0, Math.floor(totalSeconds));
-  const hours = Math.floor(safe / 3600)
-    .toString()
-    .padStart(2, "0");
-  const minutes = Math.floor((safe % 3600) / 60)
-    .toString()
-    .padStart(2, "0");
-  const seconds = (safe % 60).toString().padStart(2, "0");
-  return `${hours}:${minutes}:${seconds}`;
-};
 
 function MemberAvatar({
   name,
@@ -186,7 +170,7 @@ export const SidePanel = ({
   projectMembers = [],
   isLoading = false,
   asModal = false,
-  zIndexBase = 120,
+  zIndexBase: _zIndexBase = 120,
 }: SidePanelProps) => {
   const user = useUser();
   const toast = useToast();
@@ -194,8 +178,6 @@ export const SidePanel = ({
   const [editedTask, setEditedTask] = useState<RoadmapTask | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
-  const [isStartingTimer, setIsStartingTimer] = useState(false);
-  const [isStoppingTimer, setIsStoppingTimer] = useState(false);
   const [newTaskData, setNewTaskData] = useState<Partial<RoadmapTask>>({
     title: "",
     status: "todo",
@@ -243,27 +225,6 @@ export const SidePanel = ({
   const isCreateMode = isCreating || (!!isOpen && !task);
   const isReadOnlyPending = !isCreateMode && isPendingCreate;
   const isInteractionDisabled = isLoading || isReadOnlyPending;
-  const canQueryTimer = Boolean(user?.id) && isOpen && !isCreateMode;
-  const runningLogQuery = useQuery({
-    queryKey: ["team-time", "running-log", user?.id ?? "anonymous"],
-    queryFn: () => teamTimeService.getMyRunningLog(),
-    enabled: canQueryTimer,
-    refetchInterval: 3_000,
-    refetchIntervalInBackground: true,
-    retry: 1,
-  });
-  const runningLog = runningLogQuery.data ?? null;
-  const isTaskRunning =
-    Boolean(runningLog?.task_id) &&
-    runningLog?.task_id === editedTask?.id;
-  const nowMs = useLiveNowMs(isTaskRunning);
-  const elapsedSeconds = useMemo(
-    () =>
-      isTaskRunning && runningLog
-        ? liveDurationSecondsFromLog(runningLog, nowMs)
-        : 0,
-    [isTaskRunning, nowMs, runningLog],
-  );
 
   useEffect(() => {
     if (isCreateMode) {
@@ -662,39 +623,6 @@ export const SidePanel = ({
     if (didSave) setShowUnsavedChangesConfirm(false);
   };
 
-  const canStartTimer = Boolean(!isCreateMode && editedTask?.id && projectId);
-
-  const handleStartTimer = async () => {
-    if (!canStartTimer || !editedTask?.id || !projectId || isStartingTimer)
-      return;
-
-    try {
-      setIsStartingTimer(true);
-      await teamTimeService.startLog(projectId, editedTask.id);
-      toast.success("Timer started");
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to start timer";
-      toast.error(message);
-    } finally {
-      setIsStartingTimer(false);
-    }
-  };
-
-  const handleStopTimer = async () => {
-    if (!runningLog?.id || isStoppingTimer) return;
-    try {
-      setIsStoppingTimer(true);
-      await teamTimeService.stopLog(runningLog.id);
-      toast.success("Timer stopped");
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to stop timer";
-      toast.error(message);
-    } finally {
-      setIsStoppingTimer(false);
-    }
-  };
 
   // Handle keyboard shortcuts
   useEffect(() => {
