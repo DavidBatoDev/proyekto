@@ -318,6 +318,22 @@ code {
   pointer-events: none;
 }
 
+.react-flow__pane {
+  cursor: default !important;
+}
+
+.react-flow__pane.react-flow__pane--dragging {
+  cursor: grabbing !important;
+}
+
+.react-flow__node {
+  cursor: pointer !important;
+}
+
+.react-flow__node.dragging {
+  cursor: grabbing !important;
+}
+
 @keyframes roadmap-task-light-pulse {
   0% {
     background-color: rgba(255, 245, 204, 0.18);

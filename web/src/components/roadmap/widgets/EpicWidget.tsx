@@ -111,7 +111,7 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
 
   return (
     <motion.div
-      className={`group relative bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-[420px] flex flex-col ${canEditRoadmap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${
+      className={`group relative bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-[420px] flex flex-col ${canEditRoadmap ? "cursor-pointer active:cursor-grabbing" : "cursor-pointer"} ${
         isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
       } ${isOptimisticEpic ? "opacity-75" : ""} ${
         cardDropType === "epic" || cardDropType === "feature"

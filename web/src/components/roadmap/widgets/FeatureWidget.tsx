@@ -222,7 +222,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   return (
     <>
       <motion.div
-        className={`relative group bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-80 flex flex-col ${canEditRoadmap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${
+        className={`relative group bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-80 flex flex-col ${canEditRoadmap ? "cursor-pointer active:cursor-grabbing" : "cursor-pointer"} ${
           isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
         } ${isOptimisticFeature ? "opacity-75" : ""} ${
           isCardTaskDropActive
