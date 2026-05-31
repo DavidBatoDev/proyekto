@@ -6,6 +6,7 @@ import {
   Map,
   ListChecks,
   ClipboardList,
+  ReceiptText,
   Users,
   MessageSquare,
   BookOpen,
@@ -148,6 +149,12 @@ export function ProjectSidebar({
           label: "Logs",
           icon: ClipboardList,
           to: `/project/${projectId}/logs`,
+          requiresProject: true,
+        },
+        {
+          label: "Invoices",
+          icon: ReceiptText,
+          to: `/project/${projectId}/payments`,
           requiresProject: true,
         },
         {

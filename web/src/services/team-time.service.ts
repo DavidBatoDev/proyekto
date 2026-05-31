@@ -1,7 +1,8 @@
 import apiClient from "@/api/axios";
 
-export type TimeLogStatus = "pending" | "approved" | "rejected";
-export type TimeLogReviewDecision = "pending" | "approved" | "rejected";
+export type TimeLogStatus = "pending" | "approved" | "paid" | "rejected";
+export type TimeLogReviewDecision = "pending" | "approved" | "paid" | "rejected";
+export type TaskWorkType = "real_work" | "training";
 
 export interface ProfileMini {
 	id: string;
@@ -28,12 +29,47 @@ export interface TaskTimeLog {
 	source: "timer" | "manual";
 	rate_snapshot: number;
 	currency_snapshot: string;
+	work_type_snapshot: TaskWorkType;
 	created_at: string;
 	updated_at: string;
-	task?: { id: string; title: string } | null;
+	limit_context?: TimeLogLimitContext;
+	task?: { id: string; title: string; work_type?: TaskWorkType } | null;
 	member?: ProfileMini | null;
 	reviewer?: Pick<ProfileMini, "id" | "display_name" | "avatar_url"> | null;
 	project?: { id: string; title: string | null } | null;
+	day_review_summary?: TimeLogDaySummary;
+	review_comments?: TimeLogComment[];
+}
+
+export interface TimeLogComment {
+	id: string;
+	log_id: string;
+	author_user_id: string;
+	body: string;
+	created_at: string;
+	updated_at: string;
+	author?: ProfileMini | null;
+}
+
+export interface TimeLogDaySummary {
+	day: string;
+	total_logs: number;
+	pending_logs: number;
+	approved_logs: number;
+	paid_logs: number;
+	rejected_logs: number;
+	total_seconds: number;
+	limit_context?: TimeLogLimitContext;
+}
+
+export interface TimeLogLimitContext {
+	over_limit: boolean;
+	limit_window: "weekly" | "monthly" | null;
+	limit_hours: number | null;
+	logged_hours_in_window: number | null;
+	overtime_requires_approval: boolean;
+	window_start: string | null;
+	window_end: string | null;
 }
 
 export interface TimeLogListResult {
@@ -44,12 +80,17 @@ export interface TimeLogListResult {
 export interface ResolvedTeamRate {
 	team_id: string;
 	hourly_rate: number;
+	training_hourly_rate: number;
 	currency: string;
+	weekly_limit_hours: number | null;
+	monthly_limit_hours: number | null;
+	overtime_requires_approval: boolean;
 }
 
 export interface ProjectTaskOption {
 	id: string;
 	title: string;
+	work_type?: TaskWorkType;
 	feature_id: string;
 	feature_title: string | null;
 	epic_id: string | null;
@@ -210,6 +251,17 @@ export const teamTimeService = {
 		}
 	},
 
+	async getMyRunningLog(): Promise<TaskTimeLog | null> {
+		try {
+			const res = await apiClient.get<ApiResponse<TaskTimeLog | null>>(
+				"/api/team-time/logs/me/running",
+			);
+			return res.data.data;
+		} catch (e) {
+			throw extractError(e, "Failed to load running timer");
+		}
+	},
+
 	async reviewLog(
 		logId: string,
 		decision: TimeLogReviewDecision,
@@ -230,7 +282,7 @@ export const teamTimeService = {
 		logIds: string[],
 		decision: TimeLogReviewDecision,
 		reason?: string,
-	): Promise<{ reviewed: number }> {
+	): Promise<{ reviewed: number; day_summaries?: TimeLogDaySummary[] }> {
 		try {
 			const res = await apiClient.post<ApiResponse<{ reviewed: number }>>(
 				"/api/team-time/logs/review-bulk",
@@ -239,6 +291,32 @@ export const teamTimeService = {
 			return res.data.data;
 		} catch (e) {
 			throw extractError(e, "Failed to review time logs");
+		}
+	},
+
+	async listLogComments(logId: string): Promise<TimeLogComment[]> {
+		try {
+			const res = await apiClient.get<ApiResponse<TimeLogComment[]>>(
+				`/api/team-time/logs/${logId}/comments`,
+			);
+			return res.data.data ?? [];
+		} catch (e) {
+			throw extractError(e, "Failed to fetch log comments");
+		}
+	},
+
+	async createLogComment(
+		logId: string,
+		body: string,
+	): Promise<TimeLogComment> {
+		try {
+			const res = await apiClient.post<ApiResponse<TimeLogComment>>(
+				`/api/team-time/logs/${logId}/comments`,
+				{ body },
+			);
+			return res.data.data;
+		} catch (e) {
+			throw extractError(e, "Failed to add log comment");
 		}
 	},
 

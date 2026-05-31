@@ -5,6 +5,7 @@ import type { TeamMemberRate } from "@/services/teams.service";
 type Bucket = {
 	pendingFees: number;
 	approvedFees: number;
+	paidFees: number;
 	rejectedFees: number;
 	totalFees: number;
 };
@@ -23,6 +24,7 @@ export function computeLogStats(logs: TaskTimeLog[]): LogStats {
 			buckets[cur] = {
 				pendingFees: 0,
 				approvedFees: 0,
+				paidFees: 0,
 				rejectedFees: 0,
 				totalFees: 0,
 			};
@@ -40,6 +42,7 @@ export function computeLogStats(logs: TaskTimeLog[]): LogStats {
 		bucket.totalFees += fees;
 		if (log.status === "pending") bucket.pendingFees += fees;
 		else if (log.status === "approved") bucket.approvedFees += fees;
+		else if (log.status === "paid") bucket.paidFees += fees;
 		else if (log.status === "rejected") bucket.rejectedFees += fees;
 	}
 	return {
@@ -65,6 +68,9 @@ interface TeamLogsStatsCardProps {
 	loading: boolean;
 	canShowHistory?: boolean;
 	onOpenHistory?: () => void;
+	includePaidColumn?: boolean;
+	includeTrainingRate?: boolean;
+	rateLabel?: string;
 }
 
 export function TeamLogsStatsCard({
@@ -74,11 +80,19 @@ export function TeamLogsStatsCard({
 	loading,
 	canShowHistory = false,
 	onOpenHistory,
+	includePaidColumn = true,
+	includeTrainingRate = true,
+	rateLabel = "Work",
 }: TeamLogsStatsCardProps) {
 	const renderCurrencies =
 		stats.currencies.length > 0 ? stats.currencies : [fallbackCurrency];
 	const pick = (
-		field: "pendingFees" | "approvedFees" | "rejectedFees" | "totalFees",
+		field:
+			| "pendingFees"
+			| "approvedFees"
+			| "paidFees"
+			| "rejectedFees"
+			| "totalFees",
 		cur: string,
 	) => stats.buckets[cur]?.[field] ?? 0;
 	const columns: {
@@ -102,6 +116,17 @@ export function TeamLogsStatsCard({
 				amount: pick("approvedFees", c),
 			})),
 		},
+		...(includePaidColumn
+			? [
+					{
+						label: "Paid",
+						values: renderCurrencies.map((c) => ({
+							currency: c,
+							amount: pick("paidFees", c),
+						})),
+					},
+				]
+			: []),
 		{
 			label: "Rejected",
 			values: renderCurrencies.map((c) => ({
@@ -142,13 +167,25 @@ export function TeamLogsStatsCard({
 						)}
 						<span className="inline-flex items-center gap-1.5">
 							<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-								Rate
+								{rateLabel}
 							</span>
 							<span className="text-sm font-semibold text-slate-900">
 								{Number(rate.hourly_rate).toFixed(2)} {rate.currency || "USD"}
 								<span className="font-normal text-slate-500">/hr</span>
 							</span>
 						</span>
+						{includeTrainingRate && (
+							<span className="inline-flex items-center gap-1.5">
+								<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+									Training
+								</span>
+								<span className="text-sm font-semibold text-slate-900">
+									{Number(rate.training_hourly_rate).toFixed(2)}{" "}
+									{rate.currency || "USD"}
+									<span className="font-normal text-slate-500">/hr</span>
+								</span>
+							</span>
+						)}
 						{rate.start_date && (
 							<span className="text-slate-400">
 								since {formatRateDate(rate.start_date)}

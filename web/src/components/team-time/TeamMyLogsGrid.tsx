@@ -56,12 +56,22 @@ const SHORT_DATE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
 type MyLogGridRow = {
 	id: string;
 	date: string;
+	day_total_hours: number;
 	project_label: string;
 	task_id: string | null;
 	time_in: string;
 	is_running: boolean;
 	log: TaskTimeLog;
 };
+
+function toLocalDayKey(value: string): string | null {
+	const parsed = new Date(value);
+	if (Number.isNaN(parsed.getTime())) return null;
+	const yyyy = parsed.getFullYear();
+	const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+	const dd = String(parsed.getDate()).padStart(2, "0");
+	return `${yyyy}-${mm}-${dd}`;
+}
 
 type MenuTone = "default" | "danger";
 
@@ -76,6 +86,7 @@ type ActionMenuItem = {
 
 function statusBadgeClass(status: TaskTimeLog["status"]) {
 	if (status === "approved") return "bg-emerald-100 text-emerald-700";
+	if (status === "paid") return "bg-indigo-100 text-indigo-700";
 	if (status === "rejected") return "bg-rose-100 text-rose-700";
 	return "bg-amber-100 text-amber-700";
 }
@@ -482,9 +493,28 @@ export function TeamMyLogsGrid({
 			const bMs = new Date(b.started_at).getTime();
 			return aMs - bMs;
 		});
+		const dayTotalsByKey = new Map<string, number>();
+		for (const log of sortedLogs) {
+			const dayKey = toLocalDayKey(log.started_at);
+			if (!dayKey) continue;
+			const seconds = Math.max(
+				0,
+				Number(
+					log.duration_seconds ??
+						(log.ended_at
+							? (new Date(log.ended_at).getTime() -
+									new Date(log.started_at).getTime()) /
+							  1000
+							: 0),
+				),
+			);
+			const hours = seconds / 3600;
+			dayTotalsByKey.set(dayKey, (dayTotalsByKey.get(dayKey) ?? 0) + hours);
+		}
 		const populatedRows = sortedLogs.map((log) => {
 			const startedDate = new Date(log.started_at);
 			const hasValidStart = !Number.isNaN(startedDate.getTime());
+			const dayKey = hasValidStart ? toLocalDayKey(log.started_at) : null;
 			const taskTitle =
 				log.task?.title ||
 				(log.task_id ? taskTitleById.get(log.task_id) : undefined) ||
@@ -493,6 +523,7 @@ export function TeamMyLogsGrid({
 			return {
 				id: log.id,
 				date: !hasValidStart ? "-" : FULL_DATE_FORMATTER.format(startedDate),
+				day_total_hours: dayKey ? dayTotalsByKey.get(dayKey) ?? 0 : 0,
 				project_label: log.project?.title || log.project_id,
 				task_id: log.task_id,
 				time_in: !hasValidStart ? "-" : TIME_FORMATTER.format(startedDate),
@@ -520,7 +551,33 @@ export function TeamMyLogsGrid({
 			columnHelper.accessor("date", {
 				id: "date",
 				header: "Dates",
-				cell: (info) => info.getValue(),
+				cell: (info) => {
+					const row = info.row.original;
+					const dailyHours = row.day_total_hours;
+					const hasHours = Number.isFinite(dailyHours) && dailyHours > 0;
+					const isOverLimit = hasHours && dailyHours > 8;
+					return (
+						<div className="min-w-0">
+							<div className="truncate">{info.getValue()}</div>
+							{hasHours ? (
+								<span
+									className={`mt-1 inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
+										isOverLimit
+											? "border-rose-200 bg-rose-50 text-rose-700"
+											: "border-emerald-200 bg-emerald-50 text-emerald-700"
+									}`}
+									title={
+										isOverLimit
+											? "Over 8 hours logged on this day"
+											: "Within 8-hour daily target"
+									}
+								>
+									{dailyHours.toFixed(2)}h day total
+								</span>
+							) : null}
+						</div>
+					);
+				},
 			}),
 			columnHelper.accessor("project_label", {
 				id: "project",
@@ -606,14 +663,37 @@ export function TeamMyLogsGrid({
 							</span>
 						);
 					}
+					const note = row.log.review_note?.trim();
+					const reviewedLabel = row.log.reviewed_at
+						? `Reviewed ${new Date(row.log.reviewed_at).toLocaleString()}`
+						: null;
 					return (
-						<span
-							className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusBadgeClass(
-								info.getValue(),
-							)}`}
-						>
-							{info.getValue()}
-						</span>
+						<div className="min-w-0">
+							<span
+								className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusBadgeClass(
+									info.getValue(),
+								)}`}
+							>
+								{info.getValue()}
+							</span>
+							{note ? (
+								<div
+									className={`mt-1 truncate text-[10px] ${
+										row.log.status === "rejected"
+											? "text-rose-700"
+											: "text-slate-500"
+									}`}
+									title={note}
+								>
+									{row.log.status === "rejected" ? `Reason: ${note}` : note}
+								</div>
+							) : null}
+							{!note && reviewedLabel ? (
+								<div className="mt-1 truncate text-[10px] text-slate-500">
+									{reviewedLabel}
+								</div>
+							) : null}
+						</div>
 					);
 				},
 			}),

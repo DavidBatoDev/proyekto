@@ -6,6 +6,7 @@ import {
 	Ellipsis,
 	Inbox,
 	Loader,
+	ArrowRight,
 	Trash2,
 } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
@@ -199,9 +200,10 @@ export function RoadmapsGrid() {
 					</div>
 					<button
 						type="button"
-						className="text-base font-semibold text-slate-700 transition-colors hover:text-slate-900"
+						className="inline-flex shrink-0 items-center gap-1 text-[13px] font-semibold text-slate-700 hover:text-slate-900"
 					>
-						{"View All \u2192"}
+						View All
+						<ArrowRight className="h-3.5 w-3.5" />
 					</button>
 				</div>
 				<p className="mt-1 text-xs text-slate-600">
@@ -325,7 +327,7 @@ export function RoadmapsGrid() {
 											<span>Linked to Project</span>
 										</div>
 									)}
-									<div className="mt-auto border-t border-slate-100 pt-4 mt-4 flex justify-end">
+									<div className="mt-auto border-t border-slate-100 pt-4 flex justify-end">
 										<span className="inline-flex items-center gap-1 whitespace-nowrap text-[14px] font-semibold uppercase text-slate-700 transition-colors group-hover:text-slate-900">
 											<CheckCircle2 className="w-3 h-3" />
 											TRACK PROGRESS \u2192

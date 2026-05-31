@@ -1,6 +1,7 @@
 import {
   ArrayMinSize,
   IsBoolean,
+  IsDateString,
   IsArray,
   IsEmail,
   IsEnum,
@@ -116,6 +117,28 @@ export class ProjectInviteQueryDto {
   @IsOptional()
   @IsUUID()
   project_id?: string;
+}
+
+export class ProjectDashboardSummaryQueryDto {
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @IsOptional()
+  @IsDateString()
+  to?: string;
+
+  @IsOptional()
+  @IsUUID()
+  project_id?: string;
+
+  @IsOptional()
+  @IsUUID()
+  team_id?: string;
+
+  @IsOptional()
+  @IsUUID()
+  member_user_id?: string;
 }
 
 export class UpdateRolePermissionsDto {

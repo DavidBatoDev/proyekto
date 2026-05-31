@@ -43,6 +43,7 @@ function StatRow({ label, value }: { label: string; value: string }) {
 interface CellSelectionScoreboardProps {
 	selectedCells: Set<string>;
 	logs: TaskTimeLog[];
+	rowIdToLogIds?: Record<string, string[]>;
 	ownRateByProjectId?: Record<string, { hourly_rate: number; currency: string }>;
 	asPortal?: boolean;
 }
@@ -50,6 +51,7 @@ interface CellSelectionScoreboardProps {
 export function CellSelectionScoreboard({
 	selectedCells,
 	logs,
+	rowIdToLogIds,
 	ownRateByProjectId,
 	asPortal = true,
 }: CellSelectionScoreboardProps) {
@@ -63,11 +65,14 @@ export function CellSelectionScoreboard({
 	const hasRunningSelected = useMemo(() => {
 		for (const key of selectedCells) {
 			const rowId = key.split(":")[0];
-			const log = logById.get(rowId);
-			if (log && !log.ended_at) return true;
+			const logIds = rowIdToLogIds?.[rowId] ?? [rowId];
+			for (const logId of logIds) {
+				const log = logById.get(logId);
+				if (log && !log.ended_at) return true;
+			}
 		}
 		return false;
-	}, [selectedCells, logById]);
+	}, [selectedCells, logById, rowIdToLogIds]);
 
 	const nowMs = useLiveNowMs(hasRunningSelected);
 
@@ -78,21 +83,33 @@ export function CellSelectionScoreboard({
 
 		for (const key of selectedCells) {
 			const [rowId, colId] = key.split(":");
-			const log = logById.get(rowId);
-			if (!log) continue;
+			const rowLogIds = rowIdToLogIds?.[rowId] ?? [rowId];
+			const rowLogs = rowLogIds
+				.map((id) => logById.get(id))
+				.filter((log): log is TaskTimeLog => Boolean(log));
+			if (rowLogs.length === 0) continue;
 
 			if (colId === "hours_worked") {
-				const h = liveDurationSecondsFromLog(log, nowMs) / 3600;
+				const h =
+					rowLogs.reduce(
+						(sum, log) => sum + liveDurationSecondsFromLog(log, nowMs),
+						0,
+					) / 3600;
 				hoursValues.push(h);
 			} else if (colId === "fees") {
-				const snap = Number(log.rate_snapshot ?? 0);
-				const fallback = ownRateByProjectId?.[log.project_id];
-				const hourly = snap > 0 ? snap : fallback ? Number(fallback.hourly_rate) : null;
-				if (hourly !== null && Number.isFinite(hourly)) {
+				const rowFeeMap = new Map<string, number>();
+				for (const log of rowLogs) {
+					const snap = Number(log.rate_snapshot ?? 0);
+					const fallback = ownRateByProjectId?.[log.project_id];
+					const hourly = snap > 0 ? snap : fallback ? Number(fallback.hourly_rate) : null;
+					if (hourly === null || !Number.isFinite(hourly)) continue;
 					const h = liveDurationSecondsFromLog(log, nowMs) / 3600;
 					const fee = h * hourly;
 					const currency =
 						log.currency_snapshot || fallback?.currency || "USD";
+					rowFeeMap.set(currency, (rowFeeMap.get(currency) ?? 0) + fee);
+				}
+				for (const [currency, fee] of rowFeeMap.entries()) {
 					const existing = feeMap.get(currency) ?? [];
 					existing.push(fee);
 					feeMap.set(currency, existing);
@@ -111,7 +128,7 @@ export function CellSelectionScoreboard({
 						}))
 					: null,
 		};
-	}, [selectedCells, logById, nowMs, ownRateByProjectId]);
+	}, [selectedCells, logById, nowMs, ownRateByProjectId, rowIdToLogIds]);
 
 	if (selectedCells.size === 0) return null;
 

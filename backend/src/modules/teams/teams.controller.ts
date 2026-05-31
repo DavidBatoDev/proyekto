@@ -18,6 +18,7 @@ import {
   RespondTeamInviteDto,
   UpdateTeamDto,
   UpdateTeamMemberDto,
+  UpdateWorkspaceDefaultsDto,
 } from './dto/teams.dto';
 
 @UseGuards(SupabaseAuthGuard)
@@ -53,6 +54,14 @@ export class TeamsController {
     @Body() dto: RespondTeamInviteDto,
   ) {
     return this.teams.respondInvite(inviteId, user.id, dto);
+  }
+
+  @Patch('preferences/defaults')
+  updateWorkspaceDefaults(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateWorkspaceDefaultsDto,
+  ) {
+    return this.teams.updateWorkspaceDefaults(user.id, dto);
   }
 
   @Get(':id')

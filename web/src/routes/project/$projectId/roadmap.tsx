@@ -20,7 +20,33 @@ import {
 } from "@/hooks/useProjectQueries";
 import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
 
+type RoadmapDetailView = "roadmapView" | "timelineView";
+
+const parseStringParam = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+};
+
+const parseViewParam = (value: unknown): RoadmapDetailView | undefined => {
+  if (value === "roadmapView" || value === "timelineView") {
+    return value;
+  }
+  return undefined;
+};
+
 export const Route = createFileRoute("/project/$projectId/roadmap")({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): {
+    nodeId?: string;
+    taskId?: string;
+    view?: RoadmapDetailView;
+  } => ({
+    nodeId: parseStringParam(search.nodeId),
+    taskId: parseStringParam(search.taskId),
+    view: parseViewParam(search.view),
+  }),
   component: RoadmapPage,
 });
 
@@ -36,6 +62,7 @@ function RoadmapPage() {
 function RoadmapPageBody() {
   const childMatches = useChildMatches();
   const { projectId } = Route.useParams();
+  const { nodeId, taskId, view } = Route.useSearch();
   const navigate = useNavigate();
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const linkedRoadmapQuery = useLinkedRoadmapQuery(projectId);
@@ -45,12 +72,29 @@ function RoadmapPageBody() {
     if (childMatches.length > 0) return;
     const linkedRoadmapId = linkedRoadmapQuery.data?.id;
     if (!linkedRoadmapId) return;
+    const deepLinkNodeId = nodeId ?? taskId;
     void navigate({
       to: "/project/$projectId/roadmap/$roadmapId",
       params: { projectId, roadmapId: linkedRoadmapId },
+      search: deepLinkNodeId
+        ? {
+            nodeId: deepLinkNodeId,
+            view,
+          }
+        : view
+          ? { view }
+          : undefined,
       replace: true,
     });
-  }, [childMatches.length, linkedRoadmapQuery.data?.id, navigate, projectId]);
+  }, [
+    childMatches.length,
+    linkedRoadmapQuery.data?.id,
+    navigate,
+    nodeId,
+    projectId,
+    taskId,
+    view,
+  ]);
 
   if (childMatches.length > 0) {
     return <Outlet />;

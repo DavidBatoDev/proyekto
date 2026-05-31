@@ -1,6 +1,16 @@
 ﻿import apiClient from "@/api/axios";
 import { extractApiErrorMessage } from "@/lib/permissionErrors";
 
+function maybeRewriteRateSchemaError(message: string): string {
+	const lower = message.toLowerCase();
+	const missingTrainingRateColumn =
+		lower.includes("training_hourly_rate") &&
+		lower.includes("team_member_rates") &&
+		(lower.includes("could not find") || lower.includes("column"));
+	if (!missingTrainingRateColumn) return message;
+	return "Training rate requires a database migration. Please apply migration 20260525000010_task_work_type_and_training_rates.sql, then refresh and try again.";
+}
+
 export type TeamRole = "owner" | "admin" | "member";
 export type ProjectTeamDefaultRole = "admin" | "editor" | "commenter" | "viewer";
 
@@ -12,6 +22,7 @@ export interface Team {
 	avatar_url: string | null;
 	is_personal: boolean;
 	time_tracking_enabled: boolean;
+	retroactive_log_days?: number | null;
 	created_at: string;
 	updated_at: string;
 	// Populated by listMyTeams. Other endpoints that return a single
@@ -49,12 +60,22 @@ export interface TeamMemberRate {
 	user_id: string;
 	project_id: string;
 	hourly_rate: number;
+	training_hourly_rate: number;
 	currency: string;
 	custom_id: string | null;
 	start_date: string | null;
 	end_date: string | null;
+	weekly_limit_hours: number | null;
+	monthly_limit_hours: number | null;
+	overtime_requires_approval: boolean;
 	created_at: string;
 	updated_at: string;
+}
+
+export interface WorkspaceDefaults {
+	default_team_id: string | null;
+	default_project_id: string | null;
+	last_team_id: string | null;
 }
 
 export interface ProjectTeam {
@@ -171,6 +192,7 @@ export async function updateTeam(
 		description?: string;
 		avatar_url?: string;
 		time_tracking_enabled?: boolean;
+		retroactive_log_days?: number;
 	},
 ): Promise<Team> {
 	try {
@@ -248,18 +270,44 @@ export async function updateTeamMember(
 export interface CreateTeamMemberRatePayload {
 	project_ids: string[];
 	hourly_rate: number;
+	training_hourly_rate: number;
 	currency?: string;
 	custom_id?: string;
 	start_date?: string;
 	end_date?: string;
+	weekly_limit_hours?: number;
+	monthly_limit_hours?: number;
+	overtime_requires_approval?: boolean;
 }
 
 export interface UpdateTeamMemberRatePayload {
 	hourly_rate?: number;
+	training_hourly_rate?: number;
 	currency?: string;
 	custom_id?: string;
 	start_date?: string;
 	end_date?: string | null;
+	weekly_limit_hours?: number;
+	monthly_limit_hours?: number;
+	overtime_requires_approval?: boolean;
+}
+
+export async function updateWorkspaceDefaults(
+	patch: Partial<WorkspaceDefaults>,
+): Promise<{ workspace_defaults: WorkspaceDefaults }> {
+	try {
+		const { data } = await apiClient.patch<{
+			data: { workspace_defaults: WorkspaceDefaults };
+		}>("/api/teams/preferences/defaults", patch);
+		return data.data;
+	} catch (err) {
+		throw new Error(
+			extractApiErrorMessage(
+				(err as { response?: { data?: unknown } }).response?.data,
+				"Failed to update workspace defaults",
+			),
+		);
+	}
 }
 
 export async function listMemberRates(
@@ -324,11 +372,12 @@ export async function createMemberRate(
 		);
 		return data.data;
 	} catch (err) {
+		const message = extractApiErrorMessage(
+			(err as { response?: { data?: unknown } }).response?.data,
+			"Failed to create rate",
+		);
 		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to create rate",
-			),
+			maybeRewriteRateSchemaError(message),
 		);
 	}
 }
@@ -346,11 +395,12 @@ export async function updateMemberRate(
 		);
 		return data.data;
 	} catch (err) {
+		const message = extractApiErrorMessage(
+			(err as { response?: { data?: unknown } }).response?.data,
+			"Failed to update rate",
+		);
 		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to update rate",
-			),
+			maybeRewriteRateSchemaError(message),
 		);
 	}
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   X,
   Calendar,
@@ -14,6 +15,8 @@ import {
   Link2,
   History,
   AlertCircle,
+  Play,
+  Square,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type {
@@ -27,12 +30,15 @@ import type {
 import { projectService, type ProjectMember } from "@/services/project.service";
 import { commentsService, taskService } from "@/services/roadmap.service";
 import type { AddTaskAttachmentDto } from "@/services/roadmap.service";
+import { teamTimeService } from "@/services/team-time.service";
+import { useToast } from "@/hooks/useToast";
 import { CommentsSection } from "../shared/CommentsSection";
 import { UnsavedChangesConfirmModal } from "../shared/UnsavedChangesConfirmModal";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { Button } from "@/ui/button";
 import { useUser } from "@/stores/authStore";
 import { useRoadmapStore } from "@/stores/roadmapStore";
+import { liveDurationSecondsFromLog, useLiveNowMs } from "@/components/team-time/time-utils";
 
 interface SidePanelProps {
   task: RoadmapTask | null;
@@ -47,6 +53,7 @@ interface SidePanelProps {
   projectMembers?: ProjectMember[];
   isLoading?: boolean;
   asModal?: boolean;
+  zIndexBase?: number;
 }
 
 type TabType = "details" | "comments" | "history";
@@ -55,6 +62,7 @@ type TaskDraftSnapshot = {
   title: string;
   status: RoadmapTask["status"];
   priority: RoadmapTask["priority"];
+  workType: RoadmapTask["work_type"];
   assigneeId?: string;
   dueDate: string;
   description: string;
@@ -64,6 +72,7 @@ const TASK_CREATE_DEFAULTS: TaskDraftSnapshot = {
   title: "",
   status: "todo",
   priority: "medium",
+  workType: "real_work",
   assigneeId: undefined,
   dueDate: "",
   description: "",
@@ -75,6 +84,7 @@ const buildTaskDraftSnapshot = (
   title: taskData.title ?? "",
   status: (taskData.status as RoadmapTask["status"]) ?? "todo",
   priority: (taskData.priority as RoadmapTask["priority"]) ?? "medium",
+  workType: taskData.work_type ?? "real_work",
   assigneeId: taskData.assignee_id ?? taskData.assignee?.id,
   dueDate: toDateInputValue(taskData.due_date),
   description: taskData.description ?? "",
@@ -87,6 +97,7 @@ const isSameTaskDraftSnapshot = (
   left.title === right.title &&
   left.status === right.status &&
   left.priority === right.priority &&
+  left.workType === right.workType &&
   left.assigneeId === right.assigneeId &&
   left.dueDate === right.dueDate &&
   left.description === right.description;
@@ -114,6 +125,18 @@ const formatFileSize = (bytes?: number) => {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const formatTimer = (totalSeconds: number): string => {
+  const safe = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(safe / 3600)
+    .toString()
+    .padStart(2, "0");
+  const minutes = Math.floor((safe % 3600) / 60)
+    .toString()
+    .padStart(2, "0");
+  const seconds = (safe % 60).toString().padStart(2, "0");
+  return `${hours}:${minutes}:${seconds}`;
 };
 
 function MemberAvatar({
@@ -160,16 +183,21 @@ export const SidePanel = ({
   projectMembers = [],
   isLoading = false,
   asModal = false,
+  zIndexBase = 120,
 }: SidePanelProps) => {
   const user = useUser();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<TabType>("details");
   const [editedTask, setEditedTask] = useState<RoadmapTask | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
+  const [isStartingTimer, setIsStartingTimer] = useState(false);
+  const [isStoppingTimer, setIsStoppingTimer] = useState(false);
   const [newTaskData, setNewTaskData] = useState<Partial<RoadmapTask>>({
     title: "",
     status: "todo",
     priority: "medium",
+    work_type: "real_work",
   });
   const [isAssigneeMenuOpen, setIsAssigneeMenuOpen] = useState(false);
   const [assigneeSearch, setAssigneeSearch] = useState("");
@@ -211,6 +239,27 @@ export const SidePanel = ({
   const isCreateMode = isCreating || (!!isOpen && !task);
   const isReadOnlyPending = !isCreateMode && isPendingCreate;
   const isInteractionDisabled = isLoading || isReadOnlyPending;
+  const canQueryTimer = Boolean(user?.id) && isOpen && !isCreateMode;
+  const runningLogQuery = useQuery({
+    queryKey: ["team-time", "running-log", user?.id ?? "anonymous"],
+    queryFn: () => teamTimeService.getMyRunningLog(),
+    enabled: canQueryTimer,
+    refetchInterval: 3_000,
+    refetchIntervalInBackground: true,
+    retry: 1,
+  });
+  const runningLog = runningLogQuery.data ?? null;
+  const isTaskRunning =
+    Boolean(runningLog?.task_id) &&
+    runningLog?.task_id === editedTask?.id;
+  const nowMs = useLiveNowMs(isTaskRunning);
+  const elapsedSeconds = useMemo(
+    () =>
+      isTaskRunning && runningLog
+        ? liveDurationSecondsFromLog(runningLog, nowMs)
+        : 0,
+    [isTaskRunning, nowMs, runningLog],
+  );
 
   useEffect(() => {
     if (isCreateMode) {
@@ -219,12 +268,14 @@ export const SidePanel = ({
         title: "",
         status: "todo",
         priority: "medium",
+        work_type: "real_work",
       });
       setDescriptionDraft("");
       setIsEditingDescription(false);
     } else if (task) {
       const normalizedTask = {
         ...task,
+        work_type: task.work_type ?? "real_work",
         due_date: toDateInputValue(task.due_date) || undefined,
       };
       editSnapshotRef.current = buildTaskDraftSnapshot(normalizedTask);
@@ -558,7 +609,12 @@ export const SidePanel = ({
   const closeImmediately = () => {
     if (isLoading) return;
     if (isCreateMode) {
-      setNewTaskData({ title: "", status: "todo", priority: "medium" });
+      setNewTaskData({
+        title: "",
+        status: "todo",
+        priority: "medium",
+        work_type: "real_work",
+      });
     }
     setShowUnsavedChangesConfirm(false);
     onClose();
@@ -579,6 +635,42 @@ export const SidePanel = ({
     if (didSave) setShowUnsavedChangesConfirm(false);
   };
 
+  const canStartTimer = Boolean(!isCreateMode && editedTask?.id && projectId);
+
+  const handleStartTimer = async () => {
+    if (!canStartTimer || !editedTask?.id || !projectId || isStartingTimer)
+      return;
+
+    try {
+      setIsStartingTimer(true);
+      await teamTimeService.startLog(projectId, editedTask.id);
+      toast.success("Timer started");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to start timer";
+      toast.error(message);
+    } finally {
+      setIsStartingTimer(false);
+    }
+  };
+
+  const handleStopTimer = async () => {
+    if (!runningLog?.id || isStoppingTimer) return;
+    try {
+      setIsStoppingTimer(true);
+      await teamTimeService.stopLog(runningLog.id);
+      toast.success("Timer stopped");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to stop timer";
+      toast.error(message);
+    } finally {
+      setIsStoppingTimer(false);
+    }
+  };
+
+  // Handle keyboard shortcuts
+>>>>>>> 65d8cac (feat: add time audit features (work types, paid status, timers, approvals))
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isOpen) return;
@@ -1379,6 +1471,454 @@ export const SidePanel = ({
               className="fixed top-0 right-0 bottom-0 z-130"
             >
               {panelContent}
+=======
+              className="fixed top-0 right-0 bottom-0 w-[560px] bg-white border-l border-gray-200 shadow-2xl flex flex-col"
+              style={{ zIndex: zIndexBase + 10 }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {isCreateMode ? "Create Task" : "Edit Task"}
+                </h2>
+                <button
+                  onClick={handleRequestClose}
+                  disabled={isLoading}
+                  className="p-2 hover:bg-gray-100 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Close panel (Esc)"
+                >
+                  <X className="w-5 h-5 text-gray-600" />
+                </button>
+              </div>
+
+              {/* Title Section - Always Editable */}
+              <div className="px-6 py-4 border-b border-gray-200">
+                <input
+                  type="text"
+                  placeholder="Task title..."
+                  value={
+                    isCreateMode ? newTaskData.title : editedTask?.title || ""
+                  }
+                  onChange={(e) => {
+                    if (isCreateMode) {
+                      setNewTaskData({ ...newTaskData, title: e.target.value });
+                    } else {
+                      setEditedTask(
+                        editedTask
+                          ? { ...editedTask, title: e.target.value }
+                          : null,
+                      );
+                    }
+                  }}
+                  disabled={isInteractionDisabled}
+                  className="w-full text-xl font-semibold text-gray-900 border-none focus:outline-none focus:ring-0 px-0 disabled:opacity-50"
+                  autoFocus
+                />
+              </div>
+
+              {/* Action Buttons Row */}
+              <div className="px-6 py-3 border-b border-gray-200 flex items-center gap-2 overflow-x-auto">
+                <button
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md hover:bg-gray-100 transition-colors text-gray-700 disabled:opacity-50"
+                  title="Add dates"
+                  disabled={isInteractionDisabled}
+                >
+                  <Calendar className="w-4 h-4" />
+                  <span>Dates</span>
+                </button>
+                {!isCreateMode && isTaskRunning ? (
+                  <>
+                    <span className="inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="tabular-nums">
+                        {formatTimer(elapsedSeconds)}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void handleStopTimer()}
+                      disabled={isStoppingTimer}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-rose-200 bg-rose-50 hover:bg-rose-100 transition-colors text-rose-700 disabled:opacity-50"
+                      title="Stop timer for this task"
+                    >
+                      <Square className="w-4 h-4" />
+                      <span>{isStoppingTimer ? "Stopping..." : "Stop Timer"}</span>
+                    </button>
+                  </>
+                ) : !isCreateMode ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleStartTimer()}
+                    disabled={!canStartTimer || isStartingTimer}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-gray-200 bg-white hover:bg-gray-100 transition-colors text-gray-700 disabled:opacity-50"
+                    title="Start timer for this task"
+                  >
+                    <Play className="w-4 h-4" />
+                    <span>{isStartingTimer ? "Starting..." : "Start Timer"}</span>
+                  </button>
+                ) : null}
+              </div>
+
+              {/* Tabs - only show in edit mode (not creating) */}
+              {!isCreateMode && (
+                <div className="flex items-center border-b border-gray-200 px-6">
+                  <button
+                    onClick={() => setActiveTab("details")}
+                    className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 ${
+                      activeTab === "details"
+                        ? "text-primary border-primary"
+                        : "text-gray-600 hover:text-gray-900 border-transparent"
+                    }`}
+                  >
+                    Details
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("comments")}
+                    className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 ${
+                      activeTab === "comments"
+                        ? "text-primary border-primary"
+                        : "text-gray-600 hover:text-gray-900 border-transparent"
+                    }`}
+                  >
+                    Comments
+                  </button>
+                </div>
+              )}
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {(isCreateMode || activeTab === "details") && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="flex text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5 items-center gap-1.5">
+                        <CheckSquare className="w-3.5 h-3.5" />
+                        Status
+                      </label>
+                      <select
+                        value={
+                          isCreateMode
+                            ? newTaskData.status
+                            : editedTask?.status || "todo"
+                        }
+                        onChange={(e) => {
+                          const status = e.target
+                            .value as RoadmapTask["status"];
+                          if (isCreateMode) {
+                            setNewTaskData({ ...newTaskData, status });
+                          } else {
+                            setEditedTask(
+                              editedTask ? { ...editedTask, status } : null,
+                            );
+                          }
+                        }}
+                        disabled={isInteractionDisabled}
+                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/25 disabled:opacity-50 disabled:bg-gray-50 text-sm"
+                      >
+                        <option value="todo">To Do</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="in_review">In Review</option>
+                        <option value="done">Done</option>
+                        <option value="blocked">Blocked</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="flex text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5 items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5" />
+                        Priority
+                      </label>
+                      <select
+                        value={
+                          isCreateMode
+                            ? newTaskData.priority
+                            : editedTask?.priority || "medium"
+                        }
+                        onChange={(e) => {
+                          const priority = e.target
+                            .value as RoadmapTask["priority"];
+                          if (isCreateMode) {
+                            setNewTaskData({ ...newTaskData, priority });
+                          } else {
+                            setEditedTask(
+                              editedTask ? { ...editedTask, priority } : null,
+                            );
+                          }
+                        }}
+                        disabled={isInteractionDisabled}
+                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/25 disabled:opacity-50 disabled:bg-gray-50 text-sm"
+                      >
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="urgent">Urgent</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="flex text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5 items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5" />
+                        Work Type
+                      </label>
+                      <select
+                        value={
+                          isCreateMode
+                            ? newTaskData.work_type ?? "real_work"
+                            : editedTask?.work_type ?? "real_work"
+                        }
+                        onChange={(e) => {
+                          const workType = e.target.value as
+                            | "real_work"
+                            | "training";
+                          if (isCreateMode) {
+                            setNewTaskData({ ...newTaskData, work_type: workType });
+                          } else {
+                            setEditedTask(
+                              editedTask
+                                ? { ...editedTask, work_type: workType }
+                                : null,
+                            );
+                          }
+                        }}
+                        disabled={isInteractionDisabled}
+                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/25 disabled:opacity-50 disabled:bg-gray-50 text-sm"
+                      >
+                        <option value="real_work">Work</option>
+                        <option value="training">Training</option>
+                      </select>
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="flex text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5 items-center gap-1.5">
+                        <User className="w-3.5 h-3.5" />
+                        Assignee
+                      </label>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setIsAssigneeMenuOpen((prev) => !prev)}
+                          disabled={isInteractionDisabled}
+                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-left flex items-center justify-between gap-2 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:bg-gray-50"
+                        >
+                          <span className="flex items-center gap-2 min-w-0">
+                            <MemberAvatar
+                              name={
+                                selectedMember?.user?.display_name ||
+                                selectedMember?.user?.email ||
+                                "Unassigned"
+                              }
+                              avatarUrl={selectedMember?.user?.avatar_url}
+                            />
+                            <span className="text-sm text-gray-700 truncate">
+                              {selectedMember?.user?.display_name ||
+                                selectedMember?.user?.email ||
+                                "Unassigned"}
+                            </span>
+                          </span>
+                          <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                        </button>
+
+                        {isAssigneeMenuOpen && (
+                          <div className="absolute z-30 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg p-2">
+                            <div className="relative mb-2">
+                              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="text"
+                                value={assigneeSearch}
+                                onChange={(e) =>
+                                  setAssigneeSearch(e.target.value)
+                                }
+                                disabled={isInteractionDisabled}
+                                placeholder="Search members..."
+                                className="w-full pl-8 pr-2 py-1.5 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20"
+                              />
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => assignToMember(null)}
+                              disabled={isInteractionDisabled}
+                              className="w-full px-2 py-2 text-left text-sm rounded-md hover:bg-gray-50 flex items-center justify-between"
+                            >
+                              <span className="flex items-center gap-2 text-gray-700">
+                                <MemberAvatar
+                                  name="Unassigned"
+                                  avatarUrl={null}
+                                />
+                                Unassigned
+                              </span>
+                              {!currentAssigneeId && (
+                                <Check className="w-4 h-4 text-primary" />
+                              )}
+                            </button>
+
+                            <div className="max-h-44 overflow-y-auto mt-1">
+                              {filteredMembers.map((member) => {
+                                const isSelected =
+                                  member.user_id === currentAssigneeId;
+                                const memberName =
+                                  member.user?.display_name ||
+                                  member.user?.email ||
+                                  member.user_id ||
+                                  "Unassigned";
+
+                                return (
+                                  <button
+                                    key={member.id}
+                                    type="button"
+                                    onClick={() => assignToMember(member)}
+                                    disabled={isInteractionDisabled}
+                                    className="w-full px-2 py-2 text-left text-sm rounded-md hover:bg-gray-50 flex items-center justify-between gap-2"
+                                  >
+                                    <span className="flex items-center gap-2 min-w-0">
+                                      <MemberAvatar
+                                        name={memberName}
+                                        avatarUrl={member.user?.avatar_url}
+                                      />
+                                      <span className="truncate text-gray-700">
+                                        {memberName}
+                                      </span>
+                                    </span>
+                                    {isSelected && (
+                                      <Check className="w-4 h-4 text-primary shrink-0" />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                              {filteredMembers.length === 0 && (
+                                <p className="px-2 py-2 text-xs text-gray-400">
+                                  No members found
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="flex text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5 items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5" />
+                        Due Date
+                      </label>
+                      <input
+                        type="date"
+                        value={
+                          isCreateMode
+                            ? toDateInputValue(newTaskData.due_date)
+                            : toDateInputValue(editedTask?.due_date)
+                        }
+                        onChange={(e) => {
+                          const dueDate = e.target.value || undefined;
+                          if (isCreateMode) {
+                            setNewTaskData({
+                              ...newTaskData,
+                              due_date: dueDate,
+                            });
+                          } else {
+                            setEditedTask(
+                              editedTask
+                                ? { ...editedTask, due_date: dueDate }
+                                : null,
+                            );
+                          }
+                        }}
+                        disabled={isInteractionDisabled}
+                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/25 disabled:opacity-50 disabled:bg-gray-50 text-sm"
+                      />
+                    </div>
+
+                    {/* In-task time tracking removed; will return via the
+                        Teams model. */}
+                  </div>
+                )}
+
+                {!isCreateMode && activeTab === "comments" && (
+                  <CommentsSection
+                    comments={comments}
+                    onAddComment={handleAddComment}
+                    onUpdateComment={
+                      isReadOnlyPending ? undefined : handleUpdateComment
+                    }
+                    onDeleteComment={
+                      isReadOnlyPending ? undefined : handleDeleteComment
+                    }
+                    currentUserId={user?.id}
+                    canComment={Boolean(user) && !isReadOnlyPending}
+                    disabledMessage={
+                      isReadOnlyPending
+                        ? "Comments will unlock once this task is created."
+                        : undefined
+                    }
+                    isLoading={isLoadingComments}
+                    emptyMessage="No comments yet for this task."
+                  />
+                )}
+              </div>
+
+              {/* Footer Actions */}
+              <div className="border-t border-gray-200 px-6 py-4 bg-gray-50">
+                {isCreateMode ? (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={handleSave}
+                      variant="contained"
+                      colorScheme="primary"
+                      size="md"
+                      className="flex-1 flex items-center justify-center gap-2"
+                      disabled={isInteractionDisabled}
+                    >
+                      {isLoading && (
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      )}
+                      {isLoading ? "Creating..." : "Create Task"}
+                    </Button>
+                    <Button
+                      onClick={handleRequestClose}
+                      variant="outlined"
+                      colorScheme="secondary"
+                      size="md"
+                      disabled={isLoading}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  activeTab === "details" && (
+                    <div className="flex items-center gap-2 w-full">
+                      <Button
+                        onClick={handleSave}
+                        variant="contained"
+                        colorScheme="primary"
+                        size="md"
+                        className="flex-1 flex items-center justify-center gap-2"
+                        disabled={isInteractionDisabled}
+                      >
+                        {isLoading && (
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        )}
+                        {isLoading ? "Saving..." : "Save Changes"}
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          if (task) {
+                            if (isReadOnlyPending) return;
+                            onDeleteTask(task.id);
+                            onClose();
+                          }
+                        }}
+                        variant="outlined"
+                        colorScheme="destructive"
+                        size="md"
+                        disabled={isInteractionDisabled}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  )
+                )}
+                <p className="text-xs text-gray-500 mt-2 text-center">
+                  Press Esc to close | Ctrl+Enter to save
+                </p>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>,

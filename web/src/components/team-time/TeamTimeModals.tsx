@@ -1,4 +1,4 @@
-import { Loader2, Save, Search, Trash2, X, XCircle, Folder, Layers, Layout, CheckCircle2, ChevronRight, Play } from "lucide-react";
+import { Loader2, Plus, Save, Search, Trash2, X, XCircle, Folder, Layers, Layout, CheckCircle2, ChevronRight, Play } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type {
@@ -131,6 +131,7 @@ interface AddRateModalProps {
 	newRateMemberUserId: string;
 	newRateCustomId: string;
 	newRateValue: string;
+	newRateTrainingValue: string;
 	newRateCurrency: string;
 	newRateStartDate: string;
 	newRateEndDate: string;
@@ -143,6 +144,7 @@ interface AddRateModalProps {
 	onChangeMemberUserId: (value: string) => void;
 	onChangeCustomId: (value: string) => void;
 	onChangeRateValue: (value: string) => void;
+	onChangeRateTrainingValue: (value: string) => void;
 	onChangeRateCurrency: (value: string) => void;
 	onChangeStartDate: (value: string) => void;
 	onChangeEndDate: (value: string) => void;
@@ -159,6 +161,7 @@ export function AddRateModal({
 	newRateMemberUserId,
 	newRateCustomId,
 	newRateValue,
+	newRateTrainingValue,
 	newRateCurrency,
 	newRateStartDate,
 	newRateEndDate,
@@ -171,6 +174,7 @@ export function AddRateModal({
 	onChangeMemberUserId,
 	onChangeCustomId,
 	onChangeRateValue,
+	onChangeRateTrainingValue,
 	onChangeRateCurrency,
 	onChangeStartDate,
 	onChangeEndDate,
@@ -194,6 +198,7 @@ export function AddRateModal({
 		!loadingMembers &&
 		!!newRateMemberUserId &&
 		!!newRateValue &&
+		!!newRateTrainingValue &&
 		!!newRateCurrency &&
 		!!newRateStartDate &&
 		effectiveProjectIds.length > 0;
@@ -372,7 +377,7 @@ export function AddRateModal({
 						</div>
 						<div className="space-y-1.5">
 							<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-								Hourly Rate <span className="text-rose-500">*</span>
+								Work Rate <span className="text-rose-500">*</span>
 							</label>
 							<input
 								type="number"
@@ -385,6 +390,24 @@ export function AddRateModal({
 								required
 								className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300 ${
 									newRateValue ? "border-slate-300" : "border-rose-300"
+								}`}
+							/>
+						</div>
+						<div className="space-y-1.5">
+							<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+								Training Rate <span className="text-rose-500">*</span>
+							</label>
+							<input
+								type="number"
+								min={0}
+								step="0.01"
+								value={newRateTrainingValue}
+								onChange={(e) => onChangeRateTrainingValue(e.target.value)}
+								placeholder="e.g. 15.00"
+								disabled={savingRate}
+								required
+								className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300 ${
+									newRateTrainingValue ? "border-slate-300" : "border-rose-300"
 								}`}
 							/>
 						</div>
@@ -440,8 +463,7 @@ export function AddRateModal({
 					</div>
 
 					<div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-						Members with no rate row cannot use the My Logs tab or timer
-						actions.
+						Members with no rate row cannot start timers or add new logs.
 					</div>
 				</div>
 
@@ -481,6 +503,7 @@ interface EditRateModalProps {
 	memberLabel: string;
 	editingRateCustomId: string;
 	editingRateValue: string;
+	editingRateTrainingValue: string;
 	editingRateCurrency: string;
 	editingRateStartDate: string;
 	editingRateEndDate: string;
@@ -490,6 +513,7 @@ interface EditRateModalProps {
 	onRequestDelete: () => void;
 	onChangeCustomId: (value: string) => void;
 	onChangeRateValue: (value: string) => void;
+	onChangeRateTrainingValue: (value: string) => void;
 	onChangeRateCurrency: (value: string) => void;
 	onChangeStartDate: (value: string) => void;
 	onChangeEndDate: (value: string) => void;
@@ -502,6 +526,7 @@ export function EditRateModal({
 	memberLabel,
 	editingRateCustomId,
 	editingRateValue,
+	editingRateTrainingValue,
 	editingRateCurrency,
 	editingRateStartDate,
 	editingRateEndDate,
@@ -511,6 +536,7 @@ export function EditRateModal({
 	onRequestDelete,
 	onChangeCustomId,
 	onChangeRateValue,
+	onChangeRateTrainingValue,
 	onChangeRateCurrency,
 	onChangeStartDate,
 	onChangeEndDate,
@@ -563,7 +589,7 @@ export function EditRateModal({
 						</div>
 						<div className="space-y-1.5">
 							<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-								Hourly Rate <span className="text-rose-500">*</span>
+								Work Rate <span className="text-rose-500">*</span>
 							</label>
 							<input
 								type="number"
@@ -574,6 +600,24 @@ export function EditRateModal({
 								required
 								className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300 ${
 									editingRateValue ? "border-slate-300" : "border-rose-300"
+								}`}
+							/>
+						</div>
+						<div className="space-y-1.5">
+							<label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+								Training Rate <span className="text-rose-500">*</span>
+							</label>
+							<input
+								type="number"
+								min={0}
+								step="0.01"
+								value={editingRateTrainingValue}
+								onChange={(e) => onChangeRateTrainingValue(e.target.value)}
+								required
+								className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300 ${
+									editingRateTrainingValue
+										? "border-slate-300"
+										: "border-rose-300"
 								}`}
 							/>
 						</div>
@@ -877,6 +921,12 @@ interface AddLogModalProps {
 	onSave: () => void | Promise<void>;
 	onChangeProjectId: (value: string) => void;
 	onChangeTaskId: (value: string) => void;
+	onRequestCreateTask?: (context: {
+		featureId: string | null;
+		epicTitle: string | null;
+		featureTitle: string | null;
+	}) => void;
+	creatingTask?: boolean;
 }
 
 export function AddLogModal({
@@ -894,6 +944,8 @@ export function AddLogModal({
 	onSave,
 	onChangeProjectId,
 	onChangeTaskId,
+	onRequestCreateTask,
+	creatingTask = false,
 }: AddLogModalProps) {
 	const [selectedEpic, setSelectedEpic] = useState<string | null>(null);
 	const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
@@ -993,6 +1045,22 @@ export function AddLogModal({
 			(task.title || "Untitled task").toLowerCase().includes(normalizedSearch),
 		);
 	}, [selectedFeatureEntry, normalizedSearch]);
+
+	const selectedFeatureIdForCreate = useMemo(
+		() =>
+			selectedFeatureEntry?.tasks[0]?.feature_id ??
+			filteredFeatures[0]?.tasks[0]?.feature_id ??
+			"",
+		[selectedFeatureEntry, filteredFeatures],
+	);
+	const selectedFeatureTitleForCreate = useMemo(
+		() =>
+			selectedFeatureEntry?.featureTitle ??
+			selectedFeature ??
+			filteredFeatures[0]?.featureTitle ??
+			null,
+		[selectedFeatureEntry, selectedFeature, filteredFeatures],
+	);
 
 	useEffect(() => {
 		if (!isOpen) return;
@@ -1095,9 +1163,9 @@ export function AddLogModal({
 												>
 													<span className="truncate pr-2">{project.title || "(untitled)"}</span>
 													{selectedProjectId === project.id ? (
-														<CheckCircle2 className="w-4 h-4 text-slate-900 flex-shrink-0" />
+														<CheckCircle2 className="w-4 h-4 text-slate-900 shrink-0" />
 													) : (
-														<ChevronRight className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+														<ChevronRight className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
 													)}
 												</button>
 											))
@@ -1145,9 +1213,9 @@ export function AddLogModal({
 														)}
 													</div>
 													{selectedEpic === epic.epicTitle ? (
-														<CheckCircle2 className="w-4 h-4 text-slate-900 flex-shrink-0" />
+														<CheckCircle2 className="w-4 h-4 text-slate-900 shrink-0" />
 													) : (
-														<ChevronRight className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+														<ChevronRight className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
 													)}
 												</button>
 											))
@@ -1196,9 +1264,9 @@ export function AddLogModal({
 														)}
 													</div>
 													{selectedFeature === feature.featureTitle ? (
-														<CheckCircle2 className="w-4 h-4 text-slate-900 flex-shrink-0" />
+														<CheckCircle2 className="w-4 h-4 text-slate-900 shrink-0" />
 													) : (
-														<ChevronRight className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+														<ChevronRight className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
 													)}
 												</button>
 											))
@@ -1213,7 +1281,36 @@ export function AddLogModal({
 											<CheckCircle2 className="w-4 h-4 text-slate-400" />
 											<span className="text-xs font-bold uppercase tracking-wider text-slate-600">Task</span>
 										</div>
-										<span className="text-[10px] uppercase font-bold tracking-wider bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded">Optional</span>
+										<div className="flex items-center gap-1.5">
+											{onRequestCreateTask && (
+												<button
+													type="button"
+													onClick={() =>
+														onRequestCreateTask({
+															featureId: selectedFeatureIdForCreate || null,
+															epicTitle:
+																selectedEpic ??
+																selectedEpicEntry?.epicTitle ??
+																filteredEpics[0]?.epicTitle ??
+																null,
+															featureTitle:
+																selectedFeatureTitleForCreate,
+														})
+													}
+													disabled={
+														creatingTask ||
+														!selectedProjectId ||
+														!selectedFeatureIdForCreate ||
+														loadingTasks
+													}
+													className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+												>
+													<Plus className="w-3 h-3" />
+													Add task
+												</button>
+											)}
+											<span className="text-[10px] uppercase font-bold tracking-wider bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded">Optional</span>
+										</div>
 									</div>
 									<div className="flex-1 overflow-y-auto p-2 space-y-1 [scrollbar-width:thin] scrollbar-thumb-slate-200 relative">
 										{!selectedProjectId ? (
@@ -1238,7 +1335,7 @@ export function AddLogModal({
 													}`}
 												>
 													<span>General Time / No Task</span>
-													{!selectedTaskId && <CheckCircle2 className="w-4 h-4 text-white flex-shrink-0" />}
+														{!selectedTaskId && <CheckCircle2 className="w-4 h-4 text-white shrink-0" />}
 												</button>
 												
 												<div className="h-px bg-slate-100 w-full my-2"></div>
@@ -1259,7 +1356,7 @@ export function AddLogModal({
 														>
 															<span className="truncate pr-2">{task.title || "Untitled task"}</span>
 															{selectedTaskId === task.id && (
-																<CheckCircle2 className="w-4 h-4 text-slate-900 flex-shrink-0" />
+																<CheckCircle2 className="w-4 h-4 text-slate-900 shrink-0" />
 															)}
 														</button>
 													))

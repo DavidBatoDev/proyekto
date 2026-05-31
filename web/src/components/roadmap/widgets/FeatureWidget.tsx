@@ -44,6 +44,7 @@ export interface FeatureWidgetData extends Record<string, unknown> {
   pulseTaskId?: string | null;
   pulseTaskToken?: number;
   pulseToken?: number;
+  runningTaskId?: string | null;
   toolbarDraggingType?: ToolbarItemType | null;
   performanceMode?: RoadmapPerformanceMode;
   canEditRoadmap?: boolean;
@@ -64,6 +65,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     pulseTaskId,
     pulseTaskToken,
     pulseToken,
+    runningTaskId,
     toolbarDraggingType = null,
     performanceMode = "normal",
     canEditRoadmap = false,
@@ -503,6 +505,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
                     <TaskListItem
                       task={task}
                       density="compact"
+                      isRunning={runningTaskId === task.id}
                       pulseToken={
                         pulseTaskId === task.id ? pulseTaskToken : undefined
                       }

@@ -39,6 +39,7 @@ export type TaskStatus =
   | "done"
   | "blocked";
 export type TaskPriority = "urgent" | "high" | "medium" | "low";
+export type TaskWorkType = "real_work" | "training";
 
 export interface Roadmap {
   id: string;
@@ -154,6 +155,7 @@ export interface RoadmapTask {
   position: number;
   due_date?: string;
   completed_at?: string;
+  work_type?: TaskWorkType;
   created_at: string;
   updated_at: string;
   // Additional optional fields

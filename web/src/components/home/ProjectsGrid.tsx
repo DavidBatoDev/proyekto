@@ -1,6 +1,6 @@
 ﻿import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, Calendar, Clock, Inbox } from "lucide-react";
+import { ArrowRight, Calendar, Clock, Inbox, Plus } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import { openProjectInviteModal } from "@/components/invites/projectInviteModalEvents";
 import { supabase } from "@/lib/supabase";
@@ -347,7 +347,17 @@ function ProjectsEmptyState({
 				<Calendar className="h-6 w-6 text-slate-600" />
 			</div>
 			<h4 className="mb-2 text-lg font-semibold text-slate-900">{title}</h4>
-			<p className="mx-auto max-w-md text-sm text-slate-600">{description}</p>
+			<p className="mx-auto mb-4 max-w-md text-sm text-slate-600">
+				{description}
+			</p>
+			<Link
+				to="/project-posting"
+				search={{ roadmapId: undefined }}
+				className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+			>
+				<Plus className="h-4 w-4" />
+				Create project
+			</Link>
 		</div>
 	);
 }

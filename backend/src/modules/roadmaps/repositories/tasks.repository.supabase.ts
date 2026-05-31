@@ -112,10 +112,11 @@ export class TasksRepositorySupabase implements ITasksRepository {
       title: dto.title,
       description: dto.description ?? null,
       priority: dto.priority,
-      status: dto.status,
+      status: dto.status ?? 'todo',
       assignee_id: dto.assignee_id,
       due_date: dto.due_date,
       position: resolvedPosition,
+      work_type: dto.work_type ?? 'real_work',
       checklist: dto.checklist ?? [],
     };
     const { data, error } = await this.db
@@ -136,7 +137,6 @@ export class TasksRepositorySupabase implements ITasksRepository {
   }
 
   async update(id: string, dto: UpdateTaskDto, userId?: string): Promise<any> {
-    // Fetch current state for audit diff
     let existing: any = null;
     if (userId) {
       existing = await this.findById(id);
@@ -151,6 +151,7 @@ export class TasksRepositorySupabase implements ITasksRepository {
       ...(dto.position !== undefined && { position: dto.position }),
       ...(dto.due_date !== undefined && { due_date: dto.due_date }),
       ...(dto.completed_at !== undefined && { completed_at: dto.completed_at }),
+      ...(dto.work_type !== undefined && { work_type: dto.work_type }),
       ...(dto.checklist !== undefined && { checklist: dto.checklist }),
       updated_at: new Date().toISOString(),
     };

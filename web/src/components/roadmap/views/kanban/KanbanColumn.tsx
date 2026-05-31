@@ -16,7 +16,7 @@ interface KanbanColumnProps {
 export function KanbanColumn({ column, rows, onCardClick }: KanbanColumnProps) {
 	const { setNodeRef, isOver } = useDroppable({
 		id: column.id,
-		data: { type: "column", status: column.id },
+		data: { type: "column", columnId: column.id, status: column.bucketStatus },
 	});
 
 	const ids = useMemo(() => rows.map((row) => row.task.id), [rows]);

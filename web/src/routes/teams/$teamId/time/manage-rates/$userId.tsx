@@ -198,7 +198,7 @@ function MemberLogsRoute() {
 					{activeRates
 						.map((r) => {
 							const title = projectTitleById[r.project_id] ?? "Project";
-							return `${title} ${Number(r.hourly_rate).toFixed(2)} ${r.currency}/hr`;
+							return `${title} Work ${Number(r.hourly_rate).toFixed(2)} / Training ${Number(r.training_hourly_rate).toFixed(2)} ${r.currency}/hr`;
 						})
 						.join(" · ")}
 				</div>

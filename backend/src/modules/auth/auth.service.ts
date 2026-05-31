@@ -85,14 +85,16 @@ export class AuthService {
     let personal_team_id: string | null = null;
 
     try {
-      const workspace = await this.personalWorkspaceService.provision(userId);
-      personal_workspace_id = workspace.id;
-
-      const team = await this.teamsService.provisionPersonalTeam(userId);
-      personal_team_id = team.id;
+      if (dto.lane === 'consultant') {
+        const team = await this.teamsService.provisionPersonalTeam(userId);
+        personal_team_id = team.id;
+      } else {
+        const workspace = await this.personalWorkspaceService.provision(userId);
+        personal_workspace_id = workspace.id;
+      }
     } catch (err) {
       this.logger.error(
-        `Failed to provision onboarding artifacts for ${userId} (lane=${dto.lane}): ${
+        `Failed to provision lane-scoped artifact for ${userId} (lane=${dto.lane}) after onboarding: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -125,20 +127,6 @@ export class AuthService {
       }
     }
     return this.authRepo.switchPersona(userId, dto.persona);
-  }
-
-  async provisionArtifacts(userId: string): Promise<{
-    workspace: { id: string; title: string };
-    team: { id: string; name: string };
-  }> {
-    const [workspace, team] = await Promise.all([
-      this.personalWorkspaceService.provision(userId),
-      this.teamsService.provisionPersonalTeam(userId),
-    ]);
-    return {
-      workspace: { id: workspace.id, title: workspace.title },
-      team: { id: team.id, name: team.name },
-    };
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto): Promise<Profile> {

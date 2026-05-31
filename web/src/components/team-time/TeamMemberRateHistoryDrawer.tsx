@@ -176,7 +176,11 @@ export function TeamMemberRateHistoryDrawer({
 																<div className="space-y-1">
 																	<div className="flex items-center gap-2">
 																		<span className="text-sm font-semibold text-slate-900">
-																			{Number(rate.hourly_rate).toFixed(2)}{" "}
+																			Work {Number(rate.hourly_rate).toFixed(2)}{" "}
+																			{rate.currency}
+																		</span>
+																		<span className="text-xs font-medium text-slate-600">
+																			TR {Number(rate.training_hourly_rate).toFixed(2)}{" "}
 																			{rate.currency}
 																		</span>
 																		{isActive && (

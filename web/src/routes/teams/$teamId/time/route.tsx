@@ -14,8 +14,8 @@ import {
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { useAuthStore, useUser } from "@/stores/authStore";
 import {
-	hasAnyActiveRate,
 	getTeam,
+	hasAnyActiveRate,
 	listTeamMembers,
 } from "@/services/teams.service";
 
@@ -27,12 +27,15 @@ export const Route = createFileRoute("/teams/$teamId/time")({
 	component: TeamTimeLayout,
 });
 
-type TabId = "my-logs" | "manage-rates";
+type TabId = "my-logs" | "team-logs" | "manage-rates";
 
 interface TabSpec {
 	id: TabId;
 	label: string;
-	to: "/teams/$teamId/time/my-logs" | "/teams/$teamId/time/manage-rates";
+	to:
+		| "/teams/$teamId/time/my-logs"
+		| "/teams/$teamId/time/team-logs"
+		| "/teams/$teamId/time/manage-rates";
 	icon: typeof Clock;
 }
 
@@ -75,7 +78,7 @@ function TeamTimeLayout() {
 		team?.owner_id === user?.id ||
 		myMembership?.role === "admin" ||
 		myMembership?.role === "owner";
-	const hasOwnRate = myActiveRateQuery.data === true;
+	const isTeamMember = Boolean(myMembership);
 
 	if (!team?.time_tracking_enabled) {
 		return (
@@ -117,11 +120,19 @@ function TeamTimeLayout() {
 	}
 
 	const tabs: TabSpec[] = [];
-	if (hasOwnRate) {
+	if (isTeamMember) {
 		tabs.push({
 			id: "my-logs",
 			label: "My Logs",
 			to: "/teams/$teamId/time/my-logs",
+			icon: Clock,
+		});
+	}
+	if (isApprover) {
+		tabs.push({
+			id: "team-logs",
+			label: "Team Logs",
+			to: "/teams/$teamId/time/team-logs",
 			icon: Clock,
 		});
 	}
@@ -165,6 +176,7 @@ function TeamTimeLayout() {
 	const activeTabId: TabId | null = (() => {
 		const path = location.pathname;
 		if (path.includes("/time/my-logs")) return "my-logs";
+		if (path.includes("/time/team-logs")) return "team-logs";
 		if (path.includes("/time/manage-rates")) return "manage-rates";
 		// On a log detail page or the bare /time route, no tab highlights
 		// (the redirector at index.tsx will route /time to a tab).
@@ -177,6 +189,16 @@ function TeamTimeLayout() {
 				<AppSectionHeader
 					title={`${team.name} — Time`}
 					subtitle="Track time on tasks across this team's projects. Logs are reviewed by team owners and admins."
+					rightSlot={
+						<Link
+							to="/teams/$teamId/settings/time"
+							params={{ teamId }}
+							className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+							title="Open time tracking settings"
+						>
+							Time tracking: on
+						</Link>
+					}
 				/>
 
 				<div className="border-b border-slate-200">

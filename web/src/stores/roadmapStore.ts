@@ -50,7 +50,7 @@ interface RoadmapState {
   pendingEpicById: Record<string, boolean>;
   pendingFeatureById: Record<string, boolean>;
   pendingTaskById: Record<string, boolean>;
-  queuedTaskStatusIntentById: Record<string, RoadmapTask["status"]>;
+  queuedTaskStatusIntentById: Record<string, TaskStatusIntent>;
   activeTaskStatusSyncById: Record<string, boolean>;
   taskStatusRollbackById: Partial<Record<string, RoadmapTask>>;
 
@@ -208,6 +208,9 @@ interface RoadmapActions {
 }
 
 type RoadmapStore = RoadmapState & RoadmapActions;
+type TaskStatusIntent = {
+  status: RoadmapTask["status"];
+};
 
 const clearPendingKey = <T>(
   record: Record<string, T>,
@@ -1413,6 +1416,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
               assignee_id: data.assignee_id,
               status: data.status || "todo",
               priority: data.priority || "medium",
+              work_type: data.work_type || "real_work",
               position: optimisticPosition,
               due_date: data.due_date,
               completed_at: data.completed_at,
@@ -1450,6 +1454,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         description: data.description,
         status: data.status || "todo",
         priority: data.priority || "medium",
+        work_type: data.work_type || "real_work",
         assignee_id: data.assignee_id,
         position: optimisticPosition,
         due_date: data.due_date,
@@ -1542,6 +1547,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         description: task.description,
         status: task.status,
         priority: task.priority,
+        work_type: task.work_type,
         position: task.position ?? undefined,
         assignee_id: task.assignee_id ?? undefined,
         due_date: task.due_date ?? undefined,
@@ -1582,7 +1588,9 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
       })),
       queuedTaskStatusIntentById: {
         ...state.queuedTaskStatusIntentById,
-        [taskId]: nextStatus,
+        [taskId]: {
+          status: nextStatus,
+        },
       },
       taskStatusRollbackById: {
         ...state.taskStatusRollbackById,
@@ -1616,7 +1624,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         try {
           const updated = await taskService.update(taskId, {
             title: taskForRequest.title,
-            status: intentStatus,
+            status: intentStatus.status,
             priority: taskForRequest.priority,
             position: taskForRequest.position,
             assignee_id: taskForRequest.assignee_id,

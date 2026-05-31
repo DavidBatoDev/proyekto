@@ -29,6 +29,7 @@ import {
   CreateProjectResourceFolderDto,
   CreateProjectResourceLinkDto,
   InviteProjectByEmailDto,
+  ProjectDashboardSummaryQueryDto,
   ProjectInviteQueryDto,
   ReassignProjectConsultantDto,
   UpdateRolePermissionsDto,
@@ -358,6 +359,308 @@ export class ProjectsService {
         indexKey: REDIS_CACHE_KEYS.projectsDashboardIndex,
       },
     );
+  }
+
+  async getDashboardSummary(
+    userId: string,
+    query: ProjectDashboardSummaryQueryDto,
+  ): Promise<{
+    filters: {
+      from: string | null;
+      to: string | null;
+      project_id: string | null;
+      team_id: string | null;
+      member_user_id: string | null;
+    };
+    time: {
+      total_logs: number;
+      total_seconds: number;
+      total_hours: number;
+      status_counts: Record<string, number>;
+      total_fees: number;
+    };
+    overtime: {
+      over_limit_windows: number;
+      overage_hours_total: number;
+    };
+    invoices: {
+      total_count: number;
+      total_amount: number;
+      status_counts: Record<string, number>;
+    };
+  }> {
+    if (query.project_id) {
+      await this.authorization.assertRole(userId, query.project_id, 'viewer');
+    }
+    if (query.team_id) {
+      const { data: team, error: teamErr } = await this.supabase
+        .from('teams')
+        .select('id, owner_id')
+        .eq('id', query.team_id)
+        .maybeSingle();
+      if (teamErr) throw new Error(teamErr.message);
+      if (!team) throw new NotFoundException('Team not found');
+      if (team.owner_id !== userId) {
+        const { count, error: memberErr } = await this.supabase
+          .from('team_members')
+          .select('*', { count: 'exact', head: true })
+          .eq('team_id', query.team_id)
+          .eq('user_id', userId);
+        if (memberErr) throw new Error(memberErr.message);
+        if (!count) {
+          throw new MissingPermissionException({
+            path: null,
+            message: 'You do not have access to this team.',
+          });
+        }
+      }
+    }
+
+    let projectIds: string[] = [];
+    if (query.project_id) {
+      projectIds = [query.project_id];
+    } else {
+      const { data: accessRows, error: accessErr } = await this.supabase
+        .from('project_access')
+        .select('project_id')
+        .eq('user_id', userId);
+      if (accessErr) throw new Error(accessErr.message);
+      projectIds = Array.from(
+        new Set(
+          (accessRows ?? []).map((row: { project_id: string }) => row.project_id),
+        ),
+      );
+    }
+
+    if (projectIds.length === 0) {
+      return {
+        filters: {
+          from: query.from ?? null,
+          to: query.to ?? null,
+          project_id: query.project_id ?? null,
+          team_id: query.team_id ?? null,
+          member_user_id: query.member_user_id ?? null,
+        },
+        time: {
+          total_logs: 0,
+          total_seconds: 0,
+          total_hours: 0,
+          status_counts: {
+            pending: 0,
+            approved: 0,
+            paid: 0,
+            rejected: 0,
+          },
+          total_fees: 0,
+        },
+        overtime: {
+          over_limit_windows: 0,
+          overage_hours_total: 0,
+        },
+        invoices: {
+          total_count: 0,
+          total_amount: 0,
+          status_counts: {
+            draft: 0,
+            issued: 0,
+            sent: 0,
+            paid: 0,
+            void: 0,
+          },
+        },
+      };
+    }
+
+    let logsQuery = this.supabase
+      .from('task_time_logs')
+      .select(
+        'id, project_id, team_id, member_user_id, started_at, duration_seconds, status, rate_snapshot',
+      )
+      .in('project_id', projectIds);
+    if (query.from) logsQuery = logsQuery.gte('started_at', query.from);
+    if (query.to) logsQuery = logsQuery.lte('started_at', query.to);
+    if (query.team_id) logsQuery = logsQuery.eq('team_id', query.team_id);
+    if (query.member_user_id) {
+      logsQuery = logsQuery.eq('member_user_id', query.member_user_id);
+    }
+
+    const { data: logRows, error: logsErr } = await logsQuery;
+    if (logsErr) throw new Error(logsErr.message);
+    const logs = (logRows ?? []) as Array<{
+      id: string;
+      project_id: string;
+      team_id: string | null;
+      member_user_id: string;
+      started_at: string;
+      duration_seconds: number | null;
+      status: 'pending' | 'approved' | 'paid' | 'rejected';
+      rate_snapshot: number | null;
+    }>;
+
+    const statusCounts: Record<string, number> = {
+      pending: 0,
+      approved: 0,
+      paid: 0,
+      rejected: 0,
+    };
+    let totalSeconds = 0;
+    let totalFees = 0;
+    for (const row of logs) {
+      statusCounts[row.status] = (statusCounts[row.status] ?? 0) + 1;
+      const seconds = Math.max(0, Number(row.duration_seconds ?? 0));
+      totalSeconds += seconds;
+      totalFees += (seconds / 3600) * Number(row.rate_snapshot ?? 0);
+    }
+
+    const rateKeys = Array.from(
+      new Set(
+        logs
+          .filter((row) => row.team_id)
+          .map((row) => `${row.team_id}|${row.project_id}|${row.member_user_id}`),
+      ),
+    );
+    const rateMap = new Map<
+      string,
+      { weekly: number | null; monthly: number | null }
+    >();
+    if (rateKeys.length > 0) {
+      const teamIds = Array.from(
+        new Set(rateKeys.map((key) => key.split('|')[0]).filter(Boolean)),
+      );
+      const memberIds = Array.from(new Set(rateKeys.map((key) => key.split('|')[2])));
+      let rateQuery = this.supabase
+        .from('team_member_rates')
+        .select(
+          'team_id, project_id, user_id, weekly_limit_hours, monthly_limit_hours',
+        )
+        .is('end_date', null)
+        .in('team_id', teamIds)
+        .in('user_id', memberIds);
+      if (query.project_id) rateQuery = rateQuery.eq('project_id', query.project_id);
+      const { data: rateRows, error: ratesErr } = await rateQuery;
+      if (ratesErr) throw new Error(ratesErr.message);
+      for (const row of (rateRows ?? []) as Array<{
+        team_id: string;
+        project_id: string;
+        user_id: string;
+        weekly_limit_hours: number | null;
+        monthly_limit_hours: number | null;
+      }>) {
+        rateMap.set(`${row.team_id}|${row.project_id}|${row.user_id}`, {
+          weekly:
+            row.weekly_limit_hours === null || row.weekly_limit_hours === undefined
+              ? null
+              : Number(row.weekly_limit_hours),
+          monthly:
+            row.monthly_limit_hours === null ||
+            row.monthly_limit_hours === undefined
+              ? null
+              : Number(row.monthly_limit_hours),
+        });
+      }
+    }
+
+    const weeklyTotals = new Map<string, number>();
+    const monthlyTotals = new Map<string, number>();
+    for (const row of logs) {
+      if (!row.team_id || row.status === 'rejected') continue;
+      const rateKey = `${row.team_id}|${row.project_id}|${row.member_user_id}`;
+      if (!rateMap.has(rateKey)) continue;
+      const startedAt = new Date(row.started_at);
+      if (Number.isNaN(startedAt.getTime())) continue;
+      const seconds = Math.max(0, Number(row.duration_seconds ?? 0));
+      const hours = seconds / 3600;
+
+      const day = startedAt.getUTCDay();
+      const diffToMonday = (day + 6) % 7;
+      const weekStart = new Date(
+        Date.UTC(
+          startedAt.getUTCFullYear(),
+          startedAt.getUTCMonth(),
+          startedAt.getUTCDate(),
+        ),
+      );
+      weekStart.setUTCDate(weekStart.getUTCDate() - diffToMonday);
+      const weekKey = `${rateKey}|w|${weekStart.toISOString().slice(0, 10)}`;
+      weeklyTotals.set(weekKey, (weeklyTotals.get(weekKey) ?? 0) + hours);
+
+      const monthKey = `${rateKey}|m|${startedAt.getUTCFullYear()}-${String(
+        startedAt.getUTCMonth() + 1,
+      ).padStart(2, '0')}`;
+      monthlyTotals.set(monthKey, (monthlyTotals.get(monthKey) ?? 0) + hours);
+    }
+
+    let overLimitWindows = 0;
+    let overageHoursTotal = 0;
+    for (const [key, hours] of weeklyTotals.entries()) {
+      const rateKey = key.split('|w|')[0];
+      const rate = rateMap.get(rateKey);
+      const limit = rate?.weekly ?? null;
+      if (limit !== null && hours > limit) {
+        overLimitWindows += 1;
+        overageHoursTotal += hours - limit;
+      }
+    }
+    for (const [key, hours] of monthlyTotals.entries()) {
+      const rateKey = key.split('|m|')[0];
+      const rate = rateMap.get(rateKey);
+      const limit = rate?.monthly ?? null;
+      if (limit !== null && hours > limit) {
+        overLimitWindows += 1;
+        overageHoursTotal += hours - limit;
+      }
+    }
+
+    let invoicesQuery = this.supabase
+      .from('invoices')
+      .select('status, total, project_id, created_at')
+      .in('project_id', projectIds);
+    if (query.from) invoicesQuery = invoicesQuery.gte('created_at', query.from);
+    if (query.to) invoicesQuery = invoicesQuery.lte('created_at', query.to);
+    const { data: invoiceRows, error: invErr } = await invoicesQuery;
+    if (invErr) throw new Error(invErr.message);
+    const invoices = (invoiceRows ?? []) as Array<{
+      status: string;
+      total: string | number;
+    }>;
+    const invoiceStatusCounts: Record<string, number> = {
+      draft: 0,
+      issued: 0,
+      sent: 0,
+      paid: 0,
+      void: 0,
+    };
+    let invoiceTotalAmount = 0;
+    for (const row of invoices) {
+      invoiceStatusCounts[row.status] = (invoiceStatusCounts[row.status] ?? 0) + 1;
+      invoiceTotalAmount += Number(row.total ?? 0);
+    }
+
+    return {
+      filters: {
+        from: query.from ?? null,
+        to: query.to ?? null,
+        project_id: query.project_id ?? null,
+        team_id: query.team_id ?? null,
+        member_user_id: query.member_user_id ?? null,
+      },
+      time: {
+        total_logs: logs.length,
+        total_seconds: totalSeconds,
+        total_hours: totalSeconds / 3600,
+        status_counts: statusCounts,
+        total_fees: invoiceRound(totalFees),
+      },
+      overtime: {
+        over_limit_windows: overLimitWindows,
+        overage_hours_total: invoiceRound(overageHoursTotal),
+      },
+      invoices: {
+        total_count: invoices.length,
+        total_amount: invoiceRound(invoiceTotalAmount),
+        status_counts: invoiceStatusCounts,
+      },
+    };
   }
 
   async getProject(id: string) {
@@ -1321,4 +1624,8 @@ export class ProjectsService {
     await this.invalidateDashboardCache();
     return updatedMember;
   }
+}
+
+function invoiceRound(value: number): number {
+  return Math.round(value * 100) / 100;
 }

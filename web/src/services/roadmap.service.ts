@@ -21,6 +21,7 @@ import type {
 	TaskDependency,
 	TaskPriority,
 	TaskStatus,
+	TaskWorkType,
 } from "@/types/roadmap";
 
 // ============================================================================
@@ -132,6 +133,7 @@ export interface UpsertFullRoadmapTaskDto {
 	description?: string;
 	status?: TaskStatus;
 	priority?: TaskPriority;
+	work_type?: TaskWorkType;
 	assignee_id?: string;
 	due_date?: string;
 	position?: number;
@@ -271,10 +273,20 @@ export interface CreateTaskDto {
 	description?: string | null;
 	status?: TaskStatus;
 	priority?: TaskPriority;
+	work_type?: TaskWorkType;
 	position?: number;
 	assignee_id?: string | null;
 	due_date?: string;
 	checklist?: ChecklistItem[];
+}
+
+export interface QuickCreateTaskFromTimerDto {
+	project_id: string;
+	title: string;
+	assignee_id?: string | null;
+	due_date?: string;
+	source?: "timer";
+	work_type?: TaskWorkType;
 }
 
 export interface UpdateTaskDto {
@@ -282,6 +294,7 @@ export interface UpdateTaskDto {
 	description?: string | null;
 	status?: TaskStatus;
 	priority?: TaskPriority;
+	work_type?: TaskWorkType;
 	position?: number;
 	assignee_id?: string | null;
 	due_date?: string | null;
@@ -893,6 +906,20 @@ export const taskService = {
 			return response.data.data;
 		} catch (error) {
 			throw handleServiceError(error, "Create task");
+		}
+	},
+
+	async quickCreateFromTimer(
+		data: QuickCreateTaskFromTimerDto,
+	): Promise<RoadmapTask> {
+		try {
+			const response = await apiClient.post<ApiResponse<RoadmapTask>>(
+				"/api/tasks/quick-create",
+				data,
+			);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(error, "Quick create task from timer");
 		}
 	},
 

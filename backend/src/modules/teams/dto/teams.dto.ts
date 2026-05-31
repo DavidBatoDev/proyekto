@@ -49,6 +49,11 @@ export class UpdateTeamDto {
   @IsOptional()
   @IsBoolean()
   time_tracking_enabled?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  retroactive_log_days?: number;
 }
 
 export const TEAM_MEMBER_ROLES = ['owner', 'admin', 'member'] as const;
@@ -123,6 +128,10 @@ export class CreateTeamMemberRateDto {
   @Min(0)
   hourly_rate!: number;
 
+  @IsNumber()
+  @Min(0)
+  training_hourly_rate!: number;
+
   @IsOptional()
   @IsString()
   @MaxLength(8)
@@ -140,6 +149,20 @@ export class CreateTeamMemberRateDto {
   @IsOptional()
   @IsDateString()
   end_date?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  weekly_limit_hours?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  monthly_limit_hours?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  overtime_requires_approval?: boolean;
 }
 
 export class UpdateTeamMemberRateDto {
@@ -149,6 +172,11 @@ export class UpdateTeamMemberRateDto {
   hourly_rate?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  training_hourly_rate?: number;
+
+  @IsOptional()
   @IsString()
   @MaxLength(8)
   currency?: string;
@@ -165,6 +193,34 @@ export class UpdateTeamMemberRateDto {
   @IsOptional()
   @IsDateString()
   end_date?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  weekly_limit_hours?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  monthly_limit_hours?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  overtime_requires_approval?: boolean;
+}
+
+export class UpdateWorkspaceDefaultsDto {
+  @IsOptional()
+  @IsUUID()
+  default_team_id?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  default_project_id?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  last_team_id?: string | null;
 }
 
 export const PROJECT_TEAM_DEFAULT_ROLES = [

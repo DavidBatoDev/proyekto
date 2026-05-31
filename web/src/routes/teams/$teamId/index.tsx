@@ -752,16 +752,19 @@ function InviteMemberModal({
 						</label>
 						<label className="block">
 							<span className="text-sm font-medium text-slate-700">
-								Position
+								Project role label
 							</span>
 							<input
 								type="text"
 								value={position}
 								onChange={(e) => setPosition(e.target.value)}
 								maxLength={120}
-								placeholder="e.g. Designer"
+								placeholder="e.g. Consultant, Developer, Client collaborator"
 								className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none"
 							/>
+							<span className="mt-1 block text-[11px] text-slate-500">
+								Optional label used for filtering and clarity across projects.
+							</span>
 						</label>
 					</div>
 					<label className="block">

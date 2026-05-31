@@ -1,23 +1,14 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useToast } from "@/hooks/useToast";
-import { useUser } from "@/stores/authStore";
+import { ScrollNavButtons } from "@/components/common/ScrollNavButtons";
+import { SidePanel } from "@/components/roadmap/panels/SidePanel";
 import {
-	listMemberRates,
-	type TeamMember,
-	type TeamMemberRate,
-} from "@/services/teams.service";
-import {
-	teamTimeService,
-	type TaskTimeLog,
-} from "@/services/team-time.service";
-import { TeamMyLogsGrid } from "@/components/team-time/TeamMyLogsGrid";
-import { TeamMemberRateHistoryDrawer } from "@/components/team-time/TeamMemberRateHistoryDrawer";
-import {
-	TeamLogsStatsCard,
 	computeLogStats,
+	TeamLogsStatsCard,
 } from "@/components/team-time/TeamLogsStatsCard";
+import { TeamMemberRateHistoryDrawer } from "@/components/team-time/TeamMemberRateHistoryDrawer";
+import { TeamMyLogsGrid } from "@/components/team-time/TeamMyLogsGrid";
 import {
 	AddLogModal,
 	DeleteTimeLogModal,
@@ -27,15 +18,23 @@ import {
 	fromLocalDateTimeInput,
 	toLocalDateTimeInput,
 } from "@/components/team-time/time-utils";
-import { ScrollNavButtons } from "@/components/common/ScrollNavButtons";
+import { useToast } from "@/hooks/useToast";
+import { roadmapService, taskService } from "@/services/roadmap.service";
+import {
+	type TaskTimeLog,
+	teamTimeService,
+} from "@/services/team-time.service";
+import {
+	listMemberRates,
+	type TeamMember,
+	type TeamMemberRate,
+} from "@/services/teams.service";
+import { useUser } from "@/stores/authStore";
+import type { RoadmapTask } from "@/types/roadmap";
 
 export const Route = createFileRoute("/teams/$teamId/time/my-logs")({
 	component: MyLogsTab,
 	beforeLoad: async ({ params }) => {
-		// Visibility gate is the team-time/route.tsx layout, but it can't
-		// see the caller's rate before the membership query resolves; an
-		// unrated member who deep-links here gets bounced by the layout's
-		// tabs list rendering (no My Logs tab). Soft check: nothing here.
 		void params;
 	},
 });
@@ -46,37 +45,45 @@ function MyLogsTab() {
 	const toast = useToast();
 	const qc = useQueryClient();
 	const navigate = useNavigate();
-
+	// ─── Modal / form state ─────────────────────────────────────────────────
 	const [addOpen, setAddOpen] = useState(false);
 	const [addProjectId, setAddProjectId] = useState("");
 	const [addTaskId, setAddTaskId] = useState("");
-
+	const [isCreateTaskPanelOpen, setIsCreateTaskPanelOpen] = useState(false);
+	const [createTaskFeatureId, setCreateTaskFeatureId] = useState<string | null>(
+		null,
+	);
+	const [createTaskContext, setCreateTaskContext] = useState<{
+		featureId: string | null;
+		epicTitle: string | null;
+		featureTitle: string | null;
+	} | null>(null);
 	const [editingLog, setEditingLog] = useState<TaskTimeLog | null>(null);
 	const [editStartedAt, setEditStartedAt] = useState("");
 	const [editEndedAt, setEditEndedAt] = useState("");
-
 	const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
-
+	const [deletingLogLabel, setDeletingLogLabel] = useState<
+		string | undefined
+	>();
 	const [taskModalLog, setTaskModalLog] = useState<TaskTimeLog | null>(null);
 	const [taskModalTaskId, setTaskModalTaskId] = useState("");
+	const [historyOpen, setHistoryOpen] = useState(false);
 
-	// ─── data ─────────────────────────────────────────────────────────
+	// ─── Data ───────────────────────────────────────────────────────────────
 
-	// All rate rows for the caller. Active rows (end_date IS NULL) drive the
-	// per-project fallback used by the live "Fees" column; the full list
-	// powers the rate-history drawer and the "View history" affordance.
 	const myRateHistoryQuery = useQuery({
 		queryKey: ["team", teamId, "rates", "history", user?.id],
 		queryFn: () => listMemberRates(teamId, user!.id),
 		enabled: Boolean(user?.id),
 	});
 
-	const [historyOpen, setHistoryOpen] = useState(false);
-
 	const logsQuery = useQuery({
 		queryKey: ["team-time", teamId, "my-logs", user?.id],
 		queryFn: () =>
-			teamTimeService.listMyTeamLogs(teamId, { limit: 200 }),
+			teamTimeService.listMyTeamLogs(teamId, {
+				limit: 200,
+			}),
+		enabled: Boolean(user?.id),
 	});
 
 	const projectsQuery = useQuery({
@@ -86,8 +93,7 @@ function MyLogsTab() {
 
 	const tasksForAddQuery = useQuery({
 		queryKey: ["team-time", teamId, "project-tasks", addProjectId],
-		queryFn: () =>
-			teamTimeService.listTeamProjectTasks(teamId, addProjectId),
+		queryFn: () => teamTimeService.listTeamProjectTasks(teamId, addProjectId),
 		enabled: Boolean(addProjectId),
 	});
 
@@ -99,10 +105,7 @@ function MyLogsTab() {
 			taskModalLog?.project_id ?? "",
 		],
 		queryFn: () =>
-			teamTimeService.listTeamProjectTasks(
-				teamId,
-				taskModalLog!.project_id,
-			),
+			teamTimeService.listTeamProjectTasks(teamId, taskModalLog!.project_id),
 		enabled: Boolean(taskModalLog),
 	});
 
@@ -118,30 +121,27 @@ function MyLogsTab() {
 		}
 		return map;
 	}, [myAllRates]);
+
 	const firstActiveRate = useMemo<TeamMemberRate | null>(
 		() => myAllRates.find((r) => r.end_date === null) ?? null,
 		[myAllRates],
 	);
 
 	const allLogs = logsQuery.data?.items ?? [];
+	const stats = useMemo(() => computeLogStats(allLogs), [allLogs]);
 
-	// When the Start Timer modal opens with no project selected, prefill
-	// with the project of the user's most recent log; fall back to the
-	// first project the team is attached to. Lets repeat-loggers go straight
-	// to the task picker without a project click.
+	// Prefill project when add modal opens
 	useEffect(() => {
 		if (!addOpen || addProjectId) return;
 		const sortedByRecent = [...allLogs].sort(
 			(a, b) =>
 				new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
 		);
-		const recentProjectId = sortedByRecent[0]?.project_id;
-		const fallbackProjectId = projectsQuery.data?.[0]?.id;
-		const next = recentProjectId ?? fallbackProjectId;
+		const next = sortedByRecent[0]?.project_id ?? projectsQuery.data?.[0]?.id;
 		if (next) setAddProjectId(next);
 	}, [addOpen, addProjectId, allLogs, projectsQuery.data]);
 
-	// ─── mutations ─────────────────────────────────────────────────────
+	// ─── Mutations ──────────────────────────────────────────────────────────
 
 	const startMutation = useMutation({
 		mutationFn: (input: { projectId: string; taskId?: string | null }) =>
@@ -170,6 +170,7 @@ function MyLogsTab() {
 			toast.success("Log deleted");
 			qc.invalidateQueries({ queryKey: ["team-time", teamId, "my-logs"] });
 			setDeletingLogId(null);
+			setDeletingLogLabel(undefined);
 		},
 		onError: (e: Error) => {
 			toast.error(e.message);
@@ -206,7 +207,78 @@ function MyLogsTab() {
 		onError: (e: Error) => toast.error(e.message),
 	});
 
-	// ─── handlers ─────────────────────────────────────────────────────
+	const normalizePathLabel = (value?: string | null) =>
+		(value ?? "")
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, " ")
+			.trim();
+
+	const createTaskMutation = useMutation({
+		mutationFn: async (input: {
+			taskData: Partial<RoadmapTask>;
+			featureId: string | null;
+			context: {
+				featureId: string | null;
+				epicTitle: string | null;
+				featureTitle: string | null;
+			} | null;
+			projectId: string;
+		}) => {
+			const { taskData, context, projectId } = input;
+			const resolveFeature = async (): Promise<string | null> => {
+				const nFt = normalizePathLabel(context?.featureTitle);
+				const nEt = normalizePathLabel(context?.epicTitle);
+				if (!nFt) return null;
+				const matched = (tasksForAddQuery.data ?? []).find((t) => {
+					if (normalizePathLabel(t.feature_title) !== nFt) return false;
+					return !nEt || normalizePathLabel(t.epic_title) === nEt;
+				});
+				if (matched?.feature_id) return matched.feature_id;
+				if (!projectId) return null;
+				const roadmap = await roadmapService.getByProjectId(projectId);
+				if (!roadmap?.id) return null;
+				const full = await roadmapService.getFull(roadmap.id);
+				for (const epic of full.epics ?? []) {
+					const et = normalizePathLabel(epic.title);
+					if (nEt && et !== nEt) continue;
+					const feat = (epic.features ?? []).find(
+						(f) => normalizePathLabel(f.title) === nFt,
+					);
+					if (feat?.id) return feat.id;
+				}
+				return null;
+			};
+			let featureId = input.featureId?.trim() ?? "";
+			if (!featureId) featureId = (await resolveFeature()) ?? "";
+			if (!featureId)
+				throw new Error("Select a feature before creating a task.");
+			const title = (taskData.title ?? "").trim();
+			return taskService.create({
+				feature_id: featureId,
+				title: title || "Untitled task",
+				status: taskData.status ?? "todo",
+				priority: taskData.priority ?? "medium",
+				work_type: taskData.work_type ?? "real_work",
+				assignee_id: taskData.assignee_id ?? null,
+				due_date: taskData.due_date || undefined,
+			});
+		},
+		onSuccess: async (created) => {
+			toast.success("Task created");
+			await qc.invalidateQueries({
+				queryKey: ["team-time", teamId, "project-tasks", addProjectId],
+			});
+			setAddTaskId(created.id);
+		},
+		onError: (e: Error) => toast.error(e.message),
+		onSettled: () => {
+			setIsCreateTaskPanelOpen(false);
+			setCreateTaskFeatureId(null);
+			setCreateTaskContext(null);
+		},
+	});
+
+	// ─── Handlers ───────────────────────────────────────────────────────────
 
 	const handleStop = useCallback(
 		async (id: string) => {
@@ -214,10 +286,15 @@ function MyLogsTab() {
 		},
 		[stopMutation],
 	);
-	const handleDelete = useCallback((id: string) => {
-		setDeletingLogId(id);
-		return Promise.resolve();
-	}, []);
+	const handleDelete = useCallback(
+		(id: string) => {
+			const label = allLogs.find((l) => l.id === id)?.task?.title ?? undefined;
+			setDeletingLogLabel(label);
+			setDeletingLogId(id);
+			return Promise.resolve();
+		},
+		[allLogs],
+	);
 	const handleEdit = useCallback((log: TaskTimeLog) => {
 		setEditingLog(log);
 		setEditStartedAt(toLocalDateTimeInput(log.started_at));
@@ -238,6 +315,33 @@ function MyLogsTab() {
 		},
 		[navigate],
 	);
+	const handleOpenCreateTaskPanel = useCallback(
+		(ctx: {
+			featureId: string | null;
+			epicTitle: string | null;
+			featureTitle: string | null;
+		}) => {
+			if (!ctx.featureId && !ctx.featureTitle) {
+				toast.error("Select a feature before creating a task.");
+				return;
+			}
+			setCreateTaskContext(ctx);
+			setCreateTaskFeatureId(ctx.featureId?.trim() || null);
+			setIsCreateTaskPanelOpen(true);
+		},
+		[toast],
+	);
+	const handleCreateTaskFromTimer = useCallback(
+		async (taskData: Partial<RoadmapTask>) => {
+			await createTaskMutation.mutateAsync({
+				taskData,
+				featureId: createTaskFeatureId,
+				context: createTaskContext,
+				projectId: addProjectId,
+			});
+		},
+		[addProjectId, createTaskContext, createTaskFeatureId, createTaskMutation],
+	);
 
 	const rowPendingById = useMemo<Record<string, boolean>>(() => {
 		const map: Record<string, boolean> = {};
@@ -257,60 +361,46 @@ function MyLogsTab() {
 		taskChangeMutation.variables,
 	]);
 
-	const taskSyncById = useMemo<Record<string, boolean>>(() => {
-		if (!taskChangeMutation.isPending || !taskChangeMutation.variables)
-			return {};
-		return { [taskChangeMutation.variables.id]: true };
-	}, [taskChangeMutation.isPending, taskChangeMutation.variables]);
-
-	// Keep an empty fallback so the grid header still renders.
-	const tasksForGrid = useMemo(() => {
-		const seen = new Map<
-			string,
-			{
-				id: string;
-				title: string;
-				feature_id: string;
-				feature_title: string | null;
-				epic_id: string | null;
-				epic_title: string | null;
-			}
-		>();
-		for (const log of allLogs) {
-			if (log.task && !seen.has(log.task.id)) {
-				seen.set(log.task.id, {
-					id: log.task.id,
-					title: log.task.title,
-					feature_id: "",
-					feature_title: null,
-					epic_id: null,
-					epic_title: null,
-				});
-			}
-		}
-		return Array.from(seen.values());
-	}, [allLogs]);
-
-	const logStats = useMemo(() => computeLogStats(allLogs), [allLogs]);
-
 	const activeRate = firstActiveRate;
 	const rateHistory = myAllRates;
-	const activeRateCount = rateHistory.filter((r) => r.end_date === null).length;
-	// Show the "View history" button when there's at least one closed row
-	// beyond the currently active set.
-	const hasRateHistory = rateHistory.length > activeRateCount;
+	const hasRateHistory =
+		rateHistory.filter((r) => r.end_date === null).length < rateHistory.length;
+
+	// ─── Render ─────────────────────────────────────────────────────────────
 
 	return (
 		<>
+			{/* Legacy-style rate + totals card */}
 			<TeamLogsStatsCard
 				rate={activeRate}
-				canShowHistory={hasRateHistory}
-				onOpenHistory={() => setHistoryOpen(true)}
-				stats={logStats}
-				fallbackCurrency={activeRate?.currency ?? "USD"}
+				stats={stats}
+				fallbackCurrency={activeRate?.currency || "USD"}
 				loading={logsQuery.isPending}
+				canShowHistory={hasRateHistory}
+				onOpenHistory={hasRateHistory ? () => setHistoryOpen(true) : undefined}
+				includePaidColumn={false}
+				includeTrainingRate={false}
+				rateLabel="Rate"
+			/>
+			{/* Logs table */}
+			<TeamMyLogsGrid
+				logs={allLogs}
+				tasks={tasksForRowQuery.data ?? []}
+				ownRateByProjectId={ownRateByProjectId}
+				loadingLogs={logsQuery.isPending}
+				loadingTasks={tasksForRowQuery.isFetching}
+				taskSyncById={{}}
+				rowPendingById={rowPendingById}
+				onOpenTaskModal={handleOpenTaskModal}
+				onStopLog={handleStop}
+				onDeleteLog={handleDelete}
+				onEditLog={handleEdit}
+				onOpenTaskInRoadmap={handleOpenInRoadmap}
+				canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
+				onOpenAddLog={() => setAddOpen(true)}
 			/>
 
+			{/* Rate history drawer */}
 			<TeamMemberRateHistoryDrawer
 				isOpen={historyOpen}
 				member={meAsMember(user?.id, user?.email)}
@@ -327,23 +417,7 @@ function MyLogsTab() {
 				onDeleteRate={() => {}}
 			/>
 
-			<TeamMyLogsGrid
-				logs={allLogs}
-				tasks={tasksForGrid}
-				ownRateByProjectId={ownRateByProjectId}
-				loadingLogs={logsQuery.isPending}
-				loadingTasks={tasksForRowQuery.isFetching}
-				taskSyncById={taskSyncById}
-				rowPendingById={rowPendingById}
-				onOpenTaskModal={handleOpenTaskModal}
-				onStopLog={handleStop}
-				onDeleteLog={handleDelete}
-				onEditLog={handleEdit}
-				onOpenTaskInRoadmap={handleOpenInRoadmap}
-				canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
-				onOpenAddLog={() => setAddOpen(true)}
-			/>
-
+			{/* Start timer / Add log modal */}
 			<AddLogModal
 				isOpen={addOpen}
 				projects={projectsQuery.data ?? []}
@@ -368,8 +442,30 @@ function MyLogsTab() {
 				}
 				onChangeProjectId={(v) => setAddProjectId(v)}
 				onChangeTaskId={(v) => setAddTaskId(v)}
+				onRequestCreateTask={handleOpenCreateTaskPanel}
+				creatingTask={createTaskMutation.isPending}
 			/>
 
+			{/* Create task panel */}
+			<SidePanel
+				task={null}
+				isOpen={isCreateTaskPanelOpen}
+				isCreating
+				projectId={addProjectId}
+				onClose={() => {
+					if (createTaskMutation.isPending) return;
+					setIsCreateTaskPanelOpen(false);
+					setCreateTaskFeatureId(null);
+					setCreateTaskContext(null);
+				}}
+				onUpdateTask={() => {}}
+				onDeleteTask={() => {}}
+				onCreateTask={handleCreateTaskFromTimer}
+				isLoading={createTaskMutation.isPending}
+				zIndexBase={180}
+			/>
+
+			{/* Edit log modal */}
 			<EditLogModal
 				isOpen={Boolean(editingLog)}
 				startedAt={editStartedAt}
@@ -391,12 +487,11 @@ function MyLogsTab() {
 				onChangeEndedAt={setEditEndedAt}
 			/>
 
+			{/* Delete modal */}
 			<DeleteTimeLogModal
 				isOpen={Boolean(deletingLogId)}
 				deleting={deleteMutation.isPending}
-				taskLabel={
-					allLogs.find((l) => l.id === deletingLogId)?.task?.title ?? undefined
-				}
+				taskLabel={deletingLogLabel}
 				onClose={() => {
 					if (deleteMutation.isPending) return;
 					setDeletingLogId(null);
@@ -406,6 +501,7 @@ function MyLogsTab() {
 				}}
 			/>
 
+			{/* Change task modal */}
 			<AddLogModal
 				isOpen={Boolean(taskModalLog)}
 				projects={
@@ -413,8 +509,7 @@ function MyLogsTab() {
 						? [
 								{
 									id: taskModalLog.project_id,
-									title:
-										taskModalLog.project?.title ?? "Current project",
+									title: taskModalLog.project?.title ?? "Current project",
 								},
 							]
 						: []
@@ -433,16 +528,11 @@ function MyLogsTab() {
 				}}
 				onSave={() => {
 					if (!taskModalLog) return;
-					const nextTaskId = taskModalTaskId || null;
-					if (nextTaskId === taskModalLog.task_id) return;
-					taskChangeMutation.mutate({
-						id: taskModalLog.id,
-						task_id: nextTaskId,
-					});
+					const next = taskModalTaskId || null;
+					if (next === taskModalLog.task_id) return;
+					taskChangeMutation.mutate({ id: taskModalLog.id, task_id: next });
 				}}
-				onChangeProjectId={() => {
-					/* project is locked to the log's project */
-				}}
+				onChangeProjectId={() => {}}
 				onChangeTaskId={(v) => setTaskModalTaskId(v)}
 			/>
 
@@ -451,12 +541,6 @@ function MyLogsTab() {
 	);
 }
 
-/**
- * The history drawer expects a TeamMember to render the header. The
- * caller viewing their own rates isn't loaded into the team_members
- * query here (that's a separate fetch in the parent layout); fabricate
- * a minimal record from the auth user so the drawer can show a name.
- */
 function meAsMember(
 	userId: string | undefined,
 	email: string | null | undefined,

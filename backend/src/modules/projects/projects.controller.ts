@@ -29,6 +29,7 @@ import {
   CreateProjectResourceFolderDto,
   CreateProjectResourceLinkDto,
   InviteProjectByEmailDto,
+  ProjectDashboardSummaryQueryDto,
   ProjectInviteQueryDto,
   ReassignProjectConsultantDto,
   ReorderProjectResourceFoldersDto,
@@ -70,6 +71,14 @@ export class ProjectsController {
     return this.projectsService.listDashboardProjects(user.id, {
       onCacheStatus: (status) => this.setCacheHeader(response, status),
     });
+  }
+
+  @Get('dashboard/summary')
+  getDashboardSummary(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ProjectDashboardSummaryQueryDto,
+  ) {
+    return this.projectsService.getDashboardSummary(user.id, query);
   }
 
   @Post()

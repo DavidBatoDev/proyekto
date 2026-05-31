@@ -99,6 +99,15 @@ export function DashboardWidgets({
 		refetchOnReconnect: false,
 		retry: 1,
 	});
+	const dashboardSummaryQuery = useQuery({
+		queryKey: ["dashboard", "summary", user?.id ?? "anonymous"] as const,
+		queryFn: () => projectService.getDashboardSummary(),
+		enabled: Boolean(user?.id),
+		staleTime: 30_000,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
+		retry: 1,
+	});
 	const projects = (projectsQuery.data as Project[] | undefined) ?? [];
 	const isProjectsLoading = projectsQuery.isPending;
 	const isMilestonesLoading = timelineQuery.isPending;
@@ -230,9 +239,25 @@ export function DashboardWidgets({
 	const primaryMetricValue = projectActiveCount;
 	const secondaryMetricValue = clientPendingProjectsCount;
 	const secondaryMetricLoading = isProjectsLoading;
+	const invoiceMetricValue =
+		dashboardSummaryQuery.data?.invoices.total_amount ?? 0;
+	const invoiceMetricLoading = dashboardSummaryQuery.isPending;
+	const invoiceMetricCount = dashboardSummaryQuery.data?.invoices.total_count ?? 0;
 	const activityLoading = isMilestonesLoading;
 
 	const navigate = useNavigate();
+	const workspaceDefaults = (() => {
+		const settings = profile?.settings;
+		if (!settings || typeof settings !== "object") return null;
+		const raw = (settings as Record<string, unknown>).workspace_defaults;
+		if (!raw || typeof raw !== "object") return null;
+		return raw as { default_project_id?: string | null };
+	})();
+	const preferredProjectId = workspaceDefaults?.default_project_id ?? null;
+	const preferredProject = preferredProjectId
+		? (projects.find((project) => project.id === preferredProjectId) ?? null)
+		: null;
+	const invoiceTargetProject = preferredProject ?? projects[0] ?? null;
 
 	const greetingName =
 		profile?.display_name ||
@@ -258,6 +283,14 @@ export function DashboardWidgets({
 		if (attentionSection instanceof HTMLElement) {
 			attentionSection.scrollIntoView({ behavior: "smooth", block: "start" });
 		}
+	};
+
+	const openFirstProjectInvoices = () => {
+		if (!invoiceTargetProject?.id) return;
+		navigate({
+			to: "/project/$projectId/payments",
+			params: { projectId: invoiceTargetProject.id },
+		});
 	};
 
 	return (
@@ -286,7 +319,7 @@ export function DashboardWidgets({
 							</button>
 						</div>
 
-						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+						<div className="grid grid-cols-1 gap-4 md:grid-cols-3">
 							<button
 								type="button"
 								onClick={scrollToProjects}
@@ -333,6 +366,40 @@ export function DashboardWidgets({
 								</p>
 								<p className="relative z-10 text-4xl font-semibold text-slate-900">
 									{secondaryMetricLoading ? "..." : secondaryMetricValue}
+								</p>
+							</button>
+							<button
+								type="button"
+								onClick={openFirstProjectInvoices}
+								disabled={!invoiceTargetProject}
+								className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-70"
+							>
+								<span
+									className="pointer-events-none absolute -top-16 -right-16 w-44 h-44 rounded-full blur-3xl opacity-25"
+									style={{ backgroundColor: "#0f172a" }}
+								/>
+								<span
+									className="pointer-events-none absolute -bottom-12 -left-12 w-32 h-32 rounded-full blur-3xl opacity-12"
+									style={{ backgroundColor: "#0f172a" }}
+								/>
+								<span className="absolute top-4 right-4 text-slate-500 transition-colors duration-200 group-hover:text-slate-900">
+									{"->"}
+								</span>
+								<p className="relative z-10 mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-600">
+									<ShieldCheck className="w-4 h-4 text-slate-400" />
+									INVOICES
+								</p>
+								<p className="relative z-10 text-3xl font-semibold text-slate-900">
+									{invoiceMetricLoading
+										? "..."
+										: invoiceMetricValue.toLocaleString(undefined, {
+												maximumFractionDigits: 2,
+											})}
+								</p>
+								<p className="relative z-10 mt-1 text-xs text-slate-600">
+									{invoiceMetricLoading
+										? "Loading..."
+										: `${invoiceMetricCount} invoice${invoiceMetricCount === 1 ? "" : "s"}`}
 								</p>
 							</button>
 						</div>
