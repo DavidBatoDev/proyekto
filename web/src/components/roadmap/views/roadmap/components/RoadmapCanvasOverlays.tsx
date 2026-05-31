@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import { SidePanel } from "../../../panels/SidePanel";
+import { useRoadmapStore } from "@/stores/roadmapStore";
 import { EpicModal } from "../../../modals/EpicModal";
 import { FeatureModal } from "../../../modals/FeatureModal";
 import type {
@@ -131,6 +132,8 @@ export function RoadmapCanvasOverlays({
   handleOpenEditFeatureModal,
   handleConfirmDelete,
 }: RoadmapCanvasOverlaysProps) {
+  const navigateToNode = useRoadmapStore((s) => s.navigateToNode);
+
   return (
     <>
       <SidePanel
@@ -143,6 +146,11 @@ export function RoadmapCanvasOverlays({
           setSelectedTaskId(null);
           setTargetFeatureForTask(null);
           closeAddTaskPanel();
+        }}
+        onSaved={(task) => {
+          if (task.feature_id) {
+            navigateToNode(task.feature_id, { taskId: task.id });
+          }
         }}
         onUpdateTask={handleTaskUpdate}
         onDeleteTask={handleTaskDelete}

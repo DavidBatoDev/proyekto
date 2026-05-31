@@ -350,7 +350,7 @@ code {
 }
 
 .roadmap-task-row-pulse {
-  animation: roadmap-task-light-pulse 850ms ease-out 1;
+  animation: roadmap-task-light-pulse 2000ms ease-out 1;
 }
 
 @keyframes roadmap-widget-light-pulse {
