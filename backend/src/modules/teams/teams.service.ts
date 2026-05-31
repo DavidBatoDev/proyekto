@@ -393,12 +393,14 @@ export class TeamsService {
       team_id: string;
       is_primary: boolean;
       attached_at: string;
+      viewer_has_access: boolean;
       project: {
         id: string;
         title: string | null;
         status: string | null;
         start_date: string | null;
         custom_start_date: string | null;
+        banner_url: string | null;
         client: {
           id: string;
           display_name: string | null;
@@ -414,14 +416,14 @@ export class TeamsService {
       .select(
         `project_id, team_id, is_primary, attached_at,
          project:projects!project_teams_project_id_fkey(
-           id, title, status, start_date, custom_start_date,
+           id, title, status, start_date, custom_start_date, banner_url,
            client:profiles!projects_client_id_fkey(id, display_name, avatar_url)
          )`,
       )
       .eq('team_id', teamId)
       .order('attached_at', { ascending: false });
     if (error) throw new Error(error.message);
-    return (data ?? []) as unknown as Array<{
+    const rows = (data ?? []) as unknown as Array<{
       project_id: string;
       team_id: string;
       is_primary: boolean;
@@ -432,6 +434,7 @@ export class TeamsService {
         status: string | null;
         start_date: string | null;
         custom_start_date: string | null;
+        banner_url: string | null;
         client: {
           id: string;
           display_name: string | null;
@@ -439,6 +442,17 @@ export class TeamsService {
         } | null;
       } | null;
     }>;
+    const projectIds = rows.map((r) => r.project_id).filter(Boolean);
+    let accessSet = new Set<string>();
+    if (projectIds.length > 0) {
+      const { data: accessRows } = await this.supabase
+        .from('project_access')
+        .select('project_id')
+        .eq('user_id', callerId)
+        .in('project_id', projectIds);
+      accessSet = new Set((accessRows ?? []).map((r) => r.project_id));
+    }
+    return rows.map((r) => ({ ...r, viewer_has_access: accessSet.has(r.project_id) }));
   }
 
   async listMembers(teamId: string, userId: string): Promise<TeamMemberRow[]> {

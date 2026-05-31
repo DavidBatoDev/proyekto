@@ -1,8 +1,9 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import {
 	Loader2,
+	Lock,
 	Mail,
 	Pencil,
 	Plus,
@@ -12,7 +13,6 @@ import {
 } from "lucide-react";
 import { AppSectionHeader, AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { DashboardShell } from "@/components/layout/DashboardShell";
-import { MemberDisplay } from "@/components/common/MemberDisplay";
 import { ModalPortal } from "@/components/common/ModalPortal";
 import { useToast } from "@/hooks/useToast";
 import { useAuthStore, useUser } from "@/stores/authStore";
@@ -20,11 +20,13 @@ import {
 	cancelTeamInvite,
 	getTeam,
 	inviteTeamMemberByEmail,
+	listCuratedMembers,
 	listTeamInvites,
 	listTeamMembers,
 	listTeamProjects,
 	removeTeamMember,
 	updateTeamMember,
+	type ProjectTeamMember,
 	type TeamInvite,
 	type TeamMember,
 	type TeamRole,
@@ -57,6 +59,26 @@ function RoleChip({ role }: { role: TeamRole }) {
 	)
 }
 
+function MemberAvatar({ member, size = 6 }: { member: ProjectTeamMember; size?: number }) {
+	const initial = (
+		member.user?.display_name ||
+		member.user?.first_name ||
+		"?"
+	)[0].toUpperCase();
+	const sizeClass = `h-${size} w-${size}`;
+	return member.user?.avatar_url ? (
+		<img
+			src={member.user.avatar_url}
+			alt={member.user.display_name ?? ""}
+			className={`${sizeClass} rounded-full object-cover`}
+		/>
+	) : (
+		<span className={`flex ${sizeClass} items-center justify-center rounded-full bg-slate-400 text-[9px] font-bold text-white`}>
+			{initial}
+		</span>
+	);
+}
+
 function CompactProjectCard({
 	number,
 	projectId,
@@ -67,6 +89,9 @@ function CompactProjectCard({
 	statusBadgeClass,
 	progress,
 	progressColor,
+	bannerUrl = null,
+	isLocked = false,
+	members = [],
 }: {
 	number: number;
 	projectId: string;
@@ -77,55 +102,148 @@ function CompactProjectCard({
 	statusBadgeClass: string;
 	progress: number | null;
 	progressColor: string;
+	bannerUrl?: string | null;
+	isLocked?: boolean;
+	members?: ProjectTeamMember[];
 }) {
 	const isDraft = status.toLowerCase() === "draft";
+	const displayedMembers = members.slice(0, 9);
+	const extraCount = Math.max(0, members.length - 9);
+
+	const avatarStrip = displayedMembers.length > 0 ? (
+		<div className="flex items-center justify-end">
+			<div className="group/avatars relative">
+				<div className="pointer-events-none absolute bottom-full right-0 z-50 mb-2 hidden w-max min-w-[180px] max-w-[260px] rounded-xl border border-slate-200 bg-white py-2 shadow-xl group-hover/avatars:block">
+					<p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+						Team members ({members.length})
+					</p>
+					<ul className="max-h-52 overflow-y-auto">
+						{members.map((m) => (
+							<li key={m.user_id} className="flex items-center gap-2 px-3 py-1">
+								<div className="shrink-0 overflow-hidden rounded-full border border-slate-200">
+									<MemberAvatar member={m} size={5} />
+								</div>
+								<span className="truncate text-[11px] text-slate-700">
+									{m.user?.display_name ||
+										[m.user?.first_name, m.user?.last_name]
+											.filter(Boolean)
+											.join(" ") ||
+										"Unknown"}
+								</span>
+							</li>
+						))}
+					</ul>
+				</div>
+				<div className="flex items-center">
+					{displayedMembers.map((m, i) => (
+						<div
+							key={m.user_id}
+							className="shrink-0 overflow-hidden rounded-full border-2 border-white"
+							style={{ marginLeft: i === 0 ? 0 : -6, zIndex: displayedMembers.length - i }}
+						>
+							<MemberAvatar member={m} size={6} />
+						</div>
+					))}
+					{extraCount > 0 && (
+						<div
+							className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border-2 border-white bg-slate-200 px-1 text-[9px] font-bold text-slate-600"
+							style={{ marginLeft: -6, zIndex: 0 }}
+						>
+							+{extraCount}
+						</div>
+					)}
+				</div>
+			</div>
+		</div>
+	) : null;
+
+	if (isLocked) {
+		return (
+			<div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm opacity-60 grayscale cursor-not-allowed select-none">
+				{bannerUrl && (
+					<div className="relative h-20 w-full shrink-0 overflow-hidden rounded-t-xl">
+						<img src={bannerUrl} alt="" className="h-full w-full object-cover" />
+						<div className="absolute inset-0 bg-linear-to-t from-black/40 to-transparent" />
+					</div>
+				)}
+				<div className="flex flex-1 flex-col gap-2 p-3">
+					<div className="flex items-center gap-2">
+						<span className="text-[11px] font-semibold text-slate-500">#{number}</span>
+						<div className="h-3 w-px bg-slate-300" />
+						<span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+							<Lock className="h-2.5 w-2.5" />
+							No access
+						</span>
+					</div>
+					<div className="min-w-0">
+						<h4 className="truncate text-sm font-semibold text-slate-900">{title}</h4>
+						<p className="truncate text-[11px] text-slate-500">
+							<span className="font-medium text-slate-600">Client:</span> {client}
+						</p>
+					</div>
+				</div>
+			</div>
+		);
+	}
+
 	return (
 		<Link
 			to="/project/$projectId/roadmap"
 			params={{ projectId }}
-			className="group flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
-			style={{
+			className="group relative flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:z-10 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+			style={bannerUrl ? undefined : {
 				backgroundImage: `linear-gradient(to bottom, white 92%, ${statusColor}14)`,
 			}}
 		>
-			<div className="flex items-center gap-2">
-				<span className="text-[11px] font-semibold text-slate-500">
-					#{number}
-				</span>
-				<div className="h-3 w-px bg-slate-300" />
-				{!isDraft && (
-					<div
-						className="h-2 w-2 rounded-full"
-						style={{ backgroundColor: statusColor }}
-					/>
-				)}
-				<span
-					className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${statusBadgeClass}`}
-				>
-					{status}
-				</span>
-			</div>
-			<div className="min-w-0">
-				<h4 className="truncate text-sm font-semibold text-slate-900">
-					{title}
-				</h4>
-				<p className="truncate text-[11px] text-slate-500">
-					<span className="font-medium text-slate-600">Client:</span> {client}
-				</p>
-			</div>
-			<div>
-				<div className="mb-1 flex items-center justify-between text-[10px] text-slate-500">
-					<span>Progress</span>
-					<span>{progress === null ? "Not tracked" : `${progress}%`}</span>
+			{bannerUrl && (
+				<div className="relative h-20 w-full shrink-0 overflow-hidden rounded-t-xl">
+					<img src={bannerUrl} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+					<div className="absolute inset-0 bg-linear-to-t from-black/40 to-transparent" />
+					<div className="absolute bottom-2 left-3 flex items-center gap-1.5">
+						<span className="text-[11px] font-semibold text-white/80">#{number}</span>
+						<div className="h-3 w-px bg-white/40" />
+						{!isDraft && (
+							<div className="h-2 w-2 rounded-full ring-1 ring-white/30" style={{ backgroundColor: statusColor }} />
+						)}
+						<span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${statusBadgeClass}`}>
+							{status}
+						</span>
+					</div>
 				</div>
-				<div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-					<div
-						className="h-full rounded-full transition-all"
-						style={{
-							width: `${progress ?? 0}%`,
-							backgroundColor: progressColor,
-						}}
-					/>
+			)}
+			<div className="flex flex-1 flex-col gap-2 p-3">
+				{!bannerUrl && (
+					<div className="flex items-center gap-2">
+						<span className="text-[11px] font-semibold text-slate-500">#{number}</span>
+						<div className="h-3 w-px bg-slate-300" />
+						{!isDraft && (
+							<div className="h-2 w-2 rounded-full" style={{ backgroundColor: statusColor }} />
+						)}
+						<span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${statusBadgeClass}`}>
+							{status}
+						</span>
+					</div>
+				)}
+				<div className="min-w-0">
+					<h4 className="truncate text-sm font-semibold text-slate-900">{title}</h4>
+					<p className="truncate text-[11px] text-slate-500">
+						<span className="font-medium text-slate-600">Client:</span> {client}
+					</p>
+				</div>
+				<div className="mt-auto flex flex-col gap-2 pt-1">
+					<div>
+						<div className="mb-1 flex items-center justify-between text-[10px] text-slate-500">
+							<span>Progress</span>
+							<span>{progress === null ? "Not tracked" : `${progress}%`}</span>
+						</div>
+						<div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+							<div
+								className="h-full rounded-full transition-all"
+								style={{ width: `${progress ?? 0}%`, backgroundColor: progressColor }}
+							/>
+						</div>
+					</div>
+					{avatarStrip}
 				</div>
 			</div>
 		</Link>
@@ -158,6 +276,21 @@ function TeamDetailPage() {
 		queryFn: () => listTeamProjects(teamId),
 	});
 	const attachedProjects = projectsQuery.data ?? [];
+
+	const projectMemberQueries = useQueries({
+		queries: attachedProjects.map((row) => ({
+			queryKey: ["teams", "projects", "members", row.project_id, teamId],
+			queryFn: () => listCuratedMembers(row.project_id, teamId),
+			enabled: !!row.project && !!row.viewer_has_access,
+			staleTime: 60_000,
+		})),
+	});
+	const projectMembersMap = new Map(
+		attachedProjects.map((row, i) => [
+			row.project_id,
+			projectMemberQueries[i]?.data ?? [],
+		]),
+	);
 
 	const team = teamQuery.data;
 	const members = membersQuery.data ?? [];
@@ -244,6 +377,9 @@ function TeamDetailPage() {
 											row.project.status === "completed" ? 100 : null
 										}
 										progressColor={statusConfig.color}
+										bannerUrl={row.project.banner_url}
+										isLocked={!row.viewer_has_access}
+										members={projectMembersMap.get(row.project.id)}
 									/>
 								);
 							})}
@@ -282,25 +418,36 @@ function TeamDetailPage() {
 								No members yet.
 							</div>
 						) : (
-							<ul className="divide-y divide-slate-200">
-								{members.map((m) => (
-									<MemberRow
-										key={m.id}
-										member={m}
-										teamId={teamId}
-										isOwnerView={Boolean(isOwner)}
-										ownerId={team.owner_id}
-									/>
-								))}
-								{pendingInvites.map((invite) => (
-									<PendingInviteRow
-										key={invite.id}
-										invite={invite}
-										teamId={teamId}
-										isOwnerView={Boolean(isOwner)}
-									/>
-								))}
-							</ul>
+							<table className="w-full">
+								<thead>
+									<tr className="border-b border-slate-200 bg-slate-50">
+										<th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Member</th>
+										<th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Position</th>
+										<th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Role</th>
+										<th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Joined</th>
+										<th className="px-4 py-3" />
+									</tr>
+								</thead>
+								<tbody className="divide-y divide-slate-100">
+									{members.map((m) => (
+										<MemberRow
+											key={m.id}
+											member={m}
+											teamId={teamId}
+											isOwnerView={Boolean(isOwner)}
+											ownerId={team.owner_id}
+										/>
+									))}
+									{pendingInvites.map((invite) => (
+										<PendingInviteRow
+											key={invite.id}
+											invite={invite}
+											teamId={teamId}
+											isOwnerView={Boolean(isOwner)}
+										/>
+									))}
+								</tbody>
+							</table>
 						)}
 					</AppSurfaceCard>
 				</div>
@@ -359,33 +506,76 @@ function MemberRow({
 		setConfirmOpen(true);
 	};
 
+	const joinedLabel = member.joined_at
+		? new Date(member.joined_at).toLocaleDateString("en-US", {
+				month: "short",
+				day: "numeric",
+				year: "numeric",
+			})
+		: "—";
+	const avatarInitial = (
+		member.user?.display_name ||
+		member.user?.first_name ||
+		"?"
+	)[0].toUpperCase();
+
 	return (
 		<>
-			<li className="flex items-center justify-between px-5 py-3">
-				<MemberDisplay
-					user={member.user}
-					fallbackId={member.user_id}
-					subtitleSlot={
-						<>
-							{member.position && (
-								<PositionChip>{member.position}</PositionChip>
+			<tr className="transition-colors hover:bg-slate-50/60">
+				<td className="px-5 py-3">
+					<div className="flex items-center gap-3">
+						<div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-slate-200">
+							{member.user?.avatar_url ? (
+								<img
+									src={member.user.avatar_url}
+									alt=""
+									className="h-full w-full object-cover"
+								/>
+							) : (
+								<span className="flex h-full w-full items-center justify-center text-xs font-semibold text-slate-600">
+									{avatarInitial}
+								</span>
 							)}
-							<RoleChip role={member.role} />
-						</>
-					}
-				/>
-				{isOwnerView && (
-					<div className="flex shrink-0 items-center gap-1">
-						<button
-							type="button"
-							onClick={() => setEditOpen(true)}
-							aria-label="Edit member"
-							title="Edit member"
-							className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
-						>
-							<Pencil className="h-3.5 w-3.5" />
-						</button>
-						{!isOwnerRow && !isSelfRow && (
+						</div>
+						<div className="min-w-0">
+							<p className="truncate text-sm font-medium text-slate-900">
+								{displayName}
+							</p>
+							{member.user?.email && (
+								<p className="truncate text-xs text-slate-400">
+									{member.user.email}
+								</p>
+							)}
+						</div>
+					</div>
+				</td>
+				<td className="px-4 py-3">
+					{member.position ? (
+						<PositionChip>{member.position}</PositionChip>
+					) : (
+						<span className="text-slate-300">—</span>
+					)}
+				</td>
+				<td className="px-4 py-3">
+					<RoleChip role={member.role} />
+				</td>
+				<td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
+					{joinedLabel}
+				</td>
+				<td className="px-4 py-3 text-right">
+					<div className="flex items-center justify-end gap-1">
+						{isOwnerView && (
+							<button
+								type="button"
+								onClick={() => setEditOpen(true)}
+								aria-label="Edit member"
+								title="Edit member"
+								className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+							>
+								<Pencil className="h-3.5 w-3.5" />
+							</button>
+						)}
+						{isOwnerView && !isOwnerRow && !isSelfRow && (
 							<button
 								type="button"
 								onClick={handleRemoveMember}
@@ -402,8 +592,8 @@ function MemberRow({
 							</button>
 						)}
 					</div>
-				)}
-			</li>
+				</td>
+			</tr>
 			{editOpen && (
 				<EditMemberModal
 					teamId={teamId}
@@ -625,40 +815,62 @@ function PendingInviteRow({
 	metaParts.push(invite.role);
 	if (displayName) metaParts.push(displayEmail);
 
+	const invitedLabel = new Date(invite.created_at).toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+	});
+
 	return (
-		<li className="flex items-center justify-between px-5 py-3">
-			<div className="flex min-w-0 items-center gap-3">
-				<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
-					<Mail className="h-4 w-4" />
+		<tr className="bg-amber-50/30 transition-colors hover:bg-amber-50/60">
+			<td className="px-5 py-3">
+				<div className="flex items-center gap-3">
+					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+						<Mail className="h-4 w-4" />
+					</div>
+					<div className="min-w-0">
+						<p className="truncate text-sm font-medium text-slate-900">
+							{displayName || displayEmail}
+						</p>
+						{displayName && (
+							<p className="truncate text-xs text-slate-400">{displayEmail}</p>
+						)}
+					</div>
 				</div>
-				<div className="min-w-0">
-					<p className="truncate text-sm font-medium text-slate-900">
-						{displayName || displayEmail}
-					</p>
-					<p className="mt-0.5 flex items-center gap-2 truncate text-xs text-slate-500">
-						<span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
-							Pending
-						</span>
-						<span className="truncate">{metaParts.join(" · ")}</span>
-					</p>
-				</div>
-			</div>
-			{isOwnerView && (
-				<button
-					type="button"
-					onClick={() => cancelMutation.mutate()}
-					disabled={cancelMutation.isPending}
-					className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
-				>
-					{cancelMutation.isPending ? (
-						<Loader2 className="h-3.5 w-3.5 animate-spin" />
-					) : (
-						<X className="h-3.5 w-3.5" />
-					)}
-					Cancel invite
-				</button>
-			)}
-		</li>
+			</td>
+			<td className="px-4 py-3">
+				{invite.position ? (
+					<PositionChip>{invite.position}</PositionChip>
+				) : (
+					<span className="text-slate-300">—</span>
+				)}
+			</td>
+			<td className="px-4 py-3">
+				<span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+					Pending · {invite.role}
+				</span>
+			</td>
+			<td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
+				Invited {invitedLabel}
+			</td>
+			<td className="px-4 py-3 text-right">
+				{isOwnerView && (
+					<button
+						type="button"
+						onClick={() => cancelMutation.mutate()}
+						disabled={cancelMutation.isPending}
+						className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+					>
+						{cancelMutation.isPending ? (
+							<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						) : (
+							<X className="h-3.5 w-3.5" />
+						)}
+						Cancel invite
+					</button>
+				)}
+			</td>
+		</tr>
 	)
 }
 

@@ -445,12 +445,14 @@ export interface TeamProjectAttachment {
 	team_id: string;
 	is_primary: boolean;
 	attached_at: string;
+	viewer_has_access?: boolean;
 	project: {
 		id: string;
 		title: string | null;
 		status: string | null;
 		start_date: string | null;
 		custom_start_date: string | null;
+		banner_url: string | null;
 		client: {
 			id: string;
 			display_name: string | null;

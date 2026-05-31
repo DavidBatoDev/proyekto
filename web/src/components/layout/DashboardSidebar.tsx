@@ -99,7 +99,7 @@ export function DashboardSidebar() {
 	})();
 
 	const [openTeamId, setOpenTeamId] = useState<string | null>(
-		() => loadOpenTeam(),
+		() => loadOpenTeam() ?? activeTeamId,
 	);
 	const persistDefaultsMutation = useMutation({
 		mutationFn: (lastTeamId: string | null) =>
@@ -197,9 +197,7 @@ export function DashboardSidebar() {
 					) : (
 						<div className="space-y-0.5">
 							{teams.map((t) => {
-								const effectiveOpenId =
-									openTeamId ?? activeTeamId ?? teams[0]?.id ?? null;
-								const expanded = t.id === effectiveOpenId;
+								const expanded = t.id === openTeamId;
 								return (
 									<TeamSidebarGroup
 										key={t.id}
