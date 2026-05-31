@@ -352,7 +352,7 @@ export class ProjectsService {
   ): Promise<Project[]> {
     return this.cache.rememberJson(
       REDIS_CACHE_KEYS.projectsDashboardByUser(userId),
-      this.cache.getAuthTtlSeconds(),
+      this.cache.getDashboardTtlSeconds(),
       async () => this.projectsRepo.findDashboardByUser(userId),
       {
         onStatus: options?.onCacheStatus,

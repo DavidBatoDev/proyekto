@@ -69,6 +69,14 @@ export class RedisDataCacheService {
     );
   }
 
+  getDashboardTtlSeconds(): number {
+    return readPositiveInteger(
+      this.configService,
+      'REDIS_CACHE_DASHBOARD_TTL_SECONDS',
+      15,
+    );
+  }
+
   getMarketplaceIndexTtlSeconds(): number {
     return readPositiveInteger(
       this.configService,

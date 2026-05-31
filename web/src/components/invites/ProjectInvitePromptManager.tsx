@@ -108,6 +108,9 @@ export function ProjectInvitePromptManager() {
       await queryClient.invalidateQueries({
         queryKey: ["notifications", "project-invites"],
       });
+      await queryClient.invalidateQueries({
+        queryKey: ["dashboard", "projects", profile?.id],
+      });
     },
   });
 
