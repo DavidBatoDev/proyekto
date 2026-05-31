@@ -4,6 +4,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { projectKeys } from "@/queries/project";
 import type { Profile } from "@/types/profile.types";
+import { featureFlags } from "@/config/featureFlags";
 
 const COLLAB_COLORS = [
 	"#ef4444",
@@ -166,6 +167,7 @@ export function useRoadmapCollaboration({
 				invalidate();
 			})
 			.on<CursorPayload>("broadcast", { event: "cursor" }, ({ payload }) => {
+				if (!featureFlags.realtimeCursors) return;
 				if (!payload || payload.userId === userId) return;
 
 				setRemoteCursors((prev) => {
@@ -237,6 +239,7 @@ export function useRoadmapCollaboration({
 	}, [roadmapId, userId, profile, queryClient]);
 
 	const trackCursor = useCallback((canvasX: number, canvasY: number) => {
+		if (!featureFlags.realtimeCursors) return;
 		const channel = channelRef.current;
 		if (!channel) return;
 		if (isPanningRef.current) return;

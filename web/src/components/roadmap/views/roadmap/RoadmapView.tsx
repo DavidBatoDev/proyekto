@@ -50,6 +50,7 @@ import { teamTimeService } from "@/services/team-time.service";
 import { useUser } from "@/stores/authStore";
 import type { RemoteCursor } from "@/hooks/useRoadmapCollaboration";
 import { CollaborationCursorsOverlay } from "@/components/roadmap/collaboration/CollaborationCursorsOverlay";
+import { featureFlags } from "@/config/featureFlags";
 
 const getAvatarInitials = (name: string) =>
   name
@@ -1297,7 +1298,9 @@ export const RoadmapView = ({
             style={{ width: 200, height: 140 }}
           />
         )}
-        <CollaborationCursorsOverlay remoteCursors={remoteCursors} />
+        {featureFlags.realtimeCursors && (
+          <CollaborationCursorsOverlay remoteCursors={remoteCursors} />
+        )}
       </ReactFlow>
 
       <EpicReorderConfirmModal
