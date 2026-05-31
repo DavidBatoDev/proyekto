@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
 	ListChecks,
 	AlertCircle,
@@ -11,6 +11,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useRoadmapFullQuery } from "@/hooks/useProjectQueries";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { useRoadmapDataSync } from "@/hooks/useRoadmapDataSync";
+import { useUser } from "@/stores/authStore";
 import { KanbanView } from "@/components/roadmap/views/kanban/KanbanView";
 import { WorkItemsBrowserModal } from "@/components/roadmap/modals/WorkItemsBrowserModal";
 import { useRoadmapCanvasController } from "@/components/roadmap/views/roadmap/hooks/useRoadmapCanvasController";
@@ -27,7 +28,33 @@ function WorkItemsBoardPage() {
 	const { projectId, roadmapId } = Route.useParams();
 	const navigate = useNavigate();
 	const [isBrowserOpen, setIsBrowserOpen] = useState(false);
-	useRoadmapDataSync(roadmapId);
+	const user = useUser();
+	const { broadcastDataChanged } = useRoadmapDataSync(roadmapId, user?.id);
+
+	// Broadcast when any local mutation settles (same logic as RoadmapCanvas).
+	const mutationActivityCount = useRoadmapStore(
+		useShallow(
+			(s) =>
+				(s.isLoadingEpic ? 1 : 0) +
+				(s.isLoadingFeature ? 1 : 0) +
+				(s.isLoadingTask ? 1 : 0) +
+				Object.keys(s.pendingEpicById).length +
+				Object.keys(s.pendingFeatureById).length +
+				Object.keys(s.pendingTaskById).length +
+				// queuedTaskStatusIntentById is cleared BEFORE the API call; use
+				// activeTaskStatusSyncById which stays set until the API completes.
+				Object.keys(s.activeTaskStatusSyncById).length,
+		),
+	);
+	const prevActivityRef = useRef(0);
+	useEffect(() => {
+		const prev = prevActivityRef.current;
+		prevActivityRef.current = mutationActivityCount;
+		if (prev > mutationActivityCount) {
+			broadcastDataChanged();
+		}
+	}, [mutationActivityCount, broadcastDataChanged]);
+
 	const roadmapFullQuery = useRoadmapFullQuery(roadmapId);
 	const { applyRoadmapSnapshot } = useRoadmapStore(
 		useShallow((s) => ({

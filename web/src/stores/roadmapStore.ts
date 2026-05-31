@@ -411,19 +411,17 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
     }
   },
 
-  // Reset - Clear all roadmap data
+  // Update server data without disturbing in-flight optimistic state.
+  // Clearing pendingEpicById / queuedTaskStatusIntentById etc. here caused
+  // visible "flashes" when a background refetch (triggered by a collaborator's
+  // change) wiped the current user's in-progress Kanban drags or edits.
+  // Those flags are cleared by the individual operation handlers when they
+  // complete or fail — not here.
   applyRoadmapSnapshot: (fullRoadmap: FullRoadmap) => {
     set({
       roadmap: fullRoadmap,
       epics: fullRoadmap.epics || [],
       milestones: fullRoadmap.milestones || [],
-      tempToRealNodeId: {},
-      pendingEpicById: {},
-      pendingFeatureById: {},
-      pendingTaskById: {},
-      queuedTaskStatusIntentById: {},
-      activeTaskStatusSyncById: {},
-      taskStatusRollbackById: {},
     });
   },
 

@@ -88,6 +88,18 @@ export function useRoadmapCollaboration({
 	const [collaborators, setCollaborators] = useState<CollaboratorInfo[]>([]);
 	const [remoteCursors, setRemoteCursors] = useState<RemoteCursor[]>([]);
 
+	// Called by RoadmapCanvas after a local mutation completes so other viewers
+	// get an immediate notification without waiting for postgres_changes.
+	const broadcastDataChanged = useCallback(() => {
+		const channel = channelRef.current;
+		if (!channel || !userIdRef.current) return;
+		void channel.send({
+			type: "broadcast",
+			event: "data_changed",
+			payload: { from: userIdRef.current },
+		});
+	}, []);
+
 	// Keep refs in sync without triggering re-subscribe
 	useEffect(() => {
 		isPanningRef.current = isPanningCanvas;
@@ -147,6 +159,11 @@ export function useRoadmapCollaboration({
 				setRemoteCursors((prev) =>
 					prev.filter((c) => activeIds.has(c.userId)),
 				);
+			})
+			.on("broadcast", { event: "data_changed" }, ({ payload }) => {
+				// Ignore our own broadcasts to avoid reflexive invalidation
+				if (payload?.from === userId) return;
+				invalidate();
 			})
 			.on<CursorPayload>("broadcast", { event: "cursor" }, ({ payload }) => {
 				if (!payload || payload.userId === userId) return;
@@ -248,5 +265,5 @@ export function useRoadmapCollaboration({
 		});
 	}, []);
 
-	return { collaborators, remoteCursors, trackCursor };
+	return { collaborators, remoteCursors, trackCursor, broadcastDataChanged };
 }

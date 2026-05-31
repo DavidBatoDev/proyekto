@@ -443,6 +443,29 @@ export const RoadmapView = ({
     [],
   );
 
+  // Captures only the properties that affect node positions/heights.
+  // Task status/title changes don't affect layout, so this key is stable
+  // during those updates — preventing unnecessary full-canvas recalculations.
+  const layoutKey = useMemo(
+    () =>
+      epics
+        .map((e) =>
+          [
+            e.id,
+            e.position,
+            e.description?.length ?? 0,
+            (e.features || [])
+              .map(
+                (f) =>
+                  `${f.id}:${f.position}:${f.description?.length ?? 0}:${(f.tasks || []).length}`,
+              )
+              .join(","),
+          ].join("|"),
+        )
+        .join(";"),
+    [epics],
+  );
+
   const { layoutedNodes, edges, maxTaskCount } = useMemo(() => {
     const orderedEpics = [...epics]
       .sort((a, b) => a.position - b.position)
@@ -543,13 +566,27 @@ export const RoadmapView = ({
       edges: positionedEdges,
       maxTaskCount: derivedMaxTaskCount,
     };
-  }, [epics]);
+  // layoutKey is a stable string that only changes when structure/positions
+  // change — prevents full layout recalculation for task-content-only updates.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutKey]);
 
   const nodes = useMemo(
-    (): Node<EpicWidgetData | FeatureWidgetData>[] =>
-      layoutedNodes.map((node) => {
+    (): Node<EpicWidgetData | FeatureWidgetData>[] => {
+      // layoutedNodes only recalculates when positions change (layoutKey).
+      // For content-only changes (title, status, tasks) we look up fresh
+      // epic/feature objects from the current epics array so widgets stay
+      // in sync even when the layout didn't need to recompute.
+      const epicById = new Map(epics.map((e) => [e.id, e]));
+      const featureById = new Map(
+        epics.flatMap((e) => e.features ?? []).map((f) => [f.id, f]),
+      );
+
+      return layoutedNodes.map((node) => {
         if (node.type === "epicWidget") {
-          const epic = (node.data as StructuralEpicNodeData).epic;
+          const epic =
+            epicById.get(node.id) ??
+            (node.data as StructuralEpicNodeData).epic;
           return {
             ...node,
             data: {
@@ -572,7 +609,9 @@ export const RoadmapView = ({
           };
         }
 
-        const feature = (node.data as StructuralFeatureNodeData).feature;
+        const feature =
+          featureById.get(node.id) ??
+          (node.data as StructuralFeatureNodeData).feature;
         return {
           ...node,
           data: {
@@ -602,9 +641,11 @@ export const RoadmapView = ({
             canEditRoadmap,
           } satisfies FeatureWidgetData,
         };
-      }),
+      });
+    },
     [
       layoutedNodes,
+      epics,
       onAddEpicBelow,
       onAddFeature,
       onAddTask,

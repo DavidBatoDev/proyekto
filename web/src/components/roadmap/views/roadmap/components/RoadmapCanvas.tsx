@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link2, Plus } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { LinkRoadmapModal } from "@/components/roadmap/modals/LinkRoadmapModal";
@@ -62,12 +62,45 @@ const RoadmapCanvas = ({
   const profile = useAuthStore((s) => s.profile);
   const [isPanningCanvas, setIsPanningCanvas] = useState(false);
 
-  const { collaborators, remoteCursors, trackCursor } = useRoadmapCollaboration({
-    roadmapId: roadmapProp?.id ?? "",
-    userId: user?.id,
-    profile,
-    isPanningCanvas,
-  });
+  const { collaborators, remoteCursors, trackCursor, broadcastDataChanged } =
+    useRoadmapCollaboration({
+      roadmapId: roadmapProp?.id ?? "",
+      userId: user?.id,
+      profile,
+      isPanningCanvas,
+    });
+
+  // Broadcast a data_changed event whenever a local mutation settles so
+  // collaborators get an immediate notification without relying solely on
+  // postgres_changes (which requires publication + RLS to be correctly set up).
+  //
+  // addEpic/addFeature/addTask use isLoadingEpic/Feature/Task (booleans).
+  // updateEpic/Feature/Task use pendingEpicById/FeatureById/TaskById (maps).
+  // Task-status drags use queuedTaskStatusIntentById.
+  // We sum all of them into a single activity count and broadcast when it drops.
+  const mutationActivityCount = useRoadmapStore(
+    useShallow(
+      (s) =>
+        (s.isLoadingEpic ? 1 : 0) +
+        (s.isLoadingFeature ? 1 : 0) +
+        (s.isLoadingTask ? 1 : 0) +
+        Object.keys(s.pendingEpicById).length +
+        Object.keys(s.pendingFeatureById).length +
+        Object.keys(s.pendingTaskById).length +
+        // queuedTaskStatusIntentById is cleared BEFORE the API call; use
+        // activeTaskStatusSyncById which stays set until the API completes.
+        Object.keys(s.activeTaskStatusSyncById).length,
+    ),
+  );
+  const prevActivityRef = useRef(0);
+  useEffect(() => {
+    const prev = prevActivityRef.current;
+    prevActivityRef.current = mutationActivityCount;
+    // Only broadcast when activity drops (mutation completed, not started)
+    if (prev > mutationActivityCount) {
+      broadcastDataChanged();
+    }
+  }, [mutationActivityCount, broadcastDataChanged]);
 
   const controller = useRoadmapCanvasController({
     roadmap: roadmapProp,
