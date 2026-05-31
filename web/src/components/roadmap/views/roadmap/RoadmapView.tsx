@@ -1172,7 +1172,7 @@ export const RoadmapView = ({
   return (
     <div
       className={`w-full h-full bg-[#F5F5F5] relative ${
-        isPanningCanvas ? "cursor-grabbing" : "cursor-grab"
+        isPanningCanvas ? "cursor-grabbing" : "cursor-default"
       }`}
       onDragOver={handleCanvasDragOver}
       onDrop={handleCanvasDrop}
