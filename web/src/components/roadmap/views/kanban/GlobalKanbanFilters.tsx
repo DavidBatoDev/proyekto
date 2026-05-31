@@ -140,7 +140,7 @@ function FilterRow({
 	onSelect: (id: string | null) => void;
 }) {
 	return (
-		<div className="flex items-center gap-2.5 min-w-0 flex-1">
+		<div className="flex items-center gap-2.5 min-w-0 flex-1 relative z-1">
 			<span className="shrink-0 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md border bg-white text-black border-black">
 				{tagLabel}
 			</span>
