@@ -1,6 +1,7 @@
 import { Loader2, Plus, Save, Search, Trash2, X, XCircle, Folder, Layers, Layout, CheckCircle2, ChevronRight, Play } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { createPortal } from "react-dom";
 import type {
 	ProjectTaskOption,
 	TeamLogProject,
@@ -47,7 +48,7 @@ export function EditLogModal({
 
 	return (
 		<div
-			className="fixed inset-0 z-165 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
+			className="fixed inset-0 z-[165] flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
 			onClick={onClose}
 		>
 			<div
@@ -214,7 +215,7 @@ export function AddRateModal({
 			{visible && (
 				<motion.div
 					key="add-rate-modal"
-					className="fixed inset-0 z-160 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
+					className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
 					onClick={onClose}
 					{...MODAL_BACKDROP_MOTION}
 				>
@@ -549,7 +550,7 @@ export function EditRateModal({
 			{visible && editingRate && (
 				<motion.div
 					key="edit-rate-modal"
-					className="fixed inset-0 z-170 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
+					className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
 					onClick={onClose}
 					{...MODAL_BACKDROP_MOTION}
 				>
@@ -736,7 +737,7 @@ export function DeleteRateModal({
 
 	return (
 		<div
-			className="fixed inset-0 z-180 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
+			className="fixed inset-0 z-[180] flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
 			onClick={onClose}
 		>
 			<div
@@ -829,7 +830,7 @@ export function DeleteTimeLogModal({
 
 	return (
 		<div
-			className="fixed inset-0 z-175 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
+			className="fixed inset-0 z-[175] flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
 			onClick={() => {
 				if (deleting) return;
 				onClose();
@@ -1093,12 +1094,12 @@ export function AddLogModal({
 
 	if (!isOpen) return null;
 
-	return (
+	return createPortal(
 		<AnimatePresence>
 			{isOpen && (
 				<motion.div
 					key="add-log-modal"
-					className="fixed inset-0 z-168 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
+					className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-4"
 					onClick={onClose}
 					{...MODAL_BACKDROP_MOTION}
 				>
@@ -1395,6 +1396,7 @@ export function AddLogModal({
 					</motion.div>
 				</motion.div>
 			)}
-		</AnimatePresence>
+		</AnimatePresence>,
+		document.body,
 	);
 }

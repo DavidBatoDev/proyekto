@@ -170,7 +170,7 @@ export const SidePanel = ({
   projectMembers = [],
   isLoading = false,
   asModal = false,
-  zIndexBase: _zIndexBase = 120,
+  zIndexBase = 120,
 }: SidePanelProps) => {
   const user = useUser();
   const toast = useToast();
@@ -681,7 +681,7 @@ export const SidePanel = ({
       className={
         asModal
           ? "w-full max-w-2xl max-h-[85vh] bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden"
-          : "fixed top-0 right-0 bottom-0 w-[560px] bg-white border-l border-gray-200 shadow-2xl z-130 flex flex-col"
+          : "w-full h-full bg-white border-l border-gray-200 shadow-2xl flex flex-col"
       }
     >
       {/* Header */}
@@ -1410,7 +1410,8 @@ export const SidePanel = ({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2, ease: "easeInOut" }}
               onClick={handleRequestClose}
-              className={`fixed inset-0 bg-black/15 cursor-default ${asModal ? "z-120 flex items-center justify-center" : "z-120"}`}
+              className={`fixed inset-0 bg-black/15 cursor-default ${asModal ? "flex items-center justify-center" : ""}`}
+              style={{ zIndex: asModal ? zIndexBase - 1 : zIndexBase - 1 }}
             >
               {asModal && (
                 <motion.div
@@ -1434,7 +1435,8 @@ export const SidePanel = ({
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ duration: 0.3, ease: "easeInOut" }}
-              className="fixed top-0 right-0 bottom-0 z-130"
+              className="fixed top-0 right-0 bottom-0"
+              style={{ zIndex: zIndexBase }}
             >
               {panelContent}
             </motion.div>

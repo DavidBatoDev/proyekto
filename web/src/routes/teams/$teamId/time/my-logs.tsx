@@ -462,7 +462,7 @@ function MyLogsTab() {
 				onDeleteTask={() => {}}
 				onCreateTask={handleCreateTaskFromTimer}
 				isLoading={createTaskMutation.isPending}
-				zIndexBase={180}
+				zIndexBase={10000}
 			/>
 
 			{/* Edit log modal */}
