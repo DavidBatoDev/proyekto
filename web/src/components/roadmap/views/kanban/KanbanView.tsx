@@ -61,15 +61,39 @@ function resolveContainer(
 
 export function KanbanView() {
 	const toast = useToast();
-	const { epics, milestones, boardFilters, updateTaskStatusIntent } =
+	const { epics, milestones, boardFilters, updateTaskStatusIntent, setBoardFilters } =
 		useRoadmapStore(
 			useShallow((s) => ({
 				epics: s.epics,
 				milestones: s.milestones,
 				boardFilters: s.boardFilters,
 				updateTaskStatusIntent: s.updateTaskStatusIntent,
+				setBoardFilters: s.setBoardFilters,
 			})),
 		);
+	const roadmapId = useRoadmapStore((s) => s.roadmap?.id ?? "");
+
+	// Restore persisted filters when roadmap changes
+	useEffect(() => {
+		if (!roadmapId) return;
+		try {
+			const raw = sessionStorage.getItem(`wi_filters_${roadmapId}`);
+			setBoardFilters(
+				raw
+					? (JSON.parse(raw) as import("@/stores/roadmapStore").KanbanBoardFilters)
+					: { epicIds: [], featureIds: [], milestoneIds: [], assigneeIds: [] },
+			);
+		} catch {
+			setBoardFilters({ epicIds: [], featureIds: [], milestoneIds: [], assigneeIds: [] });
+		}
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [roadmapId]);
+
+	// Persist filters whenever they change
+	useEffect(() => {
+		if (!roadmapId) return;
+		try { sessionStorage.setItem(`wi_filters_${roadmapId}`, JSON.stringify(boardFilters)); } catch {}
+	}, [roadmapId, boardFilters]);
 
 	const allRows = useMemo(
 		() => selectAllTasksWithContext(epics, milestones),

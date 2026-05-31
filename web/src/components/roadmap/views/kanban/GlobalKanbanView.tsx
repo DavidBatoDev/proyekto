@@ -16,7 +16,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "@/hooks/useToast";
 import type { FullRoadmapWithProject } from "@/services/roadmap.service";
 import { taskService } from "@/services/roadmap.service";
-import { useUser } from "@/stores/authStore";
 import type { TaskStatus } from "@/types/roadmap";
 import { GlobalKanbanFilters } from "./GlobalKanbanFilters";
 import { KanbanCard } from "./KanbanCard";
@@ -125,17 +124,27 @@ interface GlobalKanbanViewProps {
 	onTaskClick?: (row: KanbanTaskContext) => void;
 }
 
+const GLOBAL_FILTERS_KEY = "wi_global_filters";
+
+function loadGlobalFilters(): GlobalBoardFilters {
+	try {
+		const raw = sessionStorage.getItem(GLOBAL_FILTERS_KEY);
+		if (raw) return { ...EMPTY_FILTERS, ...(JSON.parse(raw) as Partial<GlobalBoardFilters>) };
+	} catch {}
+	return { ...EMPTY_FILTERS };
+}
+
 export function GlobalKanbanView({
 	roadmaps,
 	onActiveRoadmapChange,
 	onTaskClick,
 }: GlobalKanbanViewProps) {
 	const toast = useToast();
-	const currentUser = useUser();
-	const [filters, setFilters] = useState<GlobalBoardFilters>(() => ({
-		...EMPTY_FILTERS,
-		assigneeIds: currentUser?.id ? [currentUser.id] : [],
-	}));
+	const [filters, setFilters] = useState<GlobalBoardFilters>(loadGlobalFilters);
+
+	useEffect(() => {
+		try { sessionStorage.setItem(GLOBAL_FILTERS_KEY, JSON.stringify(filters)); } catch {}
+	}, [filters]);
 
 	useEffect(() => {
 		if (!onActiveRoadmapChange) return;
