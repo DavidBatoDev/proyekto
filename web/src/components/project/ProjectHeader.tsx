@@ -109,7 +109,7 @@ export function ProjectHeader() {
 						</span>
 					) : (
 						<Link
-							to="/project/$projectId/roadmap"
+							to="/project/$projectId/overview"
 							params={{ projectId }}
 							className="max-w-[260px] truncate rounded-md px-2 py-1.5 text-[15px] text-slate-900 transition-colors hover:bg-slate-100"
 						>
