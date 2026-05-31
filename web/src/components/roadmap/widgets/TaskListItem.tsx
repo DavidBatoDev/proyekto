@@ -372,6 +372,7 @@ export const TaskListItem = memo(
       >
         {/* Checkbox */}
         <button
+          type="button"
           ref={checkboxButtonRef}
           onClick={(e) => {
             e.stopPropagation();
@@ -419,6 +420,7 @@ export const TaskListItem = memo(
               {STATUS_OPTIONS.map((status) => (
                 <button
                   key={status}
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     onUpdateStatus?.(task.id, status);
@@ -607,6 +609,7 @@ export const TaskListItem = memo(
         {/* Status Dropdown */}
         <div className="relative shrink-0" ref={statusDropdownRef}>
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               setIsStatusOpen(!isStatusOpen);
@@ -635,6 +638,7 @@ export const TaskListItem = memo(
                 {STATUS_OPTIONS.map((status) => (
                   <button
                     key={status}
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       onUpdateStatus?.(task.id, status);
@@ -658,6 +662,7 @@ export const TaskListItem = memo(
         <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           {onDelete && (
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onDelete(task.id);

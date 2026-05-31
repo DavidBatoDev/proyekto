@@ -1100,7 +1100,7 @@ function ExplorerPanel({
 
 														{/* Features */}
 														{isEpicExpanded && (
-															<div className="mt-1 space-y-0.5 pl-1 border-l-2 border-gray-200">
+															<div className="mt-1 space-y-0.5 pl-3 border-l-2 border-gray-200">
 																<DroppableEpicBody
 																	epicId={epic.id}
 																	isOver={overEpicDropId === epic.id}
@@ -1144,7 +1144,7 @@ function ExplorerPanel({
 																					{explorerConfig.showTaskRows &&
 																						isFeatureExpanded &&
 																						tasks.length > 0 && (
-																							<div className="mt-0.5 space-y-0 pl-1 border-l-2 border-gray-100">
+																							<div className="mt-0.5 space-y-0 pl-6 border-l-2 border-gray-200">
 																								{tasks.map((task) => (
 																									<button
 																										key={task.id}

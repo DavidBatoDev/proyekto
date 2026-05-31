@@ -1149,12 +1149,6 @@ export const RoadmapView = ({
     ],
   );
 
-  const lastEpicId = useMemo(() => {
-    if (!epics.length) return null;
-    return [...epics].sort((a, b) => a.position - b.position)[epics.length - 1]
-      ?.id;
-  }, [epics]);
-
   const getToolbarItemFromTransfer = useCallback(
     (event: { dataTransfer: DataTransfer | null }): ToolbarItemType | null => {
       const rawCustom = event.dataTransfer?.getData(TOOLBAR_DRAG_MIME);
@@ -1203,21 +1197,62 @@ export const RoadmapView = ({
     (event: DragEvent<HTMLDivElement>) => {
       const itemType = getToolbarItemFromTransfer(event);
       if (itemType !== "epic") return;
+      if (!reactFlowInstance) return;
+      const dropPosition = reactFlowInstance.screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+      const candidateNodes =
+        (workingNodesRef.current as Node<EpicWidgetData | FeatureWidgetData>[] | null) ??
+        reactFlowInstance.getNodes();
+      const isOverEpic = candidateNodes.some((node) => {
+        if (node.type !== "epicWidget") return false;
+        const width = Number(node.width) || 500;
+        const height = Number(node.height) || 220;
+        const withinX =
+          dropPosition.x >= node.position.x &&
+          dropPosition.x <= node.position.x + width;
+        const withinY =
+          dropPosition.y >= node.position.y &&
+          dropPosition.y <= node.position.y + height;
+        return withinX && withinY;
+      });
+      if (!isOverEpic) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
     },
-    [getToolbarItemFromTransfer],
+    [getToolbarItemFromTransfer, reactFlowInstance],
   );
 
   const handleCanvasDrop = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
       const itemType = getToolbarItemFromTransfer(event);
       setToolbarDraggingType(null);
-      if (itemType !== "epic" || !lastEpicId) return;
+      if (itemType !== "epic" || !reactFlowInstance) return;
       event.preventDefault();
-      onAddEpicBelow?.(lastEpicId);
+      const dropPosition = reactFlowInstance.screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+      const candidateNodes =
+        (workingNodesRef.current as Node<EpicWidgetData | FeatureWidgetData>[] | null) ??
+        reactFlowInstance.getNodes();
+      const targetEpic = candidateNodes.find((node) => {
+        if (node.type !== "epicWidget") return false;
+        const width = Number(node.width) || 500;
+        const height = Number(node.height) || 220;
+        const withinX =
+          dropPosition.x >= node.position.x &&
+          dropPosition.x <= node.position.x + width;
+        const withinY =
+          dropPosition.y >= node.position.y &&
+          dropPosition.y <= node.position.y + height;
+        return withinX && withinY;
+      });
+      if (!targetEpic) return;
+      onAddEpicBelow?.(targetEpic.id);
     },
-    [getToolbarItemFromTransfer, lastEpicId, onAddEpicBelow],
+    [getToolbarItemFromTransfer, onAddEpicBelow, reactFlowInstance],
   );
 
   return (
@@ -1366,7 +1401,7 @@ export const RoadmapView = ({
                 ? "border-emerald-500 bg-emerald-50 text-emerald-700 shadow-[0_0_0_3px_rgba(34,197,94,0.2)]"
                 : "border-gray-200 bg-white text-gray-700 hover:border-emerald-300 hover:bg-emerald-50/70 hover:text-emerald-700 hover:shadow-sm"
             }`}
-            title="Drop on an epic card or canvas to add a new epic"
+            title="Drop on an epic card to add a new epic below it"
           >
             <Layers3 className="h-3.5 w-3.5" />
             Epic

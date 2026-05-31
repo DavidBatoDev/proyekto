@@ -305,6 +305,19 @@ export const EpicModal = ({
     setIsDateMenuOpen(false);
   };
 
+  const features = initialData?.features ?? [];
+
+  const getFeatureStatusColor = (status?: string) => {
+    const colorMap: Record<string, string> = {
+      not_started: "bg-gray-100 text-gray-800",
+      in_progress: "bg-blue-100 text-blue-800",
+      in_review: "bg-purple-100 text-purple-800",
+      completed: "bg-green-100 text-green-800",
+      blocked: "bg-red-100 text-red-800",
+    };
+    return colorMap[status ?? ""] || "bg-gray-100 text-gray-800";
+  };
+
   const body = (
     <>
       <div
@@ -512,82 +525,29 @@ export const EpicModal = ({
           )}
         </div>
       </div>
-    </>
-  );
 
-  const footer = (
-    <div className="flex justify-end">
-      <button
-        type="submit"
-        disabled={!title.trim() || isLoading || isReadOnlyPending}
-        className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-      >
-        {isLoading ? (
-          <>
-            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            Saving...
-          </>
-        ) : isReadOnlyPending ? (
-          "Creating..."
-        ) : (
-          submitLabel
-        )}
-      </button>
-    </div>
-  );
-
-  const features = initialData?.features ?? [];
-
-  const getFeatureStatusColor = (status?: string) => {
-    const colorMap: Record<string, string> = {
-      not_started: "bg-gray-100 text-gray-800",
-      in_progress: "bg-blue-100 text-blue-800",
-      in_review: "bg-purple-100 text-purple-800",
-      completed: "bg-green-100 text-green-800",
-      blocked: "bg-red-100 text-red-800",
-    };
-    return colorMap[status ?? ""] || "bg-gray-100 text-gray-800";
-  };
-
-  const rightPanelTabs = [
-    {
-      id: "comments",
-      label: "Comments",
-      content: epicId ? (
-        <CommentsSection
-          comments={comments}
-          onAddComment={handleAddComment}
-          onUpdateComment={isReadOnlyPending ? undefined : handleUpdateComment}
-          onDeleteComment={isReadOnlyPending ? undefined : handleDeleteComment}
-          currentUserId={user?.id}
-          canComment={Boolean(user) && !isReadOnlyPending}
-          disabledMessage={
-            isReadOnlyPending
-              ? "Comments will unlock once this epic is created."
-              : undefined
-          }
-          isLoading={loadingComments}
-          emptyMessage="No comments yet for this epic."
-        />
-      ) : (
-        <div className="text-center py-8">
-          <p className="text-sm text-gray-500">
-            Save epic first to add comments
-          </p>
+      {/* Features Section */}
+      <div className="space-y-3 border-t border-gray-200 pt-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900">Features</h3>
+          {onAddFeature && (
+            <button
+              type="button"
+              onClick={onAddFeature}
+              disabled={isReadOnlyPending}
+              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 rounded transition-colors disabled:opacity-50"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Feature
+            </button>
+          )}
         </div>
-      ),
-    },
-    {
-      id: "features",
-      label: "Features",
-      content: (
-        <div className="space-y-3">
-          {/* Features List */}
-          {features.length ? (
+
+        {features.length ? (
+          <div className="rounded-xl border border-gray-200 bg-gray-50/70 p-3">
             <div className="space-y-2">
               {features.map((feature) => (
                 <div key={feature.id ?? feature.title}>
-                  {/* Feature - Now Clickable */}
                   <div
                     className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm hover:border-primary hover:shadow-md transition-all cursor-pointer"
                     onClick={() => {
@@ -613,15 +573,12 @@ export const EpicModal = ({
                     {feature.description ? (
                       <div className="mt-1 text-xs text-gray-600 line-clamp-2 prose prose-sm max-w-none">
                         <div
-                          dangerouslySetInnerHTML={{
-                            __html: feature.description,
-                          }}
+                          dangerouslySetInnerHTML={{ __html: feature.description }}
                         />
                       </div>
                     ) : null}
                   </div>
 
-                  {/* Tasks using TaskListItem */}
                   {feature.tasks && feature.tasks.length > 0 && (
                     <div className="ml-3 mt-2 space-y-1 border-l-2 border-gray-200 pl-3">
                       <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
@@ -629,9 +586,7 @@ export const EpicModal = ({
                           <TaskListItem
                             key={task.id ?? task.title}
                             task={task as RoadmapTask}
-                            onDelete={
-                              isReadOnlyPending ? undefined : onDeleteTask
-                            }
+                            onDelete={isReadOnlyPending ? undefined : onDeleteTask}
                             onClick={onSelectTask}
                             density="compact"
                             onToggleComplete={(taskId) => {
@@ -659,10 +614,7 @@ export const EpicModal = ({
                               );
                               if (!taskToUpdate) return;
                               void Promise.resolve(
-                                onUpdateTask({
-                                  ...taskToUpdate,
-                                  status,
-                                } as RoadmapTask),
+                                onUpdateTask({ ...taskToUpdate, status } as RoadmapTask),
                               ).catch(() => undefined);
                             }}
                           />
@@ -688,25 +640,62 @@ export const EpicModal = ({
                 </div>
               ))}
             </div>
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-sm text-gray-600">No features yet.</p>
-              <p className="text-xs text-gray-500">
-                Add features to see them here.
-              </p>
-            </div>
-          )}
+          </div>
+        ) : (
+          <div className="text-center py-6 border border-dashed border-gray-200 rounded-lg">
+            <p className="text-sm text-gray-500">No features yet.</p>
+          </div>
+        )}
+      </div>
+    </>
+  );
 
-          {/* Add Feature Button */}
-          <button
-            type="button"
-            onClick={onAddFeature}
-            disabled={isReadOnlyPending}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg font-medium text-sm transition-colors mt-4"
-          >
-            <Plus className="w-4 h-4" />
-            Add Feature
-          </button>
+  const footer = (
+    <div className="flex justify-end">
+      <button
+        type="submit"
+        disabled={!title.trim() || isLoading || isReadOnlyPending}
+        className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+      >
+        {isLoading ? (
+          <>
+            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            Saving...
+          </>
+        ) : isReadOnlyPending ? (
+          "Creating..."
+        ) : (
+          submitLabel
+        )}
+      </button>
+    </div>
+  );
+
+  const rightPanelTabs = [
+    {
+      id: "comments",
+      label: "Comments",
+      content: epicId ? (
+        <CommentsSection
+          comments={comments}
+          onAddComment={handleAddComment}
+          onUpdateComment={isReadOnlyPending ? undefined : handleUpdateComment}
+          onDeleteComment={isReadOnlyPending ? undefined : handleDeleteComment}
+          currentUserId={user?.id}
+          canComment={Boolean(user) && !isReadOnlyPending}
+          disabledMessage={
+            isReadOnlyPending
+              ? "Comments will unlock once this epic is created."
+              : undefined
+          }
+          isLoading={loadingComments}
+          emptyMessage="No comments yet for this epic."
+        />
+      ) : (
+        <div className="text-center py-8">
+          <p className="text-sm text-gray-500">
+            Save epic first to add comments
+          </p>
         </div>
       ),
     },
