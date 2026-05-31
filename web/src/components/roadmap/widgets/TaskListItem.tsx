@@ -346,7 +346,7 @@ export const TaskListItem = memo(
       setIsPulsing(true);
       const timeoutId = window.setTimeout(() => {
         setIsPulsing(false);
-      }, 900);
+      }, 2100);
       return () => {
         window.clearTimeout(timeoutId);
       };
@@ -513,7 +513,7 @@ export const TaskListItem = memo(
           createPortal(
             <div
               ref={assigneeMenuRef}
-              className="fixed z-80 bg-white border border-gray-200 rounded-lg shadow-lg p-2"
+              className="fixed z-300 bg-white border border-gray-200 rounded-lg shadow-lg p-2"
               style={{
                 top: assigneeMenuPosition.top,
                 left: assigneeMenuPosition.left,

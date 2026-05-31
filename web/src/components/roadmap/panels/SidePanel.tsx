@@ -27,6 +27,8 @@ import type {
 import { projectService, type ProjectMember } from "@/services/project.service";
 import { commentsService, taskService } from "@/services/roadmap.service";
 import type { AddTaskAttachmentDto } from "@/services/roadmap.service";
+import { uploadService } from "@/services/upload.service";
+import { useToast } from "@/hooks/useToast";
 import { CommentsSection } from "../shared/CommentsSection";
 import { UnsavedChangesConfirmModal } from "../shared/UnsavedChangesConfirmModal";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
@@ -43,6 +45,7 @@ interface SidePanelProps {
   onUpdateTask: (task: RoadmapTask) => void;
   onDeleteTask: (taskId: string) => void;
   onCreateTask?: (taskData: Partial<RoadmapTask>) => void;
+  onSaved?: (task: RoadmapTask) => void;
   projectId?: string;
   projectMembers?: ProjectMember[];
   isLoading?: boolean;
@@ -162,6 +165,7 @@ export const SidePanel = ({
   onUpdateTask,
   onDeleteTask,
   onCreateTask,
+  onSaved,
   projectId,
   projectMembers = [],
   isLoading = false,
@@ -169,6 +173,7 @@ export const SidePanel = ({
   zIndexBase: _zIndexBase = 120,
 }: SidePanelProps) => {
   const user = useUser();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<TabType>("details");
   const [editedTask, setEditedTask] = useState<RoadmapTask | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -215,6 +220,7 @@ export const SidePanel = ({
     ...TASK_CREATE_DEFAULTS,
   });
   const editSnapshotRef = useRef<TaskDraftSnapshot | null>(null);
+  const initialChecklistRef = useRef<ChecklistItem[]>([]);
 
   const isCreateMode = isCreating || (!!isOpen && !task);
   const isReadOnlyPending = !isCreateMode && isPendingCreate;
@@ -241,9 +247,15 @@ export const SidePanel = ({
       setEditedTask(normalizedTask);
       setDescriptionDraft(normalizedTask.description ?? "");
       setIsEditingDescription(false);
-      setChecklistItems(normalizedTask.checklist ?? []);
+      const initialChecklist = normalizedTask.checklist ?? [];
+      setChecklistItems(initialChecklist);
+      initialChecklistRef.current = initialChecklist;
     }
-  }, [isCreateMode, task]);
+  // Use stable identity keys (id + updated_at) instead of the task object reference.
+  // Zustand creates new task objects on every store mutation, so using `task` directly
+  // would reset the snapshot (and lose hasUnsavedChanges) on any unrelated store update.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCreateMode, task?.id, task?.updated_at]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -364,14 +376,18 @@ export const SidePanel = ({
   };
 
   const hasUnsavedChanges = useMemo(() => {
+    const checklistStr = (items: ChecklistItem[]) =>
+      JSON.stringify(items.map((i) => `${i.id ?? ""}:${i.title}:${i.completed}`));
     if (isCreateMode) {
       const draft = { ...buildTaskDraftSnapshot(newTaskData), description: descriptionDraft };
-      return !isSameTaskDraftSnapshot(draft, createSnapshotRef.current);
+      return !isSameTaskDraftSnapshot(draft, createSnapshotRef.current) || checklistItems.length > 0;
     }
     if (!editedTask || !editSnapshotRef.current) return false;
     const draft = { ...buildTaskDraftSnapshot(editedTask), description: descriptionDraft };
-    return !isSameTaskDraftSnapshot(draft, editSnapshotRef.current);
-  }, [editedTask, isCreateMode, newTaskData, descriptionDraft]);
+    const fieldsDiffer = !isSameTaskDraftSnapshot(draft, editSnapshotRef.current);
+    const checklistDiffers = checklistStr(checklistItems) !== checklistStr(initialChecklistRef.current);
+    return fieldsDiffer || checklistDiffers;
+  }, [editedTask, isCreateMode, newTaskData, descriptionDraft, checklistItems]);
 
   useEffect(() => {
     if (!isOpen || isCreateMode || activeTab !== "comments" || !task?.id)
@@ -495,12 +511,10 @@ export const SidePanel = ({
 
   const handleAddAttachment = async (file: File) => {
     if (!task?.id) return;
-    const dto: AddTaskAttachmentDto = {
-      file_name: file.name,
-      file_size: file.size,
-      mime_type: file.type || undefined,
-    };
-    // Optimistic: show chip immediately with a temp id
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File too large. Maximum size is 5 MB.");
+      return;
+    }
     const tempId = `temp-${Date.now()}`;
     const optimisticChip: TaskAttachment = {
       id: tempId,
@@ -514,12 +528,22 @@ export const SidePanel = ({
     };
     setAttachments((prev) => [optimisticChip, ...prev]);
     try {
+      const publicUrl = await uploadService.uploadTaskAttachment(file);
+      const dto: AddTaskAttachmentDto = {
+        file_name: file.name,
+        file_size: file.size,
+        mime_type: file.type || undefined,
+        file_url: publicUrl,
+      };
       const saved = await commentsService.addTaskAttachment(task.id, dto);
       setAttachments((prev) =>
         prev.map((a) => (a.id === tempId ? saved : a)),
       );
-    } catch {
+    } catch (err) {
       setAttachments((prev) => prev.filter((a) => a.id !== tempId));
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[Attachment upload failed]", err);
+      toast.error(`Upload failed: ${msg}`);
     }
   };
 
@@ -556,9 +580,14 @@ export const SidePanel = ({
           alert("Task title is required");
           return false;
         }
-        void Promise.resolve(
-          onUpdateTask({ ...editedTask, description: descriptionDraft || null, checklist: checklistItems }),
-        ).then(() => onClose()).catch(() => undefined);
+        const savedTask = { ...editedTask, description: descriptionDraft || null, checklist: checklistItems };
+        void Promise.resolve(onUpdateTask(savedTask))
+          .then(() => {
+            onClose();
+            // Fire pulse after the panel's 300ms exit animation finishes
+            if (onSaved) setTimeout(() => onSaved(savedTask), 350);
+          })
+          .catch(() => undefined);
         return true;
       }
     }
@@ -1101,7 +1130,19 @@ export const SidePanel = ({
                         className="group flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs text-gray-600 max-w-[200px] hover:border-gray-300 transition-colors"
                       >
                         <Paperclip className="w-3 h-3 shrink-0 text-gray-400" />
-                        <span className="truncate flex-1">{a.file_name}</span>
+                        {a.file_url ? (
+                          <a
+                            href={a.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="truncate flex-1 hover:text-primary hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {a.file_name}
+                          </a>
+                        ) : (
+                          <span className="truncate flex-1">{a.file_name}</span>
+                        )}
                         {a.file_size && (
                           <span className="text-gray-400 shrink-0">{formatFileSize(a.file_size)}</span>
                         )}

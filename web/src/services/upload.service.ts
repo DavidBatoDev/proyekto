@@ -1,17 +1,20 @@
 /**
  * Upload Service
- * Handles file uploads to Supabase Storage via signed upload URLs.
- * Flow: get signed URL from backend → PUT file directly to Supabase → confirm URL.
+ * Handles file uploads to Supabase Storage.
+ * - Standard buckets (avatars, banners, etc.): signed URL flow via backend.
+ * - Task attachments: direct upload via authenticated Supabase client.
  */
 
 import apiClient from "@/api/axios";
+import { supabase } from "@/lib/supabase";
 
 export type UploadBucket =
   | "avatars"
   | "banners"
   | "project_banners"
   | "portfolio_projects"
-  | "roadmap_previews";
+  | "roadmap_previews"
+  | "task_attachments";
 
 export interface SignedUrlResponse {
   signedUrl: string;
@@ -24,18 +27,20 @@ class UploadService {
   private base = "/api/uploads";
 
   /**
-   * Full upload flow:
+   * Full upload flow via backend signed URL:
    * 1. Get a signed upload URL from the backend
    * 2. PUT the file directly to Supabase Storage
    * 3. Return the public URL
    */
   async upload(bucket: UploadBucket, file: File): Promise<string> {
+    const fileType = file.type || "application/octet-stream";
+
     // Step 1 — get signed URL
     const { data: meta } = await apiClient.post<{ data: SignedUrlResponse }>(
       `${this.base}/signed-url`,
       {
         bucket,
-        fileType: file.type,
+        fileType,
         fileName: file.name,
         fileSize: file.size,
       },
@@ -45,7 +50,7 @@ class UploadService {
     // Step 2 — PUT directly to storage (no auth header needed for signed uploads)
     const uploadRes = await fetch(signedUrl, {
       method: "PUT",
-      headers: { "Content-Type": file.type },
+      headers: { "Content-Type": fileType },
       body: file,
     });
 
@@ -53,6 +58,29 @@ class UploadService {
       throw new Error(`Storage upload failed: ${uploadRes.statusText}`);
     }
 
+    return publicUrl;
+  }
+
+  /**
+   * Direct upload via authenticated Supabase client.
+   * Used for task_attachments — avoids the signed URL round-trip and backend
+   * file-type validation, which can fail for unusual mime types.
+   */
+  async uploadDirect(bucket: string, file: File): Promise<string> {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) throw new Error("Not authenticated");
+
+    const ext = file.name.includes(".") ? file.name.split(".").pop() : "";
+    const path = `${userId}/${Date.now()}${ext ? `.${ext}` : ""}`;
+
+    const { error } = await supabase.storage
+      .from(bucket)
+      .upload(path, file, { upsert: false, contentType: file.type || "application/octet-stream" });
+
+    if (error) throw new Error(error.message);
+
+    const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(path);
     return publicUrl;
   }
 
@@ -96,6 +124,14 @@ class UploadService {
    */
   async uploadPortfolioImage(file: File): Promise<string> {
     return this.upload("portfolio_projects", file);
+  }
+
+  /**
+   * Upload a task attachment directly via authenticated Supabase client.
+   * Returns the public URL.
+   */
+  async uploadTaskAttachment(file: File): Promise<string> {
+    return this.uploadDirect("task_attachments", file);
   }
 
   /**

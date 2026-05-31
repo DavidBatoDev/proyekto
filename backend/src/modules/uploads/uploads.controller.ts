@@ -51,7 +51,7 @@ const BUCKET_CONFIG: Record<
     allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
   },
   task_attachments: {
-    maxSize: 25 * 1024 * 1024,
+    maxSize: 5 * 1024 * 1024,
     allowedTypes: [
       'image/jpeg', 'image/png', 'image/webp', 'image/gif',
       'application/pdf',
@@ -61,6 +61,7 @@ const BUCKET_CONFIG: Record<
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'text/plain', 'text/csv',
       'application/zip',
+      'application/octet-stream',
     ],
   },
 };
