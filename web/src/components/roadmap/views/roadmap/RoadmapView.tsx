@@ -48,6 +48,8 @@ import {
 } from "@/hooks/useRecentAssignees";
 import { teamTimeService } from "@/services/team-time.service";
 import { useUser } from "@/stores/authStore";
+import type { RemoteCursor } from "@/hooks/useRoadmapCollaboration";
+import { CollaborationCursorsOverlay } from "@/components/roadmap/collaboration/CollaborationCursorsOverlay";
 
 const getAvatarInitials = (name: string) =>
   name
@@ -108,6 +110,10 @@ interface RoadmapViewProps {
   epics: RoadmapEpic[];
   showMiniMap?: boolean;
   minZoom?: number;
+  remoteCursors?: RemoteCursor[];
+  onTrackCursor?: (x: number, y: number) => void;
+  onPanStart?: () => void;
+  onPanEnd?: () => void;
   onUpdateEpic: (epic: RoadmapEpic) => void;
   onDeleteEpic: (epicId: string) => void;
   onUpdateFeature: (feature: RoadmapFeature) => void;
@@ -322,6 +328,10 @@ export const RoadmapView = ({
   epics,
   showMiniMap = true,
   minZoom = 0.4,
+  remoteCursors = [],
+  onTrackCursor,
+  onPanStart,
+  onPanEnd,
   onUpdateEpic,
   onDeleteEpic,
   onUpdateFeature: _onUpdateFeature,
@@ -344,7 +354,6 @@ export const RoadmapView = ({
   const user = useUser();
   const DEFAULT_ZOOM = 0.67;
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
-  const [isPanningCanvas, setIsPanningCanvas] = useState(false);
   const [pulseNodeFocus, setPulseNodeFocus] = useState<{
     nodeId: string;
     token: number;
@@ -1174,6 +1183,17 @@ export const RoadmapView = ({
       className="w-full h-full bg-[#F5F5F5] relative"
       onDragOver={handleCanvasDragOver}
       onDrop={handleCanvasDrop}
+      onPointerMove={(e) => {
+        if (!reactFlowInstance || !onTrackCursor) return;
+        // screenToFlowPosition expects client (page) coords — it handles
+        // the container offset internally. Subtracting bounds here would be
+        // a bug that shifts every remote cursor by the container's page position.
+        const pos = reactFlowInstance.screenToFlowPosition({
+          x: e.clientX,
+          y: e.clientY,
+        });
+        onTrackCursor(pos.x, pos.y);
+      }}
     >
       <ReactFlow
         nodes={(workingNodes as Node<EpicWidgetData | FeatureWidgetData>[] | null) ?? nodes}
@@ -1186,11 +1206,11 @@ export const RoadmapView = ({
         onNodeDrag={onNodeDrag}
         onNodeDragStop={onNodeDragStop}
         onMoveStart={() => {
-          setIsPanningCanvas(true);
+          onPanStart?.();
         }}
         onMoveEnd={(_, viewport) => {
           setZoom(viewport.zoom);
-          setIsPanningCanvas(false);
+          onPanEnd?.();
         }}
         onInit={(instance) => {
           setReactFlowInstance(instance);
@@ -1236,6 +1256,7 @@ export const RoadmapView = ({
             style={{ width: 200, height: 140 }}
           />
         )}
+        <CollaborationCursorsOverlay remoteCursors={remoteCursors} />
       </ReactFlow>
 
       <EpicReorderConfirmModal

@@ -12,6 +12,9 @@ import { useRoadmapCanvasController } from "../hooks/useRoadmapCanvasController"
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { useToast } from "@/hooks/useToast";
 import { useShallow } from "zustand/react/shallow";
+import { useAuthStore, useUser } from "@/stores/authStore";
+import { useRoadmapCollaboration } from "@/hooks/useRoadmapCollaboration";
+import { CollaborationPresenceBar } from "@/components/roadmap/collaboration/CollaborationPresenceBar";
 
 const RoadmapCanvas = ({
   projectTitle: _projectTitle,
@@ -55,6 +58,17 @@ const RoadmapCanvas = ({
   performanceMode = "normal",
 }: RoadmapCanvasProps) => {
   const toast = useToast();
+  const user = useUser();
+  const profile = useAuthStore((s) => s.profile);
+  const [isPanningCanvas, setIsPanningCanvas] = useState(false);
+
+  const { collaborators, remoteCursors, trackCursor } = useRoadmapCollaboration({
+    roadmapId: roadmapProp?.id ?? "",
+    userId: user?.id,
+    profile,
+    isPanningCanvas,
+  });
+
   const controller = useRoadmapCanvasController({
     roadmap: roadmapProp,
     milestones: milestonesProp,
@@ -236,6 +250,14 @@ const RoadmapCanvas = ({
 
   return (
     <div className="relative h-full bg-white flex flex-col">
+      {/* Presence bar — rendered here (outside overflow-hidden) so it and its
+          tooltip are never clipped by the canvas container */}
+      {collaborators.length > 0 && (
+        <div className="absolute top-3 right-14 z-30">
+          <CollaborationPresenceBar collaborators={collaborators} />
+        </div>
+      )}
+
       {/* View Content */}
       <div className="flex-1 relative overflow-hidden">
         {viewMode === "roadmap" && epics.length === 0 ? (
@@ -280,6 +302,8 @@ const RoadmapCanvas = ({
             epics={epics}
             showMiniMap={!hideMiniMap}
             performanceMode={performanceMode}
+            remoteCursors={remoteCursors}
+            onTrackCursor={trackCursor}
             onUpdateEpic={onUpdateEpic}
             onDeleteEpic={handleDeleteEpic}
             onUpdateFeature={onUpdateFeature}
@@ -297,6 +321,8 @@ const RoadmapCanvas = ({
             focusNodeOffsetX={focusNodeOffsetX}
             focusTaskId={focusTaskId}
             onFocusComplete={onFocusComplete}
+            onPanStart={() => setIsPanningCanvas(true)}
+            onPanEnd={() => setIsPanningCanvas(false)}
           />
         ) : null}
 
