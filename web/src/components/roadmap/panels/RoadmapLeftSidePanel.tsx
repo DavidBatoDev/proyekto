@@ -1,5 +1,6 @@
 import { ChevronRight, ExternalLink, FolderOpen, GripVertical, Plus, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Tooltip } from "@mui/material";
 import {
 	DndContext,
 	KeyboardSensor,
@@ -182,7 +183,7 @@ function SortableFeatureRow({
 
 	return (
 		<div ref={setNodeRef} style={style} className="min-w-0">
-			<div className="group relative h-11 w-full min-w-0 flex items-center gap-1.5 px-2.5 pr-10 text-sm text-gray-700 hover:bg-white hover:shadow-sm rounded-md transition-all border border-transparent hover:border-gray-200">
+			<div className="group relative h-8 w-full min-w-0 flex items-center gap-1 px-2 pr-9 text-xs text-gray-700 hover:bg-white hover:shadow-sm rounded-md transition-all border border-transparent hover:border-gray-200">
 				<div
 					{...(canDrag ? attributes : {})}
 					{...(canDrag ? listeners : {})}
@@ -216,21 +217,22 @@ function SortableFeatureRow({
 				) : (
 					<div className="w-2 h-2 rounded-full bg-gray-300 ml-0.5 mr-0.5" />
 				)}
-				<span
-					onClick={() => {
-						onSelectFeature?.(epic.id, feature.id);
-						onNavigateToNode?.(feature.id);
-					}}
-					onDoubleClick={() => {
-						runAfterNavigationDelay(() => {
-							onOpenFeatureEditor?.(epic.id, feature.id);
-						});
-					}}
-					className="truncate flex-1 min-w-0 text-left hover:text-primary transition-colors cursor-pointer"
-					title={feature.title}
-				>
-					{feature.title}
-				</span>
+				<Tooltip title={feature.title} enterDelay={600} placement="right" arrow>
+					<span
+						onClick={() => {
+							onSelectFeature?.(epic.id, feature.id);
+							onNavigateToNode?.(feature.id);
+						}}
+						onDoubleClick={() => {
+							runAfterNavigationDelay(() => {
+								onOpenFeatureEditor?.(epic.id, feature.id);
+							});
+						}}
+						className="truncate flex-1 min-w-0 text-left hover:text-primary transition-colors cursor-pointer"
+					>
+						{feature.title}
+					</span>
+				</Tooltip>
 				{taskCount > 0 && (
 					<span className="text-xs font-normal text-gray-500">{taskCount}</span>
 				)}
@@ -1012,7 +1014,7 @@ function ExplorerPanel({
 														{/* Epic */}
 														<div className="group relative flex items-center gap-1 min-w-0">
 															<div
-																className={`flex-1 min-w-0 flex items-center gap-2 px-3 py-2 pr-12 text-sm font-medium rounded-lg transition-all border ${
+																className={`flex-1 min-w-0 flex items-center gap-1.5 px-2 py-1.5 pr-12 text-xs font-semibold rounded-lg transition-all border ${
 																	isEpicHighlighted
 																		? "text-primary bg-orange-50 border-orange-200 shadow-sm"
 																		: "text-gray-900 bg-gray-50 border-gray-200 hover:bg-white hover:shadow-sm"
@@ -1055,21 +1057,22 @@ function ExplorerPanel({
 																) : (
 																	<div className="w-2 h-2 rounded-full bg-gray-300 ml-1 mr-0.5" />
 																)}
-																<span
-																	onClick={() => {
-																		onSelectEpic?.(epic.id);
-																		onNavigateToNode?.(epic.id);
-																	}}
-																	onDoubleClick={() => {
-																		runAfterNavigationDelay(() => {
-																			onOpenEpicEditor?.(epic.id);
-																		});
-																	}}
-																	className="truncate flex-1 min-w-0 text-left hover:text-primary transition-colors cursor-pointer"
-																	title={epic.title}
-																>
-																	{epic.title}
-																</span>
+																<Tooltip title={epic.title} enterDelay={600} placement="right" arrow>
+																	<span
+																		onClick={() => {
+																			onSelectEpic?.(epic.id);
+																			onNavigateToNode?.(epic.id);
+																		}}
+																		onDoubleClick={() => {
+																			runAfterNavigationDelay(() => {
+																				onOpenEpicEditor?.(epic.id);
+																			});
+																		}}
+																		className="truncate flex-1 min-w-0 text-left hover:text-primary transition-colors cursor-pointer"
+																	>
+																		{epic.title}
+																	</span>
+																</Tooltip>
 																{features.length > 0 && (
 																	<span className="text-xs font-normal text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
 																		{features.length}
@@ -1097,7 +1100,7 @@ function ExplorerPanel({
 
 														{/* Features */}
 														{isEpicExpanded && (
-															<div className="ml-6 mt-1.5 space-y-1 pl-3">
+															<div className="mt-1 space-y-0.5 pl-1 border-l-2 border-gray-200">
 																<DroppableEpicBody
 																	epicId={epic.id}
 																	isOver={overEpicDropId === epic.id}
@@ -1141,7 +1144,7 @@ function ExplorerPanel({
 																					{explorerConfig.showTaskRows &&
 																						isFeatureExpanded &&
 																						tasks.length > 0 && (
-																							<div className="ml-5 mt-1 space-y-0.5 pl-2">
+																							<div className="mt-0.5 space-y-0 pl-1 border-l-2 border-gray-100">
 																								{tasks.map((task) => (
 																									<button
 																										key={task.id}
@@ -1156,38 +1159,39 @@ function ExplorerPanel({
 																												},
 																											);
 																										}}
-																										className="w-full flex items-center gap-2 px-2 py-1 text-xs hover:bg-white rounded transition-colors"
+																										className="w-full flex items-center gap-1.5 px-2 py-0.5 text-[10px] hover:bg-white rounded transition-colors"
 																									>
 																										<div
 																											className={`w-1.5 h-1.5 rounded-full ${getTaskDotClasses(task.status)}`}
 																										/>
-																										<span
-																											onClick={(event) => {
-																												event.stopPropagation();
-																												onNavigateToNode?.(
-																													feature.id,
-																													{
-																														offsetX:
-																															TASK_NAVIGATE_OFFSET_X,
-																														taskId: task.id,
-																													},
-																												);
-																											}}
-																											onDoubleClick={(event) => {
-																												event.stopPropagation();
-																												runAfterNavigationDelay(
-																													() => {
-																														onOpenTaskDetail?.(
-																															task.id,
-																														);
-																													},
-																												);
-																											}}
-																											className={`truncate text-left flex-1 transition-colors hover:text-primary ${getTaskTextClasses(task.status)}`}
-																											title="Focus in canvas"
-																										>
-																											{task.title}
-																										</span>
+																										<Tooltip title={task.title} enterDelay={600} placement="right" arrow>
+																											<span
+																												onClick={(event) => {
+																													event.stopPropagation();
+																													onNavigateToNode?.(
+																														feature.id,
+																														{
+																															offsetX:
+																																TASK_NAVIGATE_OFFSET_X,
+																															taskId: task.id,
+																														},
+																													);
+																												}}
+																												onDoubleClick={(event) => {
+																													event.stopPropagation();
+																													runAfterNavigationDelay(
+																														() => {
+																															onOpenTaskDetail?.(
+																																task.id,
+																															);
+																														},
+																													);
+																												}}
+																												className={`truncate text-left flex-1 transition-colors hover:text-primary ${getTaskTextClasses(task.status)}`}
+																											>
+																												{task.title}
+																											</span>
+																										</Tooltip>
 																									</button>
 																								))}
 																							</div>

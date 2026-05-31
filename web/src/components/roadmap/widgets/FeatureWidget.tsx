@@ -481,22 +481,21 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
 
           {/* Task List - positioned to the right */}
           <div
-            className="absolute top-1/2 -translate-y-1/2 left-[540px] rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden cursor-pointer"
+            className="absolute top-1/2 -translate-y-1/2 left-[540px] rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden cursor-pointer max-h-80 flex flex-col"
             onClick={(e) => { e.stopPropagation(); setIsTaskListModalOpen(true); }}
-            title="View all tasks"
           >
             {/* Task list header */}
-            <div className="flex items-center justify-between px-2.5 pt-2 pb-1 hover:bg-gray-50 transition-colors">
+            <div className="flex items-center justify-between px-2.5 pt-2 pb-1 hover:bg-gray-50 transition-colors shrink-0">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                 Tasks · {feature.tasks?.length ?? 0}
               </span>
               <Maximize2 className="w-3 h-3 text-gray-500" />
             </div>
 
-            <div className="max-h-56 overflow-y-auto p-1.5 pt-0">
-              <div className="grid grid-flow-col grid-rows-3 gap-1.5 auto-cols-max">
-                {feature.tasks?.slice(0, 9).map((task) => (
-                  <div key={task.id} className="w-[190px]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex-1 overflow-y-auto p-1.5 pt-0">
+              <div className="grid grid-flow-col grid-rows-5 gap-1.5 auto-cols-max">
+                {feature.tasks?.slice(0, 10).map((task) => (
+                  <div key={task.id} className="w-[270px]" onClick={(e) => e.stopPropagation()}>
                     <TaskListItem
                       task={task}
                       density="compact"

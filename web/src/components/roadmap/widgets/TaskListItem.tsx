@@ -1,5 +1,6 @@
 import { memo, useMemo, useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { Tooltip } from "@mui/material";
 import { useDroppable } from "@dnd-kit/core";
 import { Check, Trash2, ChevronDown, Search, UserPlus } from "lucide-react";
 import type { RoadmapTask, TaskStatus } from "@/types/roadmap";
@@ -433,18 +434,19 @@ export const TaskListItem = memo(
           )}
 
         {/* Task Title */}
-        <div className="flex-1 min-w-0">
-          <p
-            title={task.title}
-            className={`truncate ${
-              isCompact ? "text-xs" : "text-sm"
-            } font-medium ${
-              isCompleted ? "text-gray-400 line-through" : "text-gray-900"
-            }`}
-          >
-            {task.title}
-          </p>
-        </div>
+        <Tooltip title={task.title} enterDelay={600} placement="top" arrow>
+          <div className="flex-1 min-w-0">
+            <p
+              className={`truncate ${
+                isCompact ? "text-xs" : "text-sm"
+              } font-medium ${
+                isCompleted ? "text-gray-400 line-through" : "text-gray-900"
+              }`}
+            >
+              {task.title}
+            </p>
+          </div>
+        </Tooltip>
 
         {/* Category/Assignee Badge */}
         {categoryLabel && (

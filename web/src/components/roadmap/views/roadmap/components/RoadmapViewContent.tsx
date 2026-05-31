@@ -7,7 +7,6 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { AlertTriangle } from "lucide-react";
-import { motion } from "framer-motion";
 import { Link } from "@tanstack/react-router";
 import {
   DndContext,
@@ -68,12 +67,18 @@ const CHAT_PANEL_DEFAULT_WIDTH = 380;
 const CHAT_PANEL_MIN_WIDTH = 320;
 const CHAT_PANEL_MAX_WIDTH = 820;
 const CHAT_PANEL_CLOSE_THRESHOLD = 260;
-const ROADMAP_LEFT_PANEL_WIDTH = 320;
+const LEFT_PANEL_DEFAULT_WIDTH = 320;
+const LEFT_PANEL_MIN_WIDTH = 220;
+const LEFT_PANEL_MAX_WIDTH = 600;
+const LEFT_PANEL_STORAGE_KEY = "roadmap.leftPanel.width";
 const CANVAS_MIN_WIDTH = 560;
 const TASK_NAVIGATE_OFFSET_X = 620;
 
 const clampPanelWidth = (value: number, maxAllowed: number) =>
   Math.min(Math.max(value, CHAT_PANEL_MIN_WIDTH), maxAllowed);
+
+const clampLeftPanelWidth = (value: number) =>
+  Math.min(Math.max(value, LEFT_PANEL_MIN_WIDTH), LEFT_PANEL_MAX_WIDTH);
 
 type RoadmapUrlView = "roadmapView" | "timelineView";
 
@@ -222,6 +227,17 @@ export function RoadmapViewContent({
   );
   const chatPanelRef = useRef<HTMLDivElement | null>(null);
   const chatPanelWidthRef = useRef(chatPanelWidth);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
+    try {
+      const stored = window.localStorage.getItem(LEFT_PANEL_STORAGE_KEY);
+      return stored ? Number(stored) : LEFT_PANEL_DEFAULT_WIDTH;
+    } catch {
+      return LEFT_PANEL_DEFAULT_WIDTH;
+    }
+  });
+  const leftPanelRef = useRef<HTMLDivElement | null>(null);
+  const leftPanelWidthRef = useRef(leftPanelWidth);
+  const [isResizingLeftPanel, setIsResizingLeftPanel] = useState(false);
   const consumedNodeIdRef = useRef<string | null>(null);
   const isApplyingUrlViewRef = useRef(false);
   const lastAppliedUrlViewRef = useRef<RoadmapUrlView | null>(null);
@@ -340,9 +356,16 @@ export function RoadmapViewContent({
   }, [chatPanelWidth]);
 
   useEffect(() => {
+    leftPanelWidthRef.current = leftPanelWidth;
+    if (leftPanelRef.current) {
+      leftPanelRef.current.style.width = `${leftPanelWidth}px`;
+    }
+  }, [leftPanelWidth]);
+
+  useEffect(() => {
     const handleViewportResize = () => {
       const leftPanelWidth =
-        canvasViewMode !== "milestones" ? ROADMAP_LEFT_PANEL_WIDTH : 0;
+        canvasViewMode !== "milestones" ? leftPanelWidthRef.current : 0;
       const maxAllowed = Math.max(
         CHAT_PANEL_MIN_WIDTH,
         Math.min(
@@ -366,7 +389,7 @@ export function RoadmapViewContent({
     const startX = event.clientX;
     const startWidth = chatPanelWidthRef.current;
     const leftPanelWidth =
-      canvasViewMode !== "milestones" ? ROADMAP_LEFT_PANEL_WIDTH : 0;
+      canvasViewMode !== "milestones" ? leftPanelWidthRef.current : 0;
     const maxAllowed = Math.max(
       CHAT_PANEL_MIN_WIDTH,
       Math.min(
@@ -417,6 +440,57 @@ export function RoadmapViewContent({
       } else {
         setChatPanelWidth(latestWidth);
       }
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const handleLeftPanelResizeStart = (
+    event: ReactMouseEvent<HTMLDivElement>,
+  ) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = leftPanelWidthRef.current;
+
+    setIsResizingLeftPanel(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    let latestWidth = startWidth;
+    let pendingWidth = startWidth;
+    let rafId: number | null = null;
+
+    const flushWidth = () => {
+      rafId = null;
+      latestWidth = pendingWidth;
+      leftPanelWidthRef.current = pendingWidth;
+      if (leftPanelRef.current) {
+        leftPanelRef.current.style.width = `${pendingWidth}px`;
+      }
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      pendingWidth = clampLeftPanelWidth(startWidth + moveEvent.clientX - startX);
+      if (rafId === null) {
+        rafId = window.requestAnimationFrame(flushWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+        flushWidth();
+      }
+      setIsResizingLeftPanel(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      setLeftPanelWidth(latestWidth);
+      try {
+        window.localStorage.setItem(LEFT_PANEL_STORAGE_KEY, String(latestWidth));
+      } catch {}
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
@@ -743,15 +817,11 @@ export function RoadmapViewContent({
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Sidebar — hidden in milestones view */}
         {canvasViewMode !== "milestones" && (
-          <motion.div
+          <div
+            ref={leftPanelRef}
             id="roadmap-left-panel"
-            className="relative h-full border-r border-slate-200 bg-white/95 backdrop-blur"
-            initial={false}
-            animate={{
-              width: 320,
-            }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
-            style={{ minWidth: 320 }}
+            className="relative h-full border-r border-slate-200 bg-white/95 backdrop-blur flex-shrink-0"
+            style={{ width: leftPanelWidth, minWidth: LEFT_PANEL_MIN_WIDTH }}
           >
             <RoadmapLeftSidePanel
               messages={[]}
@@ -772,7 +842,18 @@ export function RoadmapViewContent({
               onNavigateToEpicTab={navigateToEpicTab}
               highlightedEpicId={activeEpicId}
             />
-          </motion.div>
+            {/* Resize handle */}
+            <div
+              className="absolute top-0 right-0 w-2 h-full cursor-col-resize z-10 group/resizer"
+              onMouseDown={handleLeftPanelResizeStart}
+            >
+              <div
+                className={`absolute right-0 top-0 w-[3px] h-full rounded-full transition-colors ${
+                  isResizingLeftPanel ? "bg-orange-400" : "bg-transparent group-hover/resizer:bg-orange-300"
+                }`}
+              />
+            </div>
+          </div>
         )}
 
         {/* Right: Roadmap Canvas */}

@@ -724,10 +724,10 @@ export const RoadmapView = ({
   ]);
 
   const extraRightPadding = useMemo(() => {
-    if (maxTaskCount >= 60) return 2600;
-    if (maxTaskCount >= 40) return 2200;
-    if (maxTaskCount >= 20) return 1800;
-    return 1000;
+    if (maxTaskCount >= 60) return 2800;
+    if (maxTaskCount >= 40) return 2400;
+    if (maxTaskCount >= 20) return 2000;
+    return 1200;
   }, [maxTaskCount]);
 
   const translateExtent = useMemo((): [[number, number], [number, number]] => {
@@ -741,7 +741,7 @@ export const RoadmapView = ({
     const xPositions = layoutedNodes.map((node) => node.position.x);
     const yPositions = layoutedNodes.map((node) => node.position.y);
 
-    const NODE_WIDTH = 520;
+    const NODE_WIDTH = 680;
     const minX = Math.min(...xPositions) - 400;
     const maxX = Math.max(...xPositions) + NODE_WIDTH + extraRightPadding;
     const minY = Math.min(...yPositions) - 240;

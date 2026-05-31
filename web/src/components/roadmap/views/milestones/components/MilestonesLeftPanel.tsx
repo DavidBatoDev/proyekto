@@ -6,6 +6,8 @@ import {
 	GripVertical,
 	Plus,
 } from "lucide-react";
+import { useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { Tooltip } from "@mui/material";
 import {
 	DndContext,
 	PointerSensor,
@@ -32,6 +34,13 @@ import {
 	LEFT_WIDTH,
 	ROW_HEIGHT,
 } from "../model/constants";
+
+const PANEL_MIN_WIDTH = 220;
+const PANEL_MAX_WIDTH = 600;
+const PANEL_STORAGE_KEY = "roadmap.milestonesLeftPanel.width";
+
+const clampWidth = (v: number) =>
+	Math.min(Math.max(v, PANEL_MIN_WIDTH), PANEL_MAX_WIDTH);
 
 interface MilestonesLeftPanelProps {
 	leftHeaderRef: RefObject<HTMLDivElement | null>;
@@ -132,15 +141,15 @@ const SortableMilestoneFeatureRow = ({
 				setNodeRef(node);
 				onSetFeatureRowRef(node);
 			}}
-			className="relative bg-white pr-4 pl-10"
+			className="relative bg-white pr-4 pl-8"
 			style={{ ...style, height: ROW_HEIGHT }}
 		>
-			<div className="flex h-full w-full min-w-0 items-center gap-1.5 rounded-md border border-transparent px-2 py-1.5 text-sm text-gray-700 transition-all hover:border-gray-200 hover:bg-white hover:shadow-sm">
+			<div className="flex h-full w-full min-w-0 items-center gap-1 rounded-md border border-transparent px-2 py-1 text-xs text-gray-700 transition-all hover:border-gray-200 hover:bg-white hover:shadow-sm">
 				<div
 					{...(canDrag ? attributes : {})}
 					{...(canDrag ? listeners : {})}
 					onClick={(event) => event.stopPropagation()}
-					className={`inline-flex h-6 w-5 shrink-0 items-center justify-center rounded text-gray-400 ${
+					className={`inline-flex h-5 w-4 shrink-0 items-center justify-center rounded text-gray-400 ${
 						canDrag
 							? "cursor-pointer hover:bg-gray-100 hover:text-gray-600"
 							: "cursor-default opacity-50"
@@ -148,12 +157,14 @@ const SortableMilestoneFeatureRow = ({
 					title="Drag to reorder feature"
 					aria-label={`Drag to reorder ${feature.title}`}
 				>
-					<GripVertical className="h-3.5 w-3.5" />
+					<GripVertical className="h-3 w-3" />
 				</div>
-				<ChevronRight className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-				<span className="min-w-0 flex-1 truncate text-left">{feature.title}</span>
+				<ChevronRight className="h-3 w-3 shrink-0 text-gray-400" />
+				<Tooltip title={feature.title} enterDelay={600} placement="right" arrow>
+					<span className="min-w-0 flex-1 truncate text-left">{feature.title}</span>
+				</Tooltip>
 				{taskCount > 0 && (
-					<span className="pr-7 text-xs font-normal text-gray-500">{taskCount}</span>
+					<span className="pr-6 text-[10px] font-normal text-gray-500">{taskCount}</span>
 				)}
 			</div>
 		</div>
@@ -179,6 +190,61 @@ export const MilestonesLeftPanel = ({
 	onEpicReorderDraft,
 }: MilestonesLeftPanelProps) => {
 	const sensors = useSensors(useSensor(PointerSensor));
+
+	const [panelWidth, setPanelWidth] = useState(() => {
+		try {
+			const stored = window.localStorage.getItem(PANEL_STORAGE_KEY);
+			return stored ? Number(stored) : LEFT_WIDTH;
+		} catch {
+			return LEFT_WIDTH;
+		}
+	});
+	const panelRef = useRef<HTMLDivElement | null>(null);
+	const panelWidthRef = useRef(panelWidth);
+	const [isResizing, setIsResizing] = useState(false);
+
+	const handleResizeStart = (event: ReactMouseEvent<HTMLDivElement>) => {
+		event.preventDefault();
+		const startX = event.clientX;
+		const startWidth = panelWidthRef.current;
+
+		setIsResizing(true);
+		document.body.style.cursor = "col-resize";
+		document.body.style.userSelect = "none";
+
+		let latestWidth = startWidth;
+		let pendingWidth = startWidth;
+		let rafId: number | null = null;
+
+		const flush = () => {
+			rafId = null;
+			latestWidth = pendingWidth;
+			panelWidthRef.current = pendingWidth;
+			if (panelRef.current) {
+				panelRef.current.style.width = `${pendingWidth}px`;
+			}
+		};
+
+		const onMouseMove = (e: MouseEvent) => {
+			pendingWidth = clampWidth(startWidth + e.clientX - startX);
+			if (rafId === null) rafId = window.requestAnimationFrame(flush);
+		};
+
+		const onMouseUp = () => {
+			if (rafId !== null) { window.cancelAnimationFrame(rafId); flush(); }
+			setIsResizing(false);
+			document.body.style.cursor = "";
+			document.body.style.userSelect = "";
+			setPanelWidth(latestWidth);
+			panelWidthRef.current = latestWidth;
+			try { window.localStorage.setItem(PANEL_STORAGE_KEY, String(latestWidth)); } catch {}
+			window.removeEventListener("mousemove", onMouseMove);
+			window.removeEventListener("mouseup", onMouseUp);
+		};
+
+		window.addEventListener("mousemove", onMouseMove);
+		window.addEventListener("mouseup", onMouseUp);
+	};
 
 	const handleEpicDragEnd = (event: DragEndEvent) => {
 		if (!canReorderEpics || !onEpicReorderDraft) return;
@@ -235,8 +301,9 @@ export const MilestonesLeftPanel = ({
 
 	return (
 		<div
-			className="shrink-0 border-r border-gray-200 bg-white flex flex-col"
-			style={{ width: LEFT_WIDTH }}
+			ref={panelRef}
+			className="relative shrink-0 border-r border-gray-200 bg-white flex flex-col"
+			style={{ width: panelWidth, minWidth: PANEL_MIN_WIDTH }}
 		>
 			<div className="sticky top-0 z-40 border-b border-gray-200 bg-white">
 				<div ref={leftHeaderRef}>
@@ -281,15 +348,15 @@ export const MilestonesLeftPanel = ({
 										<div
 											ref={setEpicRowRef(epic.id)}
 											style={{ height: epicRowHeight }}
-											className="group/epic bg-white px-4"
+											className="group/epic bg-white px-3"
 										>
 											<div className="flex h-full min-w-0 items-center gap-1">
-												<div className="relative flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2 py-2 pr-12 text-sm font-medium text-gray-900 transition-all hover:bg-white hover:shadow-sm">
+												<div className="relative flex min-w-0 flex-1 items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 pr-10 text-xs font-semibold text-gray-900 transition-all hover:bg-white hover:shadow-sm">
 													<div
 														{...handleAttributes}
 														{...handleListeners}
 														onClick={(event) => event.stopPropagation()}
-														className={`inline-flex h-6 w-5 shrink-0 items-center justify-center rounded text-gray-400 ${
+														className={`inline-flex h-5 w-4 shrink-0 items-center justify-center rounded text-gray-400 ${
 															canReorderEpics
 																? "cursor-pointer hover:bg-gray-100 hover:text-gray-600"
 																: "cursor-default opacity-50"
@@ -297,7 +364,7 @@ export const MilestonesLeftPanel = ({
 														title="Drag to reorder epic"
 														aria-label={`Drag to reorder ${epic.title}`}
 													>
-														<GripVertical className="h-3.5 w-3.5" />
+														<GripVertical className="h-3 w-3" />
 													</div>
 													<button
 														type="button"
@@ -308,38 +375,39 @@ export const MilestonesLeftPanel = ({
 														}
 													>
 														{isCollapsed ? (
-															<ChevronRight className="h-4 w-4 text-gray-500" />
+															<ChevronRight className="h-3.5 w-3.5 text-gray-500" />
 														) : (
-															<ChevronDown className="h-4 w-4 text-gray-500" />
+															<ChevronDown className="h-3.5 w-3.5 text-gray-500" />
 														)}
 													</button>
-													<button
-														type="button"
-														onClick={() => onToggleEpic(epic.id)}
-														className="min-w-0 flex-1 truncate text-left text-sm text-gray-900"
-														title={epic.title}
-													>
-														{epic.title}
-													</button>
+													<Tooltip title={epic.title} enterDelay={600} placement="right" arrow>
+														<button
+															type="button"
+															onClick={() => onToggleEpic(epic.id)}
+															className="min-w-0 flex-1 truncate text-left text-xs text-gray-900 font-semibold"
+														>
+															{epic.title}
+														</button>
+													</Tooltip>
 													{features.length > 0 && (
-														<span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-normal text-gray-500">
+														<span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-normal text-gray-500">
 															{features.length}
 														</span>
 													)}
 													<button
 														type="button"
 														onClick={() => onAddFeature?.(epic.id)}
-														className="absolute right-2 inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-700 opacity-0 shadow-sm transition-all hover:border-orange-300 hover:text-orange-600 group-hover/epic:opacity-100"
+														className="absolute right-1.5 inline-flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-700 opacity-0 shadow-sm transition-all hover:border-orange-300 hover:text-orange-600 group-hover/epic:opacity-100"
 														title="Add feature to epic"
 														aria-label={`Add feature to ${epic.title}`}
 													>
-														<Plus className="h-3.5 w-3.5" />
+														<Plus className="h-3 w-3" />
 													</button>
 												</div>
 												<button
 													type="button"
 													onClick={() => onNavigateToEpic?.(epic.id)}
-													className="shrink-0 rounded-lg border border-gray-200 bg-white p-2 text-blue-700 transition-all hover:bg-blue-50"
+													className="shrink-0 rounded-lg border border-gray-200 bg-white p-1.5 text-blue-700 transition-all hover:bg-blue-50"
 													title="Navigate to epic"
 													aria-label={`Navigate to ${epic.title}`}
 												>
@@ -349,28 +417,30 @@ export const MilestonesLeftPanel = ({
 										</div>
 
 										{!isCollapsed && (
-											<DndContext
-												sensors={sensors}
-												collisionDetection={closestCenter}
-												onDragEnd={(event) =>
-													handleFeatureDragEnd(epic, features, event)
-												}
-											>
-												<SortableContext
-													items={features.map((feature) => feature.id)}
-													strategy={verticalListSortingStrategy}
+											<div className="ml-5 border-l-2 border-gray-200">
+												<DndContext
+													sensors={sensors}
+													collisionDetection={closestCenter}
+													onDragEnd={(event) =>
+														handleFeatureDragEnd(epic, features, event)
+													}
 												>
-													{features.map((feature) => (
-														<SortableMilestoneFeatureRow
-															key={`left-feature-${feature.id}`}
-															feature={feature}
-															taskCount={feature.tasks?.length ?? 0}
-															canDrag={canReorderFeatures}
-															onSetFeatureRowRef={setFeatureRowRef(feature.id)}
-														/>
-													))}
-												</SortableContext>
-											</DndContext>
+													<SortableContext
+														items={features.map((feature) => feature.id)}
+														strategy={verticalListSortingStrategy}
+													>
+														{features.map((feature) => (
+															<SortableMilestoneFeatureRow
+																key={`left-feature-${feature.id}`}
+																feature={feature}
+																taskCount={feature.tasks?.length ?? 0}
+																canDrag={canReorderFeatures}
+																onSetFeatureRowRef={setFeatureRowRef(feature.id)}
+															/>
+														))}
+													</SortableContext>
+												</DndContext>
+											</div>
 										)}
 									</div>
 								)}
@@ -393,6 +463,18 @@ export const MilestonesLeftPanel = ({
 					</p>
 				</div>
 			)}
+
+			{/* Resize handle */}
+			<div
+				className="absolute top-0 right-0 w-2 h-full cursor-col-resize z-10 group/resizer"
+				onMouseDown={handleResizeStart}
+			>
+				<div
+					className={`absolute right-0 top-0 w-[3px] h-full rounded-full transition-colors ${
+						isResizing ? "bg-orange-400" : "bg-transparent group-hover/resizer:bg-orange-300"
+					}`}
+				/>
+			</div>
 		</div>
 	);
 };
