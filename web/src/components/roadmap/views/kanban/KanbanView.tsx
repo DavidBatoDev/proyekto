@@ -16,24 +16,24 @@ import { useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { useToast } from "@/hooks/useToast";
-import type { TaskStatus } from "@/types/roadmap";
 import { KanbanCard } from "./KanbanCard";
 import { KanbanColumn } from "./KanbanColumn";
 import { KanbanFilters } from "./KanbanFilters";
-import { KANBAN_COLUMNS, type KanbanTaskContext } from "./types";
+import { DEFAULT_KANBAN_COLUMNS, type KanbanTaskContext } from "./types";
 import {
 	applyBoardFilters,
 	selectAllTasksWithContext,
 } from "./selectors";
 
-type ColumnMap = Record<TaskStatus, KanbanTaskContext[]>;
+type ColumnMap = Record<string, KanbanTaskContext[]>;
 
-function groupRowsByStatus(rows: KanbanTaskContext[]): ColumnMap {
-	const map = {} as ColumnMap;
-	for (const column of KANBAN_COLUMNS) map[column.id] = [];
+function groupByStatus(rows: KanbanTaskContext[]): ColumnMap {
+	const map: ColumnMap = {};
+	for (const column of DEFAULT_KANBAN_COLUMNS) map[column.id] = [];
 	for (const row of rows) {
-		const bucket = map[row.task.status];
-		if (bucket) bucket.push(row);
+		const columnId = row.task.status as string;
+		if (!map[columnId]) map[columnId] = [];
+		map[columnId].push(row);
 	}
 	return map;
 }
@@ -41,10 +41,10 @@ function groupRowsByStatus(rows: KanbanTaskContext[]): ColumnMap {
 function findContainerForTask(
 	columns: ColumnMap,
 	taskId: string,
-): TaskStatus | null {
-	for (const column of KANBAN_COLUMNS) {
-		if (columns[column.id].some((row) => row.task.id === taskId)) {
-			return column.id;
+): string | null {
+	for (const columnId of Object.keys(columns)) {
+		if (columns[columnId]?.some((row) => row.task.id === taskId)) {
+			return columnId;
 		}
 	}
 	return null;
@@ -53,11 +53,9 @@ function findContainerForTask(
 function resolveContainer(
 	columns: ColumnMap,
 	overId: string | null,
-): TaskStatus | null {
+): string | null {
 	if (!overId) return null;
-	if (KANBAN_COLUMNS.some((column) => column.id === overId)) {
-		return overId as TaskStatus;
-	}
+	if (overId in columns) return overId;
 	return findContainerForTask(columns, overId);
 }
 
@@ -83,23 +81,21 @@ export function KanbanView() {
 	);
 
 	const storeColumns = useMemo(
-		() => groupRowsByStatus(filteredRows),
+		() => groupByStatus(filteredRows),
 		[filteredRows],
 	);
 
-	// Local mirror so cross-column drag-over can render movement before commit.
 	const [columns, setColumns] = useState<ColumnMap>(storeColumns);
 	const [activeId, setActiveId] = useState<string | null>(null);
 
-	// Re-sync from store whenever not actively dragging.
 	useEffect(() => {
 		if (activeId === null) setColumns(storeColumns);
 	}, [storeColumns, activeId]);
 
 	const activeRow = useMemo<KanbanTaskContext | null>(() => {
 		if (!activeId) return null;
-		for (const column of KANBAN_COLUMNS) {
-			const found = columns[column.id].find((row) => row.task.id === activeId);
+		for (const columnId of Object.keys(columns)) {
+			const found = columns[columnId]?.find((row) => row.task.id === activeId);
 			if (found) return found;
 		}
 		return null;
@@ -130,15 +126,13 @@ export function KanbanView() {
 		if (!fromColumn || !toColumn || fromColumn === toColumn) return;
 
 		setColumns((prev) => {
-			const sourceList = prev[fromColumn];
-			const destList = prev[toColumn];
+			const sourceList = prev[fromColumn] ?? [];
+			const destList = prev[toColumn] ?? [];
 			const movingIndex = sourceList.findIndex(
 				(row) => row.task.id === activeTaskId,
 			);
 			if (movingIndex === -1) return prev;
 			const moving = sourceList[movingIndex];
-			// Drop at end of column when hovering the column itself, otherwise
-			// insert before the hovered card.
 			const overIndex = destList.findIndex((row) => row.task.id === overId);
 			const insertAt = overIndex === -1 ? destList.length : overIndex;
 			return {
@@ -156,20 +150,27 @@ export function KanbanView() {
 	const handleDragEnd = (event: DragEndEvent) => {
 		const { active } = event;
 		const taskId = String(active.id);
-		const finalColumn = findContainerForTask(columns, taskId);
+		const finalColumnId = findContainerForTask(columns, taskId);
 		setActiveId(null);
+		if (!finalColumnId) return;
+
+		const finalColumn = DEFAULT_KANBAN_COLUMNS.find((c) => c.id === finalColumnId);
 		if (!finalColumn) return;
 
 		const originalRow = filteredRows.find((row) => row.task.id === taskId);
-		if (!originalRow || originalRow.task.status === finalColumn) return;
+		if (!originalRow) return;
 
-		void updateTaskStatusIntent(taskId, finalColumn).catch((error) => {
-			toast.error(
-				error instanceof Error
-					? error.message
-					: "Failed to update task status",
-			);
-		});
+		if (originalRow.task.status === finalColumn.bucketStatus) return;
+
+		void updateTaskStatusIntent(taskId, finalColumn.bucketStatus).catch(
+			(error) => {
+				toast.error(
+					error instanceof Error
+						? error.message
+						: "Failed to update task status",
+				);
+			},
+		);
 	};
 
 	const handleDragCancel = () => {
@@ -190,11 +191,11 @@ export function KanbanView() {
 			>
 				<div className="flex-1 overflow-x-hidden overflow-y-hidden">
 					<div className="flex gap-2 p-2 h-full w-full">
-						{KANBAN_COLUMNS.map((column) => (
+						{DEFAULT_KANBAN_COLUMNS.map((column) => (
 							<KanbanColumn
 								key={column.id}
 								column={column}
-								rows={columns[column.id]}
+								rows={columns[column.id] ?? []}
 							/>
 						))}
 					</div>

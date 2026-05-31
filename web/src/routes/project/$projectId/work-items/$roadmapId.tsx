@@ -1,6 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { ListChecks, AlertCircle, Loader2, Plus } from "lucide-react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
+import {
+	ListChecks,
+	AlertCircle,
+	Loader2,
+	Plus,
+	ReceiptText,
+} from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useRoadmapFullQuery } from "@/hooks/useProjectQueries";
 import { useRoadmapStore } from "@/stores/roadmapStore";
@@ -8,6 +14,7 @@ import { KanbanView } from "@/components/roadmap/views/kanban/KanbanView";
 import { WorkItemsBrowserModal } from "@/components/roadmap/modals/WorkItemsBrowserModal";
 import { useRoadmapCanvasController } from "@/components/roadmap/views/roadmap/hooks/useRoadmapCanvasController";
 import { RoadmapCanvasOverlays } from "@/components/roadmap/views/roadmap/components/RoadmapCanvasOverlays";
+import { useState } from "react";
 
 export const Route = createFileRoute(
   "/project/$projectId/work-items/$roadmapId",
@@ -16,19 +23,20 @@ export const Route = createFileRoute(
 });
 
 function WorkItemsBoardPage() {
-  const { projectId, roadmapId } = Route.useParams();
-  const [isBrowserOpen, setIsBrowserOpen] = useState(false);
-  const roadmapFullQuery = useRoadmapFullQuery(roadmapId);
-  const { applyRoadmapSnapshot } = useRoadmapStore(
-    useShallow((s) => ({
-      applyRoadmapSnapshot: s.applyRoadmapSnapshot,
-    })),
-  );
+	const { projectId, roadmapId } = Route.useParams();
+	const navigate = useNavigate();
+	const [isBrowserOpen, setIsBrowserOpen] = useState(false);
+	const roadmapFullQuery = useRoadmapFullQuery(roadmapId);
+	const { applyRoadmapSnapshot } = useRoadmapStore(
+		useShallow((s) => ({
+			applyRoadmapSnapshot: s.applyRoadmapSnapshot,
+		})),
+	);
 
-  useEffect(() => {
-    if (roadmapFullQuery.data) {
-      applyRoadmapSnapshot(roadmapFullQuery.data);
-    }
+	useEffect(() => {
+		if (roadmapFullQuery.data) {
+			applyRoadmapSnapshot(roadmapFullQuery.data);
+		}
   }, [roadmapFullQuery.data, applyRoadmapSnapshot]);
 
   const controller = useRoadmapCanvasController({
@@ -54,22 +62,35 @@ function WorkItemsBoardPage() {
                 Work Items
               </h1>
               <p className="text-[11px] text-slate-400">
-                Board view of every task in this roadmap
-              </p>
-            </div>
-          </div>
+				Board view of every task in this roadmap
+				</p>
+			</div>
+		</div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => setIsBrowserOpen(true)}
-              disabled={isLoading}
-              className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 text-white px-3 py-1.5 text-xs font-medium hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add work items
-            </button>
-          </div>
+		<div className="flex items-center gap-2 shrink-0">
+			<button
+				type="button"
+				onClick={() =>
+					navigate({
+						to: "/project/$projectId/payments",
+					  params: { projectId },
+					})
+				}
+				className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+			>
+				<ReceiptText className="w-3.5 h-3.5" />
+				Invoices
+			</button>
+			<button
+				type="button"
+				onClick={() => setIsBrowserOpen(true)}
+				disabled={isLoading}
+				className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 text-white px-3 py-1.5 text-xs font-medium hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+			>
+				<Plus className="w-3.5 h-3.5" />
+				Add work items
+			</button>
+		</div>
         </div>
       </div>
 
