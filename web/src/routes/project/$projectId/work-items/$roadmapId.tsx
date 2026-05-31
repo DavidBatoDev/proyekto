@@ -10,6 +10,7 @@ import {
 import { useShallow } from "zustand/react/shallow";
 import { useRoadmapFullQuery } from "@/hooks/useProjectQueries";
 import { useRoadmapStore } from "@/stores/roadmapStore";
+import { useRoadmapDataSync } from "@/hooks/useRoadmapDataSync";
 import { KanbanView } from "@/components/roadmap/views/kanban/KanbanView";
 import { WorkItemsBrowserModal } from "@/components/roadmap/modals/WorkItemsBrowserModal";
 import { useRoadmapCanvasController } from "@/components/roadmap/views/roadmap/hooks/useRoadmapCanvasController";
@@ -26,6 +27,7 @@ function WorkItemsBoardPage() {
 	const { projectId, roadmapId } = Route.useParams();
 	const navigate = useNavigate();
 	const [isBrowserOpen, setIsBrowserOpen] = useState(false);
+	useRoadmapDataSync(roadmapId);
 	const roadmapFullQuery = useRoadmapFullQuery(roadmapId);
 	const { applyRoadmapSnapshot } = useRoadmapStore(
 		useShallow((s) => ({

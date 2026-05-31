@@ -115,6 +115,11 @@ export function useRoadmapCollaboration({
 		nameRef.current = name;
 		colorRef.current = color;
 
+		const invalidate = () =>
+			void queryClient.invalidateQueries({
+				queryKey: projectKeys.roadmapFull(roadmapId),
+			});
+
 		const channel = supabase.channel(`roadmap-collab:${roadmapId}`, {
 			config: { presence: { key: userId } },
 		});
@@ -166,14 +171,36 @@ export function useRoadmapCollaboration({
 				{
 					event: "*",
 					schema: "public",
-					table: "epics",
+					table: "roadmap_epics",
 					filter: `roadmap_id=eq.${roadmapId}`,
 				},
-				() => {
-					void queryClient.invalidateQueries({
-						queryKey: projectKeys.roadmapFull(roadmapId),
-					});
+				invalidate,
+			)
+			.on(
+				"postgres_changes",
+				{
+					event: "*",
+					schema: "public",
+					table: "roadmap_features",
+					filter: `roadmap_id=eq.${roadmapId}`,
 				},
+				invalidate,
+			)
+			.on(
+				"postgres_changes",
+				{
+					event: "*",
+					schema: "public",
+					table: "roadmap_milestones",
+					filter: `roadmap_id=eq.${roadmapId}`,
+				},
+				invalidate,
+			)
+			// roadmap_tasks has no roadmap_id column — RLS scopes delivery to accessible rows
+			.on(
+				"postgres_changes",
+				{ event: "*", schema: "public", table: "roadmap_tasks" },
+				invalidate,
 			)
 			.subscribe(async (status) => {
 				if (status === "SUBSCRIBED") {
