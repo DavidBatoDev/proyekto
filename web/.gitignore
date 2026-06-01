@@ -8,3 +8,7 @@ count.txt
 .nitro
 .tanstack
 .wrangler
+playwright-report
+test-results
+blob-report
+playwright/.auth/user.json
