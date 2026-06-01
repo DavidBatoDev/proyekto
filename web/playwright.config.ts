@@ -73,6 +73,7 @@ if (hasConsultantAuth || hasFreelancerAuth) {
 
 export default defineConfig({
   testDir: "./playwright/tests",
+  outputDir: "./playwright/test-results",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
