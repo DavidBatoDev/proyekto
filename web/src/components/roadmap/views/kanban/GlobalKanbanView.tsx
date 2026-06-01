@@ -86,6 +86,21 @@ function applyFilters(
 	});
 }
 
+// Free-text search over task cards: matches the task title and its parent
+// feature title. (Epic searching lives on the left filter row instead.)
+function applySearch(
+	rows: KanbanTaskContext[],
+	query: string,
+): KanbanTaskContext[] {
+	const q = query.trim().toLowerCase();
+	if (!q) return rows;
+	return rows.filter(
+		(row) =>
+			row.task.title.toLowerCase().includes(q) ||
+			row.feature.title.toLowerCase().includes(q),
+	);
+}
+
 function groupByStatus(rows: KanbanTaskContext[]): ColumnMap {
 	const map: ColumnMap = {};
 	for (const col of DEFAULT_KANBAN_COLUMNS) map[col.id] = [];
@@ -141,6 +156,9 @@ export function GlobalKanbanView({
 }: GlobalKanbanViewProps) {
 	const toast = useToast();
 	const [filters, setFilters] = useState<GlobalBoardFilters>(loadGlobalFilters);
+	// Ephemeral free-text search — intentionally NOT persisted, so the board
+	// isn't mysteriously filtered on the next visit.
+	const [searchQuery, setSearchQuery] = useState("");
 
 	useEffect(() => {
 		try { sessionStorage.setItem(GLOBAL_FILTERS_KEY, JSON.stringify(filters)); } catch {}
@@ -178,8 +196,8 @@ export function GlobalKanbanView({
 	}, [allRows]);
 
 	const filteredRows = useMemo(
-		() => applyFilters(localRows, filters),
-		[localRows, filters],
+		() => applySearch(applyFilters(localRows, filters), searchQuery),
+		[localRows, filters, searchQuery],
 	);
 
 	const storeColumns = useMemo(
@@ -309,6 +327,8 @@ export function GlobalKanbanView({
 				roadmaps={roadmaps}
 				filters={filters}
 				onChange={setFilters}
+				searchQuery={searchQuery}
+				onSearchChange={setSearchQuery}
 			/>
 			<DndContext
 				sensors={sensors}

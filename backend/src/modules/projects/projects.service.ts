@@ -1064,6 +1064,7 @@ export class ProjectsService {
     inviteLink: string,
     invitedPosition?: string | null,
     inviteMessage?: string | null,
+    inviterAvatarUrl?: string | null,
   ): string {
     const normalizedFromEmail = (fromEmail ?? '').trim();
     const fromHeader =
@@ -1071,6 +1072,17 @@ export class ProjectsService {
         ? `From: ${this.sanitizeHeaderValue(`Proyekto <${normalizedFromEmail}>`)}`
         : null;
     const safeInviterName = this.escapeHtml(inviterName.trim());
+    // Only embed http(s) avatars — never data: URIs or other schemes.
+    const normalizedAvatar = (inviterAvatarUrl ?? '').trim();
+    const safeAvatarUrl = /^https?:\/\//i.test(normalizedAvatar)
+      ? this.escapeHtml(normalizedAvatar)
+      : null;
+    const inviterInitial = this.escapeHtml(
+      (inviterName.trim().charAt(0) || 'P').toUpperCase(),
+    );
+    const avatarBlock = safeAvatarUrl
+      ? `<img src="${safeAvatarUrl}" width="44" height="44" alt="" style="display:inline-block;width:44px;height:44px;border-radius:50%;border:2px solid rgba(255,255,255,0.25);object-fit:cover;vertical-align:middle;" />`
+      : `<span style="display:inline-block;width:44px;height:44px;border-radius:50%;background-color:#2563eb;color:#ffffff;font-size:20px;font-weight:700;line-height:44px;text-align:center;vertical-align:middle;">${inviterInitial}</span>`;
     const safeProjectName = this.escapeHtml(projectName.trim());
     const safeInviteLink = this.escapeHtml(inviteLink.trim());
     const normalizedPosition = invitedPosition?.trim() ?? '';
@@ -1144,12 +1156,17 @@ export class ProjectsService {
           <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="width:600px;max-width:600px;background-color:#ffffff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
             <tr>
               <td style="padding:26px 32px;background-color:#0f172a;">
-                <p style="margin:0 0 10px;color:#93c5fd;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;">Proyekto</p>
-                <h1 style="margin:0 0 10px;color:#ffffff;font-size:28px;line-height:1.2;font-weight:700;">You are invited to collaborate</h1>
-                <p style="margin:0;color:#cbd5e1;font-size:15px;line-height:1.6;">
-                  <strong style="color:#ffffff;">${safeInviterName}</strong> invited you to join
-                  <strong style="color:#ffffff;">${safeProjectName}</strong>.
-                </p>
+                <p style="margin:0 0 14px;color:#93c5fd;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;">Proyekto</p>
+                <h1 style="margin:0 0 16px;color:#ffffff;font-size:28px;line-height:1.2;font-weight:700;">You are invited to collaborate</h1>
+                <table cellpadding="0" cellspacing="0" role="presentation"><tr>
+                  <td style="padding-right:12px;vertical-align:middle;">${avatarBlock}</td>
+                  <td style="vertical-align:middle;">
+                    <p style="margin:0;color:#cbd5e1;font-size:15px;line-height:1.5;">
+                      <strong style="color:#ffffff;">${safeInviterName}</strong> invited you to join<br />
+                      <strong style="color:#ffffff;">${safeProjectName}</strong>.
+                    </p>
+                  </td>
+                </tr></table>
               </td>
             </tr>
             <tr>
@@ -1194,10 +1211,24 @@ export class ProjectsService {
 </html>`.trim();
 
     const boundary = `invite_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    // Legitimacy headers improve inbox placement: an explicit Date, a Reply-To
+    // back to the sending mailbox, and a List-Unsubscribe (recommended by Gmail
+    // for bulk/transactional senders).
+    const replyToHeader =
+      normalizedFromEmail.length > 0
+        ? `Reply-To: ${this.sanitizeHeaderValue(`Proyekto <${normalizedFromEmail}>`)}`
+        : null;
+    const listUnsubscribeHeader =
+      normalizedFromEmail.length > 0
+        ? `List-Unsubscribe: <mailto:${this.sanitizeHeaderValue(normalizedFromEmail)}?subject=unsubscribe>`
+        : null;
     const rawLines = [
       fromHeader,
       `To: ${this.sanitizeHeaderValue(to)}`,
+      replyToHeader,
       `Subject: ${this.sanitizeHeaderValue(subject)}`,
+      `Date: ${new Date().toUTCString()}`,
+      listUnsubscribeHeader,
       'MIME-Version: 1.0',
       `Content-Type: multipart/alternative; boundary="${boundary}"`,
       '',
@@ -1227,6 +1258,7 @@ export class ProjectsService {
     projectName: string;
     invitedPosition?: string | null;
     inviteMessage?: string | null;
+    inviterAvatarUrl?: string | null;
   }): Promise<{ sent: boolean; reason?: string; messageId?: string }> {
     const clientId =
       this.config.get<string>('GMAIL_CLIENT_ID') ??
@@ -1269,6 +1301,7 @@ export class ProjectsService {
         inviteLink,
         payload.invitedPosition,
         payload.inviteMessage,
+        payload.inviterAvatarUrl,
       );
 
       const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
@@ -1319,9 +1352,8 @@ export class ProjectsService {
       dto,
     )) as Record<string, unknown>;
 
-    const inviterName =
-      (await this.projectsRepo.getProfileDisplayName(callerId)) ||
-      'A team lead';
+    const inviterProfile = await this.projectsRepo.getInviterProfile(callerId);
+    const inviterName = inviterProfile.displayName || 'A team lead';
 
     // Send invite email and include delivery status in the API response.
     const inviteNote =
@@ -1341,6 +1373,7 @@ export class ProjectsService {
         : 'a project',
       invitedPosition,
       inviteMessage: inviteNote,
+      inviterAvatarUrl: inviterProfile.avatarUrl,
     });
     const projectTitle =
       typeof project.title === 'string' && project.title.trim().length > 0

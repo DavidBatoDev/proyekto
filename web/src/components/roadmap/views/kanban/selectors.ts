@@ -32,6 +32,23 @@ export function selectAllTasksWithContext(
 	return result;
 }
 
+/**
+ * Free-text search over task cards: matches the task title and its parent
+ * feature title. (Epic searching lives on the left filter row instead.)
+ */
+export function applyBoardSearch(
+	rows: KanbanTaskContext[],
+	query: string,
+): KanbanTaskContext[] {
+	const q = query.trim().toLowerCase();
+	if (!q) return rows;
+	return rows.filter(
+		(row) =>
+			row.task.title.toLowerCase().includes(q) ||
+			row.feature.title.toLowerCase().includes(q),
+	);
+}
+
 export function applyBoardFilters(
 	rows: KanbanTaskContext[],
 	filters: KanbanBoardFilters,

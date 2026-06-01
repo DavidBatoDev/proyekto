@@ -17,9 +17,14 @@ import { SignupLayout } from "../../components/auth/signup/SignupLayout";
 import { BrandMark } from "@/components/brand/BrandMark";
 
 export const Route = createFileRoute("/auth/login")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    redirect: (search.redirect as string) || undefined,
-  }),
+  // Return an OPTIONAL `redirect` key (omit it entirely when absent) so that
+  // navigating to /auth/login does not require a `search` param at call sites.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { redirect?: string } => {
+    const r = search.redirect;
+    return typeof r === "string" && r.length > 0 ? { redirect: r } : {};
+  },
   beforeLoad: ({ search }) => {
     const { isAuthenticated, isLoading } = useAuthStore.getState();
 

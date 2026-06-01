@@ -1,4 +1,4 @@
-import { Check, ChevronDown, X } from "lucide-react";
+import { Check, ChevronDown, Search, X } from "lucide-react";
 import {
 	type ReactNode,
 	useEffect,
@@ -139,11 +139,42 @@ function FilterRow({
 	selectedId: string | null;
 	onSelect: (id: string | null) => void;
 }) {
+	const [query, setQuery] = useState("");
+	const q = query.trim().toLowerCase();
+	// Keep the currently-selected option visible even if it doesn't match the
+	// query, so an active selection never disappears while searching.
+	const visibleOptions = q
+		? options.filter(
+				(o) => o.label.toLowerCase().includes(q) || o.id === selectedId,
+			)
+		: options;
+
 	return (
 		<div className="flex items-center gap-2.5 min-w-0 flex-1 relative z-1">
 			<span className="shrink-0 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md border bg-white text-black border-black">
 				{tagLabel}
 			</span>
+			{options.length > 1 && (
+				<div className="relative shrink-0 w-36">
+					<Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+					<input
+						value={query}
+						onChange={(e) => setQuery(e.target.value)}
+						placeholder={`Search ${tagLabel.toLowerCase()}`}
+						className="w-full pl-8 pr-7 py-1 text-xs border border-slate-200 rounded-full focus:outline-none focus:ring-2 focus:ring-slate-300"
+					/>
+					{query && (
+						<button
+							type="button"
+							onClick={() => setQuery("")}
+							className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+							aria-label="Clear search"
+						>
+							<X className="w-3.5 h-3.5" />
+						</button>
+					)}
+				</div>
+			)}
 			<ScrollRow>
 				<button
 					type="button"
@@ -152,7 +183,7 @@ function FilterRow({
 				>
 					All
 				</button>
-				{options.map((option) => (
+				{visibleOptions.map((option) => (
 					<button
 						key={option.id}
 						type="button"
@@ -162,6 +193,11 @@ function FilterRow({
 						{option.label}
 					</button>
 				))}
+				{q && visibleOptions.length === 0 && (
+					<span className="shrink-0 text-xs text-slate-400 italic px-1">
+						No matches
+					</span>
+				)}
 			</ScrollRow>
 		</div>
 	);
@@ -289,12 +325,16 @@ interface GlobalKanbanFiltersProps {
 	roadmaps: FullRoadmapWithProject[];
 	filters: GlobalBoardFilters;
 	onChange: (filters: GlobalBoardFilters) => void;
+	searchQuery: string;
+	onSearchChange: (value: string) => void;
 }
 
 export function GlobalKanbanFilters({
 	roadmaps,
 	filters,
 	onChange,
+	searchQuery,
+	onSearchChange,
 }: GlobalKanbanFiltersProps) {
 	const projectOptions = useMemo<PillOption[]>(() => {
 		const seen = new Set<string>();
@@ -399,17 +439,20 @@ export function GlobalKanbanFilters({
 		!!filters.projectId ||
 		!!filters.epicId ||
 		!!filters.featureId ||
-		filters.assigneeIds.length > 0;
+		filters.assigneeIds.length > 0 ||
+		searchQuery.trim().length > 0;
 
 	return (
-		<div className="grid grid-cols-10 gap-6 px-4 py-3 border-b border-slate-200 bg-linear-to-b from-slate-50 to-white min-h-[7.5rem]">
+		<div className="grid grid-cols-10 gap-6 px-4 py-3 border-b border-slate-200 bg-linear-to-b from-slate-50 to-white">
 			<div className="col-span-7 flex flex-col gap-2.5 pr-6 border-r border-slate-200 relative">
-				<FilterRow
-					tagLabel="Projects"
-					options={projectOptions}
-					selectedId={filters.projectId}
-					onSelect={selectProject}
-				/>
+				<div className="flex items-center min-w-0">
+					<FilterRow
+						tagLabel="Projects"
+						options={projectOptions}
+						selectedId={filters.projectId}
+						onSelect={selectProject}
+					/>
+				</div>
 				<div className="relative pl-8 flex items-center min-w-0">
 					<div className="absolute left-4 top-[-23px] w-4 h-[36px] border-l-2 border-b-2 border-slate-300 rounded-bl-xl pointer-events-none" />
 					<FilterRow
@@ -429,30 +472,51 @@ export function GlobalKanbanFilters({
 					/>
 				</div>
 			</div>
-			<div className="col-span-3 flex flex-col justify-between gap-2.5">
+			<div className="col-span-3 flex flex-col gap-2.5">
 				<AssigneesDropdown
 					options={assigneeOptions}
 					selected={filters.assigneeIds}
 					onToggle={toggleAssignee}
 					onClear={() => onChange({ ...filters, assigneeIds: [] })}
 				/>
-				<div className="flex justify-end">
+				<div className="flex items-center gap-2">
+					<div className="relative flex-1 min-w-0">
+						<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+						<input
+							value={searchQuery}
+							onChange={(e) => onSearchChange(e.target.value)}
+							placeholder="Search features & tasks…"
+							className="w-full pl-9 pr-8 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
+						/>
+						{searchQuery && (
+							<button
+								type="button"
+								onClick={() => onSearchChange("")}
+								className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+								aria-label="Clear search"
+							>
+								<X className="w-4 h-4" />
+							</button>
+						)}
+					</div>
 					<button
 						type="button"
-						onClick={() =>
+						onClick={() => {
+							onSearchChange("");
 							onChange({
 								projectId: null,
 								epicId: null,
 								featureId: null,
 								assigneeIds: [],
-							})
-						}
-						className={`inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-100 hover:text-slate-900 ${
+							});
+						}}
+						className={`shrink-0 inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-100 hover:text-slate-900 ${
 							hasAny ? "" : "invisible"
 						}`}
+						title="Clear filters"
 					>
 						<X className="w-3 h-3" />
-						Clear filters
+						Clear
 					</button>
 				</div>
 			</div>

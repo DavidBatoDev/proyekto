@@ -420,6 +420,33 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     return email || null;
   }
 
+  async getInviterProfile(
+    userId: string,
+  ): Promise<{ displayName: string | null; avatarUrl: string | null }> {
+    const { data, error } = await this.supabase
+      .from('profiles')
+      .select('display_name, first_name, last_name, email, avatar_url')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error || !data) return { displayName: null, avatarUrl: null };
+
+    const displayName =
+      (typeof data.display_name === 'string' && data.display_name.trim()) ||
+      `${typeof data.first_name === 'string' ? data.first_name.trim() : ''} ${
+        typeof data.last_name === 'string' ? data.last_name.trim() : ''
+      }`.trim() ||
+      (typeof data.email === 'string' ? data.email.trim() : '') ||
+      null;
+
+    const avatarUrl =
+      typeof data.avatar_url === 'string' && data.avatar_url.trim().length > 0
+        ? data.avatar_url.trim()
+        : null;
+
+    return { displayName, avatarUrl };
+  }
+
   async inviteByEmail(
     projectId: string,
     invitedBy: string,
