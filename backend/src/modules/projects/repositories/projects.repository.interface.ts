@@ -64,6 +64,9 @@ export interface ProjectsRepository {
   isConsultantVerified(userId: string): Promise<boolean>;
   addMember(projectId: string, dto: AddProjectMemberDto): Promise<unknown>;
   getProfileDisplayName(userId: string): Promise<string | null>;
+  getInviterProfile(
+    userId: string,
+  ): Promise<{ displayName: string | null; avatarUrl: string | null }>;
   inviteByEmail(
     projectId: string,
     invitedBy: string,

@@ -22,6 +22,7 @@ import { KanbanFilters } from "./KanbanFilters";
 import { DEFAULT_KANBAN_COLUMNS, type KanbanTaskContext } from "./types";
 import {
 	applyBoardFilters,
+	applyBoardSearch,
 	selectAllTasksWithContext,
 } from "./selectors";
 
@@ -72,6 +73,8 @@ export function KanbanView() {
 			})),
 		);
 	const roadmapId = useRoadmapStore((s) => s.roadmap?.id ?? "");
+	// Ephemeral free-text search — intentionally NOT persisted.
+	const [searchQuery, setSearchQuery] = useState("");
 
 	// Restore persisted filters when roadmap changes
 	useEffect(() => {
@@ -100,8 +103,8 @@ export function KanbanView() {
 		[epics, milestones],
 	);
 	const filteredRows = useMemo(
-		() => applyBoardFilters(allRows, boardFilters),
-		[allRows, boardFilters],
+		() => applyBoardSearch(applyBoardFilters(allRows, boardFilters), searchQuery),
+		[allRows, boardFilters, searchQuery],
 	);
 
 	const storeColumns = useMemo(
@@ -204,7 +207,10 @@ export function KanbanView() {
 
 	return (
 		<div className="flex flex-col h-full bg-white">
-			<KanbanFilters />
+			<KanbanFilters
+				searchQuery={searchQuery}
+				onSearchChange={setSearchQuery}
+			/>
 			<DndContext
 				sensors={sensors}
 				collisionDetection={closestCorners}
