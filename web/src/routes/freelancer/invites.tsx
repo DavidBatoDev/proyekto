@@ -7,7 +7,8 @@ import { useAuthStore } from "@/stores/authStore";
 export const Route = createFileRoute("/freelancer/invites")({
   beforeLoad: () => {
     const { isAuthenticated } = useAuthStore.getState();
-    if (!isAuthenticated) throw redirect({ to: "/auth/login" });
+    if (!isAuthenticated)
+      throw redirect({ to: "/auth/login", search: { redirect: "/freelancer/invites" } });
   },
   component: FreelancerInvitesPage,
 });

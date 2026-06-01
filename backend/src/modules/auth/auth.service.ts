@@ -113,19 +113,21 @@ export class AuthService {
   }
 
   async switchPersona(userId: string, dto: SwitchPersonaDto): Promise<Profile> {
+    const profile = await this.authRepo.getProfile(userId);
+    if (!profile) throw new NotFoundException('Profile not found');
+
     if (dto.persona === 'consultant') {
-      const profile = await this.authRepo.getProfile(userId);
-      if (!profile) throw new NotFoundException('Profile not found');
       if (!profile.is_consultant_verified) {
         throw new ForbiddenException(
           'Consultant verification required to switch to consultant persona',
         );
       }
     }
-    if (dto.persona === 'freelancer') {
-      // Quality-bar enforcement. The dashboard checklist normally guides
-      // the user to satisfy these BEFORE they hit this endpoint, but the
-      // server is the source of truth.
+
+    if (dto.persona === 'freelancer' && !profile.is_consultant_verified) {
+      // Verified consultants have been vetted at a higher standard than the
+      // freelancer eligibility bar, so they may switch freely. Non-consultants
+      // must still satisfy the quality bar before entering the marketplace.
       const { eligible, missing } =
         await this.freelancerEligibility.check(userId);
       if (!eligible) {
@@ -134,6 +136,7 @@ export class AuthService {
         );
       }
     }
+
     return this.authRepo.switchPersona(userId, dto.persona);
   }
 

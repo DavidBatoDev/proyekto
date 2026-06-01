@@ -319,12 +319,12 @@ export function SignupForm(_props: SignupFormProps) {
         }
       }
 
+      const postSignupRedirect = sessionStorage.getItem("signup_redirect");
       clearSignupData();
 
-      // Both lanes route through /welcome — the route renders a lane-specific
-      // deck (3 slides for consultants → /consultant/apply, 4 slides for
-      // client/freelancer → /dashboard).
-      navigate({ to: "/welcome" });
+      // If the user landed here from an invite link, send them back to it.
+      // Otherwise route through /welcome so onboarding runs as normal.
+      navigate({ to: postSignupRedirect || "/welcome" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Verification failed");
     } finally {
@@ -361,6 +361,29 @@ export function SignupForm(_props: SignupFormProps) {
       <div style={{ marginBottom: "24px" }}>
         <BrandMark className="h-8 text-slate-900" />
       </div>
+
+      {/* Invite context banner — shown when user arrived from an invite link */}
+      {search.redirect?.includes("invites") && (
+        <div
+          style={{
+            background: "#F0FDF4",
+            border: "1px solid #86EFAC",
+            borderRadius: "12px",
+            padding: "12px 16px",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "10px",
+            marginBottom: "20px",
+            fontFamily: "'Manrope', sans-serif",
+          }}
+        >
+          <span style={{ fontSize: "1.1rem", lineHeight: 1 }}>✉️</span>
+          <p style={{ margin: 0, fontSize: "0.88rem", color: "#166534", lineHeight: 1.5 }}>
+            <strong>You've been invited to join a project.</strong>{" "}
+            Create an account to accept your invitation.
+          </p>
+        </div>
+      )}
 
       {/* Each step renders its own header (Lane, Account, Password, Profile).
           The Verify step has its own self-contained UI below. */}
@@ -632,6 +655,7 @@ export function SignupForm(_props: SignupFormProps) {
                 Already have an account?{" "}
                 <Link
                   to="/auth/login"
+                  search={search.redirect ? { redirect: search.redirect } : {}}
                   style={{ color: "#1E293B", fontWeight: 700, textDecoration: "none" }}
                 >
                   Sign in

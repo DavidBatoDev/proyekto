@@ -24,6 +24,7 @@ describe('ProjectsService (permissions)', () => {
   };
   const dataCache = {
     getAuthTtlSeconds: jest.fn().mockReturnValue(45),
+    getDashboardTtlSeconds: jest.fn().mockReturnValue(45),
     rememberJson: jest.fn(async (_key: string, _ttl: number, loader: any) =>
       loader(),
     ),
@@ -74,6 +75,7 @@ describe('ProjectsService (permissions)', () => {
       { from: jest.fn() } as any,
       dataCache as any,
       cacheInvalidation as any,
+      { get: jest.fn() } as any,
     );
   };
 
@@ -459,3 +461,4 @@ describe('ProjectsService (permissions)', () => {
     );
   });
 });
+

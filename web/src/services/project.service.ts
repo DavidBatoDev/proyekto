@@ -241,6 +241,11 @@ export interface ProjectInvite {
     display_name: string | null;
     avatar_url: string | null;
   } | null;
+  email_delivery?: {
+    sent: boolean;
+    reason?: string;
+    messageId?: string;
+  };
 }
 
 class ProjectService {

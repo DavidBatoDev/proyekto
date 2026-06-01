@@ -20,7 +20,8 @@ import {
 export const Route = createFileRoute("/teams/me/invites")({
 	beforeLoad: () => {
 		const { isAuthenticated } = useAuthStore.getState();
-		if (!isAuthenticated) throw redirect({ to: "/auth/login" });
+		if (!isAuthenticated)
+			throw redirect({ to: "/auth/login", search: { redirect: "/teams/me/invites" } });
 	},
 	component: TeamInvitesPage,
 });
