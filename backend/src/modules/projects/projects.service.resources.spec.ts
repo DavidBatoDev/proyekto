@@ -71,6 +71,7 @@ describe('ProjectsService (resources)', () => {
       { from: jest.fn() } as any,
       dataCache as any,
       cacheInvalidation as any,
+      { get: jest.fn() } as any,
     );
   };
 
@@ -155,3 +156,4 @@ describe('ProjectsService (resources)', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
+

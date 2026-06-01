@@ -3,12 +3,14 @@ import { createPortal } from "react-dom";
 import { X, Copy, Users, Link2, Plus, Trash2, Check } from "lucide-react";
 import type { ShareRole, InvitedUser, RoadmapShare } from "@/types/roadmap";
 import { roadmapSharesServiceAPI } from "@/services/roadmap-shares.service";
+import { projectService } from "@/services/project.service";
 
 interface ShareRoadmapModalProps {
   isOpen: boolean;
   onClose: () => void;
   roadmapId: string;
   roadmapName: string;
+  projectId?: string;
 }
 
 type Tab = "invite" | "link";
@@ -51,6 +53,7 @@ export const ShareRoadmapModal = ({
   onClose,
   roadmapId,
   roadmapName,
+  projectId,
 }: ShareRoadmapModalProps) => {
   const [activeTab, setActiveTab] = useState<Tab>("invite");
   const [loading, setLoading] = useState(false);
@@ -127,21 +130,39 @@ export const ShareRoadmapModal = ({
   };
 
   const handleSaveInvites = async () => {
+    if (!projectId) {
+      alert("Cannot send invitations: project context is missing.");
+      return;
+    }
+    if (invitedEmails.length === 0) {
+      alert("Add at least one email address before saving.");
+      return;
+    }
     try {
       setLoading(true);
-      const result = await roadmapSharesServiceAPI.sharing.shareRoadmap(roadmapId, {
-        invitedEmails,
-        defaultRole,
-        expiresAt: undefined,
-      });
-      
-      setShareSettings(result);
-      setShareUrl(result.share_url);
-      
-      alert("Invitations saved successfully!");
+      const inviteResults = await Promise.all(
+        invitedEmails.map((inv) =>
+          projectService.inviteByEmail(projectId, {
+            email: inv.email,
+            default_role: inv.role === "editor" ? "editor" : "viewer",
+          }),
+        ),
+      );
+      setInvitedEmails([]);
+      const failedEmails = inviteResults
+        .filter((result) => result.email_delivery?.sent === false)
+        .map((result) => result.invitee_email)
+        .filter((email): email is string => Boolean(email && email.trim().length > 0));
+      if (failedEmails.length > 0) {
+        alert(
+          `Invites were created, but email delivery failed for: ${failedEmails.join(", ")}. Share the invite link manually.`,
+        );
+      } else {
+        alert("Invitations sent successfully!");
+      }
     } catch (error) {
-      console.error("Failed to save invitations:", error);
-      alert("Failed to save invitations. Please try again.");
+      console.error("Failed to send invitations:", error);
+      alert("Failed to send invitations. Please try again.");
     } finally {
       setLoading(false);
     }

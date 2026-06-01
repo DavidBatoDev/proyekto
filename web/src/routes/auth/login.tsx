@@ -13,26 +13,30 @@ import { SignupLayout } from "../../components/auth/signup/SignupLayout";
 import { BrandMark } from "@/components/brand/BrandMark";
 
 export const Route = createFileRoute("/auth/login")({
-  beforeLoad: () => {
+  validateSearch: (search: Record<string, unknown>) => ({
+    redirect: (search.redirect as string) || undefined,
+  }),
+  beforeLoad: ({ search }) => {
     const { isAuthenticated, isLoading } = useAuthStore.getState();
 
     // Only redirect if auth is loaded and user is authenticated
     if (!isLoading && isAuthenticated) {
-      throw redirect({
-        to: "/dashboard",
-      });
+      throw redirect({ to: (search.redirect as string) || "/dashboard" });
     }
   },
   component: RouteComponent,
 });
 
 function RouteComponent() {
+  const { redirect: redirectTo } = Route.useSearch();
   const signIn = useAuthStore((state) => state.signIn);
   const signOut = useAuthStore((state) => state.signOut);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isAuthLoading = useAuthStore((state) => state.isLoading);
   const navigate = useNavigate();
   const toast = useToast();
+
+  const isInviteFlow = !!redirectTo?.includes("invites");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -40,9 +44,9 @@ function RouteComponent() {
   // Redirect if already authenticated
   useEffect(() => {
     if (!isAuthLoading && isAuthenticated) {
-      navigate({ to: "/dashboard" });
+      navigate({ to: redirectTo || "/dashboard" });
     }
-  }, [isAuthenticated, isAuthLoading, navigate]);
+  }, [isAuthenticated, isAuthLoading, navigate, redirectTo]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isVerifyStep, setIsVerifyStep] = useState(false);
@@ -228,15 +232,14 @@ function RouteComponent() {
           return;
         }
 
-        // Both lanes route through /welcome on first login — the welcome
-        // route renders a lane-specific deck.
         if (!profile?.has_completed_onboarding) {
+          // Must complete onboarding first; invite will still be waiting after.
           navigate({ to: "/welcome" });
         } else {
-          navigate({ to: "/dashboard" });
+          navigate({ to: redirectTo || "/dashboard" });
         }
       } else {
-        navigate({ to: "/dashboard" });
+        navigate({ to: redirectTo || "/dashboard" });
       }
     } catch (err) {
       console.error("Login error:", err);
@@ -476,6 +479,28 @@ function RouteComponent() {
       <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
         {/* Logo */}
         <BrandMark className="h-8 text-slate-900" />
+
+        {/* Invite context banner */}
+        {isInviteFlow && (
+          <div
+            style={{
+              background: "#F0FDF4",
+              border: "1px solid #86EFAC",
+              borderRadius: "12px",
+              padding: "12px 16px",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "10px",
+              fontFamily: "'Manrope', sans-serif",
+            }}
+          >
+            <span style={{ fontSize: "1.1rem", lineHeight: 1 }}>✉️</span>
+            <p style={{ margin: 0, fontSize: "0.88rem", color: "#166534", lineHeight: 1.5 }}>
+              <strong>You've been invited to join a project.</strong>{" "}
+              Please create an account or sign in first to join.
+            </p>
+          </div>
+        )}
 
         {/* Header */}
         <div>
@@ -728,6 +753,7 @@ function RouteComponent() {
           New to Proyekto?{" "}
           <Link
             to="/auth/signup"
+            search={redirectTo ? { redirect: redirectTo } : {}}
             style={{ color: "#1E293B", fontWeight: 700, textDecoration: "none" }}
           >
             Create an account

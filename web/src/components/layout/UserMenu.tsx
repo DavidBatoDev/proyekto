@@ -1,18 +1,23 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ChevronDown, LogOut, ShieldCheck, User } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, Loader2, LogOut, ShieldCheck, User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { switchPersona } from "@/lib/auth-api";
+import { extractApiErrorMessage } from "@/lib/permissionErrors";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { adminService } from "@/services/admin.service";
 import { useAuthStore } from "@/stores/authStore";
 
 export default function UserMenu() {
 	const [isOpen, setIsOpen] = useState(false);
+	const [switching, setSwitching] = useState(false);
+	const [switchError, setSwitchError] = useState<string | null>(null);
 	const dropdownRef = useRef<HTMLDivElement>(null);
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const { data: profile } = useProfileQuery();
-	const { user, signOut } = useAuthStore();
+	const { user, signOut, setProfile } = useAuthStore();
 	const navigate = useNavigate();
+	const qc = useQueryClient();
 
 	const { data: adminProfile } = useQuery({
 		queryKey: ["adminMe"],
@@ -35,6 +40,8 @@ export default function UserMenu() {
 
 		if (isOpen) {
 			document.addEventListener("mousedown", handleClickOutside);
+		} else {
+			setSwitchError(null);
 		}
 
 		return () => {
@@ -53,7 +60,36 @@ export default function UserMenu() {
 	const handleLogout = async () => {
 		await signOut();
 		setIsOpen(false);
+		setSwitchError(null);
 		navigate({ to: "/" });
+	};
+
+	const handleSwitchPersona = async () => {
+		if (!profile || switching) return;
+		const target =
+			profile.active_persona === "consultant" ? "freelancer" : "consultant";
+		setSwitching(true);
+		setSwitchError(null);
+		try {
+			const { data } = await switchPersona(target);
+			setProfile(data);
+			// Patch both caches immediately so useProfileQuery never
+			// overwrites Zustand with a stale active_persona.
+			qc.setQueryData(
+				["profile", user?.id ?? ""],
+				(old: any) => old ? { ...old, active_persona: data.active_persona } : old,
+			);
+			setIsOpen(false);
+			navigate({ to: "/dashboard" });
+		} catch (err: any) {
+			const msg = extractApiErrorMessage(
+				err?.response?.data,
+				err?.message ?? "Switch failed. Try again.",
+			);
+			setSwitchError(msg);
+		} finally {
+			setSwitching(false);
+		}
 	};
 
 	const getDropdownStyle = () => ({
@@ -89,6 +125,11 @@ export default function UserMenu() {
 					<span className="max-w-[120px] truncate text-sm font-semibold text-slate-900">
 						{getDisplayName()}
 					</span>
+					{profile?.active_persona && profile.active_persona !== "admin" && (
+						<span className="text-xs font-medium capitalize text-slate-500">
+							{profile.active_persona}
+						</span>
+					)}
 				</div>
 
 				<ChevronDown
@@ -104,9 +145,24 @@ export default function UserMenu() {
 					style={getDropdownStyle()}
 				>
 					<div className="border-b border-slate-100 px-4 py-3">
-						<p className="text-sm font-semibold text-slate-900">
-							{getDisplayName()}
-						</p>
+						<div className="flex items-center justify-between gap-2">
+							<p className="text-sm font-semibold text-slate-900 truncate">
+								{getDisplayName()}
+							</p>
+							{profile?.active_persona && profile.active_persona !== "admin" && (
+								<span
+									className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${
+										profile.active_persona === "consultant"
+											? "bg-teal-50 text-teal-700 border border-teal-200"
+											: profile.active_persona === "freelancer"
+												? "bg-orange-50 text-orange-600 border border-orange-200"
+												: "bg-gray-100 text-gray-600 border border-gray-200"
+									}`}
+								>
+									{profile.active_persona}
+								</span>
+							)}
+						</div>
 						<p className="truncate text-xs text-slate-500">{profile?.email}</p>
 					</div>
 
@@ -124,6 +180,45 @@ export default function UserMenu() {
 								<div className="my-1 border-t border-slate-100" />
 							</>
 						)}
+
+						{profile &&
+							(profile.active_persona === "consultant" ||
+								(profile.active_persona === "freelancer" &&
+									profile.is_consultant_verified)) && (
+								<>
+									<button
+										type="button"
+										onClick={handleSwitchPersona}
+										disabled={switching}
+										className="flex w-full cursor-pointer items-center gap-3 px-4 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60"
+									>
+										{switching ? (
+											<Loader2 size={16} className="animate-spin" />
+										) : (
+											<ArrowLeftRight size={16} />
+										)}
+										Switch to{" "}
+										{profile.active_persona === "consultant"
+											? "Freelancer"
+											: "Consultant"}
+									</button>
+									{switchError && (
+										<div className="mx-4 mb-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+											<p className="text-xs text-red-600">{switchError}</p>
+											{profile?.active_persona === "consultant" && (
+												<Link
+													to="/freelancer/go-live"
+													onClick={() => setIsOpen(false)}
+													className="mt-1 inline-block text-xs font-semibold text-[#ff9933] hover:underline"
+												>
+													Complete freelancer profile →
+												</Link>
+											)}
+										</div>
+									)}
+									<div className="my-1 border-t border-slate-100" />
+								</>
+							)}
 
 						<Link
 							to="/profile/$profileId"

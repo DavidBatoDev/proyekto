@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/ui/button";
 import { useAuthStore } from "@/stores/authStore";
+import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { supabase } from "@/lib/supabase";
 import { apiClient } from "@/api";
 import { useToast } from "@/hooks/useToast";
@@ -36,6 +37,7 @@ export const Route = createFileRoute("/welcome")({
 // ─── Page shell — branches on lane ──────────────────────────────────────────
 
 function WelcomePage() {
+  useProfileQuery(); // ensures profile is fetched and synced to the store on fresh loads
   const profile = useAuthStore((s) => s.profile);
 
   // Wait for profile hydration before deciding the lane. Guessing a default

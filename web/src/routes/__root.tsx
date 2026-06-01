@@ -2,7 +2,6 @@ import { TanStackDevtools } from "@tanstack/react-devtools";
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
-import { FreelancerSystemStatusLayer } from "../components/layout/FreelancerSystemStatusLayer";
 import Header from "../components/layout/Header";
 import { MigrationHandler } from "../components/migration";
 import { FloatingActiveTimer } from "../components/team-time/FloatingActiveTimer";
@@ -21,7 +20,6 @@ function RootLayout() {
 	return (
 		<ToastProvider>
 			<Header />
-			<FreelancerSystemStatusLayer />
 			<Outlet />
 			<FloatingActiveTimer />
 			<MigrationHandler />

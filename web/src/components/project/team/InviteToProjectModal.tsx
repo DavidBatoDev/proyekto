@@ -37,7 +37,7 @@ export function InviteToProjectModal({
 		e.preventDefault();
 		if (!email.trim() || inviteMutation.isPending) return;
 		try {
-			await inviteMutation.mutateAsync({
+			const createdInvite = await inviteMutation.mutateAsync({
 				email: email.trim(),
 				// `role` is the legacy lane field on project_invites; we
 				// always send "member" since the lane concept is gone.
@@ -47,7 +47,16 @@ export function InviteToProjectModal({
 				position: position.trim() || undefined,
 				message: message.trim() || undefined,
 			});
-			toast.success(`Invite sent to ${email.trim()}`);
+			if (createdInvite.email_delivery?.sent === false) {
+				const reason = createdInvite.email_delivery.reason?.trim();
+				toast.warning(
+					reason && reason.length > 0
+						? `Invite created, but email was not delivered: ${reason}`
+						: "Invite created, but email was not delivered. Please share the invite link manually.",
+				);
+			} else {
+				toast.success(`Invite sent to ${email.trim()}`);
+			}
 			onClose();
 		} catch (err) {
 			toast.error((err as Error).message);

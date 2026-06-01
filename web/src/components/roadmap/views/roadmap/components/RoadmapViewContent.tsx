@@ -915,6 +915,7 @@ export function RoadmapViewContent({
           onClose={() => setIsShareModalOpen(false)}
           roadmapId={roadmap.id}
           roadmapName={roadmap.name}
+          projectId={projectId}
         />
       )}
 

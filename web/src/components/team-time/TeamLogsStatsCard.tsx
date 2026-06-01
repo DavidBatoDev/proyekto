@@ -102,7 +102,7 @@ export function TeamLogsStatsCard({
 		isHours?: boolean;
 	}[] = [
 		{
-			label: "Balance",
+			label: "Pending Balance",
 			values: renderCurrencies.map((c) => ({
 				currency: c,
 				amount: pick("pendingFees", c),

@@ -26,6 +26,7 @@ import { LanguageModal } from "@/components/profile/LanguageModal";
 import { SpecializationModal } from "@/components/profile/SpecializationModal";
 import { LicenseModal } from "@/components/profile/LicenseModal";
 import { IdentityDocumentModal } from "@/components/profile/IdentityDocumentModal";
+import { AccountTypeSection } from "@/components/profile/AccountTypeSection";
 import {
   User,
   Camera,
@@ -776,6 +777,29 @@ function ProfilePage() {
               )}
             </div>
           </Card>
+
+          {/* ══ ACCOUNT TYPE SECTION (owner only) ════════════════════════ */}
+          {isOwner && (
+            <div className="mb-3">
+              <AccountTypeSection
+                profile={profile}
+                isOwner={isOwner}
+                onSwitch={(updated) => {
+                  useAuthStore.getState().setProfile(updated);
+                  // Immediately patch both caches so useProfileQuery never
+                  // overwrites Zustand with a stale active_persona.
+                  qc.setQueryData<FullProfile>(
+                    profileKeys.full(profileId),
+                    (old) => old ? { ...old, active_persona: updated.active_persona } : old,
+                  );
+                  qc.setQueryData(
+                    ["profile", user?.id ?? ""],
+                    (old: any) => old ? { ...old, active_persona: updated.active_persona } : old,
+                  );
+                }}
+              />
+            </div>
+          )}
 
           {/* ══ 2-COLUMN LAYOUT ════════════════════════════════════════════ */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">

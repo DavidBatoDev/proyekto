@@ -7,6 +7,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import {
@@ -80,6 +81,7 @@ export class ProjectsService {
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly cache: RedisDataCacheService,
     private readonly cacheInvalidation: RedisCacheInvalidationService,
+    private readonly config: ConfigService,
   ) {}
 
   private async invalidateDashboardCache(): Promise<void> {
@@ -1020,6 +1022,289 @@ export class ProjectsService {
     return member;
   }
 
+  private async getGmailAccessToken(
+    clientId: string,
+    clientSecret: string,
+    refreshToken: string,
+  ): Promise<string> {
+    const body = new URLSearchParams({
+      client_id:     clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type:    'refresh_token',
+    });
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:    body.toString(),
+    });
+    if (!res.ok) throw new Error(`Gmail token refresh failed: ${await res.text()}`);
+    const { access_token } = await res.json() as { access_token: string };
+    return access_token;
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  private sanitizeHeaderValue(value: string): string {
+    return value.replace(/[\r\n]+/g, ' ').trim();
+  }
+
+  private buildInviteEmailRaw(
+    to: string,
+    fromEmail: string | null | undefined,
+    inviterName: string,
+    projectName: string,
+    inviteLink: string,
+    invitedPosition?: string | null,
+    inviteMessage?: string | null,
+  ): string {
+    const normalizedFromEmail = (fromEmail ?? '').trim();
+    const fromHeader =
+      normalizedFromEmail.length > 0
+        ? `From: ${this.sanitizeHeaderValue(`Proyekto <${normalizedFromEmail}>`)}`
+        : null;
+    const safeInviterName = this.escapeHtml(inviterName.trim());
+    const safeProjectName = this.escapeHtml(projectName.trim());
+    const safeInviteLink = this.escapeHtml(inviteLink.trim());
+    const normalizedPosition = invitedPosition?.trim() ?? '';
+    const normalizedNote = inviteMessage?.trim() ?? '';
+    const safePosition =
+      normalizedPosition.length > 0
+        ? this.escapeHtml(normalizedPosition)
+        : null;
+    const safeNote =
+      normalizedNote.length > 0 ? this.escapeHtml(normalizedNote) : null;
+
+    const subject = `${inviterName} invited you to collaborate on ${projectName}`;
+    const previewText = `${inviterName} invited you to join ${projectName} on Proyekto.`;
+    const safePreviewText = this.escapeHtml(previewText);
+    const positionBlock = safePosition
+      ? `
+                      <p style="margin:14px 0 4px;color:#64748b;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;">Role</p>
+                      <p style="margin:0;color:#0f172a;font-size:15px;line-height:1.4;font-weight:600;">${safePosition}</p>
+      `
+      : '';
+    const noteBlock = safeNote
+      ? `
+                <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 22px;background-color:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;">
+                  <tr>
+                    <td style="padding:14px 16px;">
+                      <p style="margin:0 0 6px;color:#1e3a8a;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;">Personal note</p>
+                      <p style="margin:0;color:#1e293b;font-size:14px;line-height:1.6;">${safeNote}</p>
+                    </td>
+                  </tr>
+                </table>
+      `
+      : '';
+
+    const textLines: string[] = [
+      `${inviterName} invited you to collaborate on ${projectName} in Proyekto.`,
+      '',
+      'Open your invitation:',
+      inviteLink,
+      '',
+      'Project:',
+      projectName,
+    ];
+    if (normalizedPosition.length > 0) {
+      textLines.push(`Role: ${normalizedPosition}`);
+    }
+    if (normalizedNote.length > 0) {
+      textLines.push('', `Personal note: ${normalizedNote}`);
+    }
+    textLines.push(
+      '',
+      'If you do not have an account yet, sign up first with this email address and your invitation will be waiting for you.',
+      'If the button does not work, copy and paste the link above into your browser.',
+      '',
+      'You received this email because someone invited you to a project on Proyekto.',
+    );
+    const textBody = textLines.join('\n');
+
+    const html = `
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project invitation</title>
+  </head>
+  <body style="margin:0;padding:0;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${safePreviewText}</div>
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:#f1f5f9;padding:28px 12px;">
+      <tr>
+        <td align="center">
+          <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="width:600px;max-width:600px;background-color:#ffffff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
+            <tr>
+              <td style="padding:26px 32px;background-color:#0f172a;">
+                <p style="margin:0 0 10px;color:#93c5fd;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;">Proyekto</p>
+                <h1 style="margin:0 0 10px;color:#ffffff;font-size:28px;line-height:1.2;font-weight:700;">You are invited to collaborate</h1>
+                <p style="margin:0;color:#cbd5e1;font-size:15px;line-height:1.6;">
+                  <strong style="color:#ffffff;">${safeInviterName}</strong> invited you to join
+                  <strong style="color:#ffffff;">${safeProjectName}</strong>.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:30px 32px;">
+                <p style="margin:0 0 18px;color:#334155;font-size:15px;line-height:1.6;">
+                  Open your invitation to review the project and start collaborating.
+                </p>
+                <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 22px;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+                  <tr>
+                    <td style="padding:16px 18px;">
+                      <p style="margin:0 0 4px;color:#64748b;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;">Project</p>
+                      <p style="margin:0;color:#0f172a;font-size:16px;line-height:1.5;font-weight:700;">${safeProjectName}</p>
+                      ${positionBlock}
+                    </td>
+                  </tr>
+                </table>
+                ${noteBlock}
+                <div style="margin:30px 0;text-align:center;">
+                  <a href="${safeInviteLink}" style="display:inline-block;padding:14px 28px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;border-radius:10px;">Open Invitation</a>
+                </div>
+                <p style="margin:0 0 12px;color:#475569;font-size:13px;line-height:1.6;">
+                  If you do not have an account yet, sign up first with this email address and your invitation will be waiting for you.
+                </p>
+                <p style="margin:0 0 8px;color:#64748b;font-size:12px;line-height:1.5;">Button not working? Copy and paste this link:</p>
+                <p style="margin:0;line-height:1.6;">
+                  <a href="${safeInviteLink}" style="color:#1d4ed8;font-size:12px;text-decoration:underline;word-break:break-all;">${safeInviteLink}</a>
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:18px 24px;background-color:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
+                <p style="margin:0;color:#94a3b8;font-size:12px;line-height:1.5;">
+                  You received this email because someone invited you to a project on Proyekto.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`.trim();
+
+    const boundary = `invite_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const rawLines = [
+      fromHeader,
+      `To: ${this.sanitizeHeaderValue(to)}`,
+      `Subject: ${this.sanitizeHeaderValue(subject)}`,
+      'MIME-Version: 1.0',
+      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+      '',
+      `--${boundary}`,
+      'Content-Type: text/plain; charset="UTF-8"',
+      'Content-Transfer-Encoding: 7bit',
+      '',
+      textBody,
+      '',
+      `--${boundary}`,
+      'Content-Type: text/html; charset="UTF-8"',
+      'Content-Transfer-Encoding: 7bit',
+      '',
+      html,
+      '',
+      `--${boundary}--`,
+      '',
+    ].filter((line): line is string => line !== null);
+    const raw = rawLines.join('\r\n');
+
+    return Buffer.from(raw).toString('base64url');
+  }
+
+  private async sendInviteEmail(payload: {
+    to: string;
+    inviterName: string;
+    projectName: string;
+    invitedPosition?: string | null;
+    inviteMessage?: string | null;
+  }): Promise<{ sent: boolean; reason?: string; messageId?: string }> {
+    const clientId =
+      this.config.get<string>('GMAIL_CLIENT_ID') ??
+      this.config.get<string>('GOOGLE_CLIENT_ID');
+    const clientSecret =
+      this.config.get<string>('GMAIL_CLIENT_SECRET') ??
+      this.config.get<string>('GOOGLE_CLIENT_SECRET');
+    const refreshToken =
+      this.config.get<string>('GMAIL_REFRESH_TOKEN') ??
+      this.config.get<string>('GOOGLE_REFRESH_TOKEN');
+    const fromEmail =
+      this.config.get<string>('INVITE_FROM_EMAIL') ??
+      this.config.get<string>('GMAIL_FROM_EMAIL') ??
+      '';
+    if (!clientId || !clientSecret || !refreshToken) {
+      this.logger.warn(
+        'sendInviteEmail: Gmail credentials not configured (set GMAIL_* or GOOGLE_* env vars)',
+      );
+      return {
+        sent: false,
+        reason:
+          'Email service is not configured on the server (missing Gmail OAuth credentials).',
+      };
+    }
+
+    const appUrl = this.config.get<string>('APP_URL', 'http://localhost:3000');
+    const inviteLink = `${appUrl}/freelancer/invites`;
+
+    try {
+      const accessToken = await this.getGmailAccessToken(
+        clientId,
+        clientSecret,
+        refreshToken,
+      );
+      const raw = this.buildInviteEmailRaw(
+        payload.to,
+        fromEmail,
+        payload.inviterName,
+        payload.projectName,
+        inviteLink,
+        payload.invitedPosition,
+        payload.inviteMessage,
+      );
+
+      const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ raw }),
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        this.logger.warn(`sendInviteEmail: Gmail API error for ${payload.to}: ${err}`);
+        return {
+          sent: false,
+          reason: `Gmail API rejected the message (${res.status}).`,
+        };
+      }
+
+      const { id } = (await res.json()) as { id: string };
+      this.logger.log(`sendInviteEmail: sent to ${payload.to} (messageId=${id})`);
+      return { sent: true, messageId: id };
+    } catch (err) {
+      // Non-fatal - invite row is already created; log and continue.
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `sendInviteEmail: failed for ${payload.to}: ${message}`,
+      );
+      return {
+        sent: false,
+        reason: `Email send failed: ${message}`,
+      };
+    }
+  }
+
   async inviteByEmail(
     projectId: string,
     callerId: string,
@@ -1037,10 +1322,8 @@ export class ProjectsService {
     const inviterName =
       (await this.projectsRepo.getProfileDisplayName(callerId)) ||
       'A team lead';
-    const projectTitle =
-      typeof project.title === 'string' && project.title.trim().length > 0
-        ? project.title.trim()
-        : 'this project';
+
+    // Send invite email and include delivery status in the API response.
     const inviteNote =
       typeof invite.message === 'string' && invite.message.trim().length > 0
         ? invite.message.trim()
@@ -1050,6 +1333,19 @@ export class ProjectsService {
       invite.invited_position.trim().length > 0
         ? invite.invited_position.trim()
         : null;
+    const emailDelivery = await this.sendInviteEmail({
+      to: dto.email.trim(),
+      inviterName,
+      projectName: typeof project.title === 'string' && project.title.trim()
+        ? project.title.trim()
+        : 'a project',
+      invitedPosition,
+      inviteMessage: inviteNote,
+    });
+    const projectTitle =
+      typeof project.title === 'string' && project.title.trim().length > 0
+        ? project.title.trim()
+        : 'this project';
     const inviteMessage = this.buildInviteReceivedMessage({
       inviterName,
       projectTitle,
@@ -1096,7 +1392,10 @@ export class ProjectsService {
     }
 
     await this.invalidateDashboardCache();
-    return invite;
+    return {
+      ...invite,
+      email_delivery: emailDelivery,
+    };
   }
 
   async listInvitesForUser(
@@ -1629,3 +1928,4 @@ export class ProjectsService {
 function invoiceRound(value: number): number {
   return Math.round(value * 100) / 100;
 }
+
