@@ -82,6 +82,19 @@ class EnvironmentVariables {
   @IsString()
   OPENAI_API_KEY?: string;
 
+  @IsString()
+  GMAIL_CLIENT_ID: string;
+
+  @IsString()
+  GMAIL_CLIENT_SECRET: string;
+
+  @IsString()
+  GMAIL_REFRESH_TOKEN: string;
+
+  @IsOptional()
+  @IsString()
+  GMAIL_FROM_EMAIL?: string;
+
   @IsOptional()
   @IsString()
   ROADMAP_AI_AUTO_TITLE_ENABLED?: string;

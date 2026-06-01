@@ -13,6 +13,12 @@ import {
   SwitchPersonaDto,
   UpdateProfileDto,
 } from './dto/auth.dto';
+import {
+  EmailVerificationConfirmDto,
+  EmailVerificationRequestDto,
+  PasswordResetConfirmDto,
+  PasswordResetRequestDto,
+} from './dto/email-auth.dto';
 import { Profile } from '../../common/entities';
 import { PersonalWorkspaceService } from '../projects/personal-workspace.service';
 import {
@@ -20,6 +26,7 @@ import {
   type FreelancerRequirement,
 } from '../profile/freelancer-eligibility.service';
 import { TeamsService } from '../teams/teams.service';
+import { EmailOtpService } from './email-otp.service';
 
 export interface CompleteOnboardingResult {
   profile: Profile;
@@ -40,6 +47,7 @@ export class AuthService {
     private readonly personalWorkspaceService: PersonalWorkspaceService,
     private readonly freelancerEligibility: FreelancerEligibilityService,
     private readonly teamsService: TeamsService,
+    private readonly emailOtpService: EmailOtpService,
   ) {}
 
   async getProfile(userId: string): Promise<ProfileWithEligibility> {
@@ -131,5 +139,21 @@ export class AuthService {
 
   async updateProfile(userId: string, dto: UpdateProfileDto): Promise<Profile> {
     return this.authRepo.updateProfile(userId, dto);
+  }
+
+  async requestEmailVerification(dto: EmailVerificationRequestDto) {
+    return this.emailOtpService.requestEmailVerification(dto);
+  }
+
+  async confirmEmailVerification(dto: EmailVerificationConfirmDto) {
+    return this.emailOtpService.confirmEmailVerification(dto);
+  }
+
+  async requestPasswordReset(dto: PasswordResetRequestDto) {
+    return this.emailOtpService.requestPasswordReset(dto);
+  }
+
+  async confirmPasswordReset(dto: PasswordResetConfirmDto) {
+    return this.emailOtpService.confirmPasswordReset(dto);
   }
 }

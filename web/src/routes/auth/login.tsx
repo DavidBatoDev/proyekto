@@ -8,6 +8,10 @@ import { useState, useEffect } from "react";
 import { useAuthStore } from "../../stores/authStore";
 import { supabase } from "../../lib/supabase";
 import { useToast } from "../../hooks/useToast";
+import {
+  confirmEmailVerificationCode,
+  requestEmailVerificationCode,
+} from "../../lib/email-otp-api";
 import { Eye, EyeOff } from "lucide-react";
 import { SignupLayout } from "../../components/auth/signup/SignupLayout";
 import { BrandMark } from "@/components/brand/BrandMark";
@@ -47,7 +51,6 @@ function RouteComponent() {
   const [isLoading, setIsLoading] = useState(false);
   const [isVerifyStep, setIsVerifyStep] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
-  const [sentVerificationCode, setSentVerificationCode] = useState("");
   const [isResending, setIsResending] = useState(false);
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [firstName, setFirstName] = useState("");
@@ -87,75 +90,6 @@ function RouteComponent() {
   function blurInput(e: React.FocusEvent<HTMLInputElement>) {
     e.currentTarget.style.border = "1px solid #CBD5E1";
     e.currentTarget.style.boxShadow = "none";
-  }
-
-  const EMAIL_FETCH_TIMEOUT_MS = 8000;
-
-  async function fetchWithTimeout(
-    resource: string,
-    options: RequestInit = {},
-    timeout = EMAIL_FETCH_TIMEOUT_MS,
-  ) {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-    try {
-      const res = await fetch(resource, {
-        ...options,
-        signal: controller.signal,
-      });
-      return res;
-    } finally {
-      clearTimeout(id);
-    }
-  }
-
-  async function sendVerificationEmail(
-    code: string,
-    targetEmail: string,
-    fName: string,
-    lName: string,
-  ) {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    try {
-      const response = await fetchWithTimeout(
-        `${supabaseUrl}/functions/v1/send-signup-email`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${supabaseAnonKey}`,
-            apikey: supabaseAnonKey,
-          },
-          body: JSON.stringify({
-            to: targetEmail,
-            firstName: fName,
-            lastName: lName,
-            verificationCode: code,
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        const text = await response.text().catch(() => null);
-        console.warn("send-signup-email returned non-OK:", text);
-        toast.error(
-          "Verification email could not be sent. You can resend the code.",
-        );
-        return;
-      }
-
-      toast.success("Check your email for the verification code");
-    } catch (emailError: any) {
-      if (emailError?.name === "AbortError") {
-        toast.error("Email sending timed out. You can resend the code.");
-      } else {
-        console.error("Error sending verification email:", emailError);
-        toast.error(
-          "Failed to send verification email. You can resend the code.",
-        );
-      }
-    }
   }
 
   const handleGoogleSignIn = async () => {
@@ -211,18 +145,23 @@ function RouteComponent() {
           // Force local sign out before verification flow.
           await signOut();
 
-          // Send verification code and show verification UI
-          const generatedCode = Math.floor(
-            100000 + Math.random() * 900000,
-          ).toString();
-          setSentVerificationCode(generatedCode);
+          // Request verification code from backend and show verification UI
           setVerificationCode("");
-          await sendVerificationEmail(
-            generatedCode,
-            email,
-            profile.first_name || "",
-            profile.last_name || "",
-          );
+          try {
+            await requestEmailVerificationCode({
+              email,
+              firstName: profile.first_name || "",
+              lastName: profile.last_name || "",
+              purpose: "login",
+            });
+            toast.success("Check your email for the verification code");
+          } catch (sendError) {
+            toast.error(
+              sendError instanceof Error
+                ? sendError.message
+                : "Verification email could not be sent. You can resend the code.",
+            );
+          }
           setIsVerifyStep(true);
           setIsLoading(false);
           return;
@@ -310,22 +249,16 @@ function RouteComponent() {
                 toast.error("Please enter the verification code");
                 return;
               }
-              if (verificationCode !== sentVerificationCode) {
-                toast.error("Invalid verification code");
-                return;
-              }
               setVerifyLoading(true);
               try {
+                await confirmEmailVerificationCode({
+                  email,
+                  code: verificationCode,
+                });
+
                 const { error: signInError } =
                   await supabase.auth.signInWithPassword({ email, password });
                 if (signInError) throw signInError;
-                const { data: authData } = await supabase.auth.getUser();
-                if (authData.user) {
-                  await supabase
-                    .from("profiles")
-                    .update({ is_email_verified: true })
-                    .eq("id", authData.user.id);
-                }
                 toast.success("Email verified successfully!");
                 navigate({ to: "/onboarding" });
               } catch (error) {
@@ -411,17 +344,14 @@ function RouteComponent() {
                 onClick={async () => {
                   setIsResending(true);
                   try {
-                    const generatedCode = Math.floor(
-                      100000 + Math.random() * 900000,
-                    ).toString();
-                    setSentVerificationCode(generatedCode);
                     setVerificationCode("");
-                    await sendVerificationEmail(
-                      generatedCode,
+                    await requestEmailVerificationCode({
                       email,
-                      firstName,
-                      lastName,
-                    );
+                      firstName: firstName || "",
+                      lastName: lastName || "",
+                      purpose: "login",
+                    });
+                    toast.success("Verification code resent to your email");
                   } catch (error) {
                     toast.error(
                       error instanceof Error
@@ -451,7 +381,6 @@ function RouteComponent() {
                 onClick={() => {
                   setIsVerifyStep(false);
                   setVerificationCode("");
-                  setSentVerificationCode("");
                 }}
                 style={{
                   background: "none",

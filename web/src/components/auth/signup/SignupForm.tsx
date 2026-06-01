@@ -8,6 +8,10 @@ import { supabase } from "../../../lib/supabase";
 import { useToast } from "../../../hooks/useToast";
 import { fetchProfile, profileKeys } from "../../../queries/profile";
 import { completeOnboarding, type OnboardingLane } from "../../../lib/auth-api";
+import {
+  confirmEmailVerificationCode,
+  requestEmailVerificationCode,
+} from "../../../lib/email-otp-api";
 import { SignupStepLane } from "./SignupStepLane";
 import { SignupStepAccount } from "./SignupStepAccount";
 import { SignupStepPassword } from "./SignupStepPassword";
@@ -104,14 +108,10 @@ export function SignupForm(_props: SignupFormProps) {
   );
 
   const [verificationCode, setVerificationCode] = useState("");
-  const [sentVerificationCode, setSentVerificationCode] = useState(() =>
-    getStored("signup_sentCode"),
-  );
   const [isLoading, setIsLoading] = useState(false);
   const [isResending, setIsResending] = useState(false);
 
   // ── Utilities ────────────────────────────────────────────────────────────
-  const EMAIL_TIMEOUT = 8000;
 
   const clearSignupData = () => {
     [
@@ -129,56 +129,10 @@ export function SignupForm(_props: SignupFormProps) {
       "signup_password",
       "signup_confirmPassword",
       "signup_acceptedTerms",
-      "signup_sentCode",
       "signup_redirect",
       "signup_lane",
     ].forEach((k) => sessionStorage.removeItem(k));
   };
-
-  async function fetchWithTimeout(
-    resource: string,
-    options: RequestInit = {},
-    timeout = EMAIL_TIMEOUT,
-  ) {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-    try {
-      return await fetch(resource, { ...options, signal: controller.signal });
-    } finally {
-      clearTimeout(id);
-    }
-  }
-
-  async function sendVerificationEmail(code: string) {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    try {
-      const res = await fetchWithTimeout(
-        `${supabaseUrl}/functions/v1/send-signup-email`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${supabaseAnonKey}`,
-            apikey: supabaseAnonKey,
-          },
-          body: JSON.stringify({ to: email, firstName, lastName, verificationCode: code }),
-        },
-      );
-      if (!res.ok) {
-        console.warn("send-signup-email", await res.text().catch(() => null));
-        toast.error("Verification email could not be sent. You can resend the code.");
-        return;
-      }
-      toast.success("Check your email for the verification code");
-    } catch (err: any) {
-      if (err?.name === "AbortError") {
-        toast.error("Email sending timed out. You can resend the code.");
-      } else {
-        toast.error("Failed to send verification email. You can resend the code.");
-      }
-    }
-  }
 
   // ── Step 1 → 2 (lane picked, advance to account) ────────────────────────
   const handleLaneNext = () => {
@@ -226,10 +180,6 @@ export function SignupForm(_props: SignupFormProps) {
       sessionStorage.setItem("signup_acceptedTerms", acceptedTerms.toString());
       sessionStorage.setItem("isInSignupFlow", "true");
 
-      const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
-      setSentVerificationCode(generatedCode);
-      sessionStorage.setItem("signup_sentCode", generatedCode);
-
       // 1. Create the Supabase auth user
       await signUp(email, password);
 
@@ -266,7 +216,21 @@ export function SignupForm(_props: SignupFormProps) {
       setStep(5);
 
       // 5. Send verification email — errors handled inside; user can resend
-      await sendVerificationEmail(generatedCode);
+      try {
+        await requestEmailVerificationCode({
+          email,
+          firstName,
+          lastName,
+          purpose: "signup",
+        });
+        toast.success("Check your email for the verification code");
+      } catch (sendErr) {
+        toast.error(
+          sendErr instanceof Error
+            ? sendErr.message
+            : "Verification email could not be sent. You can resend the code.",
+        );
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       sessionStorage.removeItem("isInSignupFlow");
@@ -294,13 +258,10 @@ export function SignupForm(_props: SignupFormProps) {
       toast.error("Please enter the verification code");
       return;
     }
-    if (verificationCode !== sentVerificationCode) {
-      toast.error("Invalid verification code");
-      return;
-    }
-
     setIsLoading(true);
     try {
+      await confirmEmailVerificationCode({ email, code: verificationCode });
+
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -308,12 +269,6 @@ export function SignupForm(_props: SignupFormProps) {
       if (signInError) throw signInError;
 
       const { data: authData } = await supabase.auth.getUser();
-      if (authData.user) {
-        await supabase
-          .from("profiles")
-          .update({ is_email_verified: true })
-          .eq("id", authData.user.id);
-      }
 
       toast.success("Email verified successfully!");
 
@@ -380,29 +335,13 @@ export function SignupForm(_props: SignupFormProps) {
   const handleResendCode = async () => {
     setIsResending(true);
     try {
-      const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
-      setSentVerificationCode(generatedCode);
       setVerificationCode("");
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const res = await fetchWithTimeout(
-        `${supabaseUrl}/functions/v1/send-signup-email`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${supabaseAnonKey}`,
-            apikey: supabaseAnonKey,
-          },
-          body: JSON.stringify({
-            to: email,
-            firstName,
-            lastName,
-            verificationCode: generatedCode,
-          }),
-        },
-      );
-      if (!res.ok) throw new Error("Failed to resend verification email");
+      await requestEmailVerificationCode({
+        email,
+        firstName,
+        lastName,
+        purpose: "signup",
+      });
       toast.success("Verification code resent to your email");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to resend code");

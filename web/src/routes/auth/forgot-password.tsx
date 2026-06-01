@@ -2,6 +2,10 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { SignupLayout } from "../../components/auth/signup/SignupLayout";
 import { useToast } from "../../hooks/useToast";
+import {
+  confirmPasswordResetCode,
+  requestPasswordResetCode,
+} from "../../lib/email-otp-api";
 import { BrandMark } from "@/components/brand/BrandMark";
 
 export const Route = createFileRoute("/auth/forgot-password")({
@@ -11,23 +15,6 @@ export const Route = createFileRoute("/auth/forgot-password")({
 function ForgotPasswordRoute() {
   const navigate = useNavigate();
   const toast = useToast();
-
-  const EMAIL_FETCH_TIMEOUT_MS = 8000;
-
-  async function fetchWithTimeout(
-    resource: string,
-    options: RequestInit = {},
-    timeout = EMAIL_FETCH_TIMEOUT_MS
-  ) {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-    try {
-      const res = await fetch(resource, { ...options, signal: controller.signal });
-      return res;
-    } finally {
-      clearTimeout(id);
-    }
-  }
 
   const [step, setStep] = useState<"request" | "verify">("request");
   const [email, setEmail] = useState("");
@@ -78,9 +65,6 @@ function ForgotPasswordRoute() {
     e.currentTarget.style.boxShadow = "none";
   }
 
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
   async function requestReset(e: React.FormEvent) {
     e.preventDefault();
 
@@ -91,31 +75,13 @@ function ForgotPasswordRoute() {
 
     setIsLoading(true);
     try {
-      const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/send-password-reset-email`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${supabaseAnonKey}`,
-          apikey: supabaseAnonKey,
-        },
-        body: JSON.stringify({ email }),
-      });
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => null);
-        console.warn("send-password-reset-email returned non-OK:", text);
-        toast.error("Could not send reset code. Please try again.");
-        return;
-      }
-
+      await requestPasswordResetCode({ email });
       toast.success("Check your email for the reset code");
       setStep("verify");
-    } catch (err: any) {
-      if (err?.name === "AbortError") {
-        toast.error("Request timed out. Try again.");
-      } else {
-        toast.error("Failed to send reset code");
-      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to send reset code",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -134,30 +100,14 @@ function ForgotPasswordRoute() {
         return;
       }
 
-      const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/reset-password`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${supabaseAnonKey}`,
-          apikey: supabaseAnonKey,
-        },
-        body: JSON.stringify({ email, code, newPassword }),
-      });
-
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok || payload?.success === false) {
-        toast.error(payload?.error || "Invalid code or request failed");
-        return;
-      }
+      await confirmPasswordResetCode({ email, code, newPassword });
 
       toast.success("Password updated. Please log in.");
       navigate({ to: "/auth/login" });
-    } catch (err: any) {
-      if (err?.name === "AbortError") {
-        toast.error("Verification timed out. Try again.");
-      } else {
-        toast.error("Failed to reset password");
-      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to reset password",
+      );
     } finally {
       setIsLoading(false);
     }

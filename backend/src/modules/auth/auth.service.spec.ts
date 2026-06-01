@@ -4,6 +4,7 @@ import type { PersonalWorkspaceService } from '../projects/personal-workspace.se
 import type { TeamsService } from '../teams/teams.service';
 import type { Profile } from '../../common/entities';
 import type { CompleteOnboardingDto } from './dto/auth.dto';
+import type { EmailOtpService } from './email-otp.service';
 
 function buildProfile(overrides: Partial<Profile> = {}): Profile {
   return {
@@ -59,12 +60,19 @@ function buildService(
     }),
     ...teamsOverrides,
   } as unknown as TeamsService;
+  const emailOtpService = {
+    requestEmailVerification: jest.fn(),
+    confirmEmailVerification: jest.fn(),
+    requestPasswordReset: jest.fn(),
+    confirmPasswordReset: jest.fn(),
+  } as unknown as EmailOtpService;
   return {
     service: new AuthService(
       repo,
       workspaceService,
       eligibilityService,
       teamsService,
+      emailOtpService,
     ),
     workspaceService,
     teamsService,
