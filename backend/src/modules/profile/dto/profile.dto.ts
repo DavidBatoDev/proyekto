@@ -22,7 +22,7 @@ import type {
 } from '../../../common/entities';
 
 export class UpdateProfileBasicDto {
-  @IsString() @IsOptional() @MaxLength(500) bio?: string;
+  @IsString() @IsOptional() @MaxLength(2000) bio?: string;
   @IsString() @IsOptional() @MaxLength(120) headline?: string;
   @IsString() @IsOptional() phone_number?: string;
   @IsString() @IsOptional() country?: string;

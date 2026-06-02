@@ -1,6 +1,7 @@
 import { createFileRoute, redirect, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/useToast";
 import { useAuthStore } from "@/stores/authStore";
 import {
   profileService,
@@ -227,6 +228,7 @@ function ProfilePage() {
   const { user } = useAuthStore();
   const isOwner = user?.id === profileId;
   const qc = useQueryClient();
+  const toast = useToast();
 
   const {
     data: profile,
@@ -518,6 +520,8 @@ function ProfilePage() {
       ]);
       qc.invalidateQueries({ queryKey: profileKeys.full(profileId) });
       setAboutModalOpen(false);
+    } catch {
+      toast.error("Failed to save changes. Please try again.");
     } finally {
       setIsAboutSaving(false);
     }
