@@ -6,12 +6,12 @@ import {
 	useParams,
 } from "@tanstack/react-router";
 import {
-	Bell,
 	Briefcase,
 	ChevronRight,
 	MessageCircle,
 	Search,
 } from "lucide-react";
+import { NotificationBell } from "@/components/layout/NotificationBell";
 import { useProjectDetailQuery } from "@/hooks/useProjectQueries";
 import { useUser } from "@/stores/authStore";
 import { BrandMark } from "@/components/brand/BrandMark";
@@ -163,13 +163,7 @@ export function ProjectHeader() {
 					<MessageCircle size={20} />
 				</button>
 
-				<button
-					type="button"
-					className="flex items-center justify-center rounded-full p-2 text-slate-700 transition-colors hover:bg-slate-100"
-					aria-label="Notifications"
-				>
-					<Bell size={20} />
-				</button>
+				<NotificationBell />
 
 				<div className="ml-1">
 					<ProjectUserMenu role={viewingAs} />

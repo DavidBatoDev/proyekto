@@ -514,10 +514,15 @@ function ProfilePage() {
   ) => {
     setIsAboutSaving(true);
     try {
-      await Promise.all([
+      const [updatedProfile, updatedSkills] = await Promise.all([
         profileService.updateProfile({ bio }),
-        profileService.updateSkills(skills as any),
+        profileService.updateSkills(
+          skills.map(({ skill_id, proficiency_level }) => ({ skill_id, proficiency_level })),
+        ),
       ]);
+      qc.setQueryData<FullProfile>(profileKeys.full(profileId), (old) =>
+        old ? { ...old, ...updatedProfile, skills: updatedSkills } : old,
+      );
       qc.invalidateQueries({ queryKey: profileKeys.full(profileId) });
       setAboutModalOpen(false);
     } catch {

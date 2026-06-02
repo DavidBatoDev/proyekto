@@ -262,7 +262,7 @@ export class MarketplaceService {
       content: {
         message: 'Your freelancer profile is now live in the marketplace.',
       },
-      link_url: '/freelancer/profile',
+      link_url: `/profile/${userId}`,
     });
 
     await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
