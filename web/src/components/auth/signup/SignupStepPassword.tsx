@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { FloatingInput } from "./FloatingInput";
-import { PasswordStrength } from "./PasswordStrength";
+import { PasswordStrength, getPasswordScore } from "./PasswordStrength";
 import { WizardNav } from "./WizardNav";
 import { useToast } from "../../../hooks/useToast";
 
@@ -38,7 +38,32 @@ export function SignupStepPassword({
 }: SignupStepPasswordProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [confirmError, setConfirmError] = useState("");
   const toast = useToast();
+
+  const score = getPasswordScore(password);
+  // Require at least "Fair" (score >= 3: length + uppercase + lowercase)
+  const isStrong = score >= 3;
+
+  const canSubmit =
+    password.length >= 8 &&
+    isStrong &&
+    confirmPassword !== "" &&
+    password === confirmPassword;
+
+  const handleConfirmChange = (value: string) => {
+    setConfirmPassword(value);
+    // Clear the mismatch error as soon as they match
+    if (confirmError && value === password) setConfirmError("");
+  };
+
+  const handleConfirmBlur = () => {
+    if (confirmPassword && password !== confirmPassword) {
+      setConfirmError("Passwords do not match");
+    } else {
+      setConfirmError("");
+    }
+  };
 
   const handleNext = (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,7 +75,12 @@ export function SignupStepPassword({
       toast.error("Password must be at least 8 characters");
       return;
     }
+    if (!isStrong) {
+      toast.error("Password is too weak — add uppercase letters, numbers, or special characters");
+      return;
+    }
     if (password !== confirmPassword) {
+      setConfirmError("Passwords do not match");
       toast.error("Passwords do not match");
       return;
     }
@@ -83,7 +113,7 @@ export function SignupStepPassword({
             fontFamily: "'Manrope', sans-serif",
           }}
         >
-          At least 8 characters. Choose something strong — this protects your workspace.
+          At least 8 characters with uppercase, lowercase, and a number or symbol.
         </p>
       </div>
 
@@ -116,6 +146,19 @@ export function SignupStepPassword({
           }
         />
         <PasswordStrength password={password} />
+        {password.length > 0 && !isStrong && (
+          <p
+            style={{
+              fontSize: "11px",
+              color: "#D97706",
+              fontFamily: "'Manrope', sans-serif",
+              fontWeight: 500,
+              margin: "4px 0 0 4px",
+            }}
+          >
+            Add uppercase letters, numbers, or symbols to continue
+          </p>
+        )}
       </div>
 
       {/* Confirm password */}
@@ -123,7 +166,9 @@ export function SignupStepPassword({
         label="Confirm Password"
         type={showConfirm ? "text" : "password"}
         value={confirmPassword}
-        onChange={setConfirmPassword}
+        onChange={handleConfirmChange}
+        onBlur={handleConfirmBlur}
+        error={confirmError}
         required
         autoComplete="new-password"
         rightElement={
@@ -146,7 +191,11 @@ export function SignupStepPassword({
         }
       />
 
-      <WizardNav onBack={onBack} primaryLabel="Continue" />
+      <WizardNav
+        onBack={onBack}
+        primaryLabel="Continue"
+        primaryDisabled={!canSubmit}
+      />
     </form>
   );
 }

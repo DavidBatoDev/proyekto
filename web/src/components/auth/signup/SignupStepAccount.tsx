@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { FloatingInput } from "./FloatingInput";
 import { GoogleButton } from "./SignupButtons";
 import { WizardNav } from "./WizardNav";
 import { supabase } from "../../../lib/supabase";
 import { useToast } from "../../../hooks/useToast";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface SignupStepAccountProps {
   firstName: string;
@@ -39,6 +42,8 @@ function GoogleIcon() {
   );
 }
 
+type FieldErrors = { firstName: string; lastName: string; email: string };
+
 export function SignupStepAccount({
   firstName,
   setFirstName,
@@ -50,6 +55,11 @@ export function SignupStepAccount({
   onBack,
 }: SignupStepAccountProps) {
   const toast = useToast();
+  const [errors, setErrors] = useState<FieldErrors>({
+    firstName: "",
+    lastName: "",
+    email: "",
+  });
 
   const handleGoogleSignIn = async () => {
     try {
@@ -68,10 +78,44 @@ export function SignupStepAccount({
     }
   };
 
+  const validateField = (field: keyof FieldErrors, value: string): string => {
+    if (field === "firstName") return !value.trim() ? "First name is required" : "";
+    if (field === "lastName") return !value.trim() ? "Last name is required" : "";
+    if (!value.trim()) return "Email is required";
+    if (!EMAIL_RE.test(value.trim())) return "Enter a valid email address";
+    return "";
+  };
+
+  const handleBlur = (field: keyof FieldErrors, value: string) => {
+    setErrors((prev) => ({ ...prev, [field]: validateField(field, value) }));
+  };
+
+  // Clear the error for a field as soon as the new value passes validation.
+  const handleChange = (
+    field: keyof FieldErrors,
+    value: string,
+    setter: (v: string) => void,
+  ) => {
+    setter(value);
+    if (errors[field] && !validateField(field, value)) {
+      setErrors((prev) => ({ ...prev, [field]: "" }));
+    }
+  };
+
+  const isFormValid =
+    !!firstName.trim() &&
+    !!lastName.trim() &&
+    EMAIL_RE.test(email.trim());
+
   const handleNext = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
-      toast.error("Please fill in all required fields");
+    const newErrors: FieldErrors = {
+      firstName: validateField("firstName", firstName),
+      lastName: validateField("lastName", lastName),
+      email: validateField("email", email),
+    };
+    if (Object.values(newErrors).some(Boolean)) {
+      setErrors(newErrors);
       return;
     }
     onNext();
@@ -131,14 +175,18 @@ export function SignupStepAccount({
         <FloatingInput
           label="First Name"
           value={firstName}
-          onChange={setFirstName}
+          onChange={(v) => handleChange("firstName", v, setFirstName)}
+          onBlur={() => handleBlur("firstName", firstName)}
+          error={errors.firstName}
           required
           autoComplete="given-name"
         />
         <FloatingInput
           label="Last Name"
           value={lastName}
-          onChange={setLastName}
+          onChange={(v) => handleChange("lastName", v, setLastName)}
+          onBlur={() => handleBlur("lastName", lastName)}
+          error={errors.lastName}
           required
           autoComplete="family-name"
         />
@@ -149,12 +197,18 @@ export function SignupStepAccount({
         label="Email"
         type="email"
         value={email}
-        onChange={setEmail}
+        onChange={(v) => handleChange("email", v, setEmail)}
+        onBlur={() => handleBlur("email", email)}
+        error={errors.email}
         required
         autoComplete="email"
       />
 
-      <WizardNav onBack={onBack} primaryLabel="Continue" />
+      <WizardNav
+        onBack={onBack}
+        primaryLabel="Continue"
+        primaryDisabled={!isFormValid}
+      />
       <p
         style={{
           textAlign: "center",
@@ -189,4 +243,3 @@ export function SignupStepAccount({
     </form>
   );
 }
-

@@ -13,10 +13,14 @@ const checks = [
 const LABELS = ["Too Weak", "Weak", "Fair", "Good", "Strong", "Very Strong"];
 const COLORS = ["#94A3B8", "#DC2626", "#D97706", "#1E40AF", "#2563EB", "#15803D"];
 
+export function getPasswordScore(password: string): number {
+  return checks.reduce((sum, check) => sum + (check(password) ? 1 : 0), 0);
+}
+
 export function PasswordStrength({ password }: PasswordStrengthProps) {
   if (!password) return null;
 
-  const score = checks.reduce((sum, check) => sum + (check(password) ? 1 : 0), 0);
+  const score = getPasswordScore(password);
   const color = COLORS[score];
   const label = LABELS[score];
 
@@ -50,4 +54,3 @@ export function PasswordStrength({ password }: PasswordStrengthProps) {
     </div>
   );
 }
-

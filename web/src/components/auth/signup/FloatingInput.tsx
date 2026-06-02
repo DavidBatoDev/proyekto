@@ -5,12 +5,14 @@ interface FloatingInputProps {
   type?: string;
   value: string;
   onChange: (value: string) => void;
+  onBlur?: () => void;
   required?: boolean;
   disabled?: boolean;
   autoComplete?: string;
   rightElement?: React.ReactNode;
   min?: string;
   max?: string;
+  error?: string;
 }
 
 export function FloatingInput({
@@ -18,17 +20,27 @@ export function FloatingInput({
   type = "text",
   value,
   onChange,
+  onBlur,
   required,
   disabled,
   autoComplete,
   rightElement,
   min,
   max,
+  error,
 }: FloatingInputProps) {
   const [focused, setFocused] = useState(false);
   const id = useId();
   // Date inputs always show browser chrome so label should always float
   const floated = focused || value.length > 0 || type === "date";
+
+  const borderColor = error ? "#DC2626" : focused ? "#334155" : "#CBD5E1";
+  const shadowColor = error
+    ? "0 0 0 3px rgba(220, 38, 38, 0.12)"
+    : focused
+      ? "0 0 0 3px rgba(51, 65, 85, 0.15)"
+      : "none";
+  const labelColor = error ? "#DC2626" : focused ? "#334155" : "#94A3B8";
 
   return (
     <div className="relative w-full">
@@ -41,7 +53,10 @@ export function FloatingInput({
         disabled={disabled}
         autoComplete={autoComplete}
         onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onBlur={() => {
+          setFocused(false);
+          onBlur?.();
+        }}
         min={min}
         max={max}
         style={{
@@ -49,12 +64,8 @@ export function FloatingInput({
           paddingRight: rightElement ? "44px" : "16px",
           height: "52px",
           borderRadius: "12px",
-          border: focused
-            ? "1px solid #334155"
-            : "1px solid #CBD5E1",
-          boxShadow: focused
-            ? "0 0 0 3px rgba(51, 65, 85, 0.15)"
-            : "none",
+          border: `1px solid ${borderColor}`,
+          boxShadow: shadowColor,
           outline: "none",
           width: "100%",
           background: disabled ? "#F9F9F9" : "white",
@@ -73,7 +84,7 @@ export function FloatingInput({
           transform: floated ? "none" : "translateY(-50%)",
           fontSize: floated ? "10px" : "14px",
           fontWeight: 500,
-          color: focused ? "#334155" : "#94A3B8",
+          color: labelColor,
           transition: "all 0.2s ease",
           pointerEvents: "none",
           lineHeight: 1,
@@ -95,7 +106,19 @@ export function FloatingInput({
           {rightElement}
         </div>
       )}
+      {error && (
+        <p
+          style={{
+            fontSize: "11px",
+            color: "#DC2626",
+            fontFamily: "'Manrope', sans-serif",
+            fontWeight: 500,
+            margin: "4px 0 0 4px",
+          }}
+        >
+          {error}
+        </p>
+      )}
     </div>
   );
 }
-
