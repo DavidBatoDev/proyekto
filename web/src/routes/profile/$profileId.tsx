@@ -896,23 +896,31 @@ function ProfilePage() {
                   </div>
                 ) : (
                   <div className="space-y-2.5">
-                    {[
-                      { icon: Mail, label: profile.email },
-                      { icon: Phone, label: profile.phone_number },
-                      {
-                        icon: MapPin,
-                        label: [profile.city, profile.country]
-                          .filter(Boolean)
-                          .join(", "),
-                      },
-                    ]
-                      .filter((r) => r.label)
-                      .map(({ icon: Icon, label }, i) => (
-                        <div key={i} className="flex items-start gap-2">
-                          <Icon className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
-                          <span className="text-xs text-gray-600">{label}</span>
+                    {profile.email && (
+                      <div className="flex items-start gap-2">
+                        <Mail className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
+                        <span className="text-xs text-gray-600">{profile.email}</span>
+                      </div>
+                    )}
+                    {profile.phone_number && (
+                      <div className="flex items-start gap-2">
+                        <Phone className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs text-gray-600">{profile.phone_number}</span>
+                          <span className="text-[10px] font-medium text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                            Unverified
+                          </span>
                         </div>
-                      ))}
+                      </div>
+                    )}
+                    {[profile.city, profile.country].filter(Boolean).join(", ") && (
+                      <div className="flex items-start gap-2">
+                        <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
+                        <span className="text-xs text-gray-600">
+                          {[profile.city, profile.country].filter(Boolean).join(", ")}
+                        </span>
+                      </div>
+                    )}
                     {!profile.email &&
                       !profile.phone_number &&
                       !profile.city && (
