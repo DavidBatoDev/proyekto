@@ -8,8 +8,10 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  Matches,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -24,7 +26,12 @@ import type {
 export class UpdateProfileBasicDto {
   @IsString() @IsOptional() @MaxLength(2000) bio?: string;
   @IsString() @IsOptional() @MaxLength(120) headline?: string;
-  @IsString() @IsOptional() phone_number?: string;
+  @ValidateIf((o) => !!o.phone_number)
+  @Matches(/^\+[1-9]\d{1,14}$/, {
+    message: 'Phone number must be in E.164 format (e.g. +639123456789)',
+  })
+  @IsOptional()
+  phone_number?: string;
   @IsString() @IsOptional() country?: string;
   @IsString() @IsOptional() city?: string;
   @IsString() @IsOptional() zip_code?: string;

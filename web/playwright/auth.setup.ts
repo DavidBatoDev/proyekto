@@ -10,54 +10,21 @@ type RoleAuthSeed = {
 };
 
 function resolveRoleSeeds(): RoleAuthSeed[] {
-  const consultantEmail = process.env.PLAYWRIGHT_CONSULTANT_EMAIL;
-  const consultantPassword = process.env.PLAYWRIGHT_CONSULTANT_PASSWORD;
-  const freelancerEmail = process.env.PLAYWRIGHT_FREELANCER_EMAIL;
-  const freelancerPassword = process.env.PLAYWRIGHT_FREELANCER_PASSWORD;
+  const email = process.env.PLAYWRIGHT_EMAIL;
+  const password = process.env.PLAYWRIGHT_PASSWORD;
 
-  const seeds: RoleAuthSeed[] = [];
-  if (consultantEmail && consultantPassword) {
-    seeds.push({
-      role: "consultant",
-      email: consultantEmail,
-      password: consultantPassword,
-      storagePath: path.resolve(
-        process.cwd(),
-        "playwright",
-        ".auth",
-        "consultant.json",
-      ),
-    });
-  }
-  if (freelancerEmail && freelancerPassword) {
-    seeds.push({
-      role: "freelancer",
-      email: freelancerEmail,
-      password: freelancerPassword,
-      storagePath: path.resolve(
-        process.cwd(),
-        "playwright",
-        ".auth",
-        "freelancer.json",
-      ),
-    });
-  }
-
-  // Backward-compatible fallback single-user auth.
-  if (seeds.length === 0) {
-    const email = process.env.PLAYWRIGHT_EMAIL;
-    const password = process.env.PLAYWRIGHT_PASSWORD;
-    if (email && password) {
-      seeds.push({
+  if (email && password) {
+    return [
+      {
         role: "user",
         email,
         password,
         storagePath: path.resolve(process.cwd(), "playwright", ".auth", "user.json"),
-      });
-    }
+      },
+    ];
   }
 
-  return seeds;
+  return [];
 }
 
 async function signInAndSaveState(
@@ -100,7 +67,7 @@ test("authenticate and save role-based auth states", async ({ browser }) => {
   const seeds = resolveRoleSeeds();
   if (seeds.length === 0) {
     throw new Error(
-      "No Playwright password credentials found. Configure consultant/freelancer credentials in web/.env or fallback PLAYWRIGHT_EMAIL/PLAYWRIGHT_PASSWORD.",
+      "No Playwright credentials found. Set PLAYWRIGHT_EMAIL and PLAYWRIGHT_PASSWORD in web/.env.",
     );
   }
 

@@ -439,7 +439,10 @@ class ProfileService {
   async addLanguage(
     payload: Omit<UserLanguage, "id" | "user_id" | "created_at">,
   ): Promise<UserLanguage> {
-    const { data } = await apiClient.post(`${this.base}/languages`, payload);
+    const { data } = await apiClient.post(`${this.base}/languages`, {
+      language_id: payload.language_id,
+      fluency_level: payload.fluency_level,
+    });
     return data.data;
   }
   async updateLanguage(
