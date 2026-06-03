@@ -58,6 +58,9 @@ export class ProfileService {
 
   async updateBasic(userId: string, dto: UpdateProfileBasicDto) {
     const updated = await this.profileRepo.updateBasic(userId, dto);
+    if (dto.phone_number !== undefined) {
+      await this.profileRepo.clearPhoneVerification(userId);
+    }
     await this.cacheInvalidation.invalidateDiscoveryCaches(userId);
     return updated;
   }

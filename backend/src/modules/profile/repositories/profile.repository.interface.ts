@@ -28,6 +28,7 @@ export interface FullProfile {
   specializations: UserSpecialization[];
   rate_settings: UserRateSettings | null;
   identity_documents: UserIdentityDocument[];
+  is_phone_verified: boolean;
 }
 
 export interface ProfileRepository {
@@ -141,4 +142,7 @@ export interface ProfileRepository {
     data: Partial<UserIdentityDocument>,
   ): Promise<UserIdentityDocument>;
   deleteIdentityDocument(id: string, userId: string): Promise<void>;
+
+  // Phone verification
+  clearPhoneVerification(userId: string): Promise<void>;
 }

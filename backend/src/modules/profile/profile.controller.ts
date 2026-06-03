@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ProfileService } from './profile.service';
+import { PhoneOtpService } from './phone-otp.service';
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
@@ -24,6 +25,7 @@ import {
   AddLicenseDto,
   AddPortfolioDto,
   AddSpecializationDto,
+  PhoneVerificationConfirmDto,
   ReplaceSkillsDto,
   UpdateCertificationDto,
   UpdateEducationDto,
@@ -39,7 +41,10 @@ import {
 @Controller('profile')
 @UseGuards(SupabaseAuthGuard)
 export class ProfileController {
-  constructor(private readonly profileService: ProfileService) {}
+  constructor(
+    private readonly profileService: ProfileService,
+    private readonly phoneOtpService: PhoneOtpService,
+  ) {}
 
   @Get('meta/skills')
   getAllSkills() {
@@ -269,6 +274,22 @@ export class ProfileController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.profileService.deleteSpecialization(id, user.id);
+  }
+
+  // Phone verification
+  @Post('phone-verification/request')
+  @HttpCode(HttpStatus.OK)
+  requestPhoneVerification(@CurrentUser() user: AuthenticatedUser) {
+    return this.phoneOtpService.requestPhoneVerification(user.id);
+  }
+
+  @Post('phone-verification/confirm')
+  @HttpCode(HttpStatus.OK)
+  confirmPhoneVerification(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: PhoneVerificationConfirmDto,
+  ) {
+    return this.phoneOtpService.confirmPhoneVerification(user.id, dto.code);
   }
 
   // Identity documents

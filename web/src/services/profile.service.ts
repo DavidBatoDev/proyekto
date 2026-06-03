@@ -211,6 +211,7 @@ export interface FullProfile {
   gender: string | null;
   date_of_birth: string | null;
   is_consultant_verified: boolean;
+  is_phone_verified: boolean;
   is_public: boolean;
   active_persona: string;
   created_at: string;
@@ -304,6 +305,18 @@ class ProfileService {
   async updateProfile(updates: UpdateProfileData): Promise<FullProfile> {
     const { data } = await apiClient.patch(this.base, updates);
     return data.data;
+  }
+
+  /** Request phone OTP — sends verification code via SMS */
+  async requestPhoneVerification(): Promise<{ success: boolean; debug_code?: string }> {
+    const { data } = await apiClient.post(`${this.base}/phone-verification/request`);
+    return data;
+  }
+
+  /** Confirm phone OTP — marks phone as verified */
+  async confirmPhoneVerification(code: string): Promise<{ success: boolean }> {
+    const { data } = await apiClient.post(`${this.base}/phone-verification/confirm`, { code });
+    return data;
   }
 
   /** Replace all skills (full replace, not merge) */
