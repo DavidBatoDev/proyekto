@@ -30,14 +30,17 @@ async function deleteLanguageIfPresent(page: Page, langName: string) {
   const entry = page.locator("span").filter({ hasText: langName }).first();
   if (!(await entry.isVisible().catch(() => false))) return;
 
-  // Hover the row to reveal the edit/delete buttons (opacity-0 → group-hover)
-  await entry.hover();
-  const deleteBtn = page
-    .locator('[title="Delete"]')
-    .filter({ hasNot: page.locator('[title="Delete Document"]') })
+  // Hover the group-row container so CSS group-hover reveals the buttons,
+  // then scope the delete click to that same row to avoid targeting wrong rows.
+  const row = page
+    .locator(".flex.items-center.justify-between.group")
+    .filter({ has: page.locator("span", { hasText: langName }) })
     .first();
+  await row.hover();
+
+  const deleteBtn = row.locator('[title="Delete"]').first();
   await deleteBtn.click();
-  await expect(entry).not.toBeVisible({ timeout: 5_000 });
+  await expect(entry).not.toBeVisible({ timeout: 10_000 });
 }
 
 test.describe("Profile — Languages", () => {

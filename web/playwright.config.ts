@@ -22,6 +22,7 @@ loadEnvFromWebEnvFile();
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
 const headed = process.env.PLAYWRIGHT_HEADED === "1";
+const slowMo = process.env.PLAYWRIGHT_SLOW_MO ? Number(process.env.PLAYWRIGHT_SLOW_MO) : undefined;
 
 export default defineConfig({
   testDir: "./playwright/tests",
@@ -37,6 +38,7 @@ export default defineConfig({
   use: {
     baseURL,
     headless: !headed,
+    launchOptions: { slowMo },
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
