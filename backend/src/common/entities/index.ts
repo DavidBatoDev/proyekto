@@ -123,6 +123,7 @@ export interface Profile {
   date_of_birth?: string;
   is_consultant_verified: boolean;
   is_email_verified: boolean;
+  is_phone_verified?: boolean;
   active_persona: PersonaType;
   has_completed_onboarding: boolean;
   settings: Record<string, unknown>;

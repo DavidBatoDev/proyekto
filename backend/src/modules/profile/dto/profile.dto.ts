@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  Length,
   Matches,
   MaxLength,
   Min,
@@ -250,4 +251,11 @@ export class AddIdentityDocumentDto {
   @IsString() type: string;
   @IsString() storage_path: string;
   @IsDateString() @IsOptional() expires_at?: string;
+}
+
+export class PhoneVerificationConfirmDto {
+  @IsString()
+  @Length(6, 6)
+  @Matches(/^\d{6}$/, { message: 'Code must be a 6-digit number.' })
+  code: string;
 }

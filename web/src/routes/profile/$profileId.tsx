@@ -28,6 +28,7 @@ import { SpecializationModal } from "@/components/profile/SpecializationModal";
 import { LicenseModal } from "@/components/profile/LicenseModal";
 import { IdentityDocumentModal } from "@/components/profile/IdentityDocumentModal";
 import { AccountTypeSection } from "@/components/profile/AccountTypeSection";
+import { PhoneVerificationFlow } from "@/components/profile/PhoneVerificationFlow";
 import {
   User,
   Camera,
@@ -910,11 +911,30 @@ function ProfilePage() {
                     {profile.phone_number && (
                       <div className="flex items-start gap-2">
                         <Phone className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-xs text-gray-600">{profile.phone_number}</span>
-                          <span className="text-[10px] font-medium text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
-                            Unverified
-                          </span>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs text-gray-600">{profile.phone_number}</span>
+                            {profile.is_phone_verified ? (
+                              <span className="text-[10px] font-medium text-green-600 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-full">
+                                Verified
+                              </span>
+                            ) : (
+                              <>
+                                <span className="text-[10px] font-medium text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                                  Unverified
+                                </span>
+                                {isOwner && (
+                                  <PhoneVerificationFlow
+                                    onVerified={() =>
+                                      qc.invalidateQueries({
+                                        queryKey: profileKeys.full(profileId),
+                                      })
+                                    }
+                                  />
+                                )}
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}

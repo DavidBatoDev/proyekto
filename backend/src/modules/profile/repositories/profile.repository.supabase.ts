@@ -39,6 +39,7 @@ export class SupabaseProfileRepository implements ProfileRepository {
       specializationsResult,
       rateSettingsResult,
       identityDocsResult,
+      phoneVerificationResult,
     ] = await Promise.all([
       this.supabase.from('profiles').select('*').eq('id', userId).single(),
       this.supabase
@@ -79,6 +80,12 @@ export class SupabaseProfileRepository implements ProfileRepository {
         .from('user_identity_documents')
         .select('*')
         .eq('user_id', userId),
+      this.supabase
+        .from('user_verifications')
+        .select('status')
+        .eq('user_id', userId)
+        .eq('type', 'phone')
+        .maybeSingle(),
     ]);
 
     if (!profileResult.data) return null;
@@ -98,6 +105,9 @@ export class SupabaseProfileRepository implements ProfileRepository {
       rate_settings: (rateSettingsResult.data as UserRateSettings) || null,
       identity_documents: (identityDocsResult.data ||
         []) as UserIdentityDocument[],
+      is_phone_verified:
+        (phoneVerificationResult.data as { status: string } | null)?.status ===
+        'verified',
     };
   }
 
@@ -443,5 +453,13 @@ export class SupabaseProfileRepository implements ProfileRepository {
       .delete()
       .eq('id', id)
       .eq('user_id', userId);
+  }
+
+  async clearPhoneVerification(userId: string): Promise<void> {
+    await this.supabase
+      .from('user_verifications')
+      .delete()
+      .eq('user_id', userId)
+      .eq('type', 'phone');
   }
 }
