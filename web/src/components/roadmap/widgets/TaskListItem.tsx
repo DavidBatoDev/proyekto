@@ -165,7 +165,6 @@ export const TaskListItem = memo(
       top: 0,
       left: 0,
     });
-    const [isSavingAssignee, setIsSavingAssignee] = useState(false);
     const assigneeTriggerRef = useRef<HTMLButtonElement>(null);
     const assigneeMenuRef = useRef<HTMLDivElement>(null);
 
@@ -206,14 +205,16 @@ export const TaskListItem = memo(
 
     const currentAssigneeId = task.assignee_id ?? task.assignee?.id ?? null;
 
-    const applyAssignment = async (member: ProjectMember | null) => {
-      if (isSavingAssignee) return;
+    const applyAssignment = (member: ProjectMember | null) => {
       const latestEpics = useRoadmapStore.getState().epics;
       const currentTask = latestEpics
         .flatMap((epic) => epic.features ?? [])
         .flatMap((feature) => feature.tasks ?? [])
         .find((candidate) => candidate.id === task.id);
-      if (!currentTask) return;
+      if (!currentTask) {
+        setIsAssigneeMenuOpen(false);
+        return;
+      }
 
       const nextAssigneeId = member?.user_id ?? undefined;
       if ((currentTask.assignee_id ?? null) === (nextAssigneeId ?? null)) {
@@ -236,25 +237,29 @@ export const TaskListItem = memo(
           : undefined,
       };
 
-      setIsSavingAssignee(true);
-      try {
-        await useRoadmapStore.getState().updateTask(nextTask);
-        if (nextAssigneeId) {
-          recordRecentAssignment(projectId, nextAssigneeId);
-          const name =
-            (member?.user?.display_name && member.user.display_name.trim()) ||
-            member?.user?.email ||
-            "member";
-          toast.success(`Assigned ${name} to "${currentTask.title}"`);
-        } else {
-          toast.success(`Unassigned "${currentTask.title}"`);
-        }
-      } catch {
-        toast.error("Failed to update task assignee");
-      } finally {
-        setIsSavingAssignee(false);
-        setIsAssigneeMenuOpen(false);
-      }
+      // Optimistic: close the popover immediately. updateTask patches store
+      // state synchronously before its network call and rolls back on failure,
+      // so the avatar reflects the new assignee instantly.
+      setIsAssigneeMenuOpen(false);
+
+      void useRoadmapStore
+        .getState()
+        .updateTask(nextTask)
+        .then(() => {
+          if (nextAssigneeId) {
+            recordRecentAssignment(projectId, nextAssigneeId);
+            const name =
+              member?.user?.display_name?.trim() ||
+              member?.user?.email ||
+              "member";
+            toast.success(`Assigned ${name} to "${currentTask.title}"`);
+          } else {
+            toast.success(`Unassigned "${currentTask.title}"`);
+          }
+        })
+        .catch(() => {
+          toast.error("Failed to update task assignee");
+        });
     };
 
     const { setNodeRef: setDropRef, isOver, active } = useDroppable({
@@ -473,16 +478,13 @@ export const TaskListItem = memo(
             }
             setIsAssigneeMenuOpen((prev) => !prev);
           }}
-          disabled={isSavingAssignee}
           title={
             task.assignee
               ? `Assigned to ${resolveAssigneeName(task.assignee) ?? "member"} — click to change`
               : "Click to assign a member"
           }
-          className={`shrink-0 rounded-full transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 disabled:opacity-60 ${
+          className={`shrink-0 rounded-full transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 hover:ring-2 hover:ring-orange-200 ${
             isCompact ? "w-5 h-5" : "w-6 h-6"
-          } ${
-            isSavingAssignee ? "animate-pulse" : "hover:ring-2 hover:ring-orange-200"
           }`}
         >
           {task.assignee?.avatar_url ? (
@@ -541,10 +543,9 @@ export const TaskListItem = memo(
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  void applyAssignment(null);
+                  applyAssignment(null);
                 }}
-                disabled={isSavingAssignee}
-                className="w-full px-2 py-2 text-left text-sm rounded-md hover:bg-gray-50 flex items-center justify-between disabled:opacity-60"
+                className="w-full px-2 py-2 text-left text-sm rounded-md hover:bg-gray-50 flex items-center justify-between"
               >
                 <span className="flex items-center gap-2 text-gray-700">
                   <span className="w-6 h-6 rounded-full flex items-center justify-center border border-dashed border-gray-300 text-gray-400 bg-white">
@@ -568,10 +569,9 @@ export const TaskListItem = memo(
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        void applyAssignment(member);
+                        applyAssignment(member);
                       }}
-                      disabled={isSavingAssignee}
-                      className="w-full px-2 py-2 text-left text-sm rounded-md hover:bg-gray-50 flex items-center justify-between gap-2 disabled:opacity-60"
+                      className="w-full px-2 py-2 text-left text-sm rounded-md hover:bg-gray-50 flex items-center justify-between gap-2"
                     >
                       <span className="flex items-center gap-2 min-w-0">
                         {avatarUrl ? (

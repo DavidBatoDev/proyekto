@@ -33,7 +33,7 @@ import { CommentsSection } from "../shared/CommentsSection";
 import { UnsavedChangesConfirmModal } from "../shared/UnsavedChangesConfirmModal";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { Button } from "@/ui/button";
-import { useUser } from "@/stores/authStore";
+import { useProfile, useUser } from "@/stores/authStore";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 
 interface SidePanelProps {
@@ -173,6 +173,7 @@ export const SidePanel = ({
   zIndexBase = 120,
 }: SidePanelProps) => {
   const user = useUser();
+  const profile = useProfile();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<TabType>("details");
   const [editedTask, setEditedTask] = useState<RoadmapTask | null>(null);
@@ -413,20 +414,74 @@ export const SidePanel = ({
 
   const handleAddComment = async (content: string) => {
     if (!task?.id) return;
-    const created = await commentsService.addTaskComment(task.id, content);
-    setComments((prev) => [...prev, created]);
+    const tempId = `temp-comment-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    const now = new Date().toISOString();
+    const optimisticComment: Comment = {
+      id: tempId,
+      user_id: user?.id ?? "",
+      author_id: user?.id,
+      content,
+      created_at: now,
+      updated_at: now,
+      user: user
+        ? {
+            id: user.id,
+            display_name: profile?.display_name ?? undefined,
+            first_name: profile?.first_name ?? undefined,
+            last_name: profile?.last_name ?? undefined,
+            avatar_url: profile?.avatar_url ?? undefined,
+            email: profile?.email ?? user.email ?? undefined,
+          }
+        : undefined,
+    };
+
+    // Optimistic: show the comment immediately, swap for the server copy.
+    setComments((prev) => [...prev, optimisticComment]);
+    try {
+      const created = await commentsService.addTaskComment(task.id, content);
+      setComments((prev) =>
+        prev.map((comment) => (comment.id === tempId ? created : comment)),
+      );
+    } catch (error) {
+      setComments((prev) => prev.filter((comment) => comment.id !== tempId));
+      throw error;
+    }
   };
 
   const handleUpdateComment = async (commentId: string, content: string) => {
     if (!task?.id) return;
-    const updated = await commentsService.updateTaskComment(
-      task.id,
-      commentId,
-      content,
-    );
+    const rollbackComment = comments.find((c) => c.id === commentId);
+    const editedAt = new Date().toISOString();
+
+    // Optimistic: apply the edit immediately, reconcile with the server copy.
     setComments((prev) =>
-      prev.map((comment) => (comment.id === commentId ? updated : comment)),
+      prev.map((comment) =>
+        comment.id === commentId
+          ? { ...comment, content, edited_at: editedAt }
+          : comment,
+      ),
     );
+    try {
+      const updated = await commentsService.updateTaskComment(
+        task.id,
+        commentId,
+        content,
+      );
+      setComments((prev) =>
+        prev.map((comment) => (comment.id === commentId ? updated : comment)),
+      );
+    } catch (error) {
+      if (rollbackComment) {
+        setComments((prev) =>
+          prev.map((comment) =>
+            comment.id === commentId ? rollbackComment : comment,
+          ),
+        );
+      }
+      throw error;
+    }
   };
 
   const handleDeleteComment = async (commentId: string) => {

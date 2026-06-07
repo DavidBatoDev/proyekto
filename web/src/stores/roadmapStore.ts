@@ -1763,41 +1763,97 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         -1,
       ) + 1;
 
-    const created = await milestoneService.create(roadmap.id, {
+    const now = new Date().toISOString();
+    const tempMilestoneId = `temp-milestone-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    const optimisticMilestone: RoadmapMilestone = {
+      id: tempMilestoneId,
+      roadmap_id: roadmap.id,
       title: data.title,
-      target_date: data.target_date,
       description: data.description,
+      target_date: data.target_date,
       status: data.status ?? "not_started",
       color: data.color,
       position: nextPosition,
-    });
+      created_at: now,
+      updated_at: now,
+      linked_features: [],
+    };
 
-    set({
-      milestones: [...milestones, created].sort(
+    set((state) => ({
+      milestones: [...state.milestones, optimisticMilestone].sort(
         (a, b) => (a.position ?? 0) - (b.position ?? 0),
       ),
-    });
+    }));
+
+    try {
+      const created = await milestoneService.create(roadmap.id, {
+        title: data.title,
+        target_date: data.target_date,
+        description: data.description,
+        status: data.status ?? "not_started",
+        color: data.color,
+        position: nextPosition,
+      });
+      set((state) => ({
+        milestones: state.milestones
+          .map((m) => (m.id === tempMilestoneId ? created : m))
+          .sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
+      }));
+    } catch (error) {
+      set((state) => ({
+        milestones: state.milestones.filter((m) => m.id !== tempMilestoneId),
+      }));
+      throw error;
+    }
   },
 
   updateMilestone: async (updated: RoadmapMilestone) => {
-    const { milestones } = get();
-    const saved = await milestoneService.update(updated.id, {
-      title: updated.title,
-      description: updated.description,
-      target_date: updated.target_date,
-      status: updated.status,
-      color: updated.color,
-    });
+    const current = get().milestones.find((m) => m.id === updated.id);
+    if (!current) return;
+    const rollbackSnapshot = { ...current };
 
-    set({
-      milestones: milestones.map((m) => (m.id === saved.id ? saved : m)),
-    });
+    set((state) => ({
+      milestones: state.milestones.map((m) =>
+        m.id === updated.id ? { ...m, ...updated } : m,
+      ),
+    }));
+
+    try {
+      const saved = await milestoneService.update(updated.id, {
+        title: updated.title,
+        description: updated.description,
+        target_date: updated.target_date,
+        status: updated.status,
+        color: updated.color,
+      });
+      set((state) => ({
+        milestones: state.milestones.map((m) =>
+          m.id === saved.id ? { ...m, ...saved } : m,
+        ),
+      }));
+    } catch (error) {
+      set((state) => ({
+        milestones: state.milestones.map((m) =>
+          m.id === rollbackSnapshot.id ? rollbackSnapshot : m,
+        ),
+      }));
+      throw error;
+    }
   },
 
   deleteMilestone: async (id: string) => {
-    const { milestones } = get();
-    await milestoneService.delete(id);
-    set({ milestones: milestones.filter((m) => m.id !== id) });
+    const rollbackMilestones = get().milestones;
+    set((state) => ({
+      milestones: state.milestones.filter((m) => m.id !== id),
+    }));
+    try {
+      await milestoneService.delete(id);
+    } catch (error) {
+      set({ milestones: rollbackMilestones });
+      throw error;
+    }
   },
 
   // Kanban board filters
@@ -1815,26 +1871,57 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
   },
 
   // Soft phases: move a feature between milestones (or to/from unassigned).
-  // Either id may be null. After the API call we reload to keep
-  // milestone.linked_features in sync — small refetch, no rollback bookkeeping.
+  // Either id may be null. Optimistically move the feature's reference between
+  // each milestone's linked_features, then commit; roll back on failure. The
+  // realtime sync reconciles any computed fields without a blocking refetch.
   reassignFeatureToMilestone: async (
     featureId: string,
     fromMilestoneId: string | null,
     toMilestoneId: string | null,
   ) => {
     if (fromMilestoneId === toMilestoneId) return;
-    const { roadmap } = get();
-    if (fromMilestoneId) {
-      await featureService.unlinkFromMilestone(featureId, fromMilestoneId);
-    }
-    if (toMilestoneId) {
-      await featureService.linkToMilestone({
-        feature_id: featureId,
-        milestone_id: toMilestoneId,
-      });
-    }
-    if (roadmap) {
-      await get().loadRoadmap(roadmap.id, { force: true });
+    const { epics } = get();
+    const rollbackMilestones = get().milestones;
+
+    // Locate the feature in the epic tree so it can be attached to the target.
+    const feature = epics
+      .flatMap((epic) => epic.features ?? [])
+      .find((candidate) => candidate.id === featureId);
+
+    set((state) => ({
+      milestones: state.milestones.map((milestone) => {
+        if (fromMilestoneId && milestone.id === fromMilestoneId) {
+          return {
+            ...milestone,
+            linked_features: (milestone.linked_features ?? []).filter(
+              (linked) => linked.id !== featureId,
+            ),
+          };
+        }
+        if (toMilestoneId && milestone.id === toMilestoneId) {
+          const existing = milestone.linked_features ?? [];
+          if (!feature || existing.some((linked) => linked.id === featureId)) {
+            return milestone;
+          }
+          return { ...milestone, linked_features: [...existing, feature] };
+        }
+        return milestone;
+      }),
+    }));
+
+    try {
+      if (fromMilestoneId) {
+        await featureService.unlinkFromMilestone(featureId, fromMilestoneId);
+      }
+      if (toMilestoneId) {
+        await featureService.linkToMilestone({
+          feature_id: featureId,
+          milestone_id: toMilestoneId,
+        });
+      }
+    } catch (error) {
+      set({ milestones: rollbackMilestones });
+      throw error;
     }
   },
 
