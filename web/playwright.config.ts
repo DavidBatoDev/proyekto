@@ -22,6 +22,10 @@ loadEnvFromWebEnvFile();
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
 const headed = process.env.PLAYWRIGHT_HEADED === "1";
+// Throttle every Playwright action by N ms so a headed run is watchable.
+// 0 (default) = full speed, so CI / normal runs are unaffected.
+// e.g. PLAYWRIGHT_HEADED=1 PLAYWRIGHT_SLOWMO=800 npm run pw:test
+const slowMo = Number(process.env.PLAYWRIGHT_SLOWMO ?? 0) || 0;
 
 export default defineConfig({
   testDir: "./playwright/tests",
@@ -37,6 +41,7 @@ export default defineConfig({
   use: {
     baseURL,
     headless: !headed,
+    launchOptions: { slowMo },
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",

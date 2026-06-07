@@ -10,6 +10,7 @@
     "pw:clean": "node -e \"const fs=require('fs');try{fs.rmSync('playwright/test-results',{recursive:true,force:true})}catch(e){}\"",
     "pw:auth": "npm run pw:clean && playwright test -c playwright.config.ts --project=setup",
     "pw:test": "npm run pw:clean && playwright test -c playwright.config.ts",
+    "pw:watch": "node playwright/run-watch.mjs",
     "pw:install": "playwright install",
     "format": "biome format",
     "lint": "biome lint",
