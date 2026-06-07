@@ -208,6 +208,65 @@ class Settings(BaseSettings):
         alias='AGENT_RESOLVE_PARALLEL_VARIANTS_ENABLED',
     )
 
+    # ------------------------------------------------------------------
+    # v2 single-loop agent (app/core/v2). When enabled (globally or per
+    # session via metadata.brain_version='v2'), AgentService.plan_message
+    # routes to the lean hand-rolled tool-calling loop instead of the v1
+    # 6-route orchestrator. Same HTTP contract, schema, Redis store.
+    # ------------------------------------------------------------------
+    agent_v2_enabled: bool = Field(default=False, alias='AGENT_V2_ENABLED')
+    # Single knob for the v2 loop's model id. The whole loop runs on ONE
+    # model (no separate classifier). Set to whatever GPT-5 variant the org
+    # exposes (e.g. 'gpt-5', 'gpt-5.4').
+    openai_model_v2: str = Field(default='gpt-5.4-mini', alias='OPENAI_MODEL_V2')
+    agent_v2_max_turns: int = Field(default=8, alias='AGENT_V2_MAX_TURNS')
+    agent_v2_max_tool_calls: int = Field(default=14, alias='AGENT_V2_MAX_TOOL_CALLS')
+    openai_v2_max_output_tokens: int | None = Field(
+        default=4000,
+        alias='OPENAI_V2_MAX_OUTPUT_TOKENS',
+    )
+    openai_v2_reasoning_effort: str | None = Field(
+        default='low',
+        alias='OPENAI_V2_REASONING_EFFORT',
+    )
+    # GPT-5 reasoning models reject non-default temperature on chat
+    # completions, so v2 omits it by default (None → not sent). Set a float
+    # only if the configured model accepts it.
+    openai_v2_temperature: float | None = Field(
+        default=None,
+        alias='OPENAI_V2_TEMPERATURE',
+    )
+
+    @field_validator('agent_v2_max_turns')
+    @classmethod
+    def normalize_agent_v2_max_turns(cls, value: int) -> int:
+        if value < 1:
+            return 1
+        if value > 16:
+            return 16
+        return value
+
+    @field_validator('agent_v2_max_tool_calls')
+    @classmethod
+    def normalize_agent_v2_max_tool_calls(cls, value: int) -> int:
+        if value < 1:
+            return 1
+        if value > 60:
+            return 60
+        return value
+
+    @field_validator('openai_v2_reasoning_effort')
+    @classmethod
+    def normalize_openai_v2_reasoning_effort(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip().lower()
+        if not normalized:
+            return None
+        if normalized not in {'minimal', 'low', 'medium', 'high'}:
+            return 'low'
+        return normalized
+
     @field_validator('nest_api_base_url')
     @classmethod
     def normalize_nest_api_base_url(cls, value: str) -> str:

@@ -159,6 +159,21 @@ class AgentService:
         auth_header: str | None = None,
         trace_id: str | None = None,
     ) -> MessagePlanningOutcome:
+        if self._v2_enabled_for(session):
+            # Lean single-loop brain. Same MessagePlanningOutcome envelope so
+            # the message route and auto-commit path are unchanged. Imported
+            # lazily so the v1 path never pays the import cost.
+            from app.core.v2.brain import run_v2_message
+
+            return run_v2_message(
+                service=self,
+                session=session,
+                user_message=user_message,
+                replace=replace,
+                auth_header=auth_header,
+                trace_id=trace_id,
+                utcnow=_utcnow,
+            )
         return plan_message_orchestrator(
             service=self,
             session=session,
@@ -168,6 +183,23 @@ class AgentService:
             trace_id=trace_id,
             utcnow=_utcnow,
         )
+
+    def _v2_enabled_for(self, session: AgentSession) -> bool:
+        """Decide whether this message runs on the v2 single-loop brain.
+
+        Per-session override (``metadata.brain_version``) wins over the global
+        ``AGENT_V2_ENABLED`` flag so v1/v2 can be A/B'd without a redeploy.
+        ``SessionMetadata`` allows extra keys, so the override rides in via
+        ``CreateSessionRequest.metadata``.
+        """
+        override = getattr(session.metadata, 'brain_version', None)
+        if isinstance(override, str):
+            normalized = override.strip().lower()
+            if normalized == 'v2':
+                return True
+            if normalized == 'v1':
+                return False
+        return bool(self._settings.agent_v2_enabled)
 
     # ------------------------------------------------------------------
     # Operation Contract Helpers
