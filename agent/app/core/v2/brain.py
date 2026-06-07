@@ -54,7 +54,10 @@ def run_v2_message(
     folded_message = parse_and_fold(session, user_message)
     handle_map = dict(session.metadata.roadmap_handle_map)
     messages = build_messages(session, session_context, folded_message)
-    tools = build_tools()
+
+    pending_plan = session.metadata.pending_plan
+    pending_plan_titles = _pending_plan_titles(pending_plan)
+    tools = build_tools(has_pending_plan=pending_plan is not None)
 
     client = V2LLMClient(settings)
     dispatcher = ToolDispatcher(
@@ -73,6 +76,7 @@ def run_v2_message(
             handle_map=handle_map,
             settings=settings,
             trace_id=trace_id,
+            pending_plan_titles=pending_plan_titles,
         )
         return to_outcome(
             service=service,
@@ -116,6 +120,28 @@ def run_v2_message(
             fallback_used=True,
             provider_error_code='v2_provider_error',
         )
+
+
+def _pending_plan_titles(pending_plan: Any) -> frozenset[str]:
+    """Lower-cased titles across a pending plan's epic/feature/task hierarchy.
+    Used by the loop guard to tell a genuine plan revision from a misrouted
+    live edit. Empty when no plan is pending.
+    """
+    if pending_plan is None:
+        return frozenset()
+    titles: set[str] = set()
+    for epic in getattr(pending_plan, 'proposed_hierarchy', None) or []:
+        _add_title(titles, getattr(epic, 'title', None))
+        for feature in getattr(epic, 'features', None) or []:
+            _add_title(titles, getattr(feature, 'title', None))
+            for task in getattr(feature, 'tasks', None) or []:
+                _add_title(titles, getattr(task, 'title', None))
+    return frozenset(titles)
+
+
+def _add_title(acc: set[str], title: Any) -> None:
+    if isinstance(title, str) and title.strip():
+        acc.add(title.strip().lower())
 
 
 def _ensure_actor_context(

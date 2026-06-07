@@ -43,14 +43,59 @@ def is_terminal_tool(name: str) -> bool:
     return name in TERMINAL_TOOL_NAMES
 
 
-def build_tools() -> list[dict[str, Any]]:
-    """The full tool list exposed to the model each turn."""
+def build_tools(*, has_pending_plan: bool = False) -> list[dict[str, Any]]:
+    """The full tool list exposed to the model each turn.
+
+    ``has_pending_plan`` gates the plan-revision affordance on the edit tool —
+    see ``_planning_tool``.
+    """
     return [
         *get_context_tools(),
-        get_planning_tool(),
+        _planning_tool(has_pending_plan),
         propose_plan_tool(),
         ask_user_tool(),
     ]
+
+
+def _planning_tool(has_pending_plan: bool) -> dict[str, Any]:
+    """The registry edit tool, with the ``revision_operations`` affordance
+    removed unless a plan is actually awaiting confirmation.
+
+    The shared schema exposes both ``operations`` (live-roadmap edits) and
+    ``revision_operations`` (edits to a titles-only *pending* plan). When no
+    plan is pending the second lane is a foot-gun: the model can route a
+    live-roadmap edit (e.g. "rename epic X") into ``revision_operations``,
+    which then silently never touches the roadmap. Stripping the field — and
+    the dual-target contract that references it — makes that misroute
+    structurally impossible whenever there is nothing to revise. When a plan
+    IS pending we keep the field (and a loop-level guard validates its target
+    is actually in that plan).
+    """
+    tool = get_planning_tool()
+    if has_pending_plan:
+        return tool
+    fn = dict(tool['function'])
+    params = dict(fn.get('parameters') or {})
+    props = dict(params.get('properties') or {})
+    props.pop('revision_operations', None)
+    params['properties'] = props
+    fn['parameters'] = params
+    fn['description'] = _strip_dual_target_contract(fn.get('description', ''))
+    return {**tool, 'function': fn}
+
+
+def _strip_dual_target_contract(description: str) -> str:
+    """Remove the ``DUAL-TARGET CONTRACT`` sentence block (which introduces
+    ``revision_operations``) while leaving the rest of the description intact.
+    No-op if the markers aren't found.
+    """
+    start = description.find('DUAL-TARGET CONTRACT')
+    if start == -1:
+        return description
+    end = description.find('CLARIFIER CONTRACT', start)
+    if end == -1:
+        return description[:start].rstrip() + ' '
+    return description[:start] + description[end:]
 
 
 def propose_plan_tool() -> dict[str, Any]:

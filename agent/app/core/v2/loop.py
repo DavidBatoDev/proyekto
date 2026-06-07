@@ -58,12 +58,14 @@ def run_loop(
     handle_map: dict[str, dict[str, str]] | None,
     settings: Any,
     trace_id: str | None,
+    pending_plan_titles: frozenset[str] | None = None,
 ) -> LoopResult:
     max_turns = max(1, int(settings.agent_v2_max_turns))
     max_tool_calls = max(1, int(settings.agent_v2_max_tool_calls))
     tool_calls_used = 0
     used_read_tools = False
     tok_in = tok_out = tok_total = 0
+    live_epic_titles = _live_epic_titles(handle_map)
 
     for turn in range(1, max_turns + 1):
         progress.provider_attempt(settings, trace_id, turn)
@@ -100,7 +102,14 @@ def run_loop(
         read_calls: list[ToolCall] = []
         for tc in response.tool_calls:
             if tools_spec.is_terminal_tool(tc.name):
-                outcome = _handle_terminal(tc, handle_map, settings, trace_id)
+                outcome = _handle_terminal(
+                    tc,
+                    handle_map,
+                    settings,
+                    trace_id,
+                    pending_plan_titles=pending_plan_titles or frozenset(),
+                    live_epic_titles=live_epic_titles,
+                )
                 if isinstance(outcome, LoopResult):
                     outcome.used_read_tools = used_read_tools
                     return _finalize(
@@ -174,6 +183,9 @@ def _handle_terminal(
     handle_map: dict[str, dict[str, str]] | None,
     settings: Any,
     trace_id: str | None,
+    *,
+    pending_plan_titles: frozenset[str] = frozenset(),
+    live_epic_titles: frozenset[str] = frozenset(),
 ) -> LoopResult | dict[str, Any]:
     progress.tool_requested(settings, trace_id, tc.name, tc.arguments)
 
@@ -182,21 +194,55 @@ def _handle_terminal(
         if isinstance(parsed, tools_exec.PlanToolError):
             return {'error': {'code': 'INVALID_OPERATIONS', 'message': parsed.message}}
         if parsed.operations:
-            return LoopResult(
-                kind='edit',
-                assistant_message=parsed.assistant_message,
-                operations=parsed.operations,
-                terminal_tool=tc.name,
-                termination_reason='edit',
-            )
+            # Drop add_epic ops that re-create an epic already on the live
+            # roadmap (the model sometimes echoes an outline node back into a
+            # fresh add). Only childless duplicates are dropped, so creation
+            # chains (parent_ref -> temp_id) are never broken.
+            kept, dropped = _drop_duplicate_epics(parsed.operations, live_epic_titles)
+            if kept:
+                return LoopResult(
+                    kind='edit',
+                    assistant_message=parsed.assistant_message,
+                    operations=kept,
+                    terminal_tool=tc.name,
+                    termination_reason='edit',
+                )
+            if dropped:
+                return LoopResult(
+                    kind='chat',
+                    assistant_message=(
+                        parsed.assistant_message
+                        or f'"{dropped[0]}" already exists on the roadmap, so there was '
+                        'nothing new to add.'
+                    ),
+                    terminal_tool=tc.name,
+                    termination_reason='duplicate_noop',
+                )
         if parsed.revision_operations:
-            return LoopResult(
-                kind='plan_revision',
-                assistant_message=parsed.assistant_message,
-                revision_operations=parsed.revision_operations,
-                terminal_tool=tc.name,
-                termination_reason='plan_revision',
-            )
+            # revision_operations only legitimately targets a titles-only
+            # pending plan. If the targeted title isn't in that plan (or no
+            # plan is pending), the model misrouted a LIVE edit — feed the
+            # error back so it re-stages via `operations` instead of silently
+            # editing a non-existent plan.
+            if _revision_grounded_in_plan(parsed.revision_operations, pending_plan_titles):
+                return LoopResult(
+                    kind='plan_revision',
+                    assistant_message=parsed.assistant_message,
+                    revision_operations=parsed.revision_operations,
+                    terminal_tool=tc.name,
+                    termination_reason='plan_revision',
+                )
+            return {
+                'error': {
+                    'code': 'NOT_A_PLAN_REVISION',
+                    'message': (
+                        'revision_operations only applies to items in a pending plan '
+                        'awaiting confirmation. This target is a live roadmap item — '
+                        'stage the change in `operations` instead (e.g. update_node to '
+                        'rename, delete_node to remove). Leave revision_operations empty.'
+                    ),
+                }
+            }
         if parsed.clarifier_options or _looks_like_question(parsed.assistant_message):
             return LoopResult(
                 kind='clarifier',
@@ -262,6 +308,70 @@ def _handle_terminal(
 
 def _looks_like_question(text: str) -> bool:
     return isinstance(text, str) and '?' in text
+
+
+def _live_epic_titles(handle_map: dict[str, dict[str, str]] | None) -> frozenset[str]:
+    """Lower-cased titles of epics already on the live roadmap (from the
+    handle-map outline), for duplicate detection."""
+    if not handle_map:
+        return frozenset()
+    titles: set[str] = set()
+    for entry in handle_map.values():
+        if not isinstance(entry, dict) or entry.get('type') != 'epic':
+            continue
+        title = entry.get('title')
+        if isinstance(title, str) and title.strip():
+            titles.add(title.strip().lower())
+    return frozenset(titles)
+
+
+def _drop_duplicate_epics(
+    operations: list[Any], live_epic_titles: frozenset[str]
+) -> tuple[list[Any], list[str]]:
+    """Return (kept_ops, dropped_titles). Drops an ``add_epic`` only when its
+    title matches an existing live epic AND its ``temp_id`` is not referenced
+    by any sibling op's ``parent_ref`` (so creation chains stay intact)."""
+    if not live_epic_titles:
+        return operations, []
+    referenced_temp_ids = {
+        op.parent_ref for op in operations if getattr(op, 'parent_ref', None)
+    }
+    kept: list[Any] = []
+    dropped: list[str] = []
+    for op in operations:
+        op_name = getattr(op.op, 'value', None) or str(op.op)
+        title = op.data.get('title') if isinstance(getattr(op, 'data', None), dict) else None
+        is_referenced = bool(getattr(op, 'temp_id', None)) and op.temp_id in referenced_temp_ids
+        if (
+            op_name == 'add_epic'
+            and isinstance(title, str)
+            and title.strip().lower() in live_epic_titles
+            and not is_referenced
+        ):
+            dropped.append(title.strip())
+            continue
+        kept.append(op)
+    return kept, dropped
+
+
+def _revision_grounded_in_plan(
+    revision_operations: list[dict[str, Any]], pending_plan_titles: frozenset[str]
+) -> bool:
+    """True when at least one revision op targets a title present in the
+    pending plan. ``new_title`` (the rename destination) is ignored — only the
+    existing target identifies whether this is really a plan revision."""
+    if not pending_plan_titles:
+        return False
+    for op in revision_operations:
+        if not isinstance(op, dict):
+            continue
+        for key, value in op.items():
+            if key == 'new_title' or not isinstance(value, str):
+                continue
+            if key == 'title' or key.endswith('_title'):
+                if value.strip().lower() in pending_plan_titles:
+                    return True
+    return False
 
 
 def _echo_items(response: LLMResponse) -> list[dict[str, Any]]:

@@ -71,7 +71,7 @@ _VALID_EDIT_ARGS = {
 }
 
 
-def _run(client, dispatcher=None, settings=None, handle_map=None):
+def _run(client, dispatcher=None, settings=None, handle_map=None, pending_plan_titles=None):
     return run_loop(
         client=client,
         messages=[{'role': 'system', 'content': 'sys'}, {'role': 'user', 'content': 'hi'}],
@@ -81,6 +81,7 @@ def _run(client, dispatcher=None, settings=None, handle_map=None):
         handle_map=handle_map or {},
         settings=settings or _settings(),
         trace_id=None,
+        pending_plan_titles=pending_plan_titles,
     )
 
 
@@ -155,6 +156,116 @@ class V2LoopTests(unittest.TestCase):
         self.assertEqual(result.kind, 'chat')
         outputs = [m for m in client.last_messages if m.get('type') == 'function_call_output']
         self.assertTrue(any('UNKNOWN_TOOL' in (m.get('output') or '') for m in outputs))
+
+
+class V2PlanRevisionGuardTests(unittest.TestCase):
+    """Bug B regression: a live edit must not be swallowed as a plan revision.
+
+    Repro from the live sweep: with a pending plan open, "rename epic X to Y"
+    was emitted as revision_operations -> routed to plan_revision -> staged=0
+    (silent no-op). The guard rejects revision ops whose target isn't in the
+    pending plan and feeds the error back so the model re-stages via operations.
+    """
+
+    @staticmethod
+    def _revision_resp(epic_title, new_title):
+        return _tool_resp(
+            'plan_roadmap_operations',
+            {
+                'assistant_message': f'Renamed {epic_title}.',
+                'operations': [],
+                'revision_operations': [
+                    {'op': 'rename_epic', 'epic_title': epic_title, 'new_title': new_title}
+                ],
+            },
+        )
+
+    def test_revision_op_on_live_item_without_pending_plan_is_fed_back(self):
+        client = _ScriptedClient([
+            self._revision_resp('PW-Telemetry-A', 'PW-Telemetry-A2'),
+            _tool_resp('plan_roadmap_operations', _VALID_EDIT_ARGS),
+        ])
+        result = _run(client, pending_plan_titles=frozenset())
+        self.assertEqual(result.kind, 'edit')  # self-corrected, real change staged
+        self.assertEqual(client.call_count, 2)
+        outputs = [m for m in client.last_messages if m.get('type') == 'function_call_output']
+        self.assertTrue(
+            any('NOT_A_PLAN_REVISION' in (m.get('output') or '') for m in outputs)
+        )
+
+    def test_revision_op_on_live_item_when_unrelated_plan_pending_is_fed_back(self):
+        # The exact sweep scenario: a referral-program plan is pending, but the
+        # rename targets a live epic NOT in that plan -> still a misroute.
+        client = _ScriptedClient([
+            self._revision_resp('PW-Telemetry-A', 'PW-Telemetry-A2'),
+            _tool_resp('plan_roadmap_operations', _VALID_EDIT_ARGS),
+        ])
+        result = _run(client, pending_plan_titles=frozenset({'referral rewards', 'sharing'}))
+        self.assertEqual(result.kind, 'edit')
+        outputs = [m for m in client.last_messages if m.get('type') == 'function_call_output']
+        self.assertTrue(
+            any('NOT_A_PLAN_REVISION' in (m.get('output') or '') for m in outputs)
+        )
+
+    def test_revision_op_targeting_pending_plan_item_routes_to_plan_revision(self):
+        # Legit: the target title IS in the pending plan -> revise the plan.
+        client = _ScriptedClient([self._revision_resp('Referral Rewards', 'Loyalty Rewards')])
+        result = _run(client, pending_plan_titles=frozenset({'referral rewards'}))
+        self.assertEqual(result.kind, 'plan_revision')
+        self.assertEqual(
+            result.revision_operations[0]['new_title'], 'Loyalty Rewards'
+        )
+
+
+class V2DuplicateEpicGuardTests(unittest.TestCase):
+    """Bug A regression: don't re-create an epic already on the live roadmap."""
+
+    _LIVE = {'E1': {'id': 'u-1', 'type': 'epic', 'title': 'Growth'}}
+
+    def test_duplicate_add_epic_against_live_is_dropped(self):
+        args = {
+            'assistant_message': 'Added epics.',
+            'operations': [
+                {'op': 'add_epic', 'data': {'title': 'Growth'}},  # already live
+                {'op': 'add_epic', 'data': {'title': 'Retention'}},  # new
+            ],
+        }
+        result = _run(
+            _ScriptedClient([_tool_resp('plan_roadmap_operations', args)]),
+            handle_map=self._LIVE,
+        )
+        self.assertEqual(result.kind, 'edit')
+        self.assertEqual(len(result.operations), 1)
+        self.assertEqual(result.operations[0].data['title'], 'Retention')
+
+    def test_all_duplicate_add_epics_becomes_noop_chat(self):
+        args = {
+            'assistant_message': '',
+            'operations': [{'op': 'add_epic', 'data': {'title': 'growth'}}],  # case-insensitive
+        }
+        result = _run(
+            _ScriptedClient([_tool_resp('plan_roadmap_operations', args)]),
+            handle_map=self._LIVE,
+        )
+        self.assertEqual(result.kind, 'chat')
+        self.assertEqual(result.termination_reason, 'duplicate_noop')
+
+    def test_duplicate_epic_with_children_is_kept_to_preserve_chain(self):
+        # The dup epic's temp_id is referenced by a child -> keep it, dropping
+        # it would orphan the feature.
+        args = {
+            'assistant_message': 'Rebuilt Growth.',
+            'operations': [
+                {'op': 'add_epic', 'temp_id': 'temp_e1', 'data': {'title': 'Growth'}},
+                {'op': 'add_feature', 'parent_ref': 'temp_e1', 'data': {'title': 'Signups'}},
+            ],
+        }
+        result = _run(
+            _ScriptedClient([_tool_resp('plan_roadmap_operations', args)]),
+            handle_map=self._LIVE,
+        )
+        self.assertEqual(result.kind, 'edit')
+        self.assertEqual(len(result.operations), 2)
 
 
 class _FakeResp:

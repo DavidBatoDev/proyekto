@@ -142,12 +142,31 @@ class V2RouterTests(unittest.TestCase):
 
 
 class V2SchemaParityTests(unittest.TestCase):
-    def test_write_tool_schema_matches_registry(self):
-        v2_tools = tools_spec.build_tools()
-        v2_plan = next(t for t in v2_tools if t['function']['name'] == 'plan_roadmap_operations')
+    @staticmethod
+    def _plan_tool(tools):
+        return next(t for t in tools if t['function']['name'] == 'plan_roadmap_operations')
+
+    def test_write_tool_schema_matches_registry_when_plan_pending(self):
+        # With a pending plan the revision lane is legitimately available, so
+        # the schema stays byte-for-byte identical to the shared registry tool.
+        v2_plan = self._plan_tool(tools_spec.build_tools(has_pending_plan=True))
         self.assertEqual(
             v2_plan['function']['parameters'],
             get_planning_tool()['function']['parameters'],
+        )
+
+    def test_revision_operations_stripped_when_no_plan_pending(self):
+        # Default (no pending plan): revision_operations is removed so the
+        # model can't misroute a live edit into the revision lane.
+        v2_plan = self._plan_tool(tools_spec.build_tools())
+        props = v2_plan['function']['parameters']['properties']
+        self.assertNotIn('revision_operations', props)
+        self.assertIn('operations', props)
+        self.assertNotIn('DUAL-TARGET CONTRACT', v2_plan['function']['description'])
+        # operations schema itself is untouched vs the registry.
+        self.assertEqual(
+            props['operations'],
+            get_planning_tool()['function']['parameters']['properties']['operations'],
         )
 
 
