@@ -1,9 +1,9 @@
-"""v2 entrypoint — mirrors ``planning_orchestrator.plan_message``.
+"""v2 entrypoint — the agent's single brain, called by ``AgentService.plan_message``.
 
-Loads context (reusing v1 helpers), runs the single loop, and assembles a
-``MessagePlanningOutcome``. Synchronous: it runs in the same worker thread as
-the v1 planner. A provider failure degrades to a graceful chat reply instead
-of a 500, mirroring v1's outage handling.
+Loads context (reusing the shared context/staging helpers), runs the single
+tool-calling loop, and assembles a ``MessagePlanningOutcome``. Synchronous: it
+runs in the route's worker thread. A provider failure degrades to a graceful
+chat reply instead of a 500.
 """
 
 from __future__ import annotations

@@ -48,7 +48,7 @@ class ToolDispatcher:
         self._logger = logger
         self._nest_client = nest_client
         # `run_async_context_call` is accepted for backwards compatibility with
-        # pre-#5A callers (e.g. LLMPlanner passing its own adapter). It is no
+        # older callers that passed their own adapter. It is no
         # longer used: the dispatcher drives the now-async handler coroutine
         # via its own `_drive_handler_coroutine()` helper, which picks the
         # correct sync→async strategy based on whether an event loop is

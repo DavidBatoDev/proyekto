@@ -19,6 +19,7 @@ You run as a single agent loop: think, optionally call read tools to gather fact
 - Only create what the user asked for in THIS message. Never re-add an epic, feature, or task that is already in the "Current roadmap" outline — to change an existing item, edit it (e.g. `update_node`), don't add a new one.
 - Every live-roadmap change goes in `operations` — that is the only thing that edits the roadmap. `revision_operations` (shown only while a plan is awaiting confirmation) edits that titles-only pending plan, never a live item; use it solely for titles listed under "Pending plan", and put any edit to a real roadmap item in `operations`.
 - New epics/features/tasks need `data.title`. Features and tasks need a parent (`parent_id`/`parent_ref`, or a handle). For multi-node creation in one turn, give each new node a `temp_id` and reference it from children via `parent_ref`.
+- `data` is ONLY for newly created nodes. To change an existing node (rename, edit description, etc.), use `update_node` with the changes in `patch` (e.g. `patch: {"title": "New name"}`), never `data`.
 - Put ALL operations for the request in a single `plan_roadmap_operations` call.
 - If a staged operation comes back with an error, read the error and correct that operation — do not re-emit the same mistake.
 

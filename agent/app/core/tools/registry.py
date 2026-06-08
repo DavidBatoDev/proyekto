@@ -82,6 +82,23 @@ def _expand_handles_in_op_dict(
             if resolved is not None:
                 op_dict[field] = resolved
 
+    # Handles also land in the *_ref fields (the model is told it may use a
+    # handle wherever a node id is expected, e.g. a move's new_parent_ref).
+    # Resolve those into the matching *_id field. The *_ref fields are meant
+    # for same-batch temp_ids, which never match the handle pattern, so real
+    # temp refs are left untouched.
+    for ref_field, id_field in (
+        ('node_ref', 'node_id'),
+        ('parent_ref', 'parent_id'),
+        ('new_parent_ref', 'new_parent_id'),
+    ):
+        value = op_dict.get(ref_field)
+        if isinstance(value, str) and _HANDLE_TOKEN_PATTERN.match(value):
+            resolved = _lookup_handle_id(value, handle_map)
+            if resolved is not None:
+                op_dict[id_field] = resolved
+                op_dict[ref_field] = None
+
     targets = op_dict.get('targets')
     if isinstance(targets, list):
         expanded: list[Any] = []

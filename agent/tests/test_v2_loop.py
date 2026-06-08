@@ -268,6 +268,68 @@ class V2DuplicateEpicGuardTests(unittest.TestCase):
         self.assertEqual(len(result.operations), 2)
 
 
+class V2UpdateNodePatchFoldTests(unittest.TestCase):
+    """Regression: a rename emitted as update_node + data={title} must be
+    folded into patch (data is not allowed on update_node — backend 400s)."""
+
+    def test_update_node_data_title_folded_into_patch(self):
+        args = {
+            'assistant_message': 'Renamed it.',
+            'operations': [
+                {
+                    'op': 'update_node',
+                    'node_type': 'epic',
+                    'node_id': '11111111-1111-1111-1111-111111111111',
+                    'data': {'title': 'New Name'},
+                }
+            ],
+        }
+        result = _run(_ScriptedClient([_tool_resp('plan_roadmap_operations', args)]))
+        self.assertEqual(result.kind, 'edit')
+        op = result.operations[0]
+        self.assertEqual(op.op.value, 'update_node')
+        self.assertEqual(op.patch, {'title': 'New Name'})
+        self.assertIsNone(op.data)
+
+
+class V2RefHandleExpansionTests(unittest.TestCase):
+    """Regression: a handle in a *_ref field (e.g. a move's new_parent_ref)
+    must resolve into the matching *_id field — otherwise the literal handle
+    reaches the backend and 400s the commit."""
+
+    _LIVE = {
+        'E1.F2': {
+            'id': '44444444-4444-4444-4444-444444444444',
+            'type': 'feature',
+            'title': 'Delivery',
+        }
+    }
+
+    def test_handle_in_new_parent_ref_moves_to_new_parent_id(self):
+        args = {
+            'assistant_message': 'Moved the task.',
+            'operations': [
+                {
+                    'op': 'update_node',
+                    'node_type': 'task',
+                    'node_id': '33333333-3333-3333-3333-333333333333',
+                    'new_parent_ref': 'E1.F2',
+                }
+            ],
+        }
+        result = _run(
+            _ScriptedClient([_tool_resp('plan_roadmap_operations', args)]),
+            handle_map=self._LIVE,
+        )
+        self.assertEqual(result.kind, 'edit')
+        op = result.operations[0]
+        # A reparenting update_node is retagged to move_node, and the handle in
+        # new_parent_ref is resolved into new_parent_id.
+        self.assertEqual(op.op.value, 'move_node')
+        self.assertEqual(op.new_parent_id, '44444444-4444-4444-4444-444444444444')
+        self.assertIsNone(op.new_parent_ref)
+
+
 class _FakeResp:
     def __init__(self):
         self.output = [

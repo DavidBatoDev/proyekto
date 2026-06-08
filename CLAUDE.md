@@ -44,7 +44,7 @@ Proyekto is a monorepo with four deployable units. Note: `SETUP.md` refers to an
 ### Benchmarks / validation (repo root)
 - `node scripts/benchmark_resolve_lookup.mjs` (supports `--assert-warm-p95-ms=`, `--redis-chaos`)
 - `node scripts/benchmark_roadmap_ai_commit.mjs` (compares `include_roadmap` true vs false)
-- `node scripts/validate_agent_canary_matrix.mjs` â€” runs `strict-canary` and `react-compat` env profiles against targeted agent unittests; non-zero exit on failure
+- `node scripts/validate_agent_canary_matrix.mjs` â€” runs the v2 canary (the v2 loop + shared contract unittests); non-zero exit on failure
 
 Scripts auto-load `.env` in order: cwd â†’ `scripts/.env` â†’ repo root `.env` â†’ `backend/.env` (or `agent/.env` for the agent runner). First value wins.
 
@@ -55,11 +55,11 @@ The roadmap AI feature spans all three runtimes and is the most load-bearing cro
 
 1. **Web** sends user intent to **backend** roadmap AI endpoints (under `backend/src/modules/roadmaps/`).
 2. **Backend** forwards to the Python **agent** over HTTP, carrying a session id; agent state is persisted in Upstash Redis via `agent/app/core/session_store.py`.
-3. **Agent** runs a ReAct-style planning/execution loop (`agent/app/core/orchestration/{planning,react,edits}`) that emits roadmap operations conforming to `schemas/roadmap-ai-operations.json`.
+3. **Agent** runs a single tool-calling loop (`agent/app/core/v2/`) that emits roadmap operations conforming to `schemas/roadmap-ai-operations.json`.
 4. **Backend** applies those operations to Supabase (via `fast-json-patch` where relevant) and returns either a full roadmap payload or a lean diff based on the `include_roadmap` flag â€” this lean path is a deliberate latency optimization and is benchmark-covered.
 5. **Web** renders the canvas with XYFlow + dagre and supports optimistic UI for epic/feature/task operations (recent commits are entirely in this area â€” see `feat(roadmap-optimistic-operations)`, `feat(roadmap-ai)`, `feat(planner-summary)`).
 
-Feature-flag env vars controlling agent behavior (validated by `validate_agent_canary_matrix.mjs`): `AGENT_HYBRID_REACT_ENABLED`, `AGENT_DRAFT_GRAPH_ENABLED`, `AGENT_STRICT_PREVIEW_FINGERPRINT`, `AGENT_REACT_MAX_ATTEMPTS`, `MAX_EDIT_TOOL_TURNS`. Legacy aliases still accepted for one release: `AGENT_EDIT_PLANNER_MAX_ATTEMPTS`, `AGENT_EDIT_PLANNER_REPAIR_RETRIES`.
+The agent has a single brain: the v2 single-loop in `agent/app/core/v2/` (one model via the OpenAI Responses API, `OPENAI_MODEL_V2`). There is no v1/v2 feature-flag matrix — `AgentService.plan_message` always runs the v2 loop. Tunables (see `agent/app/core/config.py`): `AGENT_V2_MAX_TURNS`, `AGENT_V2_MAX_TOOL_CALLS`, `OPENAI_V2_MAX_OUTPUT_TOKENS`, `OPENAI_V2_REASONING_EFFORT`, `AGENT_ASYNC_AUTO_COMMIT_ENABLED`.
 
 When changing operation shapes, update `schemas/roadmap-ai-operations.json` **and** run `npm run check:roadmap-ai-schema` from `backend/` â€” the schema is consumed by both NestJS validation and the Python agent's contract tests (`agent/tests/test_operation_contracts.py`).
 

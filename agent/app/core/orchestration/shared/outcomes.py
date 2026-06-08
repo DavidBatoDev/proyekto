@@ -5,7 +5,7 @@ from typing import Any
 
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import AgentSession, IntentType, ProviderUsed, ResponseMode
-from app.core.llm.client import PlanningResult
+from app.core.orchestration.shared.planning_result import PlanningResult
 
 
 @dataclass

@@ -118,29 +118,6 @@ class V2OutcomeTests(unittest.TestCase):
         self.assertEqual(roles[-2:], ['user', 'assistant'])
 
 
-class V2RouterTests(unittest.TestCase):
-    def test_per_session_override_v2_wins_over_global_off(self):
-        service = _service()  # global agent_v2_enabled defaults False
-        session = _session()
-        session.metadata.brain_version = 'v2'
-        self.assertTrue(service._v2_enabled_for(session))
-
-    def test_per_session_override_v1_wins_over_global_on(self):
-        service = _service()
-        service._settings = service._settings.model_copy(update={'agent_v2_enabled': True})
-        session = _session()
-        session.metadata.brain_version = 'v1'
-        self.assertFalse(service._v2_enabled_for(session))
-
-    def test_default_follows_global_flag(self):
-        service = _service()
-        session = _session()
-        service._settings = service._settings.model_copy(update={'agent_v2_enabled': False})
-        self.assertFalse(service._v2_enabled_for(session))
-        service._settings = service._settings.model_copy(update={'agent_v2_enabled': True})
-        self.assertTrue(service._v2_enabled_for(session))
-
-
 class V2SchemaParityTests(unittest.TestCase):
     @staticmethod
     def _plan_tool(tools):

@@ -39,7 +39,8 @@ def to_outcome(
     provider_error_code: str | None = None,
 ) -> MessagePlanningOutcome:
     settings = service._settings
-    draft_graph_enabled = settings.agent_draft_graph_enabled
+    # Drafts/branching were removed — staged edits live directly on the session.
+    draft_graph_enabled = False
     kind = loop_result.kind
 
     response_mode = 'chat'
@@ -153,10 +154,6 @@ def to_outcome(
 
     active_draft_id: str | None = None
     active_draft_version: int | None = None
-    if draft_graph_enabled:
-        active_draft = service._get_active_draft(session)
-        active_draft_id = active_draft.draft_id
-        active_draft_version = active_draft.draft_version
 
     route_lane = f'v2_{kind}'
     progress.route_selected(

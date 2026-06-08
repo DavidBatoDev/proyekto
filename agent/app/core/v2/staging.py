@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Any, Callable
 
 from app.core.contracts.operations import RoadmapOperation
-from app.core.llm.client import PlanningResult
+from app.core.orchestration.shared.planning_result import PlanningResult
 from app.core.orchestration.planning.staged_operations_applier import (
     ApplyPlannedOperationsResult,
     apply_planned_operations,
@@ -40,13 +40,12 @@ def stage_operations(
         provider_error_code=None,
         draft_action='append',
     )
-    draft_graph_enabled = service._settings.agent_draft_graph_enabled
-    active_draft = service._get_active_draft(session) if draft_graph_enabled else None
+    # Drafts/branching were removed — staged edits append directly to the session.
     return apply_planned_operations(
         session=session,
         planning=planning,
-        draft_graph_enabled=draft_graph_enabled,
-        active_draft=active_draft,
+        draft_graph_enabled=False,
+        active_draft=None,
         edit_continuation_trigger=None,
         should_replace_staged_operations=service._should_replace_staged_operations,
         get_active_draft=service._get_active_draft,

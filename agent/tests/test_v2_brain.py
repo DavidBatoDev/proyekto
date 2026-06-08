@@ -81,13 +81,6 @@ class V2BrainEndToEndTests(unittest.TestCase):
         self.assertEqual(outcome.response_mode, 'chat')
         self.assertEqual(outcome.assistant_message, 'Your roadmap has one epic.')
 
-    def test_v1_path_untouched_when_flag_off(self):
-        # No brain_version override and global flag off -> must NOT use v2.
-        service = AgentService(_MemoryStore())
-        service._settings = service._settings.model_copy(update={'agent_v2_enabled': False})
-        session = AgentSession(roadmap_id='33333333-3333-3333-3333-333333333333')
-        self.assertFalse(service._v2_enabled_for(session))
-
 
 if __name__ == '__main__':
     unittest.main()

@@ -65,6 +65,7 @@ def interpret_plan_tool(
     is installed for the duration of the parse, mirroring the v1 edit lane.
     """
     cleaned = _strip_null_plan_args(args)
+    cleaned = _normalize_mutation_ops(cleaned)
     token = set_active_handle_map(handle_map or None)
     try:
         try:
@@ -96,6 +97,38 @@ def _format_validation_error(error: dict[str, Any]) -> str:
         f'Operation at index {index} (op={op}) is invalid: {detail}. '
         'Fix this operation and re-stage.'
     )
+
+
+def _normalize_mutation_ops(args: dict[str, Any]) -> dict[str, Any]:
+    """Fix the two shapes the model gets wrong on ``update_node``:
+
+    1. Reparenting. The model emits a move as ``update_node ... new_parent_ref=
+       <feature>`` but ``update_node`` can't reparent (the contract reports
+       ``mutation_missing``); the move op is ``move_node``. Retag it.
+    2. Field edits in ``data``. A rename / field change comes as
+       ``update_node ... data={'title': 'New'}`` (mirroring add_* ops), but
+       field changes on an existing node go in ``patch`` — ``data`` is not
+       allowed on update_node, so the backend 400s. Fold ``data`` into
+       ``patch``.
+
+    Both produce a staged op the backend accepts.
+    """
+    if not isinstance(args, dict):
+        return args
+    operations = args.get('operations')
+    if not isinstance(operations, list):
+        return args
+    for op in operations:
+        if not isinstance(op, dict) or op.get('op') != 'update_node':
+            continue
+        if op.get('new_parent_id') or op.get('new_parent_ref'):
+            op['op'] = 'move_node'
+            continue
+        data = op.get('data')
+        if isinstance(data, dict) and data and not op.get('patch'):
+            op['patch'] = dict(data)
+            op.pop('data', None)
+    return args
 
 
 def _strip_null_plan_args(args: Any) -> dict[str, Any]:
