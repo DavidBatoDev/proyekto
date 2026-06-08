@@ -43,44 +43,21 @@ export interface AgentValidationIssue {
   };
 }
 
-export interface AgentSemanticDiffChange {
-  type: string;
-  node: {
-    type: AgentNodeType;
-    id: string;
-  };
-  from?: Record<string, unknown>;
-  to?: Record<string, unknown>;
+
+export interface AgentCommitImpactedItem {
+  node_id: string;
+  node_type: AgentNodeType | "roadmap";
+  title?: string | null;
+  change_type?: string | null;
+  impact?: "created" | "modified" | "deleted";
 }
 
-export interface AgentSemanticDiff {
-  summary: Record<string, number>;
-  changes: AgentSemanticDiffChange[];
-}
-
-export interface AgentCommitPayload {
-  change_id?: string;
-  committed_at?: string;
-  revision_token?: string;
-  semantic_diff: AgentSemanticDiff;
-  candidate_snapshot: Record<string, unknown>;
-  timeline?: Array<Record<string, unknown>>;
-  roadmap?: Record<string, unknown>;
-}
-
-export interface AgentRoadmapCommitArtifact {
-  artifact_id: string;
-  type: "roadmap_commit";
-  roadmap_id: string;
-  base_revision?: number;
-  change_id?: string;
-  status?: "draft" | "applied" | "discarded";
-  title: string;
-  summary: string;
-  semantic_diff_summary: Record<string, number>;
-  validation_issue_count: number;
-  inline_commit?: AgentCommitPayload;
-  created_at: string;
+export interface AgentCommitSummary {
+  committed: boolean;
+  change_id?: string | null;
+  semantic_diff_summary?: Record<string, number>;
+  impacted_items?: AgentCommitImpactedItem[];
+  impacted_summary?: Record<string, number>;
 }
 
 export interface AgentCreateSessionRequest {
@@ -124,13 +101,13 @@ export interface AgentMessageResponse {
   operations: AgentOperation[];
   staged_operations_version: number;
   staged_operations_count: number;
-  artifacts: AgentRoadmapCommitArtifact[];
   plan_proposal?: AgentPlanProposal | null;
   clarifier?: AgentClarifierCard | null;
   provider_used?: "openai" | "rule_based";
   fallback_used?: boolean;
   provider_error_code?: string | null;
   debug_trace_id?: string | null;
+  commit_summary?: AgentCommitSummary | null;
 }
 
 export interface AgentPlanProposalTask {
@@ -229,54 +206,6 @@ export interface AgentTraceEventsRequest {
   afterSeq?: number;
   limit?: number;
   detail?: AgentTraceDetailMode;
-}
-
-export interface AgentDiscardRequest {
-  change_id?: string;
-}
-
-export interface AgentDiscardResponse {
-  session_id: string;
-  roadmap_id: string;
-  discarded_change_id?: string;
-  discarded_at: string;
-  staged_operations_count: number;
-  staged_operations_version: number;
-}
-
-export interface AgentRollbackRequest {
-  change_id: string;
-}
-
-export interface AgentRollbackResponse {
-  session_id: string;
-  roadmap_id: string;
-  rollback: {
-    change_id: string;
-    reapplied_at: string;
-    revision_token: string;
-    timeline: Array<{
-      change_id: string;
-      committed_at: string;
-      discarded_at?: string;
-      status: "applied" | "discarded";
-      operations_count: number;
-      semantic_diff: AgentSemanticDiff;
-    }>;
-    roadmap: Record<string, unknown>;
-  };
-}
-
-export interface AgentCommitRequest {
-  operations?: AgentOperation[];
-  base_revision?: number;
-  revision_token?: string;
-}
-
-export interface AgentCommitResponse {
-  session_id: string;
-  roadmap_id: string;
-  commit: Record<string, unknown>;
 }
 
 export class RoadmapAgentServiceError extends Error {
@@ -436,50 +365,6 @@ export const roadmapAgentService = {
     }
   },
 
-  async discardSession(
-    sessionId: string,
-    payload: AgentDiscardRequest = {},
-  ): Promise<AgentDiscardResponse> {
-    try {
-      const response = await agentApiClient.post<AgentDiscardResponse>(
-        `/agent/sessions/${sessionId}/discard`,
-        payload,
-      );
-      return response.data;
-    } catch (error) {
-      throwAgentError(error, "Discard AI staged edits");
-    }
-  },
-
-  async commitSession(
-    sessionId: string,
-    payload: AgentCommitRequest = {},
-  ): Promise<AgentCommitResponse> {
-    try {
-      const response = await agentApiClient.post<AgentCommitResponse>(
-        `/agent/sessions/${sessionId}/commit`,
-        payload,
-      );
-      return response.data;
-    } catch (error) {
-      throwAgentError(error, "Commit AI staged edits");
-    }
-  },
-
-  async rollbackSession(
-    sessionId: string,
-    payload: AgentRollbackRequest,
-  ): Promise<AgentRollbackResponse> {
-    try {
-      const response = await agentApiClient.post<AgentRollbackResponse>(
-        `/agent/sessions/${sessionId}/rollback`,
-        payload,
-      );
-      return response.data;
-    } catch (error) {
-      throwAgentError(error, "Reapply AI committed change");
-    }
-  },
 };
 
 export default roadmapAgentService;

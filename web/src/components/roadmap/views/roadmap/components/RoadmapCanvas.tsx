@@ -3,14 +3,12 @@ import { Link2, Plus } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { LinkRoadmapModal } from "@/components/roadmap/modals/LinkRoadmapModal";
 import { EpicTab } from "./EpicTab";
-import { ArtifactTabView } from "./ArtifactTabView";
 import { MilestonesView } from "../../milestones/MilestonesView";
 import type { RoadmapCanvasProps } from "../models/types";
 import { RoadmapCanvasOverlays } from "./RoadmapCanvasOverlays";
 import { RoadmapView } from "../RoadmapView";
 import { useRoadmapCanvasController } from "../hooks/useRoadmapCanvasController";
 import { useRoadmapStore } from "@/stores/roadmapStore";
-import { useToast } from "@/hooks/useToast";
 import { useShallow } from "zustand/react/shallow";
 import { useAuthStore, useUser } from "@/stores/authStore";
 import { useRoadmapCollaboration } from "@/hooks/useRoadmapCollaboration";
@@ -57,7 +55,6 @@ const RoadmapCanvas = ({
   onNodeClose,
   performanceMode = "normal",
 }: RoadmapCanvasProps) => {
-  const toast = useToast();
   const user = useUser();
   const profile = useAuthStore((s) => s.profile);
   const [isPanningCanvas, setIsPanningCanvas] = useState(false);
@@ -206,22 +203,6 @@ const RoadmapCanvas = ({
     handleTaskUpdate,
     handleTaskDelete,
   } = controller;
-  const {
-    selectedArtifactId,
-    artifactsById,
-    applyArtifactSnapshot,
-    discardArtifact,
-  } = useRoadmapStore(
-    useShallow((state) => ({
-      selectedArtifactId: state.canvasSelectedArtifactId,
-      artifactsById: state.artifactsById,
-      applyArtifactSnapshot: state.applyArtifactSnapshot,
-      discardArtifact: state.discardArtifact,
-    })),
-  );
-  const selectedArtifact = selectedArtifactId
-    ? artifactsById[selectedArtifactId]
-    : null;
 
   const [isLinkRoadmapModalOpen, setIsLinkRoadmapModalOpen] = useState(false);
   const navigate = useNavigate();
@@ -399,40 +380,6 @@ const RoadmapCanvas = ({
           </div>
         )}
 
-        {viewMode === "artifact" && selectedArtifact && (
-          <ArtifactTabView
-            artifact={selectedArtifact}
-            performanceMode={performanceMode}
-            onApply={(artifactId) => {
-              const currentStatus = artifactsById[artifactId]?.status;
-              applyArtifactSnapshot(artifactId);
-              if (currentStatus === "discarded") {
-                toast.success("Artifact change reapplied");
-              } else {
-                toast.success("Artifact preview applied to roadmap");
-              }
-            }}
-            onDiscard={(artifactId) => {
-              discardArtifact(artifactId);
-              toast.success("Artifact change discarded");
-            }}
-          />
-        )}
-
-        {viewMode === "artifact" && !selectedArtifact && (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <p className="text-gray-500 mb-4">No artifact selected</p>
-              <button
-                onClick={() => setViewMode("roadmap")}
-                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
-              >
-                Go to Roadmap View
-              </button>
-            </div>
-          </div>
-        )}
-
         {viewMode === "milestones" && (
           <MilestonesView
             roadmap={roadmap}
@@ -452,8 +399,7 @@ const RoadmapCanvas = ({
           />
         )}
 
-        {viewMode !== "artifact" && (
-          <RoadmapCanvasOverlays
+        <RoadmapCanvasOverlays
             projectId={roadmap.project_id ?? undefined}
             epics={epics}
             selectedTask={selectedTask}
@@ -498,7 +444,6 @@ const RoadmapCanvas = ({
             handleOpenEditFeatureModal={handleOpenEditFeatureModal}
             handleConfirmDelete={handleConfirmDelete}
           />
-        )}
       </div>
       {roadmap.project_id && (
         <LinkRoadmapModal

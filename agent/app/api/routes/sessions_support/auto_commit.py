@@ -10,7 +10,7 @@ from fastapi.exceptions import HTTPException
 
 from app.api.routes.sessions_support.common import extract_upstream_error_code
 from app.core.contracts.operations import RoadmapOperation
-from app.core.contracts.sessions import AgentSession, AppliedDraftCommit, RoadmapCommitArtifact
+from app.core.contracts.sessions import AgentSession, AppliedDraftCommit
 from app.core.logging_utils import log_event
 from app.core.orchestration.agent_service import AgentService
 from app.core.orchestration.context.applied_changes_log import (
@@ -75,11 +75,11 @@ class AutoCommitExecutionResult:
     staged_operations_count: int
     active_draft_id: str | None
     active_draft_version: int | None
-    artifact: RoadmapCommitArtifact | None
-    inline_commit_size_bytes: int | None
     impacted_items: list[dict[str, Any]]
     impacted_item_count: int
     impacted_summary: dict[str, int]
+    change_id: str | None
+    semantic_diff_summary: dict[str, int]
 
 
 def _sanitize_invalid_operation_snapshot(
@@ -280,23 +280,6 @@ def _summarize_impacted_items(impacted_items: list[dict[str, Any]]) -> dict[str,
     return summary
 
 
-def _compact_inline_commit_payload(commit_result: dict[str, Any]) -> dict[str, Any]:
-    compact_payload: dict[str, Any] = {}
-    for key in (
-        'change_id',
-        'committed_at',
-        'revision_token',
-        'semantic_diff',
-        'candidate_snapshot',
-        'operation_results',
-    ):
-        value = commit_result.get(key)
-        if value is None:
-            continue
-        compact_payload[key] = value
-    return compact_payload
-
-
 def schedule_auto_commit_task(
     *,
     task_set: set[asyncio.Task],
@@ -316,12 +299,8 @@ async def execute_auto_commit(
     auth_header: str,
     trace_id: str | None,
     nest_client: Any,
-    draft_graph_enabled: bool,
     resolve_draft_snapshot: Callable[[AgentSession, AgentService], tuple[str, int, list]],
-    reuse_selected_draft_as_post_commit_head: Callable[..., int],
     set_draft_status: Callable[..., bool],
-    build_commit_artifact: Callable[..., RoadmapCommitArtifact | None],
-    serialized_payload_bytes: Callable[[dict[str, Any]], int],
     run_store_call: Callable[..., Awaitable[Any]],
 ) -> AutoCommitExecutionResult:
     draft_id, draft_version, draft_operations = resolve_draft_snapshot(
@@ -490,32 +469,17 @@ async def execute_auto_commit(
             source='commit_semantic_diff',
         )
 
-    staged_operations_count: int
-    staged_operations_version: int
-    active_draft_id: str | None
-    active_draft_version: int | None
-    if draft_graph_enabled:
-        agent_service.ensure_draft_graph_initialized(session)
-        next_draft_version = reuse_selected_draft_as_post_commit_head(
-            session,
-            selected_draft_id=draft_id,
-        )
-        staged_operations_count = 0
-        staged_operations_version = next_draft_version
-        active_draft_id = draft_id
-        active_draft_version = next_draft_version
-    else:
-        set_draft_status(
-            session=session,
-            draft_id=draft_id,
-            status='applied',
-        )
-        session.operations = []
-        session.staged_operations_version += 1
-        staged_operations_count = 0
-        staged_operations_version = session.staged_operations_version
-        active_draft_id = None
-        active_draft_version = None
+    set_draft_status(
+        session=session,
+        draft_id=draft_id,
+        status='applied',
+    )
+    session.operations = []
+    session.staged_operations_version += 1
+    staged_operations_count = 0
+    staged_operations_version = session.staged_operations_version
+    active_draft_id: str | None = None
+    active_draft_version: int | None = None
 
     session.metadata.pending_context_resolution = None
     session.metadata.pending_edit_context = None
@@ -542,25 +506,19 @@ async def execute_auto_commit(
         final_status='confirmed',
     )
 
-    artifact = build_commit_artifact(
-        session,
-        commit_result,
-        change_id=change_id,
-        status='applied',
-    )
-    if artifact is not None and artifact.impacted_items:
-        impacted_items = [item.model_dump(exclude_none=True) for item in artifact.impacted_items]
-    else:
-        impacted_items = _extract_impacted_items_from_commit_result(commit_result)
+    # No commit artifact is built: the web renders the "Committed changes"
+    # confirmation from the lightweight commit_summary and refreshes the
+    # canvas directly. We only surface the impacted items + semantic-diff
+    # summary the confirmation needs.
+    impacted_items = _extract_impacted_items_from_commit_result(commit_result)
     impacted_summary = _summarize_impacted_items(impacted_items)
     impacted_item_count = len(impacted_items)
-    inline_commit_size_bytes: int | None = None
-    if artifact is not None:
-        inline_payload = _compact_inline_commit_payload(commit_result)
-        inline_commit_size_bytes = serialized_payload_bytes(inline_payload)
-        inline_artifact = artifact.model_copy(update={'inline_commit': inline_payload})
-        session.artifacts.append(inline_artifact)
-        artifact = inline_artifact
+    _semantic_diff = commit_result.get('semantic_diff')
+    semantic_diff_summary = (
+        _semantic_diff.get('summary')
+        if isinstance(_semantic_diff, dict) and isinstance(_semantic_diff.get('summary'), dict)
+        else {}
+    )
 
     await run_store_call(store.update, session)
     return AutoCommitExecutionResult(
@@ -569,11 +527,11 @@ async def execute_auto_commit(
         staged_operations_count=staged_operations_count,
         active_draft_id=active_draft_id,
         active_draft_version=active_draft_version,
-        artifact=artifact,
-        inline_commit_size_bytes=inline_commit_size_bytes,
         impacted_items=impacted_items,
         impacted_item_count=impacted_item_count,
         impacted_summary=impacted_summary,
+        change_id=change_id,
+        semantic_diff_summary=semantic_diff_summary,
     )
 
 
@@ -612,7 +570,6 @@ async def run_auto_commit_in_background(
             staged_operations_version=result.staged_operations_version,
             active_draft_id=result.active_draft_id,
             active_draft_version=result.active_draft_version,
-            inline_commit_size_bytes=result.inline_commit_size_bytes,
             impacted_items=result.impacted_items,
             impacted_item_count=result.impacted_item_count,
             impacted_summary=result.impacted_summary,

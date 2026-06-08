@@ -8,7 +8,6 @@ import {
   type RoadmapAiMessage,
 } from "@/services/roadmap-ai-sessions.service";
 import { useRoadmapAiThreadsStore } from "@/stores/roadmapAiThreadsStore";
-import type { RoadmapArtifactPreview } from "@/types/roadmapArtifact";
 
 // =============================================================================
 // Public types (unchanged shape — imported by the panel, activity timeline
@@ -99,7 +98,6 @@ export interface RoadmapAiChatMessage {
   responseMode?: "chat" | "edit_plan" | "plan_proposal";
   planProposal?: import("@/services/roadmap-agent.service").AgentPlanProposal;
   clarifier?: import("@/services/roadmap-agent.service").AgentClarifierCard;
-  artifacts?: RoadmapArtifactPreview[];
   attachments?: RoadmapAiChatAttachment[];
   activityTimeline?: RoadmapAiActivityTimeline;
   commitLifecycle?: RoadmapAiCommitLifecycle;
@@ -191,9 +189,6 @@ function dbRowToClientMessage(row: RoadmapAiMessage): RoadmapAiChatMessage {
     responseMode: (row.response_mode ??
       undefined) as RoadmapAiChatMessage["responseMode"],
   };
-  if (row.artifacts && Array.isArray(row.artifacts)) {
-    base.artifacts = row.artifacts as unknown as RoadmapArtifactPreview[];
-  }
   if (row.activity_timeline && typeof row.activity_timeline === "object") {
     base.activityTimeline =
       row.activity_timeline as unknown as RoadmapAiActivityTimeline;
@@ -240,7 +235,6 @@ export interface UseRoadmapAiAssistantSessionResult {
       intentType?: string;
       responseMode?: "chat" | "edit_plan" | "plan_proposal";
       parseMode?: string;
-      artifacts?: Array<Record<string, unknown>>;
       activityTimeline?: Record<string, unknown>;
       commitLifecycle?: Record<string, unknown>;
       tokens?: number;
@@ -402,7 +396,6 @@ export function useRoadmapAiAssistantSession(
         intent_type: extras?.intentType,
         response_mode: extras?.responseMode,
         parse_mode: extras?.parseMode,
-        artifacts: extras?.artifacts,
         activity_timeline: extras?.activityTimeline,
         commit_lifecycle: extras?.commitLifecycle,
         tokens: extras?.tokens,

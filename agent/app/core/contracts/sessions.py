@@ -41,7 +41,6 @@ IntentType = Literal[
     'question',
 ]
 ResponseMode = Literal['chat', 'edit_plan', 'plan_proposal']
-ArtifactType = Literal['roadmap_commit']
 ProviderUsed = Literal['openai', 'rule_based']
 DraftMode = Literal['append', 'revise', 'branch']
 DraftStatus = Literal['active', 'previewed', 'applied', 'abandoned']
@@ -64,23 +63,17 @@ class CommitImpactedItem(BaseModel):
     impact: Literal['created', 'modified', 'deleted'] = 'modified'
 
 
-class RoadmapCommitArtifact(BaseModel):
-    artifact_id: str = Field(default_factory=lambda: str(uuid4()))
-    type: ArtifactType = 'roadmap_commit'
-    roadmap_id: str
-    base_revision: int | None = None
-    revision_token: str | None = None
+class CommitSummary(BaseModel):
+    """Lightweight result of a synchronous auto-commit, surfaced on the
+    message response so the web can render the "Committed changes"
+    confirmation and refresh the canvas — without the heavy commit artifact
+    (no inline_commit / candidate_snapshot / preview)."""
+
+    committed: bool = False
     change_id: str | None = None
-    title: str
-    summary: str
     semantic_diff_summary: dict[str, int] = Field(default_factory=dict)
-    validation_issue_count: int = 0
-    validation_issues: list[dict[str, Any]] = Field(default_factory=list)
     impacted_items: list[CommitImpactedItem] = Field(default_factory=list)
-    has_validation_errors: bool = False
-    status: Literal['draft', 'applied', 'discarded'] = 'draft'
-    inline_commit: dict[str, Any] | None = None
-    created_at: datetime = Field(default_factory=_utcnow)
+    impacted_summary: dict[str, int] = Field(default_factory=dict)
 
 
 class ResolverCandidate(BaseModel):
@@ -138,9 +131,9 @@ class AppliedChange(BaseModel):
     change_to: dict[str, Any] = Field(default_factory=dict)
     title: str | None = None
     committed_at: datetime = Field(default_factory=_utcnow)
-    # Backend change_id the entry was produced by. Lets discard_session_flow
-    # drop entries whose commit was reverted instead of leaving the prompt's
-    # "recent changes" section misrepresenting roadmap state.
+    # Backend change_id the entry was produced by — kept so reverted commits can
+    # be dropped instead of leaving the prompt's "recent changes" section
+    # misrepresenting roadmap state.
     change_id: str | None = None
 
 
@@ -409,7 +402,10 @@ class SessionMetadata(BaseModel):
 
 
 class AgentSession(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    # Tolerate (and drop) fields removed in later versions so Redis rehydration
+    # stays forward-compatible across deploys — e.g. the retired `artifacts`
+    # list still present on sessions serialized before the artifact removal.
+    model_config = ConfigDict(extra='ignore')
 
     session_id: str = Field(default_factory=lambda: str(uuid4()))
     roadmap_id: str
@@ -421,7 +417,6 @@ class AgentSession(BaseModel):
     # every successful write. Independent of `staged_operations_version`.
     version: int = 0
     last_intent_type: IntentType | None = None
-    artifacts: list[RoadmapCommitArtifact] = Field(default_factory=list)
     messages: list[Message] = Field(default_factory=list)
     metadata: SessionMetadata = Field(default_factory=SessionMetadata)
     created_at: datetime = Field(default_factory=_utcnow)
@@ -469,13 +464,13 @@ class MessageResponse(BaseModel):
     staged_operations_count: int
     active_draft_id: str | None = None
     active_draft_version: int | None = None
-    artifacts: list[RoadmapCommitArtifact] = Field(default_factory=list)
     plan_proposal: dict[str, Any] | None = None
     clarifier: ClarifierCard | None = None
     provider_used: ProviderUsed = 'rule_based'
     fallback_used: bool = False
     provider_error_code: str | None = None
     debug_trace_id: str | None = None
+    commit_summary: CommitSummary | None = None
 
 
 class TraceEvent(BaseModel):
@@ -498,26 +493,3 @@ class TraceEventsResponse(BaseModel):
     started_at: str | None = None
     completed_at: str | None = None
     elapsed_ms: int | None = None
-
-
-class CommitRequest(BaseModel):
-    operations: list[RoadmapOperation] | None = None
-    base_revision: int | None = None
-    revision_token: str | None = None
-
-
-class DiscardRequest(BaseModel):
-    change_id: str | None = None
-
-
-class DiscardResponse(BaseModel):
-    session_id: str
-    roadmap_id: str
-    discarded_change_id: str | None = None
-    discarded_at: datetime
-    staged_operations_count: int
-    staged_operations_version: int
-
-
-class RollbackRequest(BaseModel):
-    change_id: str

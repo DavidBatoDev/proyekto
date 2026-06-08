@@ -11,7 +11,7 @@ process.env.PLAYWRIGHT_HEADED = "1";
 process.env.PLAYWRIGHT_SLOWMO = process.env.PLAYWRIGHT_SLOWMO || "800";
 
 const spec =
-  process.argv[2] || "playwright/tests/roadmap-ai-chat-ui.spec.ts";
+  process.argv[2] || "playwright/tests/roadmap-ai-ui-sweep.spec.ts";
 
 const result = spawnSync(
   "npx",

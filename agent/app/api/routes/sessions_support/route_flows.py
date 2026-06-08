@@ -10,16 +10,12 @@ from fastapi.exceptions import HTTPException
 
 from app.core.contracts.sessions import (
     AgentSession,
-    AppliedDraftCommit,
-    CommitRequest,
+    CommitImpactedItem,
+    CommitSummary,
     CreateSessionRequest,
     CreateSessionResponse,
-    DiscardRequest,
-    DiscardResponse,
     MessageRequest,
     MessageResponse,
-    RoadmapCommitArtifact,
-    RollbackRequest,
 )
 from app.core.orchestration.agent_service import AgentService
 from app.core.orchestration.shared.tool_message_persistence import (
@@ -142,8 +138,6 @@ async def send_message_flow(
         ),
     )
     outcome = None
-    artifacts: list[RoadmapCommitArtifact] = []
-    response_artifacts: list[RoadmapCommitArtifact] = []
     error_code: int | None = None
     auto_commit_ms: int | None = None
     auto_commit_error_code: str | None = None
@@ -154,11 +148,11 @@ async def send_message_flow(
     auto_commit_error_retryable: bool | None = None
     auto_commit_error_upstream_status: int | None = None
     auto_commit_async_enqueued = False
-    inline_commit_size_bytes: int | None = None
     response_staged_operations_version: int | None = None
     response_staged_operations_count: int | None = None
     response_active_draft_id: str | None = None
     response_active_draft_version: int | None = None
+    commit_summary: CommitSummary | None = None
     try:
         outcome = await run_store_call(
             agent_service.plan_message,
@@ -197,22 +191,70 @@ async def send_message_flow(
                     )
                     auto_commit_async_enqueued = True
                 else:
-                    auto_commit_result = await execute_auto_commit(
-                        store=store,
-                        agent_service=agent_service,
-                        session=outcome.session,
-                        auth_header=auth_header,
-                        trace_id=trace_id,
-                    )
-                    auto_commit_ms = auto_commit_result.auto_commit_ms
-                    inline_commit_size_bytes = auto_commit_result.inline_commit_size_bytes
-                    response_staged_operations_count = auto_commit_result.staged_operations_count
-                    response_staged_operations_version = auto_commit_result.staged_operations_version
-                    response_active_draft_id = auto_commit_result.active_draft_id
-                    response_active_draft_version = auto_commit_result.active_draft_version
-                    if auto_commit_result.artifact is not None:
-                        response_artifacts.append(auto_commit_result.artifact)
-                        artifacts.append(auto_commit_result.artifact)
+                    try:
+                        auto_commit_result = await execute_auto_commit(
+                            store=store,
+                            agent_service=agent_service,
+                            session=outcome.session,
+                            auth_header=auth_header,
+                            trace_id=trace_id,
+                        )
+                        auto_commit_ms = auto_commit_result.auto_commit_ms
+                        response_staged_operations_count = auto_commit_result.staged_operations_count
+                        response_staged_operations_version = auto_commit_result.staged_operations_version
+                        response_active_draft_id = auto_commit_result.active_draft_id
+                        response_active_draft_version = auto_commit_result.active_draft_version
+                        # Lightweight summary the web uses to refresh the canvas
+                        # and render the "Committed changes" confirmation.
+                        commit_summary = CommitSummary(
+                            committed=auto_commit_result.change_id is not None,
+                            change_id=auto_commit_result.change_id,
+                            semantic_diff_summary=auto_commit_result.semantic_diff_summary,
+                            impacted_items=[
+                                CommitImpactedItem.model_validate(item)
+                                for item in auto_commit_result.impacted_items
+                            ],
+                            impacted_summary=auto_commit_result.impacted_summary,
+                        )
+                    except HTTPException as commit_exc:
+                        # A synchronous commit failure must NOT fail the whole
+                        # message. Keep the staged edit so the user can review /
+                        # apply it manually — the same graceful outcome the async
+                        # path produces — and record the error for telemetry.
+                        details = (
+                            extract_upstream_error_details(commit_exc.detail)
+                            if callable(extract_upstream_error_details)
+                            else {}
+                        )
+                        auto_commit_error_upstream_status = commit_exc.status_code
+                        auto_commit_error_status_code = commit_exc.status_code
+                        auto_commit_error_code = extract_upstream_error_code(commit_exc.detail)
+                        if not auto_commit_error_code and isinstance(details.get('code'), str):
+                            auto_commit_error_code = str(details.get('code')).strip() or None
+                        auto_commit_error_message = (
+                            str(details.get('message')).strip()
+                            if isinstance(details.get('message'), str)
+                            and str(details.get('message')).strip()
+                            else 'Commit could not be applied; the change is staged for manual apply.'
+                        )
+                        if isinstance(details.get('invalid_operation'), dict):
+                            auto_commit_invalid_operation = details.get('invalid_operation')
+                        auto_commit_error_retryable = (
+                            commit_exc.status_code >= 500
+                            or commit_exc.status_code in {408, 429}
+                        )
+                        log_event_fn(
+                            logger,
+                            'auto_commit_sync_failed',
+                            settings=settings,
+                            trace_id=trace_id,
+                            session_id=outcome.session.session_id,
+                            roadmap_id=outcome.session.roadmap_id,
+                            auto_commit_error_code=auto_commit_error_code,
+                            auto_commit_error_message=auto_commit_error_message,
+                            auto_commit_error_upstream_status=auto_commit_error_upstream_status,
+                            auto_commit_error_retryable=auto_commit_error_retryable,
+                        )
             else:
                 logger.info(
                     'Auto-commit skipped due to missing auth header. session_id=%s roadmap_id=%s',
@@ -247,13 +289,13 @@ async def send_message_flow(
                 if response_active_draft_version is not None
                 else outcome.active_draft_version
             ),
-            artifacts=response_artifacts or artifacts,
             plan_proposal=outcome.plan_proposal_payload,
             clarifier=outcome.clarifier_card,
             provider_used=outcome.provider_used,
             fallback_used=outcome.fallback_used,
             provider_error_code=outcome.provider_error_code,
             debug_trace_id=trace_id,
+            commit_summary=commit_summary,
         )
     except HTTPException as exc:
         error_code = exc.status_code
@@ -323,17 +365,6 @@ async def send_message_flow(
             tokens_output=outcome.tokens_output if outcome else None,
             tokens_total=outcome.tokens_total if outcome else None,
             operations_count=len(outcome.operations) if outcome else 0,
-            artifacts_count=len(artifacts),
-            inline_commit_included=any(
-                artifact.inline_commit is not None for artifact in response_artifacts
-            ),
-            inline_commit_skipped_due_to_size=False,
-            inline_commit_size_bytes=inline_commit_size_bytes,
-            artifact_first_read_source=(
-                'inline'
-                if any(artifact.inline_commit is not None for artifact in response_artifacts)
-                else None
-            ),
             staged_changes_present=staged_changes_present,
             actor_present=(
                 outcome.session.metadata.actor_context is not None
@@ -446,376 +477,3 @@ async def send_message_flow(
             ),
         )
 
-
-async def commit_session_flow(
-    *,
-    session_id: str,
-    payload: CommitRequest,
-    request: Request,
-    get_agent_runtime_async: Callable[[], Awaitable[tuple[SessionStore, AgentService]]],
-    get_session_or_404_async: Callable[[AgentService, str], Awaitable[AgentSession]],
-    resolve_draft_snapshot: Callable[[AgentSession, AgentService], tuple[str, int, list]],
-    run_store_call: Callable[..., Awaitable[Any]],
-    set_draft_status: Callable[..., bool],
-    reuse_selected_draft_as_post_commit_head: Callable[..., int],
-    nest_client: Any,
-    settings: Any,
-    logger: Any,
-    log_event_fn: Callable[..., None],
-) -> dict:
-    store, agent_service = await get_agent_runtime_async()
-    session = await get_session_or_404_async(agent_service, session_id)
-    trace_id = request.headers.get('X-Trace-Id') or str(uuid4())
-    bind_trace_context_values(
-        trace_id=trace_id,
-        session_id=session_id,
-        roadmap_id=session.roadmap_id,
-    )
-    started_at = perf_counter()
-    if payload.operations is not None:
-        selected_draft_id = session.metadata.active_draft_id or f'{session.session_id}:adhoc'
-        selected_draft_version = 0
-        selected_operations = payload.operations
-    else:
-        selected_draft_id, selected_draft_version, selected_operations = resolve_draft_snapshot(
-            session,
-            agent_service,
-        )
-
-    if len(selected_operations) == 0:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                'code': 'EMPTY_OPERATIONS',
-                'message': 'No staged operations available to commit.',
-            },
-        )
-
-    commit_result = await nest_client.commit(
-        roadmap_id=session.roadmap_id,
-        payload={
-            'base_revision': payload.base_revision or session.base_revision,
-            'revision_token': payload.revision_token or session.revision_token,
-            'operations': [
-                operation.model_dump(exclude_none=True)
-                for operation in selected_operations
-            ],
-        },
-        auth_header=request.headers.get('Authorization'),
-        trace_id=trace_id,
-    )
-
-    committed_revision_token = commit_result.get('revision_token')
-    if isinstance(committed_revision_token, str):
-        session.revision_token = committed_revision_token
-
-    change_id_raw = commit_result.get('change_id')
-    change_id = (
-        str(change_id_raw).strip()
-        if isinstance(change_id_raw, str) and str(change_id_raw).strip()
-        else None
-    )
-
-    if change_id is not None:
-        applied_change_ids_raw = session.metadata.applied_change_ids
-        if isinstance(applied_change_ids_raw, list):
-            applied_change_ids = [
-                value
-                for value in applied_change_ids_raw
-                if isinstance(value, str) and value.strip()
-            ]
-        else:
-            applied_change_ids = []
-        if change_id not in applied_change_ids:
-            applied_change_ids.append(change_id)
-        session.metadata.applied_change_ids = applied_change_ids
-
-    session.metadata.applied_draft_commits.append(
-        AppliedDraftCommit(
-            change_id=change_id,
-            draft_id=selected_draft_id,
-            draft_version=selected_draft_version,
-            status='applied',
-        )
-    )
-
-    record_recent_targets_from_preview = getattr(
-        agent_service,
-        'record_recent_targets_from_preview',
-        None,
-    )
-    if callable(record_recent_targets_from_preview):
-        record_recent_targets_from_preview(
-            session=session,
-            preview_result=commit_result,
-            source='commit_semantic_diff',
-        )
-
-    if payload.operations is None:
-        if settings.agent_draft_graph_enabled:
-            agent_service.ensure_draft_graph_initialized(session)
-            reuse_selected_draft_as_post_commit_head(
-                session,
-                selected_draft_id=selected_draft_id,
-            )
-        else:
-            set_draft_status(
-                session=session,
-                draft_id=selected_draft_id,
-                status='applied',
-            )
-            session.operations = []
-            session.staged_operations_version += 1
-
-    if change_id is not None:
-        for artifact in session.artifacts:
-            if artifact.status != 'draft':
-                continue
-            artifact.status = 'applied'
-            artifact.change_id = change_id
-
-    session.metadata.pending_context_resolution = None
-    session.metadata.pending_edit_context = None
-    session.metadata.pending_plan = None
-    await run_store_call(store.update, session)
-
-    log_event_fn(
-        logger,
-        'session_commit_completed',
-        settings=settings,
-        trace_id=trace_id,
-        session_id=session.session_id,
-        roadmap_id=session.roadmap_id,
-        change_id=change_id,
-        committed_revision_token=(
-            committed_revision_token if isinstance(committed_revision_token, str) else None
-        ),
-        active_draft_id=session.metadata.active_draft_id,
-        elapsed_ms=int((perf_counter() - started_at) * 1000),
-    )
-
-    return {
-        'session_id': session.session_id,
-        'roadmap_id': session.roadmap_id,
-        'commit': commit_result,
-    }
-
-
-async def discard_session_flow(
-    *,
-    session_id: str,
-    payload: DiscardRequest,
-    request: Request,
-    get_agent_runtime_async: Callable[[], Awaitable[tuple[SessionStore, AgentService]]],
-    get_session_or_404_async: Callable[[AgentService, str], Awaitable[AgentSession]],
-    resolve_draft_snapshot: Callable[[AgentSession, AgentService], tuple[str, int, list]],
-    run_store_call: Callable[..., Awaitable[Any]],
-    parse_change_timeline: Callable[[Any], tuple[dict[str, str], dict[str, datetime | None]]],
-    utcnow: Callable[[], datetime],
-    nest_client: Any,
-) -> DiscardResponse:
-    store, agent_service = await get_agent_runtime_async()
-    session = await get_session_or_404_async(agent_service, session_id)
-    bind_trace_context_values(
-        trace_id=_resolve_request_trace_id(request),
-        session_id=session_id,
-        roadmap_id=session.roadmap_id,
-    )
-    change_id = payload.change_id
-    if not change_id:
-        for commit in reversed(session.metadata.applied_draft_commits):
-            commit_change_id = getattr(commit, 'change_id', None)
-            commit_status = getattr(commit, 'status', 'applied')
-            if (
-                isinstance(commit_change_id, str)
-                and commit_change_id.strip()
-                and commit_status == 'applied'
-            ):
-                change_id = commit_change_id
-                break
-
-    if not change_id:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                'code': 'MISSING_CHANGE_ID',
-                'message': 'Discard requires a committed change_id.',
-            },
-        )
-
-    discard_result = await nest_client.discard_preview(
-        roadmap_id=session.roadmap_id,
-        payload={'change_id': change_id},
-        auth_header=request.headers.get('Authorization'),
-    )
-
-    discarded_at = utcnow()
-    discarded_at_raw = discard_result.get('discarded_at')
-    if isinstance(discarded_at_raw, str):
-        try:
-            discarded_at = datetime.fromisoformat(
-                discarded_at_raw.replace('Z', '+00:00')
-            ).replace(tzinfo=None)
-        except ValueError:
-            pass
-
-    revision_token = discard_result.get('revision_token')
-    if isinstance(revision_token, str):
-        session.revision_token = revision_token
-
-    timeline = discard_result.get('timeline')
-    timeline_status, timeline_discarded_at = parse_change_timeline(timeline)
-
-    for commit in session.metadata.applied_draft_commits:
-        commit_change_id = getattr(commit, 'change_id', None)
-        if not isinstance(commit_change_id, str) or not commit_change_id.strip():
-            continue
-        next_status = timeline_status.get(commit_change_id)
-        if next_status not in {'applied', 'discarded'}:
-            continue
-        commit.status = next_status
-        commit.discarded_at = timeline_discarded_at.get(commit_change_id)
-
-    for artifact in session.artifacts:
-        artifact_change_id = getattr(artifact, 'change_id', None)
-        if not isinstance(artifact_change_id, str) or not artifact_change_id.strip():
-            continue
-        next_status = timeline_status.get(artifact_change_id)
-        if next_status in {'applied', 'discarded'}:
-            artifact.status = next_status
-
-    session.metadata.pending_context_resolution = None
-    session.metadata.pending_edit_context = None
-    session.metadata.pending_plan = None
-
-    # Drop recent_applied_changes entries that belong to any now-discarded
-    # commit. Without this, the system-prompt "recent changes" section would
-    # keep advertising nodes that were just reverted, confusing follow-up
-    # turns. Fall back to matching the primary discarded_change_id when
-    # the backend timeline does not echo cascade info.
-    discarded_change_ids: set[str] = {change_id}
-    for tl_change_id, tl_status in timeline_status.items():
-        if tl_status == 'discarded' and isinstance(tl_change_id, str) and tl_change_id.strip():
-            discarded_change_ids.add(tl_change_id)
-    reverted_changes_snapshot: list[dict[str, Any]] = []
-    remaining_recent_changes = []
-    for applied_change in session.metadata.recent_applied_changes or []:
-        applied_change_id = getattr(applied_change, 'change_id', None)
-        if isinstance(applied_change_id, str) and applied_change_id in discarded_change_ids:
-            reverted_changes_snapshot.append({
-                'node_id': applied_change.node_id,
-                'node_type': applied_change.node_type,
-                'change_type': applied_change.change_type,
-                'title': applied_change.title,
-            })
-            continue
-        remaining_recent_changes.append(applied_change)
-    session.metadata.recent_applied_changes = remaining_recent_changes
-
-    # Record the discard as a synthetic tool invocation on session.messages so
-    # the next LLM turn sees a structured "you undid change X" entry in prior
-    # history — the recent_applied_changes prompt section alone does not make
-    # the intent explicit enough for the model to always reason about it.
-    persist_tool_observations_as_messages(
-        store=store,
-        session=session,
-        observations=[
-            {
-                'tool_name': 'discard_commit',
-                'args': {
-                    'change_id': change_id,
-                    'source': 'user_discard',
-                },
-                'result': {
-                    'status': 'success',
-                    'discarded_change_id': change_id,
-                    'discarded_at': discarded_at.isoformat(),
-                    'also_discarded_change_ids': sorted(
-                        cid for cid in discarded_change_ids if cid != change_id
-                    ),
-                    'reverted_changes': reverted_changes_snapshot,
-                },
-            }
-        ],
-    )
-
-    await run_store_call(store.update, session)
-
-    staged_operations_count = len(session.operations)
-    staged_operations_version = session.staged_operations_version
-    try:
-        _, staged_operations_version, staged_operations = resolve_draft_snapshot(
-            session,
-            agent_service,
-        )
-        staged_operations_count = len(staged_operations)
-    except Exception:
-        pass
-
-    return DiscardResponse(
-        session_id=session.session_id,
-        roadmap_id=session.roadmap_id,
-        discarded_change_id=change_id,
-        discarded_at=discarded_at,
-        staged_operations_count=staged_operations_count,
-        staged_operations_version=staged_operations_version,
-    )
-
-
-async def rollback_session_flow(
-    *,
-    session_id: str,
-    payload: RollbackRequest,
-    request: Request,
-    get_agent_runtime_async: Callable[[], Awaitable[tuple[SessionStore, AgentService]]],
-    get_session_or_404_async: Callable[[AgentService, str], Awaitable[AgentSession]],
-    run_store_call: Callable[..., Awaitable[Any]],
-    parse_change_timeline: Callable[[Any], tuple[dict[str, str], dict[str, datetime | None]]],
-    nest_client: Any,
-) -> dict:
-    store, agent_service = await get_agent_runtime_async()
-    session = await get_session_or_404_async(agent_service, session_id)
-    bind_trace_context_values(
-        trace_id=_resolve_request_trace_id(request),
-        session_id=session_id,
-        roadmap_id=session.roadmap_id,
-    )
-
-    rollback_result = await nest_client.rollback(
-        roadmap_id=session.roadmap_id,
-        payload=payload.model_dump(),
-        auth_header=request.headers.get('Authorization'),
-    )
-
-    revision_token = rollback_result.get('revision_token')
-    if isinstance(revision_token, str):
-        session.revision_token = revision_token
-
-    timeline = rollback_result.get('timeline')
-    timeline_status, _ = parse_change_timeline(timeline)
-
-    for commit in session.metadata.applied_draft_commits:
-        commit_change_id = getattr(commit, 'change_id', None)
-        if not isinstance(commit_change_id, str) or not commit_change_id.strip():
-            continue
-        next_status = timeline_status.get(commit_change_id)
-        if next_status in {'applied', 'discarded'}:
-            commit.status = next_status
-            if next_status == 'applied':
-                commit.discarded_at = None
-
-    for artifact in session.artifacts:
-        artifact_change_id = getattr(artifact, 'change_id', None)
-        if not isinstance(artifact_change_id, str) or not artifact_change_id.strip():
-            continue
-        next_status = timeline_status.get(artifact_change_id)
-        if next_status in {'applied', 'discarded'}:
-            artifact.status = next_status
-
-    await run_store_call(store.update, session)
-
-    return {
-        'session_id': session.session_id,
-        'roadmap_id': session.roadmap_id,
-        'rollback': rollback_result,
-    }

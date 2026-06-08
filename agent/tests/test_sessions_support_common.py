@@ -79,12 +79,8 @@ class AutoCommitObservabilityTests(unittest.IsolatedAsyncioTestCase):
                 auth_header='Bearer test',
                 trace_id='trace-auto-commit-observability',
                 nest_client=_FakeNestClient(),
-                draft_graph_enabled=False,
                 resolve_draft_snapshot=lambda _session, _service: ('draft-1', 1, [invalid_operation]),
-                reuse_selected_draft_as_post_commit_head=lambda *_args, **_kwargs: 1,
                 set_draft_status=lambda **_kwargs: True,
-                build_commit_artifact=lambda *_args, **_kwargs: None,
-                serialized_payload_bytes=lambda _payload: 0,
                 run_store_call=_run_store_call,
             )
 
@@ -141,12 +137,8 @@ class AutoCommitStaleRevisionRetryTests(unittest.IsolatedAsyncioTestCase):
             auth_header='Bearer test',
             trace_id='trace-stale-revision-retry',
             nest_client=nest_client,
-            draft_graph_enabled=False,
             resolve_draft_snapshot=lambda _s, _a: ('draft-1', 1, [op]),
-            reuse_selected_draft_as_post_commit_head=lambda *_a, **_k: 1,
             set_draft_status=lambda **_k: True,
-            build_commit_artifact=lambda *_a, **_k: None,
-            serialized_payload_bytes=lambda _p: 0,
             run_store_call=_run_store_call,
         )
 

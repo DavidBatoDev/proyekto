@@ -11,47 +11,27 @@ import {
   Bot,
   Check,
   ChevronDown,
-  Eye,
-  FolderOpen,
   Loader2,
   Paperclip,
   Send,
   TriangleAlert,
   X,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { RoadmapView } from "../views/roadmap/RoadmapView";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { projectKeys } from "@/queries/project";
-import type {
-  Roadmap,
-  RoadmapEpic,
-  RoadmapFeature,
-  RoadmapTask,
-} from "@/types/roadmap";
-import type {
-  ArtifactSemanticDiffChange,
-  ArtifactSemanticDiffSummary,
-  RoadmapArtifactPreview,
-} from "@/types/roadmapArtifact";
+import type { Roadmap, RoadmapEpic } from "@/types/roadmap";
 import roadmapAgentService, {
   type AgentOperation,
-  type AgentMessageResponse,
-  type AgentCommitPayload,
-  type AgentRoadmapCommitArtifact,
   type AgentTraceEvent,
   type AgentTraceEventsResponse,
   RoadmapAgentServiceError,
   isAgentTimeoutError,
 } from "@/services/roadmap-agent.service";
-import {
-  ArtifactSnapshotNormalizationError,
-  normalizeArtifactCandidateSnapshot,
-} from "@/services/roadmap-artifact-adapter";
 import { useToast } from "@/hooks/useToast";
 import { RoadmapAiActivityTimelineView } from "./RoadmapAiActivityTimeline";
 import {
@@ -110,7 +90,6 @@ const buildAssistantMessage = (
     responseMode?: "chat" | "edit_plan" | "plan_proposal";
     planProposal?: import("@/services/roadmap-agent.service").AgentPlanProposal | null;
     clarifier?: import("@/services/roadmap-agent.service").AgentClarifierCard | null;
-    artifacts?: RoadmapArtifactPreview[];
     commitLifecycle?: RoadmapAiCommitLifecycle;
   },
 ): RoadmapAiChatMessage => ({
@@ -123,7 +102,6 @@ const buildAssistantMessage = (
   responseMode: options?.responseMode,
   planProposal: options?.planProposal ?? undefined,
   clarifier: options?.clarifier ?? undefined,
-  artifacts: options?.artifacts,
   commitLifecycle: options?.commitLifecycle,
 });
 
@@ -182,279 +160,6 @@ const renderBracketTagsInNode = (node: ReactNode): ReactNode => {
   return node;
 };
 
-const toDiffSummary = (
-  summary: Record<string, number> | undefined,
-): ArtifactSemanticDiffSummary => ({
-  node_added: Number(summary?.node_added ?? summary?.NODE_ADDED ?? 0),
-  node_removed: Number(summary?.node_removed ?? summary?.NODE_REMOVED ?? 0),
-  node_moved: Number(summary?.node_moved ?? summary?.NODE_MOVED ?? 0),
-  title_changed: Number(
-    summary?.title_changed ?? summary?.TITLE_CHANGED ?? 0,
-  ),
-  description_changed: Number(
-    summary?.description_changed ?? summary?.DESCRIPTION_CHANGED ?? 0,
-  ),
-  status_changed: Number(
-    summary?.status_changed ?? summary?.STATUS_CHANGED ?? 0,
-  ),
-  priority_changed: Number(
-    summary?.priority_changed ?? summary?.PRIORITY_CHANGED ?? 0,
-  ),
-  assignee_changed: Number(
-    summary?.assignee_changed ?? summary?.ASSIGNEE_CHANGED ?? 0,
-  ),
-  tags_changed: Number(summary?.tags_changed ?? summary?.TAGS_CHANGED ?? 0),
-  color_changed: Number(
-    summary?.color_changed ?? summary?.COLOR_CHANGED ?? 0,
-  ),
-  deliverable_changed: Number(
-    summary?.deliverable_changed ?? summary?.DELIVERABLE_CHANGED ?? 0,
-  ),
-  date_changed: Number(summary?.date_changed ?? summary?.DATE_CHANGED ?? 0),
-  dependency_changed: Number(
-    summary?.dependency_changed ?? summary?.DEPENDENCY_CHANGED ?? 0,
-  ),
-});
-
-const toDiffChanges = (changes: unknown): ArtifactSemanticDiffChange[] => {
-  if (!Array.isArray(changes)) return [];
-  return changes.flatMap((change) => {
-    if (!change || typeof change !== "object" || Array.isArray(change))
-      return [];
-    const record = change as Record<string, unknown>;
-    const node = record.node;
-    if (!node || typeof node !== "object" || Array.isArray(node)) return [];
-    const nodeRecord = node as Record<string, unknown>;
-    if (
-      typeof nodeRecord.id !== "string" ||
-      typeof nodeRecord.type !== "string"
-    )
-      return [];
-    return [
-      {
-        type: typeof record.type === "string" ? record.type : "UNKNOWN",
-        node: {
-          type: nodeRecord.type as ArtifactSemanticDiffChange["node"]["type"],
-          id: nodeRecord.id,
-        },
-        from:
-          record.from &&
-          typeof record.from === "object" &&
-          !Array.isArray(record.from)
-            ? (record.from as Record<string, unknown>)
-            : undefined,
-        to:
-          record.to &&
-          typeof record.to === "object" &&
-          !Array.isArray(record.to)
-            ? (record.to as Record<string, unknown>)
-            : undefined,
-      },
-    ];
-  });
-};
-
-const sortByReferenceOrder = <T extends { id: string; position?: number }>(
-  items: T[],
-  referenceOrder: Map<string, number>,
-): T[] => {
-  return items
-    .map((item, index) => ({ item, index }))
-    .sort((a, b) => {
-      const aRef = referenceOrder.get(a.item.id);
-      const bRef = referenceOrder.get(b.item.id);
-      const aHasRef = typeof aRef === "number";
-      const bHasRef = typeof bRef === "number";
-
-      if (aHasRef && bHasRef && aRef !== bRef) return aRef - bRef;
-      if (aHasRef !== bHasRef) return aHasRef ? -1 : 1;
-
-      const aPos =
-        typeof a.item.position === "number"
-          ? a.item.position
-          : Number.MAX_SAFE_INTEGER;
-      const bPos =
-        typeof b.item.position === "number"
-          ? b.item.position
-          : Number.MAX_SAFE_INTEGER;
-      if (aPos !== bPos) return aPos - bPos;
-
-      return a.index - b.index;
-    })
-    .map((entry) => entry.item);
-};
-
-const sortByPosition = <T extends { position?: number }>(items: T[]): T[] => {
-  return [...items].sort((a, b) => {
-    const aPos =
-      typeof a.position === "number" ? a.position : Number.MAX_SAFE_INTEGER;
-    const bPos =
-      typeof b.position === "number" ? b.position : Number.MAX_SAFE_INTEGER;
-    return aPos - bPos;
-  });
-};
-
-const alignSnapshotOrderingWithFallback = (
-  snapshot: Roadmap,
-  fallbackRoadmap?: Roadmap | null,
-): Roadmap => {
-  if (!fallbackRoadmap?.epics?.length || !snapshot.epics?.length) {
-    return snapshot;
-  }
-
-  const fallbackEpics = sortByPosition(fallbackRoadmap.epics);
-  const fallbackEpicOrder = new Map(
-    fallbackEpics.map((epic, index) => [epic.id, index]),
-  );
-  const fallbackEpicById = new Map(
-    fallbackEpics.map((epic) => [epic.id, epic]),
-  );
-
-  const orderedEpics = sortByReferenceOrder(
-    snapshot.epics,
-    fallbackEpicOrder,
-  ).map((epic, epicIndex) => {
-    const fallbackEpic = fallbackEpicById.get(epic.id);
-    const fallbackFeatures = sortByPosition(fallbackEpic?.features ?? []);
-    const fallbackFeatureOrder = new Map(
-      fallbackFeatures.map((feature, index) => [feature.id, index]),
-    );
-    const fallbackFeatureById = new Map(
-      fallbackFeatures.map((feature) => [feature.id, feature]),
-    );
-
-    const orderedFeatures = sortByReferenceOrder(
-      epic.features ?? [],
-      fallbackFeatureOrder,
-    ).map((feature, featureIndex) => {
-      const fallbackFeature = fallbackFeatureById.get(feature.id);
-      const fallbackTasks = sortByPosition(fallbackFeature?.tasks ?? []);
-      const fallbackTaskOrder = new Map(
-        fallbackTasks.map((task, index) => [task.id, index]),
-      );
-      const orderedTasks = sortByReferenceOrder(
-        feature.tasks ?? [],
-        fallbackTaskOrder,
-      ).map((task, taskIndex) => ({ ...task, position: taskIndex }));
-
-      return {
-        ...feature,
-        position: featureIndex,
-        tasks: orderedTasks,
-      };
-    });
-
-    return {
-      ...epic,
-      position: epicIndex,
-      features: orderedFeatures,
-    };
-  });
-
-  return {
-    ...snapshot,
-    epics: orderedEpics,
-  };
-};
-
-const hasSameStructureIds = (
-  snapshot: Roadmap,
-  fallbackRoadmap?: Roadmap | null,
-): boolean => {
-  if (!fallbackRoadmap?.epics?.length || !snapshot.epics?.length) {
-    return false;
-  }
-
-  const snapshotEpicIds = new Set(
-    (snapshot.epics ?? []).map((epic) => epic.id),
-  );
-  const fallbackEpicIds = new Set(
-    (fallbackRoadmap.epics ?? []).map((epic) => epic.id),
-  );
-  if (snapshotEpicIds.size !== fallbackEpicIds.size) return false;
-  for (const epicId of snapshotEpicIds) {
-    if (!fallbackEpicIds.has(epicId)) return false;
-  }
-
-  const fallbackEpicById = new Map(
-    (fallbackRoadmap.epics ?? []).map((epic) => [epic.id, epic]),
-  );
-
-  for (const snapshotEpic of snapshot.epics ?? []) {
-    const fallbackEpic = fallbackEpicById.get(snapshotEpic.id);
-    if (!fallbackEpic) return false;
-
-    const snapshotFeatureIds = new Set(
-      (snapshotEpic.features ?? []).map((feature) => feature.id),
-    );
-    const fallbackFeatureIds = new Set(
-      (fallbackEpic.features ?? []).map((feature) => feature.id),
-    );
-    if (snapshotFeatureIds.size !== fallbackFeatureIds.size) return false;
-    for (const featureId of snapshotFeatureIds) {
-      if (!fallbackFeatureIds.has(featureId)) return false;
-    }
-
-    const fallbackFeatureById = new Map(
-      (fallbackEpic.features ?? []).map((feature) => [feature.id, feature]),
-    );
-
-    for (const snapshotFeature of snapshotEpic.features ?? []) {
-      const fallbackFeature = fallbackFeatureById.get(snapshotFeature.id);
-      if (!fallbackFeature) return false;
-
-      const snapshotTaskIds = new Set(
-        (snapshotFeature.tasks ?? []).map((task) => task.id),
-      );
-      const fallbackTaskIds = new Set(
-        (fallbackFeature.tasks ?? []).map((task) => task.id),
-      );
-      if (snapshotTaskIds.size !== fallbackTaskIds.size) return false;
-      for (const taskId of snapshotTaskIds) {
-        if (!fallbackTaskIds.has(taskId)) return false;
-      }
-    }
-  }
-
-  return true;
-};
-
-const mapCommitToArtifact = (
-  roadmapId: string,
-  payload: AgentCommitPayload,
-  metadata?: AgentRoadmapCommitArtifact,
-  fallbackRoadmap?: Roadmap | null,
-): RoadmapArtifactPreview => {
-  const semanticDiffSummary = toDiffSummary(payload.semantic_diff?.summary);
-  const normalizedSnapshot = normalizeArtifactCandidateSnapshot({
-    candidateSnapshot: payload.candidate_snapshot,
-    baseUpdatedAt: undefined,
-    fallbackRoadmap: fallbackRoadmap || null,
-  });
-  const candidateSnapshot = hasSameStructureIds(
-    normalizedSnapshot,
-    fallbackRoadmap,
-  )
-    ? alignSnapshotOrderingWithFallback(normalizedSnapshot, fallbackRoadmap)
-    : normalizedSnapshot;
-
-  return {
-    artifactId:
-      metadata?.artifact_id || payload.change_id || crypto.randomUUID(),
-    changeId: metadata?.change_id,
-    title: metadata?.title || "AI Commit Artifact",
-    summary:
-      metadata?.summary || "Generated commit snapshot from AI operations.",
-    createdAt: metadata?.created_at || new Date().toISOString(),
-    baseRoadmapId: roadmapId,
-    baseRevision: metadata?.base_revision,
-    candidateSnapshot,
-    semanticDiffSummary,
-    semanticDiffChanges: toDiffChanges(payload.semantic_diff?.changes),
-    validationIssues: [],
-    status: metadata?.status || "draft",
-  };
-};
 
 interface PendingAttachment {
   id: string;
@@ -468,12 +173,6 @@ const formatAttachmentSize = (bytes: number): string => {
   const mb = kb / 1024;
   return `${mb.toFixed(1)} MB`;
 };
-
-const noopUpdateEpic = (_epic: RoadmapEpic) => {};
-const noopDeleteEpic = (_epicId: string) => {};
-const noopUpdateFeature = (_feature: RoadmapFeature) => {};
-const noopDeleteFeature = (_featureId: string) => {};
-const noopUpdateTask = (_task: RoadmapTask) => {};
 
 const TRACE_POLL_INTERVAL_MS = 1000;
 const TRACE_POLL_LIMIT = 25;
@@ -711,42 +410,6 @@ const mergeCommitImpactedItems = (
   return [...merged.values()];
 };
 
-const toCommitImpactedItemsFromArtifact = (
-  artifact: RoadmapArtifactPreview,
-): RoadmapAiCommitImpactedItem[] => {
-  return (artifact.semanticDiffChanges ?? []).flatMap((change) => {
-    const nodeType = change.node?.type;
-    const nodeId = toStringValue(change.node?.id);
-    if (!nodeId || !isRoadmapNodeType(nodeType)) {
-      return [];
-    }
-
-    const changeType = normalizeChangeType(change.type);
-    return [
-      {
-        nodeId,
-        nodeType,
-        title: pickCommitItemTitle(change.to, change.from),
-        kind: mapChangeTypeToImpactKind(changeType),
-        changeType: changeType ?? undefined,
-      },
-    ];
-  });
-};
-
-const toAppliedArtifactImpactedItems = (
-  artifacts: RoadmapArtifactPreview[],
-): RoadmapAiCommitImpactedItem[] => {
-  const appliedArtifacts = artifacts.filter(
-    (artifact) => artifact.status === "applied",
-  );
-  return mergeCommitImpactedItems(
-    ...appliedArtifacts.map((artifact) =>
-      toCommitImpactedItemsFromArtifact(artifact),
-    ),
-  );
-};
-
 export const parseCommitImpactedItemsFromTraceDetails = (
   details: Record<string, unknown> | undefined,
 ): RoadmapAiCommitImpactedItem[] => {
@@ -796,7 +459,6 @@ export const parseCommitImpactedItemsFromTraceDetails = (
 
 const resolveCommitLifecycleFromTimeline = (
   timeline: RoadmapAiActivityTimeline,
-  artifacts: RoadmapArtifactPreview[],
 ): RoadmapAiCommitLifecycle | null => {
   const completionStep = [...timeline.steps]
     .reverse()
@@ -815,26 +477,12 @@ const resolveCommitLifecycleFromTimeline = (
   }
 
   if (completionStep?.event === "auto_commit_async_completed") {
-    const fromTrace = parseCommitImpactedItemsFromTraceDetails(
-      completionStep.details,
-    );
-    const mergedItems = mergeCommitImpactedItems(
-      fromTrace,
-      toAppliedArtifactImpactedItems(artifacts),
-    );
     return {
       state: "committed",
-      impactedItems: mergedItems,
+      impactedItems: parseCommitImpactedItemsFromTraceDetails(
+        completionStep.details,
+      ),
       updatedAt: completionStep.ts,
-    };
-  }
-
-  const artifactItems = toAppliedArtifactImpactedItems(artifacts);
-  if (artifactItems.length > 0) {
-    return {
-      state: "committed",
-      impactedItems: artifactItems,
-      updatedAt: timeline.completedAt || new Date().toISOString(),
     };
   }
 
@@ -1460,7 +1108,6 @@ export function RoadmapAiAssistantPanel({
   projectId,
   roadmapId,
   baseRevision,
-  roadmapSnapshot,
   isVisible = true,
 }: RoadmapAiAssistantPanelProps) {
   const queryClient = useQueryClient();
@@ -1482,12 +1129,6 @@ export function RoadmapAiAssistantPanel({
   const toast = useToast();
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
-  const [previewArtifactId, setPreviewArtifactId] = useState<string | null>(
-    null,
-  );
-  const [applyingArtifactIds, setApplyingArtifactIds] = useState<Set<string>>(
-    () => new Set<string>(),
-  );
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [liveActivity, setLiveActivity] =
@@ -1506,28 +1147,25 @@ export function RoadmapAiAssistantPanel({
   const liveActivityRef = useRef<RoadmapAiActivityTimeline | null>(null);
   const autoCommitRefreshSeqByTraceRef = useRef<Record<string, number>>({});
 
-  const roadmapFromStore = useRoadmapStore((state) => state.roadmap);
   const canvasViewMode = useRoadmapStore((state) => state.canvasViewMode);
-  const openArtifactTab = useRoadmapStore((state) => state.openArtifactTab);
-  const applyArtifactSnapshot = useRoadmapStore(
-    (state) => state.applyArtifactSnapshot,
-  );
   const loadRoadmap = useRoadmapStore((state) => state.loadRoadmap);
-  const currentRoadmap = roadmapSnapshot ?? roadmapFromStore ?? null;
+  const applyAiCommitImpactedItems = useRoadmapStore(
+    (state) => state.applyAiCommitImpactedItems,
+  );
   const roadmapLinkView =
     canvasViewMode === "milestones" ? "timelineView" : "roadmapView";
 
+  // Background reconcile of the full roadmap (features/tasks/positions). The
+  // visible change is applied optimistically from the commit summary, so this
+  // is allowed to be slow — never block the UI on it. GET /full can take many
+  // seconds right after a commit (write contention); awaiting it here is what
+  // made committed nodes appear ~20s late.
   const refreshRoadmapAfterAutoCommit = async () => {
-    await queryClient.invalidateQueries({
-      queryKey: projectKeys.roadmapFull(roadmapId),
-      exact: true,
-    });
-    await queryClient.refetchQueries({
-      queryKey: projectKeys.roadmapFull(roadmapId),
-      exact: true,
-      type: "active",
-    });
     await loadRoadmap(roadmapId, { force: true });
+    void queryClient.invalidateQueries({
+      queryKey: projectKeys.roadmapFull(roadmapId),
+      exact: true,
+    });
   };
 
   const maybeRefreshRoadmapFromTraceEvents = async (
@@ -1607,7 +1245,6 @@ export function RoadmapAiAssistantPanel({
     setLiveActivityHostMessageId(null);
     setErrorMessage(null);
     setTracePollingFailed(false);
-    setPreviewArtifactId(null);
     setActivityExpandedByMessageId({});
     autoCommitRefreshSeqByTraceRef.current = {};
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1698,36 +1335,6 @@ export function RoadmapAiAssistantPanel({
       agentSessionsInitializedRef.current.add(threadId);
       return op();
     }
-  };
-
-  const hydrateArtifacts = async (
-    activeSessionId: string,
-    response: AgentMessageResponse,
-  ): Promise<RoadmapArtifactPreview[]> => {
-    const hydrated: RoadmapArtifactPreview[] = [];
-    for (const artifactMeta of response.artifacts || []) {
-      if (artifactMeta.inline_commit) {
-        hydrated.push(
-          mapCommitToArtifact(
-            roadmapId,
-            artifactMeta.inline_commit,
-            artifactMeta,
-            currentRoadmap,
-          ),
-        );
-        continue;
-      }
-      console.warn(
-        "[RoadmapAiAssistantPanel] commit artifact missing inline payload",
-        {
-          trace_id: response.debug_trace_id || null,
-          session_id: activeSessionId,
-          artifact_id: artifactMeta.artifact_id,
-        },
-      );
-    }
-
-    return hydrated;
   };
 
   const progressDetailMode: RoadmapAiActivityDetailMode = PROGRESS_DETAIL_MODE;
@@ -1839,10 +1446,8 @@ export function RoadmapAiAssistantPanel({
       if (existingTimeline && existingTimeline.traceId === traceId) {
         const completedTimeline = ensureTimelineCompleted(existingTimeline);
         updateMessage(assistantMessageId, (message) => {
-          const resolvedCommitLifecycleRaw = resolveCommitLifecycleFromTimeline(
-            completedTimeline,
-            message.artifacts ?? [],
-          );
+          const resolvedCommitLifecycleRaw =
+            resolveCommitLifecycleFromTimeline(completedTimeline);
           const resolvedCommitLifecycle =
             resolvedCommitLifecycleRaw?.state === "committed" &&
             resolvedCommitLifecycleRaw.impactedItems.length === 0 &&
@@ -1962,10 +1567,8 @@ export function RoadmapAiAssistantPanel({
       ) {
         const completedTimeline = ensureTimelineCompleted(timeline);
         updateMessage(assistantMessageId, (message) => {
-          const resolvedCommitLifecycleRaw = resolveCommitLifecycleFromTimeline(
-            completedTimeline,
-            message.artifacts ?? [],
-          );
+          const resolvedCommitLifecycleRaw =
+            resolveCommitLifecycleFromTimeline(completedTimeline);
           const resolvedCommitLifecycle =
             resolvedCommitLifecycleRaw?.state === "committed" &&
             resolvedCommitLifecycleRaw.impactedItems.length === 0 &&
@@ -2124,7 +1727,6 @@ export function RoadmapAiAssistantPanel({
             responseMode: response.response_mode,
             planProposal: response.plan_proposal ?? undefined,
             clarifier: response.clarifier ?? undefined,
-            artifacts: [],
             commitLifecycle: shouldTrackCommitLifecycle
               ? {
                   state: "committing",
@@ -2165,52 +1767,48 @@ export function RoadmapAiAssistantPanel({
         );
       });
 
-      try {
-        const artifacts = await hydrateArtifacts(activeSessionId, response);
-        if (artifacts.length > 0) {
-          const commitLifecycleFromArtifacts = artifacts.some(
-            (artifact) => artifact.status === "applied",
-          )
-            ? {
-                state: "committed" as const,
-                impactedItems: toAppliedArtifactImpactedItems(artifacts),
-                updatedAt: new Date().toISOString(),
-              }
-            : undefined;
-          updateMessage(assistantId, (message) => ({
-            ...message,
-            artifacts,
-            commitLifecycle: commitLifecycleFromArtifacts
-              ? {
-                  ...commitLifecycleFromArtifacts,
-                  impactedItems:
-                    commitLifecycleFromArtifacts.impactedItems.length > 0
-                      ? commitLifecycleFromArtifacts.impactedItems
-                      : (message.commitLifecycle?.impactedItems ?? []),
-                }
-              : message.commitLifecycle,
-          }));
-          for (const artifact of artifacts) {
-            if (artifact.status === "applied") {
-              applyArtifactSnapshot(artifact.artifactId);
-            }
-          }
-        }
-      } catch (artifactError) {
-        const isNormalizationError =
-          artifactError instanceof ArtifactSnapshotNormalizationError;
-        const artifactErrorText =
-          artifactError instanceof Error
-            ? artifactError.message
-            : "Unable to load artifact preview.";
-        console.warn("[RoadmapAiAssistantPanel] artifact hydration failed", {
-          trace_id: response.debug_trace_id || null,
-          session_id: activeSessionId,
-          error: artifactErrorText,
-          error_code: isNormalizationError ? artifactError.code : null,
-          error_path: isNormalizationError ? artifactError.path : null,
+      // A synchronous commit landed: update the "Committed changes"
+      // confirmation and apply the change to the live roadmap *optimistically*
+      // from the commit summary, so the canvas/sidebar reflect it immediately.
+      // The full reload (refreshRoadmapAfterAutoCommit) only reconciles details
+      // in the background — it must not gate the visible update because GET
+      // /full can take many seconds right after a commit.
+      const commitSummary = response.commit_summary;
+      if (commitSummary?.committed) {
+        const impactedItems = parseCommitImpactedItemsFromTraceDetails({
+          impacted_items: commitSummary.impacted_items ?? [],
         });
-        toast.warning(`Artifact preview unavailable: ${artifactErrorText}`);
+        updateMessage(assistantId, (message) => ({
+          ...message,
+          commitLifecycle: {
+            state: "committed",
+            impactedItems:
+              impactedItems.length > 0
+                ? impactedItems
+                : (message.commitLifecycle?.impactedItems ?? []),
+            updatedAt: new Date().toISOString(),
+          },
+        }));
+        // Instant: insert/remove the committed nodes locally.
+        applyAiCommitImpactedItems(
+          response.operations ?? [],
+          commitSummary.impacted_items ?? [],
+        );
+        // Background: reconcile full detail; never block the UI on it.
+        void refreshRoadmapAfterAutoCommit().catch((refreshError) => {
+          console.warn(
+            "[RoadmapAiAssistantPanel] roadmap_refresh_after_commit_failed",
+            {
+              trace_id: response.debug_trace_id || null,
+              session_id: activeSessionId,
+              roadmap_id: roadmapId,
+              error:
+                refreshError instanceof Error
+                  ? refreshError.message
+                  : String(refreshError),
+            },
+          );
+        });
       }
     } catch (error) {
       const timeoutError = isAgentTimeoutError(error);
@@ -2275,208 +1873,6 @@ export function RoadmapAiAssistantPanel({
     setInput(content);
   };
 
-  const handleOpenArtifact = (artifact: RoadmapArtifactPreview) => {
-    openArtifactTab(artifact);
-  };
-
-  const handleApplyArtifact = async (
-    messageId: string,
-    artifact: RoadmapArtifactPreview,
-  ) => {
-    if (artifact.status === "applied") {
-      toast.info("This artifact is already applied.");
-      return;
-    }
-    if (applyingArtifactIds.has(artifact.artifactId)) {
-      return;
-    }
-
-    const activeSessionId = activeThreadId;
-    if (!activeSessionId) {
-      toast.error(
-        "Missing AI session. Send a message first, then apply again.",
-      );
-      return;
-    }
-
-    setApplyingArtifactIds((prev) => {
-      const next = new Set(prev);
-      next.add(artifact.artifactId);
-      return next;
-    });
-
-    try {
-      const result = await roadmapAgentService.commitSession(
-        activeSessionId,
-        {},
-      );
-      const committedChangeId =
-        typeof result.commit?.change_id === "string"
-          ? (result.commit.change_id as string)
-          : undefined;
-      applyArtifactSnapshot(artifact.artifactId);
-      await loadRoadmap(roadmapId, { force: true });
-      updateMessage(messageId, (message) => {
-        const nextArtifacts: RoadmapArtifactPreview[] = (
-          message.artifacts ?? []
-        ).map((entry) =>
-          entry.artifactId === artifact.artifactId
-            ? {
-                ...entry,
-                status: "applied" as const,
-                changeId: committedChangeId || entry.changeId,
-              }
-            : entry,
-        );
-        return {
-          ...message,
-          artifacts: nextArtifacts,
-          commitLifecycle: {
-            state: "committed",
-            impactedItems: toAppliedArtifactImpactedItems(nextArtifacts),
-            updatedAt: new Date().toISOString(),
-          },
-        };
-      });
-      toast.success(`${artifact.title} applied to roadmap`);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to apply artifact.";
-      toast.error(message);
-    } finally {
-      setApplyingArtifactIds((prev) => {
-        const next = new Set(prev);
-        next.delete(artifact.artifactId);
-        return next;
-      });
-    }
-  };
-
-  const handleDiscardArtifact = async (
-    messageId: string,
-    artifact: RoadmapArtifactPreview,
-  ) => {
-    if (!artifact.changeId) {
-      toast.error("This artifact is missing a committed change id.");
-      return;
-    }
-    if (applyingArtifactIds.has(artifact.artifactId)) {
-      return;
-    }
-    if (!activeThreadId) {
-      toast.error("Missing AI session. Send a message first, then retry.");
-      return;
-    }
-
-    setApplyingArtifactIds((prev) => {
-      const next = new Set(prev);
-      next.add(artifact.artifactId);
-      return next;
-    });
-
-    try {
-      await roadmapAgentService.discardSession(activeThreadId, {
-        change_id: artifact.changeId,
-      });
-      await loadRoadmap(roadmapId, { force: true });
-      updateMessage(messageId, (message) => {
-        const nextArtifacts: RoadmapArtifactPreview[] = (
-          message.artifacts ?? []
-        ).map((entry) =>
-          entry.changeId === artifact.changeId
-            ? { ...entry, status: "discarded" as const }
-            : entry,
-        );
-        const impactedItems = toAppliedArtifactImpactedItems(nextArtifacts);
-        return {
-          ...message,
-          artifacts: nextArtifacts,
-          commitLifecycle:
-            impactedItems.length > 0
-              ? {
-                  state: "committed",
-                  impactedItems,
-                  updatedAt: new Date().toISOString(),
-                }
-              : message.commitLifecycle,
-        };
-      });
-      toast.success("Committed AI change discarded.");
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to discard commit.";
-      toast.error(message);
-    } finally {
-      setApplyingArtifactIds((prev) => {
-        const next = new Set(prev);
-        next.delete(artifact.artifactId);
-        return next;
-      });
-    }
-  };
-
-  const handleReapplyArtifact = async (
-    messageId: string,
-    artifact: RoadmapArtifactPreview,
-  ) => {
-    if (!artifact.changeId) {
-      toast.error("This artifact is missing a committed change id.");
-      return;
-    }
-    if (applyingArtifactIds.has(artifact.artifactId)) {
-      return;
-    }
-    if (!activeThreadId) {
-      toast.error("Missing AI session. Send a message first, then retry.");
-      return;
-    }
-
-    setApplyingArtifactIds((prev) => {
-      const next = new Set(prev);
-      next.add(artifact.artifactId);
-      return next;
-    });
-
-    try {
-      await roadmapAgentService.rollbackSession(activeThreadId, {
-        change_id: artifact.changeId,
-      });
-      await loadRoadmap(roadmapId, { force: true });
-      updateMessage(messageId, (message) => {
-        const nextArtifacts: RoadmapArtifactPreview[] = (
-          message.artifacts ?? []
-        ).map((entry) =>
-          entry.changeId === artifact.changeId
-            ? { ...entry, status: "applied" as const }
-            : entry,
-        );
-        return {
-          ...message,
-          artifacts: nextArtifacts,
-          commitLifecycle: {
-            state: "committed",
-            impactedItems: toAppliedArtifactImpactedItems(nextArtifacts),
-            updatedAt: new Date().toISOString(),
-          },
-        };
-      });
-      toast.success("Discarded AI change reapplied.");
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to reapply change.";
-      toast.error(message);
-    } finally {
-      setApplyingArtifactIds((prev) => {
-        const next = new Set(prev);
-        next.delete(artifact.artifactId);
-        return next;
-      });
-    }
-  };
-
-  const toggleArtifactPreview = (artifactId: string) => {
-    setPreviewArtifactId((prev) => (prev === artifactId ? null : artifactId));
-  };
 
   const isMessageActivityExpanded = (
     messageId: string,
@@ -2629,7 +2025,6 @@ export function RoadmapAiAssistantPanel({
           </div>
         ) : (
           messages.map((message) => {
-            const artifacts = message.artifacts ?? [];
             const commitLifecycle = message.commitLifecycle;
             const groupedCommitItems = commitLifecycle
               ? groupCommitImpactedItems(commitLifecycle.impactedItems)
@@ -2934,176 +2329,6 @@ export function RoadmapAiAssistantPanel({
                     />
                   )}
 
-                {artifacts.length > 0 && (
-                  <div className="mt-2.5 space-y-2">
-                    {artifacts.map((artifact) => {
-                      const isArtifactDraft = artifact.status === "draft";
-                      const isArtifactApplied = artifact.status === "applied";
-                      const isArtifactDiscarded =
-                        artifact.status === "discarded";
-                      const isApplyingArtifact = applyingArtifactIds.has(
-                        artifact.artifactId,
-                      );
-                      const applyDisabled =
-                        !isArtifactDraft || isApplyingArtifact;
-                      const inlinePreviewSnapshot = hasSameStructureIds(
-                        artifact.candidateSnapshot,
-                        currentRoadmap,
-                      )
-                        ? alignSnapshotOrderingWithFallback(
-                            artifact.candidateSnapshot,
-                            currentRoadmap,
-                          )
-                        : artifact.candidateSnapshot;
-
-                      return (
-                        <div
-                          key={artifact.artifactId}
-                          className="rounded-lg border border-orange-200 bg-orange-50/60 p-2.5"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-[11px] font-semibold text-orange-700">
-                              {artifact.title}
-                            </p>
-                            <span
-                              className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                isArtifactApplied
-                                  ? "border border-green-300 bg-green-50 text-green-700"
-                                  : isArtifactDiscarded
-                                    ? "border border-gray-300 bg-gray-100 text-gray-700"
-                                    : "border border-orange-300 bg-white text-orange-700"
-                              }`}
-                            >
-                              {isArtifactApplied
-                                ? "Applied"
-                                : isArtifactDiscarded
-                                  ? "Discarded"
-                                  : "Draft"}
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-orange-700/90 mt-0.5">
-                            {artifact.summary}
-                          </p>
-                          <div className="mt-1.5 text-[10px] text-orange-800/90">
-                            Validation issues:{" "}
-                            {artifact.validationIssues.length}
-                          </div>
-                          {isArtifactApplied && (
-                            <p className="mt-1 text-[10px] font-medium text-green-700">
-                              Already applied to roadmap.
-                            </p>
-                          )}
-                          {isArtifactDiscarded && (
-                            <p className="mt-1 text-[10px] font-medium text-gray-700">
-                              Discarded. You can reapply this committed change.
-                            </p>
-                          )}
-
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {isArtifactDraft && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  void handleApplyArtifact(
-                                    message.id,
-                                    artifact,
-                                  );
-                                }}
-                                disabled={applyDisabled}
-                                className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white"
-                              >
-                                <Check className="w-3.5 h-3.5" />
-                                {isApplyingArtifact ? "Applying..." : "Apply"}
-                              </button>
-                            )}
-
-                            {isArtifactApplied && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  void handleDiscardArtifact(
-                                    message.id,
-                                    artifact,
-                                  );
-                                }}
-                                disabled={isApplyingArtifact}
-                                className="h-7 px-2.5 rounded-md border border-red-300 bg-white text-[10px] font-semibold text-red-700 hover:bg-red-50 inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                                {isApplyingArtifact
-                                  ? "Discarding..."
-                                  : "Discard"}
-                              </button>
-                            )}
-
-                            {isArtifactDiscarded && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  void handleReapplyArtifact(
-                                    message.id,
-                                    artifact,
-                                  );
-                                }}
-                                disabled={isApplyingArtifact}
-                                className="h-7 px-2.5 rounded-md border border-green-300 bg-white text-[10px] font-semibold text-green-700 hover:bg-green-50 inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                <Check className="w-3.5 h-3.5" />
-                                {isApplyingArtifact
-                                  ? "Reapplying..."
-                                  : "Reapply"}
-                              </button>
-                            )}
-
-                            <button
-                              type="button"
-                              onClick={() => handleOpenArtifact(artifact)}
-                              className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5"
-                            >
-                              <FolderOpen className="w-3.5 h-3.5" />
-                              Open in Tabs
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                toggleArtifactPreview(artifact.artifactId)
-                              }
-                              className="h-7 px-2.5 rounded-md border border-orange-300 bg-white text-[10px] font-semibold text-orange-700 hover:bg-orange-100 inline-flex items-center gap-1.5"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              Preview
-                            </button>
-                          </div>
-
-                          <AnimatePresence>
-                            {previewArtifactId === artifact.artifactId && (
-                              <motion.div
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: 8 }}
-                                transition={{ duration: 0.24, ease: "easeOut" }}
-                                className="mt-2 h-72 overflow-hidden rounded-md border border-gray-200"
-                              >
-                                <RoadmapView
-                                  roadmap={inlinePreviewSnapshot}
-                                  epics={inlinePreviewSnapshot.epics || []}
-                                  showMiniMap={false}
-                                  minZoom={0.1}
-                                  onUpdateEpic={noopUpdateEpic}
-                                  onDeleteEpic={noopDeleteEpic}
-                                  onUpdateFeature={noopUpdateFeature}
-                                  onDeleteFeature={noopDeleteFeature}
-                                  onUpdateTask={noopUpdateTask}
-                                />
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
               </article>
             );
           })

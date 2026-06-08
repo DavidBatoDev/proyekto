@@ -39,6 +39,8 @@ def _build_outcome(session: AgentSession) -> SimpleNamespace:
         provider_used='openai',
         fallback_used=False,
         provider_error_code=None,
+        plan_proposal_payload=None,
+        clarifier_card=None,
         tokens_input=123,
         tokens_output=45,
         tokens_total=168,
