@@ -58,6 +58,9 @@ export interface AgentCommitSummary {
   semantic_diff_summary?: Record<string, number>;
   impacted_items?: AgentCommitImpactedItem[];
   impacted_summary?: Record<string, number>;
+  /** Set when committed=false — staged ops were already discarded server-side. */
+  error_code?: string | null;
+  error_message?: string | null;
 }
 
 export interface AgentCreateSessionRequest {

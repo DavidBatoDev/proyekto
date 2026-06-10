@@ -1809,6 +1809,19 @@ export function RoadmapAiAssistantPanel({
             },
           );
         });
+      } else if (commitSummary && !commitSummary.committed) {
+        // The sync commit failed. The agent already discarded the staged ops,
+        // so the deterministic UX is a failed card with the backend's reason —
+        // the user re-asks with a fix; nothing is left dangling server-side.
+        updateMessage(assistantId, (message) => ({
+          ...message,
+          commitLifecycle: {
+            state: "failed",
+            impactedItems: message.commitLifecycle?.impactedItems ?? [],
+            updatedAt: new Date().toISOString(),
+            errorMessage: commitSummary.error_message ?? undefined,
+          },
+        }));
       }
     } catch (error) {
       const timeoutError = isAgentTimeoutError(error);
@@ -2172,8 +2185,8 @@ export function RoadmapAiAssistantPanel({
 
                     {commitLifecycle.state === "failed" && (
                       <p className="mt-1 text-[10px] text-red-700">
-                        Auto-commit did not finish. You can still review the
-                        suggested artifact and apply it manually.
+                        {commitLifecycle.errorMessage ??
+                          "The edit could not be applied to the roadmap. Rephrase the request and try again."}
                       </p>
                     )}
 

@@ -562,6 +562,179 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         }
       }
 
+      // Modifications — renames, status, descriptions, dates, and moves render
+      // instantly too. The impacted item locates the node (node_id) and carries
+      // the post-commit title; the staged operations supply the rest.
+      const modified = impactedItems.filter((i) => i.impact === "modified");
+      const EPIC_KEYS = [
+        "title",
+        "description",
+        "priority",
+        "status",
+        "color",
+        "start_date",
+        "end_date",
+        "estimated_hours",
+        "actual_hours",
+      ];
+      const FEATURE_KEYS = [
+        "title",
+        "description",
+        "is_deliverable",
+        "start_date",
+        "end_date",
+        "estimated_hours",
+        "actual_hours",
+      ];
+      const TASK_KEYS = [
+        "title",
+        "description",
+        "status",
+        "priority",
+        "due_date",
+        "work_type",
+      ];
+
+      const shiftDate = (value: unknown, days: number): unknown => {
+        if (typeof value !== "string" || !value) return value;
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        date.setDate(date.getDate() + days);
+        return value.length <= 10
+          ? date.toISOString().slice(0, 10)
+          : date.toISOString();
+      };
+
+      const patchForItem = (
+        item: AgentCommitImpactedItem,
+        node: Record<string, unknown>,
+        keys: string[],
+      ): Record<string, unknown> => {
+        const ops = operations.filter((op) => op.node_id === item.node_id);
+        let next: Record<string, unknown> = { ...node };
+        for (const op of ops) {
+          if (op.op === "update_node" && op.patch) {
+            for (const key of keys) {
+              if (key in op.patch && op.patch[key] !== undefined) {
+                next[key] = op.patch[key];
+              }
+            }
+          } else if (op.op === "mark_status" && typeof op.status === "string") {
+            if (keys.includes("status")) next.status = op.status;
+          } else if (
+            op.op === "shift_dates" &&
+            typeof op.delta_days === "number"
+          ) {
+            for (const key of ["start_date", "end_date", "due_date"]) {
+              if (keys.includes(key)) {
+                next[key] = shiftDate(next[key], op.delta_days);
+              }
+            }
+          }
+        }
+        // The semantic diff's title is authoritative (covers renames staged via
+        // node_ref where the op didn't carry the resolved node_id).
+        const newTitle = (item.title ?? "").trim();
+        if (newTitle) next.title = newTitle;
+        next.updated_at = now;
+        return next;
+      };
+
+      const moveTargetFor = (item: AgentCommitImpactedItem): string | null => {
+        const moveOp = operations.find(
+          (op) => op.op === "move_node" && op.node_id === item.node_id,
+        );
+        if (!moveOp) return null;
+        if (moveOp.new_parent_ref && tempToReal.has(moveOp.new_parent_ref)) {
+          return tempToReal.get(moveOp.new_parent_ref) ?? null;
+        }
+        return moveOp.new_parent_id ?? null;
+      };
+
+      for (const item of modified) {
+        if (item.node_type === "epic") {
+          epics = epics.map((e) =>
+            e.id === item.node_id
+              ? (patchForItem(
+                  item,
+                  e as unknown as Record<string, unknown>,
+                  EPIC_KEYS,
+                ) as unknown as RoadmapEpic)
+              : e,
+          );
+        } else if (item.node_type === "feature") {
+          let moving: RoadmapFeature | null = null;
+          epics = epics.map((e) => ({
+            ...e,
+            features: (e.features ?? []).map((f) => {
+              if (f.id !== item.node_id) return f;
+              const patched = patchForItem(
+                item,
+                f as unknown as Record<string, unknown>,
+                FEATURE_KEYS,
+              ) as unknown as RoadmapFeature;
+              moving = patched;
+              return patched;
+            }),
+          }));
+          const targetEpicId = moveTargetFor(item);
+          if (moving && targetEpicId && epicExists(targetEpicId)) {
+            const feature: RoadmapFeature = {
+              ...(moving as RoadmapFeature),
+              epic_id: targetEpicId,
+            };
+            epics = epics.map((e) => ({
+              ...e,
+              features:
+                e.id === targetEpicId
+                  ? [
+                      ...(e.features ?? []).filter((f) => f.id !== feature.id),
+                      feature,
+                    ]
+                  : (e.features ?? []).filter((f) => f.id !== feature.id),
+            }));
+          }
+        } else if (item.node_type === "task") {
+          let moving: RoadmapTask | null = null;
+          epics = epics.map((e) => ({
+            ...e,
+            features: (e.features ?? []).map((f) => ({
+              ...f,
+              tasks: (f.tasks ?? []).map((t) => {
+                if (t.id !== item.node_id) return t;
+                const patched = patchForItem(
+                  item,
+                  t as unknown as Record<string, unknown>,
+                  TASK_KEYS,
+                ) as unknown as RoadmapTask;
+                moving = patched;
+                return patched;
+              }),
+            })),
+          }));
+          const targetFeatureId = moveTargetFor(item);
+          if (moving && targetFeatureId && featureExists(targetFeatureId)) {
+            const task: RoadmapTask = {
+              ...(moving as RoadmapTask),
+              feature_id: targetFeatureId,
+            };
+            epics = epics.map((e) => ({
+              ...e,
+              features: (e.features ?? []).map((f) => ({
+                ...f,
+                tasks:
+                  f.id === targetFeatureId
+                    ? [
+                        ...(f.tasks ?? []).filter((t) => t.id !== task.id),
+                        task,
+                      ]
+                    : (f.tasks ?? []).filter((t) => t.id !== task.id),
+              })),
+            }));
+          }
+        }
+      }
+
       if (epics === state.epics) return {};
       return { epics };
     });

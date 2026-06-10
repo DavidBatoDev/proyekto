@@ -67,13 +67,20 @@ class CommitSummary(BaseModel):
     """Lightweight result of a synchronous auto-commit, surfaced on the
     message response so the web can render the "Committed changes"
     confirmation and refresh the canvas — without the heavy commit artifact
-    (no inline_commit / candidate_snapshot / preview)."""
+    (no inline_commit / candidate_snapshot / preview).
+
+    On failure (`committed=False` with `error_code`/`error_message` set) the
+    staged operations have already been discarded server-side — there is no
+    manual apply/discard UI anymore, so surfacing the error and starting the
+    next turn clean is the whole recovery story."""
 
     committed: bool = False
     change_id: str | None = None
     semantic_diff_summary: dict[str, int] = Field(default_factory=dict)
     impacted_items: list[CommitImpactedItem] = Field(default_factory=list)
     impacted_summary: dict[str, int] = Field(default_factory=dict)
+    error_code: str | None = None
+    error_message: str | None = None
 
 
 class ResolverCandidate(BaseModel):

@@ -78,6 +78,8 @@ export interface RoadmapAiCommitLifecycle {
   state: RoadmapAiCommitLifecycleState;
   impactedItems: RoadmapAiCommitImpactedItem[];
   updatedAt: string;
+  /** Why the commit failed (state === "failed"); shown under the status row. */
+  errorMessage?: string;
 }
 
 export interface RoadmapAiChatMessage {

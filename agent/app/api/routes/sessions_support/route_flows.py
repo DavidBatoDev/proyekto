@@ -218,9 +218,11 @@ async def send_message_flow(
                         )
                     except HTTPException as commit_exc:
                         # A synchronous commit failure must NOT fail the whole
-                        # message. Keep the staged edit so the user can review /
-                        # apply it manually — the same graceful outcome the async
-                        # path produces — and record the error for telemetry.
+                        # message. There is no manual apply/discard UI, so a
+                        # staged-but-uncommittable edit is a dead end that would
+                        # cascade into every following turn — discard it, start
+                        # the next turn clean, and surface the error on the
+                        # response so the web can render a failed state.
                         details = (
                             extract_upstream_error_details(commit_exc.detail)
                             if callable(extract_upstream_error_details)
@@ -235,13 +237,33 @@ async def send_message_flow(
                             str(details.get('message')).strip()
                             if isinstance(details.get('message'), str)
                             and str(details.get('message')).strip()
-                            else 'Commit could not be applied; the change is staged for manual apply.'
+                            else 'The edit could not be applied to the roadmap.'
                         )
                         if isinstance(details.get('invalid_operation'), dict):
                             auto_commit_invalid_operation = details.get('invalid_operation')
                         auto_commit_error_retryable = (
                             commit_exc.status_code >= 500
                             or commit_exc.status_code in {408, 429}
+                        )
+                        failed_session = outcome.session
+                        failed_session.operations = []
+                        failed_session.staged_operations_version += 1
+                        response_staged_operations_count = 0
+                        response_staged_operations_version = (
+                            failed_session.staged_operations_version
+                        )
+                        try:
+                            await run_store_call(store.update, failed_session)
+                        except Exception:  # noqa: BLE001 — discard is best-effort
+                            logger.exception(
+                                'Failed to persist staged-op discard after sync '
+                                'commit failure. session_id=%s',
+                                failed_session.session_id,
+                            )
+                        commit_summary = CommitSummary(
+                            committed=False,
+                            error_code=auto_commit_error_code,
+                            error_message=auto_commit_error_message,
                         )
                         log_event_fn(
                             logger,
@@ -254,6 +276,7 @@ async def send_message_flow(
                             auto_commit_error_message=auto_commit_error_message,
                             auto_commit_error_upstream_status=auto_commit_error_upstream_status,
                             auto_commit_error_retryable=auto_commit_error_retryable,
+                            staged_operations_discarded=True,
                         )
             else:
                 logger.info(

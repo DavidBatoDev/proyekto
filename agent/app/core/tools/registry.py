@@ -888,14 +888,16 @@ def _attach_create_data_shape(
     properties: dict[str, Any],
     op_name: str,
 ) -> None:
-    status_enum = _CREATE_STATUS_ENUMS.get(op_name, ALL_STATUS_VALUES)
+    # Only ops whose node type actually persists a status expose one — feature
+    # status is derived from child task statuses, so add_feature offers none.
+    status_enum = _CREATE_STATUS_ENUMS.get(op_name)
+    data_properties: dict[str, Any] = {'title': {'type': 'string'}}
+    if status_enum is not None:
+        data_properties['status'] = {'type': 'string', 'enum': status_enum}
     properties['data'] = {
         'type': 'object',
         'required': ['title'],
-        'properties': {
-            'title': {'type': 'string'},
-            'status': {'type': 'string', 'enum': status_enum},
-        },
+        'properties': data_properties,
     }
 
 
