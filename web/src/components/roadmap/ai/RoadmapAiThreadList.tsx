@@ -131,18 +131,18 @@ export function RoadmapAiThreadList({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -6 }}
       transition={{ duration: 0.15 }}
-      className="absolute right-0 top-full mt-1 z-40 flex max-h-[min(70vh,520px)] w-[320px] flex-col rounded-lg border border-slate-800 bg-slate-900 shadow-xl"
+      className="absolute right-0 top-full mt-1 z-40 flex max-h-[min(70vh,520px)] w-[320px] flex-col rounded-lg border border-gray-200 bg-white shadow-xl"
       role="dialog"
       aria-label="AI thread picker"
     >
-      <div className="flex shrink-0 border-b border-slate-800">
+      <div className="flex shrink-0 border-b border-gray-200">
         <button
           type="button"
           onClick={() => setShowArchived(false)}
           className={`flex-1 py-2 text-xs font-medium transition-colors ${
             !showArchived
-              ? "bg-slate-900 text-slate-100 border-b-2 border-blue-400"
-              : "bg-slate-900 text-slate-400 hover:text-slate-200"
+              ? "bg-white text-gray-900 border-b-2 border-blue-500"
+              : "bg-gray-50 text-gray-500 hover:text-gray-700"
           }`}
         >
           Threads
@@ -152,8 +152,8 @@ export function RoadmapAiThreadList({
           onClick={() => setShowArchived(true)}
           className={`flex-1 py-2 text-xs font-medium transition-colors ${
             showArchived
-              ? "bg-slate-900 text-slate-100 border-b-2 border-blue-400"
-              : "bg-slate-900 text-slate-400 hover:text-slate-200"
+              ? "bg-white text-gray-900 border-b-2 border-blue-500"
+              : "bg-gray-50 text-gray-500 hover:text-gray-700"
           }`}
         >
           Archived
@@ -161,7 +161,7 @@ export function RoadmapAiThreadList({
         <button
           type="button"
           onClick={onClose}
-          className="px-2 text-slate-500 hover:text-slate-300"
+          className="px-2 text-gray-400 hover:text-gray-600"
           aria-label="Close thread picker"
         >
           <X size={14} />
@@ -169,14 +169,14 @@ export function RoadmapAiThreadList({
       </div>
 
       <div className="shrink-0 px-2 pt-2 pb-1">
-        <div className="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900 px-2 py-1">
-          <Search size={13} className="text-slate-500 shrink-0" />
+        <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-2 py-1">
+          <Search size={13} className="text-gray-400 shrink-0" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search threads..."
-            className="flex-1 bg-transparent text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none"
+            className="flex-1 bg-transparent text-xs text-gray-800 placeholder:text-gray-400 focus:outline-none"
           />
         </div>
       </div>
@@ -185,13 +185,13 @@ export function RoadmapAiThreadList({
           pinned so the primary action is always reachable. */}
       <div className="flex-1 overflow-y-auto overscroll-contain py-1">
         {listQuery.isLoading && (
-          <div className="px-3 py-6 text-center text-xs text-slate-500">
+          <div className="px-3 py-6 text-center text-xs text-gray-400">
             Loading…
           </div>
         )}
         {!listQuery.isLoading && filtered.length === 0 && (
           <div className="px-3 py-6 text-center">
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-gray-400">
               {showArchived
                 ? "No archived threads"
                 : searchTerm.trim()
@@ -205,7 +205,7 @@ export function RoadmapAiThreadList({
                   void onCreateNewThread();
                   onClose();
                 }}
-                className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-slate-800 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-800/60"
+                className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
               >
                 <Plus size={13} />
                 Start your first thread
@@ -214,7 +214,7 @@ export function RoadmapAiThreadList({
           </div>
         )}
         {pinned.length > 0 && (
-          <div className="px-3 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+          <div className="px-3 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
             Pinned
           </div>
         )}
@@ -246,7 +246,7 @@ export function RoadmapAiThreadList({
           />
         ))}
         {pinned.length > 0 && unpinned.length > 0 && (
-          <div className="px-3 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+          <div className="px-3 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
             Recent
           </div>
         )}
@@ -279,14 +279,14 @@ export function RoadmapAiThreadList({
         ))}
       </div>
 
-      <div className="shrink-0 border-t border-slate-800 p-2">
+      <div className="shrink-0 border-t border-gray-200 p-2">
         <button
           type="button"
           onClick={() => {
             void onCreateNewThread();
             onClose();
           }}
-          className="gemini-gradient-bg flex w-full items-center justify-center gap-2 rounded-md px-2 py-2 text-xs font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+          className="gemini-gradient-dark flex w-full items-center justify-center gap-2 rounded-md px-2 py-2 text-xs font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
         >
           <Plus size={14} />
           New thread
@@ -379,14 +379,14 @@ function ThreadRow({
     <div
       className={`group flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer transition-colors ${
         active
-          ? "bg-blue-950/40 text-blue-200"
-          : "text-slate-200 hover:bg-slate-800/60"
+          ? "bg-blue-50 text-blue-900"
+          : "text-gray-800 hover:bg-gray-50"
       }`}
       onClick={() => !renaming && onSelect()}
     >
       <MessageSquare
         size={13}
-        className={active ? "text-blue-400" : "text-slate-500"}
+        className={active ? "text-blue-500" : "text-gray-400"}
       />
       <div className="flex-1 min-w-0">
         {renaming ? (
@@ -401,7 +401,7 @@ function ThreadRow({
             }}
             onBlur={onSubmitRename}
             onClick={(e) => e.stopPropagation()}
-            className="w-full bg-slate-900 border border-blue-300 rounded px-1 py-0.5 text-xs focus:outline-none focus:border-blue-400"
+            className="w-full bg-white border border-blue-300 rounded px-1 py-0.5 text-xs focus:outline-none focus:border-blue-500"
             maxLength={120}
           />
         ) : (
@@ -417,9 +417,9 @@ function ThreadRow({
           </div>
         )}
       </div>
-      <span className="shrink-0 text-[10px] text-slate-500">{timeLabel}</span>
+      <span className="shrink-0 text-[10px] text-gray-400">{timeLabel}</span>
       {session.is_pinned && (
-        <Pin size={11} className="shrink-0 text-slate-500" />
+        <Pin size={11} className="shrink-0 text-gray-400" />
       )}
       <div
         className="relative shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100"
@@ -429,7 +429,7 @@ function ThreadRow({
           ref={menuButtonRef}
           type="button"
           onClick={onToggleMenu}
-          className="rounded p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200"
+          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
           aria-label="Thread actions"
         >
           <MoreHorizontal size={12} />
@@ -456,7 +456,7 @@ function ThreadRow({
                     : undefined,
                   right: menuPosition.right,
                 }}
-                className="fixed w-40 rounded-md border border-slate-800 bg-slate-900 py-1 shadow-lg"
+                className="fixed w-40 rounded-md border border-gray-200 bg-white py-1 shadow-lg"
               >
                 <MenuItem onClick={onStartRename} icon={<Pencil size={12} />}>
                   Rename
@@ -540,14 +540,14 @@ function DeleteThreadConfirmModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-thread-title"
-            className="relative w-full max-w-md rounded-2xl border border-red-900/50 bg-slate-900 shadow-[0_24px_80px_rgba(0,0,0,0.6)] overflow-hidden"
+            className="relative w-full max-w-md rounded-2xl border border-red-100 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.35)] overflow-hidden"
             initial={{ opacity: 0, y: 14, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.97 }}
             transition={{ duration: 0.22, ease: "easeOut" }}
           >
-            <div className="flex items-center gap-3 border-b border-red-900/50 bg-gradient-to-r from-red-950/60 to-rose-950/40 px-5 py-4">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-950/400 text-white shadow-sm">
+            <div className="flex items-center gap-3 border-b border-red-100 bg-gradient-to-r from-red-50 to-rose-50 px-5 py-4">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500 text-white shadow-sm">
                 <Trash2 className="h-4 w-4" />
               </span>
               <div className="min-w-0">
@@ -565,7 +565,7 @@ function DeleteThreadConfirmModal({
                 type="button"
                 onClick={onCancel}
                 disabled={isDeleting}
-                className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-slate-100 disabled:opacity-60"
+                className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-white/70 hover:text-slate-900 disabled:opacity-60"
                 aria-label="Close"
               >
                 <X className="w-4 h-4" />
@@ -580,12 +580,12 @@ function DeleteThreadConfirmModal({
               ? This action cannot be undone.
             </div>
 
-            <div className="flex items-center justify-end gap-2 border-t border-slate-800 bg-slate-900/70 px-5 py-4">
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/70 px-5 py-4">
               <button
                 type="button"
                 onClick={onCancel}
                 disabled={isDeleting}
-                className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2 text-sm font-medium text-slate-200 hover:bg-slate-700 disabled:opacity-60"
+                className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-60"
               >
                 Cancel
               </button>
@@ -593,7 +593,7 @@ function DeleteThreadConfirmModal({
                 type="button"
                 onClick={onConfirm}
                 disabled={isDeleting}
-                className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-950/400 disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60"
               >
                 {isDeleting ? "Deleting..." : "Delete"}
               </button>
@@ -623,8 +623,8 @@ function MenuItem({
       onClick={onClick}
       className={`flex w-full items-center gap-2 px-2 py-1.5 text-xs ${
         destructive
-          ? "text-red-400 hover:bg-red-950/40"
-          : "text-slate-300 hover:bg-slate-800"
+          ? "text-red-600 hover:bg-red-50"
+          : "text-gray-700 hover:bg-gray-100"
       }`}
     >
       {icon}

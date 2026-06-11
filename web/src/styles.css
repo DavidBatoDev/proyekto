@@ -570,8 +570,8 @@ code {
 }
 
 /* ------------------------------------------------------------------ */
-/* Gemini-style gradient + shimmer utilities (AI assistant theming).   */
-/* Gradient stops follow the Gemini palette: blue -> purple -> rose.   */
+/* Gradient + shimmer utilities (AI assistant theming).                */
+/* House palette: blue #4f7cff -> violet #8e5cf7 -> coral #f0705a.     */
 @keyframes gemini-shimmer {
   0% {
     background-position: 200% 50%;
@@ -584,19 +584,27 @@ code {
 .gemini-shimmer {
   background-image: linear-gradient(
     90deg,
-    #1d2433 0%,
-    #243352 15%,
-    #322b52 35%,
-    #46283f 50%,
-    #322b52 65%,
-    #243352 85%,
-    #1d2433 100%
+    #e4ecff 0%,
+    #dce6ff 15%,
+    #eadffe 35%,
+    #ffe5de 50%,
+    #eadffe 65%,
+    #dce6ff 85%,
+    #e4ecff 100%
   );
   background-size: 200% 100%;
   animation: gemini-shimmer 1.8s linear infinite;
 }
 
 .gemini-gradient-text {
+  background-image: linear-gradient(90deg, #3f6ce8, #7e4fdd, #e0604a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Brighter text ramp for use on dark surfaces (header strip, dark buttons). */
+.gemini-gradient-text-bright {
   background-image: linear-gradient(90deg, #5b8cff, #b07cff, #ff8a70);
   -webkit-background-clip: text;
   background-clip: text;
@@ -607,12 +615,19 @@ code {
   background-image: linear-gradient(135deg, #4f7cff 0%, #8e5cf7 55%, #f0705a 100%);
 }
 
-.gemini-gradient-soft {
-  background-color: #12141d;
+/* Dark accent surface: slate-900 base with a faint tri-hue wash — matches
+   the landing page's solid dark buttons while still carrying a hint of the
+   gradient identity. */
+.gemini-gradient-dark {
+  background-color: #0f172a;
   background-image: linear-gradient(
     135deg,
-    rgba(79, 124, 255, 0.16) 0%,
-    rgba(142, 92, 247, 0.14) 55%,
+    rgba(79, 124, 255, 0.2) 0%,
+    rgba(142, 92, 247, 0.16) 55%,
     rgba(240, 112, 90, 0.14) 100%
   );
+}
+
+.gemini-gradient-soft {
+  background-image: linear-gradient(135deg, #eef3ff 0%, #f4eefe 55%, #fef0ec 100%);
 }

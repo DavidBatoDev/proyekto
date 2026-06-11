@@ -66,8 +66,8 @@ const flatten = (epics: AgentPlanProposalEpic[]): TreeRow[] => {
 };
 
 const labelClass: Record<NodeKind, string> = {
-  epic: "bg-blue-900/40 text-blue-200 dark:bg-blue-900/60 dark:text-blue-200",
-  feature: "bg-purple-900/40 text-purple-200 dark:bg-purple-900/60 dark:text-purple-200",
+  epic: "bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200",
+  feature: "bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200",
   task: "bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200",
 };
 
@@ -78,15 +78,15 @@ const labelText: Record<NodeKind, string> = {
 };
 
 const titleClass: Record<NodeKind, string> = {
-  epic: "font-semibold text-slate-100 dark:text-neutral-100",
-  feature: "font-medium text-slate-200 dark:text-neutral-200",
+  epic: "font-semibold text-neutral-900 dark:text-neutral-100",
+  feature: "font-medium text-neutral-800 dark:text-neutral-200",
   task: "text-neutral-700 dark:text-neutral-300",
 };
 
 const cardClass: Record<NodeKind, string> = {
-  epic: "border-blue-900/60 bg-blue-950/40/60 dark:border-blue-900/70 dark:bg-blue-950/30",
-  feature: "border-purple-700/60 bg-purple-950/40/60 dark:border-purple-900/70 dark:bg-purple-950/30",
-  task: "border-neutral-200 bg-slate-900 dark:border-neutral-800 dark:bg-neutral-900",
+  epic: "border-blue-200 bg-blue-50/60 dark:border-blue-900/70 dark:bg-blue-950/30",
+  feature: "border-purple-200 bg-purple-50/60 dark:border-purple-900/70 dark:bg-purple-950/30",
+  task: "border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900",
 };
 
 const RAIL_W = 16;

@@ -116,9 +116,9 @@ export function groupParallelSteps(
 }
 
 const statusClassName: Record<string, string> = {
-  running: "text-slate-400",
-  success: "text-slate-300",
-  error: "text-red-300",
+  running: "text-gray-600",
+  success: "text-gray-700",
+  error: "text-red-700",
 };
 
 export function RoadmapAiActivityTimelineView({
@@ -176,10 +176,10 @@ export function RoadmapAiActivityTimelineView({
   };
 
   return (
-    <div className="text-[11px] text-slate-300">
+    <div className="text-[11px] text-gray-700">
       <button
         type="button"
-        className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-200"
+        className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-600 hover:text-gray-800"
         onClick={onToggle}
       >
         <span className="inline-flex transition-transform duration-200 ease-out">
@@ -204,7 +204,7 @@ export function RoadmapAiActivityTimelineView({
           >
             <div className="space-y-1.5">
               {visibleSteps.length === 0 ? (
-                <p className="text-[11px] text-slate-400">Gathering activity...</p>
+                <p className="text-[11px] text-gray-500">Gathering activity...</p>
               ) : (
                 <AnimatePresence initial={false} mode="popLayout">
                   {visibleSteps.map((step) => {
@@ -222,20 +222,20 @@ export function RoadmapAiActivityTimelineView({
                       >
                         <button
                           type="button"
-                          className="w-full inline-flex items-center gap-1.5 text-left hover:text-slate-100"
+                          className="w-full inline-flex items-center gap-1.5 text-left hover:text-gray-900"
                           onClick={() => toggleStep(step.seq)}
                         >
                           <span className="inline-flex transition-transform duration-200 ease-out">
                             {isStepExpanded ? (
-                              <ChevronDown className="h-3 w-3 shrink-0 text-slate-500" />
+                              <ChevronDown className="h-3 w-3 shrink-0 text-gray-400" />
                             ) : (
-                              <ChevronRight className="h-3 w-3 shrink-0 text-slate-500" />
+                              <ChevronRight className="h-3 w-3 shrink-0 text-gray-400" />
                             )}
                           </span>
                           <p className={`text-[11px] font-medium ${statusColor}`}>
                             {step.title}
                           </p>
-                          <span className="ml-auto shrink-0 text-[10px] text-slate-500">
+                          <span className="ml-auto shrink-0 text-[10px] text-gray-400">
                             {new Date(step.ts).toLocaleTimeString([], {
                               hour: "numeric",
                               minute: "2-digit",
@@ -252,27 +252,27 @@ export function RoadmapAiActivityTimelineView({
                               animate={{ opacity: 1, height: "auto", y: 0 }}
                               exit={{ opacity: 0, height: 0, y: -2 }}
                               transition={{ duration: 0.18, ease: "easeOut" }}
-                              className="ml-4 mt-1 overflow-hidden border-l border-slate-700 pl-2"
+                              className="ml-4 mt-1 overflow-hidden border-l border-gray-300 pl-2"
                             >
-                              <p className="text-[11px] leading-relaxed text-slate-400">
+                              <p className="text-[11px] leading-relaxed text-gray-600">
                                 {step.summary}
                               </p>
                               {Array.isArray(step.titleList?.items) &&
                                 step.titleList.items.length > 0 && (
-                                  <div className="mt-1.5 max-h-36 overflow-y-auto pr-1 text-[10.5px] text-slate-400">
+                                  <div className="mt-1.5 max-h-36 overflow-y-auto pr-1 text-[10.5px] text-gray-600">
                                     <ul className="space-y-0.5">
                                       {step.titleList.items.map((item, index) => (
                                         <li
                                           key={`${step.seq}-title-${index}`}
                                           className="flex gap-1"
                                         >
-                                          <span className="text-slate-500">-</span>
+                                          <span className="text-gray-400">-</span>
                                           <span className="break-words">{item}</span>
                                         </li>
                                       ))}
                                     </ul>
                                     {getTitleListOverflowCount(step.titleList) > 0 && (
-                                      <p className="mt-1 text-[10px] text-slate-400">
+                                      <p className="mt-1 text-[10px] text-gray-500">
                                         ...and {getTitleListOverflowCount(step.titleList)}{" "}
                                         more
                                       </p>

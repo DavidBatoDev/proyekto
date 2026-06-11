@@ -26,13 +26,13 @@ export const RoadmapAiPlanProposalCard: FC<RoadmapAiPlanProposalCardProps> = ({
   const isSettled = isConfirmed || isDiscarded;
 
   return (
-    <div className="mt-2 rounded-lg border border-blue-900/60 bg-blue-950/40/50 p-3 dark:border-blue-900 dark:bg-blue-950/30">
+    <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-900 dark:bg-blue-950/30">
       <div className="mb-2 flex items-center gap-2">
-        <span className="inline-flex rounded-full bg-blue-200 px-2 py-0.5 text-xs font-semibold text-blue-200 dark:bg-blue-800 dark:text-blue-100">
+        <span className="inline-flex rounded-full bg-blue-200 px-2 py-0.5 text-xs font-semibold text-blue-900 dark:bg-blue-800 dark:text-blue-100">
           Plan proposal
         </span>
         {isConfirmed ? (
-          <span className="text-xs text-emerald-300 dark:text-emerald-400">Applied</span>
+          <span className="text-xs text-emerald-700 dark:text-emerald-400">Applied</span>
         ) : null}
         {isDiscarded ? (
           <span className="text-xs text-neutral-500">Discarded</span>
@@ -43,7 +43,7 @@ export const RoadmapAiPlanProposalCard: FC<RoadmapAiPlanProposalCardProps> = ({
         {plan.goal ? (
           <div>
             <SectionTitle>Goal</SectionTitle>
-            <div className="text-sm text-slate-200 dark:text-neutral-200">{plan.goal}</div>
+            <div className="text-sm text-neutral-800 dark:text-neutral-200">{plan.goal}</div>
           </div>
         ) : null}
 
@@ -87,12 +87,12 @@ export const RoadmapAiPlanProposalCard: FC<RoadmapAiPlanProposalCardProps> = ({
       </div>
 
       {!isSettled ? (
-        <div className="mt-3 flex items-center gap-2 border-t border-blue-900/60 pt-2 dark:border-blue-900">
+        <div className="mt-3 flex items-center gap-2 border-t border-blue-200 pt-2 dark:border-blue-900">
           <button
             type="button"
             onClick={onApply}
             disabled={disabled}
-            className="inline-flex items-center rounded-md bg-blue-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-950/400 dark:hover:bg-blue-500"
+            className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600"
           >
             Apply this plan
           </button>
@@ -100,7 +100,7 @@ export const RoadmapAiPlanProposalCard: FC<RoadmapAiPlanProposalCardProps> = ({
             type="button"
             onClick={onDiscard}
             disabled={disabled}
-            className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+            className="inline-flex items-center rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
           >
             Discard plan
           </button>
