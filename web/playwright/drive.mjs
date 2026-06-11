@@ -127,13 +127,11 @@ const handlers = {
     });
   },
   async clarifier({ prefer }) {
-    const card = panel()
-      .locator("div")
-      .filter({ has: page.getByRole("button", { name: "Submit answer" }) })
-      .last();
-    const preferred = card.locator("label").filter({ hasText: prefer ?? "" }).first();
-    if (prefer && (await preferred.count()) > 0) await preferred.click();
-    else await card.locator('input[type="radio"]').first().check();
+    // The clarifier is the only radio group in the panel (and renders only on
+    // the newest message), so target labels/radios directly.
+    const labels = panel().locator("label").filter({ hasText: prefer ?? "" });
+    if (prefer && (await labels.count()) > 0) await labels.first().click();
+    else await panel().locator('input[type="radio"]').first().check();
     return captureSend(async () => {
       await page.getByRole("button", { name: "Submit answer" }).last().click();
     });

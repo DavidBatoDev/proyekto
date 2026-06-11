@@ -3316,7 +3316,7 @@ export class RoadmapAiService {
       if (!prevNode) {
         changes.push({
           type: 'NODE_ADDED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           to: nextNode as unknown as Record<string, unknown>,
         });
         continue;
@@ -3328,7 +3328,7 @@ export class RoadmapAiService {
       ) {
         changes.push({
           type: 'NODE_MOVED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { parent_id: prevNode.parentId, position: prevNode.position },
           to: { parent_id: nextNode.parentId, position: nextNode.position },
         });
@@ -3337,7 +3337,7 @@ export class RoadmapAiService {
       if (prevNode.title !== nextNode.title) {
         changes.push({
           type: 'TITLE_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { title: prevNode.title },
           to: { title: nextNode.title },
         });
@@ -3346,7 +3346,7 @@ export class RoadmapAiService {
       if (prevNode.description !== nextNode.description) {
         changes.push({
           type: 'DESCRIPTION_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { description: prevNode.description },
           to: { description: nextNode.description },
         });
@@ -3355,7 +3355,7 @@ export class RoadmapAiService {
       if (prevNode.status !== nextNode.status) {
         changes.push({
           type: 'STATUS_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { status: prevNode.status },
           to: { status: nextNode.status },
         });
@@ -3364,7 +3364,7 @@ export class RoadmapAiService {
       if (prevNode.priority !== nextNode.priority) {
         changes.push({
           type: 'PRIORITY_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { priority: prevNode.priority },
           to: { priority: nextNode.priority },
         });
@@ -3373,7 +3373,7 @@ export class RoadmapAiService {
       if (prevNode.assigneeId !== nextNode.assigneeId) {
         changes.push({
           type: 'ASSIGNEE_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { assignee_id: prevNode.assigneeId },
           to: { assignee_id: nextNode.assigneeId },
         });
@@ -3385,7 +3385,7 @@ export class RoadmapAiService {
       ) {
         changes.push({
           type: 'TAGS_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { tags: prevNode.tags ?? [] },
           to: { tags: nextNode.tags ?? [] },
         });
@@ -3394,7 +3394,7 @@ export class RoadmapAiService {
       if (prevNode.color !== nextNode.color) {
         changes.push({
           type: 'COLOR_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { color: prevNode.color },
           to: { color: nextNode.color },
         });
@@ -3403,7 +3403,7 @@ export class RoadmapAiService {
       if (prevNode.isDeliverable !== nextNode.isDeliverable) {
         changes.push({
           type: 'DELIVERABLE_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { is_deliverable: prevNode.isDeliverable },
           to: { is_deliverable: nextNode.isDeliverable },
         });
@@ -3416,7 +3416,7 @@ export class RoadmapAiService {
       ) {
         changes.push({
           type: 'DATE_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: {
             start_date: prevNode.startDate,
             end_date: prevNode.endDate,
@@ -3436,7 +3436,7 @@ export class RoadmapAiService {
       ) {
         changes.push({
           type: 'DEPENDENCY_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { dependencies: prevNode.dependencies ?? [] },
           to: { dependencies: nextNode.dependencies ?? [] },
         });
@@ -3447,7 +3447,7 @@ export class RoadmapAiService {
       if (after.has(id)) continue;
       changes.push({
         type: 'NODE_REMOVED',
-        node: { type: prevNode.type, id },
+        node: { type: prevNode.type, id, title: prevNode.title },
         from: prevNode as unknown as Record<string, unknown>,
       });
     }

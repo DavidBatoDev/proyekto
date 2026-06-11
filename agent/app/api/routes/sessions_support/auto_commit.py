@@ -247,16 +247,20 @@ def _extract_impacted_items_from_commit_result(commit_result: dict[str, Any]) ->
             impact = 'modified'
 
         title: str | None = None
-        for source in (change.get('to'), change.get('from')):
-            if not isinstance(source, dict):
-                continue
-            for key in ('title', 'name', 'node_title'):
-                raw_title = source.get(key)
-                if isinstance(raw_title, str) and raw_title.strip():
-                    title = raw_title.strip()
+        node_title = node.get('title')
+        if isinstance(node_title, str) and node_title.strip():
+            title = node_title.strip()
+        else:
+            for source in (change.get('to'), change.get('from')):
+                if not isinstance(source, dict):
+                    continue
+                for key in ('title', 'name', 'node_title'):
+                    raw_title = source.get(key)
+                    if isinstance(raw_title, str) and raw_title.strip():
+                        title = raw_title.strip()
+                        break
+                if title:
                     break
-            if title:
-                break
 
         impacted_items.append(
             {
@@ -483,6 +487,16 @@ async def execute_auto_commit(
 
     session.metadata.pending_context_resolution = None
     session.metadata.pending_edit_context = None
+    # Snapshot titles before clearing the handle map: description/date-only
+    # changes carry no title in the semantic diff, so the impacted-items
+    # extraction below needs this to label the commit chip in the web.
+    handle_titles_by_id: dict[str, str] = {}
+    for entry in session.metadata.roadmap_handle_map.values():
+        if isinstance(entry, dict):
+            entry_id = entry.get('id')
+            entry_title = entry.get('title')
+            if isinstance(entry_id, str) and isinstance(entry_title, str) and entry_title:
+                handle_titles_by_id[entry_id] = entry_title
     # The roadmap shape has changed — next turn's pre-dispatcher will refetch
     # the overview via the speculative path.
     session.metadata.roadmap_overview_summary = None
@@ -511,6 +525,9 @@ async def execute_auto_commit(
     # canvas directly. We only surface the impacted items + semantic-diff
     # summary the confirmation needs.
     impacted_items = _extract_impacted_items_from_commit_result(commit_result)
+    for item in impacted_items:
+        if item.get('title') is None:
+            item['title'] = handle_titles_by_id.get(item.get('node_id') or '')
     impacted_summary = _summarize_impacted_items(impacted_items)
     impacted_item_count = len(impacted_items)
     _semantic_diff = commit_result.get('semantic_diff')

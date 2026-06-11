@@ -300,6 +300,9 @@ export class SemanticDiffChangeDto {
   node: {
     type: RoadmapNodeType;
     id: string;
+    /** Current title (post-change; pre-deletion for NODE_REMOVED) so consumers
+     * can label the change without re-fetching the node. */
+    title?: string;
   };
 
   @IsOptional()
