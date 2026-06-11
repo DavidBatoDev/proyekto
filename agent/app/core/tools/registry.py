@@ -155,6 +155,7 @@ EPIC_PRIORITY_FILTER_VALUES = ['critical', 'nice_to_have', 'low', 'medium', 'hig
 
 PLANNING_TOOL_NAME = 'plan_roadmap_operations'
 CONTEXT_TOOL_NAMES = {
+    'list_members',
     'get_roadmap_summary',
     'get_roadmap_overview',
     'resolve_node_reference',
@@ -408,6 +409,18 @@ def get_context_tools() -> list[dict[str, Any]]:
             properties={
                 'roadmap_id': {'type': 'string'},
                 'epic_id': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='list_members',
+            description=(
+                'List the people assignable on this roadmap (project members + '
+                'owner) with their user ids. Call this before assigning a task '
+                'to someone by name.'
+            ),
+            required=['roadmap_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
             },
         ),
         _function_tool(

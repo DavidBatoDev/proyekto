@@ -525,6 +525,71 @@ export class RoadmapAiService {
     return response;
   }
 
+  /** People assignable on this roadmap: the owner plus everyone with
+   * project_access on the linked project. Powers the agent's `list_members`
+   * read tool so "assign X to <name>" can resolve a real user id. */
+  async getContextMembers(
+    roadmapId: string,
+    userId: string,
+    traceId?: string,
+  ): Promise<{
+    members: Array<{ id: string; display_name: string | null; email: string | null }>;
+  }> {
+    const handlerStartedAt = Date.now();
+    const existing = await this.assertCanEditRoadmap(roadmapId, userId);
+
+    const memberIds = new Set<string>();
+    if (typeof existing.owner_id === 'string' && existing.owner_id) {
+      memberIds.add(existing.owner_id);
+    }
+    if (existing.project_id) {
+      const { data: accessRows, error: accessError } = await this.db
+        .from('project_access')
+        .select('user_id')
+        .eq('project_id', existing.project_id);
+      if (!accessError) {
+        for (const row of accessRows ?? []) {
+          const accessUserId = (row as { user_id?: unknown }).user_id;
+          if (typeof accessUserId === 'string' && accessUserId) {
+            memberIds.add(accessUserId);
+          }
+        }
+      }
+    }
+
+    let members: Array<{
+      id: string;
+      display_name: string | null;
+      email: string | null;
+    }> = [];
+    if (memberIds.size > 0) {
+      const { data: profiles, error: profilesError } = await this.db
+        .from('profiles')
+        .select('id, display_name, email')
+        .in('id', [...memberIds]);
+      if (!profilesError) {
+        members = (profiles ?? []).map((profile: any) => ({
+          id: String(profile.id),
+          display_name:
+            typeof profile.display_name === 'string' && profile.display_name.trim()
+              ? profile.display_name.trim()
+              : null,
+          email: typeof profile.email === 'string' ? profile.email : null,
+        }));
+      }
+    }
+
+    this.logRoadmapAiHandlerTiming({
+      event: 'roadmap_ai_context_members_timing',
+      traceId,
+      roadmapId,
+      method: 'GET',
+      path: '/roadmaps/:id/ai/context/members',
+      totalHandlerMs: Date.now() - handlerStartedAt,
+    });
+    return { members };
+  }
+
   async searchContextNodes(
     roadmapId: string,
     queryDto: RoadmapAiContextSearchQueryDto,
@@ -1493,6 +1558,28 @@ export class RoadmapAiService {
       });
     }
 
+    // Replay guard: a retried commit (same idempotency key) returns the first
+    // attempt's result instead of re-applying the operations — the original
+    // request may have succeeded even though the client saw a timeout/5xx.
+    const idempotencyKey = dto.idempotency_key?.trim();
+    if (idempotencyKey) {
+      const replay =
+        await this.previewStore.readCommitIdempotency<RoadmapAiCommitResponseDto>(
+          roadmapId,
+          idempotencyKey,
+        );
+      if (replay) {
+        this.logger.log(
+          [
+            'event=roadmap_ai_commit_idempotent_replay',
+            `roadmap_id=${roadmapId}`,
+            `change_id=${replay.change_id ?? 'unknown'}`,
+          ].join(' '),
+        );
+        return replay;
+      }
+    }
+
     this.logger.log(
       [
         'event=roadmap_ai_commit_start',
@@ -1737,6 +1824,14 @@ export class RoadmapAiService {
 
     if (includeRoadmap) {
       response.roadmap = roadmapRecord;
+    }
+
+    if (idempotencyKey) {
+      await this.previewStore.writeCommitIdempotency(
+        roadmapId,
+        idempotencyKey,
+        response,
+      );
     }
 
     return response;

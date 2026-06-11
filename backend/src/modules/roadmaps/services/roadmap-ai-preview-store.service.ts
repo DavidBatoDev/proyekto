@@ -38,6 +38,45 @@ export class RoadmapAiPreviewStoreService {
     return typeof ttl === 'number' ? ttl : null;
   }
 
+  /** Best-effort idempotency record for AI commits: a retried commit with the
+   * same key returns the stored first result instead of re-applying ops.
+   * Both methods swallow Redis unavailability — idempotency is a safety net,
+   * not a hard dependency. */
+  async readCommitIdempotency<T extends object>(
+    roadmapId: string,
+    key: string,
+  ): Promise<T | null> {
+    if (!this.redis) return null;
+    try {
+      const value = await this.redis.get(this.commitIdempotencyKey(roadmapId, key));
+      return this.decodeStoredValue<T>(value);
+    } catch {
+      return null;
+    }
+  }
+
+  async writeCommitIdempotency<T extends object>(
+    roadmapId: string,
+    key: string,
+    payload: T,
+    ttlSeconds = 600,
+  ): Promise<void> {
+    if (!this.redis) return;
+    try {
+      await this.redis.set(
+        this.commitIdempotencyKey(roadmapId, key),
+        JSON.stringify(payload),
+        { ex: ttlSeconds },
+      );
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  private commitIdempotencyKey(roadmapId: string, key: string): string {
+    return `roadmap_ai:commit:idem:${roadmapId}:${key}`;
+  }
+
   async setResolution<T extends Record<string, unknown>>(
     resolutionId: string,
     payload: T,

@@ -179,6 +179,18 @@ class NestRoadmapClient:
             trace_id=trace_id,
         )
 
+    async def context_members(
+        self,
+        roadmap_id: str,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/context/members",
+            auth_header,
+            trace_id=trace_id,
+        )
+
     async def context_search(
         self,
         roadmap_id: str,

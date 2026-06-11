@@ -5,6 +5,7 @@ import logging
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, Awaitable, Callable
+from uuid import uuid4
 
 from fastapi.exceptions import HTTPException
 
@@ -313,6 +314,10 @@ async def execute_auto_commit(
     )
 
     commit_started = perf_counter()
+    # One key per logical commit: every retry below replays it, so the backend
+    # can serve the first attempt's result instead of re-applying the ops
+    # (an apparent timeout/5xx may have landed server-side).
+    idempotency_key = str(uuid4())
 
     def _build_commit_payload() -> dict[str, Any]:
         return {
@@ -320,6 +325,7 @@ async def execute_auto_commit(
             'revision_token': session.revision_token,
             'include_roadmap': False,
             'include_timeline': False,
+            'idempotency_key': idempotency_key,
             'operations': [
                 operation.model_dump(exclude_none=True)
                 for operation in draft_operations
@@ -424,6 +430,33 @@ async def execute_auto_commit(
                     retry_outcome='no_fresh_token',
                 )
                 raise
+        elif exc.status_code >= 500 or exc.status_code in {408, 429}:
+            # Transient upstream failure. Safe to retry once because the
+            # payload carries an idempotency key — if the first attempt
+            # actually landed, the backend replays its stored result instead
+            # of duplicating the operations.
+            log_event(
+                _commit_diagnostic_logger,
+                'auto_commit_transient_retry',
+                settings=None,
+                trace_id=trace_id,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                upstream_status=exc.status_code,
+            )
+            await asyncio.sleep(1.0)
+            commit_result = await nest_client.commit(
+                roadmap_id=session.roadmap_id,
+                payload=_build_commit_payload(),
+                auth_header=auth_header,
+                trace_id=trace_id,
+            )
+            _log_commit_response_shape(
+                commit_result=commit_result,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                trace_id=trace_id,
+            )
         else:
             raise
     auto_commit_ms = int((perf_counter() - commit_started) * 1000)

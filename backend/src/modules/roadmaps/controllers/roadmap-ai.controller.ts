@@ -83,6 +83,15 @@ export class RoadmapAiController {
     return this.roadmapAiService.getContextActor(roadmapId, user.id, traceId);
   }
 
+  @Get('context/members')
+  getContextMembers(
+    @Param('id') roadmapId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
+  ) {
+    return this.roadmapAiService.getContextMembers(roadmapId, user.id, traceId);
+  }
+
   @Get('context/resolve')
   resolveContext(
     @Param('id') roadmapId: string,

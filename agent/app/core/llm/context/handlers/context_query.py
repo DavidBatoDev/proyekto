@@ -28,6 +28,25 @@ class ContextQueryHandler(ToolHandlerBase):
         if not (isinstance(context_selector, str) and context_selector.strip()):
             context_selector = None
 
+        if tool_name == 'list_members':
+            result = await self._run_context_call(
+                session_context,
+                self._nest_client.context_members(
+                    roadmap_id=roadmap_id,
+                    auth_header=auth_value,
+                    trace_id=trace_id,
+                ),
+            )
+            log_event(
+                self._logger,
+                'tool_call_result',
+                settings=self._settings,
+                trace_id=trace_id,
+                tool_name=tool_name,
+                result_summary=summarize_tool_result(result),
+            )
+            return result
+
         if tool_name == 'get_roadmap_summary':
             result = await self._run_context_call(
                 session_context,

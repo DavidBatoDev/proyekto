@@ -12,6 +12,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
   Min,
   Validate,
   ValidateNested,
@@ -207,6 +208,14 @@ export class RoadmapAiCommitDto {
   @IsOptional()
   @IsBoolean()
   include_timeline?: boolean;
+
+  /** Client-generated key making the commit safely retryable: a replay with
+   * the same key returns the first attempt's result instead of re-applying
+   * the operations (which would duplicate created nodes). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  idempotency_key?: string;
 }
 
 export class RoadmapAiRollbackDto {

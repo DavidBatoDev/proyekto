@@ -591,6 +591,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         "description",
         "status",
         "priority",
+        "assignee_id",
         "due_date",
         "work_type",
       ];
