@@ -584,29 +584,35 @@ code {
 .gemini-shimmer {
   background-image: linear-gradient(
     90deg,
-    #e3ecfd 0%,
-    #dbe5fc 15%,
-    #e9defb 35%,
-    #fbdde7 50%,
-    #e9defb 65%,
-    #dbe5fc 85%,
-    #e3ecfd 100%
+    #1d2433 0%,
+    #243352 15%,
+    #322b52 35%,
+    #46283f 50%,
+    #322b52 65%,
+    #243352 85%,
+    #1d2433 100%
   );
   background-size: 200% 100%;
   animation: gemini-shimmer 1.8s linear infinite;
 }
 
 .gemini-gradient-text {
-  background-image: linear-gradient(90deg, #4285f4, #9b72cb, #d96570);
+  background-image: linear-gradient(90deg, #5b8cff, #b07cff, #ff8a70);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
 .gemini-gradient-bg {
-  background-image: linear-gradient(135deg, #4285f4 0%, #7b6ad0 55%, #c6586f 100%);
+  background-image: linear-gradient(135deg, #4f7cff 0%, #8e5cf7 55%, #f0705a 100%);
 }
 
 .gemini-gradient-soft {
-  background-image: linear-gradient(135deg, #eef4fe 0%, #f3effc 55%, #fdeff3 100%);
+  background-color: #12141d;
+  background-image: linear-gradient(
+    135deg,
+    rgba(79, 124, 255, 0.16) 0%,
+    rgba(142, 92, 247, 0.14) 55%,
+    rgba(240, 112, 90, 0.14) 100%
+  );
 }

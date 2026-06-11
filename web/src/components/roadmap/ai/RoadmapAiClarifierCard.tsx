@@ -49,14 +49,14 @@ export const RoadmapAiClarifierCard: FC<RoadmapAiClarifierCardProps> = ({
   };
 
   return (
-    <div className="gemini-gradient-soft mt-2 rounded-lg border border-purple-200 p-3 dark:border-purple-900 dark:bg-purple-950/30">
+    <div className="gemini-gradient-soft mt-2 rounded-lg border border-purple-700/60 p-3 dark:border-purple-900 dark:bg-purple-950/30">
       <div className="mb-2 flex items-center gap-2">
         <span className="gemini-gradient-bg inline-flex rounded-full px-2 py-0.5 text-xs font-semibold text-white">
           {laneLabel(card.lane)}
         </span>
       </div>
 
-      <div className="mb-3 text-sm font-medium text-neutral-900 dark:text-neutral-100">
+      <div className="mb-3 text-sm font-medium text-slate-100 dark:text-neutral-100">
         {card.question}
       </div>
 
@@ -67,7 +67,7 @@ export const RoadmapAiClarifierCard: FC<RoadmapAiClarifierCardProps> = ({
             <label
               key={optionId}
               htmlFor={optionId}
-              className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-neutral-800 hover:bg-purple-100/50 dark:text-neutral-200 dark:hover:bg-purple-900/30"
+              className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-slate-200 hover:bg-purple-900/30 dark:text-neutral-200 dark:hover:bg-purple-900/30"
             >
               <input
                 id={optionId}
@@ -88,7 +88,7 @@ export const RoadmapAiClarifierCard: FC<RoadmapAiClarifierCardProps> = ({
           <div>
             <label
               htmlFor={`clarifier-${card.question_id}-custom`}
-              className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-neutral-800 hover:bg-purple-100/50 dark:text-neutral-200 dark:hover:bg-purple-900/30"
+              className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-slate-200 hover:bg-purple-900/30 dark:text-neutral-200 dark:hover:bg-purple-900/30"
             >
               <input
                 id={`clarifier-${card.question_id}-custom`}
@@ -109,14 +109,14 @@ export const RoadmapAiClarifierCard: FC<RoadmapAiClarifierCardProps> = ({
                 disabled={disabled}
                 rows={2}
                 placeholder="Type your answer..."
-                className="mt-1.5 w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-purple-400 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+                className="mt-1.5 w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 placeholder:text-slate-500 focus:border-purple-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
               />
             ) : null}
           </div>
         ) : null}
       </div>
 
-      <div className="mt-3 flex items-center gap-2 border-t border-purple-200 pt-2 dark:border-purple-900">
+      <div className="mt-3 flex items-center gap-2 border-t border-purple-700/60 pt-2 dark:border-purple-900">
         <button
           type="button"
           onClick={handleSubmit}
