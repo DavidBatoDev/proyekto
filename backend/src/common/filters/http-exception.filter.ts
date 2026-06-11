@@ -19,6 +19,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'Internal server error';
+    // Structured fields the thrower attached to an HttpException body (e.g.
+    // `validation_issues`, `code`) — preserved so consumers like the AI agent
+    // can tell users WHY a commit failed, not just that it did.
+    let extras: Record<string, unknown> = {};
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -37,6 +41,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
         if (Array.isArray(resp.message)) {
           message = (resp.message as string[]).join('; ');
         }
+
+        const { message: _message, statusCode: _statusCode, ...rest } = resp;
+        extras = rest;
       }
     } else if (exception instanceof Error) {
       message = exception.message;
@@ -48,6 +55,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     response.status(status).json({
       error: {
+        ...extras,
         message,
         status,
         path: request.url,

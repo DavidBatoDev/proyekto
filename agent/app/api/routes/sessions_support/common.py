@@ -87,6 +87,7 @@ def extract_upstream_error_details(detail: object) -> dict[str, Any]:
     error_label: str | None = None
     message: str | None = None
     invalid_operation: dict[str, Any] | None = None
+    validation_issue_message: str | None = None
 
     for candidate in _iter_error_payload_candidates(detail):
         if code is None:
@@ -115,6 +116,17 @@ def extract_upstream_error_details(detail: object) -> dict[str, Any]:
             if isinstance(invalid_candidate, dict):
                 invalid_operation = invalid_candidate
 
+        if validation_issue_message is None:
+            issues = candidate.get('validation_issues')
+            if isinstance(issues, list):
+                for issue in issues:
+                    if not isinstance(issue, dict):
+                        continue
+                    issue_message = issue.get('message')
+                    if isinstance(issue_message, str) and issue_message.strip():
+                        validation_issue_message = issue_message.strip()
+                        break
+
     normalized_code = code
     if normalized_code is None:
         normalized_code = _normalize_error_label_to_code(error_label)
@@ -127,6 +139,7 @@ def extract_upstream_error_details(detail: object) -> dict[str, Any]:
         'error': error_label,
         'message': message,
         'invalid_operation': invalid_operation,
+        'validation_issue_message': validation_issue_message,
     }
 
 

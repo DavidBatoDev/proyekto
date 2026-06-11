@@ -239,6 +239,18 @@ async def send_message_flow(
                             and str(details.get('message')).strip()
                             else 'The edit could not be applied to the roadmap.'
                         )
+                        # The backend's generic 400 carries per-op validation
+                        # issues — surface the first one so the user learns WHY
+                        # ("Task not found"), not just that it failed.
+                        issue_message = details.get('validation_issue_message')
+                        if (
+                            isinstance(issue_message, str)
+                            and issue_message.strip()
+                            and issue_message.strip() not in auto_commit_error_message
+                        ):
+                            auto_commit_error_message = (
+                                f'{auto_commit_error_message}: {issue_message.strip()}'
+                            )
                         if isinstance(details.get('invalid_operation'), dict):
                             auto_commit_invalid_operation = details.get('invalid_operation')
                         auto_commit_error_retryable = (
@@ -246,8 +258,29 @@ async def send_message_flow(
                             or commit_exc.status_code in {408, 429}
                         )
                         failed_session = outcome.session
+                        suspect_node_ids = {
+                            operation.node_id
+                            for operation in failed_session.operations
+                            if getattr(operation, 'node_id', None)
+                        }
                         failed_session.operations = []
                         failed_session.staged_operations_version += 1
+                        # A failed commit usually means the session's view of
+                        # the roadmap has drifted from reality (e.g. a node a
+                        # collaborator deleted). Drop the cached overview +
+                        # handle map so the next turn refetches the truth
+                        # instead of re-staging against ghosts — and prune the
+                        # failed ops' targets from recently-resolved items, or
+                        # the model keeps replaying the dead node_id from there.
+                        failed_session.metadata.roadmap_overview_summary = None
+                        failed_session.metadata.roadmap_overview_summary_fetched_at = None
+                        failed_session.metadata.roadmap_handle_map = {}
+                        if suspect_node_ids:
+                            failed_session.metadata.recent_resolved_targets = [
+                                target
+                                for target in failed_session.metadata.recent_resolved_targets
+                                if target.node_id not in suspect_node_ids
+                            ]
                         response_staged_operations_count = 0
                         response_staged_operations_version = (
                             failed_session.staged_operations_version

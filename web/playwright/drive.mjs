@@ -158,6 +158,18 @@ const handlers = {
       epics: Array.isArray(list) ? list.map((e) => e.title) : `unexpected:${r.status()}`,
     };
   },
+  // Arbitrary backend call — lets the operator simulate a COLLABORATOR
+  // editing the roadmap outside the AI session (concurrency scenarios).
+  async api({ method, path, body }) {
+    const token = await authToken();
+    const r = await page.request.fetch(`${BACKEND_BASE}${path}`, {
+      method: method || "GET",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      data: body,
+    });
+    const j = await r.json().catch(() => null);
+    return { status: r.status(), body: JSON.stringify(j)?.slice(0, 500) };
+  },
   async shot({ name }) {
     const file = path.join(DIR, `${name || "shot"}.png`);
     await page.screenshot({ path: file, fullPage: false });
