@@ -4,6 +4,7 @@
     "add_epic",
     "add_feature",
     "add_task",
+    "add_milestone",
     "update_node",
     "move_node",
     "delete_node",
@@ -14,7 +15,8 @@
     "roadmap",
     "epic",
     "feature",
-    "task"
+    "task",
+    "milestone"
   ],
   "operation_fields": [
     "op",

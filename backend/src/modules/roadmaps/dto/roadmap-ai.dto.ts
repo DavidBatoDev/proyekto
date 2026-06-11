@@ -25,6 +25,7 @@ export const ROADMAP_AI_OPERATION_TYPES = [
   'add_epic',
   'add_feature',
   'add_task',
+  'add_milestone',
   'update_node',
   'move_node',
   'delete_node',
@@ -39,6 +40,7 @@ export const ROADMAP_NODE_TYPES = [
   'epic',
   'feature',
   'task',
+  'milestone',
 ] as const;
 
 export type RoadmapNodeType = (typeof ROADMAP_NODE_TYPES)[number];
@@ -542,6 +544,28 @@ export class RoadmapAiContextSummaryResponseDto {
   @ValidateNested({ each: true })
   @Type(() => RoadmapAiContextSummaryEpicDto)
   epics: RoadmapAiContextSummaryEpicDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapAiContextSummaryMilestoneDto)
+  milestones?: RoadmapAiContextSummaryMilestoneDto[];
+}
+
+export class RoadmapAiContextSummaryMilestoneDto {
+  @IsUUID()
+  id: string;
+
+  @IsString()
+  title: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsOptional()
+  @IsString()
+  target_date?: string;
 }
 
 export class RoadmapAiContextPreviewSelectorQueryDto {

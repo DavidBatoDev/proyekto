@@ -265,7 +265,8 @@ const isRoadmapNodeType = (
     value === "roadmap" ||
     value === "epic" ||
     value === "feature" ||
-    value === "task"
+    value === "task" ||
+    value === "milestone"
   );
 };
 

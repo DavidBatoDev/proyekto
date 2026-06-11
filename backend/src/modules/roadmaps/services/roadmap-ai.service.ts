@@ -14,6 +14,7 @@ import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import type {
   FullRoadmapEpicDto,
   FullRoadmapFeatureDto,
+  FullRoadmapMilestoneDto,
   FullRoadmapState,
   FullRoadmapTaskDto,
 } from '../dto/patch-roadmap.dto';
@@ -98,6 +99,12 @@ type NodeLocator =
       featureIndex: number;
       epic: FullRoadmapEpicDto;
       epicIndex: number;
+      roadmap: FullRoadmapState;
+    }
+  | {
+      type: 'milestone';
+      milestone: FullRoadmapMilestoneDto;
+      milestoneIndex: number;
       roadmap: FullRoadmapState;
     };
 
@@ -226,6 +233,13 @@ const FEATURE_STATUS = [
   'blocked',
 ];
 const TASK_STATUS = ['todo', 'in_progress', 'in_review', 'done', 'blocked'];
+const MILESTONE_STATUS = [
+  'not_started',
+  'in_progress',
+  'at_risk',
+  'completed',
+  'missed',
+];
 const ROADMAP_STATUS = ['draft', 'active', 'paused', 'completed', 'archived'];
 
 @Injectable()
@@ -474,6 +488,18 @@ export class RoadmapAiService {
                       ]
                     : [],
                 ),
+              },
+            ]
+          : [],
+      ),
+      milestones: (state.roadmap_milestones ?? []).flatMap((milestone) =>
+        milestone.id
+          ? [
+              {
+                id: milestone.id,
+                title: milestone.title ?? 'Untitled milestone',
+                status: milestone.status,
+                target_date: milestone.target_date,
               },
             ]
           : [],
@@ -960,6 +986,17 @@ export class RoadmapAiService {
         parent_id: this.requireNodeId(locator.epic.id, 'epic'),
       };
     }
+    if (locator.type === 'milestone') {
+      return {
+        id: this.requireNodeId(locator.milestone.id, 'milestone'),
+        type: 'milestone',
+        title: locator.milestone.title ?? 'Untitled milestone',
+        description: locator.milestone.description,
+        status: locator.milestone.status,
+        due_date: locator.milestone.target_date,
+        parent_id: this.requireNodeId(locator.roadmap.id, 'roadmap'),
+      };
+    }
     return {
       id: this.requireNodeId(locator.task.id, 'task'),
       type: 'task',
@@ -1374,6 +1411,28 @@ export class RoadmapAiService {
         start_date: locator.feature.start_date,
         end_date: locator.feature.end_date,
         parent_id: this.requireNodeId(locator.epic.id, 'epic'),
+      };
+      this.logRoadmapAiHandlerTiming({
+        event: 'roadmap_ai_context_node_details_timing',
+        traceId,
+        roadmapId,
+        method: 'GET',
+        path: '/roadmaps/:id/ai/context/nodes/:nodeId',
+        authzMs,
+        totalHandlerMs: Date.now() - handlerStartedAt,
+      });
+      return response;
+    }
+
+    if (locator.type === 'milestone') {
+      const response: RoadmapAiContextNodeResponseDto = {
+        id: this.requireNodeId(locator.milestone.id, 'milestone'),
+        type: 'milestone',
+        title: locator.milestone.title ?? 'Untitled milestone',
+        description: locator.milestone.description,
+        status: locator.milestone.status,
+        due_date: locator.milestone.target_date,
+        parent_id: this.requireNodeId(locator.roadmap.id, 'roadmap'),
       };
       this.logRoadmapAiHandlerTiming({
         event: 'roadmap_ai_context_node_details_timing',
@@ -2432,6 +2491,17 @@ export class RoadmapAiService {
             operationResults,
           );
           break;
+        case 'add_milestone':
+          this.applyAddMilestone(
+            state,
+            operation,
+            index,
+            opPath,
+            issues,
+            tempIdMap,
+            operationResults,
+          );
+          break;
         case 'update_node':
           this.applyToTargets(operation, opPath, (op, path) =>
             this.applyUpdateNode(state, op, path, issues, tempIdMap),
@@ -2562,6 +2632,86 @@ export class RoadmapAiService {
       state.roadmap_epics?.length ?? 0,
     );
     (state.roadmap_epics ??= []).splice(targetPosition, 0, epic);
+    this.invalidateNodeIndex(state);
+  }
+
+  private applyAddMilestone(
+    state: FullRoadmapState,
+    operation: RoadmapAiOperationDto,
+    index: number,
+    path: string,
+    issues: RoadmapValidationIssueDto[],
+    tempIdMap: Map<string, string>,
+    operationResults: RoadmapAiOperationResolutionDto[],
+  ) {
+    const title = this.readString(operation.data, 'title');
+    if (!title) {
+      issues.push(
+        this.issue(
+          'MISSING_REQUIRED_FIELD',
+          'error',
+          `${path}/data/title`,
+          'title is required for add_milestone',
+        ),
+      );
+      return;
+    }
+    const targetDate = this.readString(operation.data, 'target_date');
+    if (!targetDate) {
+      issues.push(
+        this.issue(
+          'MISSING_REQUIRED_FIELD',
+          'error',
+          `${path}/data/target_date`,
+          'target_date is required for add_milestone',
+        ),
+      );
+      return;
+    }
+
+    const assignedId = this.readUuid(operation.data, 'id') ?? randomUUID();
+    if (
+      !this.registerCreateOperationResolution(
+        operation,
+        index,
+        'milestone',
+        assignedId,
+        path,
+        issues,
+        tempIdMap,
+        operationResults,
+      )
+    ) {
+      return;
+    }
+
+    const milestone: FullRoadmapMilestoneDto = {
+      id: assignedId,
+      title,
+      description: this.readString(operation.data, 'description'),
+      status: this.readString(operation.data, 'status') ?? 'not_started',
+      target_date: targetDate,
+      color: this.readString(operation.data, 'color'),
+      position: 0,
+    };
+
+    if (!MILESTONE_STATUS.includes(milestone.status ?? '')) {
+      issues.push(
+        this.issue(
+          'INVALID_ENUM',
+          'error',
+          `${path}/data/status`,
+          'Invalid milestone status enum',
+        ),
+      );
+      return;
+    }
+
+    const targetPosition = this.resolveInsertPosition(
+      operation.position,
+      state.roadmap_milestones?.length ?? 0,
+    );
+    (state.roadmap_milestones ??= []).splice(targetPosition, 0, milestone);
     this.invalidateNodeIndex(state);
   }
 
@@ -2864,6 +3014,19 @@ export class RoadmapAiService {
       return;
     }
 
+    if (locator.type === 'milestone') {
+      // Milestones have no parent to move between; only reordering applies.
+      const currentIndex = locator.milestoneIndex;
+      const [item] = (state.roadmap_milestones ?? []).splice(currentIndex, 1);
+      const targetIndex = this.resolveInsertPosition(
+        operation.position,
+        state.roadmap_milestones?.length ?? 0,
+      );
+      (state.roadmap_milestones ?? []).splice(targetIndex, 0, item);
+      this.invalidateNodeIndex(state);
+      return;
+    }
+
     if (locator.type === 'feature') {
       const resolvedNewParentId = this.resolveOperationIdentity({
         idValue: operation.new_parent_id,
@@ -3022,6 +3185,12 @@ export class RoadmapAiService {
       return;
     }
 
+    if (locator.type === 'milestone') {
+      (state.roadmap_milestones ?? []).splice(locator.milestoneIndex, 1);
+      this.invalidateNodeIndex(state);
+      return;
+    }
+
     (locator.feature.roadmap_tasks ?? []).splice(locator.taskIndex, 1);
     this.invalidateNodeIndex(state);
   }
@@ -3151,6 +3320,12 @@ export class RoadmapAiService {
   }
 
   private shiftNodeDates(node: NodeLocator, deltaDays: number) {
+    if (node.type === 'milestone') {
+      node.milestone.target_date =
+        this.shiftDate(node.milestone.target_date, deltaDays) ??
+        node.milestone.target_date;
+      return;
+    }
     if (node.type === 'roadmap') {
       node.roadmap.start_date = this.shiftDate(
         node.roadmap.start_date,
@@ -3633,6 +3808,22 @@ export class RoadmapAiService {
       }
     }
 
+    for (const milestone of state.roadmap_milestones ?? []) {
+      const milestoneId = milestone.id;
+      if (!milestoneId) continue;
+      map.set(milestoneId, {
+        id: milestoneId,
+        type: 'milestone',
+        parentId: roadmapId,
+        position: milestone.position,
+        title: milestone.title,
+        description: milestone.description,
+        status: milestone.status,
+        color: milestone.color,
+        dueDate: milestone.target_date,
+      });
+    }
+
     return map;
   }
 
@@ -3645,6 +3836,9 @@ export class RoadmapAiService {
   }
 
   private reindexPositions(state: FullRoadmapState) {
+    (state.roadmap_milestones ?? []).forEach((milestone, milestoneIndex) => {
+      milestone.position = milestoneIndex;
+    });
     (state.roadmap_epics ?? []).forEach((epic, epicIndex) => {
       epic.position = epicIndex;
       (epic.roadmap_features ?? []).forEach((feature, featureIndex) => {
@@ -3706,6 +3900,15 @@ export class RoadmapAiService {
           'assignee_id',
           'due_date',
         ];
+      case 'milestone':
+        return [
+          'title',
+          'description',
+          'status',
+          'target_date',
+          'completed_date',
+          'color',
+        ];
     }
   }
 
@@ -3714,6 +3917,8 @@ export class RoadmapAiService {
     status: string,
   ): boolean {
     switch (nodeType) {
+      case 'milestone':
+        return MILESTONE_STATUS.includes(status);
       case 'roadmap':
         return ROADMAP_STATUS.includes(status);
       case 'epic':
@@ -3792,6 +3997,21 @@ export class RoadmapAiService {
         }
       }
     }
+    const milestones = state.roadmap_milestones ?? [];
+    for (
+      let milestoneIndex = 0;
+      milestoneIndex < milestones.length;
+      milestoneIndex++
+    ) {
+      const milestone = milestones[milestoneIndex];
+      if (!milestone?.id) continue;
+      index.set(milestone.id, {
+        type: 'milestone',
+        milestone,
+        milestoneIndex,
+        roadmap: state,
+      });
+    }
     return index;
   }
 
@@ -3805,6 +4025,8 @@ export class RoadmapAiService {
         return locator.feature as unknown as Record<string, unknown>;
       case 'task':
         return locator.task as unknown as Record<string, unknown>;
+      case 'milestone':
+        return locator.milestone as unknown as Record<string, unknown>;
     }
   }
 
@@ -3909,6 +4131,29 @@ export class RoadmapAiService {
         this.readObject(state, 'template_settings') ??
         {},
       roadmap_epics: roadmapEpics,
+      roadmap_milestones: this.sortRecordsByPosition(
+        this.readArray(state, 'roadmap_milestones') ??
+          this.readArray(state, 'milestones') ??
+          [],
+      ).map((milestoneRaw, milestoneIndex) =>
+        this.normalizeMilestone(milestoneRaw, milestoneIndex),
+      ),
+    };
+  }
+
+  private normalizeMilestone(
+    raw: Record<string, unknown>,
+    milestoneIndex: number,
+  ): FullRoadmapMilestoneDto {
+    return {
+      id: this.readUuid(raw, 'id'),
+      title: this.readString(raw, 'title') ?? 'Untitled milestone',
+      description: this.readString(raw, 'description'),
+      status: this.readString(raw, 'status') ?? 'not_started',
+      target_date: this.readString(raw, 'target_date') ?? '',
+      completed_date: this.readString(raw, 'completed_date'),
+      color: this.readString(raw, 'color'),
+      position: this.readNumber(raw, 'position') ?? milestoneIndex,
     };
   }
 

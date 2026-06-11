@@ -68,7 +68,7 @@ export type RoadmapAiCommitImpactedItemKind =
 
 export interface RoadmapAiCommitImpactedItem {
   nodeId: string;
-  nodeType: "roadmap" | "epic" | "feature" | "task";
+  nodeType: "roadmap" | "epic" | "feature" | "task" | "milestone";
   title?: string;
   kind: RoadmapAiCommitImpactedItemKind;
   changeType?: string;

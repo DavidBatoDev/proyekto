@@ -57,7 +57,7 @@ RecentResolvedTargetSource = Literal[
 
 class CommitImpactedItem(BaseModel):
     node_id: str
-    node_type: Literal['roadmap', 'epic', 'feature', 'task']
+    node_type: Literal['roadmap', 'epic', 'feature', 'task', 'milestone']
     title: str | None = None
     change_type: str | None = None
     impact: Literal['created', 'modified', 'deleted'] = 'modified'

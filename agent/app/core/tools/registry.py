@@ -22,7 +22,7 @@ from app.core.uuid_utils import TEMP_REF_PATTERN, is_uuid_like, normalize_uuid
 # key in the active handle_map, so a coincidental user-supplied string that
 # matches the shape but isn't in the map is left untouched (and will fail
 # normal UUID/temp_ref validation downstream, as intended).
-_HANDLE_TOKEN_PATTERN = re.compile(r'^E\d+(?:\.F\d+)?$')
+_HANDLE_TOKEN_PATTERN = re.compile(r'^(?:E\d+(?:\.F\d+)?|M\d+)$')
 
 # Set by the planning flow for the duration of a single planner turn. Scoped
 # to a ContextVar rather than threaded through every adapter/parser kwarg
@@ -140,6 +140,7 @@ from app.core.contracts.statuses import (  # noqa: E402
     ALL_STATUS_VALUES,
     EPIC_STATUS_VALUES,
     FEATURE_STATUS_VALUES,
+    MILESTONE_STATUS_VALUES,
     TASK_STATUS_VALUES,
 )
 TASK_STATUS_FILTER_VALUES = [*TASK_STATUS_VALUES, 'all']
@@ -237,6 +238,7 @@ _CREATE_OP_NODE_TYPES = {
     'add_epic': 'epic',
     'add_feature': 'feature',
     'add_task': 'task',
+    'add_milestone': 'milestone',
 }
 
 
@@ -747,6 +749,7 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
 _CREATE_STATUS_ENUMS: dict[str, list[str]] = {
     'add_epic': EPIC_STATUS_VALUES,
     'add_task': TASK_STATUS_VALUES,
+    'add_milestone': MILESTONE_STATUS_VALUES,
 }
 
 # Derive the operation property shape once from the Pydantic model so the
@@ -905,11 +908,19 @@ def _attach_create_data_shape(
     # status is derived from child task statuses, so add_feature offers none.
     status_enum = _CREATE_STATUS_ENUMS.get(op_name)
     data_properties: dict[str, Any] = {'title': {'type': 'string'}}
+    required = ['title']
     if status_enum is not None:
         data_properties['status'] = {'type': 'string', 'enum': status_enum}
+    if op_name == 'add_milestone':
+        # roadmap_milestones.target_date is NOT NULL.
+        data_properties['target_date'] = {
+            'type': 'string',
+            'description': 'ISO date (YYYY-MM-DD) the milestone is due.',
+        }
+        required.append('target_date')
     properties['data'] = {
         'type': 'object',
-        'required': ['title'],
+        'required': required,
         'properties': data_properties,
     }
 

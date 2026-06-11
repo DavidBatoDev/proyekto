@@ -5,13 +5,14 @@ export type AgentOperationType =
   | "add_epic"
   | "add_feature"
   | "add_task"
+  | "add_milestone"
   | "update_node"
   | "move_node"
   | "delete_node"
   | "mark_status"
   | "shift_dates";
 
-export type AgentNodeType = "roadmap" | "epic" | "feature" | "task";
+export type AgentNodeType = "roadmap" | "epic" | "feature" | "task" | "milestone";
 
 export interface AgentOperation {
   op: AgentOperationType;

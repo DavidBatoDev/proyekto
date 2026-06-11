@@ -23,6 +23,11 @@
           "parent": true,
           "data_title": true
         },
+        "add_milestone": {
+          "target": null,
+          "parent": false,
+          "data_title": true
+        },
         "update_node": {
           "target": true,
           "parent": false,
@@ -52,13 +57,17 @@
     }
   },
   "type": "object",
-  "required": ["operations"],
+  "required": [
+    "operations"
+  ],
   "properties": {
     "operations": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["op"],
+        "required": [
+          "op"
+        ],
         "properties": {
           "op": {
             "type": "string",
@@ -66,6 +75,7 @@
               "add_epic",
               "add_feature",
               "add_task",
+              "add_milestone",
               "update_node",
               "move_node",
               "delete_node",
@@ -75,24 +85,59 @@
           },
           "node_type": {
             "type": "string",
-            "enum": ["roadmap", "epic", "feature", "task"]
+            "enum": [
+              "roadmap",
+              "epic",
+              "feature",
+              "task",
+              "milestone"
+            ]
           },
-          "node_id": { "type": "string" },
-          "node_ref": { "type": "string" },
-          "parent_id": { "type": "string" },
-          "parent_ref": { "type": "string" },
-          "new_parent_id": { "type": "string" },
-          "new_parent_ref": { "type": "string" },
-          "temp_id": { "type": "string" },
-          "position": { "type": "integer", "minimum": 0 },
-          "patch": { "type": "object" },
-          "status": { "type": "string" },
-          "delta_days": { "type": "integer" },
-          "scope": { "type": "object" },
-          "data": { "type": "object" },
+          "node_id": {
+            "type": "string"
+          },
+          "node_ref": {
+            "type": "string"
+          },
+          "parent_id": {
+            "type": "string"
+          },
+          "parent_ref": {
+            "type": "string"
+          },
+          "new_parent_id": {
+            "type": "string"
+          },
+          "new_parent_ref": {
+            "type": "string"
+          },
+          "temp_id": {
+            "type": "string"
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "patch": {
+            "type": "object"
+          },
+          "status": {
+            "type": "string"
+          },
+          "delta_days": {
+            "type": "integer"
+          },
+          "scope": {
+            "type": "object"
+          },
+          "data": {
+            "type": "object"
+          },
           "targets": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "minItems": 1,
             "maxItems": 500
           }
@@ -101,5 +146,3 @@
     }
   }
 }
-
-

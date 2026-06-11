@@ -432,7 +432,9 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
             ? "feature"
             : op === "add_task"
               ? "task"
-              : undefined;
+              : op === "add_milestone"
+                ? "milestone"
+                : undefined;
       const opTitle = (op: AgentOperation) =>
         String(
           (op.patch?.title as string | undefined) ??
@@ -463,11 +465,14 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
       };
 
       let epics = state.epics;
+      let milestones = state.milestones;
 
       // Deletions (any node type).
       for (const item of impactedItems) {
         if (item.impact !== "deleted") continue;
-        if (item.node_type === "epic") {
+        if (item.node_type === "milestone") {
+          milestones = milestones.filter((m) => m.id !== item.node_id);
+        } else if (item.node_type === "epic") {
           epics = epics.filter((e) => e.id !== item.node_id);
         } else if (item.node_type === "feature") {
           epics = epics.map((e) => ({
@@ -502,6 +507,28 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
       );
       for (const item of sortedCreated) {
         const title = item.title ?? "Untitled";
+        if (item.node_type === "milestone") {
+          if (milestones.some((m) => m.id === item.node_id)) continue;
+          const op = opForItem(item);
+          const targetDate =
+            (op?.data?.target_date as string | undefined) ?? now;
+          const newMilestone: RoadmapMilestone = {
+            id: item.node_id,
+            roadmap_id: roadmapId,
+            title,
+            description: (op?.data?.description as string | undefined) ?? "",
+            target_date: targetDate,
+            status:
+              ((op?.data?.status as string | undefined) ??
+                "not_started") as RoadmapMilestone["status"],
+            position: milestones.length,
+            color: op?.data?.color as string | undefined,
+            created_at: now,
+            updated_at: now,
+          };
+          milestones = [...milestones, newMilestone];
+          continue;
+        }
         if (item.node_type === "epic") {
           if (epicExists(item.node_id)) continue;
           const newEpic: RoadmapEpic = {
@@ -626,7 +653,12 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
             op.op === "shift_dates" &&
             typeof op.delta_days === "number"
           ) {
-            for (const key of ["start_date", "end_date", "due_date"]) {
+            for (const key of [
+              "start_date",
+              "end_date",
+              "due_date",
+              "target_date",
+            ]) {
               if (keys.includes(key)) {
                 next[key] = shiftDate(next[key], op.delta_days);
               }
@@ -652,7 +684,28 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         return moveOp.new_parent_id ?? null;
       };
 
+      const MILESTONE_KEYS = [
+        "title",
+        "description",
+        "status",
+        "target_date",
+        "completed_date",
+        "color",
+      ];
+
       for (const item of modified) {
+        if (item.node_type === "milestone") {
+          milestones = milestones.map((m) =>
+            m.id === item.node_id
+              ? (patchForItem(
+                  item,
+                  m as unknown as Record<string, unknown>,
+                  MILESTONE_KEYS,
+                ) as unknown as RoadmapMilestone)
+              : m,
+          );
+          continue;
+        }
         if (item.node_type === "epic") {
           epics = epics.map((e) =>
             e.id === item.node_id
@@ -736,8 +789,8 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         }
       }
 
-      if (epics === state.epics) return {};
-      return { epics };
+      if (epics === state.epics && milestones === state.milestones) return {};
+      return { epics, milestones };
     });
   },
 

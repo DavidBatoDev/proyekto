@@ -156,11 +156,42 @@ def format_overview_summary(
     if remaining > 0:
         epic_lines.append(f'…and {remaining} more {_pluralize(remaining, "epic", "epics")}')
 
+    # Milestones are flat roadmap children. Render them with M<n> handles so
+    # the planner can update/delete/shift them without a resolve round-trip.
+    milestones_raw = payload.get('milestones')
+    milestones = (
+        [item for item in milestones_raw if isinstance(item, dict)]
+        if isinstance(milestones_raw, list)
+        else []
+    )
+    milestone_lines: list[str] = []
+    for index, milestone in enumerate(milestones[:50], start=1):
+        milestone_title = _clean_str(milestone.get('title')) or 'Untitled milestone'
+        milestone_handle = f'M{index}'
+        milestone_id = _clean_str(milestone.get('id'))
+        if milestone_id:
+            handle_map[milestone_handle] = {
+                'id': milestone_id,
+                'type': 'milestone',
+                'title': milestone_title,
+            }
+        bits = []
+        target_date = _clean_str(milestone.get('target_date'))
+        if target_date:
+            bits.append(f'due {target_date[:10]}')
+        milestone_status = _clean_str(milestone.get('status'))
+        if milestone_status:
+            bits.append(f'status: {milestone_status}')
+        suffix = f' -- {", ".join(bits)}' if bits else ''
+        milestone_lines.append(f'{milestone_handle}. {milestone_title}{suffix}')
+
     sections: list[str] = [header]
     if totals_line:
         sections.append(totals_line)
     if epic_lines:
         sections.append('\n'.join(epic_lines))
+    if milestone_lines:
+        sections.append('Milestones:\n' + '\n'.join(milestone_lines))
     rendered = '\n'.join(sections).strip()
     return (rendered or None), handle_map
 

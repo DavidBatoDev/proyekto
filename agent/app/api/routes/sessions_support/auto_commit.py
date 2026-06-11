@@ -231,7 +231,7 @@ def _extract_impacted_items_from_commit_result(commit_result: dict[str, Any]) ->
         if not isinstance(node_type_raw, str):
             continue
         node_type = node_type_raw.strip().lower()
-        if node_type not in {'roadmap', 'epic', 'feature', 'task'}:
+        if node_type not in {'roadmap', 'epic', 'feature', 'task', 'milestone'}:
             continue
 
         change_type_raw = change.get('type')

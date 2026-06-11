@@ -171,6 +171,40 @@ export class FullRoadmapEpicDto {
   roadmap_features?: FullRoadmapFeatureDto[];
 }
 
+export class FullRoadmapMilestoneDto {
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+
+  @IsString()
+  @MaxLength(200)
+  title: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsEnum(['not_started', 'in_progress', 'at_risk', 'completed', 'missed'])
+  status?: string;
+
+  @IsDateString()
+  target_date: string;
+
+  @IsOptional()
+  @IsDateString()
+  completed_date?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  position?: number;
+
+  @IsOptional()
+  @IsString()
+  color?: string;
+}
+
 export class CreateFullRoadmapDto {
   @IsOptional()
   @IsUUID()
@@ -209,6 +243,12 @@ export class CreateFullRoadmapDto {
   @ValidateNested({ each: true })
   @Type(() => FullRoadmapEpicDto)
   roadmap_epics?: FullRoadmapEpicDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FullRoadmapMilestoneDto)
+  roadmap_milestones?: FullRoadmapMilestoneDto[];
 }
 
 export type FullRoadmapState = CreateFullRoadmapDto;
