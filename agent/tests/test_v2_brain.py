@@ -82,5 +82,47 @@ class V2BrainEndToEndTests(unittest.TestCase):
         self.assertEqual(outcome.assistant_message, 'Your roadmap has one epic.')
 
 
+class V2CompactStatePendingPlanTests(unittest.TestCase):
+    """The confirm turn re-stages operations from the compact-state plan block.
+    Rendering only the one-line summary made the model silently drop the
+    plan's features/tasks (observed live: 'apply the plan' created the feature
+    but none of its tasks)."""
+
+    def test_pending_plan_block_renders_full_hierarchy(self):
+        from app.core.v2.context import compact_state
+
+        session = _v2_session()
+        session_context = {
+            'roadmap_overview_summary': 'Roadmap: 1 epic',
+            'pending_plan': {
+                'summary': 'Add password reset under Live-Drive.',
+                'proposed_hierarchy': [
+                    {
+                        'title': 'Live-Drive',
+                        'features': [
+                            {
+                                'title': 'Password Reset',
+                                'target_epic_title': 'Live-Drive',
+                                'tasks': [
+                                    {'title': 'Build reset endpoint'},
+                                    {'title': 'Send reset email'},
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            },
+        }
+        state = compact_state(session, session_context)
+        self.assertIn('# Pending plan awaiting user confirmation', state)
+        self.assertIn('- Epic: Live-Drive', state)
+        self.assertIn(
+            '- Feature: Password Reset (under existing epic: Live-Drive)', state
+        )
+        self.assertIn('- Task: Build reset endpoint', state)
+        self.assertIn('- Task: Send reset email', state)
+        self.assertIn('stage operations that create EVERY item', state)
+
+
 if __name__ == '__main__':
     unittest.main()

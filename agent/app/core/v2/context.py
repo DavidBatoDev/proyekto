@@ -72,11 +72,19 @@ def compact_state(session: AgentSession, session_context: dict[str, Any]) -> str
     pending_plan = session_context.get('pending_plan')
     if isinstance(pending_plan, dict):
         summary = str(pending_plan.get('summary') or pending_plan.get('goal') or '').strip()
-        if summary:
-            blocks.append(
-                '# Pending plan awaiting user confirmation\n' + summary +
-                '\n(The user is deciding whether to apply this plan.)'
+        outline = _pending_plan_outline(pending_plan)
+        if summary or outline:
+            block = '# Pending plan awaiting user confirmation\n' + summary
+            if outline:
+                block += '\n' + outline
+            block += (
+                '\n(The user is deciding whether to apply this plan. If they '
+                'confirm, stage operations that create EVERY item listed above '
+                '— do not drop tasks or features. Items placed under an epic '
+                'or feature that already exists on the roadmap go under that '
+                'existing node via its handle; never re-create it.)'
             )
+            blocks.append(block)
 
     pending_edit = session_context.get('pending_edit_context')
     if isinstance(pending_edit, dict):
@@ -113,6 +121,39 @@ def _staged_summary(session: AgentSession) -> str:
         lines.append(f'- {op_name}{suffix}')
     if len(operations) > 12:
         lines.append(f'- …and {len(operations) - 12} more')
+    return '\n'.join(lines)
+
+
+def _pending_plan_outline(plan: dict[str, Any]) -> str:
+    """Render the plan's full proposed hierarchy (epic → feature → task titles).
+
+    The confirm turn re-stages operations from this block — showing only the
+    one-line summary made the model silently drop the plan's tasks/features.
+    """
+    lines: list[str] = []
+    for epic in plan.get('proposed_hierarchy') or []:
+        if not isinstance(epic, dict):
+            continue
+        epic_title = str(epic.get('title') or '').strip()
+        if not epic_title:
+            continue
+        lines.append(f'- Epic: {epic_title}')
+        for feature in epic.get('features') or []:
+            if not isinstance(feature, dict):
+                continue
+            feature_title = str(feature.get('title') or '').strip()
+            if not feature_title:
+                continue
+            target_epic = str(feature.get('target_epic_title') or '').strip()
+            placement = f' (under existing epic: {target_epic})' if target_epic else ''
+            lines.append(f'  - Feature: {feature_title}{placement}')
+            for task in feature.get('tasks') or []:
+                if not isinstance(task, dict):
+                    continue
+                task_title = str(task.get('title') or '').strip()
+                if not task_title:
+                    continue
+                lines.append(f'    - Task: {task_title}')
     return '\n'.join(lines)
 
 

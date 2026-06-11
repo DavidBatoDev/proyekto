@@ -2038,6 +2038,12 @@ export function RoadmapAiAssistantPanel({
           </div>
         ) : (
           messages.map((message) => {
+            // A clarifier is only answerable while it is the newest message —
+            // once the conversation moves on, its options are stale and
+            // submitting one would send a confusing answer to the agent.
+            const isLatestMessage =
+              messages.length > 0 &&
+              messages[messages.length - 1].id === message.id;
             const commitLifecycle = message.commitLifecycle;
             const groupedCommitItems = commitLifecycle
               ? groupCommitImpactedItems(commitLifecycle.impactedItems)
@@ -2230,7 +2236,8 @@ export function RoadmapAiAssistantPanel({
 
                 {message.role === "assistant" &&
                   message.clarifier &&
-                  !message.planProposal && (
+                  !message.planProposal &&
+                  isLatestMessage && (
                     <RoadmapAiClarifierCard
                       card={message.clarifier}
                       disabled={isSending}
