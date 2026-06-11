@@ -570,9 +570,11 @@ code {
 }
 
 /* ------------------------------------------------------------------ */
-/* Gradient + shimmer utilities (AI assistant theming).                */
-/* House palette: blue #4f7cff -> violet #8e5cf7 -> coral #f0705a.     */
-@keyframes gemini-shimmer {
+/* Gemini-style gradient + shimmer utilities (AI assistant theming).   */
+/* Gradient stops follow the Gemini palette: blue -> purple -> rose.   */
+/* Proyekto AI accent — matches the landing "Use it your way" card:
+   linear-gradient(135deg, blue-600, indigo-700). */
+@keyframes ai-shimmer {
   0% {
     background-position: 200% 50%;
   }
@@ -581,53 +583,31 @@ code {
   }
 }
 
-.gemini-shimmer {
+/* Skeleton shimmer: neutral slate sweep with a faint blue highlight. */
+.ai-shimmer {
   background-image: linear-gradient(
     90deg,
-    #e4ecff 0%,
-    #dce6ff 15%,
-    #eadffe 35%,
-    #ffe5de 50%,
-    #eadffe 65%,
-    #dce6ff 85%,
-    #e4ecff 100%
+    #f1f5f9 0%,
+    #e2e8f0 25%,
+    #dbeafe 50%,
+    #e2e8f0 75%,
+    #f1f5f9 100%
   );
   background-size: 200% 100%;
-  animation: gemini-shimmer 1.8s linear infinite;
+  animation: ai-shimmer 1.6s linear infinite;
 }
 
-.gemini-gradient-text {
-  background-image: linear-gradient(90deg, #3f6ce8, #7e4fdd, #e0604a);
+.ai-gradient-text {
+  background-image: linear-gradient(90deg, rgb(37, 99, 235), rgb(67, 56, 202));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
-/* Brighter text ramp for use on dark surfaces (header strip, dark buttons). */
-.gemini-gradient-text-bright {
-  background-image: linear-gradient(90deg, #5b8cff, #b07cff, #ff8a70);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+.ai-gradient-bg {
+  background-image: linear-gradient(135deg, rgb(37, 99, 235), rgb(67, 56, 202));
 }
 
-.gemini-gradient-bg {
-  background-image: linear-gradient(135deg, #4f7cff 0%, #8e5cf7 55%, #f0705a 100%);
-}
-
-/* Dark accent surface: slate-900 base with a faint tri-hue wash — matches
-   the landing page's solid dark buttons while still carrying a hint of the
-   gradient identity. */
-.gemini-gradient-dark {
-  background-color: #0f172a;
-  background-image: linear-gradient(
-    135deg,
-    rgba(79, 124, 255, 0.2) 0%,
-    rgba(142, 92, 247, 0.16) 55%,
-    rgba(240, 112, 90, 0.14) 100%
-  );
-}
-
-.gemini-gradient-soft {
-  background-image: linear-gradient(135deg, #eef3ff 0%, #f4eefe 55%, #fef0ec 100%);
+.ai-gradient-soft {
+  background-image: linear-gradient(135deg, #eff6ff 0%, #eef2ff 100%);
 }

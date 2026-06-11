@@ -112,18 +112,18 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
   };
 
   return (
-    <div className="mt-2 gemini-gradient-soft rounded-lg border border-purple-200 p-3 dark:border-purple-900 dark:bg-purple-950/30">
+    <div className="mt-2 ai-gradient-soft rounded-lg border border-indigo-200 p-3 dark:border-indigo-900 dark:bg-indigo-950/30">
       <div className="mb-2 flex items-center gap-2">
-        <span className="gemini-gradient-bg inline-flex rounded-full px-2 py-0.5 text-xs font-semibold text-white">
+        <span className="ai-gradient-bg inline-flex rounded-full px-2 py-0.5 text-xs font-semibold text-white">
           Plan clarifier
         </span>
         {hasMultiple ? (
-          <span className="text-xs font-medium text-purple-800 dark:text-purple-300">
+          <span className="text-xs font-medium text-indigo-800 dark:text-indigo-300">
             Question {boundedIndex + 1} of {totalQuestions}
           </span>
         ) : null}
         {plan.answers && plan.answers.length > 0 ? (
-          <span className="text-xs text-purple-700 dark:text-purple-300">
+          <span className="text-xs text-indigo-700 dark:text-indigo-300">
             ({plan.answers.length} answered so far)
           </span>
         ) : null}
@@ -140,7 +140,7 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
             <label
               key={optionId}
               htmlFor={optionId}
-              className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-neutral-800 hover:bg-purple-100/50 dark:text-neutral-200 dark:hover:bg-purple-900/30"
+              className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-neutral-800 hover:bg-indigo-100/50 dark:text-neutral-200 dark:hover:bg-indigo-900/30"
             >
               <input
                 id={optionId}
@@ -161,7 +161,7 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
           <div>
             <label
               htmlFor={`plan-q-${currentQ.id}-custom`}
-              className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-neutral-800 hover:bg-purple-100/50 dark:text-neutral-200 dark:hover:bg-purple-900/30"
+              className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-neutral-800 hover:bg-indigo-100/50 dark:text-neutral-200 dark:hover:bg-indigo-900/30"
             >
               <input
                 id={`plan-q-${currentQ.id}-custom`}
@@ -189,7 +189,7 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
         ) : null}
       </div>
 
-      <div className="mt-3 flex items-center gap-2 border-t border-purple-200 pt-2 dark:border-purple-900">
+      <div className="mt-3 flex items-center gap-2 border-t border-indigo-200 pt-2 dark:border-indigo-900">
         {hasMultiple && boundedIndex > 0 ? (
           <button
             type="button"
@@ -205,7 +205,7 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
             type="button"
             onClick={handleNext}
             disabled={!currentAnswered || disabled}
-            className="gemini-gradient-dark inline-flex items-center rounded-md px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="ai-gradient-bg inline-flex items-center rounded-md px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Next
           </button>
@@ -214,7 +214,7 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
             type="button"
             onClick={handleSubmit}
             disabled={!allAnswered || disabled}
-            className="gemini-gradient-dark inline-flex items-center rounded-md px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="ai-gradient-bg inline-flex items-center rounded-md px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {hasMultiple ? "Submit answers" : "Submit answer"}
           </button>

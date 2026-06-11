@@ -1062,7 +1062,7 @@ function SkeletonBlock({
 }) {
   return (
     <div
-      className={`rounded-md bg-gray-200 animate-pulse ${className}`}
+      className={`ai-shimmer rounded-md ${className}`}
       style={style}
     />
   );
@@ -1082,19 +1082,19 @@ function ThreadHistorySkeleton() {
       {SKELETON_ROWS.map((row, i) =>
         row.role === "user" ? (
           <div key={i} className="ml-8 mr-0">
-            <div className="gemini-gradient-soft rounded-lg px-3.5 py-2.5 border border-purple-100 space-y-2">
-              <SkeletonBlock className="h-2.5 gemini-shimmer" style={{ width: `${row.lines[0]}%` }} />
+            <div className="ai-gradient-soft rounded-lg px-3.5 py-2.5 border border-blue-100 space-y-2">
+              <SkeletonBlock className="h-2.5" style={{ width: `${row.lines[0]}%` }} />
             </div>
           </div>
         ) : (
           <div key={i} className="ml-0 mr-4 px-0 py-1.5 space-y-2">
             <div className="flex items-center gap-1.5 mb-1">
-              <SkeletonBlock className="h-2 w-12 gemini-shimmer" />
+              <SkeletonBlock className="h-2 w-12 bg-blue-200/60" />
             </div>
             {row.lines.map((w, j) => (
               <SkeletonBlock
                 key={j}
-                className="h-2.5 gemini-shimmer"
+                className="h-2.5"
                 style={{ width: `${w}%` }}
               />
             ))}
@@ -1993,12 +1993,10 @@ export function RoadmapAiAssistantPanel({
       className="h-full w-full bg-white border-l border-gray-200 overflow-hidden flex flex-col"
       aria-label="AI Assistant Panel"
     >
-      <div className="gemini-gradient-dark flex items-center justify-between gap-2 border-b border-slate-800 px-3 py-2">
+      <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 bg-white">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="gemini-gradient-bg flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white">
-            <Bot size={11} />
-          </span>
-          <span className="gemini-gradient-text-bright text-xs font-bold">
+          <Bot size={14} className="text-blue-500 shrink-0" />
+          <span className="text-xs font-semibold text-gray-800">
             AI Assistant
           </span>
         </div>
@@ -2006,7 +2004,7 @@ export function RoadmapAiAssistantPanel({
           <button
             type="button"
             onClick={() => setIsThreadMenuOpen((prev) => !prev)}
-            className="flex items-center gap-1 rounded-md border border-white/20 bg-black/30 px-2 py-1 text-xs text-slate-100 hover:bg-black/45"
+            className="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
             aria-haspopup="dialog"
             aria-expanded={isThreadMenuOpen}
           >
@@ -2070,16 +2068,16 @@ export function RoadmapAiAssistantPanel({
                 key={message.id}
                 className={
                   message.role === "user"
-                    ? "gemini-gradient-soft rounded-lg px-3.5 py-2.5 border border-purple-200 ml-8 mr-0 shadow-sm"
+                    ? "ai-gradient-bg rounded-xl px-3.5 py-2.5 border-0 text-white ml-8 mr-0 shadow-sm"
                     : "px-0 py-1.5 border-0 bg-transparent ml-0 mr-4"
                 }
               >
                 {message.role === "user" && (
                   <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <span className="gemini-gradient-text text-[11px] font-bold">
+                    <span className="text-[11px] font-semibold text-white/90">
                       You
                     </span>
-                    <span className="text-[10px] text-gray-400">
+                    <span className="text-[10px] text-white/60">
                       {new Date(message.timestamp).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
@@ -2127,7 +2125,13 @@ export function RoadmapAiAssistantPanel({
                 )}
 
                 {message.content ? (
-                  <div className="text-xs text-gray-800 leading-relaxed">
+                  <div
+                    className={
+                      message.role === "user"
+                        ? "text-xs leading-relaxed text-white [&_a]:text-white [&_a]:underline"
+                        : "text-xs text-gray-800 leading-relaxed"
+                    }
+                  >
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
@@ -2181,7 +2185,7 @@ export function RoadmapAiAssistantPanel({
                   <div className="mt-2 rounded-md border border-gray-200 bg-white px-2.5 py-2">
                     <div className="flex items-center gap-1.5 text-[10px] font-semibold text-gray-700">
                       {commitLifecycle.state === "committing" ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-500" />
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
                       ) : commitLifecycle.state === "committed" ? (
                         <Check className="h-3.5 w-3.5 text-green-600" />
                       ) : (
@@ -2222,7 +2226,7 @@ export function RoadmapAiAssistantPanel({
                                         nodeId: item.nodeId,
                                         view: roadmapLinkView,
                                       }}
-                                      className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] text-purple-700 hover:bg-purple-100"
+                                      className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] text-blue-700 hover:bg-slate-200"
                                     >
                                       {item.title ||
                                         `${item.nodeType} ${item.nodeId.slice(0, 8)}`}
@@ -2375,10 +2379,8 @@ export function RoadmapAiAssistantPanel({
             Boolean(liveActivity),
             tracePollingFailed,
           ) ? (
-          <div className="mr-4 space-y-2 py-1" aria-label="Assistant is thinking">
-            <div className="gemini-shimmer h-3 w-[92%] rounded-md" />
-            <div className="gemini-shimmer h-3 w-[78%] rounded-md" />
-            <div className="gemini-shimmer h-3 w-[55%] rounded-md" />
+          <div className="mr-4 text-xs text-gray-400 italic">
+            Thinking...
           </div>
         ) : null}
 
@@ -2405,19 +2407,19 @@ export function RoadmapAiAssistantPanel({
             {attachments.map((attachment) => (
               <span
                 key={attachment.id}
-                className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2 py-1 text-[10px] text-purple-700"
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] text-slate-700"
               >
                 <Paperclip className="h-3 w-3" />
                 <span className="max-w-[130px] truncate">
                   {attachment.file.name}
                 </span>
-                <span className="text-purple-500">
+                <span className="text-slate-400">
                   {formatAttachmentSize(attachment.file.size)}
                 </span>
                 <button
                   type="button"
                   onClick={() => removeAttachment(attachment.id)}
-                  className="rounded-full p-0.5 hover:bg-purple-100"
+                  className="rounded-full p-0.5 hover:bg-slate-200"
                   aria-label={`Remove ${attachment.file.name}`}
                   disabled={isSending}
                 >
@@ -2453,7 +2455,7 @@ export function RoadmapAiAssistantPanel({
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={handleComposerKeyDown}
             placeholder="Chat or request roadmap edits..."
-            className="flex-1 min-h-10 max-h-40 rounded-xl border border-gray-300 px-3 py-2 text-sm resize-none overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-300"
+            className="flex-1 min-h-10 max-h-40 rounded-xl border border-gray-300 px-3 py-2 text-sm resize-none overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
             disabled={isSending}
             rows={1}
           />
@@ -2461,7 +2463,7 @@ export function RoadmapAiAssistantPanel({
             type="button"
             onClick={() => void handleSend()}
             disabled={isSending || (!input.trim() && attachments.length === 0)}
-            className="gemini-gradient-dark h-10 w-10 rounded-xl text-white inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed transition-opacity hover:opacity-90"
+            className="h-10 w-10 rounded-xl ai-gradient-bg text-white inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
             title="Send message"
           >
             <Send className="w-4 h-4" />

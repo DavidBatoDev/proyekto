@@ -286,7 +286,7 @@ export function RoadmapAiThreadList({
             void onCreateNewThread();
             onClose();
           }}
-          className="gemini-gradient-dark flex w-full items-center justify-center gap-2 rounded-md px-2 py-2 text-xs font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+          className="flex w-full items-center justify-center gap-2 ai-gradient-bg rounded-md px-2 py-2 text-xs font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
         >
           <Plus size={14} />
           New thread
