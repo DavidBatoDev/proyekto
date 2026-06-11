@@ -88,14 +88,6 @@ async function init() {
   await page.goto(APP_URL);
   await page.getByTitle("Toggle AI chat panel").waitFor({ timeout: 30_000 });
   await page.locator(".react-flow").waitFor({ timeout: 30_000 });
-  // Dev-only devtools toggles overlap the panel's send button in screenshots.
-  // The TanStack toggle uses generated goober classes, so locate it by
-  // position (bottom-right corner) instead of selector.
-  await page.evaluate(() => {
-    const el = document.elementFromPoint(window.innerWidth - 20, window.innerHeight - 20);
-    const btn = el && el.closest("button");
-    if (btn) btn.style.display = "none";
-  });
   await page.getByTitle("Toggle AI chat panel").click();
   await panel().waitFor({ timeout: 10_000 });
   await newThread();
@@ -182,12 +174,6 @@ const handlers = {
     const file = path.join(DIR, `${name || "shot"}.png`);
     await page.screenshot({ path: file, fullPage: false });
     return { saved: file };
-  },
-  // Arbitrary page-side JS — e.g. computed-style checks the screenshots can't
-  // resolve at thumbnail resolution.
-  async eval({ code }) {
-    const value = await page.evaluate(code);
-    return { value };
   },
   async newthread() {
     await newThread();
