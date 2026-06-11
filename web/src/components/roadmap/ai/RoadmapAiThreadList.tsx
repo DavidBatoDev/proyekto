@@ -131,11 +131,11 @@ export function RoadmapAiThreadList({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -6 }}
       transition={{ duration: 0.15 }}
-      className="absolute right-0 top-full mt-1 z-40 w-[320px] rounded-lg border border-gray-200 bg-white shadow-xl"
+      className="absolute right-0 top-full mt-1 z-40 flex max-h-[min(70vh,520px)] w-[320px] flex-col rounded-lg border border-gray-200 bg-white shadow-xl"
       role="dialog"
       aria-label="AI thread picker"
     >
-      <div className="flex border-b border-gray-200">
+      <div className="flex shrink-0 border-b border-gray-200">
         <button
           type="button"
           onClick={() => setShowArchived(false)}
@@ -145,7 +145,7 @@ export function RoadmapAiThreadList({
               : "bg-gray-50 text-gray-500 hover:text-gray-700"
           }`}
         >
-          Local
+          Threads
         </button>
         <button
           type="button"
@@ -168,28 +168,49 @@ export function RoadmapAiThreadList({
         </button>
       </div>
 
-      <div className="px-2 pt-2 pb-1">
+      <div className="shrink-0 px-2 pt-2 pb-1">
         <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-2 py-1">
           <Search size={13} className="text-gray-400 shrink-0" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search sessions..."
+            placeholder="Search threads..."
             className="flex-1 bg-transparent text-xs text-gray-800 placeholder:text-gray-400 focus:outline-none"
           />
         </div>
       </div>
 
-      <div className="py-1">
+      {/* The list scrolls; tabs, search, and the New-thread footer stay
+          pinned so the primary action is always reachable. */}
+      <div className="flex-1 overflow-y-auto overscroll-contain py-1">
         {listQuery.isLoading && (
           <div className="px-3 py-6 text-center text-xs text-gray-400">
             Loading…
           </div>
         )}
         {!listQuery.isLoading && filtered.length === 0 && (
-          <div className="px-3 py-6 text-center text-xs text-gray-400">
-            {showArchived ? "No archived threads" : "No threads yet"}
+          <div className="px-3 py-6 text-center">
+            <p className="text-xs text-gray-400">
+              {showArchived
+                ? "No archived threads"
+                : searchTerm.trim()
+                  ? "No threads match your search"
+                  : "No threads yet"}
+            </p>
+            {!showArchived && !searchTerm.trim() && (
+              <button
+                type="button"
+                onClick={() => {
+                  void onCreateNewThread();
+                  onClose();
+                }}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                <Plus size={13} />
+                Start your first thread
+              </button>
+            )}
           </div>
         )}
         {pinned.length > 0 && (
@@ -258,14 +279,14 @@ export function RoadmapAiThreadList({
         ))}
       </div>
 
-      <div className="border-t border-gray-200 p-1">
+      <div className="shrink-0 border-t border-gray-200 p-2">
         <button
           type="button"
           onClick={() => {
             void onCreateNewThread();
             onClose();
           }}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+          className="flex w-full items-center justify-center gap-2 rounded-md bg-orange-500 px-2 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-orange-600"
         >
           <Plus size={14} />
           New thread
@@ -318,12 +339,36 @@ function ThreadRow({
   onSelect,
 }: ThreadRowProps) {
   const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+  // The action menu renders through a portal with fixed positioning: the
+  // thread list is a scroll container, so an absolutely-positioned dropdown
+  // would be clipped at its bounds (worst at the last visible row).
+  const [menuPosition, setMenuPosition] = useState<{
+    top: number;
+    right: number;
+    openUp: boolean;
+  } | null>(null);
   useEffect(() => {
     if (renaming) {
       renameInputRef.current?.focus();
       renameInputRef.current?.select();
     }
   }, [renaming]);
+  useEffect(() => {
+    if (!menuOpen) {
+      setMenuPosition(null);
+      return;
+    }
+    const rect = menuButtonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const MENU_HEIGHT = 150;
+    const openUp = rect.bottom + MENU_HEIGHT > window.innerHeight;
+    setMenuPosition({
+      top: openUp ? rect.top - 4 : rect.bottom + 4,
+      right: window.innerWidth - rect.right,
+      openUp,
+    });
+  }, [menuOpen]);
 
   const displayTitle = session.title?.trim() || "New thread";
   const timeLabel = formatRelativeTime(
@@ -381,6 +426,7 @@ function ThreadRow({
         onClick={(e) => e.stopPropagation()}
       >
         <button
+          ref={menuButtonRef}
           type="button"
           onClick={onToggleMenu}
           className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
@@ -388,52 +434,68 @@ function ThreadRow({
         >
           <MoreHorizontal size={12} />
         </button>
-        <AnimatePresence>
-          {menuOpen && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.1 }}
-              className="absolute right-0 top-full mt-1 z-50 w-40 rounded-md border border-gray-200 bg-white shadow-lg py-1"
+        {menuOpen &&
+          menuPosition &&
+          createPortal(
+            <div
+              className="fixed inset-0 z-[150]"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleMenu();
+              }}
             >
-              <MenuItem onClick={onStartRename} icon={<Pencil size={12} />}>
-                Rename
-              </MenuItem>
-              <MenuItem
-                onClick={onTogglePin}
-                icon={
-                  session.is_pinned ? (
-                    <PinOff size={12} />
-                  ) : (
-                    <Pin size={12} />
-                  )
-                }
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.1 }}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  top: menuPosition.openUp ? undefined : menuPosition.top,
+                  bottom: menuPosition.openUp
+                    ? window.innerHeight - menuPosition.top
+                    : undefined,
+                  right: menuPosition.right,
+                }}
+                className="fixed w-40 rounded-md border border-gray-200 bg-white py-1 shadow-lg"
               >
-                {session.is_pinned ? "Unpin" : "Pin"}
-              </MenuItem>
-              <MenuItem
-                onClick={onToggleArchive}
-                icon={
-                  session.is_archived ? (
-                    <ArchiveRestore size={12} />
-                  ) : (
-                    <Archive size={12} />
-                  )
-                }
-              >
-                {session.is_archived ? "Restore" : "Archive"}
-              </MenuItem>
-              <MenuItem
-                onClick={onRequestDelete}
-                icon={<Trash2 size={12} />}
-                destructive
-              >
-                Delete
-              </MenuItem>
-            </motion.div>
+                <MenuItem onClick={onStartRename} icon={<Pencil size={12} />}>
+                  Rename
+                </MenuItem>
+                <MenuItem
+                  onClick={onTogglePin}
+                  icon={
+                    session.is_pinned ? (
+                      <PinOff size={12} />
+                    ) : (
+                      <Pin size={12} />
+                    )
+                  }
+                >
+                  {session.is_pinned ? "Unpin" : "Pin"}
+                </MenuItem>
+                <MenuItem
+                  onClick={onToggleArchive}
+                  icon={
+                    session.is_archived ? (
+                      <ArchiveRestore size={12} />
+                    ) : (
+                      <Archive size={12} />
+                    )
+                  }
+                >
+                  {session.is_archived ? "Restore" : "Archive"}
+                </MenuItem>
+                <MenuItem
+                  onClick={onRequestDelete}
+                  icon={<Trash2 size={12} />}
+                  destructive
+                >
+                  Delete
+                </MenuItem>
+              </motion.div>
+            </div>,
+            document.body,
           )}
-        </AnimatePresence>
       </div>
     </div>
   );
