@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -59,11 +60,13 @@ def run_loop(
     settings: Any,
     trace_id: str | None,
     pending_plan_titles: frozenset[str] | None = None,
+    actor_id: str | None = None,
 ) -> LoopResult:
     max_turns = max(1, int(settings.agent_v2_max_turns))
     max_tool_calls = max(1, int(settings.agent_v2_max_tool_calls))
     tool_calls_used = 0
     used_read_tools = False
+    nudged_ask_user = False
     tok_in = tok_out = tok_total = 0
     live_epic_titles = _live_epic_titles(handle_map)
 
@@ -84,10 +87,32 @@ def run_loop(
         messages.extend(_echo_items(response))
 
         if not response.tool_calls:
+            text = (response.content or '').strip()
+            # Contract enforcement the prompt alone can't guarantee: a plain-
+            # text reply presenting choices ("Which epic? - A - B") strands the
+            # user with nothing to click. Nudge once to re-emit via ask_user.
+            if (
+                not nudged_ask_user
+                and turn < max_turns
+                and _is_textual_option_question(text)
+            ):
+                nudged_ask_user = True
+                messages.append(
+                    {
+                        'role': 'system',
+                        'content': (
+                            'Your last reply asked the user to choose between '
+                            'options in plain text. Re-issue that question as an '
+                            'ask_user call with those options so the user can '
+                            'click an answer.'
+                        ),
+                    }
+                )
+                continue
             return _finalize(
                 LoopResult(
                     kind='chat',
-                    assistant_message=(response.content or '').strip(),
+                    assistant_message=text,
                     used_read_tools=used_read_tools,
                     termination_reason='assistant_text',
                 ),
@@ -109,6 +134,7 @@ def run_loop(
                     trace_id,
                     pending_plan_titles=pending_plan_titles or frozenset(),
                     live_epic_titles=live_epic_titles,
+                    actor_id=actor_id,
                 )
                 if isinstance(outcome, LoopResult):
                     outcome.used_read_tools = used_read_tools
@@ -186,11 +212,12 @@ def _handle_terminal(
     *,
     pending_plan_titles: frozenset[str] = frozenset(),
     live_epic_titles: frozenset[str] = frozenset(),
+    actor_id: str | None = None,
 ) -> LoopResult | dict[str, Any]:
     progress.tool_requested(settings, trace_id, tc.name, tc.arguments)
 
     if tc.name == PLANNING_TOOL_NAME:
-        parsed = tools_exec.interpret_plan_tool(tc.arguments, handle_map)
+        parsed = tools_exec.interpret_plan_tool(tc.arguments, handle_map, actor_id)
         if isinstance(parsed, tools_exec.PlanToolError):
             return {'error': {'code': 'INVALID_OPERATIONS', 'message': parsed.message}}
         if parsed.operations:
@@ -308,6 +335,19 @@ def _handle_terminal(
 
 def _looks_like_question(text: str) -> bool:
     return isinstance(text, str) and '?' in text
+
+
+def _is_textual_option_question(text: str) -> bool:
+    """A question presenting 2+ list-style choices in plain text — the exact
+    shape that should have been an ask_user call (clickable options)."""
+    if '?' not in text:
+        return False
+    option_lines = sum(
+        1
+        for line in text.splitlines()
+        if re.match(r'\s*([-*•]|\d+[.)])\s+\S', line)
+    )
+    return option_lines >= 2
 
 
 def _live_epic_titles(handle_map: dict[str, dict[str, str]] | None) -> frozenset[str]:

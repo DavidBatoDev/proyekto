@@ -141,6 +141,29 @@ class V2LoopTests(unittest.TestCase):
         self.assertEqual(result.clarifier['question'], 'Which epic?')
         self.assertEqual(result.clarifier['options'], ['Growth', 'Retention'])
 
+    def test_textual_option_question_is_nudged_to_ask_user(self):
+        # A plain-text question listing choices strands the user (nothing to
+        # click) — the loop must nudge once and accept the ask_user re-issue.
+        textual_options = 'Which epic should I use?\n- Growth\n- Retention'
+        ask_args = {'question': 'Which epic should I use?', 'options': ['Growth', 'Retention']}
+        client = _ScriptedClient([
+            _text_resp(textual_options),
+            _tool_resp('ask_user', ask_args),
+        ])
+        result = _run(client)
+        self.assertEqual(result.kind, 'clarifier')
+        self.assertEqual(result.clarifier['options'], ['Growth', 'Retention'])
+        self.assertEqual(client.call_count, 2)
+        # The nudge is one-shot: if the model insists on text, accept it.
+        client = _ScriptedClient([_text_resp(textual_options), _text_resp(textual_options)])
+        result = _run(client)
+        self.assertEqual(result.kind, 'chat')
+
+    def test_plain_question_without_options_is_not_nudged(self):
+        result = _run(_ScriptedClient([_text_resp('What deadline did you have in mind?')]))
+        self.assertEqual(result.kind, 'chat')
+        self.assertEqual(result.termination_reason, 'assistant_text')
+
     def test_budget_exhaustion_on_max_turns(self):
         client = _LoopingClient(_tool_resp('search_nodes', {'query': 'x'}))
         result = _run(client, settings=_settings(agent_v2_max_turns=2, agent_v2_max_tool_calls=99))

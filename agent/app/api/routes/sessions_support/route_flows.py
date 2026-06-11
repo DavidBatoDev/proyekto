@@ -252,6 +252,18 @@ async def send_message_flow(
                         response_staged_operations_version = (
                             failed_session.staged_operations_version
                         )
+                        # The assistant text was written before the commit ran
+                        # ("Assigned X to you.") — replace it with the truth in
+                        # BOTH the response and the persisted history, or the
+                        # next turn's model context claims the edit happened.
+                        honest_message = (
+                            f"I couldn't apply that change: {auto_commit_error_message}"
+                        )
+                        outcome.assistant_message = honest_message
+                        for message in reversed(failed_session.messages):
+                            if message.role == 'assistant':
+                                message.content = honest_message
+                                break
                         try:
                             await run_store_call(store.update, failed_session)
                         except Exception:  # noqa: BLE001 — discard is best-effort

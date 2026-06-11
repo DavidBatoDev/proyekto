@@ -55,6 +55,9 @@ def run_v2_message(
     handle_map = dict(session.metadata.roadmap_handle_map)
     messages = build_messages(session, session_context, folded_message)
 
+    actor = session.metadata.actor_context
+    actor_id = actor.actor_id if actor is not None else None
+
     pending_plan = session.metadata.pending_plan
     pending_plan_titles = _pending_plan_titles(pending_plan)
     tools = build_tools(has_pending_plan=pending_plan is not None)
@@ -77,6 +80,7 @@ def run_v2_message(
             settings=settings,
             trace_id=trace_id,
             pending_plan_titles=pending_plan_titles,
+            actor_id=actor_id,
         )
         return to_outcome(
             service=service,

@@ -57,6 +57,7 @@ def run_read_tools(
 def interpret_plan_tool(
     args: dict[str, Any],
     handle_map: dict[str, dict[str, str]] | None,
+    actor_id: str | None = None,
 ) -> PlanToolError | PlanToolParsed:
     """Parse + contract-validate a ``plan_roadmap_operations`` call.
 
@@ -65,7 +66,7 @@ def interpret_plan_tool(
     is installed for the duration of the parse, mirroring the v1 edit lane.
     """
     cleaned = _strip_null_plan_args(args)
-    cleaned = _normalize_mutation_ops(cleaned)
+    cleaned = _normalize_mutation_ops(cleaned, actor_id=actor_id)
     token = set_active_handle_map(handle_map or None)
     try:
         try:
@@ -99,8 +100,14 @@ def _format_validation_error(error: dict[str, Any]) -> str:
     )
 
 
-def _normalize_mutation_ops(args: dict[str, Any]) -> dict[str, Any]:
-    """Fix the two shapes the model gets wrong on ``update_node``:
+_SELF_ASSIGNEE_ALIASES = frozenset({'me', 'myself', 'self', 'current user', 'current_user'})
+
+
+def _normalize_mutation_ops(
+    args: dict[str, Any],
+    actor_id: str | None = None,
+) -> dict[str, Any]:
+    """Fix the shapes the model gets wrong on ``update_node``:
 
     1. Reparenting. The model emits a move as ``update_node ... new_parent_ref=
        <feature>`` but ``update_node`` can't reparent (the contract reports
@@ -110,8 +117,11 @@ def _normalize_mutation_ops(args: dict[str, Any]) -> dict[str, Any]:
        field changes on an existing node go in ``patch`` — ``data`` is not
        allowed on update_node, so the backend 400s. Fold ``data`` into
        ``patch``.
+    3. Assignment. "Assign X to me" comes out as ``patch.assignee`` (wrong
+       field) and/or the literal value ``"me"`` the model cannot resolve.
+       Rename to ``assignee_id`` and substitute the session actor's id.
 
-    Both produce a staged op the backend accepts.
+    All produce a staged op the backend accepts.
     """
     if not isinstance(args, dict):
         return args
@@ -128,6 +138,17 @@ def _normalize_mutation_ops(args: dict[str, Any]) -> dict[str, Any]:
         if isinstance(data, dict) and data and not op.get('patch'):
             op['patch'] = dict(data)
             op.pop('data', None)
+        patch = op.get('patch')
+        if isinstance(patch, dict):
+            if 'assignee' in patch and 'assignee_id' not in patch:
+                patch['assignee_id'] = patch.pop('assignee')
+            assignee = patch.get('assignee_id')
+            if (
+                actor_id
+                and isinstance(assignee, str)
+                and assignee.strip().lower() in _SELF_ASSIGNEE_ALIASES
+            ):
+                patch['assignee_id'] = actor_id
     return args
 
 
