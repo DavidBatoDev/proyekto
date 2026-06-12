@@ -65,6 +65,35 @@ def compact_state(session: AgentSession, session_context: dict[str, Any]) -> str
     else:
         blocks.append('# Current roadmap\n(empty — no epics yet)')
 
+    conversation_summary = session_context.get('conversation_summary')
+    if isinstance(conversation_summary, str) and conversation_summary.strip():
+        blocks.append(
+            '# Earlier conversation summary\n'
+            '(Older turns were compacted. Treat this as ground truth for '
+            'earlier context.)\n' + conversation_summary.strip()
+        )
+
+    memory_notes = session_context.get('memory_notes')
+    if isinstance(memory_notes, list) and memory_notes:
+        note_lines: list[str] = []
+        for note in memory_notes[:30]:
+            if not isinstance(note, dict):
+                continue
+            content = str(note.get('content') or '').strip()[:300]
+            if not content:
+                continue
+            note_lines.append(
+                f'- "{content}" (memory_id: {note.get("id")}, '
+                f'source: {note.get("source")})'
+            )
+        if note_lines:
+            blocks.append(
+                '# Memory notes (durable preferences for this roadmap)\n'
+                '(Shared by all collaborators. Apply these as standing '
+                'conventions. Use forget_memory with the memory_id to remove '
+                'one.)\n' + '\n'.join(note_lines)
+            )
+
     staged = _staged_summary(session)
     if staged:
         blocks.append('# Staged changes (not yet committed)\n' + staged)

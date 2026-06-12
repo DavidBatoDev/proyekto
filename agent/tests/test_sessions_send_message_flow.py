@@ -105,7 +105,10 @@ class SendMessageFlowTraceIdTests(unittest.IsolatedAsyncioTestCase):
             run_auto_commit_in_background=lambda **_kwargs: _as_awaitable(None),
             extract_upstream_error_code=lambda _detail: None,
             extract_upstream_error_details=lambda _detail: {},
-            settings=SimpleNamespace(agent_async_auto_commit_enabled=True),
+            settings=SimpleNamespace(
+                agent_async_auto_commit_enabled=True,
+                agent_summary_trigger_messages=40,
+            ),
             logger=logging.getLogger('send-message-flow-tests'),
             log_event_fn=lambda _logger, event, **data: captured_events.append((event, data)),
         )
@@ -145,7 +148,10 @@ class SendMessageFlowTraceIdTests(unittest.IsolatedAsyncioTestCase):
             run_auto_commit_in_background=lambda **_kwargs: _as_awaitable(None),
             extract_upstream_error_code=lambda _detail: None,
             extract_upstream_error_details=lambda _detail: {},
-            settings=SimpleNamespace(agent_async_auto_commit_enabled=True),
+            settings=SimpleNamespace(
+                agent_async_auto_commit_enabled=True,
+                agent_summary_trigger_messages=40,
+            ),
             logger=logging.getLogger('send-message-flow-tests'),
             log_event_fn=lambda *_args, **_kwargs: None,
         )
@@ -164,6 +170,9 @@ class _FakeStore:
     def update(self, session: AgentSession) -> AgentSession:
         self.updated_sessions.append(session)
         return session
+
+    def get(self, _session_id: str) -> AgentSession | None:
+        return None
 
 
 class SendMessageFlowSyncCommitTests(unittest.IsolatedAsyncioTestCase):
@@ -197,7 +206,10 @@ class SendMessageFlowSyncCommitTests(unittest.IsolatedAsyncioTestCase):
             extract_upstream_error_details=lambda detail: (
                 detail if isinstance(detail, dict) else {}
             ),
-            settings=SimpleNamespace(agent_async_auto_commit_enabled=False),
+            settings=SimpleNamespace(
+                agent_async_auto_commit_enabled=False,
+                agent_summary_trigger_messages=40,
+            ),
             logger=logging.getLogger('send-message-flow-tests'),
             log_event_fn=lambda _logger, event, **data: events.append((event, data)),
         )

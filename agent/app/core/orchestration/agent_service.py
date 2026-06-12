@@ -285,6 +285,60 @@ class AgentService:
                 current_token=fresh_revision_token,
             )
 
+    def _ensure_memory_notes(
+        self,
+        *,
+        session: AgentSession,
+        auth_header: str | None,
+        trace_id: str | None,
+    ) -> None:
+        """Fetch the roadmap's long-term memory notes (shared, durable
+        preferences) and cache them on the session. Refetched on a short TTL
+        so a collaborator's new note propagates within minutes."""
+        if not auth_header or not session.roadmap_id:
+            return
+        fetched_at = session.metadata.memory_notes_fetched_at
+        if session.metadata.memory_notes is not None and fetched_at is not None:
+            age_seconds = (_utcnow() - fetched_at).total_seconds()
+            if age_seconds < self._settings.agent_cache_ttl_seconds:
+                return
+        try:
+            payload = self._run_async_call(
+                self._nest_client.ai_memories_list(
+                    roadmap_id=session.roadmap_id,
+                    auth_header=auth_header,
+                    trace_id=trace_id,
+                )
+            )
+        except Exception:  # noqa: BLE001 — notes are an enhancement
+            return
+        memories = payload.get('memories') if isinstance(payload, dict) else None
+        if not isinstance(memories, list):
+            return
+        session.metadata.memory_notes = [
+            {
+                'id': str(item.get('id') or ''),
+                'content': str(item.get('content') or ''),
+                'source': str(item.get('source') or 'user_request'),
+            }
+            for item in memories
+            if isinstance(item, dict) and item.get('content')
+        ]
+        session.metadata.memory_notes_fetched_at = _utcnow()
+        log_event(
+            self._logger,
+            'memory_notes_loaded',
+            settings=self._settings,
+            trace_id=trace_id,
+            roadmap_id=session.roadmap_id,
+            session_id=session.session_id,
+            note_count=len(session.metadata.memory_notes),
+        )
+
+    def invalidate_memory_notes(self, session: AgentSession) -> None:
+        session.metadata.memory_notes = None
+        session.metadata.memory_notes_fetched_at = None
+
     def _run_async_call(self, coro: Any) -> dict[str, Any]:
         return run_async_call(
             coro,

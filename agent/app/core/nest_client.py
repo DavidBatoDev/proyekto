@@ -435,6 +435,130 @@ class NestRoadmapClient:
             },
         )
 
+    async def _mutate(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        headers = {'Content-Type': 'application/json'}
+        if auth_header:
+            headers['Authorization'] = auth_header
+        if trace_id:
+            headers['X-Trace-Id'] = trace_id
+
+        url = f"{self._settings.nest_api_base_url}{path}"
+        client = await self._get_client()
+        started = perf_counter()
+        response = await client.request(method, url, json=payload, headers=headers)
+        elapsed_ms = int((perf_counter() - started) * 1000)
+
+        log_event(
+            self._logger,
+            'nest_http_call',
+            settings=self._settings,
+            trace_id=trace_id,
+            method=method,
+            path=path,
+            status_code=response.status_code,
+            nest_http_call_ms=elapsed_ms,
+            nest_http_network_ms=elapsed_ms,
+            nest_http_parse_ms=0,
+        )
+
+        if response.is_success:
+            # 204s carry no body; tolerate empty payloads.
+            try:
+                return self._extract_success_payload(response)
+            except Exception:  # noqa: BLE001 — empty/non-JSON success body
+                return {}
+
+        try:
+            detail: Any = response.json()
+        except Exception:  # noqa: BLE001
+            detail = response.text or 'Unknown NestJS error'
+        raise HTTPException(
+            status_code=response.status_code,
+            detail={
+                'upstream': 'nestjs',
+                'path': path,
+                'detail': detail,
+            },
+        )
+
+    async def _put(
+        self,
+        path: str,
+        payload: dict[str, Any],
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._mutate('PUT', path, payload, auth_header, trace_id)
+
+    async def _delete(
+        self,
+        path: str,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._mutate('DELETE', path, None, auth_header, trace_id)
+
+    async def put_session_agent_state(
+        self,
+        roadmap_id: str,
+        session_id: str,
+        payload: dict[str, Any],
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._put(
+            f"/roadmaps/{roadmap_id}/ai-sessions/{session_id}/agent-state",
+            payload,
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def ai_memories_list(
+        self,
+        roadmap_id: str,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._get(
+            f"/roadmaps/{roadmap_id}/ai/memories",
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def ai_memories_create(
+        self,
+        roadmap_id: str,
+        payload: dict[str, Any],
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._post(
+            f"/roadmaps/{roadmap_id}/ai/memories",
+            payload,
+            auth_header,
+            trace_id=trace_id,
+        )
+
+    async def ai_memories_delete(
+        self,
+        roadmap_id: str,
+        memory_id: str,
+        auth_header: str | None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._delete(
+            f"/roadmaps/{roadmap_id}/ai/memories/{memory_id}",
+            auth_header,
+            trace_id=trace_id,
+        )
+
     async def _get(
         self,
         path: str,

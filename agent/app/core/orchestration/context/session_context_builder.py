@@ -48,6 +48,8 @@ def build_session_context(
         'last_intent_type': session.last_intent_type,
         'recent_messages': recent_messages,
         'recent_resolved_targets': recent_resolved_targets,
+        'conversation_summary': session.metadata.conversation_summary,
+        'memory_notes': session.metadata.memory_notes or [],
         'auth_header': auth_header,
         'trace_id': trace_id,
         'actor_context': (

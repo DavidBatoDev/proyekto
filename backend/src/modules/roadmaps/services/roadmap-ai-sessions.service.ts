@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Inject,
   Injectable,
   Logger,
@@ -154,6 +155,40 @@ export class RoadmapAiSessionsService {
 
     if (error) throw new Error(error.message);
     return data as RoadmapAiSessionRow;
+  }
+
+  /** Persist the agent's memory-class session snapshot (pending plan, undo
+   * log, recents, conversation summary) under metadata.agent_state. Written
+   * fire-and-forget by the agent after turns that changed memory state;
+   * replayed into the agent's Redis session on rehydration. */
+  async updateAgentState(
+    roadmapId: string,
+    sessionId: string,
+    userId: string,
+    agentState: Record<string, unknown>,
+  ): Promise<void> {
+    const session = await this.getById(roadmapId, sessionId, userId);
+
+    const serialized = JSON.stringify(agentState);
+    if (serialized.length > 65_536) {
+      throw new BadRequestException({
+        message: 'Agent state snapshot exceeds the 64KB limit',
+        code: 'AGENT_STATE_TOO_LARGE',
+      });
+    }
+
+    // Merge, don't replace: keep any future metadata siblings intact.
+    const existingMetadata =
+      session.metadata && typeof session.metadata === 'object'
+        ? (session.metadata as Record<string, unknown>)
+        : {};
+    const { error } = await this.db
+      .from('roadmap_ai_sessions')
+      .update({ metadata: { ...existingMetadata, agent_state: agentState } })
+      .eq('id', sessionId)
+      .eq('user_id', userId);
+
+    if (error) throw new Error(error.message);
   }
 
   async delete(

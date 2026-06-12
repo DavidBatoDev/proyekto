@@ -48,8 +48,11 @@ class LLMResponse:
 
 
 class V2LLMClient:
-    def __init__(self, settings: Any) -> None:
+    def __init__(self, settings: Any, model: str | None = None) -> None:
         self._settings = settings
+        # Optional override so auxiliary callers (e.g. the conversation
+        # summarizer) can run on a cheaper model than the main loop.
+        self._model = model or settings.openai_model_v2
         self._client: Any | None = None
         # Defensive: if a model rejects the `reasoning` param, drop it once and
         # remember for the rest of the process (no failed round-trip per turn).
@@ -81,7 +84,7 @@ class V2LLMClient:
         send_reasoning: bool,
     ) -> LLMResponse:
         kwargs: dict[str, Any] = {
-            'model': self._settings.openai_model_v2,
+            'model': self._model,
             'input': input_items,
             'tools': _to_responses_tools(tools),
             'tool_choice': 'auto',

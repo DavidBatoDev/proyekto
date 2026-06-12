@@ -1,3 +1,4 @@
+import json
 import logging
 import random
 import time
@@ -65,6 +66,34 @@ class SessionStore:
 
     def _version_key(self, session_id: str) -> str:
         return f'{self._key_prefix}:{session_id}:v'
+
+    def _summary_candidate_key(self, session_id: str) -> str:
+        return f'{self._key_prefix}:{session_id}:summary_candidate'
+
+    # Side-channel for the conversation summarizer: candidates are computed by
+    # a background task and applied at the next turn start, so the session
+    # document is only ever written from the request path (no blind-SET race).
+    def set_summary_candidate(self, session_id: str, payload: dict) -> None:
+        self._redis.set(
+            self._summary_candidate_key(session_id),
+            json.dumps(payload, ensure_ascii=False),
+            ex=self._ttl_seconds,
+        )
+
+    def get_summary_candidate(self, session_id: str) -> dict | None:
+        raw = self._redis.get(self._summary_candidate_key(session_id))
+        if raw is None:
+            return None
+        if isinstance(raw, bytes):
+            raw = raw.decode('utf-8')
+        try:
+            parsed = json.loads(raw)
+        except (TypeError, ValueError):
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    def delete_summary_candidate(self, session_id: str) -> None:
+        self._redis.delete(self._summary_candidate_key(session_id))
 
     def create(self, session: AgentSession) -> AgentSession:
         self._save(session)

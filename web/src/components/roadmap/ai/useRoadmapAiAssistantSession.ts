@@ -419,10 +419,29 @@ export function useRoadmapAiAssistantSession(
     async (seedMessages, options) => {
       const tid = resolveThreadId();
       if (!tid) return;
+      // Restore the agent's memory-class state (pending plan, undo log,
+      // recents, conversation summary) saved by the agent's snapshot
+      // write-back. Best-effort: a missing snapshot just means a plain
+      // text-only rehydrate.
+      let agentState: Record<string, unknown> | undefined;
+      try {
+        const row = await roadmapAiSessionsService.getById(
+          options.roadmapId,
+          tid,
+        );
+        const candidate = (row.metadata as Record<string, unknown> | null)
+          ?.agent_state;
+        if (candidate && typeof candidate === "object") {
+          agentState = candidate as Record<string, unknown>;
+        }
+      } catch {
+        /* snapshot fetch is best-effort */
+      }
       await roadmapAgentService.createSession({
         session_id: tid,
         roadmap_id: options.roadmapId,
         base_revision: options.baseRevision,
+        metadata: agentState,
         seed_messages: seedMessages,
       });
     },

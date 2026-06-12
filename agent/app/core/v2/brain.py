@@ -23,6 +23,7 @@ from app.core.v2.context import build_messages
 from app.core.v2.loop import LoopResult, run_loop
 from app.core.v2.openai_client import V2LLMClient
 from app.core.v2.sentinels import parse_and_fold
+from app.core.v2.summarizer import apply_pending_compaction
 from app.core.v2.terminal import to_outcome
 from app.core.v2.tools_spec import build_tools
 
@@ -42,9 +43,19 @@ def run_v2_message(
     _ = replace  # API-compatible; v2 staging is append/draft-action driven.
     settings = service._settings
 
+    # Fold any pending conversation-summary candidate before context builds —
+    # the request path is the single writer, so applying here cannot race a
+    # save (see app/core/v2/summarizer.py).
+    apply_pending_compaction(service._store, session, settings, trace_id)
+
     # Context prep — reuse the v1 helpers so behavior matches exactly.
     _ensure_actor_context(service, session, auth_header, trace_id)
     service._ensure_roadmap_overview_summary(
+        session=session,
+        auth_header=auth_header,
+        trace_id=trace_id,
+    )
+    service._ensure_memory_notes(
         session=session,
         auth_header=auth_header,
         trace_id=trace_id,
@@ -82,6 +93,10 @@ def run_v2_message(
             pending_plan_titles=pending_plan_titles,
             actor_id=actor_id,
         )
+        # A save_memory/forget_memory tool ran this turn — drop the cached
+        # notes so the next turn refetches the authoritative list.
+        if session_context.get('memory_notes_dirty'):
+            service.invalidate_memory_notes(session)
         return to_outcome(
             service=service,
             session=session,

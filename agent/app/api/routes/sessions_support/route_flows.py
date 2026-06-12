@@ -8,6 +8,11 @@ from uuid import UUID, uuid4
 from fastapi import Request
 from fastapi.exceptions import HTTPException
 
+from app.api.routes.sessions_support.agent_state_snapshot import (
+    build_agent_state_snapshot,
+    push_agent_state_snapshot,
+    snapshot_fingerprint,
+)
 from app.core.contracts.sessions import (
     AgentSession,
     CommitImpactedItem,
@@ -23,6 +28,7 @@ from app.core.orchestration.shared.tool_message_persistence import (
 )
 from app.core.session_store import SessionStore
 from app.core.trace_context import bind as bind_trace_context_values
+from app.core.v2.summarizer import run_summary_compaction, should_schedule_compaction
 
 
 async def create_session_flow(
@@ -41,6 +47,26 @@ async def create_session_flow(
         payload.roadmap_id,
         payload.base_revision,
     )
+    # No-clobber guard: the web calls create both on cold thread loads and on
+    # 404-rehydrates. When the Redis session is still alive, overwriting it
+    # would wipe live staged state — return the existing identifiers instead.
+    if payload.session_id:
+        existing = await run_store_call(store.get, payload.session_id)
+        if existing is not None:
+            log_event_fn(
+                logger,
+                'session_create_noop_existing',
+                settings=settings,
+                session_id=existing.session_id,
+                roadmap_id=existing.roadmap_id,
+            )
+            return CreateSessionResponse(
+                session_id=existing.session_id,
+                roadmap_id=existing.roadmap_id,
+                base_revision=existing.base_revision,
+                revision_token=existing.revision_token,
+                created_at=existing.created_at,
+            )
     sanitized_metadata, actor_metadata_stripped = sanitize_session_metadata(payload.metadata)
     if actor_metadata_stripped:
         log_event_fn(
@@ -107,11 +133,13 @@ async def send_message_flow(
     settings: Any,
     logger: Any,
     log_event_fn: Callable[..., None],
+    nest_client: Any = None,
 ) -> MessageResponse:
     store, agent_service = await get_agent_runtime_async()
     trace_id = _resolve_request_trace_id(request)
     started_at = perf_counter()
     session = await get_session_or_404_async(agent_service, session_id)
+    snapshot_fp_before = snapshot_fingerprint(build_agent_state_snapshot(session))
     bind_trace_context_values(
         trace_id=trace_id,
         session_id=session_id,
@@ -329,6 +357,37 @@ async def send_message_flow(
                     outcome.session.session_id,
                     outcome.session.roadmap_id,
                 )
+
+        # Durable memory write-back: when this turn changed memory-class state
+        # (pending plan created/cleared, undo log grew, recents shifted), push
+        # the snapshot to the backend fire-and-forget so Redis expiry loses
+        # nothing. Runs after the auto-commit block — commits mutate the log.
+        snapshot_auth = request.headers.get('Authorization')
+        if nest_client is not None and snapshot_auth:
+            snapshot = build_agent_state_snapshot(outcome.session)
+            if snapshot and snapshot_fingerprint(snapshot) != snapshot_fp_before:
+                schedule_auto_commit_task(
+                    push_agent_state_snapshot(
+                        nest_client=nest_client,
+                        roadmap_id=outcome.session.roadmap_id,
+                        session_id=outcome.session.session_id,
+                        snapshot=snapshot,
+                        auth_header=snapshot_auth,
+                        trace_id=trace_id,
+                    )
+                )
+
+        # Conversation compaction: compute a summary candidate off-path; it is
+        # applied (and the message list truncated) at the next turn start.
+        if should_schedule_compaction(outcome.session, settings):
+            schedule_auto_commit_task(
+                run_summary_compaction(
+                    store=store,
+                    session_id=outcome.session.session_id,
+                    settings=settings,
+                    trace_id=trace_id,
+                )
+            )
 
         return MessageResponse(
             session_id=outcome.session.session_id,

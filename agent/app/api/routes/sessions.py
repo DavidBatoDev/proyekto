@@ -226,6 +226,7 @@ async def send_message(
         settings=settings,
         logger=logger,
         log_event_fn=log_event,
+        nest_client=_nest_client,
     )
 
 

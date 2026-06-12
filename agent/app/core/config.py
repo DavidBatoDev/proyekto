@@ -25,7 +25,10 @@ class Settings(BaseSettings):
 
     openai_api_key: str | None = Field(default=None, alias='OPENAI_API_KEY')
 
-    session_ttl_seconds: int = Field(default=1800, alias='SESSION_TTL_SECONDS')
+    # 4h working-session window. Expiry is benign: the durable agent-state
+    # snapshot (roadmap_ai_sessions.metadata.agent_state) restores pending
+    # plans / undo history / recents on rehydration.
+    session_ttl_seconds: int = Field(default=14400, alias='SESSION_TTL_SECONDS')
     upstash_redis_rest_url: str | None = Field(default=None, alias='UPSTASH_REDIS_REST_URL')
     upstash_redis_rest_token: str | None = Field(default=None, alias='UPSTASH_REDIS_REST_TOKEN')
     redis_session_key_prefix: str = Field(default='roadmap:ai:session', alias='REDIS_SESSION_KEY_PREFIX')
@@ -94,6 +97,27 @@ class Settings(BaseSettings):
     openai_v2_temperature: float | None = Field(
         default=None,
         alias='OPENAI_V2_TEMPERATURE',
+    )
+
+    # ------------------------------------------------------------------
+    # Conversation compaction (app/core/v2/summarizer.py). When a session
+    # exceeds TRIGGER messages, the oldest turns beyond KEEP are folded into
+    # a rolling summary (computed post-turn on SUMMARY_MODEL, applied at the
+    # next turn start) and truncated from Redis. The summary rides the
+    # durable agent-state snapshot.
+    # ------------------------------------------------------------------
+    agent_summary_model: str = Field(default='gpt-4o-mini', alias='AGENT_SUMMARY_MODEL')
+    agent_summary_trigger_messages: int = Field(
+        default=40,
+        alias='AGENT_SUMMARY_TRIGGER_MESSAGES',
+    )
+    agent_summary_keep_messages: int = Field(
+        default=30,
+        alias='AGENT_SUMMARY_KEEP_MESSAGES',
+    )
+    agent_summary_max_chars: int = Field(
+        default=4000,
+        alias='AGENT_SUMMARY_MAX_CHARS',
     )
 
     @field_validator('agent_v2_max_turns')

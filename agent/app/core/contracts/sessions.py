@@ -406,6 +406,15 @@ class SessionMetadata(BaseModel):
     # ``roadmap_overview_summary`` on auto-commit.
     roadmap_handle_map: dict[str, dict[str, str]] = Field(default_factory=dict)
     recent_applied_changes: list[AppliedChange] = Field(default_factory=list)
+    # Rolling summary of turns folded out of `session.messages` by the
+    # compaction pass (see app/core/v2/summarizer.py). Rides the durable
+    # agent-state snapshot so it survives Redis expiry.
+    conversation_summary: str | None = None
+    conversation_summary_folded_count: int = 0
+    # Cache of the roadmap's long-term memory notes (roadmap_ai_memories) —
+    # refetched on TTL like the overview; EXCLUDED from the durable snapshot.
+    memory_notes: list[dict[str, Any]] | None = None
+    memory_notes_fetched_at: datetime | None = None
 
 
 class AgentSession(BaseModel):

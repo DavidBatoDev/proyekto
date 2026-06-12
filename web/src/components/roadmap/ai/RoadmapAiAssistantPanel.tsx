@@ -32,6 +32,7 @@ import roadmapAgentService, {
   RoadmapAgentServiceError,
   isAgentTimeoutError,
 } from "@/services/roadmap-agent.service";
+import { roadmapAiSessionsService } from "@/services/roadmap-ai-sessions.service";
 import { useToast } from "@/hooks/useToast";
 import { RoadmapAiActivityTimelineView } from "./RoadmapAiActivityTimeline";
 import {
@@ -1285,12 +1286,30 @@ export function RoadmapAiAssistantPanel({
     if (activeThreadId) {
       // Guarantee the agent has a Redis session for this thread — first hit
       // after a cold browser load, the DB row exists but Redis may not.
+      // Pass the durable agent-state snapshot so a cold create is a restore
+      // (pending plan/undo/recents survive); when Redis is still live the
+      // agent's no-clobber guard makes this a no-op.
       if (!agentSessionsInitializedRef.current.has(activeThreadId)) {
         try {
+          let agentState: Record<string, unknown> | undefined;
+          try {
+            const row = await roadmapAiSessionsService.getById(
+              roadmapId,
+              activeThreadId,
+            );
+            const candidate = (row.metadata as Record<string, unknown> | null)
+              ?.agent_state;
+            if (candidate && typeof candidate === "object") {
+              agentState = candidate as Record<string, unknown>;
+            }
+          } catch {
+            /* snapshot fetch is best-effort */
+          }
           await roadmapAgentService.createSession({
             session_id: activeThreadId,
             roadmap_id: roadmapId,
             base_revision: baseRevision,
+            metadata: agentState,
           });
           agentSessionsInitializedRef.current.add(activeThreadId);
         } catch (err) {
