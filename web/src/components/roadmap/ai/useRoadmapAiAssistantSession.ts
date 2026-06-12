@@ -8,7 +8,6 @@ import {
   type RoadmapAiMessage,
 } from "@/services/roadmap-ai-sessions.service";
 import { useRoadmapAiThreadsStore } from "@/stores/roadmapAiThreadsStore";
-import type { RoadmapArtifactPreview } from "@/types/roadmapArtifact";
 
 // =============================================================================
 // Public types (unchanged shape — imported by the panel, activity timeline
@@ -69,7 +68,7 @@ export type RoadmapAiCommitImpactedItemKind =
 
 export interface RoadmapAiCommitImpactedItem {
   nodeId: string;
-  nodeType: "roadmap" | "epic" | "feature" | "task";
+  nodeType: "roadmap" | "epic" | "feature" | "task" | "milestone";
   title?: string;
   kind: RoadmapAiCommitImpactedItemKind;
   changeType?: string;
@@ -79,6 +78,8 @@ export interface RoadmapAiCommitLifecycle {
   state: RoadmapAiCommitLifecycleState;
   impactedItems: RoadmapAiCommitImpactedItem[];
   updatedAt: string;
+  /** Why the commit failed (state === "failed"); shown under the status row. */
+  errorMessage?: string;
 }
 
 export interface RoadmapAiChatMessage {
@@ -99,7 +100,6 @@ export interface RoadmapAiChatMessage {
   responseMode?: "chat" | "edit_plan" | "plan_proposal";
   planProposal?: import("@/services/roadmap-agent.service").AgentPlanProposal;
   clarifier?: import("@/services/roadmap-agent.service").AgentClarifierCard;
-  artifacts?: RoadmapArtifactPreview[];
   attachments?: RoadmapAiChatAttachment[];
   activityTimeline?: RoadmapAiActivityTimeline;
   commitLifecycle?: RoadmapAiCommitLifecycle;
@@ -191,9 +191,6 @@ function dbRowToClientMessage(row: RoadmapAiMessage): RoadmapAiChatMessage {
     responseMode: (row.response_mode ??
       undefined) as RoadmapAiChatMessage["responseMode"],
   };
-  if (row.artifacts && Array.isArray(row.artifacts)) {
-    base.artifacts = row.artifacts as unknown as RoadmapArtifactPreview[];
-  }
   if (row.activity_timeline && typeof row.activity_timeline === "object") {
     base.activityTimeline =
       row.activity_timeline as unknown as RoadmapAiActivityTimeline;
@@ -240,7 +237,6 @@ export interface UseRoadmapAiAssistantSessionResult {
       intentType?: string;
       responseMode?: "chat" | "edit_plan" | "plan_proposal";
       parseMode?: string;
-      artifacts?: Array<Record<string, unknown>>;
       activityTimeline?: Record<string, unknown>;
       commitLifecycle?: Record<string, unknown>;
       tokens?: number;
@@ -402,7 +398,6 @@ export function useRoadmapAiAssistantSession(
         intent_type: extras?.intentType,
         response_mode: extras?.responseMode,
         parse_mode: extras?.parseMode,
-        artifacts: extras?.artifacts,
         activity_timeline: extras?.activityTimeline,
         commit_lifecycle: extras?.commitLifecycle,
         tokens: extras?.tokens,
@@ -424,10 +419,29 @@ export function useRoadmapAiAssistantSession(
     async (seedMessages, options) => {
       const tid = resolveThreadId();
       if (!tid) return;
+      // Restore the agent's memory-class state (pending plan, undo log,
+      // recents, conversation summary) saved by the agent's snapshot
+      // write-back. Best-effort: a missing snapshot just means a plain
+      // text-only rehydrate.
+      let agentState: Record<string, unknown> | undefined;
+      try {
+        const row = await roadmapAiSessionsService.getById(
+          options.roadmapId,
+          tid,
+        );
+        const candidate = (row.metadata as Record<string, unknown> | null)
+          ?.agent_state;
+        if (candidate && typeof candidate === "object") {
+          agentState = candidate as Record<string, unknown>;
+        }
+      } catch {
+        /* snapshot fetch is best-effort */
+      }
       await roadmapAgentService.createSession({
         session_id: tid,
         roadmap_id: options.roadmapId,
         base_revision: options.baseRevision,
+        metadata: agentState,
         seed_messages: seedMessages,
       });
     },

@@ -28,6 +28,25 @@ class ContextQueryHandler(ToolHandlerBase):
         if not (isinstance(context_selector, str) and context_selector.strip()):
             context_selector = None
 
+        if tool_name == 'list_members':
+            result = await self._run_context_call(
+                session_context,
+                self._nest_client.context_members(
+                    roadmap_id=roadmap_id,
+                    auth_header=auth_value,
+                    trace_id=trace_id,
+                ),
+            )
+            log_event(
+                self._logger,
+                'tool_call_result',
+                settings=self._settings,
+                trace_id=trace_id,
+                tool_name=tool_name,
+                result_summary=summarize_tool_result(result),
+            )
+            return result
+
         if tool_name == 'get_roadmap_summary':
             result = await self._run_context_call(
                 session_context,
@@ -346,6 +365,7 @@ class ContextQueryHandler(ToolHandlerBase):
             )
             handle_by_id: dict[str, str] = {}
             redundant_handle: str | None = None
+            redundant_match_count = 0
             if handle_map:
                 normalized_label_lower = normalized_label.lower()
                 for handle_key, entry in handle_map.items():
@@ -362,6 +382,7 @@ class ContextQueryHandler(ToolHandlerBase):
                         continue
                     if self._normalize_query_text(entry_title).lower() == normalized_label_lower:
                         redundant_handle = handle_key
+                        redundant_match_count += 1
                         # Keep scanning so handle_by_id is fully populated.
                 if redundant_handle is not None:
                     log_event(
@@ -374,6 +395,60 @@ class ContextQueryHandler(ToolHandlerBase):
                         node_type=node_type,
                         label_chars=len(label),
                     )
+            # The overview handle map IS the roadmap state the model is looking
+            # at — when the label matches exactly one node there, answer from it
+            # directly. The backend roundtrip is redundant for this case and has
+            # been observed returning an empty match for a node the overview
+            # plainly listed, which derailed the turn into a needless clarifier.
+            if redundant_handle is not None and redundant_match_count == 1:
+                entry = handle_map.get(redundant_handle) or {}
+                matched_id = str(entry.get('id') or '').strip()
+                matched_type = str(entry.get('type') or '').strip().lower()
+                matched_title = str(entry.get('title') or '').strip()
+                if matched_id and matched_type in {'epic', 'feature', 'task'}:
+                    selected = {
+                        'id': matched_id,
+                        'type': matched_type,
+                        'title': matched_title,
+                    }
+                    result = {
+                        'status': 'resolved',
+                        'resolution_id': None,
+                        'type_relaxed': False,
+                        'selected': selected,
+                        'matches': [dict(selected)],
+                        'node_id': matched_id,
+                        'node_type': matched_type,
+                        'title': matched_title,
+                        'overview_handle': redundant_handle,
+                        'source': 'overview_handle_map',
+                    }
+                    self._write_resolve_request_cache(
+                        session_context=session_context,
+                        cache_key=self._build_resolve_request_cache_key(
+                            roadmap_id=roadmap_id,
+                            node_type=node_type,
+                            label=normalized_label,
+                            limit=limit,
+                            context_selector=context_selector,
+                            auto_correct=auto_correct_enabled,
+                            fuzzy=fuzzy_enabled,
+                        ),
+                        value=result,
+                    )
+                    log_event(
+                        self._logger,
+                        'tool_call_result',
+                        settings=self._settings,
+                        trace_id=trace_id,
+                        tool_name=tool_name,
+                        result_summary=summarize_tool_result(result),
+                        resolution_id=None,
+                        resolve_dedup_hit=False,
+                        resolve_cache_hit=False,
+                        resolve_overview_short_circuit=True,
+                    )
+                    return result
             request_cache_key = self._build_resolve_request_cache_key(
                 roadmap_id=roadmap_id,
                 node_type=node_type,

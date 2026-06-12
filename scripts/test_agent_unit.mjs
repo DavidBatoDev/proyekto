@@ -14,11 +14,12 @@ const scriptDir = path.dirname(scriptFile);
 loadEnvFiles();
 
 const defaultTests = [
-  'tests.test_agent_safety',
+  'tests.test_v2_loop',
+  'tests.test_v2_outcome',
+  'tests.test_v2_brain',
+  'tests.test_operation_contracts',
   'tests.test_edit_resolver',
   'tests.test_session_store_cas',
-  'tests.test_async_native_dispatcher',
-  'tests.test_prompt_manager',
 ];
 
 const pythonCandidates = [
@@ -67,7 +68,7 @@ function main() {
   const args = process.argv.slice(2);
   if (args.includes('--help') || args.includes('-h')) {
     console.log('Usage: node scripts/test_agent_unit.mjs [unittest_module ...]');
-    console.log('Defaults: tests.test_agent_safety tests.test_edit_resolver');
+    console.log('Defaults: tests.test_v2_loop tests.test_v2_outcome tests.test_v2_brain ...');
     process.exit(0);
   }
   const testModules = args;

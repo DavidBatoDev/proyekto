@@ -13,31 +13,19 @@ from app.api.routes.sessions_support.auto_commit import (
     schedule_auto_commit_task as schedule_auto_commit_task_helper,
 )
 from app.api.routes.sessions_support.route_flows import (
-    commit_session_flow,
     create_session_flow,
-    discard_session_flow,
-    rollback_session_flow,
     send_message_flow,
 )
 
 # Extracted stateless helper utilities.
-from app.api.routes.sessions_support.artifact_builder import (
-    build_commit_artifact as build_commit_artifact_helper,
-)
 from app.api.routes.sessions_support.common import (
     extract_upstream_error_code as extract_upstream_error_code_helper,
     extract_upstream_error_details as extract_upstream_error_details_helper,
     sanitize_session_metadata as sanitize_session_metadata_helper,
-    serialized_payload_bytes as serialized_payload_bytes_helper,
     utcnow as utcnow_helper,
 )
 from app.api.routes.sessions_support.draft_state import (
-    get_draft_parent_id as get_draft_parent_id_helper,
-    get_draft_status as get_draft_status_helper,
-    is_descendant_of_draft as is_descendant_of_draft_helper,
-    repoint_active_draft_after_commit as repoint_active_draft_after_commit_helper,
     resolve_draft_snapshot as resolve_draft_snapshot_helper,
-    reuse_selected_draft_as_post_commit_head as reuse_selected_draft_as_post_commit_head_helper,
     set_draft_status as set_draft_status_helper,
 )
 from app.api.routes.sessions_support.runtime import (
@@ -48,21 +36,15 @@ from app.api.routes.sessions_support.runtime import (
     run_store_call as run_store_call_helper,
     service_unavailable as service_unavailable_helper,
 )
-from app.api.routes.sessions_support.timeline import parse_change_timeline
 from app.core.config import get_settings
 from app.core.contracts.sessions import (
     AgentSession,
-    CommitRequest,
-    RoadmapCommitArtifact,
     CreateSessionRequest,
     CreateSessionResponse,
-    DiscardRequest,
-    DiscardResponse,
     MessageRequest,
     MessageResponse,
     TraceEventDetailMode,
     TraceEventsResponse,
-    RollbackRequest,
 )
 from app.core.nest_client import NestRoadmapClient
 from app.core.logging_utils import get_progress_trace_events, log_event
@@ -95,10 +77,6 @@ def _utcnow() -> datetime:
     return utcnow_helper()
 
 
-def _serialized_payload_bytes(payload: dict) -> int:
-    return serialized_payload_bytes_helper(payload)
-
-
 def _extract_upstream_error_code(detail: object) -> str | None:
     return extract_upstream_error_code_helper(detail)
 
@@ -112,11 +90,7 @@ def _resolve_draft_snapshot(
     session: AgentSession,
     agent_service: AgentService,
 ) -> tuple[str, int, list]:
-    return resolve_draft_snapshot_helper(
-        session=session,
-        agent_service=agent_service,
-        draft_graph_enabled=settings.agent_draft_graph_enabled,
-    )
+    return resolve_draft_snapshot_helper(session=session)
 
 
 def _set_draft_status(
@@ -129,66 +103,6 @@ def _set_draft_status(
         session=session,
         draft_id=draft_id,
         status=status,
-        utcnow=_utcnow,
-    )
-
-
-def _get_draft_parent_id(
-    session: AgentSession,
-    draft_id: str,
-) -> str | None:
-    return get_draft_parent_id_helper(
-        session=session,
-        draft_id=draft_id,
-    )
-
-
-def _get_draft_status(
-    session: AgentSession,
-    draft_id: str,
-) -> str | None:
-    return get_draft_status_helper(
-        session=session,
-        draft_id=draft_id,
-    )
-
-
-def _is_descendant_of_draft(
-    session: AgentSession,
-    *,
-    draft_id: str,
-    ancestor_draft_id: str,
-) -> bool:
-    return is_descendant_of_draft_helper(
-        session,
-        draft_id=draft_id,
-        ancestor_draft_id=ancestor_draft_id,
-        get_parent_id=_get_draft_parent_id,
-    )
-
-
-def _repoint_active_draft_after_commit(
-    session: AgentSession,
-    *,
-    selected_draft_id: str,
-) -> int:
-    return repoint_active_draft_after_commit_helper(
-        session,
-        selected_draft_id=selected_draft_id,
-        is_descendant=_is_descendant_of_draft,
-        get_status=_get_draft_status,
-        set_status=_set_draft_status,
-    )
-
-
-def _reuse_selected_draft_as_post_commit_head(
-    session: AgentSession,
-    *,
-    selected_draft_id: str,
-) -> int:
-    return reuse_selected_draft_as_post_commit_head_helper(
-        session,
-        selected_draft_id=selected_draft_id,
         utcnow=_utcnow,
     )
 
@@ -247,12 +161,8 @@ async def _execute_auto_commit(
         auth_header=auth_header,
         trace_id=trace_id,
         nest_client=_nest_client,
-        draft_graph_enabled=settings.agent_draft_graph_enabled,
         resolve_draft_snapshot=_resolve_draft_snapshot,
-        reuse_selected_draft_as_post_commit_head=_reuse_selected_draft_as_post_commit_head,
         set_draft_status=_set_draft_status,
-        build_commit_artifact=_build_commit_artifact,
-        serialized_payload_bytes=_serialized_payload_bytes,
         run_store_call=_run_store_call,
     )
 
@@ -316,6 +226,7 @@ async def send_message(
         settings=settings,
         logger=logger,
         log_event_fn=log_event,
+        nest_client=_nest_client,
     )
 
 
@@ -344,79 +255,3 @@ async def get_trace_events(
             },
         )
     return TraceEventsResponse.model_validate(payload)
-
-
-@router.post('/{session_id}/commit')
-async def commit_session(
-    session_id: str,
-    payload: CommitRequest,
-    request: Request,
-) -> dict:
-    return await commit_session_flow(
-        session_id=session_id,
-        payload=payload,
-        request=request,
-        get_agent_runtime_async=_get_agent_runtime_async,
-        get_session_or_404_async=_get_session_or_404_async,
-        resolve_draft_snapshot=_resolve_draft_snapshot,
-        run_store_call=_run_store_call,
-        set_draft_status=_set_draft_status,
-        reuse_selected_draft_as_post_commit_head=_reuse_selected_draft_as_post_commit_head,
-        nest_client=_nest_client,
-        settings=settings,
-        logger=logger,
-        log_event_fn=log_event,
-    )
-
-
-@router.post('/{session_id}/discard', response_model=DiscardResponse)
-async def discard_session(
-    session_id: str,
-    payload: DiscardRequest,
-    request: Request,
-) -> DiscardResponse:
-    return await discard_session_flow(
-        session_id=session_id,
-        payload=payload,
-        request=request,
-        get_agent_runtime_async=_get_agent_runtime_async,
-        get_session_or_404_async=_get_session_or_404_async,
-        resolve_draft_snapshot=_resolve_draft_snapshot,
-        run_store_call=_run_store_call,
-        parse_change_timeline=parse_change_timeline,
-        utcnow=_utcnow,
-        nest_client=_nest_client,
-    )
-
-
-@router.post('/{session_id}/rollback')
-async def rollback_session(
-    session_id: str,
-    payload: RollbackRequest,
-    request: Request,
-) -> dict:
-    return await rollback_session_flow(
-        session_id=session_id,
-        payload=payload,
-        request=request,
-        get_agent_runtime_async=_get_agent_runtime_async,
-        get_session_or_404_async=_get_session_or_404_async,
-        run_store_call=_run_store_call,
-        parse_change_timeline=parse_change_timeline,
-        nest_client=_nest_client,
-    )
-
-
-# Artifact adapter shim.
-def _build_commit_artifact(
-    session: AgentSession,
-    commit_result: dict,
-    change_id: str | None = None,
-    status: str = 'applied',
-) -> RoadmapCommitArtifact | None:
-    return build_commit_artifact_helper(
-        session,
-        commit_result,
-        change_id=change_id,
-        status=status,
-    )

@@ -30,7 +30,7 @@ _EXPECTED_FIELDS = {
     'targets',
 }
 
-_EXPECTED_BRANCH_COUNT = 20
+_EXPECTED_BRANCH_COUNT = 21
 
 
 def _canonical_json(value: object) -> str:

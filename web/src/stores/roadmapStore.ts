@@ -19,13 +19,11 @@ import type {
   RoadmapMilestone,
   RoadmapTask,
 } from "@/types/roadmap";
-import type { RoadmapArtifactPreview } from "@/types/roadmapArtifact";
-
-export type CanvasViewMode =
-  | "roadmap"
-  | "epic"
-  | "milestones"
-  | "artifact";
+import type {
+  AgentCommitImpactedItem,
+  AgentOperation,
+} from "@/services/roadmap-agent.service";
+export type CanvasViewMode = "roadmap" | "epic" | "milestones";
 
 export interface KanbanBoardFilters {
   epicIds: string[];
@@ -69,9 +67,6 @@ interface RoadmapState {
   canvasViewMode: CanvasViewMode;
   canvasSelectedEpicId: string | null;
   canvasOpenEpicTabs: string[];
-  canvasSelectedArtifactId: string | null;
-  canvasOpenArtifactTabs: string[];
-  artifactsById: Record<string, RoadmapArtifactPreview>;
 
   // UI State - Kanban Board
   boardFilters: KanbanBoardFilters;
@@ -103,6 +98,13 @@ interface RoadmapActions {
     options?: { force?: boolean },
   ) => Promise<void>;
   applyRoadmapSnapshot: (fullRoadmap: FullRoadmap) => void;
+  // Optimistically apply a just-committed AI edit to the local roadmap from the
+  // agent's response (created/deleted nodes), so the canvas reflects the change
+  // instantly instead of waiting on the slow full-roadmap reload.
+  applyAiCommitImpactedItems: (
+    operations: AgentOperation[],
+    impactedItems: AgentCommitImpactedItem[],
+  ) => void;
   resetRoadmap: () => void;
   updateRoadmapMetadata: (roadmap: Partial<Roadmap>) => Promise<void>;
 
@@ -196,11 +198,6 @@ interface RoadmapActions {
     tabs: string[] | ((prev: string[]) => string[]),
   ) => void;
   closeCanvasEpicTab: (epicId: string) => void;
-  openArtifactTab: (artifact: RoadmapArtifactPreview) => void;
-  setCanvasSelectedArtifactId: (artifactId: string | null) => void;
-  closeCanvasArtifactTab: (artifactId: string) => void;
-  applyArtifactSnapshot: (artifactId: string) => void;
-  discardArtifact: (artifactId: string) => void;
 
   // Optimistic ID helpers
   isOptimisticNodeId: (id: string | null | undefined) => boolean;
@@ -377,9 +374,6 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
   canvasViewMode: "roadmap",
   canvasSelectedEpicId: null,
   canvasOpenEpicTabs: [],
-  canvasSelectedArtifactId: null,
-  canvasOpenArtifactTabs: [],
-  artifactsById: {},
   boardFilters: EMPTY_BOARD_FILTERS,
 
   // Initialize - Load full roadmap data
@@ -425,6 +419,381 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
     });
   },
 
+  applyAiCommitImpactedItems: (operations, impactedItems) => {
+    set((state) => {
+      if (!state.roadmap || impactedItems.length === 0) return {};
+      const roadmapId = state.roadmap.id;
+      const now = new Date().toISOString();
+
+      const createdTypeForOp = (op?: string) =>
+        op === "add_epic"
+          ? "epic"
+          : op === "add_feature"
+            ? "feature"
+            : op === "add_task"
+              ? "task"
+              : op === "add_milestone"
+                ? "milestone"
+                : undefined;
+      const opTitle = (op: AgentOperation) =>
+        String(
+          (op.patch?.title as string | undefined) ??
+            (op.data?.title as string | undefined) ??
+            "",
+        ).trim();
+
+      // Link each created node to the operation that created it (same type +
+      // title) so we can resolve parents — including a parent created in the
+      // same turn (temp_id → real id).
+      const created = impactedItems.filter((i) => i.impact === "created");
+      const opForItem = (item: AgentCommitImpactedItem) =>
+        operations.find(
+          (op) =>
+            createdTypeForOp(op.op) === item.node_type &&
+            opTitle(op) === (item.title ?? "").trim(),
+        );
+      const tempToReal = new Map<string, string>();
+      for (const item of created) {
+        const op = opForItem(item);
+        if (op?.temp_id) tempToReal.set(op.temp_id, item.node_id);
+      }
+      const resolveParentId = (op?: AgentOperation): string | null => {
+        if (!op) return null;
+        if (op.parent_ref && tempToReal.has(op.parent_ref))
+          return tempToReal.get(op.parent_ref) ?? null;
+        return op.parent_id ?? null;
+      };
+
+      let epics = state.epics;
+      let milestones = state.milestones;
+
+      // Deletions (any node type).
+      for (const item of impactedItems) {
+        if (item.impact !== "deleted") continue;
+        if (item.node_type === "milestone") {
+          milestones = milestones.filter((m) => m.id !== item.node_id);
+        } else if (item.node_type === "epic") {
+          epics = epics.filter((e) => e.id !== item.node_id);
+        } else if (item.node_type === "feature") {
+          epics = epics.map((e) => ({
+            ...e,
+            features: (e.features ?? []).filter((f) => f.id !== item.node_id),
+          }));
+        } else if (item.node_type === "task") {
+          epics = epics.map((e) => ({
+            ...e,
+            features: (e.features ?? []).map((f) => ({
+              ...f,
+              tasks: (f.tasks ?? []).filter((t) => t.id !== item.node_id),
+            })),
+          }));
+        }
+      }
+
+      const epicExists = (id: string) => epics.some((e) => e.id === id);
+      const featureExists = (id: string) =>
+        epics.some((e) => (e.features ?? []).some((f) => f.id === id));
+      const taskExists = (id: string) =>
+        epics.some((e) =>
+          (e.features ?? []).some((f) =>
+            (f.tasks ?? []).some((t) => t.id === id),
+          ),
+        );
+
+      // Creations — epics first, then features, then tasks, so parents exist.
+      const typeRank: Record<string, number> = { epic: 0, feature: 1, task: 2 };
+      const sortedCreated = [...created].sort(
+        (a, b) => (typeRank[a.node_type] ?? 9) - (typeRank[b.node_type] ?? 9),
+      );
+      for (const item of sortedCreated) {
+        const title = item.title ?? "Untitled";
+        if (item.node_type === "milestone") {
+          if (milestones.some((m) => m.id === item.node_id)) continue;
+          const op = opForItem(item);
+          const targetDate =
+            (op?.data?.target_date as string | undefined) ?? now;
+          const newMilestone: RoadmapMilestone = {
+            id: item.node_id,
+            roadmap_id: roadmapId,
+            title,
+            description: (op?.data?.description as string | undefined) ?? "",
+            target_date: targetDate,
+            status:
+              ((op?.data?.status as string | undefined) ??
+                "not_started") as RoadmapMilestone["status"],
+            position: milestones.length,
+            color: op?.data?.color as string | undefined,
+            created_at: now,
+            updated_at: now,
+          };
+          milestones = [...milestones, newMilestone];
+          continue;
+        }
+        if (item.node_type === "epic") {
+          if (epicExists(item.node_id)) continue;
+          const newEpic: RoadmapEpic = {
+            id: item.node_id,
+            roadmap_id: roadmapId,
+            title,
+            description: "",
+            priority: "medium",
+            status: "backlog",
+            position: epics.length,
+            created_at: now,
+            updated_at: now,
+            features: [],
+          };
+          epics = [...epics, newEpic];
+        } else if (item.node_type === "feature") {
+          if (featureExists(item.node_id)) continue;
+          const epicId = resolveParentId(opForItem(item));
+          if (!epicId || !epicExists(epicId)) continue; // reconcile will catch it
+          const newFeature: RoadmapFeature = {
+            id: item.node_id,
+            roadmap_id: roadmapId,
+            epic_id: epicId,
+            title,
+            position: 0,
+            is_deliverable: false,
+            created_at: now,
+            updated_at: now,
+            tasks: [],
+          };
+          epics = epics.map((e) =>
+            e.id === epicId
+              ? { ...e, features: [...(e.features ?? []), newFeature] }
+              : e,
+          );
+        } else if (item.node_type === "task") {
+          if (taskExists(item.node_id)) continue;
+          const featureId = resolveParentId(opForItem(item));
+          if (!featureId || !featureExists(featureId)) continue;
+          const newTask: RoadmapTask = {
+            id: item.node_id,
+            feature_id: featureId,
+            title,
+            status: "todo",
+            priority: "medium",
+            position: 0,
+            created_at: now,
+            updated_at: now,
+          };
+          epics = epics.map((e) => ({
+            ...e,
+            features: (e.features ?? []).map((f) =>
+              f.id === featureId
+                ? { ...f, tasks: [...(f.tasks ?? []), newTask] }
+                : f,
+            ),
+          }));
+        }
+      }
+
+      // Modifications — renames, status, descriptions, dates, and moves render
+      // instantly too. The impacted item locates the node (node_id) and carries
+      // the post-commit title; the staged operations supply the rest.
+      const modified = impactedItems.filter((i) => i.impact === "modified");
+      const EPIC_KEYS = [
+        "title",
+        "description",
+        "priority",
+        "status",
+        "color",
+        "start_date",
+        "end_date",
+        "estimated_hours",
+        "actual_hours",
+      ];
+      const FEATURE_KEYS = [
+        "title",
+        "description",
+        "is_deliverable",
+        "start_date",
+        "end_date",
+        "estimated_hours",
+        "actual_hours",
+      ];
+      const TASK_KEYS = [
+        "title",
+        "description",
+        "status",
+        "priority",
+        "assignee_id",
+        "due_date",
+        "work_type",
+      ];
+
+      const shiftDate = (value: unknown, days: number): unknown => {
+        if (typeof value !== "string" || !value) return value;
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        date.setDate(date.getDate() + days);
+        return value.length <= 10
+          ? date.toISOString().slice(0, 10)
+          : date.toISOString();
+      };
+
+      const patchForItem = (
+        item: AgentCommitImpactedItem,
+        node: Record<string, unknown>,
+        keys: string[],
+      ): Record<string, unknown> => {
+        const ops = operations.filter((op) => op.node_id === item.node_id);
+        let next: Record<string, unknown> = { ...node };
+        for (const op of ops) {
+          if (op.op === "update_node" && op.patch) {
+            for (const key of keys) {
+              if (key in op.patch && op.patch[key] !== undefined) {
+                next[key] = op.patch[key];
+              }
+            }
+          } else if (op.op === "mark_status" && typeof op.status === "string") {
+            if (keys.includes("status")) next.status = op.status;
+          } else if (
+            op.op === "shift_dates" &&
+            typeof op.delta_days === "number"
+          ) {
+            for (const key of [
+              "start_date",
+              "end_date",
+              "due_date",
+              "target_date",
+            ]) {
+              if (keys.includes(key)) {
+                next[key] = shiftDate(next[key], op.delta_days);
+              }
+            }
+          }
+        }
+        // The semantic diff's title is authoritative (covers renames staged via
+        // node_ref where the op didn't carry the resolved node_id).
+        const newTitle = (item.title ?? "").trim();
+        if (newTitle) next.title = newTitle;
+        next.updated_at = now;
+        return next;
+      };
+
+      const moveTargetFor = (item: AgentCommitImpactedItem): string | null => {
+        const moveOp = operations.find(
+          (op) => op.op === "move_node" && op.node_id === item.node_id,
+        );
+        if (!moveOp) return null;
+        if (moveOp.new_parent_ref && tempToReal.has(moveOp.new_parent_ref)) {
+          return tempToReal.get(moveOp.new_parent_ref) ?? null;
+        }
+        return moveOp.new_parent_id ?? null;
+      };
+
+      const MILESTONE_KEYS = [
+        "title",
+        "description",
+        "status",
+        "target_date",
+        "completed_date",
+        "color",
+      ];
+
+      for (const item of modified) {
+        if (item.node_type === "milestone") {
+          milestones = milestones.map((m) =>
+            m.id === item.node_id
+              ? (patchForItem(
+                  item,
+                  m as unknown as Record<string, unknown>,
+                  MILESTONE_KEYS,
+                ) as unknown as RoadmapMilestone)
+              : m,
+          );
+          continue;
+        }
+        if (item.node_type === "epic") {
+          epics = epics.map((e) =>
+            e.id === item.node_id
+              ? (patchForItem(
+                  item,
+                  e as unknown as Record<string, unknown>,
+                  EPIC_KEYS,
+                ) as unknown as RoadmapEpic)
+              : e,
+          );
+        } else if (item.node_type === "feature") {
+          let moving: RoadmapFeature | null = null;
+          epics = epics.map((e) => ({
+            ...e,
+            features: (e.features ?? []).map((f) => {
+              if (f.id !== item.node_id) return f;
+              const patched = patchForItem(
+                item,
+                f as unknown as Record<string, unknown>,
+                FEATURE_KEYS,
+              ) as unknown as RoadmapFeature;
+              moving = patched;
+              return patched;
+            }),
+          }));
+          const targetEpicId = moveTargetFor(item);
+          if (moving && targetEpicId && epicExists(targetEpicId)) {
+            const feature: RoadmapFeature = {
+              ...(moving as RoadmapFeature),
+              epic_id: targetEpicId,
+            };
+            epics = epics.map((e) => ({
+              ...e,
+              features:
+                e.id === targetEpicId
+                  ? [
+                      ...(e.features ?? []).filter((f) => f.id !== feature.id),
+                      feature,
+                    ]
+                  : (e.features ?? []).filter((f) => f.id !== feature.id),
+            }));
+          }
+        } else if (item.node_type === "task") {
+          let moving: RoadmapTask | null = null;
+          epics = epics.map((e) => ({
+            ...e,
+            features: (e.features ?? []).map((f) => ({
+              ...f,
+              tasks: (f.tasks ?? []).map((t) => {
+                if (t.id !== item.node_id) return t;
+                const patched = patchForItem(
+                  item,
+                  t as unknown as Record<string, unknown>,
+                  TASK_KEYS,
+                ) as unknown as RoadmapTask;
+                moving = patched;
+                return patched;
+              }),
+            })),
+          }));
+          const targetFeatureId = moveTargetFor(item);
+          if (moving && targetFeatureId && featureExists(targetFeatureId)) {
+            const task: RoadmapTask = {
+              ...(moving as RoadmapTask),
+              feature_id: targetFeatureId,
+            };
+            epics = epics.map((e) => ({
+              ...e,
+              features: (e.features ?? []).map((f) => ({
+                ...f,
+                tasks:
+                  f.id === targetFeatureId
+                    ? [
+                        ...(f.tasks ?? []).filter((t) => t.id !== task.id),
+                        task,
+                      ]
+                    : (f.tasks ?? []).filter((t) => t.id !== task.id),
+              })),
+            }));
+          }
+        }
+      }
+
+      if (epics === state.epics && milestones === state.milestones) return {};
+      return { epics, milestones };
+    });
+  },
+
   // Reset - Clear all roadmap data
   resetRoadmap: () => {
     set({
@@ -452,9 +821,6 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
       canvasViewMode: "roadmap",
       canvasSelectedEpicId: null,
       canvasOpenEpicTabs: [],
-      canvasSelectedArtifactId: null,
-      canvasOpenArtifactTabs: [],
-      artifactsById: {},
     });
   },
 
@@ -1763,41 +2129,97 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         -1,
       ) + 1;
 
-    const created = await milestoneService.create(roadmap.id, {
+    const now = new Date().toISOString();
+    const tempMilestoneId = `temp-milestone-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    const optimisticMilestone: RoadmapMilestone = {
+      id: tempMilestoneId,
+      roadmap_id: roadmap.id,
       title: data.title,
-      target_date: data.target_date,
       description: data.description,
+      target_date: data.target_date,
       status: data.status ?? "not_started",
       color: data.color,
       position: nextPosition,
-    });
+      created_at: now,
+      updated_at: now,
+      linked_features: [],
+    };
 
-    set({
-      milestones: [...milestones, created].sort(
+    set((state) => ({
+      milestones: [...state.milestones, optimisticMilestone].sort(
         (a, b) => (a.position ?? 0) - (b.position ?? 0),
       ),
-    });
+    }));
+
+    try {
+      const created = await milestoneService.create(roadmap.id, {
+        title: data.title,
+        target_date: data.target_date,
+        description: data.description,
+        status: data.status ?? "not_started",
+        color: data.color,
+        position: nextPosition,
+      });
+      set((state) => ({
+        milestones: state.milestones
+          .map((m) => (m.id === tempMilestoneId ? created : m))
+          .sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
+      }));
+    } catch (error) {
+      set((state) => ({
+        milestones: state.milestones.filter((m) => m.id !== tempMilestoneId),
+      }));
+      throw error;
+    }
   },
 
   updateMilestone: async (updated: RoadmapMilestone) => {
-    const { milestones } = get();
-    const saved = await milestoneService.update(updated.id, {
-      title: updated.title,
-      description: updated.description,
-      target_date: updated.target_date,
-      status: updated.status,
-      color: updated.color,
-    });
+    const current = get().milestones.find((m) => m.id === updated.id);
+    if (!current) return;
+    const rollbackSnapshot = { ...current };
 
-    set({
-      milestones: milestones.map((m) => (m.id === saved.id ? saved : m)),
-    });
+    set((state) => ({
+      milestones: state.milestones.map((m) =>
+        m.id === updated.id ? { ...m, ...updated } : m,
+      ),
+    }));
+
+    try {
+      const saved = await milestoneService.update(updated.id, {
+        title: updated.title,
+        description: updated.description,
+        target_date: updated.target_date,
+        status: updated.status,
+        color: updated.color,
+      });
+      set((state) => ({
+        milestones: state.milestones.map((m) =>
+          m.id === saved.id ? { ...m, ...saved } : m,
+        ),
+      }));
+    } catch (error) {
+      set((state) => ({
+        milestones: state.milestones.map((m) =>
+          m.id === rollbackSnapshot.id ? rollbackSnapshot : m,
+        ),
+      }));
+      throw error;
+    }
   },
 
   deleteMilestone: async (id: string) => {
-    const { milestones } = get();
-    await milestoneService.delete(id);
-    set({ milestones: milestones.filter((m) => m.id !== id) });
+    const rollbackMilestones = get().milestones;
+    set((state) => ({
+      milestones: state.milestones.filter((m) => m.id !== id),
+    }));
+    try {
+      await milestoneService.delete(id);
+    } catch (error) {
+      set({ milestones: rollbackMilestones });
+      throw error;
+    }
   },
 
   // Kanban board filters
@@ -1815,26 +2237,57 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
   },
 
   // Soft phases: move a feature between milestones (or to/from unassigned).
-  // Either id may be null. After the API call we reload to keep
-  // milestone.linked_features in sync — small refetch, no rollback bookkeeping.
+  // Either id may be null. Optimistically move the feature's reference between
+  // each milestone's linked_features, then commit; roll back on failure. The
+  // realtime sync reconciles any computed fields without a blocking refetch.
   reassignFeatureToMilestone: async (
     featureId: string,
     fromMilestoneId: string | null,
     toMilestoneId: string | null,
   ) => {
     if (fromMilestoneId === toMilestoneId) return;
-    const { roadmap } = get();
-    if (fromMilestoneId) {
-      await featureService.unlinkFromMilestone(featureId, fromMilestoneId);
-    }
-    if (toMilestoneId) {
-      await featureService.linkToMilestone({
-        feature_id: featureId,
-        milestone_id: toMilestoneId,
-      });
-    }
-    if (roadmap) {
-      await get().loadRoadmap(roadmap.id, { force: true });
+    const { epics } = get();
+    const rollbackMilestones = get().milestones;
+
+    // Locate the feature in the epic tree so it can be attached to the target.
+    const feature = epics
+      .flatMap((epic) => epic.features ?? [])
+      .find((candidate) => candidate.id === featureId);
+
+    set((state) => ({
+      milestones: state.milestones.map((milestone) => {
+        if (fromMilestoneId && milestone.id === fromMilestoneId) {
+          return {
+            ...milestone,
+            linked_features: (milestone.linked_features ?? []).filter(
+              (linked) => linked.id !== featureId,
+            ),
+          };
+        }
+        if (toMilestoneId && milestone.id === toMilestoneId) {
+          const existing = milestone.linked_features ?? [];
+          if (!feature || existing.some((linked) => linked.id === featureId)) {
+            return milestone;
+          }
+          return { ...milestone, linked_features: [...existing, feature] };
+        }
+        return milestone;
+      }),
+    }));
+
+    try {
+      if (fromMilestoneId) {
+        await featureService.unlinkFromMilestone(featureId, fromMilestoneId);
+      }
+      if (toMilestoneId) {
+        await featureService.linkToMilestone({
+          feature_id: featureId,
+          milestone_id: toMilestoneId,
+        });
+      }
+    } catch (error) {
+      set({ milestones: rollbackMilestones });
+      throw error;
     }
   },
 
@@ -1955,101 +2408,6 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
     set(updates);
   },
 
-  openArtifactTab: (artifact: RoadmapArtifactPreview) => {
-    set((state) => {
-      const isOpen = state.canvasOpenArtifactTabs.includes(artifact.artifactId);
-      return {
-        artifactsById: {
-          ...state.artifactsById,
-          [artifact.artifactId]: artifact,
-        },
-        canvasOpenArtifactTabs: isOpen
-          ? state.canvasOpenArtifactTabs
-          : [...state.canvasOpenArtifactTabs, artifact.artifactId],
-        canvasSelectedArtifactId: artifact.artifactId,
-        canvasViewMode: "artifact" as CanvasViewMode,
-      };
-    });
-  },
-
-  setCanvasSelectedArtifactId: (artifactId: string | null) => {
-    set({
-      canvasSelectedArtifactId: artifactId,
-      canvasViewMode: artifactId ? "artifact" : "roadmap",
-    });
-  },
-
-  closeCanvasArtifactTab: (artifactId: string) => {
-    set((state) => {
-      const newTabs = state.canvasOpenArtifactTabs.filter(
-        (id) => id !== artifactId,
-      );
-      const nextArtifacts = { ...state.artifactsById };
-      delete nextArtifacts[artifactId];
-      const updates: Partial<RoadmapStore> = {
-        canvasOpenArtifactTabs: newTabs,
-        artifactsById: nextArtifacts,
-      };
-      if (state.canvasSelectedArtifactId === artifactId) {
-        if (newTabs.length > 0) {
-          updates.canvasSelectedArtifactId = newTabs[newTabs.length - 1];
-          updates.canvasViewMode = "artifact";
-        } else {
-          updates.canvasSelectedArtifactId = null;
-          updates.canvasViewMode = "roadmap";
-        }
-      }
-      return updates;
-    });
-  },
-
-  applyArtifactSnapshot: (artifactId: string) => {
-    set((state) => {
-      const artifact = state.artifactsById[artifactId];
-      if (!artifact) return {};
-      const snapshot = artifact.candidateSnapshot;
-      if (!Array.isArray(snapshot.epics)) {
-        console.warn("[RoadmapStore] invalid artifact snapshot shape", {
-          artifactId,
-          roadmapId: snapshot.id,
-        });
-        return {};
-      }
-      return {
-        roadmap: snapshot,
-        epics: snapshot.epics || [],
-        milestones: snapshot.milestones || [],
-        artifactsById: {
-          ...state.artifactsById,
-          [artifactId]: {
-            ...artifact,
-            status: "applied",
-          },
-        },
-      };
-    });
-  },
-
-  discardArtifact: (artifactId: string) => {
-    set((state) => {
-      const artifact = state.artifactsById[artifactId];
-      if (!artifact) return {};
-
-      if (artifact.status === "draft") {
-        return {};
-      }
-
-      return {
-        artifactsById: {
-          ...state.artifactsById,
-          [artifactId]: {
-            ...artifact,
-            status: "discarded",
-          },
-        },
-      };
-    });
-  },
 }));
 
 // Selectors for fine-grained subscriptions

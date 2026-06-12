@@ -112,18 +112,18 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
   };
 
   return (
-    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
+    <div className="mt-2 ai-gradient-soft rounded-lg border border-indigo-200 p-3 dark:border-indigo-900 dark:bg-indigo-950/30">
       <div className="mb-2 flex items-center gap-2">
-        <span className="inline-flex rounded-full bg-amber-200 px-2 py-0.5 text-xs font-semibold text-amber-900 dark:bg-amber-800 dark:text-amber-100">
+        <span className="ai-gradient-bg inline-flex rounded-full px-2 py-0.5 text-xs font-semibold text-white">
           Plan clarifier
         </span>
         {hasMultiple ? (
-          <span className="text-xs font-medium text-amber-800 dark:text-amber-300">
+          <span className="text-xs font-medium text-indigo-800 dark:text-indigo-300">
             Question {boundedIndex + 1} of {totalQuestions}
           </span>
         ) : null}
         {plan.answers && plan.answers.length > 0 ? (
-          <span className="text-xs text-amber-700 dark:text-amber-300">
+          <span className="text-xs text-indigo-700 dark:text-indigo-300">
             ({plan.answers.length} answered so far)
           </span>
         ) : null}
@@ -140,7 +140,7 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
             <label
               key={optionId}
               htmlFor={optionId}
-              className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-neutral-800 hover:bg-amber-100/60 dark:text-neutral-200 dark:hover:bg-amber-900/30"
+              className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-neutral-800 hover:bg-indigo-100/50 dark:text-neutral-200 dark:hover:bg-indigo-900/30"
             >
               <input
                 id={optionId}
@@ -161,7 +161,7 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
           <div>
             <label
               htmlFor={`plan-q-${currentQ.id}-custom`}
-              className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-neutral-800 hover:bg-amber-100/60 dark:text-neutral-200 dark:hover:bg-amber-900/30"
+              className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm text-neutral-800 hover:bg-indigo-100/50 dark:text-neutral-200 dark:hover:bg-indigo-900/30"
             >
               <input
                 id={`plan-q-${currentQ.id}-custom`}
@@ -182,14 +182,14 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
                 disabled={disabled}
                 rows={2}
                 placeholder="Type your answer..."
-                className="mt-1.5 w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-amber-400 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+                className="mt-1.5 w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-purple-400 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
               />
             ) : null}
           </div>
         ) : null}
       </div>
 
-      <div className="mt-3 flex items-center gap-2 border-t border-amber-200 pt-2 dark:border-amber-900">
+      <div className="mt-3 flex items-center gap-2 border-t border-indigo-200 pt-2 dark:border-indigo-900">
         {hasMultiple && boundedIndex > 0 ? (
           <button
             type="button"
@@ -205,7 +205,7 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
             type="button"
             onClick={handleNext}
             disabled={!currentAnswered || disabled}
-            className="inline-flex items-center rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-amber-500 dark:hover:bg-amber-600"
+            className="ai-gradient-bg inline-flex items-center rounded-md px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Next
           </button>
@@ -214,7 +214,7 @@ export const RoadmapAiPlanQuestionCard: FC<RoadmapAiPlanQuestionCardProps> = ({
             type="button"
             onClick={handleSubmit}
             disabled={!allAnswered || disabled}
-            className="inline-flex items-center rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-amber-500 dark:hover:bg-amber-600"
+            className="ai-gradient-bg inline-flex items-center rounded-md px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {hasMultiple ? "Submit answers" : "Submit answer"}
           </button>

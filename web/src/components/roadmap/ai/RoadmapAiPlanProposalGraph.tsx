@@ -67,7 +67,7 @@ const flatten = (epics: AgentPlanProposalEpic[]): TreeRow[] => {
 
 const labelClass: Record<NodeKind, string> = {
   epic: "bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200",
-  feature: "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200",
+  feature: "bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200",
   task: "bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200",
 };
 
@@ -85,7 +85,7 @@ const titleClass: Record<NodeKind, string> = {
 
 const cardClass: Record<NodeKind, string> = {
   epic: "border-blue-200 bg-blue-50/60 dark:border-blue-900/70 dark:bg-blue-950/30",
-  feature: "border-amber-200 bg-amber-50/60 dark:border-amber-900/70 dark:bg-amber-950/30",
+  feature: "border-purple-200 bg-purple-50/60 dark:border-purple-900/70 dark:bg-purple-950/30",
   task: "border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900",
 };
 

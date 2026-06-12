@@ -12,6 +12,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
   Min,
   Validate,
   ValidateNested,
@@ -24,6 +25,7 @@ export const ROADMAP_AI_OPERATION_TYPES = [
   'add_epic',
   'add_feature',
   'add_task',
+  'add_milestone',
   'update_node',
   'move_node',
   'delete_node',
@@ -38,6 +40,7 @@ export const ROADMAP_NODE_TYPES = [
   'epic',
   'feature',
   'task',
+  'milestone',
 ] as const;
 
 export type RoadmapNodeType = (typeof ROADMAP_NODE_TYPES)[number];
@@ -207,6 +210,14 @@ export class RoadmapAiCommitDto {
   @IsOptional()
   @IsBoolean()
   include_timeline?: boolean;
+
+  /** Client-generated key making the commit safely retryable: a replay with
+   * the same key returns the first attempt's result instead of re-applying
+   * the operations (which would duplicate created nodes). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  idempotency_key?: string;
 }
 
 export class RoadmapAiRollbackDto {
@@ -300,6 +311,9 @@ export class SemanticDiffChangeDto {
   node: {
     type: RoadmapNodeType;
     id: string;
+    /** Current title (post-change; pre-deletion for NODE_REMOVED) so consumers
+     * can label the change without re-fetching the node. */
+    title?: string;
   };
 
   @IsOptional()
@@ -530,6 +544,28 @@ export class RoadmapAiContextSummaryResponseDto {
   @ValidateNested({ each: true })
   @Type(() => RoadmapAiContextSummaryEpicDto)
   epics: RoadmapAiContextSummaryEpicDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RoadmapAiContextSummaryMilestoneDto)
+  milestones?: RoadmapAiContextSummaryMilestoneDto[];
+}
+
+export class RoadmapAiContextSummaryMilestoneDto {
+  @IsUUID()
+  id: string;
+
+  @IsString()
+  title: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsOptional()
+  @IsString()
+  target_date?: string;
 }
 
 export class RoadmapAiContextPreviewSelectorQueryDto {

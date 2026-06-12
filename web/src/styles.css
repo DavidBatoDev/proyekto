@@ -568,3 +568,46 @@ code {
     transform: scale(1);
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Gemini-style gradient + shimmer utilities (AI assistant theming).   */
+/* Gradient stops follow the Gemini palette: blue -> purple -> rose.   */
+/* Proyekto AI accent — matches the landing "Use it your way" card:
+   linear-gradient(135deg, blue-600, indigo-700). */
+@keyframes ai-shimmer {
+  0% {
+    background-position: 200% 50%;
+  }
+  100% {
+    background-position: -200% 50%;
+  }
+}
+
+/* Skeleton shimmer: neutral slate sweep with a faint blue highlight. */
+.ai-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    #f1f5f9 0%,
+    #e2e8f0 25%,
+    #dbeafe 50%,
+    #e2e8f0 75%,
+    #f1f5f9 100%
+  );
+  background-size: 200% 100%;
+  animation: ai-shimmer 1.6s linear infinite;
+}
+
+.ai-gradient-text {
+  background-image: linear-gradient(90deg, rgb(37, 99, 235), rgb(67, 56, 202));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.ai-gradient-bg {
+  background-image: linear-gradient(135deg, rgb(37, 99, 235), rgb(67, 56, 202));
+}
+
+.ai-gradient-soft {
+  background-image: linear-gradient(135deg, #eff6ff 0%, #eef2ff 100%);
+}

@@ -20,10 +20,23 @@ EPIC_STATUS_VALUES = [
     'on_hold',
 ]
 
+MILESTONE_STATUS_VALUES = [
+    'not_started',
+    'in_progress',
+    'at_risk',
+    'completed',
+    'missed',
+]
+
 # Union of every accepted status string across node types. Used when the
 # JSON schema cannot cheaply branch on `node_type` (top-level `status` for
 # mark_status, and `patch.status` for update_node). The planner's semantic
 # validator still enforces the per-type enum on the server side.
 ALL_STATUS_VALUES = sorted(
-    {*TASK_STATUS_VALUES, *FEATURE_STATUS_VALUES, *EPIC_STATUS_VALUES}
+    {
+        *TASK_STATUS_VALUES,
+        *FEATURE_STATUS_VALUES,
+        *EPIC_STATUS_VALUES,
+        *MILESTONE_STATUS_VALUES,
+    }
 )

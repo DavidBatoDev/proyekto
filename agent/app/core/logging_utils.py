@@ -1209,6 +1209,10 @@ def _resolve_palette(cfg: Settings, logger: logging.Logger) -> _AnsiPalette:
 
 
 def _has_file_handler(logger: logging.Logger) -> bool:
+    # Walk only the handlers this logger's records actually reach (the
+    # propagate chain ends at root). A FileHandler elsewhere — e.g. root's
+    # AGENT_LOG_FILE handler when this logger has propagate=False — can't
+    # receive these records, so it must not veto ANSI on the local stream.
     visited: set[int] = set()
     current: logging.Logger | None = logger
     while current is not None and id(current) not in visited:
@@ -1217,9 +1221,6 @@ def _has_file_handler(logger: logging.Logger) -> bool:
             if isinstance(handler, logging.FileHandler):
                 return True
         current = current.parent if current.propagate else None
-    for handler in logging.getLogger().handlers:
-        if isinstance(handler, logging.FileHandler):
-            return True
     return False
 
 

@@ -14,6 +14,7 @@ import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import type {
   FullRoadmapEpicDto,
   FullRoadmapFeatureDto,
+  FullRoadmapMilestoneDto,
   FullRoadmapState,
   FullRoadmapTaskDto,
 } from '../dto/patch-roadmap.dto';
@@ -98,6 +99,12 @@ type NodeLocator =
       featureIndex: number;
       epic: FullRoadmapEpicDto;
       epicIndex: number;
+      roadmap: FullRoadmapState;
+    }
+  | {
+      type: 'milestone';
+      milestone: FullRoadmapMilestoneDto;
+      milestoneIndex: number;
       roadmap: FullRoadmapState;
     };
 
@@ -226,6 +233,13 @@ const FEATURE_STATUS = [
   'blocked',
 ];
 const TASK_STATUS = ['todo', 'in_progress', 'in_review', 'done', 'blocked'];
+const MILESTONE_STATUS = [
+  'not_started',
+  'in_progress',
+  'at_risk',
+  'completed',
+  'missed',
+];
 const ROADMAP_STATUS = ['draft', 'active', 'paused', 'completed', 'archived'];
 
 @Injectable()
@@ -478,6 +492,18 @@ export class RoadmapAiService {
             ]
           : [],
       ),
+      milestones: (state.roadmap_milestones ?? []).flatMap((milestone) =>
+        milestone.id
+          ? [
+              {
+                id: milestone.id,
+                title: milestone.title ?? 'Untitled milestone',
+                status: milestone.status,
+                target_date: milestone.target_date,
+              },
+            ]
+          : [],
+      ),
     };
     this.logRoadmapAiHandlerTiming({
       event: 'roadmap_ai_context_summary_timing',
@@ -523,6 +549,71 @@ export class RoadmapAiService {
       totalHandlerMs: Date.now() - handlerStartedAt,
     });
     return response;
+  }
+
+  /** People assignable on this roadmap: the owner plus everyone with
+   * project_access on the linked project. Powers the agent's `list_members`
+   * read tool so "assign X to <name>" can resolve a real user id. */
+  async getContextMembers(
+    roadmapId: string,
+    userId: string,
+    traceId?: string,
+  ): Promise<{
+    members: Array<{ id: string; display_name: string | null; email: string | null }>;
+  }> {
+    const handlerStartedAt = Date.now();
+    const existing = await this.assertCanEditRoadmap(roadmapId, userId);
+
+    const memberIds = new Set<string>();
+    if (typeof existing.owner_id === 'string' && existing.owner_id) {
+      memberIds.add(existing.owner_id);
+    }
+    if (existing.project_id) {
+      const { data: accessRows, error: accessError } = await this.db
+        .from('project_access')
+        .select('user_id')
+        .eq('project_id', existing.project_id);
+      if (!accessError) {
+        for (const row of accessRows ?? []) {
+          const accessUserId = (row as { user_id?: unknown }).user_id;
+          if (typeof accessUserId === 'string' && accessUserId) {
+            memberIds.add(accessUserId);
+          }
+        }
+      }
+    }
+
+    let members: Array<{
+      id: string;
+      display_name: string | null;
+      email: string | null;
+    }> = [];
+    if (memberIds.size > 0) {
+      const { data: profiles, error: profilesError } = await this.db
+        .from('profiles')
+        .select('id, display_name, email')
+        .in('id', [...memberIds]);
+      if (!profilesError) {
+        members = (profiles ?? []).map((profile: any) => ({
+          id: String(profile.id),
+          display_name:
+            typeof profile.display_name === 'string' && profile.display_name.trim()
+              ? profile.display_name.trim()
+              : null,
+          email: typeof profile.email === 'string' ? profile.email : null,
+        }));
+      }
+    }
+
+    this.logRoadmapAiHandlerTiming({
+      event: 'roadmap_ai_context_members_timing',
+      traceId,
+      roadmapId,
+      method: 'GET',
+      path: '/roadmaps/:id/ai/context/members',
+      totalHandlerMs: Date.now() - handlerStartedAt,
+    });
+    return { members };
   }
 
   async searchContextNodes(
@@ -893,6 +984,17 @@ export class RoadmapAiService {
         start_date: locator.feature.start_date,
         end_date: locator.feature.end_date,
         parent_id: this.requireNodeId(locator.epic.id, 'epic'),
+      };
+    }
+    if (locator.type === 'milestone') {
+      return {
+        id: this.requireNodeId(locator.milestone.id, 'milestone'),
+        type: 'milestone',
+        title: locator.milestone.title ?? 'Untitled milestone',
+        description: locator.milestone.description,
+        status: locator.milestone.status,
+        due_date: locator.milestone.target_date,
+        parent_id: this.requireNodeId(locator.roadmap.id, 'roadmap'),
       };
     }
     return {
@@ -1322,6 +1424,28 @@ export class RoadmapAiService {
       return response;
     }
 
+    if (locator.type === 'milestone') {
+      const response: RoadmapAiContextNodeResponseDto = {
+        id: this.requireNodeId(locator.milestone.id, 'milestone'),
+        type: 'milestone',
+        title: locator.milestone.title ?? 'Untitled milestone',
+        description: locator.milestone.description,
+        status: locator.milestone.status,
+        due_date: locator.milestone.target_date,
+        parent_id: this.requireNodeId(locator.roadmap.id, 'roadmap'),
+      };
+      this.logRoadmapAiHandlerTiming({
+        event: 'roadmap_ai_context_node_details_timing',
+        traceId,
+        roadmapId,
+        method: 'GET',
+        path: '/roadmaps/:id/ai/context/nodes/:nodeId',
+        authzMs,
+        totalHandlerMs: Date.now() - handlerStartedAt,
+      });
+      return response;
+    }
+
     const response: RoadmapAiContextNodeResponseDto = {
       id: this.requireNodeId(locator.task.id, 'task'),
       type: 'task',
@@ -1491,6 +1615,28 @@ export class RoadmapAiService {
         message: 'Commit requires at least one operation',
         code: 'EMPTY_OPERATIONS',
       });
+    }
+
+    // Replay guard: a retried commit (same idempotency key) returns the first
+    // attempt's result instead of re-applying the operations — the original
+    // request may have succeeded even though the client saw a timeout/5xx.
+    const idempotencyKey = dto.idempotency_key?.trim();
+    if (idempotencyKey) {
+      const replay =
+        await this.previewStore.readCommitIdempotency<RoadmapAiCommitResponseDto>(
+          roadmapId,
+          idempotencyKey,
+        );
+      if (replay) {
+        this.logger.log(
+          [
+            'event=roadmap_ai_commit_idempotent_replay',
+            `roadmap_id=${roadmapId}`,
+            `change_id=${replay.change_id ?? 'unknown'}`,
+          ].join(' '),
+        );
+        return replay;
+      }
     }
 
     this.logger.log(
@@ -1737,6 +1883,14 @@ export class RoadmapAiService {
 
     if (includeRoadmap) {
       response.roadmap = roadmapRecord;
+    }
+
+    if (idempotencyKey) {
+      await this.previewStore.writeCommitIdempotency(
+        roadmapId,
+        idempotencyKey,
+        response,
+      );
     }
 
     return response;
@@ -2337,6 +2491,17 @@ export class RoadmapAiService {
             operationResults,
           );
           break;
+        case 'add_milestone':
+          this.applyAddMilestone(
+            state,
+            operation,
+            index,
+            opPath,
+            issues,
+            tempIdMap,
+            operationResults,
+          );
+          break;
         case 'update_node':
           this.applyToTargets(operation, opPath, (op, path) =>
             this.applyUpdateNode(state, op, path, issues, tempIdMap),
@@ -2467,6 +2632,86 @@ export class RoadmapAiService {
       state.roadmap_epics?.length ?? 0,
     );
     (state.roadmap_epics ??= []).splice(targetPosition, 0, epic);
+    this.invalidateNodeIndex(state);
+  }
+
+  private applyAddMilestone(
+    state: FullRoadmapState,
+    operation: RoadmapAiOperationDto,
+    index: number,
+    path: string,
+    issues: RoadmapValidationIssueDto[],
+    tempIdMap: Map<string, string>,
+    operationResults: RoadmapAiOperationResolutionDto[],
+  ) {
+    const title = this.readString(operation.data, 'title');
+    if (!title) {
+      issues.push(
+        this.issue(
+          'MISSING_REQUIRED_FIELD',
+          'error',
+          `${path}/data/title`,
+          'title is required for add_milestone',
+        ),
+      );
+      return;
+    }
+    const targetDate = this.readString(operation.data, 'target_date');
+    if (!targetDate) {
+      issues.push(
+        this.issue(
+          'MISSING_REQUIRED_FIELD',
+          'error',
+          `${path}/data/target_date`,
+          'target_date is required for add_milestone',
+        ),
+      );
+      return;
+    }
+
+    const assignedId = this.readUuid(operation.data, 'id') ?? randomUUID();
+    if (
+      !this.registerCreateOperationResolution(
+        operation,
+        index,
+        'milestone',
+        assignedId,
+        path,
+        issues,
+        tempIdMap,
+        operationResults,
+      )
+    ) {
+      return;
+    }
+
+    const milestone: FullRoadmapMilestoneDto = {
+      id: assignedId,
+      title,
+      description: this.readString(operation.data, 'description'),
+      status: this.readString(operation.data, 'status') ?? 'not_started',
+      target_date: targetDate,
+      color: this.readString(operation.data, 'color'),
+      position: 0,
+    };
+
+    if (!MILESTONE_STATUS.includes(milestone.status ?? '')) {
+      issues.push(
+        this.issue(
+          'INVALID_ENUM',
+          'error',
+          `${path}/data/status`,
+          'Invalid milestone status enum',
+        ),
+      );
+      return;
+    }
+
+    const targetPosition = this.resolveInsertPosition(
+      operation.position,
+      state.roadmap_milestones?.length ?? 0,
+    );
+    (state.roadmap_milestones ??= []).splice(targetPosition, 0, milestone);
     this.invalidateNodeIndex(state);
   }
 
@@ -2769,6 +3014,19 @@ export class RoadmapAiService {
       return;
     }
 
+    if (locator.type === 'milestone') {
+      // Milestones have no parent to move between; only reordering applies.
+      const currentIndex = locator.milestoneIndex;
+      const [item] = (state.roadmap_milestones ?? []).splice(currentIndex, 1);
+      const targetIndex = this.resolveInsertPosition(
+        operation.position,
+        state.roadmap_milestones?.length ?? 0,
+      );
+      (state.roadmap_milestones ?? []).splice(targetIndex, 0, item);
+      this.invalidateNodeIndex(state);
+      return;
+    }
+
     if (locator.type === 'feature') {
       const resolvedNewParentId = this.resolveOperationIdentity({
         idValue: operation.new_parent_id,
@@ -2927,6 +3185,12 @@ export class RoadmapAiService {
       return;
     }
 
+    if (locator.type === 'milestone') {
+      (state.roadmap_milestones ?? []).splice(locator.milestoneIndex, 1);
+      this.invalidateNodeIndex(state);
+      return;
+    }
+
     (locator.feature.roadmap_tasks ?? []).splice(locator.taskIndex, 1);
     this.invalidateNodeIndex(state);
   }
@@ -3056,6 +3320,12 @@ export class RoadmapAiService {
   }
 
   private shiftNodeDates(node: NodeLocator, deltaDays: number) {
+    if (node.type === 'milestone') {
+      node.milestone.target_date =
+        this.shiftDate(node.milestone.target_date, deltaDays) ??
+        node.milestone.target_date;
+      return;
+    }
     if (node.type === 'roadmap') {
       node.roadmap.start_date = this.shiftDate(
         node.roadmap.start_date,
@@ -3316,7 +3586,7 @@ export class RoadmapAiService {
       if (!prevNode) {
         changes.push({
           type: 'NODE_ADDED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           to: nextNode as unknown as Record<string, unknown>,
         });
         continue;
@@ -3328,7 +3598,7 @@ export class RoadmapAiService {
       ) {
         changes.push({
           type: 'NODE_MOVED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { parent_id: prevNode.parentId, position: prevNode.position },
           to: { parent_id: nextNode.parentId, position: nextNode.position },
         });
@@ -3337,7 +3607,7 @@ export class RoadmapAiService {
       if (prevNode.title !== nextNode.title) {
         changes.push({
           type: 'TITLE_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { title: prevNode.title },
           to: { title: nextNode.title },
         });
@@ -3346,7 +3616,7 @@ export class RoadmapAiService {
       if (prevNode.description !== nextNode.description) {
         changes.push({
           type: 'DESCRIPTION_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { description: prevNode.description },
           to: { description: nextNode.description },
         });
@@ -3355,7 +3625,7 @@ export class RoadmapAiService {
       if (prevNode.status !== nextNode.status) {
         changes.push({
           type: 'STATUS_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { status: prevNode.status },
           to: { status: nextNode.status },
         });
@@ -3364,7 +3634,7 @@ export class RoadmapAiService {
       if (prevNode.priority !== nextNode.priority) {
         changes.push({
           type: 'PRIORITY_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { priority: prevNode.priority },
           to: { priority: nextNode.priority },
         });
@@ -3373,7 +3643,7 @@ export class RoadmapAiService {
       if (prevNode.assigneeId !== nextNode.assigneeId) {
         changes.push({
           type: 'ASSIGNEE_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { assignee_id: prevNode.assigneeId },
           to: { assignee_id: nextNode.assigneeId },
         });
@@ -3385,7 +3655,7 @@ export class RoadmapAiService {
       ) {
         changes.push({
           type: 'TAGS_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { tags: prevNode.tags ?? [] },
           to: { tags: nextNode.tags ?? [] },
         });
@@ -3394,7 +3664,7 @@ export class RoadmapAiService {
       if (prevNode.color !== nextNode.color) {
         changes.push({
           type: 'COLOR_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { color: prevNode.color },
           to: { color: nextNode.color },
         });
@@ -3403,7 +3673,7 @@ export class RoadmapAiService {
       if (prevNode.isDeliverable !== nextNode.isDeliverable) {
         changes.push({
           type: 'DELIVERABLE_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { is_deliverable: prevNode.isDeliverable },
           to: { is_deliverable: nextNode.isDeliverable },
         });
@@ -3416,7 +3686,7 @@ export class RoadmapAiService {
       ) {
         changes.push({
           type: 'DATE_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: {
             start_date: prevNode.startDate,
             end_date: prevNode.endDate,
@@ -3436,7 +3706,7 @@ export class RoadmapAiService {
       ) {
         changes.push({
           type: 'DEPENDENCY_CHANGED',
-          node: { type: nextNode.type, id },
+          node: { type: nextNode.type, id, title: nextNode.title },
           from: { dependencies: prevNode.dependencies ?? [] },
           to: { dependencies: nextNode.dependencies ?? [] },
         });
@@ -3447,7 +3717,7 @@ export class RoadmapAiService {
       if (after.has(id)) continue;
       changes.push({
         type: 'NODE_REMOVED',
-        node: { type: prevNode.type, id },
+        node: { type: prevNode.type, id, title: prevNode.title },
         from: prevNode as unknown as Record<string, unknown>,
       });
     }
@@ -3538,6 +3808,22 @@ export class RoadmapAiService {
       }
     }
 
+    for (const milestone of state.roadmap_milestones ?? []) {
+      const milestoneId = milestone.id;
+      if (!milestoneId) continue;
+      map.set(milestoneId, {
+        id: milestoneId,
+        type: 'milestone',
+        parentId: roadmapId,
+        position: milestone.position,
+        title: milestone.title,
+        description: milestone.description,
+        status: milestone.status,
+        color: milestone.color,
+        dueDate: milestone.target_date,
+      });
+    }
+
     return map;
   }
 
@@ -3550,6 +3836,9 @@ export class RoadmapAiService {
   }
 
   private reindexPositions(state: FullRoadmapState) {
+    (state.roadmap_milestones ?? []).forEach((milestone, milestoneIndex) => {
+      milestone.position = milestoneIndex;
+    });
     (state.roadmap_epics ?? []).forEach((epic, epicIndex) => {
       epic.position = epicIndex;
       (epic.roadmap_features ?? []).forEach((feature, featureIndex) => {
@@ -3611,6 +3900,15 @@ export class RoadmapAiService {
           'assignee_id',
           'due_date',
         ];
+      case 'milestone':
+        return [
+          'title',
+          'description',
+          'status',
+          'target_date',
+          'completed_date',
+          'color',
+        ];
     }
   }
 
@@ -3619,6 +3917,8 @@ export class RoadmapAiService {
     status: string,
   ): boolean {
     switch (nodeType) {
+      case 'milestone':
+        return MILESTONE_STATUS.includes(status);
       case 'roadmap':
         return ROADMAP_STATUS.includes(status);
       case 'epic':
@@ -3697,6 +3997,21 @@ export class RoadmapAiService {
         }
       }
     }
+    const milestones = state.roadmap_milestones ?? [];
+    for (
+      let milestoneIndex = 0;
+      milestoneIndex < milestones.length;
+      milestoneIndex++
+    ) {
+      const milestone = milestones[milestoneIndex];
+      if (!milestone?.id) continue;
+      index.set(milestone.id, {
+        type: 'milestone',
+        milestone,
+        milestoneIndex,
+        roadmap: state,
+      });
+    }
     return index;
   }
 
@@ -3710,6 +4025,8 @@ export class RoadmapAiService {
         return locator.feature as unknown as Record<string, unknown>;
       case 'task':
         return locator.task as unknown as Record<string, unknown>;
+      case 'milestone':
+        return locator.milestone as unknown as Record<string, unknown>;
     }
   }
 
@@ -3814,6 +4131,29 @@ export class RoadmapAiService {
         this.readObject(state, 'template_settings') ??
         {},
       roadmap_epics: roadmapEpics,
+      roadmap_milestones: this.sortRecordsByPosition(
+        this.readArray(state, 'roadmap_milestones') ??
+          this.readArray(state, 'milestones') ??
+          [],
+      ).map((milestoneRaw, milestoneIndex) =>
+        this.normalizeMilestone(milestoneRaw, milestoneIndex),
+      ),
+    };
+  }
+
+  private normalizeMilestone(
+    raw: Record<string, unknown>,
+    milestoneIndex: number,
+  ): FullRoadmapMilestoneDto {
+    return {
+      id: this.readUuid(raw, 'id'),
+      title: this.readString(raw, 'title') ?? 'Untitled milestone',
+      description: this.readString(raw, 'description'),
+      status: this.readString(raw, 'status') ?? 'not_started',
+      target_date: this.readString(raw, 'target_date') ?? '',
+      completed_date: this.readString(raw, 'completed_date'),
+      color: this.readString(raw, 'color'),
+      position: this.readNumber(raw, 'position') ?? milestoneIndex,
     };
   }
 

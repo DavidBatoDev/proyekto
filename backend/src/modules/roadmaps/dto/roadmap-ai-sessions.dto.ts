@@ -4,6 +4,7 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   Max,
@@ -55,6 +56,15 @@ export class UpdateRoadmapAiSessionDto {
   @IsOptional()
   @IsBoolean()
   is_pinned?: boolean;
+}
+
+export class UpdateRoadmapAiSessionAgentStateDto {
+  /** Durable snapshot of the agent's memory-class session state (pending
+   * plan, undo log, recents, conversation summary). Stored under
+   * roadmap_ai_sessions.metadata.agent_state and replayed into the agent's
+   * Redis session on rehydration so TTL expiry loses nothing. */
+  @IsObject()
+  agent_state: Record<string, unknown>;
 }
 
 export class ListRoadmapAiSessionsQueryDto {

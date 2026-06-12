@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -19,6 +20,7 @@ import {
   CreateRoadmapAiSessionDto,
   ListRoadmapAiMessagesQueryDto,
   ListRoadmapAiSessionsQueryDto,
+  UpdateRoadmapAiSessionAgentStateDto,
   UpdateRoadmapAiSessionDto,
 } from '../dto/roadmap-ai-sessions.dto';
 import { RoadmapAiSessionsService } from '../services/roadmap-ai-sessions.service';
@@ -65,6 +67,22 @@ export class RoadmapAiSessionsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.sessionsService.update(roadmapId, sessionId, user.id, dto);
+  }
+
+  @Put(':sessionId/agent-state')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async updateAgentState(
+    @Param('id') roadmapId: string,
+    @Param('sessionId') sessionId: string,
+    @Body() dto: UpdateRoadmapAiSessionAgentStateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    await this.sessionsService.updateAgentState(
+      roadmapId,
+      sessionId,
+      user.id,
+      dto.agent_state,
+    );
   }
 
   @Delete(':sessionId')

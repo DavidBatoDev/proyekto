@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 
+// v2 canary. The roadmap-AI agent now has a single brain (the v2 single-loop
+// in agent/app/core/v2) with no feature-flag matrix, so this validates the v2
+// loop plus the shared contract surface it depends on. Defaults only — no env
+// overrides. Exits non-zero on any failure (CI gate).
+
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -12,71 +17,14 @@ const scriptDir = path.dirname(scriptFile);
 
 loadEnvFiles();
 
-// The canary set intentionally skips a handful of behaviors whose tests
-// were removed during the hybrid-ReAct and draft-graph refactors (commits
-// 7e87090, d980b52, 670eb10, eacf2de). If you bring the guarded behavior
-// back, re-add the corresponding test path.
-const strictModules = [
-  "tests.test_agent_safety.AgentSafetyTests.test_plan_message_react_loop_budget_exhaustion_sets_clarify_terminal",
-  "tests.test_agent_safety.AgentSafetyTests.test_plan_message_retry_blocks_on_staged_version_mismatch",
-  "tests.test_agent_safety.AgentSafetyTests.test_plan_message_retry_ambiguous_returns_numbered_id_choices",
-  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_react_invalid_shape_retries_once",
-  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_react_tuple_wrong_arity_retries_then_clarifies",
-  "tests.test_draft_graph_versioning.DraftGraphVersioningContractTests.test_draft_graph_migration_preserves_legacy_staged_state",
-  "tests.test_logging_utils.LoggingUtilsLifecycleTests.test_lifecycle_response_includes_react_terminal_and_loop_fields",
-];
-
-const compatModules = [
-  "tests.test_agent_safety.AgentSafetyTests.test_plan_message_pending_context_without_continuation_does_not_force_edit",
-  "tests.test_agent_safety.AgentSafetyTests.test_plan_message_hybrid_mode_ignores_replace_flag_without_revise",
-  "tests.test_agent_safety.PlannerContextSafetyTests.test_plan_operations_react_execute_returns_operations",
-  "tests.test_draft_graph_versioning.DraftGraphVersioningContractTests.test_agent_session_legacy_payload_deserializes_with_draft_defaults",
-  "tests.test_draft_graph_versioning.DraftGraphVersioningContractTests.test_draft_graph_migration_preserves_legacy_staged_state",
-  "tests.test_logging_utils.LoggingUtilsLifecycleTests.test_lifecycle_response_includes_react_terminal_and_loop_fields",
-];
-
-const strictEnv = {
-  AGENT_HYBRID_REACT_ENABLED: "true",
-  AGENT_DRAFT_GRAPH_ENABLED: "true",
-  AGENT_STRICT_PREVIEW_FINGERPRINT: "true",
-  AGENT_REACT_MAX_ATTEMPTS: "4",
-  MAX_EDIT_TOOL_TURNS: "3",
-};
-
-const compatEnv = {
-  AGENT_HYBRID_REACT_ENABLED: "true",
-  AGENT_DRAFT_GRAPH_ENABLED: "false",
-  AGENT_STRICT_PREVIEW_FINGERPRINT: "true",
-  AGENT_REACT_MAX_ATTEMPTS: "2",
-  MAX_EDIT_TOOL_TURNS: "4",
-};
-
-const classifierOffEnv = {
-  AGENT_HYBRID_REACT_ENABLED: "true",
-  AGENT_DRAFT_GRAPH_ENABLED: "true",
-  AGENT_STRICT_PREVIEW_FINGERPRINT: "true",
-  AGENT_LLM_INTENT_CLASSIFIER_ENABLED: "false",
-};
-
-const classifierOffModules = [
-  "tests.test_planner_intent_classifier",
-  "tests.test_planner_max_tokens_profile",
-];
-
-const planProposalEnv = {
-  AGENT_HYBRID_REACT_ENABLED: "true",
-  AGENT_DRAFT_GRAPH_ENABLED: "true",
-  AGENT_STRICT_PREVIEW_FINGERPRINT: "true",
-  AGENT_PLAN_PROPOSAL_ENABLED: "true",
-};
-
-const planProposalModules = [
-  "tests.test_pending_plan_manager",
-  "tests.test_plan_proposal_routing",
-  "tests.test_plan_confirm_bridge",
-  "tests.test_edit_clarifier_card",
-  "tests.test_tool_message_history",
-  "tests.test_edit_hallucination_detector",
+const canaryModules = [
+  "tests.test_v2_loop",
+  "tests.test_v2_outcome",
+  "tests.test_v2_brain",
+  "tests.test_operation_contracts",
+  "tests.test_tool_registry_schema_snapshot",
+  "tests.test_edit_resolver",
+  "tests.test_session_store_cas",
 ];
 
 function loadEnvFiles() {
@@ -139,28 +87,6 @@ function pickPython() {
   return null;
 }
 
-function runProfile(pyExecutable, name, envOverrides, modules) {
-  console.log(`\n=== ${name} ===`);
-  for (const [key, value] of Object.entries(envOverrides)) {
-    console.log(`${key}=${value}`);
-  }
-
-  const result = spawnSync(pyExecutable, pythonArgs(pyExecutable, modules), {
-    cwd: agentDir,
-    env: { ...process.env, ...envOverrides },
-    stdio: "pipe",
-    shell: false,
-    encoding: "utf8",
-  });
-
-  if (result.stdout) process.stdout.write(result.stdout);
-  if (result.stderr) process.stderr.write(result.stderr);
-
-  const ok = (result.status ?? 1) === 0;
-  console.log(`Profile ${name}: ${ok ? "PASS" : "FAIL"}\n`);
-  return ok;
-}
-
 function main() {
   const py = pickPython();
   if (!py) {
@@ -169,29 +95,22 @@ function main() {
   }
 
   console.log(`Using Python: ${py}`);
-  const strictOk = runProfile(py, "strict-canary", strictEnv, strictModules);
-  const compatOk = runProfile(py, "react-compat", compatEnv, compatModules);
-  const classifierOffOk = runProfile(
-    py,
-    "llm-classifier-off",
-    classifierOffEnv,
-    classifierOffModules,
-  );
-  const planProposalOk = runProfile(
-    py,
-    "plan-proposal",
-    planProposalEnv,
-    planProposalModules,
-  );
+  console.log("\n=== v2-canary ===");
+  const result = spawnSync(py, pythonArgs(py, canaryModules), {
+    cwd: agentDir,
+    env: process.env,
+    stdio: "pipe",
+    shell: false,
+    encoding: "utf8",
+  });
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
 
-  if (strictOk && compatOk && classifierOffOk && planProposalOk) {
-    console.log(
-      "Canary matrix validation passed for strict, react-compat, llm-classifier-off, and plan-proposal profiles.",
-    );
+  if ((result.status ?? 1) === 0) {
+    console.log("\nv2 canary validation passed.");
     process.exit(0);
   }
-
-  console.error("Canary matrix validation failed.");
+  console.error("\nv2 canary validation failed.");
   process.exit(1);
 }
 

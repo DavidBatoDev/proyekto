@@ -22,7 +22,7 @@ from app.core.uuid_utils import TEMP_REF_PATTERN, is_uuid_like, normalize_uuid
 # key in the active handle_map, so a coincidental user-supplied string that
 # matches the shape but isn't in the map is left untouched (and will fail
 # normal UUID/temp_ref validation downstream, as intended).
-_HANDLE_TOKEN_PATTERN = re.compile(r'^E\d+(?:\.F\d+)?$')
+_HANDLE_TOKEN_PATTERN = re.compile(r'^(?:E\d+(?:\.F\d+)?|M\d+)$')
 
 # Set by the planning flow for the duration of a single planner turn. Scoped
 # to a ContextVar rather than threaded through every adapter/parser kwarg
@@ -82,6 +82,23 @@ def _expand_handles_in_op_dict(
             if resolved is not None:
                 op_dict[field] = resolved
 
+    # Handles also land in the *_ref fields (the model is told it may use a
+    # handle wherever a node id is expected, e.g. a move's new_parent_ref).
+    # Resolve those into the matching *_id field. The *_ref fields are meant
+    # for same-batch temp_ids, which never match the handle pattern, so real
+    # temp refs are left untouched.
+    for ref_field, id_field in (
+        ('node_ref', 'node_id'),
+        ('parent_ref', 'parent_id'),
+        ('new_parent_ref', 'new_parent_id'),
+    ):
+        value = op_dict.get(ref_field)
+        if isinstance(value, str) and _HANDLE_TOKEN_PATTERN.match(value):
+            resolved = _lookup_handle_id(value, handle_map)
+            if resolved is not None:
+                op_dict[id_field] = resolved
+                op_dict[ref_field] = None
+
     targets = op_dict.get('targets')
     if isinstance(targets, list):
         expanded: list[Any] = []
@@ -123,6 +140,7 @@ from app.core.contracts.statuses import (  # noqa: E402
     ALL_STATUS_VALUES,
     EPIC_STATUS_VALUES,
     FEATURE_STATUS_VALUES,
+    MILESTONE_STATUS_VALUES,
     TASK_STATUS_VALUES,
 )
 TASK_STATUS_FILTER_VALUES = [*TASK_STATUS_VALUES, 'all']
@@ -138,6 +156,7 @@ EPIC_PRIORITY_FILTER_VALUES = ['critical', 'nice_to_have', 'low', 'medium', 'hig
 
 PLANNING_TOOL_NAME = 'plan_roadmap_operations'
 CONTEXT_TOOL_NAMES = {
+    'list_members',
     'get_roadmap_summary',
     'get_roadmap_overview',
     'resolve_node_reference',
@@ -185,7 +204,12 @@ EDIT_HELPER_TOOL_NAMES = {
     'bulk_update_epic_status',
 }
 
-EXECUTABLE_TOOL_NAMES = CONTEXT_TOOL_NAMES | EDIT_HELPER_TOOL_NAMES
+MEMORY_TOOL_NAMES = {
+    'save_memory',
+    'forget_memory',
+}
+
+EXECUTABLE_TOOL_NAMES = CONTEXT_TOOL_NAMES | EDIT_HELPER_TOOL_NAMES | MEMORY_TOOL_NAMES
 
 _UNASSIGN_ASSIGNEE_TOKENS = {
     'unassign',
@@ -219,6 +243,7 @@ _CREATE_OP_NODE_TYPES = {
     'add_epic': 'epic',
     'add_feature': 'feature',
     'add_task': 'task',
+    'add_milestone': 'milestone',
 }
 
 
@@ -391,6 +416,18 @@ def get_context_tools() -> list[dict[str, Any]]:
             properties={
                 'roadmap_id': {'type': 'string'},
                 'epic_id': {'type': 'string'},
+            },
+        ),
+        _function_tool(
+            name='list_members',
+            description=(
+                'List the people assignable on this roadmap (project members + '
+                'owner) with their user ids. Call this before assigning a task '
+                'to someone by name.'
+            ),
+            required=['roadmap_id'],
+            properties={
+                'roadmap_id': {'type': 'string'},
             },
         ),
         _function_tool(
@@ -717,6 +754,7 @@ def get_edit_helper_tools() -> list[dict[str, Any]]:
 _CREATE_STATUS_ENUMS: dict[str, list[str]] = {
     'add_epic': EPIC_STATUS_VALUES,
     'add_task': TASK_STATUS_VALUES,
+    'add_milestone': MILESTONE_STATUS_VALUES,
 }
 
 # Derive the operation property shape once from the Pydantic model so the
@@ -871,14 +909,24 @@ def _attach_create_data_shape(
     properties: dict[str, Any],
     op_name: str,
 ) -> None:
-    status_enum = _CREATE_STATUS_ENUMS.get(op_name, ALL_STATUS_VALUES)
+    # Only ops whose node type actually persists a status expose one — feature
+    # status is derived from child task statuses, so add_feature offers none.
+    status_enum = _CREATE_STATUS_ENUMS.get(op_name)
+    data_properties: dict[str, Any] = {'title': {'type': 'string'}}
+    required = ['title']
+    if status_enum is not None:
+        data_properties['status'] = {'type': 'string', 'enum': status_enum}
+    if op_name == 'add_milestone':
+        # roadmap_milestones.target_date is NOT NULL.
+        data_properties['target_date'] = {
+            'type': 'string',
+            'description': 'ISO date (YYYY-MM-DD) the milestone is due.',
+        }
+        required.append('target_date')
     properties['data'] = {
         'type': 'object',
-        'required': ['title'],
-        'properties': {
-            'title': {'type': 'string'},
-            'status': {'type': 'string', 'enum': status_enum},
-        },
+        'required': required,
+        'properties': data_properties,
     }
 
 

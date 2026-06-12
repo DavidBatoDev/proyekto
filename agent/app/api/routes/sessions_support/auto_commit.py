@@ -5,12 +5,13 @@ import logging
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, Awaitable, Callable
+from uuid import uuid4
 
 from fastapi.exceptions import HTTPException
 
 from app.api.routes.sessions_support.common import extract_upstream_error_code
 from app.core.contracts.operations import RoadmapOperation
-from app.core.contracts.sessions import AgentSession, AppliedDraftCommit, RoadmapCommitArtifact
+from app.core.contracts.sessions import AgentSession, AppliedDraftCommit
 from app.core.logging_utils import log_event
 from app.core.orchestration.agent_service import AgentService
 from app.core.orchestration.context.applied_changes_log import (
@@ -75,11 +76,11 @@ class AutoCommitExecutionResult:
     staged_operations_count: int
     active_draft_id: str | None
     active_draft_version: int | None
-    artifact: RoadmapCommitArtifact | None
-    inline_commit_size_bytes: int | None
     impacted_items: list[dict[str, Any]]
     impacted_item_count: int
     impacted_summary: dict[str, int]
+    change_id: str | None
+    semantic_diff_summary: dict[str, int]
 
 
 def _sanitize_invalid_operation_snapshot(
@@ -230,7 +231,7 @@ def _extract_impacted_items_from_commit_result(commit_result: dict[str, Any]) ->
         if not isinstance(node_type_raw, str):
             continue
         node_type = node_type_raw.strip().lower()
-        if node_type not in {'roadmap', 'epic', 'feature', 'task'}:
+        if node_type not in {'roadmap', 'epic', 'feature', 'task', 'milestone'}:
             continue
 
         change_type_raw = change.get('type')
@@ -247,16 +248,20 @@ def _extract_impacted_items_from_commit_result(commit_result: dict[str, Any]) ->
             impact = 'modified'
 
         title: str | None = None
-        for source in (change.get('to'), change.get('from')):
-            if not isinstance(source, dict):
-                continue
-            for key in ('title', 'name', 'node_title'):
-                raw_title = source.get(key)
-                if isinstance(raw_title, str) and raw_title.strip():
-                    title = raw_title.strip()
+        node_title = node.get('title')
+        if isinstance(node_title, str) and node_title.strip():
+            title = node_title.strip()
+        else:
+            for source in (change.get('to'), change.get('from')):
+                if not isinstance(source, dict):
+                    continue
+                for key in ('title', 'name', 'node_title'):
+                    raw_title = source.get(key)
+                    if isinstance(raw_title, str) and raw_title.strip():
+                        title = raw_title.strip()
+                        break
+                if title:
                     break
-            if title:
-                break
 
         impacted_items.append(
             {
@@ -280,23 +285,6 @@ def _summarize_impacted_items(impacted_items: list[dict[str, Any]]) -> dict[str,
     return summary
 
 
-def _compact_inline_commit_payload(commit_result: dict[str, Any]) -> dict[str, Any]:
-    compact_payload: dict[str, Any] = {}
-    for key in (
-        'change_id',
-        'committed_at',
-        'revision_token',
-        'semantic_diff',
-        'candidate_snapshot',
-        'operation_results',
-    ):
-        value = commit_result.get(key)
-        if value is None:
-            continue
-        compact_payload[key] = value
-    return compact_payload
-
-
 def schedule_auto_commit_task(
     *,
     task_set: set[asyncio.Task],
@@ -316,12 +304,8 @@ async def execute_auto_commit(
     auth_header: str,
     trace_id: str | None,
     nest_client: Any,
-    draft_graph_enabled: bool,
     resolve_draft_snapshot: Callable[[AgentSession, AgentService], tuple[str, int, list]],
-    reuse_selected_draft_as_post_commit_head: Callable[..., int],
     set_draft_status: Callable[..., bool],
-    build_commit_artifact: Callable[..., RoadmapCommitArtifact | None],
-    serialized_payload_bytes: Callable[[dict[str, Any]], int],
     run_store_call: Callable[..., Awaitable[Any]],
 ) -> AutoCommitExecutionResult:
     draft_id, draft_version, draft_operations = resolve_draft_snapshot(
@@ -330,6 +314,10 @@ async def execute_auto_commit(
     )
 
     commit_started = perf_counter()
+    # One key per logical commit: every retry below replays it, so the backend
+    # can serve the first attempt's result instead of re-applying the ops
+    # (an apparent timeout/5xx may have landed server-side).
+    idempotency_key = str(uuid4())
 
     def _build_commit_payload() -> dict[str, Any]:
         return {
@@ -337,6 +325,7 @@ async def execute_auto_commit(
             'revision_token': session.revision_token,
             'include_roadmap': False,
             'include_timeline': False,
+            'idempotency_key': idempotency_key,
             'operations': [
                 operation.model_dump(exclude_none=True)
                 for operation in draft_operations
@@ -441,6 +430,33 @@ async def execute_auto_commit(
                     retry_outcome='no_fresh_token',
                 )
                 raise
+        elif exc.status_code >= 500 or exc.status_code in {408, 429}:
+            # Transient upstream failure. Safe to retry once because the
+            # payload carries an idempotency key — if the first attempt
+            # actually landed, the backend replays its stored result instead
+            # of duplicating the operations.
+            log_event(
+                _commit_diagnostic_logger,
+                'auto_commit_transient_retry',
+                settings=None,
+                trace_id=trace_id,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                upstream_status=exc.status_code,
+            )
+            await asyncio.sleep(1.0)
+            commit_result = await nest_client.commit(
+                roadmap_id=session.roadmap_id,
+                payload=_build_commit_payload(),
+                auth_header=auth_header,
+                trace_id=trace_id,
+            )
+            _log_commit_response_shape(
+                commit_result=commit_result,
+                session_id=session.session_id,
+                roadmap_id=session.roadmap_id,
+                trace_id=trace_id,
+            )
         else:
             raise
     auto_commit_ms = int((perf_counter() - commit_started) * 1000)
@@ -490,35 +506,30 @@ async def execute_auto_commit(
             source='commit_semantic_diff',
         )
 
-    staged_operations_count: int
-    staged_operations_version: int
-    active_draft_id: str | None
-    active_draft_version: int | None
-    if draft_graph_enabled:
-        agent_service.ensure_draft_graph_initialized(session)
-        next_draft_version = reuse_selected_draft_as_post_commit_head(
-            session,
-            selected_draft_id=draft_id,
-        )
-        staged_operations_count = 0
-        staged_operations_version = next_draft_version
-        active_draft_id = draft_id
-        active_draft_version = next_draft_version
-    else:
-        set_draft_status(
-            session=session,
-            draft_id=draft_id,
-            status='applied',
-        )
-        session.operations = []
-        session.staged_operations_version += 1
-        staged_operations_count = 0
-        staged_operations_version = session.staged_operations_version
-        active_draft_id = None
-        active_draft_version = None
+    set_draft_status(
+        session=session,
+        draft_id=draft_id,
+        status='applied',
+    )
+    session.operations = []
+    session.staged_operations_version += 1
+    staged_operations_count = 0
+    staged_operations_version = session.staged_operations_version
+    active_draft_id: str | None = None
+    active_draft_version: int | None = None
 
     session.metadata.pending_context_resolution = None
     session.metadata.pending_edit_context = None
+    # Snapshot titles before clearing the handle map: description/date-only
+    # changes carry no title in the semantic diff, so the impacted-items
+    # extraction below needs this to label the commit chip in the web.
+    handle_titles_by_id: dict[str, str] = {}
+    for entry in session.metadata.roadmap_handle_map.values():
+        if isinstance(entry, dict):
+            entry_id = entry.get('id')
+            entry_title = entry.get('title')
+            if isinstance(entry_id, str) and isinstance(entry_title, str) and entry_title:
+                handle_titles_by_id[entry_id] = entry_title
     # The roadmap shape has changed — next turn's pre-dispatcher will refetch
     # the overview via the speculative path.
     session.metadata.roadmap_overview_summary = None
@@ -542,25 +553,22 @@ async def execute_auto_commit(
         final_status='confirmed',
     )
 
-    artifact = build_commit_artifact(
-        session,
-        commit_result,
-        change_id=change_id,
-        status='applied',
-    )
-    if artifact is not None and artifact.impacted_items:
-        impacted_items = [item.model_dump(exclude_none=True) for item in artifact.impacted_items]
-    else:
-        impacted_items = _extract_impacted_items_from_commit_result(commit_result)
+    # No commit artifact is built: the web renders the "Committed changes"
+    # confirmation from the lightweight commit_summary and refreshes the
+    # canvas directly. We only surface the impacted items + semantic-diff
+    # summary the confirmation needs.
+    impacted_items = _extract_impacted_items_from_commit_result(commit_result)
+    for item in impacted_items:
+        if item.get('title') is None:
+            item['title'] = handle_titles_by_id.get(item.get('node_id') or '')
     impacted_summary = _summarize_impacted_items(impacted_items)
     impacted_item_count = len(impacted_items)
-    inline_commit_size_bytes: int | None = None
-    if artifact is not None:
-        inline_payload = _compact_inline_commit_payload(commit_result)
-        inline_commit_size_bytes = serialized_payload_bytes(inline_payload)
-        inline_artifact = artifact.model_copy(update={'inline_commit': inline_payload})
-        session.artifacts.append(inline_artifact)
-        artifact = inline_artifact
+    _semantic_diff = commit_result.get('semantic_diff')
+    semantic_diff_summary = (
+        _semantic_diff.get('summary')
+        if isinstance(_semantic_diff, dict) and isinstance(_semantic_diff.get('summary'), dict)
+        else {}
+    )
 
     await run_store_call(store.update, session)
     return AutoCommitExecutionResult(
@@ -569,11 +577,11 @@ async def execute_auto_commit(
         staged_operations_count=staged_operations_count,
         active_draft_id=active_draft_id,
         active_draft_version=active_draft_version,
-        artifact=artifact,
-        inline_commit_size_bytes=inline_commit_size_bytes,
         impacted_items=impacted_items,
         impacted_item_count=impacted_item_count,
         impacted_summary=impacted_summary,
+        change_id=change_id,
+        semantic_diff_summary=semantic_diff_summary,
     )
 
 
@@ -612,7 +620,6 @@ async def run_auto_commit_in_background(
             staged_operations_version=result.staged_operations_version,
             active_draft_id=result.active_draft_id,
             active_draft_version=result.active_draft_version,
-            inline_commit_size_bytes=result.inline_commit_size_bytes,
             impacted_items=result.impacted_items,
             impacted_item_count=result.impacted_item_count,
             impacted_summary=result.impacted_summary,

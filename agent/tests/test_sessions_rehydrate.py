@@ -26,10 +26,14 @@ from app.core.contracts.sessions import (
 class _FakeStore:
     def __init__(self) -> None:
         self.created_sessions: list[AgentSession] = []
+        self.existing: AgentSession | None = None
 
     def create(self, session: AgentSession) -> AgentSession:
         self.created_sessions.append(session)
         return session
+
+    def get(self, _session_id: str) -> AgentSession | None:
+        return self.existing
 
 
 def _noop_sanitize(metadata: dict | None) -> tuple[dict, bool]:

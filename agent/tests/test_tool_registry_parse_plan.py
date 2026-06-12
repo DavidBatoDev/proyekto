@@ -687,8 +687,15 @@ class PlanToolStatusEnumSchemaTests(unittest.TestCase):
         )
 
     def test_all_status_union_contains_every_node_type_value(self) -> None:
+        from app.core.contracts.statuses import MILESTONE_STATUS_VALUES
+
         expected = sorted(
-            {*EPIC_STATUS_VALUES, *FEATURE_STATUS_VALUES, *TASK_STATUS_VALUES}
+            {
+                *EPIC_STATUS_VALUES,
+                *FEATURE_STATUS_VALUES,
+                *TASK_STATUS_VALUES,
+                *MILESTONE_STATUS_VALUES,
+            }
         )
         self.assertEqual(ALL_STATUS_VALUES, expected)
 
@@ -763,10 +770,10 @@ class PlanToolStatusEnumSchemaTests(unittest.TestCase):
         branches = tool['function']['parameters']['properties']['operations']['items'][
             'anyOf'
         ]
-        # 1 (add_epic) + 2×2 (add_feature/add_task parent variants) +
-        # 5×3 (update_node, move_node, delete_node, mark_status, shift_dates
-        # with node_id/node_ref/targets variants) = 20.
-        self.assertEqual(len(branches), 20)
+        # 2 (add_epic, add_milestone) + 2×2 (add_feature/add_task parent
+        # variants) + 5×3 (update_node, move_node, delete_node, mark_status,
+        # shift_dates with node_id/node_ref/targets variants) = 21.
+        self.assertEqual(len(branches), 21)
         for branch in branches:
             self.assertFalse(
                 branch.get('additionalProperties', True),

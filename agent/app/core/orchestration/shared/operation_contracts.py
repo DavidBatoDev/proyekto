@@ -4,7 +4,7 @@ import json
 from typing import Any, Callable
 
 from app.core.contracts.operations import RoadmapOperation
-from app.core.llm.client import PlanningResult
+from app.core.orchestration.shared.planning_result import PlanningResult
 from app.core.uuid_utils import normalize_uuid
 
 _ORDER_INSENSITIVE_SIGNATURE_FIELDS = {'tags'}

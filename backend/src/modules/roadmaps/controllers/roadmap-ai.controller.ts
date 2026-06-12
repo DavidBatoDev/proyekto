@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
@@ -28,11 +29,16 @@ import {
   RoadmapAiRollbackDto,
 } from '../dto/roadmap-ai.dto';
 import { RoadmapAiService } from '../services/roadmap-ai.service';
+import { RoadmapAiMemoriesService } from '../services/roadmap-ai-memories.service';
+import { CreateRoadmapAiMemoryDto } from '../dto/roadmap-ai-memories.dto';
 
 @Controller('roadmaps/:id/ai')
 @UseGuards(SupabaseAuthGuard)
 export class RoadmapAiController {
-  constructor(private readonly roadmapAiService: RoadmapAiService) {}
+  constructor(
+    private readonly roadmapAiService: RoadmapAiService,
+    private readonly memoriesService: RoadmapAiMemoriesService,
+  ) {}
 
   @Post('preview')
   preview(
@@ -81,6 +87,42 @@ export class RoadmapAiController {
     @Headers('x-trace-id') traceId?: string,
   ) {
     return this.roadmapAiService.getContextActor(roadmapId, user.id, traceId);
+  }
+
+  @Get('memories')
+  async listMemories(
+    @Param('id') roadmapId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return { memories: await this.memoriesService.list(roadmapId, user.id) };
+  }
+
+  @Post('memories')
+  createMemory(
+    @Param('id') roadmapId: string,
+    @Body() dto: CreateRoadmapAiMemoryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.memoriesService.create(roadmapId, user.id, dto);
+  }
+
+  @Delete('memories/:memoryId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async forgetMemory(
+    @Param('id') roadmapId: string,
+    @Param('memoryId') memoryId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    await this.memoriesService.deactivate(roadmapId, memoryId, user.id);
+  }
+
+  @Get('context/members')
+  getContextMembers(
+    @Param('id') roadmapId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-trace-id') traceId?: string,
+  ) {
+    return this.roadmapAiService.getContextMembers(roadmapId, user.id, traceId);
   }
 
   @Get('context/resolve')

@@ -164,4 +164,49 @@ describe('RoadmapAiSessionsService', () => {
 
     expect(titleGenerator.enqueue).toHaveBeenCalledWith('session-1');
   });
+
+  describe('updateAgentState', () => {
+    it('rejects snapshots over the 64KB cap', async () => {
+      const builder = new QueryBuilder();
+      builder.__resolveData = { id: 'session-1', metadata: {} };
+      const { service } = buildService(builder);
+
+      await expect(
+        service.updateAgentState('roadmap-1', 'session-1', 'user-1', {
+          blob: 'x'.repeat(70_000),
+        }),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'AGENT_STATE_TOO_LARGE' }),
+      });
+    });
+
+    it('merges agent_state into existing metadata instead of replacing it', async () => {
+      const builder = new QueryBuilder();
+      builder.__resolveData = {
+        id: 'session-1',
+        metadata: { some_other_key: 'kept' },
+      };
+      const { service } = buildService(builder);
+
+      await service.updateAgentState('roadmap-1', 'session-1', 'user-1', {
+        pending_plan: { summary: 's' },
+      });
+
+      const updatePayload = (builder.update as MockFn).mock.calls.at(-1)?.[0];
+      expect(updatePayload.metadata.some_other_key).toBe('kept');
+      expect(updatePayload.metadata.agent_state.pending_plan.summary).toBe('s');
+    });
+
+    it('404s when the session belongs to someone else', async () => {
+      const builder = new QueryBuilder();
+      builder.__resolveData = null;
+      const { service } = buildService(builder);
+
+      await expect(
+        service.updateAgentState('roadmap-1', 'session-1', 'intruder', {
+          a: 1,
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
 });

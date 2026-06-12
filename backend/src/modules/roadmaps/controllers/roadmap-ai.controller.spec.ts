@@ -37,7 +37,15 @@ describe('RoadmapAiController trace forwarding', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    controller = new RoadmapAiController(roadmapAiService as any);
+    const memoriesService = {
+      list: jest.fn(),
+      create: jest.fn(),
+      deactivate: jest.fn(),
+    };
+    controller = new RoadmapAiController(
+      roadmapAiService as any,
+      memoriesService as any,
+    );
   });
 
   it('forwards trace id for preview/search and all context handlers', () => {

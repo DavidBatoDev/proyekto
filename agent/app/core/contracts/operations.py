@@ -28,6 +28,7 @@ class OperationType(str, Enum):
     ADD_EPIC = 'add_epic'
     ADD_FEATURE = 'add_feature'
     ADD_TASK = 'add_task'
+    ADD_MILESTONE = 'add_milestone'
     UPDATE_NODE = 'update_node'
     MOVE_NODE = 'move_node'
     DELETE_NODE = 'delete_node'
@@ -56,6 +57,7 @@ class NodeType(str, Enum):
     EPIC = 'epic'
     FEATURE = 'feature'
     TASK = 'task'
+    MILESTONE = 'milestone'
 
 
 class RoadmapOperation(BaseModel):
@@ -109,6 +111,17 @@ class RoadmapOperation(BaseModel):
                 issues.append('add_epic.temp_id_invalid_ref')
             elif self._read_data_id() is not None and not is_uuid(self._read_data_id()):
                 issues.append('add_epic.data.id_invalid_uuid')
+
+        if op_name == 'add_milestone':
+            if self._read_title() is None:
+                issues.append('add_milestone.data.title_missing')
+            data = self.data if isinstance(self.data, dict) else {}
+            target_date = data.get('target_date')
+            if not (isinstance(target_date, str) and target_date.strip()):
+                # roadmap_milestones.target_date is NOT NULL — require it up
+                # front so the model asks for a date instead of failing the
+                # commit.
+                issues.append('add_milestone.data.target_date_missing')
 
         if op_name in PARENT_REQUIRING_OPS:
             if _has_identity_conflict(self._read_data_id(), self.temp_id):

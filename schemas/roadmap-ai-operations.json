@@ -1,0 +1,55 @@
+{
+  "schema_ref": "./roadmap-ai-operations.schema.json",
+  "operation_types": [
+    "add_epic",
+    "add_feature",
+    "add_task",
+    "add_milestone",
+    "update_node",
+    "move_node",
+    "delete_node",
+    "mark_status",
+    "shift_dates"
+  ],
+  "node_types": [
+    "roadmap",
+    "epic",
+    "feature",
+    "task",
+    "milestone"
+  ],
+  "operation_fields": [
+    "op",
+    "node_type",
+    "node_id",
+    "node_ref",
+    "parent_id",
+    "parent_ref",
+    "new_parent_id",
+    "new_parent_ref",
+    "temp_id",
+    "position",
+    "patch",
+    "status",
+    "delta_days",
+    "scope",
+    "data",
+    "targets"
+  ],
+  "resolver_tool": {
+    "name": "resolve_node_reference",
+    "required": [
+      "roadmap_id",
+      "label"
+    ]
+  },
+  "context_search_match_fields": [
+    "id",
+    "type",
+    "title",
+    "parent_id",
+    "parent_title",
+    "score",
+    "matched_fields"
+  ]
+}

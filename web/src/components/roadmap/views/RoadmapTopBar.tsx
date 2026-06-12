@@ -5,7 +5,6 @@ import {
   LayoutGrid,
   CalendarDays,
   FileText,
-  Boxes,
 } from "lucide-react";
 import { useMemo } from "react";
 import {
@@ -111,11 +110,6 @@ export function RoadmapTopBar({
     setSelectedEpicId,
     setOpenEpicTabs,
     closeCanvasEpicTab,
-    selectedArtifactId,
-    openArtifactTabs,
-    artifactsById,
-    closeCanvasArtifactTab,
-    setSelectedArtifactId,
   } = useRoadmapStore(
     useShallow((state) => ({
       epics: state.epics,
@@ -126,11 +120,6 @@ export function RoadmapTopBar({
       setSelectedEpicId: state.setCanvasSelectedEpicId,
       setOpenEpicTabs: state.setCanvasOpenEpicTabs,
       closeCanvasEpicTab: state.closeCanvasEpicTab,
-      selectedArtifactId: state.canvasSelectedArtifactId,
-      openArtifactTabs: state.canvasOpenArtifactTabs,
-      artifactsById: state.artifactsById,
-      closeCanvasArtifactTab: state.closeCanvasArtifactTab,
-      setSelectedArtifactId: state.setCanvasSelectedArtifactId,
     })),
   );
 
@@ -237,47 +226,6 @@ export function RoadmapTopBar({
               </SortableContext>
             </DndContext>
 
-            {openArtifactTabs.length > 0 && (
-              <>
-                <div className="h-8 w-px bg-gray-300 shrink-0 mx-2" />
-                <div className="flex items-center gap-2">
-                  {openArtifactTabs.map((artifactId) => {
-                    const artifact = artifactsById[artifactId];
-                    if (!artifact) return null;
-                    const isActive =
-                      viewMode === "artifact" &&
-                      selectedArtifactId === artifactId;
-
-                    return (
-                      <div
-                        key={artifactId}
-                        onClick={() => setSelectedArtifactId(artifactId)}
-                        className={`flex items-center gap-2 px-4 py-3 border-b-2 shrink-0 cursor-pointer transition-colors text-sm font-medium ${
-                          isActive
-                            ? "text-gray-900 border-gray-900"
-                            : "text-gray-600 hover:text-gray-900 border-transparent"
-                        }`}
-                      >
-                        <span className="inline-flex items-center gap-1.5">
-                          <Boxes className="w-3.5 h-3.5" />
-                          {artifact.title}
-                        </span>
-                        <button
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            closeCanvasArtifactTab(artifactId);
-                          }}
-                          className="p-0.5 rounded hover:bg-gray-200 transition-colors"
-                          aria-label="Close artifact tab"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
           </div>
         </div>
       </div>

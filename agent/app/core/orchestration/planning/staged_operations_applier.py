@@ -6,7 +6,7 @@ from typing import Callable
 
 from app.core.contracts.operations import RoadmapOperation
 from app.core.contracts.sessions import AgentSession, DraftNode
-from app.core.llm.client import PlanningResult
+from app.core.orchestration.shared.planning_result import PlanningResult
 
 
 @dataclass

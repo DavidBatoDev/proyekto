@@ -39,6 +39,7 @@ import {
 import { RoadmapAiService } from './services/roadmap-ai.service';
 import { RoadmapAiPreviewStoreService } from './services/roadmap-ai-preview-store.service';
 import { RoadmapAiSessionsService } from './services/roadmap-ai-sessions.service';
+import { RoadmapAiMemoriesService } from './services/roadmap-ai-memories.service';
 import { RoadmapAiTitleGeneratorService } from './services/roadmap-ai-title-generator.service';
 
 // Repository implementations
@@ -71,6 +72,7 @@ import { RoadmapAuthorizationService } from './services/roadmap-authorization.se
     RoadmapAiService,
     RoadmapAiPreviewStoreService,
     RoadmapAiSessionsService,
+    RoadmapAiMemoriesService,
     RoadmapAiTitleGeneratorService,
     RoadmapPatchService,
     {
