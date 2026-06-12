@@ -4,11 +4,11 @@
 //
 //   npm run pw:watch                       # default: the AI chat UI walkthrough
 //   npm run pw:watch -- playwright/tests/<other>.spec.ts
-//   PLAYWRIGHT_SLOWMO=1200 npm run pw:watch # override the delay
+//   PLAYWRIGHT_SLOW_MO=1200 npm run pw:watch # override the delay
 import { spawnSync } from "node:child_process";
 
 process.env.PLAYWRIGHT_HEADED = "1";
-process.env.PLAYWRIGHT_SLOWMO = process.env.PLAYWRIGHT_SLOWMO || "800";
+process.env.PLAYWRIGHT_SLOW_MO = process.env.PLAYWRIGHT_SLOW_MO || "800";
 
 const spec =
   process.argv[2] || "playwright/tests/roadmap-ai-ui-sweep.spec.ts";

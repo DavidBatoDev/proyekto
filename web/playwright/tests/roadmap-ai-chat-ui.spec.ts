@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
  *
  * Meant to be watched. Run headed + slowed:
  *   cd web
- *   PLAYWRIGHT_HEADED=1 PLAYWRIGHT_SLOWMO=800 \
+ *   PLAYWRIGHT_HEADED=1 PLAYWRIGHT_SLOW_MO=800 \
  *     npx playwright test playwright/tests/roadmap-ai-chat-ui.spec.ts --project=chromium-user
  *
  * Self-cleaning: deletes the demo epic it creates via the backend.
