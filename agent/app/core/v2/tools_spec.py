@@ -17,6 +17,7 @@ from typing import Any
 from app.core.contracts.statuses import TASK_STATUS_VALUES
 from app.core.tools.registry import (
     CONTEXT_TOOL_NAMES,
+    MEMORY_TOOL_NAMES as _REGISTRY_MEMORY_TOOL_NAMES,
     PLANNING_TOOL_NAME,
     get_context_tools,
     get_planning_tool,
@@ -24,10 +25,20 @@ from app.core.tools.registry import (
 
 PROPOSE_PLAN_TOOL_NAME = 'propose_plan'
 ASK_USER_TOOL_NAME = 'ask_user'
+SAVE_MEMORY_TOOL_NAME = 'save_memory'
+FORGET_MEMORY_TOOL_NAME = 'forget_memory'
 
 # Read tools are non-terminal: the model uses them to gather facts, results
 # are fed back, and the loop continues.
 READ_TOOL_NAMES = frozenset(CONTEXT_TOOL_NAMES)
+
+# Memory tools are also non-terminal (the model saves/forgets a durable note
+# and then finishes its answer), but unlike reads they WRITE to the backend.
+MEMORY_TOOL_NAMES = frozenset(_REGISTRY_MEMORY_TOOL_NAMES)
+
+# Everything the mid-loop dispatcher executes (results fed back, loop
+# continues).
+DISPATCHER_TOOL_NAMES = READ_TOOL_NAMES | MEMORY_TOOL_NAMES
 
 # Terminal tools end the turn.
 TERMINAL_TOOL_NAMES = frozenset(
@@ -37,6 +48,10 @@ TERMINAL_TOOL_NAMES = frozenset(
 
 def is_read_tool(name: str) -> bool:
     return name in READ_TOOL_NAMES
+
+
+def is_dispatcher_tool(name: str) -> bool:
+    return name in DISPATCHER_TOOL_NAMES
 
 
 def is_terminal_tool(name: str) -> bool:
@@ -54,7 +69,63 @@ def build_tools(*, has_pending_plan: bool = False) -> list[dict[str, Any]]:
         _planning_tool(has_pending_plan),
         propose_plan_tool(),
         ask_user_tool(),
+        save_memory_tool(),
+        forget_memory_tool(),
     ]
+
+
+def save_memory_tool() -> dict[str, Any]:
+    return {
+        'type': 'function',
+        'function': {
+            'name': SAVE_MEMORY_TOOL_NAME,
+            'description': (
+                'Persist ONE durable preference or convention for this roadmap '
+                '(shared with all collaborators), e.g. a naming scheme or a '
+                'default workflow rule. Use for explicit "remember ..." '
+                'requests (source=user_request) or a clearly durable '
+                'preference you inferred (source=inferred). NEVER store '
+                'roadmap content, statuses, or one-off facts. Continue your '
+                'answer after saving.'
+            ),
+            'parameters': {
+                'type': 'object',
+                'required': ['content'],
+                'properties': {
+                    'content': {
+                        'type': 'string',
+                        'minLength': 3,
+                        'maxLength': 300,
+                        'description': 'The preference, phrased as a standing rule.',
+                    },
+                    'source': {
+                        'type': 'string',
+                        'enum': ['user_request', 'inferred'],
+                    },
+                },
+            },
+        },
+    }
+
+
+def forget_memory_tool() -> dict[str, Any]:
+    return {
+        'type': 'function',
+        'function': {
+            'name': FORGET_MEMORY_TOOL_NAME,
+            'description': (
+                'Deactivate one memory note by the memory_id shown in the '
+                '"# Memory notes" section. Continue your answer after.'
+            ),
+            'parameters': {
+                'type': 'object',
+                'required': ['memory_id'],
+                'properties': {
+                    'memory_id': {'type': 'string'},
+                },
+            },
+        },
+    }
 
 
 def _planning_tool(has_pending_plan: bool) -> dict[str, Any]:

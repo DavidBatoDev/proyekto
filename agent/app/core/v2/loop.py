@@ -143,7 +143,7 @@ def run_loop(
                     )
                 # Error from the edit/stage tool — feed it back to the model.
                 results_by_id[tc.id] = outcome
-            elif tools_spec.is_read_tool(tc.name):
+            elif tools_spec.is_dispatcher_tool(tc.name):
                 read_calls.append(tc)
             else:
                 results_by_id[tc.id] = {
