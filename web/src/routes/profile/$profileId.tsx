@@ -14,6 +14,7 @@ import {
   type UserLanguage,
   type UserSpecialization,
   type UserLicense,
+  type ProficiencyLevel,
   applicationService,
 } from "@/services/profile.service";
 import { uploadService } from "@/services/upload.service";
@@ -510,7 +511,7 @@ function ProfilePage() {
 
   const handleAboutSave = async (
     bio: string,
-    skills: Array<{ skill_id: string; proficiency_level: string }>,
+    skills: Array<{ skill_id: string; proficiency_level: ProficiencyLevel }>,
   ) => {
     setIsAboutSaving(true);
     try {
