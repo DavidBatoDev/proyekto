@@ -121,8 +121,8 @@ export function useProjectCancelInviteMutation(projectId: string) {
   return useMutation({
     mutationFn: (inviteId: string) =>
       projectService.cancelInvite(projectId, inviteId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: projectKeys.invites(projectId) });
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: projectKeys.invites(projectId) });
     },
   });
 }
@@ -163,10 +163,10 @@ export function useProjectInviteMemberMutation(projectId: string) {
       position?: string;
       message?: string;
     }) => projectService.inviteByEmail(projectId, payload),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: projectKeys.members(projectId) });
-      await queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
-      await queryClient.invalidateQueries({ queryKey: projectKeys.invites(projectId) });
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: projectKeys.members(projectId) });
+      void queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+      void queryClient.invalidateQueries({ queryKey: projectKeys.invites(projectId) });
     },
   });
 }
@@ -176,9 +176,9 @@ export function useProjectRemoveMemberMutation(projectId: string) {
 
   return useMutation({
     mutationFn: (memberId: string) => projectService.removeMember(projectId, memberId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: projectKeys.members(projectId) });
-      await queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: projectKeys.members(projectId) });
+      void queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
     },
   });
 }

@@ -97,18 +97,18 @@ export function ProjectInvitePromptManager() {
       inviteId: string;
       status: "accepted" | "declined";
     }) => projectService.respondInvite(inviteId, status),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
         queryKey: ["projects", "my-invites"],
       });
-      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      await queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      void queryClient.invalidateQueries({
         queryKey: ["notifications", "unread-count"],
       });
-      await queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ["notifications", "project-invites"],
       });
-      await queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ["dashboard", "projects", profile?.id],
       });
     },

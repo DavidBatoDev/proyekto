@@ -632,8 +632,8 @@ function ConsultantApplyPage() {
       });
       return applicationService.submit();
     },
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ["myApplication"] });
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["myApplication"] });
       setShowSuccessModal(true);
     },
     onError: (error) => {

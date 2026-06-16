@@ -67,15 +67,15 @@ export function NotificationBell() {
 
 	const markReadMutation = useMutation({
 		mutationFn: (id: string) => notificationsService.markRead(id, true),
-		onSuccess: async () => {
-			await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: ["notifications"] });
 		},
 	});
 
 	const markAllReadMutation = useMutation({
 		mutationFn: () => notificationsService.markAllRead(),
-		onSuccess: async () => {
-			await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: ["notifications"] });
 		},
 	});
 

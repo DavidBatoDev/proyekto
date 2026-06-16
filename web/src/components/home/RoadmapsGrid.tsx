@@ -120,8 +120,8 @@ export function RoadmapsGrid() {
 
 	const deleteRoadmapMutation = useMutation({
 		mutationFn: (roadmapId: string) => deleteRoadmap(roadmapId),
-		onSuccess: async () => {
-			await queryClient.invalidateQueries({
+		onSuccess: () => {
+			void queryClient.invalidateQueries({
 				queryKey: ["dashboard", "roadmaps-preview"],
 			});
 		},

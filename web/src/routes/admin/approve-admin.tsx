@@ -194,8 +194,8 @@ function ApproveAdminPage() {
         access_level: payload.accessLevel,
         department: payload.department,
       }),
-    onSuccess: async () => {
-      await Promise.all([
+    onSuccess: () => {
+      void Promise.all([
         qc.invalidateQueries({ queryKey: ["adminAdmins"] }),
         qc.invalidateQueries({ queryKey: ["adminUsers"] }),
       ]);
@@ -208,8 +208,8 @@ function ApproveAdminPage() {
 
   const revokeAdmin = useMutation({
     mutationFn: (userId: string) => adminService.revokeAdmin(userId),
-    onSuccess: async () => {
-      await Promise.all([
+    onSuccess: () => {
+      void Promise.all([
         qc.invalidateQueries({ queryKey: ["adminAdmins"] }),
         qc.invalidateQueries({ queryKey: ["adminUsers"] }),
       ]);

@@ -108,9 +108,9 @@ function NotificationsPage() {
 
   const markReadMutation = useMutation({
     mutationFn: (id: string) => notificationsService.markRead(id, true),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      await queryClient.invalidateQueries({
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      void queryClient.invalidateQueries({
         queryKey: ["notifications", "unread-count"],
       });
     },
@@ -118,9 +118,9 @@ function NotificationsPage() {
 
   const markAllMutation = useMutation({
     mutationFn: () => notificationsService.markAllRead(),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      await queryClient.invalidateQueries({
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      void queryClient.invalidateQueries({
         queryKey: ["notifications", "unread-count"],
       });
     },
@@ -128,9 +128,9 @@ function NotificationsPage() {
 
   const removeMutation = useMutation({
     mutationFn: (id: string) => notificationsService.deleteOne(id),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      await queryClient.invalidateQueries({
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      void queryClient.invalidateQueries({
         queryKey: ["notifications", "unread-count"],
       });
     },

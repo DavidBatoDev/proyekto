@@ -39,8 +39,8 @@ function FreelancerInvitesPage() {
       inviteId: string;
       status: "accepted" | "declined";
     }) => projectService.respondInvite(inviteId, status),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
         queryKey: ["projects", "my-invites"],
       });
     },

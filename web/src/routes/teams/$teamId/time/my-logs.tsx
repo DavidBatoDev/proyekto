@@ -263,9 +263,9 @@ function MyLogsTab() {
 				due_date: taskData.due_date || undefined,
 			});
 		},
-		onSuccess: async (created) => {
+		onSuccess: (created) => {
 			toast.success("Task created");
-			await qc.invalidateQueries({
+			void qc.invalidateQueries({
 				queryKey: ["team-time", teamId, "project-tasks", addProjectId],
 			});
 			setAddTaskId(created.id);

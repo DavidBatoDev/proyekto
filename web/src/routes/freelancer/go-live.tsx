@@ -289,9 +289,9 @@ function FreelancerGoLivePage() {
 
   const addPortfolioMutation = useMutation({
     mutationFn: profileService.addPortfolio.bind(profileService),
-    onSuccess: async () => {
+    onSuccess: () => {
       if (!user?.id) return;
-      await qc.invalidateQueries({ queryKey: profileKeys.full(user.id) });
+      void qc.invalidateQueries({ queryKey: profileKeys.full(user.id) });
       setPortfolioModalOpen(false);
       setEditingPortfolio(null);
     },
@@ -300,9 +300,9 @@ function FreelancerGoLivePage() {
   const updatePortfolioMutation = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: any }) =>
       profileService.updatePortfolio(id, payload),
-    onSuccess: async () => {
+    onSuccess: () => {
       if (!user?.id) return;
-      await qc.invalidateQueries({ queryKey: profileKeys.full(user.id) });
+      void qc.invalidateQueries({ queryKey: profileKeys.full(user.id) });
       setPortfolioModalOpen(false);
       setEditingPortfolio(null);
     },
@@ -310,9 +310,9 @@ function FreelancerGoLivePage() {
 
   const deletePortfolioMutation = useMutation({
     mutationFn: profileService.deletePortfolio.bind(profileService),
-    onSuccess: async () => {
+    onSuccess: () => {
       if (!user?.id) return;
-      await qc.invalidateQueries({ queryKey: profileKeys.full(user.id) });
+      void qc.invalidateQueries({ queryKey: profileKeys.full(user.id) });
       if (featuredPortfolioId) {
         const next = sortedPortfolios.find((p) => p.id !== featuredPortfolioId);
         setFeaturedPortfolioId(next?.id || "");
@@ -348,10 +348,10 @@ function FreelancerGoLivePage() {
       }
       return profileService.goLive();
     },
-    onSuccess: async () => {
+    onSuccess: () => {
       setShowSuccessModal(true);
       if (!user?.id) return;
-      await qc.invalidateQueries({ queryKey: profileKeys.full(user.id) });
+      void qc.invalidateQueries({ queryKey: profileKeys.full(user.id) });
     },
   });
 
