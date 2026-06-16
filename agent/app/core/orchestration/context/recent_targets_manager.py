@@ -268,6 +268,7 @@ def record_recent_targets_from_preview(
     if not isinstance(changes, list):
         return
 
+    removed_ids: set[str] = set()
     for change in changes[:80]:
         if not isinstance(change, dict):
             continue
@@ -280,6 +281,16 @@ def record_recent_targets_from_preview(
             or to_payload.get('id')
             or to_payload.get('node_id')
         )
+        # A removed node's id is now dead — never seed it as a recent target,
+        # and remember it so any existing cache entry can be pruned below.
+        # Otherwise a later turn can bind a title/deictic reference to the
+        # stale id and the commit fails with "Target node was not found".
+        if str(change.get('type') or '').upper() == 'NODE_REMOVED':
+            normalized_removed = str(node_id or '').strip()
+            if normalized_removed:
+                removed_ids.add(normalized_removed)
+            continue
+
         node_type = (
             node_payload.get('type')
             or node_payload.get('node_type')
@@ -300,3 +311,25 @@ def record_recent_targets_from_preview(
             label=title,
             source=source,
         )
+
+    if removed_ids:
+        prune_recent_targets_by_node_ids(session, removed_ids)
+
+
+def prune_recent_targets_by_node_ids(
+    session: AgentSession, node_ids: set[str]
+) -> None:
+    """Drop recent-resolved-target entries whose node_id was removed, so a
+    deleted node's stale id can never be served deictically on a later turn."""
+    if not node_ids:
+        return
+    targets = session.metadata.recent_resolved_targets
+    if not isinstance(targets, list) or not targets:
+        return
+    kept = [
+        target
+        for target in targets
+        if str(getattr(target, 'node_id', '') or '').strip() not in node_ids
+    ]
+    if len(kept) != len(targets):
+        session.metadata.recent_resolved_targets = kept
