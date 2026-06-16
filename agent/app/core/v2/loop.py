@@ -21,10 +21,15 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.core.contracts.sessions import ChangeGroup
 from app.core.tools.registry import PLANNING_TOOL_NAME
-from app.core.v2 import progress, tools_exec, tools_spec
+from app.core.v2 import progress, revert, tools_exec, tools_spec
 from app.core.v2.openai_client import LLMResponse, ToolCall
-from app.core.v2.tools_spec import ASK_USER_TOOL_NAME, PROPOSE_PLAN_TOOL_NAME
+from app.core.v2.tools_spec import (
+    ASK_USER_TOOL_NAME,
+    PROPOSE_PLAN_TOOL_NAME,
+    REVERT_CHANGES_TOOL_NAME,
+)
 
 logger = logging.getLogger('app.core.v2')
 
@@ -135,6 +140,7 @@ def run_loop(
                     pending_plan_titles=pending_plan_titles or frozenset(),
                     live_epic_titles=live_epic_titles,
                     actor_id=actor_id,
+                    change_history=session_context.get('change_history'),
                 )
                 if isinstance(outcome, LoopResult):
                     outcome.used_read_tools = used_read_tools
@@ -213,8 +219,12 @@ def _handle_terminal(
     pending_plan_titles: frozenset[str] = frozenset(),
     live_epic_titles: frozenset[str] = frozenset(),
     actor_id: str | None = None,
+    change_history: list[dict[str, Any]] | None = None,
 ) -> LoopResult | dict[str, Any]:
     progress.tool_requested(settings, trace_id, tc.name, tc.arguments)
+
+    if tc.name == REVERT_CHANGES_TOOL_NAME:
+        return _handle_revert(tc, change_history, handle_map, actor_id)
 
     if tc.name == PLANNING_TOOL_NAME:
         parsed = tools_exec.interpret_plan_tool(tc.arguments, handle_map, actor_id)
@@ -331,6 +341,104 @@ def _handle_terminal(
         )
 
     return {'error': {'code': 'UNKNOWN_TERMINAL', 'message': f'Unknown terminal {tc.name}.'}}
+
+
+def _handle_revert(
+    tc: ToolCall,
+    change_history: list[dict[str, Any]] | None,
+    handle_map: dict[str, dict[str, str]] | None,
+    actor_id: str | None,
+) -> LoopResult | dict[str, Any]:
+    """Deterministically undo a range of committed changes.
+
+    Selects the range (latest, or back to a given change_id), builds the net
+    inverse operations, and routes them through the same validation/commit path
+    as a normal edit. Nothing-to-do cases return a chat reply.
+    """
+    groups = _parse_change_groups(change_history)
+    if not groups:
+        return LoopResult(
+            kind='chat',
+            assistant_message="There aren't any recent changes for me to revert.",
+            terminal_tool=tc.name,
+            termination_reason='revert_noop',
+        )
+
+    raw_change_id = tc.arguments.get('change_id')
+    change_id = (
+        raw_change_id.strip()
+        if isinstance(raw_change_id, str) and raw_change_id.strip()
+        else None
+    )
+
+    selected = revert.select_revert_range(groups, change_id)
+    if not selected:
+        return LoopResult(
+            kind='chat',
+            assistant_message=(
+                "I couldn't find that change to revert back to — tell me which "
+                'change you mean and I\'ll undo back to it.'
+            ),
+            terminal_tool=tc.name,
+            termination_reason='revert_unknown_change',
+        )
+
+    operations = revert.build_inverse_operations(selected)
+    if not operations:
+        return LoopResult(
+            kind='chat',
+            assistant_message="Those changes cancel out — there's nothing to undo.",
+            terminal_tool=tc.name,
+            termination_reason='revert_empty',
+        )
+
+    parsed = tools_exec.interpret_plan_tool(
+        {'operations': operations, 'assistant_message': _revert_message(selected)},
+        handle_map,
+        actor_id,
+    )
+    if isinstance(parsed, tools_exec.PlanToolError):
+        return {'error': {'code': 'REVERT_BUILD_FAILED', 'message': parsed.message}}
+    if not parsed.operations:
+        return LoopResult(
+            kind='chat',
+            assistant_message="There's nothing to undo.",
+            terminal_tool=tc.name,
+            termination_reason='revert_empty',
+        )
+    return LoopResult(
+        kind='edit',
+        assistant_message=parsed.assistant_message,
+        operations=parsed.operations,
+        terminal_tool=tc.name,
+        termination_reason='revert',
+    )
+
+
+def _parse_change_groups(raw: list[dict[str, Any]] | None) -> list[ChangeGroup]:
+    if not isinstance(raw, list):
+        return []
+    groups: list[ChangeGroup] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        try:
+            groups.append(ChangeGroup.model_validate(item))
+        except Exception:  # noqa: BLE001 — a malformed entry shouldn't kill revert
+            continue
+    return groups
+
+
+def _revert_message(selected: list[ChangeGroup]) -> str:
+    """One-line confirmation. ``selected`` is most-recent-first; the oldest in
+    the range is the point we're rewinding to."""
+    if len(selected) == 1:
+        summary = (selected[0].summary or '').strip()
+        return f'Reverted: {summary}.' if summary else 'Reverted the last change.'
+    target = (selected[-1].summary or '').strip()
+    if target:
+        return f'Reverted the last {len(selected)} changes, back to before "{target}".'
+    return f'Reverted the last {len(selected)} changes.'
 
 
 def _looks_like_question(text: str) -> bool:

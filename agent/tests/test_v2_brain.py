@@ -123,6 +123,40 @@ class V2CompactStatePendingPlanTests(unittest.TestCase):
         self.assertIn('- Task: Send reset email', state)
         self.assertIn('stage operations that create EVERY item', state)
 
+    def test_recent_changes_block_renders_history(self):
+        from app.core.v2.context import compact_state
+
+        session = _v2_session()
+        session_context = {
+            'roadmap_overview_summary': 'Roadmap: 1 epic',
+            'change_history': [
+                {
+                    'change_id': 'chg-2',
+                    'summary': 'Deleted 1 epic, 1 feature',
+                    'committed_at': '2026-06-16T10:13:00',
+                    'changes': [
+                        {'node_id': 'e1', 'node_type': 'epic',
+                         'change_type': 'NODE_REMOVED', 'title': 'Epic 1'},
+                        {'node_id': 'f1', 'node_type': 'feature',
+                         'change_type': 'NODE_REMOVED', 'title': 'Feature 1'},
+                    ],
+                },
+                {
+                    'change_id': 'chg-1',
+                    'summary': "Renamed epic 'Old' → 'New'",
+                    'committed_at': '2026-06-16T10:10:00',
+                    'changes': [],
+                },
+            ],
+        }
+        state = compact_state(session, session_context)
+        self.assertIn('# Recent changes (revertible — newest first)', state)
+        self.assertIn('change_id: chg-2', state)
+        self.assertIn('change_id: chg-1', state)
+        # Newest group gets a node breakdown; deleted items are labelled.
+        self.assertIn('deleted epic "Epic 1"', state)
+        self.assertIn('deleted feature "Feature 1"', state)
+
 
 if __name__ == '__main__':
     unittest.main()

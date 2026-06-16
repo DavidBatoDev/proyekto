@@ -5,6 +5,7 @@ from app.core.orchestration.context.applied_changes_log import (
     MAX_APPLIED_CHANGES,
     format_recent_applied_changes,
     record_applied_changes_from_commit,
+    summarize_change_group,
 )
 
 
@@ -205,6 +206,30 @@ class FormatRecentAppliedChangesTests(unittest.TestCase):
     def test_returns_none_for_empty(self) -> None:
         self.assertIsNone(format_recent_applied_changes([]))
         self.assertIsNone(format_recent_applied_changes(None))
+
+
+class SummarizeChangeGroupTests(unittest.TestCase):
+    def test_single_change_strips_node_id(self) -> None:
+        summary = summarize_change_group([
+            AppliedChange(
+                node_id='epic-1', node_type='epic', change_type='TITLE_CHANGED',
+                change_from={'title': 'Old'}, change_to={'title': 'New'}, title='New',
+            ),
+        ])
+        self.assertEqual(summary, 'Renamed epic "Old" → "New"')
+        self.assertNotIn('id:', summary)
+
+    def test_multiple_changes_group_counts(self) -> None:
+        changes = [
+            AppliedChange(node_id=f'e-{i}', node_type='epic',
+                          change_type='NODE_REMOVED', change_from={}, title=f'E{i}')
+            for i in range(2)
+        ] + [
+            AppliedChange(node_id=f'f-{i}', node_type='feature',
+                          change_type='NODE_REMOVED', change_from={}, title=f'F{i}')
+            for i in range(3)
+        ]
+        self.assertEqual(summarize_change_group(changes), 'Deleted 2 epics, 3 features')
 
     def test_falls_back_to_untitled_when_missing(self) -> None:
         changes = [

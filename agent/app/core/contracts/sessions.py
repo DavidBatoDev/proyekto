@@ -144,6 +144,25 @@ class AppliedChange(BaseModel):
     change_id: str | None = None
 
 
+class ChangeGroup(BaseModel):
+    """All committed changes from a single commit, grouped for point-in-time
+    revert.
+
+    Each successful auto-commit appends one ChangeGroup to
+    ``SessionMetadata.change_history`` (most recent first). Unlike the rolling
+    ``recent_applied_changes`` log (capped + flattened across commits), a group
+    holds the FULL change set of its commit so a multi-node delete is fully
+    reversible. ``summary`` (the commit's assistant_message or a diff synopsis)
+    lets the model map a natural-language reference ("before I did X") to a
+    ``change_id``; revert composes the net inverse over a range of groups.
+    """
+
+    change_id: str | None = None
+    committed_at: datetime = Field(default_factory=_utcnow)
+    summary: str = ''
+    changes: list[AppliedChange] = Field(default_factory=list)
+
+
 class PendingEditContext(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -406,6 +425,11 @@ class SessionMetadata(BaseModel):
     # ``roadmap_overview_summary`` on auto-commit.
     roadmap_handle_map: dict[str, dict[str, str]] = Field(default_factory=dict)
     recent_applied_changes: list[AppliedChange] = Field(default_factory=list)
+    # Per-commit change groups (most recent first), for point-in-time revert.
+    # Each commit appends one group; capped at MAX_CHANGE_GROUPS. Rides the
+    # durable agent-state snapshot (older groups trimmed first under the size
+    # cap) so revert survives Redis expiry.
+    change_history: list[ChangeGroup] = Field(default_factory=list)
     # Rolling summary of turns folded out of `session.messages` by the
     # compaction pass (see app/core/v2/summarizer.py). Rides the durable
     # agent-state snapshot so it survives Redis expiry.

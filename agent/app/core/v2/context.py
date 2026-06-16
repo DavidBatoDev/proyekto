@@ -127,6 +127,15 @@ def compact_state(session: AgentSession, session_context: dict[str, Any]) -> str
     if recent:
         blocks.append('# Recently resolved items (you may reference these)\n' + recent)
 
+    change_history = _change_history(session_context)
+    if change_history:
+        blocks.append(
+            '# Recent changes (revertible — newest first)\n'
+            '(Call revert_changes to undo the latest change, or '
+            'revert_changes with a change_id below to undo back to that point — '
+            'that change and every newer one are undone.)\n' + change_history
+        )
+
     role = session_context.get('roadmap_role')
     if isinstance(role, str) and role:
         blocks.append(f'# Actor\nYou are assisting a roadmap {role}.')
@@ -184,6 +193,54 @@ def _pending_plan_outline(plan: dict[str, Any]) -> str:
                     continue
                 lines.append(f'    - Task: {task_title}')
     return '\n'.join(lines)
+
+
+def _change_history(session_context: dict[str, Any]) -> str:
+    """Render the per-commit change history (newest first) so the model can map
+    a natural-language reference ("before I did X") to a change_id. The latest
+    group also gets a hierarchical node breakdown (parent → child) so the model
+    can answer "what did you just change?" precisely."""
+    groups = session_context.get('change_history') or []
+    lines: list[str] = []
+    for index, group in enumerate(groups[:10]):
+        if not isinstance(group, dict):
+            continue
+        summary = str(group.get('summary') or '').strip() or 'Changes committed'
+        change_id = group.get('change_id')
+        committed_at = str(group.get('committed_at') or '').strip()
+        header = f'{index + 1}. {summary}'
+        meta: list[str] = []
+        if change_id:
+            meta.append(f'change_id: {change_id}')
+        if committed_at:
+            meta.append(committed_at)
+        if meta:
+            header += f' ({"; ".join(meta)})'
+        lines.append(header)
+        # Node breakdown for the most recent group only — enough for "what did
+        # you just change?" without bloating the prompt for older groups.
+        if index == 0:
+            for detail in _change_group_node_lines(group):
+                lines.append('   ' + detail)
+    return '\n'.join(lines)
+
+
+def _change_group_node_lines(group: dict[str, Any]) -> list[str]:
+    changes = group.get('changes') or []
+    out: list[str] = []
+    for change in changes[:25]:
+        if not isinstance(change, dict):
+            continue
+        change_type = str(change.get('change_type') or '').upper()
+        node_type = str(change.get('node_type') or 'item')
+        title = str(change.get('title') or '(untitled)')
+        verb = {
+            'NODE_ADDED': 'created',
+            'NODE_REMOVED': 'deleted',
+            'NODE_MOVED': 'moved',
+        }.get(change_type, 'edited')
+        out.append(f'- {verb} {node_type} "{title}"')
+    return out
 
 
 def _recent_targets(session_context: dict[str, Any]) -> str:

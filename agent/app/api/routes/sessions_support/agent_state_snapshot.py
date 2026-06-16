@@ -35,6 +35,7 @@ _MEMORY_FIELDS = (
     'pending_context_resolution',
     'recent_resolved_targets',
     'recent_applied_changes',
+    'change_history',
     'applied_change_ids',
     'conversation_summary',
     'conversation_summary_folded_count',
@@ -66,6 +67,15 @@ def build_agent_state_snapshot(session: AgentSession) -> dict[str, Any] | None:
     applied = snapshot.get('recent_applied_changes')
     if isinstance(applied, list) and len(applied) > 5:
         snapshot['recent_applied_changes'] = applied[:5]
+    # change_history (full per-node snapshots, newest first) is the heaviest
+    # field — keep progressively fewer of the most recent groups. The latest
+    # group is the common "undo that" target, so keep at least one if we can.
+    for keep in (5, 2, 1):
+        if _snapshot_bytes(snapshot) <= MAX_SNAPSHOT_BYTES:
+            break
+        history = snapshot.get('change_history')
+        if isinstance(history, list) and len(history) > keep:
+            snapshot['change_history'] = history[:keep]
     if _snapshot_bytes(snapshot) > MAX_SNAPSHOT_BYTES:
         targets = snapshot.get('recent_resolved_targets')
         if isinstance(targets, list) and len(targets) > 10:

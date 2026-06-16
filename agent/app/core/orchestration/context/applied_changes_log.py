@@ -10,21 +10,34 @@ messages.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any
 
-from app.core.contracts.sessions import AgentSession, AppliedChange
+from app.core.contracts.sessions import AgentSession, AppliedChange, ChangeGroup
+
+# Matches the " (id: <node_id>)" suffix the shared line formatter appends.
+_ID_SUFFIX_RE = re.compile(r'\s*\(id:[^)]*\)\s*$')
 
 MAX_APPLIED_CHANGES = 10
+# How many per-commit change groups to retain for point-in-time revert. The
+# rolling `recent_applied_changes` log above stays capped/flattened for the
+# prompt; this keeps each commit's FULL change set so a large delete is fully
+# reversible back to any of the last MAX_CHANGE_GROUPS commits.
+MAX_CHANGE_GROUPS = 20
 
 
 def record_applied_changes_from_commit(
     session: AgentSession,
     commit_result: dict[str, Any],
     max_entries: int = MAX_APPLIED_CHANGES,
+    *,
+    summary: str | None = None,
 ) -> int:
     """Append entries from `semantic_diff.changes` onto the session, capped
-    at `max_entries`, most recent first. Returns the number of entries added.
+    at `max_entries`, most recent first. Also appends one ChangeGroup holding
+    the commit's FULL change set to `change_history` for point-in-time revert.
+    Returns the number of entries added.
     """
     semantic_diff = commit_result.get('semantic_diff')
     if not isinstance(semantic_diff, dict):
@@ -53,7 +66,82 @@ def record_applied_changes_from_commit(
     existing = session.metadata.recent_applied_changes or []
     combined = new_entries + list(existing)
     session.metadata.recent_applied_changes = combined[: max(0, int(max_entries))]
+
+    _append_change_group(
+        session,
+        change_id=change_id,
+        committed_at=committed_at,
+        changes=new_entries,
+        summary=summary,
+    )
     return len(new_entries)
+
+
+def _append_change_group(
+    session: AgentSession,
+    *,
+    change_id: str | None,
+    committed_at: datetime,
+    changes: list[AppliedChange],
+    summary: str | None,
+) -> None:
+    """Prepend a ChangeGroup for this commit, most recent first, capped."""
+    group = ChangeGroup(
+        change_id=change_id,
+        committed_at=committed_at,
+        summary=(summary or '').strip() or summarize_change_group(changes),
+        # Copy so later mutation of the rolling log can't alias these.
+        changes=[change.model_copy(deep=True) for change in changes],
+    )
+    history = session.metadata.change_history or []
+    session.metadata.change_history = [group, *history][:MAX_CHANGE_GROUPS]
+
+
+# Verbs for the change-group synopsis, keyed by change_type. Field-level edits
+# collapse to a generic "Edited" since the group line is a one-liner; the
+# per-node breakdown in the prompt block carries the detail.
+_CHANGE_VERBS: dict[str, str] = {
+    'NODE_ADDED': 'Created',
+    'NODE_REMOVED': 'Deleted',
+    'NODE_MOVED': 'Moved',
+}
+
+
+def summarize_change_group(changes: list[AppliedChange]) -> str:
+    """One-line, deterministic synopsis of a commit's changes so the model can
+    map a natural-language reference ("before I did X") to a change_id.
+
+    Single change → "Renamed epic 'Foo' → 'Bar'". Multiple → grouped counts:
+    "Deleted 2 epics, 3 features, 4 tasks; created 1 epic".
+    """
+    if not changes:
+        return 'No changes'
+    if len(changes) == 1:
+        line = _format_change_line(1, changes[0]).split('. ', 1)[-1]
+        # The shared formatter appends "(id: <uuid>)"; the synopsis is shown to
+        # the user (revert confirmations), so strip the id — titles only.
+        return _ID_SUFFIX_RE.sub('', line).strip()
+
+    # verb -> {node_type -> count}, preserving first-seen verb order.
+    buckets: dict[str, dict[str, int]] = {}
+    for change in changes:
+        verb = _CHANGE_VERBS.get((change.change_type or '').upper(), 'Edited')
+        node_type = change.node_type or 'item'
+        buckets.setdefault(verb, {}).setdefault(node_type, 0)
+        buckets[verb][node_type] += 1
+
+    clauses: list[str] = []
+    for verb, by_type in buckets.items():
+        parts = [
+            f'{count} {node_type}{"s" if count != 1 else ""}'
+            for node_type, count in by_type.items()
+        ]
+        clauses.append(f'{verb} {", ".join(parts)}')
+    # Capitalize only the first clause's verb; the rest read as lowercase joins.
+    head, *tail = clauses
+    if tail:
+        return head + '; ' + '; '.join(c[0].lower() + c[1:] for c in tail)
+    return head
 
 
 def _parse_change_entry(

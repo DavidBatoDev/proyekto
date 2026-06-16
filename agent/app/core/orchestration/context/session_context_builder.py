@@ -90,6 +90,10 @@ def build_session_context(
             change.model_dump(mode='json', exclude_none=True)
             for change in session.metadata.recent_applied_changes
         ],
+        'change_history': [
+            group.model_dump(mode='json', exclude_none=True)
+            for group in session.metadata.change_history
+        ],
         'pending_plan': (
             session.metadata.pending_plan.model_dump(mode='json', exclude_none=True)
             if (

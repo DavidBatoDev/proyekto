@@ -27,6 +27,7 @@ PROPOSE_PLAN_TOOL_NAME = 'propose_plan'
 ASK_USER_TOOL_NAME = 'ask_user'
 SAVE_MEMORY_TOOL_NAME = 'save_memory'
 FORGET_MEMORY_TOOL_NAME = 'forget_memory'
+REVERT_CHANGES_TOOL_NAME = 'revert_changes'
 
 # Read tools are non-terminal: the model uses them to gather facts, results
 # are fed back, and the loop continues.
@@ -42,7 +43,12 @@ DISPATCHER_TOOL_NAMES = READ_TOOL_NAMES | MEMORY_TOOL_NAMES
 
 # Terminal tools end the turn.
 TERMINAL_TOOL_NAMES = frozenset(
-    {PLANNING_TOOL_NAME, PROPOSE_PLAN_TOOL_NAME, ASK_USER_TOOL_NAME}
+    {
+        PLANNING_TOOL_NAME,
+        PROPOSE_PLAN_TOOL_NAME,
+        ASK_USER_TOOL_NAME,
+        REVERT_CHANGES_TOOL_NAME,
+    }
 )
 
 
@@ -71,6 +77,7 @@ def build_tools(*, has_pending_plan: bool = False) -> list[dict[str, Any]]:
         ask_user_tool(),
         save_memory_tool(),
         forget_memory_tool(),
+        revert_changes_tool(),
     ]
 
 
@@ -122,6 +129,40 @@ def forget_memory_tool() -> dict[str, Any]:
                 'required': ['memory_id'],
                 'properties': {
                     'memory_id': {'type': 'string'},
+                },
+            },
+        },
+    }
+
+
+def revert_changes_tool() -> dict[str, Any]:
+    return {
+        'type': 'function',
+        'function': {
+            'name': REVERT_CHANGES_TOOL_NAME,
+            'description': (
+                'Undo committed roadmap changes, restoring the exact prior state '
+                '(deleted items come back with their original structure and '
+                'fields; created items are removed; edits are reverted). With no '
+                'argument, undoes the most recent change. To undo back to an '
+                'earlier point ("revert everything I did before X"), pass the '
+                'change_id of that earlier change from the "# Recent changes" '
+                'section — every change committed at or after it is undone. If '
+                'you cannot tell which point the user means, ask first with '
+                'ask_user instead of guessing.'
+            ),
+            'parameters': {
+                'type': 'object',
+                'required': [],
+                'properties': {
+                    'change_id': {
+                        'type': 'string',
+                        'description': (
+                            'Optional. The change_id from "# Recent changes" to '
+                            'revert back to (that change and all newer ones are '
+                            'undone). Omit to undo only the most recent change.'
+                        ),
+                    },
                 },
             },
         },
