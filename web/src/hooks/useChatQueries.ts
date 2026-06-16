@@ -95,11 +95,13 @@ export function useSendChannelMessageMutation(projectId: string) {
         | { room_id: string; content: string }
         | { slug?: "general"; content: string },
     ) => chatService.sendChannelMessage(projectId, payload),
-    onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
-      await queryClient.invalidateQueries({
-        queryKey: chatKeys.roomMessages(result.room.id),
-      });
+    // Keep `isPending` tied to the POST only. The thread already shows the
+    // optimistic message and realtime reconciles it, so we refresh the room
+    // list without awaiting and skip the redundant thread refetch — this
+    // unlocks the composer the moment the server responds instead of after two
+    // refetches complete.
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
     },
   });
 }
@@ -114,11 +116,10 @@ export function useSendDmMessageMutation() {
         | { room_id: string; content: string }
         | { recipient_id: string; content: string },
     ) => chatService.sendDmMessage(payload),
-    onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: chatKeys.dmRooms() });
-      await queryClient.invalidateQueries({
-        queryKey: chatKeys.roomMessages(result.room.id),
-      });
+    // See useSendChannelMessageMutation: non-blocking refresh so the composer
+    // unlocks on POST completion; realtime handles thread reconciliation.
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.dmRooms() });
     },
   });
 }

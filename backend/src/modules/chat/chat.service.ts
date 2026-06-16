@@ -224,12 +224,15 @@ export class ChatService {
     }
 
     let room: ChatRoom;
+    // Whether the sender is already (or just became) a room participant, so the
+    // hot path can skip a redundant membership read.
+    let senderIsParticipant = false;
+
     if (dto.room_id) {
       const existing = await this.chatRepo.findRoomById(dto.room_id);
       if (!existing || existing.type !== 'channel' || existing.project_id !== projectId) {
         throw new NotFoundException('Chat room not found.');
       }
-      await this.ensureChannelMembership(existing, senderId);
       room = existing;
     } else {
       const slug = (dto.slug || 'general').trim().toLowerCase();
@@ -242,17 +245,24 @@ export class ChatService {
         slug: 'general',
         name: 'General',
       });
-      const participantIds = await this.chatRepo.listProjectParticipantUserIds(projectId);
+      const participantIds =
+        await this.chatRepo.listProjectParticipantUserIds(projectId);
       await this.chatRepo.upsertParticipants(room.id, projectId, participantIds);
-      await this.chatRepo.upsertParticipants(room.id, projectId, [senderId]);
+      senderIsParticipant = participantIds.includes(senderId);
     }
 
-    const isParticipant = await this.chatRepo.isRoomParticipant(room.id, senderId);
-    if (!isParticipant) {
-      throw new MissingPermissionException({
-        path: 'chat.view_channels',
-        message: 'You are not a participant in this room.',
-      });
+    // assertProjectAccess above already confirmed the sender is a project
+    // member, so for a channel we just need them joined to the room (that is
+    // what surfaces it in their sidebar). One read + conditional join instead
+    // of the previous duplicate membership/participant round-trips.
+    if (!senderIsParticipant) {
+      const alreadyParticipant = await this.chatRepo.isRoomParticipant(
+        room.id,
+        senderId,
+      );
+      if (!alreadyParticipant) {
+        await this.chatRepo.upsertParticipants(room.id, projectId, [senderId]);
+      }
     }
 
     const message = await this.chatRepo.createMessage({
