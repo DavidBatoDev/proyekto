@@ -75,6 +75,15 @@ export interface ChatRepository {
   listProjectParticipantUserIds(projectId: string): Promise<string[]>;
   usersShareAnyProject(userA: string, userB: string): Promise<boolean>;
   findRoomById(roomId: string): Promise<ChatRoom | null>;
+  /**
+   * Single-query lookup that returns the room only if `userId` is a
+   * participant of it. Collapses the separate "find room" + "is participant"
+   * round-trips into one on the message-send hot path.
+   */
+  findRoomForParticipant(
+    roomId: string,
+    userId: string,
+  ): Promise<ChatRoom | null>;
   findChannelBySlug(
     projectId: string,
     slug: string,

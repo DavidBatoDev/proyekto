@@ -68,6 +68,13 @@ jobs:
             echo "Cloudflare runtime purge disabled (missing CLOUDFLARE_ZONE_ID or CLOUDFLARE_PURGE_API_TOKEN secret)."
           fi
 
+          if gcloud secrets describe SUPABASE_JWT_SECRET --project="${{ vars.GCP_PROJECT_ID }}" >/dev/null 2>&1; then
+            SECRETS="${SECRETS},SUPABASE_JWT_SECRET=SUPABASE_JWT_SECRET:latest"
+            echo "Local JWT verification enabled (SUPABASE_JWT_SECRET secret present)."
+          else
+            echo "SUPABASE_JWT_SECRET secret not found — auth guard will use network fallback."
+          fi
+
           gcloud run deploy "${{ vars.GCP_SERVICE_NAME }}" \
             --image="$IMAGE" \
             --region="${{ vars.GCP_REGION }}" \

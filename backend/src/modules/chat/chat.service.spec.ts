@@ -24,6 +24,7 @@ describe('ChatService', () => {
       listProjectParticipantUserIds: jest.fn().mockResolvedValue([]),
       usersShareAnyProject: jest.fn().mockResolvedValue(true),
       findRoomById: jest.fn().mockResolvedValue(null),
+      findRoomForParticipant: jest.fn().mockResolvedValue(null),
       findChannelBySlug: jest.fn().mockResolvedValue(null),
       findDmBySlug: jest.fn().mockResolvedValue(null),
       upsertChannel: jest.fn().mockResolvedValue(

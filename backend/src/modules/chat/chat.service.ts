@@ -289,12 +289,12 @@ export class ChatService {
 
     let room: ChatRoom;
     if (dto.room_id) {
-      const existing = await this.chatRepo.findRoomById(dto.room_id);
+      // One round-trip: resolves the room and confirms participation together.
+      const existing = await this.chatRepo.findRoomForParticipant(
+        dto.room_id,
+        senderId,
+      );
       if (!existing || existing.type !== 'dm') {
-        throw new NotFoundException('Chat room not found.');
-      }
-      const isParticipant = await this.chatRepo.isRoomParticipant(existing.id, senderId);
-      if (!isParticipant) {
         throw new MissingPermissionException({
           path: 'chat.send_dm',
           message: 'You are not a participant in this DM.',

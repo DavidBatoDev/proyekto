@@ -377,6 +377,23 @@ export class SupabaseChatRepository implements ChatRepository {
     return data as ChatRoom;
   }
 
+  async findRoomForParticipant(
+    roomId: string,
+    userId: string,
+  ): Promise<ChatRoom | null> {
+    const { data, error } = await this.supabase
+      .from('chat_room_participants')
+      .select(
+        'room:chat_rooms!inner(id, project_id, type, slug, name, created_at, updated_at)',
+      )
+      .eq('room_id', roomId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return this.pickSingle((data as { room: ChatRoom | ChatRoom[] | null }).room);
+  }
+
   async findChannelBySlug(
     projectId: string,
     slug: string,

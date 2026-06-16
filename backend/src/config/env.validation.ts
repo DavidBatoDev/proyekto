@@ -59,6 +59,14 @@ class EnvironmentVariables {
   @IsString()
   SUPABASE_SERVICE_ROLE_KEY: string;
 
+  // Supabase project JWT secret (Settings > API > JWT Settings). When set, the
+  // auth guard verifies access tokens locally (HS256) instead of making a
+  // network call to GoTrue on every request. Optional: if unset, the guard
+  // falls back to the slower network verification, so auth keeps working.
+  @IsOptional()
+  @IsString()
+  SUPABASE_JWT_SECRET?: string;
+
   @IsOptional()
   @IsString()
   CORS_ORIGINS: string = 'http://localhost:3000,http://localhost:5173';
