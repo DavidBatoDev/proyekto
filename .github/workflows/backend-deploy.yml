@@ -76,6 +76,7 @@ jobs:
             --cpu-boost \
             --service-account="${{ vars.GCP_RUNTIME_SA }}" \
             --allow-unauthenticated \
+            --ingress=all \
             --no-default-url \
             --port=8080 \
             --memory=1Gi \
