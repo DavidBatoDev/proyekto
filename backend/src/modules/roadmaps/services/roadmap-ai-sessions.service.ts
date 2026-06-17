@@ -95,6 +95,13 @@ export class RoadmapAiSessionsService {
         user_id: userId,
         title: dto.title ?? null,
         mode: dto.mode ?? 'chat',
+        // Seed last_message_at with the creation time so a brand-new thread's
+        // "activity time" is non-null from the start. The list orders by
+        // last_message_at DESC NULLS LAST with limit 50, so without this an
+        // empty new thread sinks below every message-bearing thread and, on a
+        // busy roadmap, falls off the limit and never shows in the picker. The
+        // message-insert trigger overwrites this on the first real message.
+        last_message_at: new Date().toISOString(),
       })
       .select('*')
       .single();
