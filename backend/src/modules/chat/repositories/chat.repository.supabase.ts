@@ -521,11 +521,12 @@ export class SupabaseChatRepository implements ChatRepository {
         .from('chat_rooms')
         .select('id, project_id, type, slug, name, created_at, updated_at')
         .in('id', roomIds),
-      this.supabase
-        .from('chat_room_messages')
-        .select('id, room_id, project_id, sender_id, content, created_at, updated_at')
-        .in('room_id', roomIds)
-        .order('created_at', { ascending: false }),
+      // One row per room (the newest) via DISTINCT ON inside
+      // chat_latest_messages_by_room -- avoids pulling every message in every
+      // room just to find the last one. See migration 20260617140000.
+      this.supabase.rpc('chat_latest_messages_by_room', {
+        p_room_ids: roomIds,
+      }),
       this.supabase
         .from('chat_room_participants')
         .select(
