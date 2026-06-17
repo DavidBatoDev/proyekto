@@ -2003,14 +2003,31 @@ export function RoadmapAiAssistantPanel({
 	const handleCreateNewThread = async () => {
 		try {
 			const row = await createAiSession.mutateAsync({});
-			await roadmapAgentService.createSession({
-				session_id: row.id,
-				roadmap_id: roadmapId,
-				base_revision: baseRevision,
-			});
-			agentSessionsInitializedRef.current.add(row.id);
+			// Switch to the new thread the moment its DB row exists. The redirect
+			// must NOT block on the agent's Redis-session warm-up: at
+			// min-instances=0 the agent can cold-start (or fail), and awaiting it
+			// here would hang the UI on a blank new thread with no error -- which is
+			// exactly the "New thread does nothing" bug. The send path
+			// (ensureThread) lazily creates/rehydrates the agent session on the
+			// first message anyway (no-clobber guard), so warming it now is
+			// best-effort.
 			markThreadHydrated(row.id);
 			setActiveThread(roadmapId, row.id);
+			void roadmapAgentService
+				.createSession({
+					session_id: row.id,
+					roadmap_id: roadmapId,
+					base_revision: baseRevision,
+				})
+				.then(() => {
+					agentSessionsInitializedRef.current.add(row.id);
+				})
+				.catch((err) => {
+					console.warn(
+						"[RoadmapAiAssistantPanel] agent createSession warm-up failed",
+						err,
+					);
+				});
 		} catch (err) {
 			const message =
 				err instanceof Error ? err.message : "Failed to create new thread.";
