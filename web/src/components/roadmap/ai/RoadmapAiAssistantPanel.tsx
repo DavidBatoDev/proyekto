@@ -1113,6 +1113,11 @@ export function RoadmapAiAssistantPanel({
 	const queryClient = useQueryClient();
 	const activeThreadId = useActiveRoadmapAiThread(roadmapId);
 	const setActiveThread = useRoadmapAiThreadsStore((s) => s.setActiveThread);
+	// A thread we just created via "New thread" that may not be in the cached
+	// list yet (the backend caches the authed sessions GET, so the post-create
+	// refetch can briefly return a stale list). The reconcile effect must not
+	// evict it, or the UI bounces back to the previously-active thread.
+	const justCreatedThreadRef = useRef<string | null>(null);
 	const {
 		messages,
 		isLoading: isThreadLoading,
@@ -1266,7 +1271,15 @@ export function RoadmapAiAssistantPanel({
 		if (threadsList.isFetching) return;
 		if (activeThreadId) {
 			const stillExists = threads.some((t) => t.id === activeThreadId);
-			if (stillExists) return;
+			if (stillExists) {
+				justCreatedThreadRef.current = null;
+				return;
+			}
+			// Don't evict a thread we just created that hasn't appeared in the
+			// (possibly stale/cached) list yet -- otherwise the UI bounces back to
+			// the previous thread immediately after switching. Cleared above once
+			// the thread shows up in the list.
+			if (justCreatedThreadRef.current === activeThreadId) return;
 			if (threads.length > 0) {
 				setActiveThread(roadmapId, threads[0].id);
 			} else {
@@ -2011,6 +2024,7 @@ export function RoadmapAiAssistantPanel({
 			// (ensureThread) lazily creates/rehydrates the agent session on the
 			// first message anyway (no-clobber guard), so warming it now is
 			// best-effort.
+			justCreatedThreadRef.current = row.id;
 			markThreadHydrated(row.id);
 			setActiveThread(roadmapId, row.id);
 			void roadmapAgentService
