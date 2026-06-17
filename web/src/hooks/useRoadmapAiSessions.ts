@@ -56,7 +56,20 @@ export function useCreateRoadmapAiSession(roadmapId: string) {
   return useMutation({
     mutationFn: (payload: CreateRoadmapAiSessionPayload = {}) =>
       roadmapAiSessionsService.create(roadmapId, payload),
-    onSuccess: () => {
+    onSuccess: (created) => {
+      // Seed the new session into the active-list cache synchronously so the
+      // panel's auto-select reconciliation finds it immediately. Without this,
+      // setActiveThread(newId) runs before the invalidate-triggered refetch
+      // lands; the reconcile effect doesn't see newId in the stale list and
+      // bounces back to threads[0] -- the "New thread flashes then reverts to
+      // the old thread" bug. The refetch below still reconciles server fields.
+      queryClient.setQueryData<RoadmapAiSession[]>(
+        roadmapAiSessionKeys.list(roadmapId, false),
+        (prev) =>
+          prev
+            ? [created, ...prev.filter((s) => s.id !== created.id)]
+            : [created],
+      );
       queryClient.invalidateQueries({
         queryKey: roadmapAiSessionKeys.all(roadmapId),
       });
