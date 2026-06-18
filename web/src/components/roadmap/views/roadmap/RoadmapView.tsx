@@ -1192,6 +1192,27 @@ export const RoadmapView = ({
     ],
   );
 
+  // Snap the canvas to the final laid-out order immediately on an auto-persisted
+  // drop. The reorder store actions apply their `epics` update only after the
+  // request resolves, so without this the working preview would sit frozen at
+  // the dropped position until the network round-trip completes. We show the
+  // settled layout right away and let persistCanvasDrag's finally hand off to
+  // the recomputed nodes once the (identical) committed data lands.
+  const applySettledPreview = useCallback(
+    (reorderedEpics: RoadmapEpic[]) => {
+      const settled = getLayoutedElements(layoutedNodes, edges, reorderedEpics);
+      const settledNodes = nodes.map((n) => {
+        const p = settled.nodes.find((s) => s.id === n.id);
+        return p ? { ...n, position: p.position } : n;
+      });
+      workingNodesRef.current = settledNodes;
+      setWorkingNodes(settledNodes);
+      workingEdgesRef.current = settled.edges;
+      setWorkingEdges(settled.edges);
+    },
+    [nodes, layoutedNodes, edges],
+  );
+
   // Cancelling a pending confirm: tell collaborators the drag was not committed
   // so their held preview reverts to the original order.
   const cancelPendingCanvasDrag = useCallback(() => {
@@ -1326,6 +1347,7 @@ export const RoadmapView = ({
           newEpicOrder,
         };
         if (dontAskEpicReorder) {
+          applySettledPreview(reorderedEpics);
           void persistCanvasDrag(pending);
         } else {
           // Awaiting confirmation — peers keep showing the live preview until
@@ -1368,6 +1390,7 @@ export const RoadmapView = ({
           newFeatureOrder,
         };
         if (dontAskFeatureReorder) {
+          applySettledPreview(reorderedEpics);
           void persistCanvasDrag(pending);
         } else {
           setPendingCanvasDrag(pending);
@@ -1384,6 +1407,7 @@ export const RoadmapView = ({
           newTargetFeatureOrder,
         };
         if (dontAskFeatureMove) {
+          applySettledPreview(reorderedEpics);
           void persistCanvasDrag(pending);
         } else {
           setPendingCanvasDrag(pending);
@@ -1396,6 +1420,7 @@ export const RoadmapView = ({
       epics,
       clearDragState,
       persistCanvasDrag,
+      applySettledPreview,
       dontAskEpicReorder,
       dontAskFeatureReorder,
       dontAskFeatureMove,
