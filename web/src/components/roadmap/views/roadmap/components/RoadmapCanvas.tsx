@@ -59,13 +59,21 @@ const RoadmapCanvas = ({
   const profile = useAuthStore((s) => s.profile);
   const [isPanningCanvas, setIsPanningCanvas] = useState(false);
 
-  const { collaborators, remoteCursors, trackCursor, broadcastDataChanged } =
-    useRoadmapCollaboration({
-      roadmapId: roadmapProp?.id ?? "",
-      userId: user?.id,
-      profile,
-      isPanningCanvas,
-    });
+  const {
+    collaborators,
+    remoteCursors,
+    remoteDrag,
+    trackCursor,
+    broadcastDataChanged,
+    broadcastNodeDragStart,
+    broadcastNodeDrag,
+    broadcastNodeDragEnd,
+  } = useRoadmapCollaboration({
+    roadmapId: roadmapProp?.id ?? "",
+    userId: user?.id,
+    profile,
+    isPanningCanvas,
+  });
 
   // Broadcast a data_changed event whenever a local mutation settles so
   // collaborators get an immediate notification without relying solely on
@@ -318,6 +326,10 @@ const RoadmapCanvas = ({
             performanceMode={performanceMode}
             remoteCursors={remoteCursors}
             onTrackCursor={trackCursor}
+            remoteDrag={remoteDrag}
+            onBroadcastNodeDragStart={broadcastNodeDragStart}
+            onBroadcastNodeDrag={broadcastNodeDrag}
+            onBroadcastNodeDragEnd={broadcastNodeDragEnd}
             onUpdateEpic={onUpdateEpic}
             onDeleteEpic={handleDeleteEpic}
             onUpdateFeature={onUpdateFeature}

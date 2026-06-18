@@ -48,7 +48,10 @@ import {
 } from "@/hooks/useRecentAssignees";
 import { teamTimeService } from "@/services/team-time.service";
 import { useUser } from "@/stores/authStore";
-import type { RemoteCursor } from "@/hooks/useRoadmapCollaboration";
+import type {
+  RemoteCursor,
+  RemoteDrag,
+} from "@/hooks/useRoadmapCollaboration";
 import { CollaborationCursorsOverlay } from "@/components/roadmap/collaboration/CollaborationCursorsOverlay";
 import { featureFlags } from "@/config/featureFlags";
 
@@ -113,6 +116,21 @@ interface RoadmapViewProps {
   minZoom?: number;
   remoteCursors?: RemoteCursor[];
   onTrackCursor?: (x: number, y: number) => void;
+  /** Active epic/feature drag by another collaborator (live preview). */
+  remoteDrag?: RemoteDrag | null;
+  onBroadcastNodeDragStart?: (p: {
+    nodeId: string;
+    type: "epic" | "feature";
+    sourceEpicId?: string;
+  }) => void;
+  onBroadcastNodeDrag?: (p: {
+    nodeId: string;
+    type: "epic" | "feature";
+    sourceEpicId?: string;
+    x: number;
+    y: number;
+  }) => void;
+  onBroadcastNodeDragEnd?: (nodeId: string, committed: boolean) => void;
   onPanStart?: () => void;
   onPanEnd?: () => void;
   onUpdateEpic: (epic: RoadmapEpic) => void;
@@ -331,6 +349,10 @@ export const RoadmapView = ({
   minZoom = 0.4,
   remoteCursors = [],
   onTrackCursor,
+  remoteDrag,
+  onBroadcastNodeDragStart,
+  onBroadcastNodeDrag,
+  onBroadcastNodeDragEnd,
   onPanStart,
   onPanEnd,
   onUpdateEpic,
@@ -416,6 +438,24 @@ export const RoadmapView = ({
   const [workingEdges, setWorkingEdges] = useState<Edge[] | null>(null);
   // For epic drag: maps featureId → initial Y offset relative to the dragged epic
   const dragStartFeatureRelativeYsRef = useRef<Map<string, number> | null>(null);
+
+  // --- Remote collaborator drag preview (read-only mirror of their reflow) ---
+  const [remoteWorkingNodes, setRemoteWorkingNodes] = useState<Node[] | null>(
+    null,
+  );
+  const [remoteWorkingEdges, setRemoteWorkingEdges] = useState<Edge[] | null>(
+    null,
+  );
+  // Pre-drag snapshot captured when a remote drag begins, mirroring
+  // dragStartNodesRef/dragStartFeatureRelativeYsRef for the local drag.
+  const remoteDragSnapshotRef = useRef<{
+    nodeId: string;
+    nodes: Node[];
+    relativeYs: Map<string, number> | null;
+  } | null>(null);
+  // The terminal remote-drag object already handled, so the commit/cancel
+  // resolution runs exactly once even as the effect re-fires.
+  const handledTerminalRef = useRef<RemoteDrag | null>(null);
   // Original node positions before any drag — used in onNodeDragStop so preview-animated
   // positions of non-dragged nodes don't contaminate the final order calculation
   const dragStartNodesRef = useRef<Node[] | null>(null);
@@ -770,11 +810,14 @@ export const RoadmapView = ({
   // --- Canvas drag helpers ---
 
   const computeReorderedEpics = useCallback(
-    (currentNodes: Node[], _draggedNodeId: string, sourceEpics: RoadmapEpic[]): RoadmapEpic[] => {
+    (
+      currentNodes: Node[],
+      ds: { nodeId: string; type: "epic" | "feature"; sourceEpicId?: string },
+      sourceEpics: RoadmapEpic[],
+    ): RoadmapEpic[] => {
       const epicNodes = currentNodes.filter((n) => n.type === "epicWidget");
       const featureNodes = currentNodes.filter((n) => n.type === "featureWidget");
 
-      const ds = dragStateRef.current;
       if (!ds) return sourceEpics;
 
       if (ds.type === "epic") {
@@ -879,6 +922,226 @@ export const RoadmapView = ({
     [],
   );
 
+  // Shared, deterministic drag-preview builder used by both the local drag
+  // (onNodeDrag) and the remote-collaborator preview, so peers see the exact
+  // same reflow. Pure given its args — the drag state is passed explicitly.
+  const computeDragPreview = useCallback(
+    (args: {
+      ds: { nodeId: string; type: "epic" | "feature"; sourceEpicId?: string };
+      draggedPosition: { x: number; y: number };
+      baseNodes: Node[];
+      originalNodes: Node[];
+      relativeYs: Map<string, number> | null;
+    }): { nodes: Node[]; edges: Edge[] } => {
+      const { ds, draggedPosition, baseNodes, originalNodes, relativeYs } = args;
+
+      const current = baseNodes.map((n) =>
+        n.id === ds.nodeId
+          ? { ...n, position: draggedPosition, zIndex: 1000 }
+          : n,
+      );
+
+      // Pre-drag positions for non-dragged nodes so earlier preview frames
+      // don't corrupt the order calculation.
+      const nodesForOrder = originalNodes.map((n) =>
+        n.id === ds.nodeId ? { ...n, position: draggedPosition } : n,
+      );
+      const reorderedEpics = computeReorderedEpics(nodesForOrder, ds, epics);
+      const { nodes: previewPositioned } = getLayoutedElements(
+        layoutedNodes,
+        edges,
+        reorderedEpics,
+      );
+
+      if (ds.type === "epic") {
+        const epicCurrentY = draggedPosition.y;
+        const updated = current.map((n) => {
+          if (n.id === ds.nodeId) return n; // dragged epic stays under the cursor
+          const relY = relativeYs?.get(n.id);
+          if (relY !== undefined) {
+            return {
+              ...n,
+              zIndex: 999,
+              position: { x: n.position.x, y: epicCurrentY + relY },
+            };
+          }
+          const preview = previewPositioned.find((p) => p.id === n.id);
+          return preview ? { ...n, position: preview.position } : n;
+        });
+        return { nodes: updated, edges };
+      }
+
+      // Feature drag: non-dragged nodes animate to preview positions; the
+      // dragged feature's edge re-points (and dashes) when crossing epics.
+      const updated = current.map((n) => {
+        if (n.id === ds.nodeId) return n;
+        const preview = previewPositioned.find((p) => p.id === n.id);
+        return preview ? { ...n, position: preview.position } : n;
+      });
+
+      const targetEpic = reorderedEpics.find((e) =>
+        e.features?.some((f) => f.id === ds.nodeId),
+      );
+      const closestEpicId = targetEpic?.id ?? null;
+      let updatedEdges = edges;
+      if (closestEpicId) {
+        const isNewEpic = closestEpicId !== ds.sourceEpicId;
+        updatedEdges = edges.map((e) => {
+          if (e.target !== ds.nodeId) return e;
+          return {
+            ...e,
+            id: `epic-feature-${closestEpicId}-${ds.nodeId}`,
+            source: closestEpicId,
+            animated: isNewEpic,
+            style: isNewEpic
+              ? { stroke: "#f59e0b", strokeWidth: 2.5, strokeDasharray: "6,3" }
+              : e.style,
+          };
+        });
+      }
+      return { nodes: updated, edges: updatedEdges };
+    },
+    [computeReorderedEpics, epics, layoutedNodes, edges],
+  );
+
+  // Mirror a remote collaborator's epic/feature drag by re-running the same
+  // deterministic preview from the dragged node's broadcast position.
+  useEffect(() => {
+    if (!remoteDrag) {
+      remoteDragSnapshotRef.current = null;
+      return;
+    }
+
+    // Terminal phase — resolve exactly once.
+    if (remoteDrag.ended) {
+      if (handledTerminalRef.current === remoteDrag) return;
+      handledTerminalRef.current = remoteDrag;
+
+      const snap = remoteDragSnapshotRef.current;
+      if (remoteDrag.ended === "commit" && remoteDrag.position && snap) {
+        // Committed: settle to the final laid-out layout immediately (locally,
+        // deterministically) so the watcher doesn't wait for the server refetch
+        // and doesn't see the node snap from the raw drop spot into its slot.
+        const draggedPosition = remoteDrag.position;
+        const ds = {
+          nodeId: remoteDrag.nodeId,
+          type: remoteDrag.type,
+          sourceEpicId: remoteDrag.sourceEpicId,
+        };
+        const nodesForOrder = snap.nodes.map((n) =>
+          n.id === ds.nodeId ? { ...n, position: draggedPosition } : n,
+        );
+        const reorderedEpics = computeReorderedEpics(nodesForOrder, ds, epics);
+        const settled = getLayoutedElements(layoutedNodes, edges, reorderedEpics);
+        const settledNodes = snap.nodes.map((n) => {
+          const p = settled.nodes.find((s) => s.id === n.id);
+          return p ? { ...n, position: p.position } : n;
+        });
+        setRemoteWorkingNodes(settledNodes);
+        setRemoteWorkingEdges(settled.edges);
+      } else {
+        // Cancelled, no-op, or a confirm is still pending — the reorder is NOT
+        // committed, so revert to the authoritative (committed/original) layout.
+        setRemoteWorkingNodes(null);
+        setRemoteWorkingEdges(null);
+      }
+      remoteDragSnapshotRef.current = null;
+      return;
+    }
+
+    // Capture the pre-drag snapshot once per remote drag (same role as the
+    // local dragStartNodesRef / dragStartFeatureRelativeYsRef).
+    if (
+      !remoteDragSnapshotRef.current ||
+      remoteDragSnapshotRef.current.nodeId !== remoteDrag.nodeId
+    ) {
+      const snapshot = nodes.map((n) =>
+        n.id === remoteDrag.nodeId ? { ...n, zIndex: 1000 } : n,
+      );
+      let relativeYs: Map<string, number> | null = null;
+      if (remoteDrag.type === "epic") {
+        const epicPos = snapshot.find(
+          (n) => n.id === remoteDrag.nodeId,
+        )?.position;
+        const epicFeatures =
+          epics.find((e) => e.id === remoteDrag.nodeId)?.features ?? [];
+        relativeYs = new Map();
+        for (const f of epicFeatures) {
+          const fn = snapshot.find((n) => n.id === f.id);
+          if (fn && epicPos) relativeYs.set(f.id, fn.position.y - epicPos.y);
+        }
+      }
+      remoteDragSnapshotRef.current = {
+        nodeId: remoteDrag.nodeId,
+        nodes: snapshot,
+        relativeYs,
+      };
+    }
+
+    if (!remoteDrag.position) return; // start received, no movement yet
+
+    const snap = remoteDragSnapshotRef.current;
+    const { nodes: preview, edges: previewEdges } = computeDragPreview({
+      ds: {
+        nodeId: remoteDrag.nodeId,
+        type: remoteDrag.type,
+        sourceEpicId: remoteDrag.sourceEpicId,
+      },
+      draggedPosition: remoteDrag.position,
+      baseNodes: snap.nodes,
+      originalNodes: snap.nodes,
+      relativeYs: snap.relativeYs,
+    });
+
+    const color = remoteDrag.color;
+    const tagged = preview.map((n) => {
+      const isDragged = n.id === remoteDrag.nodeId;
+      return {
+        ...n,
+        className: `${n.className ?? ""} ${
+          isDragged ? "remote-dragging" : "remote-drag-shift"
+        }`.trim(),
+        style: isDragged
+          ? ({
+              ...(n.style ?? {}),
+              "--remote-drag-color": color,
+            } as React.CSSProperties)
+          : n.style,
+      };
+    });
+    setRemoteWorkingNodes(tagged);
+    setRemoteWorkingEdges(previewEdges);
+  }, [
+    remoteDrag,
+    computeDragPreview,
+    computeReorderedEpics,
+    nodes,
+    epics,
+    layoutedNodes,
+    edges,
+  ]);
+
+  // Flash-free handoff: clear the held remote preview once the committed data
+  // arrives (layoutKey changes after the dragger's persist → refetch).
+  const prevLayoutKeyRef = useRef(layoutKey);
+  useEffect(() => {
+    if (prevLayoutKeyRef.current === layoutKey) return;
+    prevLayoutKeyRef.current = layoutKey;
+    setRemoteWorkingNodes(null);
+    setRemoteWorkingEdges(null);
+  }, [layoutKey]);
+
+  // Fallback: if the drag ended but no data change followed (e.g. dropped in
+  // place), release the held preview after a short delay.
+  useEffect(() => {
+    if (remoteDrag || !remoteWorkingNodes) return;
+    const t = setTimeout(() => {
+      setRemoteWorkingNodes(null);
+      setRemoteWorkingEdges(null);
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [remoteDrag, remoteWorkingNodes]);
+
   const clearDragState = useCallback(() => {
     workingNodesRef.current = null;
     setWorkingNodes(null);
@@ -893,6 +1156,12 @@ export const RoadmapView = ({
 
   const persistCanvasDrag = useCallback(
     async (pending: PendingCanvasDrag) => {
+      // The reorder is being committed — tell collaborators to settle to the
+      // new order (covers both auto-persist and confirm-then-persist).
+      onBroadcastNodeDragEnd?.(
+        pending.kind === "epicReorder" ? pending.epicId : pending.featureId,
+        true,
+      );
       workingNodesRef.current = null;
       workingEdgesRef.current = null;
       setIsPersistingCanvasDrag(true);
@@ -915,8 +1184,26 @@ export const RoadmapView = ({
         setWorkingEdges(null);
       }
     },
-    [reorderEpicsInRoadmap, reorderFeaturesInEpic, moveFeatureBetweenEpics],
+    [
+      reorderEpicsInRoadmap,
+      reorderFeaturesInEpic,
+      moveFeatureBetweenEpics,
+      onBroadcastNodeDragEnd,
+    ],
   );
+
+  // Cancelling a pending confirm: tell collaborators the drag was not committed
+  // so their held preview reverts to the original order.
+  const cancelPendingCanvasDrag = useCallback(() => {
+    const p = pendingCanvasDrag;
+    if (p) {
+      onBroadcastNodeDragEnd?.(
+        p.kind === "epicReorder" ? p.epicId : p.featureId,
+        false,
+      );
+    }
+    clearDragState();
+  }, [pendingCanvasDrag, clearDragState, onBroadcastNodeDragEnd]);
 
   const onNodeDragStart = useCallback(
     (_event: React.MouseEvent, node: Node, _nodes: Node[]) => {
@@ -963,88 +1250,49 @@ export const RoadmapView = ({
       } else {
         dragStartFeatureRelativeYsRef.current = null;
       }
+
+      onBroadcastNodeDragStart?.({ nodeId: node.id, type, sourceEpicId });
     },
-    [nodes, edges, epics, canEditRoadmap],
+    [nodes, edges, epics, canEditRoadmap, onBroadcastNodeDragStart],
   );
 
   const onNodeDrag = useCallback(
     (_event: React.MouseEvent, node: Node, _nodes: Node[]) => {
       const ds = dragStateRef.current;
       if (!ds || !workingNodesRef.current) return;
-      const current = workingNodesRef.current;
 
-      // Use original pre-drag positions for non-dragged nodes so that animated
-      // preview positions from previous frames don't corrupt the epic assignment.
-      const originalNodes = dragStartNodesRef.current ?? current;
-      const nodesForOrder = originalNodes.map((n) =>
-        n.id === node.id ? { ...n, position: node.position } : n,
-      );
-      const reorderedEpics = computeReorderedEpics(nodesForOrder, node.id, epics);
-      const { nodes: previewPositioned } = getLayoutedElements(
-        layoutedNodes,
-        edges,
-        reorderedEpics,
-      );
-
-      let updated: Node[];
-
-      if (ds.type === "epic") {
-        // Features belonging to the dragged epic follow it in Y; other nodes animate to preview
-        const epicCurrentY =
-          current.find((n) => n.id === node.id)?.position.y ?? node.position.y;
-        const relativeYs = dragStartFeatureRelativeYsRef.current;
-        updated = current.map((n) => {
-          if (n.id === node.id) return n; // dragged epic stays at cursor
-          const relY = relativeYs?.get(n.id);
-          if (relY !== undefined) {
-            // Feature of the dragged epic: move with it, also on top
-            return { ...n, zIndex: 999, position: { x: n.position.x, y: epicCurrentY + relY } };
-          }
-          const preview = previewPositioned.find((p) => p.id === n.id);
-          return preview ? { ...n, position: preview.position } : n;
-        });
-      } else {
-        // Feature drag: non-dragged nodes animate to preview positions
-        updated = current.map((n) => {
-          if (n.id === node.id) return n;
-          const preview = previewPositioned.find((p) => p.id === n.id);
-          return preview ? { ...n, position: preview.position } : n;
-        });
-
-        // Derive the target epic from reorderedEpics (same source as the layout preview)
-        const targetEpic = reorderedEpics.find((e) =>
-          e.features?.some((f) => f.id === node.id),
-        );
-        const closestEpicId = targetEpic?.id ?? null;
-        if (closestEpicId) {
-          const isNewEpic = closestEpicId !== ds.sourceEpicId;
-          const updatedEdges = edges.map((e) => {
-            if (e.target !== node.id) return e;
-            return {
-              ...e,
-              id: `epic-feature-${closestEpicId}-${node.id}`,
-              source: closestEpicId!,
-              animated: isNewEpic,
-              style: isNewEpic
-                ? { stroke: "#f59e0b", strokeWidth: 2.5, strokeDasharray: "6,3" }
-                : e.style,
-            };
-          });
-          workingEdgesRef.current = updatedEdges;
-          setWorkingEdges(updatedEdges);
-        }
-      }
+      const { nodes: updated, edges: updatedEdges } = computeDragPreview({
+        ds,
+        draggedPosition: node.position,
+        baseNodes: workingNodesRef.current,
+        originalNodes: dragStartNodesRef.current ?? workingNodesRef.current,
+        relativeYs: dragStartFeatureRelativeYsRef.current,
+      });
 
       workingNodesRef.current = updated;
       setWorkingNodes(updated);
+      if (ds.type === "feature") {
+        workingEdgesRef.current = updatedEdges;
+        setWorkingEdges(updatedEdges);
+      }
+
+      // Stream the dragged node's position so collaborators see the same reflow.
+      onBroadcastNodeDrag?.({
+        nodeId: node.id,
+        type: ds.type,
+        sourceEpicId: ds.sourceEpicId,
+        x: node.position.x,
+        y: node.position.y,
+      });
     },
-    [computeReorderedEpics, epics, layoutedNodes, edges],
+    [computeDragPreview, onBroadcastNodeDrag],
   );
 
   const onNodeDragStop = useCallback(
     (_event: React.MouseEvent, node: Node, _nodes: Node[]) => {
       const ds = dragStateRef.current;
       if (!ds || !workingNodesRef.current) {
+        onBroadcastNodeDragEnd?.(node.id, false);
         clearDragState();
         return;
       }
@@ -1056,7 +1304,7 @@ export const RoadmapView = ({
       const nodesForOrder = originalNodes.map((n) =>
         n.id === node.id ? { ...n, position: node.position } : n,
       );
-      const reorderedEpics = computeReorderedEpics(nodesForOrder, node.id, epics);
+      const reorderedEpics = computeReorderedEpics(nodesForOrder, ds, epics);
       setDragState(null);
       dragStateRef.current = null;
 
@@ -1066,6 +1314,7 @@ export const RoadmapView = ({
           .sort((a, b) => a.position - b.position)
           .map((e) => e.id);
         if (JSON.stringify(newEpicOrder) === JSON.stringify(originalOrder)) {
+          onBroadcastNodeDragEnd?.(ds.nodeId, false);
           clearDragState();
           return;
         }
@@ -1079,6 +1328,8 @@ export const RoadmapView = ({
         if (dontAskEpicReorder) {
           void persistCanvasDrag(pending);
         } else {
+          // Awaiting confirmation — peers keep showing the live preview until
+          // the dragger confirms (persist) or cancels.
           setPendingCanvasDrag(pending);
         }
         return;
@@ -1093,6 +1344,7 @@ export const RoadmapView = ({
         .flatMap((e) => e.features ?? [])
         .find((f) => f.id === ds.nodeId);
       if (!feature || !targetEpic) {
+        onBroadcastNodeDragEnd?.(ds.nodeId, false);
         clearDragState();
         return;
       }
@@ -1104,6 +1356,7 @@ export const RoadmapView = ({
           .map((f) => f.id) ?? [];
         const newFeatureOrder = (targetEpic.features ?? []).map((f) => f.id);
         if (JSON.stringify(newFeatureOrder) === JSON.stringify(originalFeatureOrder)) {
+          onBroadcastNodeDragEnd?.(ds.nodeId, false);
           clearDragState();
           return;
         }
@@ -1146,6 +1399,7 @@ export const RoadmapView = ({
       dontAskEpicReorder,
       dontAskFeatureReorder,
       dontAskFeatureMove,
+      onBroadcastNodeDragEnd,
     ],
   );
 
@@ -1273,8 +1527,14 @@ export const RoadmapView = ({
       }}
     >
       <ReactFlow
-        nodes={(workingNodes as Node<EpicWidgetData | FeatureWidgetData>[] | null) ?? nodes}
-        edges={workingEdges ?? edges}
+        nodes={
+          (workingNodes as Node<EpicWidgetData | FeatureWidgetData>[] | null) ??
+          (remoteWorkingNodes as
+            | Node<EpicWidgetData | FeatureWidgetData>[]
+            | null) ??
+          nodes
+        }
+        edges={workingEdges ?? remoteWorkingEdges ?? edges}
         nodeTypes={nodeTypes}
         onlyRenderVisibleElements
         onNodesChange={onNodesChange}
@@ -1347,7 +1607,7 @@ export const RoadmapView = ({
           setDontAskEpicReorder(v);
           sessionStorage.setItem(CANVAS_SKIP_EPIC_REORDER_KEY, String(v));
         }}
-        onCancel={clearDragState}
+        onCancel={cancelPendingCanvasDrag}
         onConfirm={() => {
           if (pendingCanvasDrag) void persistCanvasDrag(pendingCanvasDrag);
         }}
@@ -1361,7 +1621,7 @@ export const RoadmapView = ({
           setDontAskFeatureReorder(v);
           sessionStorage.setItem(CANVAS_SKIP_FEATURE_REORDER_KEY, String(v));
         }}
-        onCancel={clearDragState}
+        onCancel={cancelPendingCanvasDrag}
         onConfirm={() => {
           if (pendingCanvasDrag) void persistCanvasDrag(pendingCanvasDrag);
         }}
@@ -1376,7 +1636,7 @@ export const RoadmapView = ({
           setDontAskFeatureMove(v);
           sessionStorage.setItem(CANVAS_SKIP_FEATURE_MOVE_KEY, String(v));
         }}
-        onCancel={clearDragState}
+        onCancel={cancelPendingCanvasDrag}
         onConfirm={() => {
           if (pendingCanvasDrag) void persistCanvasDrag(pendingCanvasDrag);
         }}

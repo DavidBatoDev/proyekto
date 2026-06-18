@@ -84,7 +84,11 @@ export class RealtimeRoom {
       // Peer broadcasts — relay verbatim to everyone else in the room.
       case "cursor":
       case "typing":
-      case "data_changed": {
+      case "data_changed":
+      // Live epic/feature drag preview (Figma-style); relayed like cursors.
+      case "node_drag_start":
+      case "node_drag":
+      case "node_drag_end": {
         this.broadcast(msg.event, msg.payload, ws);
         return;
       }

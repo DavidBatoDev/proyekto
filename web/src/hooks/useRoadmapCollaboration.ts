@@ -56,6 +56,43 @@ interface CursorPayload {
 	y: number;
 }
 
+/** A live epic/feature drag by another collaborator (ephemeral preview). */
+export interface RemoteDrag {
+	nodeId: string;
+	type: "epic" | "feature";
+	sourceEpicId?: string;
+	/** Dragged node's canvas (flow) coords; null until the first move arrives. */
+	position: { x: number; y: number } | null;
+	userId: string;
+	color: string;
+	expiresAt: number;
+	/**
+	 * Terminal phase. Set when the dragger releases:
+	 *  - "commit": the reorder was persisted → settle peers to the new order.
+	 *  - "cancel": released without committing (cancelled, no-op, or a confirm
+	 *    is still pending) → peers revert to the committed/original order.
+	 */
+	ended?: "commit" | "cancel";
+}
+
+interface NodeDragStartPayload {
+	nodeId: string;
+	type: "epic" | "feature";
+	sourceEpicId?: string;
+	userId: string;
+	color: string;
+}
+interface NodeDragPayload extends NodeDragStartPayload {
+	x: number;
+	y: number;
+}
+interface NodeDragEndPayload {
+	nodeId: string;
+	userId: string;
+	/** Whether the drop was actually persisted (vs cancelled / pending confirm). */
+	committed: boolean;
+}
+
 function resolveDisplayName(profile: Profile | null): string {
 	if (!profile) return "Anonymous";
 	if (profile.display_name) return profile.display_name;
@@ -90,13 +127,19 @@ export function useRoadmapCollaboration({
 	const channelRef = useRef<RealtimeChannel | null>(null);
 	const roomRef = useRef<RealtimeRoom | null>(null);
 	const lastSentRef = useRef({ x: 0, y: 0, time: 0 });
+	const nodeDragLastSentRef = useRef(0);
 	const isPanningRef = useRef(isPanningCanvas);
 	const userIdRef = useRef(userId);
 	const nameRef = useRef("");
 	const colorRef = useRef("");
+	// Mirrors `collaborators.length > 0` so the high-frequency senders can skip
+	// broadcasting into an empty room (no one watching) — solo roadmap usage is
+	// the common case and is the dominant realtime cost driver.
+	const hasCollaboratorsRef = useRef(false);
 
 	const [collaborators, setCollaborators] = useState<CollaboratorInfo[]>([]);
 	const [remoteCursors, setRemoteCursors] = useState<RemoteCursor[]>([]);
+	const [remoteDrag, setRemoteDrag] = useState<RemoteDrag | null>(null);
 
 	// Called by RoadmapCanvas after a local mutation completes so other viewers
 	// get an immediate notification without waiting for the backend publish.
@@ -122,12 +165,16 @@ export function useRoadmapCollaboration({
 	useEffect(() => {
 		userIdRef.current = userId;
 	}, [userId]);
+	useEffect(() => {
+		hasCollaboratorsRef.current = collaborators.length > 0;
+	}, [collaborators]);
 
-	// Prune expired cursors (ghost prevention when user goes idle)
+	// Prune expired cursors + a stale drag (e.g. a dropped node_drag_end)
 	useEffect(() => {
 		const interval = setInterval(() => {
 			const now = Date.now();
 			setRemoteCursors((prev) => prev.filter((c) => c.expiresAt > now));
+			setRemoteDrag((prev) => (prev && prev.expiresAt <= now ? null : prev));
 		}, 200);
 		return () => clearInterval(interval);
 	}, []);
@@ -157,9 +204,12 @@ export function useRoadmapCollaboration({
 					color: p.color,
 				}));
 			setCollaborators(others);
-			// Remove cursors for users who left
+			// Remove cursors / drag preview for users who left
 			const activeIds = new Set(others.map((o) => o.userId));
 			setRemoteCursors((prev) => prev.filter((c) => activeIds.has(c.userId)));
+			setRemoteDrag((prev) =>
+				prev && !activeIds.has(prev.userId) ? null : prev,
+			);
 		};
 
 		const applyCursor = (payload: CursorPayload | undefined) => {
@@ -181,6 +231,47 @@ export function useRoadmapCollaboration({
 			});
 		};
 
+		const DRAG_TTL = 5000;
+		const applyNodeDragStart = (p: NodeDragStartPayload | undefined) => {
+			if (!p || p.userId === userId) return;
+			setRemoteDrag({
+				nodeId: p.nodeId,
+				type: p.type,
+				sourceEpicId: p.sourceEpicId,
+				position: null,
+				userId: p.userId,
+				color: p.color,
+				expiresAt: Date.now() + DRAG_TTL,
+			});
+		};
+		const applyNodeDrag = (p: NodeDragPayload | undefined) => {
+			if (!p || p.userId === userId) return;
+			setRemoteDrag({
+				nodeId: p.nodeId,
+				type: p.type,
+				sourceEpicId: p.sourceEpicId,
+				position: { x: p.x, y: p.y },
+				userId: p.userId,
+				color: p.color,
+				expiresAt: Date.now() + DRAG_TTL,
+			});
+		};
+		const applyNodeDragEnd = (p: NodeDragEndPayload | undefined) => {
+			if (!p || p.userId === userId) return;
+			// Mark the terminal phase; RoadmapView settles (commit) or reverts
+			// (cancel) once, then it's pruned. Bumping expiresAt gives RoadmapView
+			// a window to handle it before the prune nulls it.
+			setRemoteDrag((prev) =>
+				prev && prev.userId === p.userId
+					? {
+							...prev,
+							ended: p.committed ? "commit" : "cancel",
+							expiresAt: Date.now() + 3000,
+						}
+					: prev,
+			);
+		};
+
 		// ── Durable Objects transport ──────────────────────────────────────────
 		if (roadmapOnDurableObjects()) {
 			const room = new RealtimeRoom(`roadmap:${roadmapId}`);
@@ -194,7 +285,10 @@ export function useRoadmapCollaboration({
 					if (payload?.from === userId) return;
 					invalidate();
 				})
-				.on("cursor", applyCursor);
+				.on("cursor", applyCursor)
+				.on("node_drag_start", applyNodeDragStart)
+				.on("node_drag", applyNodeDrag)
+				.on("node_drag_end", applyNodeDragEnd);
 
 			room.track({ userId, name, avatarUrl, color } satisfies PresenceState);
 			room.connect();
@@ -230,6 +324,19 @@ export function useRoadmapCollaboration({
 			.on<CursorPayload>("broadcast", { event: "cursor" }, ({ payload }) => {
 				applyCursor(payload);
 			})
+			.on<NodeDragStartPayload>(
+				"broadcast",
+				{ event: "node_drag_start" },
+				({ payload }) => applyNodeDragStart(payload),
+			)
+			.on<NodeDragPayload>("broadcast", { event: "node_drag" }, ({ payload }) =>
+				applyNodeDrag(payload),
+			)
+			.on<NodeDragEndPayload>(
+				"broadcast",
+				{ event: "node_drag_end" },
+				({ payload }) => applyNodeDragEnd(payload),
+			)
 			.on(
 				"postgres_changes",
 				{
@@ -285,6 +392,8 @@ export function useRoadmapCollaboration({
 
 	const trackCursor = useCallback((canvasX: number, canvasY: number) => {
 		if (!featureFlags.realtimeCursors) return;
+		// No one else is here — don't pay to broadcast into an empty room.
+		if (!hasCollaboratorsRef.current) return;
 		if (isPanningRef.current) return;
 		if (document.visibilityState !== "visible") return;
 
@@ -315,5 +424,77 @@ export function useRoadmapCollaboration({
 		void channel.send({ type: "broadcast", event: "cursor", payload });
 	}, []);
 
-	return { collaborators, remoteCursors, trackCursor, broadcastDataChanged };
+	// Transport-agnostic broadcast for the node-drag preview events.
+	const sendBroadcast = useCallback((event: string, payload: unknown) => {
+		if (roadmapOnDurableObjects()) {
+			roomRef.current?.send(event, payload);
+			return;
+		}
+		const channel = channelRef.current;
+		if (!channel) return;
+		void channel.send({ type: "broadcast", event, payload });
+	}, []);
+
+	const broadcastNodeDragStart = useCallback(
+		(p: { nodeId: string; type: "epic" | "feature"; sourceEpicId?: string }) => {
+			if (!userIdRef.current) return;
+			if (!hasCollaboratorsRef.current) return;
+			sendBroadcast("node_drag_start", {
+				...p,
+				userId: userIdRef.current,
+				color: colorRef.current,
+			});
+		},
+		[sendBroadcast],
+	);
+
+	const broadcastNodeDrag = useCallback(
+		(p: {
+			nodeId: string;
+			type: "epic" | "feature";
+			sourceEpicId?: string;
+			x: number;
+			y: number;
+		}) => {
+			if (!userIdRef.current) return;
+			if (!hasCollaboratorsRef.current) return;
+			const now = Date.now();
+			// ~40Hz. Edges anchor to node positions instantly (no CSS transform
+			// transition — that desyncs edges), so the send rate alone drives
+			// smoothness; 40Hz keeps motion fluid while staying lightweight.
+			if (now - nodeDragLastSentRef.current < 25) return;
+			nodeDragLastSentRef.current = now;
+			sendBroadcast("node_drag", {
+				...p,
+				userId: userIdRef.current,
+				color: colorRef.current,
+			});
+		},
+		[sendBroadcast],
+	);
+
+	const broadcastNodeDragEnd = useCallback(
+		(nodeId: string, committed: boolean) => {
+			if (!userIdRef.current) return;
+			if (!hasCollaboratorsRef.current) return;
+			nodeDragLastSentRef.current = 0; // let the next drag's first frame through
+			sendBroadcast("node_drag_end", {
+				nodeId,
+				userId: userIdRef.current,
+				committed,
+			});
+		},
+		[sendBroadcast],
+	);
+
+	return {
+		collaborators,
+		remoteCursors,
+		remoteDrag,
+		trackCursor,
+		broadcastDataChanged,
+		broadcastNodeDragStart,
+		broadcastNodeDrag,
+		broadcastNodeDragEnd,
+	};
 }
