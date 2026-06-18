@@ -39,5 +39,12 @@ npm run deploy
 ```
 
 Set `BACKEND_AUTHORIZE_URL` and `ALLOWED_ORIGINS` per environment in
-`wrangler.toml` (or the dashboard). Durable Objects require a Workers plan that
-includes them; SQLite-backed DOs (used here) are available on the free plan.
+`wrangler.toml` (or the dashboard).
+
+## Plan / cost
+
+Runs on the **Workers Free plan ($0)** — the SQLite-backed Durable Objects used
+here (`new_sqlite_classes`) are available on Free. Free has daily caps with no
+overage; upgrade to **Workers Paid ($5/mo)** for higher limits + overage billing
+when you outgrow them. See [UPGRADING.md](./UPGRADING.md) for when and how (it's
+a ~2-minute account-level change, no code/redeploy).
