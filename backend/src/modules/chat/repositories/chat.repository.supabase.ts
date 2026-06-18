@@ -510,6 +510,16 @@ export class SupabaseChatRepository implements ChatRepository {
     return !error && !!data;
   }
 
+  async listRoomParticipantUserIds(roomId: string): Promise<string[]> {
+    const { data, error } = await this.supabase
+      .from('chat_room_participants')
+      .select('user_id')
+      .eq('room_id', roomId);
+
+    if (error || !data) return [];
+    return Array.from(new Set(data.map((row) => row.user_id as string)));
+  }
+
   private async hydrateRooms(
     roomIds: string[],
     viewerUserId: string,

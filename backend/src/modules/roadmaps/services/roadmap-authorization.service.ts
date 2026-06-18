@@ -82,6 +82,52 @@ export class RoadmapAuthorizationService {
     return (data?.feature_id as string | null | undefined) ?? null;
   }
 
+  /**
+   * Resolve the owning roadmap id from whichever entity id is available.
+   * Used by write services to address the realtime room. Reuses the same
+   * lookups the permission checks walk. Returns null if nothing resolves.
+   */
+  async resolveRoadmapId(ref: {
+    roadmapId?: string | null;
+    milestoneId?: string | null;
+    epicId?: string | null;
+    featureId?: string | null;
+    taskId?: string | null;
+  }): Promise<string | null> {
+    if (ref.roadmapId) return ref.roadmapId;
+    if (ref.milestoneId) return this.getRoadmapIdByMilestoneId(ref.milestoneId);
+    if (ref.epicId) return this.getRoadmapIdByEpicId(ref.epicId);
+    if (ref.featureId) return this.getRoadmapIdByFeatureId(ref.featureId);
+    if (ref.taskId) {
+      const featureId = await this.getFeatureIdByTaskId(ref.taskId);
+      return featureId ? this.getRoadmapIdByFeatureId(featureId) : null;
+    }
+    return null;
+  }
+
+  /**
+   * Can this user VIEW the roadmap (owner, or a member of its project)? Mirrors
+   * the access scoping in RoadmapsRepository.findFull — i.e. exactly who can
+   * load the roadmap — so the realtime collab room is joinable by every viewer,
+   * not just editors. Cheap: one roadmap-meta read + one project_access probe.
+   */
+  async canViewRoadmap(roadmapId: string, userId: string): Promise<boolean> {
+    const roadmap = await this.getRoadmapMeta(roadmapId);
+    if (!roadmap) return false;
+    if (roadmap.owner_id === userId) return true;
+    if (!roadmap.project_id) return false;
+
+    const { data, error } = await this.db
+      .from('project_access')
+      .select('id')
+      .eq('project_id', roadmap.project_id)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) return false;
+    return !!data;
+  }
+
   async assertRoadmapPermission(
     roadmapId: string,
     userId: string,

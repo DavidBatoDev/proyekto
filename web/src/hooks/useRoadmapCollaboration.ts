@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { featureFlags } from "@/config/featureFlags";
+import { isRealtimeConfigured, RealtimeRoom } from "@/lib/realtime";
 import { supabase } from "@/lib/supabase";
 import { projectKeys } from "@/queries/project";
 import type { Profile } from "@/types/profile.types";
-import { featureFlags } from "@/config/featureFlags";
 
 const COLLAB_COLORS = [
 	"#ef4444",
@@ -65,6 +66,13 @@ function resolveDisplayName(profile: Profile | null): string {
 	return full || profile.email || "Anonymous";
 }
 
+function roadmapOnDurableObjects(): boolean {
+	return (
+		featureFlags.realtimeRoadmapTransport === "durable-objects" &&
+		isRealtimeConfigured()
+	);
+}
+
 interface UseRoadmapCollaborationOptions {
 	roadmapId: string;
 	userId: string | null | undefined;
@@ -80,6 +88,7 @@ export function useRoadmapCollaboration({
 }: UseRoadmapCollaborationOptions) {
 	const queryClient = useQueryClient();
 	const channelRef = useRef<RealtimeChannel | null>(null);
+	const roomRef = useRef<RealtimeRoom | null>(null);
 	const lastSentRef = useRef({ x: 0, y: 0, time: 0 });
 	const isPanningRef = useRef(isPanningCanvas);
 	const userIdRef = useRef(userId);
@@ -90,10 +99,15 @@ export function useRoadmapCollaboration({
 	const [remoteCursors, setRemoteCursors] = useState<RemoteCursor[]>([]);
 
 	// Called by RoadmapCanvas after a local mutation completes so other viewers
-	// get an immediate notification without waiting for postgres_changes.
+	// get an immediate notification without waiting for the backend publish.
 	const broadcastDataChanged = useCallback(() => {
+		if (!userIdRef.current) return;
+		if (roadmapOnDurableObjects()) {
+			roomRef.current?.send("data_changed", { from: userIdRef.current });
+			return;
+		}
 		const channel = channelRef.current;
-		if (!channel || !userIdRef.current) return;
+		if (!channel) return;
 		void channel.send({
 			type: "broadcast",
 			event: "data_changed",
@@ -133,6 +147,65 @@ export function useRoadmapCollaboration({
 				queryKey: projectKeys.roadmapFull(roadmapId),
 			});
 
+		const applyPresence = (collaboratorsList: PresenceState[]) => {
+			const others = collaboratorsList
+				.filter((p) => p.userId !== userId)
+				.map((p) => ({
+					userId: p.userId,
+					name: p.name,
+					avatarUrl: p.avatarUrl,
+					color: p.color,
+				}));
+			setCollaborators(others);
+			// Remove cursors for users who left
+			const activeIds = new Set(others.map((o) => o.userId));
+			setRemoteCursors((prev) => prev.filter((c) => activeIds.has(c.userId)));
+		};
+
+		const applyCursor = (payload: CursorPayload | undefined) => {
+			if (!featureFlags.realtimeCursors) return;
+			if (!payload || payload.userId === userId) return;
+			setRemoteCursors((prev) => {
+				const filtered = prev.filter((c) => c.userId !== payload.userId);
+				return [
+					...filtered,
+					{
+						userId: payload.userId,
+						name: payload.name,
+						color: payload.color,
+						x: payload.x,
+						y: payload.y,
+						expiresAt: Date.now() + 3000,
+					},
+				];
+			});
+		};
+
+		// ── Durable Objects transport ──────────────────────────────────────────
+		if (roadmapOnDurableObjects()) {
+			const room = new RealtimeRoom(`roadmap:${roadmapId}`);
+			roomRef.current = room;
+
+			room
+				.on("presence", (payload: { collaborators?: PresenceState[] }) => {
+					applyPresence(payload?.collaborators ?? []);
+				})
+				.on("data_changed", (payload: { from?: string }) => {
+					if (payload?.from === userId) return;
+					invalidate();
+				})
+				.on("cursor", applyCursor);
+
+			room.track({ userId, name, avatarUrl, color } satisfies PresenceState);
+			room.connect();
+
+			return () => {
+				room.close();
+				roomRef.current = null;
+			};
+		}
+
+		// ── Supabase Realtime transport (legacy) ─────────────────────────────────
 		const channel = supabase.channel(`roadmap-collab:${roadmapId}`, {
 			config: { presence: { key: userId } },
 		});
@@ -141,25 +214,13 @@ export function useRoadmapCollaboration({
 		channel
 			.on("presence", { event: "sync" }, () => {
 				const state = channel.presenceState<PresenceState>();
-				const others: CollaboratorInfo[] = [];
+				const others: PresenceState[] = [];
 				for (const [key, presences] of Object.entries(state)) {
 					if (key === userId) continue;
 					const p = presences[0];
-					if (p) {
-						others.push({
-							userId: p.userId,
-							name: p.name,
-							avatarUrl: p.avatarUrl,
-							color: p.color,
-						});
-					}
+					if (p) others.push(p);
 				}
-				setCollaborators(others);
-				// Remove cursors for users who left
-				const activeIds = new Set(others.map((o) => o.userId));
-				setRemoteCursors((prev) =>
-					prev.filter((c) => activeIds.has(c.userId)),
-				);
+				applyPresence(others);
 			})
 			.on("broadcast", { event: "data_changed" }, ({ payload }) => {
 				// Ignore our own broadcasts to avoid reflexive invalidation
@@ -167,23 +228,7 @@ export function useRoadmapCollaboration({
 				invalidate();
 			})
 			.on<CursorPayload>("broadcast", { event: "cursor" }, ({ payload }) => {
-				if (!featureFlags.realtimeCursors) return;
-				if (!payload || payload.userId === userId) return;
-
-				setRemoteCursors((prev) => {
-					const filtered = prev.filter((c) => c.userId !== payload.userId);
-					return [
-						...filtered,
-						{
-							userId: payload.userId,
-							name: payload.name,
-							color: payload.color,
-							x: payload.x,
-							y: payload.y,
-							expiresAt: Date.now() + 3000,
-						},
-					];
-				});
+				applyCursor(payload);
 			})
 			.on(
 				"postgres_changes",
@@ -240,8 +285,6 @@ export function useRoadmapCollaboration({
 
 	const trackCursor = useCallback((canvasX: number, canvasY: number) => {
 		if (!featureFlags.realtimeCursors) return;
-		const channel = channelRef.current;
-		if (!channel) return;
 		if (isPanningRef.current) return;
 		if (document.visibilityState !== "visible") return;
 
@@ -255,17 +298,21 @@ export function useRoadmapCollaboration({
 
 		lastSentRef.current = { x: canvasX, y: canvasY, time: now };
 
-		void channel.send({
-			type: "broadcast",
-			event: "cursor",
-			payload: {
-				userId: userIdRef.current,
-				name: nameRef.current,
-				color: colorRef.current,
-				x: canvasX,
-				y: canvasY,
-			},
-		});
+		const payload: CursorPayload = {
+			userId: userIdRef.current ?? "",
+			name: nameRef.current,
+			color: colorRef.current,
+			x: canvasX,
+			y: canvasY,
+		};
+
+		if (roadmapOnDurableObjects()) {
+			roomRef.current?.send("cursor", payload);
+			return;
+		}
+		const channel = channelRef.current;
+		if (!channel) return;
+		void channel.send({ type: "broadcast", event: "cursor", payload });
 	}, []);
 
 	return { collaborators, remoteCursors, trackCursor, broadcastDataChanged };

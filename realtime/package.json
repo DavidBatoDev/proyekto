@@ -1,0 +1,24 @@
+{
+  "name": "proyekto-realtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Worker + Durable Objects realtime transport for Proyekto collaborative features (roadmap canvas + chat).",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "jose": "^5.9.6"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.5.40",
+    "@cloudflare/workers-types": "^4.20250601.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8",
+    "wrangler": "^3.95.0"
+  }
+}

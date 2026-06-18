@@ -14,6 +14,10 @@ import type {
   ChatRoom,
   ChatRoomWithLastMessage,
 } from './repositories/chat.repository.interface';
+import {
+  type ChatEventKind,
+  RealtimePublisher,
+} from '../realtime/realtime-publisher.service';
 
 export const CHAT_REPOSITORY = Symbol('CHAT_REPOSITORY');
 
@@ -21,7 +25,34 @@ export const CHAT_REPOSITORY = Symbol('CHAT_REPOSITORY');
 export class ChatService {
   constructor(
     @Inject(CHAT_REPOSITORY) private readonly chatRepo: ChatRepository,
+    private readonly realtime: RealtimePublisher,
   ) {}
+
+  /**
+   * Fan a chat change out to every room participant's inbox DO. Fully
+   * off the response path (the participant lookup + publish run detached) so
+   * it never adds latency to the send/react hot path.
+   */
+  private fanoutChat(
+    roomId: string,
+    projectId: string | null,
+    kind: ChatEventKind,
+  ): void {
+    void (async () => {
+      try {
+        const recipientIds =
+          await this.chatRepo.listRoomParticipantUserIds(roomId);
+        this.realtime.publishChatEvent({
+          recipientIds,
+          roomId,
+          projectId,
+          kind,
+        });
+      } catch {
+        // best-effort; realtime is non-critical
+      }
+    })();
+  }
 
   private sortDmSlug(userA: string, userB: string): string {
     return [userA, userB].sort((a, b) => a.localeCompare(b)).join('_');
@@ -171,6 +202,20 @@ export class ChatService {
     return room;
   }
 
+  /**
+   * Boolean room-access check for the realtime authorize endpoint. Wraps the
+   * same membership rules as message reads (assertRoomAccess) but returns a
+   * boolean instead of throwing, so the Worker can map it to allow/deny.
+   */
+  async canAccessRoom(roomId: string, userId: string): Promise<boolean> {
+    try {
+      await this.assertRoomAccess(roomId, userId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async listRoomMessages(
     roomId: string,
     userId: string,
@@ -272,6 +317,8 @@ export class ChatService {
       content,
     });
 
+    this.fanoutChat(room.id, projectId, 'message');
+
     return {
       room,
       message: {
@@ -332,6 +379,8 @@ export class ChatService {
       content,
     });
 
+    this.fanoutChat(room.id, null, 'message');
+
     return {
       room,
       message: {
@@ -387,6 +436,8 @@ export class ChatService {
       emoji: normalizedEmoji,
     });
 
+    this.fanoutChat(message.room_id, message.project_id, 'reaction');
+
     return { ok: true };
   }
 
@@ -411,16 +462,27 @@ export class ChatService {
       senderId: userId,
     });
 
+    this.fanoutChat(message.room_id, message.project_id, 'message');
+
     return { ok: true };
   }
 
   async markRoomRead(roomId: string, userId: string) {
-    await this.assertRoomAccess(roomId, userId);
+    const room = await this.assertRoomAccess(roomId, userId);
 
     const lastReadAt = await this.chatRepo.markRoomRead({
       roomId,
       userId,
       readAt: new Date().toISOString(),
+    });
+
+    // Read pointers are personal — only notify the reader's own inbox (their
+    // other tabs/devices) so unread badges sync without bothering others.
+    this.realtime.publishChatEvent({
+      recipientIds: [userId],
+      roomId,
+      projectId: room.project_id,
+      kind: 'read',
     });
 
     return {

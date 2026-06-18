@@ -160,17 +160,19 @@ export function ProjectsGrid() {
 			)
 			.subscribe();
 
-		// Catches membership changes (project_shares rows) for this user — e.g. being
+		// Catches membership changes (project_access rows) for this user — e.g. being
 		// invited/added as a member. The projects table never changes in that flow, so
 		// the channel above would not fire for the invited user without this.
+		// NOTE: the table was renamed project_shares -> project_access (May 2026);
+		// the old subscription pointed at the dropped name and silently never fired.
 		const sharesChannel = supabase
-			.channel(`dashboard-shares-realtime-${user.id}`)
+			.channel(`dashboard-access-realtime-${user.id}`)
 			.on(
 				"postgres_changes",
 				{
 					event: "*",
 					schema: "public",
-					table: "project_shares",
+					table: "project_access",
 					filter: `user_id=eq.${user.id}`,
 				},
 				invalidateProjects,

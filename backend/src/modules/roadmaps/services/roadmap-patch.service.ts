@@ -22,6 +22,7 @@ import { RoadmapJsonPatchProcessor } from '../patch/roadmap-json-patch.processor
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
 import { MissingPermissionException } from '../../projects/authorization/missing-permission.exception';
 import { RedisCacheInvalidationService } from '../../../common/cache/redis-cache-invalidation.service';
+import { RealtimePublisher } from '../../realtime/realtime-publisher.service';
 
 export const ROADMAP_PATCH_REPOSITORY = Symbol('ROADMAP_PATCH_REPOSITORY');
 
@@ -37,6 +38,7 @@ export class RoadmapPatchService {
     private readonly patchProcessor: RoadmapJsonPatchProcessor,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
     private readonly cacheInvalidation: RedisCacheInvalidationService,
+    private readonly realtime: RealtimePublisher,
   ) {}
 
   async createFull(dto: CreateFullRoadmapDto, userId: string) {
@@ -101,6 +103,7 @@ export class RoadmapPatchService {
     });
 
     await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
+    this.realtime.publishRoadmapChange(roadmapId, userId);
     return this.roadmapsRepo.findFull(roadmapId, userId);
   }
 
@@ -185,6 +188,7 @@ export class RoadmapPatchService {
     );
 
     await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
+    this.realtime.publishRoadmapChange(roadmapId, userId);
     return this.roadmapsRepo.findFull(roadmapId, userId);
   }
 

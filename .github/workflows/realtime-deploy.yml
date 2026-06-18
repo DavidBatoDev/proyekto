@@ -1,0 +1,50 @@
+name: Realtime — Deploy Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'realtime/**'
+      - '.github/workflows/realtime-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: realtime-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: realtime
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: realtime/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Deploy with Wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: realtime
+        # Secrets (SUPABASE_JWT_SECRET, REALTIME_PUBLISH_TOKEN) are set once via
+        # `wrangler secret put` and persist across deploys — not managed here.

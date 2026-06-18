@@ -26,6 +26,8 @@ import { ChatModule } from './modules/chat/chat.module';
 import { TeamsModule } from './modules/teams/teams.module';
 import { TeamTimeModule } from './modules/team-time/team-time.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
+import { RealtimeModule } from './modules/realtime/realtime.module';
+import { RealtimePublisherModule } from './modules/realtime/realtime-publisher.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -60,6 +62,8 @@ import { AppController } from './app.controller';
     TeamsModule,
     TeamTimeModule,
     InvoicesModule,
+    RealtimePublisherModule,
+    RealtimeModule,
   ],
 })
 export class AppModule {}

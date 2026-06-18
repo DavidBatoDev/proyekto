@@ -22,6 +22,7 @@ describe('RoadmapAiService search scoring', () => {
       {} as never,
       { assertRoadmapPermission: jest.fn() } as never,
       {} as never,
+      { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
     ) as unknown as {
       tokenizeSearchQuery: (query: string) => string[];
       normalizeSearchText: (value: string) => string;
@@ -239,6 +240,7 @@ describe('RoadmapAiService actor + assignee context', () => {
       {} as never,
       { assertRoadmapPermission: jest.fn() } as never,
       previewStore as never,
+      { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
     );
 
     return { service, roadmapsRepo, from, previewStore };
@@ -433,6 +435,7 @@ describe('RoadmapAiService context timing logs', () => {
           ],
         }),
       } as never,
+      { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
     );
 
     return service;
@@ -580,6 +583,7 @@ describe('RoadmapAiService context search lookup', () => {
       {} as never,
       { assertRoadmapPermission: jest.fn() } as never,
       previewStore as never,
+      { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
     );
 
     return { service, roadmapsRepo, previewStore };
@@ -848,6 +852,7 @@ describe('RoadmapAiService resolve cache invalidation on commit', () => {
       patchRepo as never,
       { assertRoadmapPermission: jest.fn() } as never,
       previewStore as never,
+      { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
     );
     return { service, previewStore, roadmapsRepo, patchRepo };
   };
@@ -1000,6 +1005,7 @@ describe('RoadmapAiService preview durability', () => {
       {} as never,
       { assertRoadmapPermission: jest.fn() } as never,
       previewStore as never,
+      { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
     );
 
     const preview = await service.preview(
@@ -1026,6 +1032,7 @@ describe('RoadmapAiService authz cache hardening', () => {
       {} as never,
       {} as never,
       {} as never,
+      { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
     ) as unknown as {
       authzDecisionCache: Map<
         string,
@@ -1104,6 +1111,7 @@ describe('RoadmapAiService operation semantics parity', () => {
       {} as never,
       {} as never,
       {} as never,
+      { publishRoadmapChange: jest.fn(), publishChatEvent: jest.fn() } as never,
     );
 
   it('validates task status enums consistently', () => {

@@ -103,6 +103,8 @@ export interface ChatRepository {
     userIds: string[],
   ): Promise<void>;
   isRoomParticipant(roomId: string, userId: string): Promise<boolean>;
+  /** All user ids participating in a room (for realtime inbox fan-out). */
+  listRoomParticipantUserIds(roomId: string): Promise<string[]>;
   listRoomsForProject(
     projectId: string,
     userId: string,

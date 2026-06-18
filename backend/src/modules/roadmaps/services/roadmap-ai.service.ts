@@ -63,6 +63,7 @@ import type {
   SemanticDiffDto,
 } from '../dto/roadmap-ai.dto';
 import { RoadmapAiPreviewStoreService } from './roadmap-ai-preview-store.service';
+import { RealtimePublisher } from '../../realtime/realtime-publisher.service';
 import { deriveFeatureStatus } from './derive-feature-status';
 
 type Severity = 'error' | 'warning';
@@ -266,6 +267,7 @@ export class RoadmapAiService {
     private readonly patchRepo: IRoadmapPatchRepository,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
     private readonly previewStore: RoadmapAiPreviewStoreService,
+    private readonly realtime: RealtimePublisher,
   ) {}
 
   async preview(
@@ -1738,6 +1740,8 @@ export class RoadmapAiService {
       createIfMissing: false,
     });
     const upsertMs = Date.now() - upsertStartedAt;
+    // Server-originated edit — notify collaborators (no acting canvas client).
+    this.realtime.publishRoadmapChange(roadmapId, userId);
 
     this.logger.log(
       [
@@ -1949,6 +1953,7 @@ export class RoadmapAiService {
       fullState: rollbackState,
       createIfMissing: false,
     });
+    this.realtime.publishRoadmapChange(roadmapId, userId);
 
     const affectedEntries = timelineRecord.entries.slice(targetIndex);
     for (
@@ -2021,6 +2026,7 @@ export class RoadmapAiService {
       fullState: replayState,
       createIfMissing: false,
     });
+    this.realtime.publishRoadmapChange(roadmapId, userId);
 
     const affectedEntries = timelineRecord.entries.slice(
       targetIndex,

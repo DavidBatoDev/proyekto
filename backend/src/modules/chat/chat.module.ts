@@ -13,5 +13,6 @@ import { SupabaseChatRepository } from './repositories/chat.repository.supabase'
     ChatService,
     { provide: CHAT_REPOSITORY, useClass: SupabaseChatRepository },
   ],
+  exports: [ChatService],
 })
 export class ChatModule {}

@@ -92,5 +92,6 @@ import { RoadmapAuthorizationService } from './services/roadmap-authorization.se
     TaskExtrasService,
     { provide: TASK_EXTRAS_REPOSITORY, useClass: TaskExtrasRepositorySupabase },
   ],
+  exports: [RoadmapAuthorizationService],
 })
 export class RoadmapsModule {}

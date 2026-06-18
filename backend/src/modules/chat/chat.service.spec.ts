@@ -1,10 +1,17 @@
 import { ChatService } from './chat.service';
+import type { RealtimePublisher } from '../realtime/realtime-publisher.service';
 import type {
   ChatRepository,
   ChatRoom,
 } from './repositories/chat.repository.interface';
 
 describe('ChatService', () => {
+  const buildRealtime = (): RealtimePublisher =>
+    ({
+      publishChatEvent: jest.fn(),
+      publishRoadmapChange: jest.fn(),
+    }) as unknown as RealtimePublisher;
+
   const buildRoom = (overrides: Partial<ChatRoom> = {}): ChatRoom => ({
     id: 'room-1',
     project_id: null,
@@ -33,6 +40,7 @@ describe('ChatService', () => {
       upsertDm: jest.fn().mockResolvedValue(buildRoom()),
       upsertParticipants: jest.fn().mockResolvedValue(undefined),
       isRoomParticipant: jest.fn().mockResolvedValue(true),
+      listRoomParticipantUserIds: jest.fn().mockResolvedValue([]),
       listRoomsForProject: jest.fn().mockResolvedValue([]),
       listDmRoomsForUser: jest.fn().mockResolvedValue([]),
       listRoomMessages: jest.fn().mockResolvedValue([]),
@@ -58,7 +66,7 @@ describe('ChatService', () => {
       buildRoom({ slug: 'actor-1_rec-1' }),
     );
     const repo = buildRepo({ upsertDm });
-    const service = new ChatService(repo);
+    const service = new ChatService(repo, buildRealtime());
 
     await service.sendDmMessage('actor-1', {
       recipient_id: 'rec-1',
@@ -77,7 +85,7 @@ describe('ChatService', () => {
     const repo = buildRepo({
       usersShareAnyProject: jest.fn().mockResolvedValue(false),
     });
-    const service = new ChatService(repo);
+    const service = new ChatService(repo, buildRealtime());
 
     await expect(
       service.sendDmMessage('actor-1', {
@@ -105,7 +113,7 @@ describe('ChatService', () => {
         .fn()
         .mockResolvedValue(['actor-1', 'client-1', 'member-1']),
     });
-    const service = new ChatService(repo);
+    const service = new ChatService(repo, buildRealtime());
 
     await service.sendChannelMessage('project-1', 'actor-1', {
       slug: 'general',
@@ -130,7 +138,7 @@ describe('ChatService', () => {
     );
     const upsertParticipants = jest.fn().mockResolvedValue(undefined);
     const repo = buildRepo({ upsertDm, upsertParticipants });
-    const service = new ChatService(repo);
+    const service = new ChatService(repo, buildRealtime());
 
     const room = await service.resolveDmRoom('actor-1', 'rec-1');
     expect(room.slug).toBe('actor-1_rec-1');

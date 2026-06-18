@@ -1,0 +1,15 @@
+# Copy to `.dev.vars` for `wrangler dev` (gitignored). These map to secrets in
+# production (set via `wrangler secret put <NAME>`).
+
+# Supabase project URL — used to fetch the JWKS that verifies asymmetric
+# (ES256) access tokens, which modern Supabase projects issue by default.
+SUPABASE_URL=https://your-project-ref.supabase.co
+
+# Legacy HS256 project JWT secret (Settings > API > JWT Settings). Only needed
+# if your project still signs tokens symmetrically; asymmetric projects verify
+# via SUPABASE_URL's JWKS instead and can leave this blank.
+SUPABASE_JWT_SECRET=your-supabase-jwt-secret
+
+# Shared secret the backend sends on POST /publish (x-realtime-token header).
+# Must match the backend's REALTIME_PUBLISH_TOKEN.
+REALTIME_PUBLISH_TOKEN=dev-publish-token

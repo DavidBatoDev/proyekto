@@ -1,0 +1,37 @@
+# Cloudflare Worker + Durable Objects — Proyekto realtime transport.
+#
+# Replaces Supabase Realtime for the collaborative features (roadmap canvas +
+# chat). One Durable Object instance per "room" (see ROOM KEY NAMESPACES in
+# src/index.ts). Uses the WebSocket Hibernation API so idle rooms cost nothing.
+#
+# Secrets (set with `wrangler secret put <NAME>` — never commit these):
+#   SUPABASE_JWT_SECRET     project JWT secret; verifies access tokens (HS256)
+#   REALTIME_PUBLISH_TOKEN  shared secret the backend sends on POST /publish
+#
+# Plain vars below are non-secret and environment-specific.
+
+name = "proyekto-realtime"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "RealtimeRoom"
+
+# SQLite-backed Durable Objects (modern default; eligible on the Workers free
+# plan as well as paid). The migration tag must stay stable across deploys.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RealtimeRoom"]
+
+[vars]
+# Backend endpoint the Worker calls to authorize a connection (room access).
+# Override per environment via the dashboard or `--var`.
+BACKEND_AUTHORIZE_URL = "http://localhost:8001/api/realtime/authorize"
+# Comma-separated list of allowed WebSocket origins. "*" allows any (dev only).
+ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
+
+# Example production environment — fill in the deployed backend URL.
+# [env.production.vars]
+# BACKEND_AUTHORIZE_URL = "https://api.proyekto.tech/api/realtime/authorize"
+# ALLOWED_ORIGINS = "https://proyekto.tech"

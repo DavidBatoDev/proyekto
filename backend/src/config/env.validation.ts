@@ -166,6 +166,21 @@ class EnvironmentVariables {
   @IsOptional()
   @IsNumber()
   CLOUDFLARE_PURGE_TIMEOUT_MS?: number;
+
+  // Realtime (Cloudflare Durable Objects) fan-out. When both URL + token are
+  // set, the backend publishes collaborative-feature events to the Worker;
+  // unset = dormant (no-op), so the feature can ship dark.
+  @IsOptional()
+  @IsString()
+  REALTIME_WORKER_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  REALTIME_PUBLISH_TOKEN?: string;
+
+  @IsOptional()
+  @IsNumber()
+  REALTIME_PUBLISH_TIMEOUT_MS?: number;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

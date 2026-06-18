@@ -28,6 +28,7 @@ jobs:
       IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_AR_REPO }}/backend:${{ github.sha }}
       PUBLIC_API_URL: ${{ vars.PUBLIC_API_URL }}
       CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+      REALTIME_WORKER_URL: ${{ vars.REALTIME_WORKER_URL }}
 
     steps:
       - name: Checkout
@@ -66,6 +67,18 @@ jobs:
             echo "Cloudflare runtime purge enabled for this deploy."
           else
             echo "Cloudflare runtime purge disabled (missing CLOUDFLARE_ZONE_ID or CLOUDFLARE_PURGE_API_TOKEN secret)."
+          fi
+
+          # Realtime (Durable Objects) fan-out. Gated on the REALTIME_WORKER_URL repo
+          # var (not a gcloud secrets describe — the deployer SA can't describe
+          # secrets). To enable: create the REALTIME_PUBLISH_TOKEN secret in Secret
+          # Manager, then set the REALTIME_WORKER_URL repo variable.
+          if [[ -n "${REALTIME_WORKER_URL:-}" ]]; then
+            ENV_VARS="${ENV_VARS},REALTIME_WORKER_URL=${REALTIME_WORKER_URL}"
+            SECRETS="${SECRETS},REALTIME_PUBLISH_TOKEN=REALTIME_PUBLISH_TOKEN:latest"
+            echo "Realtime (Durable Objects) publish enabled for this deploy."
+          else
+            echo "Realtime publish disabled (set the REALTIME_WORKER_URL repo var to enable)."
           fi
 
           gcloud run deploy "${{ vars.GCP_SERVICE_NAME }}" \
