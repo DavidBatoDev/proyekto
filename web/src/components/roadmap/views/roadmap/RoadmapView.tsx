@@ -1536,7 +1536,12 @@ export const RoadmapView = ({
         }
         edges={workingEdges ?? remoteWorkingEdges ?? edges}
         nodeTypes={nodeTypes}
-        onlyRenderVisibleElements
+        // ReactFlow pauses viewport culling during a real drag (so the local
+        // drag never flickers), but a remote collaborator's preview moves nodes
+        // via the controlled `nodes` prop with no active drag — leaving culling
+        // on makes epic/feature edges pop in and out as the reflow shifts their
+        // bounding boxes. Pause culling while the remote preview is active.
+        onlyRenderVisibleElements={!(remoteWorkingNodes && !workingNodes)}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeDragStart={onNodeDragStart}
