@@ -158,12 +158,16 @@ export class RealtimeRoom {
   }
 }
 
-function sanitizePresence(payload: unknown, fallbackUserId: string): PresenceMeta {
+export function sanitizePresence(
+  payload: unknown,
+  fallbackUserId: string,
+): PresenceMeta {
   const p = (payload ?? {}) as Partial<PresenceMeta>;
   return {
     userId: typeof p.userId === "string" && p.userId ? p.userId : fallbackUserId,
     name: typeof p.name === "string" ? p.name : undefined,
     avatarUrl: typeof p.avatarUrl === "string" ? p.avatarUrl : null,
     color: typeof p.color === "string" ? p.color : undefined,
+    editingNodeId: typeof p.editingNodeId === "string" ? p.editingNodeId : null,
   };
 }

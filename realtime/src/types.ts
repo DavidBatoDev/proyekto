@@ -55,6 +55,13 @@ export interface PresenceMeta {
   name?: string;
   avatarUrl?: string | null;
   color?: string;
+  /**
+   * Id of the epic/feature/task whose detail this user currently has open, or
+   * null. Carried in presence (not a separate event) so it survives reconnects,
+   * shows for late-joiners, and auto-clears on disconnect. Peers render an
+   * "editing" badge on the matching card.
+   */
+  editingNodeId?: string | null;
 }
 
 /** What we serialize onto each hibernatable WebSocket. */
