@@ -9,6 +9,8 @@ import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
 import { recordRecentAssignment } from "@/hooks/useRecentAssignees";
 import { useToast } from "@/contexts/ToastContext";
 import type { ProjectMember } from "@/services/project.service";
+import type { CollaboratorInfo } from "@/hooks/useRoadmapCollaboration";
+import { EditingTaskAvatar } from "../collaboration/EditingPresenceBadge";
 
 const getInitials = (name: string) =>
   name
@@ -50,6 +52,8 @@ interface TaskListItemProps {
   density?: "normal" | "compact";
   pulseToken?: number;
   isRunning?: boolean;
+  /** Collaborators who currently have this task's detail open. */
+  editors?: CollaboratorInfo[];
 }
 
 const STATUS_OPTIONS: TaskStatus[] = [
@@ -126,11 +130,15 @@ export const TaskListItem = memo(
     density = "normal",
     pulseToken,
       isRunning = false,
+    editors,
   }: TaskListItemProps) => {
     const isCompleted = task.status === "done";
     const isOptimisticTask = task.id.startsWith("temp-");
     const categoryLabel = getCategoryLabel(task);
     const isCompact = density === "compact";
+    // A collaborator has this task's detail open → tint the row in their color.
+    const editingColor =
+      editors && editors.length > 0 ? editors[0].color : undefined;
     const [isStatusOpen, setIsStatusOpen] = useState(false);
     const statusDropdownRef = useRef<HTMLDivElement>(null);
     const dropdownMenuRef = useRef<HTMLDivElement>(null);
@@ -369,10 +377,17 @@ export const TaskListItem = memo(
         } ${
           isAssigneeDragOver
             ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-300"
-            : isRunning
-              ? "border-emerald-300 bg-emerald-50/70 ring-1 ring-emerald-200"
-              : "border-transparent hover:border-gray-200 hover:bg-gray-50"
+            : editingColor
+              ? ""
+              : isRunning
+                ? "border-emerald-300 bg-emerald-50/70 ring-1 ring-emerald-200"
+                : "border-transparent hover:border-gray-200 hover:bg-gray-50"
         }`}
+        style={
+          editingColor && !isAssigneeDragOver
+            ? { borderColor: editingColor, backgroundColor: `${editingColor}14` }
+            : undefined
+        }
         onClick={() => onClick?.(task)}
       >
         {/* Checkbox */}
@@ -465,6 +480,9 @@ export const TaskListItem = memo(
             {categoryLabel}
           </span>
         )}
+
+        {/* Live "editing" indicator (a collaborator has this task open) */}
+        <EditingTaskAvatar editors={editors} />
 
         {/* Assignee avatar (click to open picker) */}
         <button

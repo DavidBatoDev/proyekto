@@ -28,6 +28,11 @@ import {
   getCompletedTaskCount,
 } from "../shared/featureProgress";
 import { deriveFeatureStatus } from "@/utils/featureStatus";
+import type { CollaboratorInfo } from "@/hooks/useRoadmapCollaboration";
+import {
+  EditingAvatars,
+  editingBorderColor,
+} from "../collaboration/EditingPresenceBadge";
 
 type ToolbarItemType = "epic" | "feature" | "task";
 const TOOLBAR_DRAG_MIME = "application/x-roadmap-toolbar-item";
@@ -48,6 +53,10 @@ export interface FeatureWidgetData extends Record<string, unknown> {
   toolbarDraggingType?: ToolbarItemType | null;
   performanceMode?: RoadmapPerformanceMode;
   canEditRoadmap?: boolean;
+  /** Collaborators who currently have this feature's detail open. */
+  editors?: CollaboratorInfo[];
+  /** node-id → editors map; the task list looks up each task's own id. */
+  taskEditorsByNodeId?: Map<string, CollaboratorInfo[]>;
 }
 
 type FeatureWidgetNode = Node<FeatureWidgetData>;
@@ -69,6 +78,8 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     toolbarDraggingType = null,
     performanceMode = "normal",
     canEditRoadmap = false,
+    editors,
+    taskEditorsByNodeId,
   } = data;
   const isReducedMotion = performanceMode === "reducedMotion";
   const safelyUpdateTask = (task: RoadmapTask) => {
@@ -231,6 +242,11 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
               ? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
               : getWidgetBorderColor(derivedStatus)
         }`}
+        style={
+          editingBorderColor(editors)
+            ? { borderColor: editingBorderColor(editors) }
+            : undefined
+        }
         onClick={() => onClick?.(feature)}
         onDragEnter={(event) => {
           if (!onAddTask || getToolbarItemType(event) !== "task") return;
@@ -262,6 +278,9 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
           isReducedMotion ? undefined : { duration: 0.25, ease: "easeOut" }
         }
       >
+        {/* Live "editing" presence — collaborators with this feature open */}
+        <EditingAvatars editors={editors} />
+
         {/* Deliverable indicator */}
         {feature.is_deliverable && (
           <div className="absolute -top-2 -right-2 w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-xs font-bold shadow">
@@ -499,6 +518,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
                     <TaskListItem
                       task={task}
                       density="compact"
+                      editors={taskEditorsByNodeId?.get(task.id)}
                       isRunning={runningTaskId === task.id}
                       pulseToken={
                         pulseTaskId === task.id ? pulseTaskToken : undefined

@@ -64,6 +64,7 @@ const RoadmapCanvas = ({
     remoteCursors,
     remoteDrag,
     trackCursor,
+    setEditingNode,
     broadcastDataChanged,
     broadcastNodeDragStart,
     broadcastNodeDrag,
@@ -149,6 +150,7 @@ const RoadmapCanvas = ({
     viewMode,
     selectedTaskId,
     sidePanelOpen,
+    canonicalActiveDetailNodeId,
     targetFeatureForTask,
     isAddEpicModalOpen,
     isEditEpicModalOpen,
@@ -211,6 +213,18 @@ const RoadmapCanvas = ({
     handleTaskUpdate,
     handleTaskDelete,
   } = controller;
+
+  // Announce which epic/feature/task detail this user has open (or null when
+  // closed) so collaborators see an "editing" badge on the matching card.
+  useEffect(() => {
+    setEditingNode(canonicalActiveDetailNodeId);
+  }, [canonicalActiveDetailNodeId, setEditingNode]);
+
+  // Clear our editing presence when the canvas unmounts (e.g. leaving the
+  // roadmap with a detail still open) so no stale badge lingers for peers.
+  useEffect(() => {
+    return () => setEditingNode(null);
+  }, [setEditingNode]);
 
   const [isLinkRoadmapModalOpen, setIsLinkRoadmapModalOpen] = useState(false);
   const navigate = useNavigate();
@@ -325,6 +339,7 @@ const RoadmapCanvas = ({
             showMiniMap={!hideMiniMap}
             performanceMode={performanceMode}
             remoteCursors={remoteCursors}
+            editors={collaborators}
             onTrackCursor={trackCursor}
             remoteDrag={remoteDrag}
             onBroadcastNodeDragStart={broadcastNodeDragStart}

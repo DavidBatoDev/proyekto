@@ -5,6 +5,11 @@ import { Edit2, Trash2, Plus, ExternalLink, Calendar } from "lucide-react";
 import type { RoadmapEpic } from "@/types/roadmap";
 import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
 import { calculateEpicProgressFromFeatures } from "../shared/featureProgress";
+import type { CollaboratorInfo } from "@/hooks/useRoadmapCollaboration";
+import {
+  EditingAvatars,
+  editingBorderColor,
+} from "../collaboration/EditingPresenceBadge";
 
 type ToolbarItemType = "epic" | "feature" | "task";
 const TOOLBAR_DRAG_MIME = "application/x-roadmap-toolbar-item";
@@ -20,6 +25,8 @@ export interface EpicWidgetData extends Record<string, unknown> {
   toolbarDraggingType?: ToolbarItemType | null;
   performanceMode?: RoadmapPerformanceMode;
   canEditRoadmap?: boolean;
+  /** Collaborators who currently have this epic's detail open. */
+  editors?: CollaboratorInfo[];
 }
 
 type EpicWidgetNode = Node<EpicWidgetData>;
@@ -36,6 +43,7 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
     toolbarDraggingType = null,
     performanceMode = "normal",
     canEditRoadmap = false,
+    editors,
   } = data;
   const isReducedMotion = performanceMode === "reducedMotion";
   const descriptionRef = useRef<HTMLDivElement>(null);
@@ -120,6 +128,11 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
             ? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
             : "border-gray-300"
       }`}
+      style={
+        editingBorderColor(editors)
+          ? { borderColor: editingBorderColor(editors) }
+          : undefined
+      }
       onClick={() => onEdit?.(epic)}
       onDragEnter={(event) => {
         const itemType = getToolbarItemType(event);
@@ -159,6 +172,9 @@ export const EpicWidget = memo(({ data }: NodeProps<EpicWidgetNode>) => {
         isReducedMotion ? undefined : { duration: 0.25, ease: "easeOut" }
       }
     >
+      {/* Live "editing" presence — collaborators with this epic open */}
+      <EditingAvatars editors={editors} />
+
       {/* Invisible handles for edge connections */}
       <Handle
         type="target"

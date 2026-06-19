@@ -49,6 +49,7 @@ import {
 import { teamTimeService } from "@/services/team-time.service";
 import { useUser } from "@/stores/authStore";
 import type {
+  CollaboratorInfo,
   RemoteCursor,
   RemoteDrag,
 } from "@/hooks/useRoadmapCollaboration";
@@ -115,6 +116,9 @@ interface RoadmapViewProps {
   showMiniMap?: boolean;
   minZoom?: number;
   remoteCursors?: RemoteCursor[];
+  /** Collaborators present in the room; those with `editingNodeId` set render
+   * an "editing" badge on the matching epic/feature/task. */
+  editors?: CollaboratorInfo[];
   onTrackCursor?: (x: number, y: number) => void;
   /** Active epic/feature drag by another collaborator (live preview). */
   remoteDrag?: RemoteDrag | null;
@@ -348,6 +352,7 @@ export const RoadmapView = ({
   showMiniMap = true,
   minZoom = 0.4,
   remoteCursors = [],
+  editors,
   onTrackCursor,
   remoteDrag,
   onBroadcastNodeDragStart,
@@ -612,6 +617,31 @@ export const RoadmapView = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layoutKey]);
 
+  // "Who is editing what": collapse the collaborator list into a node-id → editors
+  // map. Keyed on a small signature so the node memo below only rebuilds when the
+  // editing set actually changes — not on every unrelated presence/cursor update.
+  const editingSignature = useMemo(
+    () =>
+      (editors ?? [])
+        .filter((e) => e.editingNodeId)
+        .map((e) => `${e.userId}:${e.editingNodeId}`)
+        .sort()
+        .join("|"),
+    [editors],
+  );
+  const editorsByNodeId = useMemo(() => {
+    const map = new Map<string, CollaboratorInfo[]>();
+    for (const e of editors ?? []) {
+      if (!e.editingNodeId) continue;
+      const list = map.get(e.editingNodeId);
+      if (list) list.push(e);
+      else map.set(e.editingNodeId, [e]);
+    }
+    return map;
+    // editingSignature is the meaningful change key (editors identity alone churns).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingSignature]);
+
   const nodes = useMemo(
     (): Node<EpicWidgetData | FeatureWidgetData>[] => {
       // layoutedNodes only recalculates when positions change (layoutKey).
@@ -646,6 +676,7 @@ export const RoadmapView = ({
               toolbarDraggingType,
               performanceMode,
               canEditRoadmap,
+              editors: editorsByNodeId.get(epic.id),
             } satisfies EpicWidgetData,
           };
         }
@@ -680,6 +711,9 @@ export const RoadmapView = ({
             toolbarDraggingType,
             performanceMode,
             canEditRoadmap,
+            editors: editorsByNodeId.get(feature.id),
+            // Same node-id→editors map; the task list looks up its own task ids.
+            taskEditorsByNodeId: editorsByNodeId,
           } satisfies FeatureWidgetData,
         };
       });
@@ -705,6 +739,7 @@ export const RoadmapView = ({
       toolbarDraggingType,
       canEditRoadmap,
       runningTaskId,
+      editorsByNodeId,
     ],
   );
 
