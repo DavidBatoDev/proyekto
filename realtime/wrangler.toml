@@ -31,4 +31,5 @@ new_sqlite_classes = ["RealtimeRoom"]
 # Backend endpoint the Worker calls to authorize a connection (room access).
 BACKEND_AUTHORIZE_URL = "https://api.proyekto.tech/api/realtime/authorize"
 # Comma-separated list of allowed WebSocket origins. "*" allows any (dev only).
-ALLOWED_ORIGINS = "https://proyekto.tech"
+# Apex 307-redirects to www, so the served origin is www.proyekto.tech.
+ALLOWED_ORIGINS = "https://www.proyekto.tech,https://proyekto.tech"
