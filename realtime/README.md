@@ -41,6 +41,9 @@ npm run deploy
 Set `BACKEND_AUTHORIZE_URL` and `ALLOWED_ORIGINS` per environment in
 `wrangler.toml` (or the dashboard).
 
+**Full production rollout** (Worker + backend + web, ordering, verify, rollback):
+see [DEPLOYING.md](./DEPLOYING.md).
+
 ## Plan / cost
 
 Runs on the **Workers Free plan ($0)** — the SQLite-backed Durable Objects used

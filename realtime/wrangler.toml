@@ -24,14 +24,11 @@ class_name = "RealtimeRoom"
 tag = "v1"
 new_sqlite_classes = ["RealtimeRoom"]
 
+# These [vars] are the PRODUCTION values used by `wrangler deploy`. For local
+# `wrangler dev`, the localhost equivalents in `.dev.vars` override them.
+# SUPABASE_URL (for JWKS) is supplied as a secret in prod / via .dev.vars in dev.
 [vars]
 # Backend endpoint the Worker calls to authorize a connection (room access).
-# Override per environment via the dashboard or `--var`.
-BACKEND_AUTHORIZE_URL = "http://localhost:8001/api/realtime/authorize"
+BACKEND_AUTHORIZE_URL = "https://api.proyekto.tech/api/realtime/authorize"
 # Comma-separated list of allowed WebSocket origins. "*" allows any (dev only).
-ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
-
-# Example production environment — fill in the deployed backend URL.
-# [env.production.vars]
-# BACKEND_AUTHORIZE_URL = "https://api.proyekto.tech/api/realtime/authorize"
-# ALLOWED_ORIGINS = "https://proyekto.tech"
+ALLOWED_ORIGINS = "https://proyekto.tech"
