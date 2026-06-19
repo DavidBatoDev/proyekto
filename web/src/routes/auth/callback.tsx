@@ -4,6 +4,7 @@ import { CircularProgress } from "@mui/material";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../stores/authStore";
 import { useToast } from "../../hooks/useToast";
+import { completeOnboarding } from "../../lib/auth-api";
 
 export const Route = createFileRoute("/auth/callback")({
   component: AuthCallbackPage,
@@ -100,9 +101,21 @@ function AuthCallbackPage() {
         if (profile?.has_completed_onboarding) {
           navigate({ to: "/dashboard", replace: true });
         } else {
-          // Both lanes route through /welcome — the welcome route renders
-          // a lane-specific deck. OAuth users default to client_freelancer
-          // since the lane query param doesn't survive Google's roundtrip.
+          // Google users never ran the signup-time onboarding step that the
+          // password flow runs (SignupForm). Run it now — idempotently — so the
+          // flag is set AND the personal workspace is provisioned, then show the
+          // welcome tour once. OAuth users default to the client_freelancer lane
+          // (the lane query param doesn't survive Google's roundtrip). This also
+          // self-heals existing accounts that were stuck looping on /welcome.
+          try {
+            await completeOnboarding({
+              lane: "client_freelancer",
+              intent: { client: true, freelancer: false },
+            });
+          } catch (err) {
+            // Non-fatal: the welcome deck re-attempts completion as a backstop.
+            console.error("OAuth onboarding completion failed:", err);
+          }
           navigate({ to: "/welcome", replace: true });
         }
       } catch (error) {

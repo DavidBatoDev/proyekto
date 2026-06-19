@@ -1,5 +1,5 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight,
@@ -22,6 +22,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { supabase } from "@/lib/supabase";
 import { apiClient } from "@/api";
+import { completeOnboarding, type OnboardingLane } from "@/lib/auth-api";
 import { useToast } from "@/hooks/useToast";
 
 export const Route = createFileRoute("/welcome")({
@@ -39,6 +40,33 @@ export const Route = createFileRoute("/welcome")({
 function WelcomePage() {
   useProfileQuery(); // ensures profile is fetched and synced to the store on fresh loads
   const profile = useAuthStore((s) => s.profile);
+  const ensuredCompletionRef = useRef(false);
+
+  // Backstop: anyone who reaches /welcome without onboarding persisted (e.g. the
+  // OAuth callback's completion call failed, or a legacy account that got stuck
+  // looping here) gets it completed now — idempotently. This flips
+  // has_completed_onboarding and provisions the personal workspace the deck
+  // itself needs, so the user is never re-trapped on /welcome. Best-effort: the
+  // tour renders regardless of the result.
+  useEffect(() => {
+    if (!profile || ensuredCompletionRef.current) return;
+    if (profile.has_completed_onboarding) return;
+    ensuredCompletionRef.current = true;
+    const lane: OnboardingLane =
+      (profile.settings as { onboarding?: { lane?: string } } | null)?.onboarding
+        ?.lane === "consultant"
+        ? "consultant"
+        : "client_freelancer";
+    void completeOnboarding({
+      lane,
+      intent:
+        lane === "consultant"
+          ? { client: false, freelancer: false }
+          : { client: true, freelancer: false },
+    }).catch((err) => {
+      console.error("Welcome-deck onboarding completion backstop failed:", err);
+    });
+  }, [profile]);
 
   // Wait for profile hydration before deciding the lane. Guessing a default
   // here causes a flicker between decks when the user lands on /welcome
