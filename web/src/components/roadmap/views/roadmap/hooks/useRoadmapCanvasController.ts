@@ -1028,6 +1028,9 @@ export function useRoadmapCanvasController({
     openEpicTabs,
     selectedTaskId,
     sidePanelOpen,
+    // Canonical id of the epic/feature/task whose detail is currently open (or
+    // null) — used to broadcast "editing" presence to collaborators.
+    canonicalActiveDetailNodeId,
     targetFeatureForTask,
     isAddEpicModalOpen,
     isEditEpicModalOpen,

@@ -29,6 +29,8 @@ export interface CollaboratorInfo {
 	name: string;
 	avatarUrl: string | null;
 	color: string;
+	/** Id of the epic/feature/task this collaborator currently has open, if any. */
+	editingNodeId?: string | null;
 }
 
 export interface RemoteCursor {
@@ -46,6 +48,7 @@ interface PresenceState {
 	name: string;
 	avatarUrl: string | null;
 	color: string;
+	editingNodeId?: string | null;
 }
 
 interface CursorPayload {
@@ -132,6 +135,11 @@ export function useRoadmapCollaboration({
 	const userIdRef = useRef(userId);
 	const nameRef = useRef("");
 	const colorRef = useRef("");
+	const avatarUrlRef = useRef<string | null>(null);
+	// The node whose detail this user currently has open (epic/feature/task), or
+	// null. Held in a ref so it survives the connection effect re-running (e.g. a
+	// profile change) and is re-tracked on every (re)connect.
+	const editingNodeIdRef = useRef<string | null>(null);
 	// Mirrors `collaborators.length > 0` so the high-frequency senders can skip
 	// broadcasting into an empty room (no one watching) — solo roadmap usage is
 	// the common case and is the dominant realtime cost driver.
@@ -188,6 +196,7 @@ export function useRoadmapCollaboration({
 
 		nameRef.current = name;
 		colorRef.current = color;
+		avatarUrlRef.current = avatarUrl;
 
 		const invalidate = () =>
 			void queryClient.invalidateQueries({
@@ -202,6 +211,7 @@ export function useRoadmapCollaboration({
 					name: p.name,
 					avatarUrl: p.avatarUrl,
 					color: p.color,
+					editingNodeId: p.editingNodeId ?? null,
 				}));
 			setCollaborators(others);
 			// Remove cursors / drag preview for users who left
@@ -290,7 +300,13 @@ export function useRoadmapCollaboration({
 				.on("node_drag", applyNodeDrag)
 				.on("node_drag_end", applyNodeDragEnd);
 
-			room.track({ userId, name, avatarUrl, color } satisfies PresenceState);
+			room.track({
+				userId,
+				name,
+				avatarUrl,
+				color,
+				editingNodeId: editingNodeIdRef.current,
+			} satisfies PresenceState);
 			room.connect();
 
 			return () => {
@@ -380,6 +396,7 @@ export function useRoadmapCollaboration({
 						name,
 						avatarUrl,
 						color,
+						editingNodeId: editingNodeIdRef.current,
 					} satisfies PresenceState);
 				}
 			});
@@ -424,6 +441,29 @@ export function useRoadmapCollaboration({
 		void channel.send({ type: "broadcast", event: "cursor", payload });
 	}, []);
 
+	// Announce (or clear) which epic/feature/task detail this user has open by
+	// folding `editingNodeId` into our presence and re-tracking. Peers render an
+	// "editing" badge on the matching card. Carried in presence (not a one-off
+	// event) so it survives reconnects, reaches late-joiners, and auto-clears on
+	// disconnect via the room's presence rebroadcast.
+	const setEditingNode = useCallback((nodeId: string | null) => {
+		if (editingNodeIdRef.current === nodeId) return;
+		editingNodeIdRef.current = nodeId;
+		if (!userIdRef.current) return;
+		const presence: PresenceState = {
+			userId: userIdRef.current,
+			name: nameRef.current,
+			avatarUrl: avatarUrlRef.current,
+			color: colorRef.current,
+			editingNodeId: nodeId,
+		};
+		if (roadmapOnDurableObjects()) {
+			roomRef.current?.track(presence);
+			return;
+		}
+		void channelRef.current?.track(presence);
+	}, []);
+
 	// Transport-agnostic broadcast for the node-drag preview events.
 	const sendBroadcast = useCallback((event: string, payload: unknown) => {
 		if (roadmapOnDurableObjects()) {
@@ -436,7 +476,11 @@ export function useRoadmapCollaboration({
 	}, []);
 
 	const broadcastNodeDragStart = useCallback(
-		(p: { nodeId: string; type: "epic" | "feature"; sourceEpicId?: string }) => {
+		(p: {
+			nodeId: string;
+			type: "epic" | "feature";
+			sourceEpicId?: string;
+		}) => {
 			if (!userIdRef.current) return;
 			if (!hasCollaboratorsRef.current) return;
 			sendBroadcast("node_drag_start", {
@@ -492,6 +536,7 @@ export function useRoadmapCollaboration({
 		remoteCursors,
 		remoteDrag,
 		trackCursor,
+		setEditingNode,
 		broadcastDataChanged,
 		broadcastNodeDragStart,
 		broadcastNodeDrag,
