@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsInt,
   IsOptional,
   IsString,
@@ -6,6 +7,7 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
   ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -66,4 +68,50 @@ export class ToggleChatReactionDto {
   @IsString()
   @MaxLength(32)
   emoji: string;
+}
+
+/** Create a new (user-defined) channel in a project. */
+export class CreateChannelDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  name: string;
+
+  @IsOptional()
+  @IsBoolean()
+  is_private?: boolean;
+}
+
+/** Rename and/or archive a channel. */
+export class UpdateChannelDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  name?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  is_archived?: boolean;
+}
+
+/** Add a project member to a private channel. */
+export class ChannelMemberDto {
+  @IsUUID()
+  user_id: string;
+}
+
+/** Pagination for the project activity timeline. */
+export class ActivityQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  offset?: number;
 }

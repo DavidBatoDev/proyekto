@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import { ProjectAuthorizationService } from './authorization/project-authorization.service';
+import { ChatService } from '../chat/chat.service';
 
 export interface PersonalWorkspace {
   id: string;
@@ -18,6 +19,7 @@ export class PersonalWorkspaceService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly authorization: ProjectAuthorizationService,
+    private readonly chatService: ChatService,
   ) {}
 
   /**
@@ -67,6 +69,22 @@ export class PersonalWorkspaceService {
     // Slice 3b: project_members dual-write removed. project_shares is the
     // sole source of truth for project membership and authorization.
     await this.attachOwnerShare(created.id, userId);
+
+    // Solo workspace → a single #general channel (best-effort; listRooms
+    // backfills if this fails).
+    try {
+      await this.chatService.provisionDefaultChannels(
+        created.id,
+        userId,
+        'personal',
+      );
+    } catch (err) {
+      this.logger.warn(
+        `provisionDefaultChannels failed for personal workspace ${created.id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
 
     return created as PersonalWorkspace;
   }

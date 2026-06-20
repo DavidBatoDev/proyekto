@@ -13,6 +13,12 @@ import type {
   ChatRoomWithLastMessage,
 } from './chat.repository.interface';
 
+// Full column list for chat_rooms selects — kept in one place so the
+// flexible-channel fields (is_private / is_archived / ...) are always
+// hydrated everywhere a room is read.
+const ROOM_COLUMNS =
+  'id, project_id, type, slug, name, is_private, is_archived, archived_at, created_by, created_at, updated_at';
+
 type ProjectRoleData = {
   client_id: string;
   consultant_id: string | null;
@@ -369,7 +375,7 @@ export class SupabaseChatRepository implements ChatRepository {
   async findRoomById(roomId: string): Promise<ChatRoom | null> {
     const { data, error } = await this.supabase
       .from('chat_rooms')
-      .select('id, project_id, type, slug, name, created_at, updated_at')
+      .select(ROOM_COLUMNS)
       .eq('id', roomId)
       .maybeSingle();
 
@@ -384,7 +390,7 @@ export class SupabaseChatRepository implements ChatRepository {
     const { data, error } = await this.supabase
       .from('chat_room_participants')
       .select(
-        'room:chat_rooms!inner(id, project_id, type, slug, name, created_at, updated_at)',
+        `room:chat_rooms!inner(${ROOM_COLUMNS})`,
       )
       .eq('room_id', roomId)
       .eq('user_id', userId)
@@ -400,7 +406,7 @@ export class SupabaseChatRepository implements ChatRepository {
   ): Promise<ChatRoom | null> {
     const { data, error } = await this.supabase
       .from('chat_rooms')
-      .select('id, project_id, type, slug, name, created_at, updated_at')
+      .select(ROOM_COLUMNS)
       .eq('project_id', projectId)
       .eq('type', 'channel')
       .eq('slug', slug)
@@ -413,7 +419,7 @@ export class SupabaseChatRepository implements ChatRepository {
   async findDmBySlug(slug: string): Promise<ChatRoom | null> {
     const { data, error } = await this.supabase
       .from('chat_rooms')
-      .select('id, project_id, type, slug, name, created_at, updated_at')
+      .select(ROOM_COLUMNS)
       .is('project_id', null)
       .eq('type', 'dm')
       .eq('slug', slug)
@@ -427,8 +433,15 @@ export class SupabaseChatRepository implements ChatRepository {
     projectId: string;
     slug: string;
     name?: string | null;
+    isPrivate?: boolean;
+    createdBy?: string | null;
   }): Promise<ChatRoom> {
-    const existing = await this.findChannelBySlug(params.projectId, params.slug);
+    // Channels (including the auto-provisioned defaults) are keyed on
+    // (project_id, slug), so a re-run is idempotent and races re-fetch cleanly.
+    const findExisting = () =>
+      this.findChannelBySlug(params.projectId, params.slug);
+
+    const existing = await findExisting();
     if (existing) return existing;
 
     const { data, error } = await this.supabase
@@ -438,18 +451,111 @@ export class SupabaseChatRepository implements ChatRepository {
         type: 'channel',
         slug: params.slug,
         name: params.name ?? null,
+        is_private: params.isPrivate ?? false,
+        created_by: params.createdBy ?? null,
       })
-      .select('id, project_id, type, slug, name, created_at, updated_at')
+      .select(ROOM_COLUMNS)
       .single();
 
     if (error) {
       // Could be a unique-key race — re-fetch.
-      const retry = await this.findChannelBySlug(params.projectId, params.slug);
+      const retry = await findExisting();
       if (retry) return retry;
       throw new Error(error.message || 'Failed to upsert channel');
     }
     if (!data) throw new Error('Failed to upsert channel');
     return data as ChatRoom;
+  }
+
+  async updateRoom(
+    roomId: string,
+    patch: { name?: string; is_archived?: boolean },
+  ): Promise<ChatRoom> {
+    const update: Record<string, unknown> = {};
+    if (typeof patch.name === 'string') update.name = patch.name;
+    if (typeof patch.is_archived === 'boolean') {
+      update.is_archived = patch.is_archived;
+      update.archived_at = patch.is_archived ? new Date().toISOString() : null;
+    }
+
+    const { data, error } = await this.supabase
+      .from('chat_rooms')
+      .update(update)
+      .eq('id', roomId)
+      .select(ROOM_COLUMNS)
+      .single();
+
+    if (error || !data) {
+      throw new Error(error?.message || 'Failed to update channel');
+    }
+    return data as ChatRoom;
+  }
+
+  async getProjectIsPersonal(projectId: string): Promise<boolean> {
+    const { data, error } = await this.supabase
+      .from('projects')
+      .select('is_personal_workspace')
+      .eq('id', projectId)
+      .maybeSingle();
+
+    if (error || !data) return false;
+    return Boolean(data.is_personal_workspace);
+  }
+
+  async listProjectChannels(projectId: string): Promise<ChatRoom[]> {
+    const { data, error } = await this.supabase
+      .from('chat_rooms')
+      .select(ROOM_COLUMNS)
+      .eq('project_id', projectId)
+      .eq('type', 'channel')
+      .eq('is_archived', false);
+
+    if (error) throw new Error(error.message);
+    return (data || []) as ChatRoom[];
+  }
+
+  async listParticipantRoomIds(
+    userId: string,
+    roomIds: string[],
+  ): Promise<string[]> {
+    if (roomIds.length === 0) return [];
+    const { data, error } = await this.supabase
+      .from('chat_room_participants')
+      .select('room_id')
+      .eq('user_id', userId)
+      .in('room_id', roomIds);
+
+    if (error || !data) return [];
+    return Array.from(new Set(data.map((row) => String(row.room_id))));
+  }
+
+  async hydrateRoomsByIds(
+    roomIds: string[],
+    userId: string,
+  ): Promise<ChatRoomWithLastMessage[]> {
+    return this.hydrateRooms(roomIds, userId);
+  }
+
+  async listRoomParticipants(roomId: string): Promise<ChatParticipant[]> {
+    const { data, error } = await this.supabase
+      .from('chat_room_participants')
+      .select(
+        `
+        room_id, user_id, project_id, joined_at, last_read_at,
+        user:profiles!chat_room_participants_user_id_fkey(id, display_name, avatar_url, email)
+      `,
+      )
+      .eq('room_id', roomId);
+
+    if (error) throw new Error(error.message);
+    return ((data || []) as RawParticipantRow[]).map((row) => ({
+      room_id: row.room_id,
+      user_id: row.user_id,
+      project_id: row.project_id,
+      joined_at: row.joined_at,
+      last_read_at: row.last_read_at,
+      user: this.pickSingle(row.user),
+    }));
   }
 
   async upsertDm(params: { slug: string }): Promise<ChatRoom> {
@@ -464,7 +570,7 @@ export class SupabaseChatRepository implements ChatRepository {
         slug: params.slug,
         name: null,
       })
-      .select('id, project_id, type, slug, name, created_at, updated_at')
+      .select(ROOM_COLUMNS)
       .single();
 
     if (error) {
@@ -499,6 +605,16 @@ export class SupabaseChatRepository implements ChatRepository {
     }
   }
 
+  async removeParticipant(roomId: string, userId: string): Promise<void> {
+    const { error } = await this.supabase
+      .from('chat_room_participants')
+      .delete()
+      .eq('room_id', roomId)
+      .eq('user_id', userId);
+
+    if (error) throw new Error(error.message);
+  }
+
   async isRoomParticipant(roomId: string, userId: string): Promise<boolean> {
     const { data, error } = await this.supabase
       .from('chat_room_participants')
@@ -529,7 +645,7 @@ export class SupabaseChatRepository implements ChatRepository {
     const [roomsResult, messagesResult, roomParticipantsResult] = await Promise.all([
       this.supabase
         .from('chat_rooms')
-        .select('id, project_id, type, slug, name, created_at, updated_at')
+        .select(ROOM_COLUMNS)
         .in('id', roomIds),
       // One row per room (the newest) via DISTINCT ON inside
       // chat_latest_messages_by_room -- avoids pulling every message in every

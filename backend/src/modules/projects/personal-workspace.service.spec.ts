@@ -56,7 +56,10 @@ function buildService(
     revoke: jest.fn(),
     ...authorizationOverrides,
   } as any;
-  return new PersonalWorkspaceService(supabase, authorization);
+  const chatService = {
+    provisionDefaultChannels: jest.fn().mockResolvedValue(undefined),
+  } as any;
+  return new PersonalWorkspaceService(supabase, authorization, chatService);
 }
 
 describe('PersonalWorkspaceService', () => {

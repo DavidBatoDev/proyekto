@@ -28,6 +28,7 @@ import { TeamTimeModule } from './modules/team-time/team-time.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { RealtimePublisherModule } from './modules/realtime/realtime-publisher.module';
+import { AuditModule } from './modules/audit/audit.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -64,6 +65,7 @@ import { AppController } from './app.controller';
     InvoicesModule,
     RealtimePublisherModule,
     RealtimeModule,
+    AuditModule,
   ],
 })
 export class AppModule {}

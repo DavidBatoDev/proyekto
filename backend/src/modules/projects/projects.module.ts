@@ -5,27 +5,29 @@ import { SupabaseProjectsRepository } from './repositories/projects.repository.s
 import { PROJECTS_REPOSITORY } from './projects.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PersonalWorkspaceService } from './personal-workspace.service';
-import { ProjectAuthorizationService } from './authorization/project-authorization.service';
+import { AuthorizationModule } from './authorization/authorization.module';
 import { ProjectAccessSyncModule } from './access-sync/access-sync.module';
 import { TeamsModule } from '../teams/teams.module';
+import { ChatModule } from '../chat/chat.module';
 
 @Module({
   imports: [
     NotificationsModule,
     ProjectAccessSyncModule,
+    AuthorizationModule,
     forwardRef(() => TeamsModule),
+    ChatModule,
   ],
   controllers: [ProjectsController],
   providers: [
     ProjectsService,
     PersonalWorkspaceService,
-    ProjectAuthorizationService,
     { provide: PROJECTS_REPOSITORY, useClass: SupabaseProjectsRepository },
   ],
   exports: [
     ProjectsService,
     PersonalWorkspaceService,
-    ProjectAuthorizationService,
+    AuthorizationModule,
     ProjectAccessSyncModule,
   ],
 })

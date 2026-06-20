@@ -46,6 +46,7 @@ import {
 } from './dto/project.dto';
 import { Project } from '../../common/entities';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ChatService } from '../chat/chat.service';
 import { ProjectAccessSyncService } from './access-sync/access-sync.service';
 import {
   type PermissionPath,
@@ -82,7 +83,29 @@ export class ProjectsService {
     private readonly cache: RedisDataCacheService,
     private readonly cacheInvalidation: RedisCacheInvalidationService,
     private readonly config: ConfigService,
+    private readonly chatService: ChatService,
   ) {}
+
+  /**
+   * Best-effort default-channel seeding for a freshly created project. Never
+   * blocks or rolls back creation — listRooms lazily backfills system rooms,
+   * so a transient failure here self-heals on first chat load.
+   */
+  private async provisionChannelsBestEffort(
+    projectId: string,
+    userId: string,
+    mode: 'project' | 'personal',
+  ): Promise<void> {
+    try {
+      await this.chatService.provisionDefaultChannels(projectId, userId, mode);
+    } catch (err) {
+      this.logger.warn(
+        `provisionDefaultChannels failed for project ${projectId} (mode=${mode}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
 
   private async invalidateDashboardCache(): Promise<void> {
     await this.cacheInvalidation.invalidateAllDashboardCache();
@@ -704,6 +727,7 @@ export class ProjectsService {
         grantedBy: userId,
       });
       await this.safeSync(project.id, userId);
+      await this.provisionChannelsBestEffort(project.id, userId, 'project');
       const roadmap = await this.attachDefaultRoadmapOrRollback(
         project.id,
         userId,
@@ -761,6 +785,7 @@ export class ProjectsService {
       }
     }
 
+    await this.provisionChannelsBestEffort(project.id, userId, 'project');
     const roadmap = await this.attachDefaultRoadmapOrRollback(
       project.id,
       userId,

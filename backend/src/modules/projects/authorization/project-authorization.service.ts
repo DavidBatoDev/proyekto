@@ -13,6 +13,7 @@ import {
   resolvePermissions,
 } from '../permissions/project-permissions';
 import { MissingPermissionException } from './missing-permission.exception';
+import { AuditService } from '../../audit/audit.service';
 
 /**
  * Roles in descending strength order. Higher index = stronger role.
@@ -64,7 +65,20 @@ export class ProjectAuthorizationService {
 
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
+    private readonly audit: AuditService,
   ) {}
+
+  /** The project's consultant (cannot be removed) — null if none assigned. */
+  private async getProjectConsultantId(
+    projectId: string,
+  ): Promise<string | null> {
+    const { data } = await this.supabase
+      .from('projects')
+      .select('consultant_id')
+      .eq('id', projectId)
+      .maybeSingle();
+    return (data?.consultant_id as string | null) ?? null;
+  }
 
   /**
    * Returns the caller's effective role on a project — the maximum
@@ -300,6 +314,18 @@ export class ProjectAuthorizationService {
         );
         throw new Error(error?.message ?? 'Failed to grant project share');
       }
+      this.audit.log({
+        projectId: params.projectId,
+        actorId: params.grantedBy,
+        action: 'access.granted',
+        entityType: 'project_access',
+        entityId: (data as ProjectShare).id,
+        metadata: {
+          target_user_id: params.userId,
+          role: targetRole,
+          origin: params.origin ?? null,
+        },
+      });
       return data as ProjectShare;
     }
 
@@ -322,6 +348,18 @@ export class ProjectAuthorizationService {
       );
       throw new Error(error?.message ?? 'Failed to grant project share');
     }
+    this.audit.log({
+      projectId: params.projectId,
+      actorId: params.grantedBy,
+      action: 'access.granted',
+      entityType: 'project_access',
+      entityId: (data as ProjectShare).id,
+      metadata: {
+        target_user_id: params.userId,
+        role: incomingRole,
+        origin: params.origin ?? null,
+      },
+    });
     return data as ProjectShare;
   }
 
@@ -366,6 +404,16 @@ export class ProjectAuthorizationService {
       .maybeSingle();
     if (!row) return;
 
+    // The consultant cannot be removed from a project (PRD guarantee).
+    const consultantId = await this.getProjectConsultantId(projectId);
+    if (consultantId && userId === consultantId) {
+      throw new MissingPermissionException({
+        path: null,
+        message: 'The consultant cannot be removed from a project.',
+        label: 'remove the consultant',
+      });
+    }
+
     if (row.role === 'owner') {
       const ownerCount = await this.countOwners(projectId);
       if (ownerCount <= 1) {
@@ -376,6 +424,16 @@ export class ProjectAuthorizationService {
         });
       }
     }
+
+    // Past both guards the revoke will proceed; record it for the audit trail.
+    this.audit.log({
+      projectId,
+      actorId: null,
+      action: 'access.revoked',
+      entityType: 'project_access',
+      entityId: null,
+      metadata: { target_user_id: userId, origin: origin ?? 'direct', role: row.role },
+    });
 
     if (origin && origin.startsWith('team:')) {
       const teamId = origin.slice('team:'.length);

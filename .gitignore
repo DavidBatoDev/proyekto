@@ -11,3 +11,7 @@ __pycache__/
 *.env
 .claude/*
 keys
+
+# Local MCP config holds a Supabase access token — never commit
+.mcp.json
+mcp.json
