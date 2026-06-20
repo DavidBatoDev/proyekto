@@ -59,7 +59,7 @@ const EpicOverview = ({ preview }: { preview: RoadmapPreview }) => {
 								{!isLast && <div className="mt-1 h-5 w-0.5 bg-slate-200" />}
 							</div>
 							<div className="flex items-start justify-between flex-1 min-w-0 pb-1">
-								<span className="truncate pt-0.5 text-[14px] font-medium text-slate-900">
+								<span className="truncate pt-0.5 text-[13px] font-medium text-slate-900 sm:text-[14px]">
 									{epic.title}
 								</span>
 								<span className="ml-2 whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
@@ -193,8 +193,8 @@ export function RoadmapsGrid() {
 			<div className="mb-6">
 				<div className="flex items-center justify-between mb-1">
 					<div className="flex items-center gap-2">
-						<div className="h-[18px] w-[18px] rounded-full bg-slate-900" />
-						<h2 className="text-[20px] font-semibold tracking-tight text-slate-900">
+						<div className="h-3 w-3 rounded-full bg-slate-900 sm:h-[18px] sm:w-[18px]" />
+						<h2 className="text-base font-semibold tracking-tight text-slate-900 sm:text-[20px]">
 							MY ROADMAPS
 						</h2>
 					</div>
@@ -234,11 +234,11 @@ export function RoadmapsGrid() {
 					</p>
 				</div>
 			) : (
-				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
+				<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 items-stretch">
 					{templates.map((template) => (
 						<div
 							key={template.id}
-							className="group relative flex h-[420px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg"
+							className="group relative flex h-auto flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg sm:h-[420px]"
 						>
 							<div className="absolute top-3 right-3 z-20" data-roadmap-menu>
 								<button
@@ -318,7 +318,7 @@ export function RoadmapsGrid() {
 											{template.tag}
 										</span>
 									</div>
-									<p className="mt-2 line-clamp-2 text-[14px] text-slate-600">
+									<p className="mt-2 line-clamp-2 text-[13px] text-slate-600 sm:text-[14px]">
 										{template.category}
 									</p>
 									{template.preview.project_id && (
@@ -328,9 +328,10 @@ export function RoadmapsGrid() {
 										</div>
 									)}
 									<div className="mt-auto border-t border-slate-100 pt-4 flex justify-end">
-										<span className="inline-flex items-center gap-1 whitespace-nowrap text-[14px] font-semibold uppercase text-slate-700 transition-colors group-hover:text-slate-900">
-											<CheckCircle2 className="w-3 h-3" />
-											TRACK PROGRESS \u2192
+										<span className="inline-flex items-center gap-1 whitespace-nowrap text-[12px] font-semibold uppercase text-slate-700 transition-colors group-hover:text-slate-900 sm:text-[14px]">
+											<CheckCircle2 className="h-3 w-3 shrink-0" />
+											TRACK PROGRESS
+											<ArrowRight className="h-3.5 w-3.5 shrink-0" />
 										</span>
 									</div>
 								</div>
