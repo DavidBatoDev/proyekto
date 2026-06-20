@@ -114,7 +114,7 @@ function WorkItemsBoardPage() {
 				type="button"
 				onClick={() => setIsBrowserOpen(true)}
 				disabled={isLoading}
-				className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 text-white px-3 py-1.5 text-xs font-medium hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+				className="inline-flex items-center gap-1.5 rounded-md bg-primary text-white px-3 py-1.5 text-xs font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 			>
 				<Plus className="w-3.5 h-3.5" />
 				Add work items

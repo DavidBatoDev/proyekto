@@ -121,7 +121,7 @@ export function ChatSidebar({
                 aria-checked={showUnreadOnly}
                 onClick={() => setShowUnreadOnly((value) => !value)}
                 className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                  showUnreadOnly ? "bg-slate-900" : "bg-slate-300"
+                  showUnreadOnly ? "bg-primary" : "bg-slate-300"
                 }`}
               >
                 <span
@@ -194,7 +194,7 @@ export function ChatSidebar({
                     onClick={() => onSelectChannel(channel.roomId)}
                     className={`inline-flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors ${
                       isActive
-                        ? "bg-slate-900 text-white"
+                        ? "bg-primary text-white"
                         : "text-slate-700 hover:bg-slate-200/80"
                     }`}
                   >
@@ -247,7 +247,7 @@ export function ChatSidebar({
                     onClick={() => onSelectMember(entry.member.user_id, entry.roomId)}
                     className={`w-full rounded-lg px-2.5 py-2 text-left transition-colors ${
                       isActive
-                        ? "bg-slate-900 text-white"
+                        ? "bg-primary text-white"
                         : "text-slate-800 hover:bg-slate-200/70"
                     }`}
                   >

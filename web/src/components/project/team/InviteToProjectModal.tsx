@@ -153,7 +153,7 @@ export function InviteToProjectModal({
 							<button
 								type="submit"
 								disabled={!email.trim() || inviteMutation.isPending}
-								className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+								className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
 							>
 								{inviteMutation.isPending ? (
 									<Loader2 className="h-4 w-4 animate-spin" />

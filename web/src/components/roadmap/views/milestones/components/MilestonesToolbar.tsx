@@ -28,7 +28,7 @@ export const MilestonesToolbar = ({
 						onClick={() => onGranularityChange(item)}
 						className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
 							granularity === item
-								? "bg-orange-500 text-white shadow-sm"
+								? "bg-primary text-white shadow-sm"
 								: "text-gray-400 hover:text-gray-600 hover:bg-gray-100 border border-gray-200 bg-white"
 						}`}
 					>
@@ -44,7 +44,7 @@ export const MilestonesToolbar = ({
 							title={isDateDrawMode ? "Exit draw mode" : "Draw date ranges"}
 							className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
 								isDateDrawMode
-									? "bg-orange-500 text-white shadow-sm"
+									? "bg-primary text-white shadow-sm"
 									: "text-gray-400 hover:text-gray-600 hover:bg-gray-100 border border-gray-200 bg-white"
 							}`}
 						>

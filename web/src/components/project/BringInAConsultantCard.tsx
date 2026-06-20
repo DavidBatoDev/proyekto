@@ -38,7 +38,7 @@ export function BringInAConsultantCard({
         </div>
         <Link
           to="/dashboard"
-          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_4px_14px_rgba(15,23,42,0.18)] transition-colors hover:bg-slate-800"
+          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-[0_4px_14px_rgba(15,23,42,0.18)] transition-colors hover:bg-primary/90"
         >
           Find a consultant
           <ArrowRight className="h-4 w-4" />

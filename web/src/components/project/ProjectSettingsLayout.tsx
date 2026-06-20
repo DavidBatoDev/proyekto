@@ -65,7 +65,7 @@ export function ProjectSettingsLayout({
                       to={item.to}
                       className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all ${
                         item.active
-                          ? "bg-slate-900 text-white shadow-[0_8px_16px_rgba(15,23,42,0.22)]"
+                          ? "bg-primary text-white shadow-[0_8px_16px_rgba(15,23,42,0.22)]"
                           : "text-slate-700 hover:bg-slate-100"
                       }`}
                     >

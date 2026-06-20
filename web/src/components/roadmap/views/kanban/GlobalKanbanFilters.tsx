@@ -75,7 +75,7 @@ function AllAssigneesAvatar({ options }: { options: AssigneeOption[] }) {
 function pillClass(isActive: boolean) {
 	return `shrink-0 px-2.5 py-1 rounded-full text-xs font-medium border transition-all duration-150 ${
 		isActive
-			? "bg-slate-900 text-white border-slate-900 shadow-sm"
+			? "bg-primary text-white border-primary shadow-sm"
 			: "bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 border-slate-200 hover:border-slate-400"
 	}`;
 }

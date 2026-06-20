@@ -78,7 +78,7 @@ function ProjectTeamsTab() {
           <button
             type="button"
             onClick={() => setAttachOpen(true)}
-            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
           >
             <Plus className="h-4 w-4" />
             Attach team
@@ -195,7 +195,7 @@ function AttachedTeamRow({
             {team?.name ?? projectTeam.team_id.slice(0, 8)}
           </span>
           {projectTeam.is_primary && (
-            <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+            <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
               Primary
             </span>
           )}
@@ -469,7 +469,7 @@ function AddCuratedPicker({
                             })
                           }
                           disabled={addMutation.isPending}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                         >
                           {addMutation.isPending ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -787,7 +787,7 @@ function AttachTeamModal({
               type="button"
               onClick={() => attachMutation.mutate()}
               disabled={!selectedTeamId || attachMutation.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
               {attachMutation.isPending && (
                 <Loader2 className="h-4 w-4 animate-spin" />

@@ -174,7 +174,7 @@ function InvoiceRow({
 						type="button"
 						onClick={onIssue}
 						disabled={isBusy}
-						className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+						className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
 					>
 						Issue
 					</button>
@@ -323,7 +323,7 @@ function CreateInvoiceModal({
 						<button
 							type="submit"
 							disabled={isPending}
-							className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+							className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
 						>
 							{isPending ? "Creating..." : "Create"}
 						</button>

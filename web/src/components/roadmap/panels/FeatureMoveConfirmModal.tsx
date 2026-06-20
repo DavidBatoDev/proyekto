@@ -55,7 +55,7 @@ export const FeatureMoveConfirmModal = ({
 			>
 				<div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
 					<div className="flex items-center gap-3">
-						<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
+						<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white shadow-sm">
 							<ArrowRightLeft size={17} />
 						</div>
 						<div>
@@ -125,7 +125,7 @@ export const FeatureMoveConfirmModal = ({
 						type="button"
 						onClick={() => void onConfirm()}
 						disabled={isSaving}
-						className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 disabled:opacity-60"
+						className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-60"
 					>
 						{isSaving ? "Moving..." : "Move Feature"}
 					</button>

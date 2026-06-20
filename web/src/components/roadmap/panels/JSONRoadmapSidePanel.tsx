@@ -175,7 +175,7 @@ export function JSONRoadmapSidePanel({
                 type="button"
                 onClick={() => void handleSave()}
                 disabled={isSaving}
-                className="px-4 py-2 text-sm font-medium text-white bg-orange-500 rounded-md hover:bg-orange-600 transition-colors disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {isSaving ? "Saving..." : "Save"}
               </button>

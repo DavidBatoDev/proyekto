@@ -824,7 +824,7 @@ function PermissionsSettingsPage() {
               type="button"
               onClick={() => void handleSave()}
               disabled={saving}
-              className="rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+              className="rounded-lg bg-primary px-4 py-1.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50"
             >
               {saving ? "Saving..." : "Save Changes"}
             </button>
@@ -871,7 +871,7 @@ function PresetSwitcher({
               onClick={() => onApply(p)}
               className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
                 isActive
-                  ? "border-slate-900 bg-slate-900 text-white"
+                  ? "border-primary bg-primary text-white"
                   : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
               }`}
             >
@@ -882,7 +882,7 @@ function PresetSwitcher({
         <span
           className={`inline-flex items-center rounded-md border px-3 py-1.5 text-sm font-medium ${
             active === null
-              ? "border-slate-900 bg-slate-900 text-white"
+              ? "border-primary bg-primary text-white"
               : "border-slate-200 bg-slate-50 text-slate-500"
           }`}
           title="Lights up when the current state doesn't match any preset"
@@ -924,7 +924,7 @@ function SectionBlock({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center gap-2 bg-slate-900 px-4 py-3 text-left transition-colors hover:bg-slate-800"
+        className="flex w-full items-center gap-2 bg-primary px-4 py-3 text-left transition-colors hover:bg-primary/90"
       >
         <motion.span
           initial={false}
@@ -1045,7 +1045,7 @@ function PermissionRow({
             </span>
           )}
           {changed && (
-            <span className="rounded border border-slate-900 bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+            <span className="rounded border border-primary bg-primary px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
               edited
             </span>
           )}
@@ -1119,7 +1119,7 @@ function PermissionsTabs({
             search={t.key === "team" ? {} : { tab: "catalog" }}
             className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${
               isActive
-                ? "bg-slate-900 text-white"
+                ? "bg-primary text-white"
                 : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
             }`}
           >
@@ -1500,7 +1500,7 @@ function ReferenceSectionBlock({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center gap-2 bg-slate-900 px-4 py-3 text-left transition-colors hover:bg-slate-800"
+        className="flex w-full items-center gap-2 bg-primary px-4 py-3 text-left transition-colors hover:bg-primary/90"
       >
         <motion.span
           initial={false}

@@ -81,7 +81,7 @@ function ColumnRow({
 			onClick={onClick}
 			className={`group flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
 				isActive
-					? "bg-slate-900 text-white"
+					? "bg-primary text-white"
 					: "text-slate-700 hover:bg-slate-50"
 			}`}
 		>

@@ -222,7 +222,7 @@ export function ProjectSidebar({
                       title={!isExpanded || compactMode ? item.label : undefined}
                       className={`mx-2 flex items-center overflow-hidden rounded-lg p-2 transition-all ${
                         isActive
-                          ? "bg-slate-900 text-white shadow-sm"
+                          ? "bg-primary text-white shadow-sm"
                           : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                       }`}
                     >

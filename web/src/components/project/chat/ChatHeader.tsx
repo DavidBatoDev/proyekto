@@ -66,7 +66,7 @@ export function ChatHeader({
             onClick={onToggleProfilePanel}
             className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${
               isProfilePanelOpen
-                ? "border-slate-700 bg-slate-900 text-white"
+                ? "border-primary bg-primary text-white"
                 : "border-slate-200 text-slate-600 hover:bg-slate-100"
             }`}
             aria-label={isProfilePanelOpen ? "Hide member panel" : "Show member panel"}
