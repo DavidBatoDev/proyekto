@@ -9,6 +9,7 @@ import {
   findMemberCandidate,
   findRoomByCounterpart,
   flattenRoomMessages,
+  useCreateChannelMutation,
   useDeleteChatMessageMutation,
   useDmRoomsQuery,
   useProjectChatMembersQuery,
@@ -19,6 +20,7 @@ import {
   useToggleChatReactionMutation,
   useMarkRoomReadMutation,
 } from "@/hooks/useChatQueries";
+import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 import {
   ChatComposer,
   ChatHeader,
@@ -29,6 +31,8 @@ import {
   ChatSidebarSkeleton,
   ChatCenterShellSkeleton,
   ChatUnsendConfirmModal,
+  ChannelMembersModal,
+  CreateChannelModal,
   MessageList,
   TypingIndicator,
 } from "@/components/project/chat";
@@ -65,9 +69,24 @@ function ChatRoute() {
 }
 
 type ActiveTarget =
-  | { kind: "channel"; slug: "general"; roomId: string | null }
+  | { kind: "channel"; roomId: string | null }
   | { kind: "dm"; userId: string; roomId: string | null };
 type ResolvedTarget = ActiveTarget | { kind: "invalid" };
+
+// Canonical ordering of the auto-provisioned default rooms in the sidebar,
+// keyed by slug (the system_key column was dropped).
+const SYSTEM_ROOM_ORDER: Record<string, number> = {
+  "client-room": 0,
+  "internal-team": 1,
+  "consultant-client": 2,
+  "consultant-pm": 3,
+  general: 0,
+};
+
+function channelTitle(room: ChatRoom | null | undefined): string {
+  if (!room) return "Channel";
+  return room.name?.trim() || `#${room.slug}`;
+}
 
 function getDisplayName(member: ChatMemberCandidate | null): string {
   if (!member) return "Unknown member";
@@ -109,6 +128,8 @@ function ChatPage() {
   const toast = useToast();
   const [showPeoplePicker, setShowPeoplePicker] = useState(false);
   const [showSidebarMobile, setShowSidebarMobile] = useState(false);
+  const [showCreateChannel, setShowCreateChannel] = useState(false);
+  const [showChannelMembers, setShowChannelMembers] = useState(false);
   const [isProfilePanelOpen, setIsProfilePanelOpen] = useState(true);
   const [selectedProfileUserId, setSelectedProfileUserId] = useState<string | null>(
     null,
@@ -137,6 +158,14 @@ function ChatPage() {
   const sendDmMutation = useSendDmMessageMutation();
   const toggleReactionMutation = useToggleChatReactionMutation();
   const deleteMessageMutation = useDeleteChatMessageMutation();
+  const createChannelMutation = useCreateChannelMutation(projectId);
+  const permissionsQuery = useProjectMyPermissionsQuery(projectId);
+  const canCreateChannels = Boolean(
+    permissionsQuery.data?.chat?.create_channels,
+  );
+  const canManageChannels = Boolean(
+    permissionsQuery.data?.chat?.manage_channels,
+  );
   // The active room may be a project channel OR a global DM. Pick the
   // right list to optimistically update based on the room currently in view.
   const markChannelReadMutation = useMarkRoomReadMutation({
@@ -187,20 +216,39 @@ function ChatPage() {
   useProjectsRealtime([projectId], user?.id);
   useDmRealtime(dmRoomIds, user?.id);
 
-  const generalRoomBySlug = useMemo(
-    () => rooms.find((room) => room.type === "channel" && room.slug === "general") ?? null,
-    [rooms],
+  // Channels visible in this project, sorted system-rooms-first then by name.
+  const channels = useMemo(
+    () =>
+      channelRooms
+        .filter((room) => room.type === "channel")
+        .sort((a, b) => {
+          const order = (room: ChatRoom) =>
+            SYSTEM_ROOM_ORDER[room.slug] ?? 99;
+          const ao = order(a);
+          const bo = order(b);
+          if (ao !== bo) return ao - bo;
+          const an = (a.name || a.slug).toLowerCase();
+          const bn = (b.name || b.slug).toLowerCase();
+          return an.localeCompare(bn);
+        }),
+    [channelRooms],
+  );
+
+  // The channel a bare /chat or the legacy "channel-general" ref lands on.
+  const defaultChannel = useMemo(
+    () =>
+      channels.find((room) => room.slug === "client-room") ??
+      channels.find((room) => room.slug === "general") ??
+      channels[0] ??
+      null,
+    [channels],
   );
 
   const resolvedTarget = useMemo<ResolvedTarget>(() => {
     const parsed = parseChatRef(chatRef);
 
     if (parsed.kind === "channel") {
-      return {
-        kind: "channel",
-        slug: "general",
-        roomId: generalRoomBySlug?.id ?? null,
-      };
+      return { kind: "channel", roomId: defaultChannel?.id ?? null };
     }
 
     if (parsed.kind === "dm") {
@@ -224,21 +272,13 @@ function ChatPage() {
           return transient;
         }
         if (roomsQuery.isPending) {
-          return {
-            kind: "channel",
-            slug: "general",
-            roomId: generalRoomBySlug?.id ?? null,
-          };
+          return { kind: "channel", roomId: defaultChannel?.id ?? null };
         }
         return { kind: "invalid" };
       }
 
       if (room.type === "channel") {
-        return {
-          kind: "channel",
-          slug: "general",
-          roomId: room.id,
-        };
+        return { kind: "channel", roomId: room.id };
       }
 
       const counterpart =
@@ -257,7 +297,7 @@ function ChatPage() {
     return { kind: "invalid" };
   }, [
     chatRef,
-    generalRoomBySlug?.id,
+    defaultChannel?.id,
     members,
     membersQuery.isPending,
     rooms,
@@ -268,13 +308,13 @@ function ChatPage() {
 
   const activeTarget: ActiveTarget =
     resolvedTarget.kind === "invalid"
-      ? { kind: "channel", slug: "general", roomId: generalRoomBySlug?.id ?? null }
+      ? { kind: "channel", roomId: defaultChannel?.id ?? null }
       : resolvedTarget;
 
   const activeRoomId = activeTarget.roomId;
   const conversationKey =
     activeTarget.kind === "channel"
-      ? "channel:general"
+      ? `channel:${activeTarget.roomId ?? "default"}`
       : `dm:${activeTarget.userId}`;
   const messagesQuery = useRoomMessagesQuery(activeRoomId ?? "");
   const messages = flattenRoomMessages(messagesQuery.data);
@@ -353,9 +393,16 @@ function ChatPage() {
       });
   }, [members, rooms, user?.id]);
 
-  const generalHasUnread = generalRoomBySlug
-    ? hasUnreadForRoom(generalRoomBySlug, user?.id)
-    : false;
+  const channelEntries = useMemo(
+    () =>
+      channels.map((room) => ({
+        roomId: room.id,
+        title: channelTitle(room),
+        isPrivate: room.is_private,
+        hasUnread: hasUnreadForRoom(room, user?.id),
+      })),
+    [channels, user?.id],
+  );
 
   const activeDmMember =
     activeTarget.kind === "dm"
@@ -695,13 +742,14 @@ function ChatPage() {
       if (result?.room) {
         setTransientRoomTargets((prev) => ({
           ...prev,
-          [result.room.id]: {
-            kind: activeTarget.kind,
-            ...(activeTarget.kind === "dm"
-              ? { userId: activeTarget.userId }
-              : { slug: "general" }),
-            roomId: result.room.id,
-          } as ActiveTarget,
+          [result.room.id]:
+            activeTarget.kind === "dm"
+              ? {
+                  kind: "dm",
+                  userId: activeTarget.userId,
+                  roomId: result.room.id,
+                }
+              : { kind: "channel", roomId: result.room.id },
         }));
 
         const nextRef = roomRef(result.room);
@@ -781,8 +829,15 @@ function ChatPage() {
     isInitialChatBootLoading || showRoomSwitchSkeletonPulse;
   const hasRoomMessages = displayedMessages.length > 0;
   const activeTitle =
-    activeTarget.kind === "channel" ? "#general" : getDisplayName(activeDmMember);
-  const activeSubtitle = activeTarget.kind === "channel" ? "Channel" : "Direct Message";
+    activeTarget.kind === "channel"
+      ? channelTitle(activeRoom)
+      : getDisplayName(activeDmMember);
+  const activeSubtitle =
+    activeTarget.kind === "channel"
+      ? activeRoom?.is_private
+        ? "Private channel"
+        : "Channel"
+      : "Direct Message";
   const activeAvatarUrl =
     activeTarget.kind === "dm" ? activeDmMember?.user?.avatar_url : null;
 
@@ -832,21 +887,22 @@ function ChatPage() {
             dmEntries={dmEntries}
             members={members}
             currentUserId={user?.id}
-            generalHasUnread={generalHasUnread}
-            activeDmUserId={activeTarget.kind === "dm" ? activeTarget.userId : null}
-            activeChannel={activeTarget.kind === "channel"}
-            showPeoplePicker={showPeoplePicker}
-            onTogglePeoplePicker={() => setShowPeoplePicker((value) => !value)}
-            onSelectGeneral={() => {
+            channels={channelEntries}
+            activeChannelRoomId={
+              activeTarget.kind === "channel" ? activeTarget.roomId : null
+            }
+            canCreateChannels={canCreateChannels}
+            onCreateChannel={() => setShowCreateChannel(true)}
+            onSelectChannel={(roomId) => {
               void navigate({
                 to: "/project/$projectId/chat/$chatRef",
-                params: {
-                  projectId,
-                  chatRef: toChannelRef(),
-                },
+                params: { projectId, chatRef: roomId },
               });
               setShowSidebarMobile(false);
             }}
+            activeDmUserId={activeTarget.kind === "dm" ? activeTarget.userId : null}
+            showPeoplePicker={showPeoplePicker}
+            onTogglePeoplePicker={() => setShowPeoplePicker((value) => !value)}
             onSelectMember={(userId, roomId) => {
               void navigate({
                 to: "/project/$projectId/chat/$chatRef",
@@ -878,6 +934,13 @@ function ChatPage() {
             });
           }}
           onOpenSidebar={() => setShowSidebarMobile(true)}
+          onManageMembers={
+            activeTarget.kind === "channel" &&
+            canManageChannels &&
+            activeRoom?.is_private
+              ? () => setShowChannelMembers(true)
+              : undefined
+          }
         />
       }
       messages={
@@ -903,12 +966,12 @@ function ChatPage() {
           isFetchingNextPage={messagesQuery.isFetchingNextPage}
           emptyTitle={
             activeTarget.kind === "channel"
-              ? "Start #general"
+              ? `Start ${channelTitle(activeRoom)}`
               : `Message ${getDisplayName(activeDmMember)}`
           }
           emptySubtitle={
             activeTarget.kind === "channel"
-              ? "This channel appears in recents after the first message."
+              ? "Be the first to post in this channel."
               : "This DM room is created when you send the first message."
           }
         />
@@ -950,11 +1013,45 @@ function ChatPage() {
           isSending={isSending}
           placeholder={
             activeTarget.kind === "channel"
-              ? "Message #general"
+              ? `Message ${channelTitle(activeRoom)}`
               : `Message ${getDisplayName(activeDmMember)}`
           }
         />
       }
+      />
+      <CreateChannelModal
+        open={showCreateChannel}
+        members={members}
+        currentUserId={user?.id}
+        isSubmitting={createChannelMutation.isPending}
+        onClose={() => {
+          if (createChannelMutation.isPending) return;
+          setShowCreateChannel(false);
+        }}
+        onCreate={async ({ name, isPrivate, memberIds }) => {
+          try {
+            const room = await createChannelMutation.mutateAsync({
+              name,
+              is_private: isPrivate,
+              memberIds,
+            });
+            setShowCreateChannel(false);
+            void navigate({
+              to: "/project/$projectId/chat/$chatRef",
+              params: { projectId, chatRef: room.id },
+            });
+          } catch {
+            toast.error("Could not create channel. Please try again.");
+          }
+        }}
+      />
+      <ChannelMembersModal
+        open={showChannelMembers}
+        projectId={projectId}
+        room={activeRoom ?? null}
+        members={members}
+        currentUserId={user?.id}
+        onClose={() => setShowChannelMembers(false)}
       />
       <ChatUnsendConfirmModal
         open={!!pendingUnsendMessage}

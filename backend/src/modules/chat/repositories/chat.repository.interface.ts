@@ -8,6 +8,10 @@ export type ChatRoom = {
   type: ChatRoomType;
   slug: string;
   name: string | null;
+  is_private: boolean;
+  is_archived: boolean;
+  archived_at: string | null;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -93,7 +97,27 @@ export interface ChatRepository {
     projectId: string;
     slug: string;
     name?: string | null;
+    isPrivate?: boolean;
+    createdBy?: string | null;
   }): Promise<ChatRoom>;
+  /** Update mutable room fields (rename / archive). */
+  updateRoom(
+    roomId: string,
+    patch: { name?: string; is_archived?: boolean },
+  ): Promise<ChatRoom>;
+  /** Whether the project is a personal (solo) workspace. */
+  getProjectIsPersonal(projectId: string): Promise<boolean>;
+  /** Every non-archived channel of a project (visibility resolved in service). */
+  listProjectChannels(projectId: string): Promise<ChatRoom[]>;
+  /** Subset of `roomIds` that `userId` already participates in. */
+  listParticipantRoomIds(userId: string, roomIds: string[]): Promise<string[]>;
+  /** Hydrate the given rooms with last message + participants. */
+  hydrateRoomsByIds(
+    roomIds: string[],
+    userId: string,
+  ): Promise<ChatRoomWithLastMessage[]>;
+  /** Participants of a single room (for the channel member list). */
+  listRoomParticipants(roomId: string): Promise<ChatParticipant[]>;
   upsertDm(params: {
     slug: string;
   }): Promise<ChatRoom>;
@@ -102,6 +126,7 @@ export interface ChatRepository {
     projectId: string | null,
     userIds: string[],
   ): Promise<void>;
+  removeParticipant(roomId: string, userId: string): Promise<void>;
   isRoomParticipant(roomId: string, userId: string): Promise<boolean>;
   /** All user ids participating in a room (for realtime inbox fan-out). */
   listRoomParticipantUserIds(roomId: string): Promise<string[]>;

@@ -6,6 +6,8 @@ export { ChatComposer } from "./ChatComposer";
 export { TypingIndicator } from "./TypingIndicator";
 export { ChatProfilePanel } from "./ChatProfilePanel";
 export { ChatUnsendConfirmModal } from "./ChatUnsendConfirmModal";
+export { CreateChannelModal } from "./CreateChannelModal";
+export { ChannelMembersModal } from "./ChannelMembersModal";
 export {
   ChatSidebarSkeleton,
   ChatCenterShellSkeleton,

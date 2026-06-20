@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Hash, Plus, SquarePen } from "lucide-react";
+import { Hash, Lock, Plus, SquarePen } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ChatMemberCandidate } from "@/services/chat.service";
 import { ChatAvatar } from "./Avatar";
@@ -14,17 +14,26 @@ type DmEntry = {
   hasUnread?: boolean;
 };
 
+type ChannelEntry = {
+  roomId: string;
+  title: string;
+  isPrivate: boolean;
+  hasUnread: boolean;
+};
+
 export function ChatSidebar({
   show,
   dmEntries,
   members,
   currentUserId,
-  generalHasUnread,
+  channels,
+  activeChannelRoomId,
+  canCreateChannels,
+  onCreateChannel,
+  onSelectChannel,
   activeDmUserId,
-  activeChannel,
   onTogglePeoplePicker,
   onSelectMember,
-  onSelectGeneral,
   showPeoplePicker,
   onCloseMobile,
 }: {
@@ -32,12 +41,14 @@ export function ChatSidebar({
   dmEntries: DmEntry[];
   members: ChatMemberCandidate[];
   currentUserId?: string;
-  generalHasUnread?: boolean;
+  channels: ChannelEntry[];
+  activeChannelRoomId: string | null;
+  canCreateChannels: boolean;
+  onCreateChannel: () => void;
+  onSelectChannel: (roomId: string) => void;
   activeDmUserId: string | null;
-  activeChannel: boolean;
   onTogglePeoplePicker: () => void;
   onSelectMember: (userId: string, roomId: string | null) => void;
-  onSelectGeneral: () => void;
   showPeoplePicker: boolean;
   onCloseMobile: () => void;
 }) {
@@ -156,30 +167,56 @@ export function ChatSidebar({
           )}
 
           <div className="border-t border-slate-200/80 px-4 pb-5 pt-2">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Channels
-            </p>
-            <button
-              type="button"
-              onClick={onSelectGeneral}
-              className={`w-full rounded-lg px-3 py-2 text-left inline-flex items-center gap-2 transition-colors ${
-                activeChannel
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-700 hover:bg-slate-200/80"
-              }`}
-            >
-              <Hash className="w-4 h-4" />
-              <span
-                className={`font-medium ${
-                  !activeChannel && generalHasUnread ? "font-bold text-slate-900" : ""
-                }`}
-              >
-                general
-              </span>
-              {!activeChannel && generalHasUnread ? (
-                <span className="ml-auto h-2.5 w-2.5 rounded-full bg-slate-900" />
-              ) : null}
-            </button>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Channels
+              </p>
+              {canCreateChannels && (
+                <button
+                  type="button"
+                  onClick={onCreateChannel}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-500 hover:bg-slate-200"
+                  aria-label="Create channel"
+                  title="Create channel"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            <div className="space-y-0.5">
+              {channels.map((channel) => {
+                const isActive = activeChannelRoomId === channel.roomId;
+                const isUnread = !isActive && channel.hasUnread;
+                return (
+                  <button
+                    key={channel.roomId}
+                    type="button"
+                    onClick={() => onSelectChannel(channel.roomId)}
+                    className={`inline-flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors ${
+                      isActive
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-700 hover:bg-slate-200/80"
+                    }`}
+                  >
+                    {channel.isPrivate ? (
+                      <Lock className="h-4 w-4 shrink-0" />
+                    ) : (
+                      <Hash className="h-4 w-4 shrink-0" />
+                    )}
+                    <span
+                      className={`truncate font-medium ${
+                        isUnread ? "font-bold text-slate-900" : ""
+                      }`}
+                    >
+                      {channel.title}
+                    </span>
+                    {isUnread ? (
+                      <span className="ml-auto h-2.5 w-2.5 shrink-0 rounded-full bg-slate-900" />
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div className="px-3 pb-4">

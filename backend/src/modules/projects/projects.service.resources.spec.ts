@@ -72,6 +72,7 @@ describe('ProjectsService (resources)', () => {
       dataCache as any,
       cacheInvalidation as any,
       { get: jest.fn() } as any,
+      { provisionDefaultChannels: jest.fn().mockResolvedValue(undefined) } as any,
     );
   };
 

@@ -5,10 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type {
+  CreateChannelDto,
   SendChannelMessageDto,
   SendDmMessageDto,
+  UpdateChannelDto,
 } from './dto/chat.dto';
 import { MissingPermissionException } from '../projects/authorization/missing-permission.exception';
+import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import type {
   ChatRepository,
   ChatRoom,
@@ -18,14 +21,45 @@ import {
   type ChatEventKind,
   RealtimePublisher,
 } from '../realtime/realtime-publisher.service';
+import { AuditService } from '../audit/audit.service';
 
 export const CHAT_REPOSITORY = Symbol('CHAT_REPOSITORY');
+
+type SystemRoomSpec = {
+  slug: string;
+  name: string;
+  isPrivate: boolean;
+};
+
+/** The 4 PRD persona rooms auto-provisioned for a normal project. */
+const PROJECT_SYSTEM_ROOMS: SystemRoomSpec[] = [
+  { slug: 'client-room', name: 'Client Project Room', isPrivate: false },
+  { slug: 'internal-team', name: 'Internal Team', isPrivate: true },
+  { slug: 'consultant-client', name: 'Consultant & Client', isPrivate: true },
+  { slug: 'consultant-pm', name: 'Consultant & PM', isPrivate: true },
+];
+
+/** Personal (solo) workspaces just get a single public #general. */
+const PERSONAL_SYSTEM_ROOMS: SystemRoomSpec[] = [
+  { slug: 'general', name: 'General', isPrivate: false },
+];
+
+/**
+ * Slugs of the auto-provisioned default rooms (both modes). Default rooms are
+ * identified by slug now that the system_key column is gone — used to keep them
+ * un-archivable. `uniqueChannelSlug` prevents user channels from taking these.
+ */
+const DEFAULT_CHANNEL_SLUGS = new Set<string>(
+  [...PROJECT_SYSTEM_ROOMS, ...PERSONAL_SYSTEM_ROOMS].map((r) => r.slug),
+);
 
 @Injectable()
 export class ChatService {
   constructor(
     @Inject(CHAT_REPOSITORY) private readonly chatRepo: ChatRepository,
     private readonly realtime: RealtimePublisher,
+    private readonly authorization: ProjectAuthorizationService,
+    private readonly audit: AuditService,
   ) {}
 
   /**
@@ -68,19 +102,54 @@ export class ChatService {
     }
   }
 
-  private async ensureChannelMembership(
+  /**
+   * Resolve the viewer's persona context on a project. Consultant/client come
+   * from the chat persona resolver; PM is approximated by the IAM admin/owner
+   * role (no dedicated PM role exists yet).
+   */
+  /** True when the viewer is the project's consultant (all-channel access). */
+  private async isProjectConsultant(
+    projectId: string,
+    userId: string,
+  ): Promise<boolean> {
+    return (
+      (await this.chatRepo.resolveProjectRole(projectId, userId)) ===
+      'consultant'
+    );
+  }
+
+  /**
+   * Whether the viewer may see `room` (Slack-style membership). The consultant
+   * keeps all-channel access; public channels are visible to every project
+   * member; private channels only to explicit participants.
+   */
+  private canViewChannel(
+    room: ChatRoom,
+    isConsultant: boolean,
+    isParticipant: boolean,
+  ): boolean {
+    if (isConsultant) return true;
+    if (!room.is_private) return true;
+    return isParticipant;
+  }
+
+  /**
+   * For a single channel, lazily join the viewer if they're allowed to see it
+   * (membership powers realtime fan-out + unread). No-op for DMs and for
+   * channels the viewer cannot access.
+   */
+  private async ensureChannelAccess(
     room: ChatRoom,
     userId: string,
   ): Promise<void> {
-    if (room.type !== 'channel') return;
-    if (!room.project_id) return;
-    const isMember = await this.chatRepo.isProjectMember(room.project_id, userId);
-    if (!isMember) return;
+    if (room.type !== 'channel' || !room.project_id) return;
+    if (await this.chatRepo.isRoomParticipant(room.id, userId)) return;
+    if (!(await this.chatRepo.isProjectMember(room.project_id, userId))) return;
 
-    const isParticipant = await this.chatRepo.isRoomParticipant(room.id, userId);
-    if (isParticipant) return;
-
-    await this.chatRepo.upsertParticipants(room.id, room.project_id, [userId]);
+    const isConsultant = await this.isProjectConsultant(room.project_id, userId);
+    if (this.canViewChannel(room, isConsultant, false)) {
+      await this.chatRepo.upsertParticipants(room.id, room.project_id, [userId]);
+    }
   }
 
   private decorateRooms(
@@ -127,22 +196,38 @@ export class ChatService {
   async listRooms(projectId: string, userId: string) {
     await this.assertProjectAccess(projectId, userId);
 
-    const generalRoom = await this.chatRepo.findChannelBySlug(
-      projectId,
-      'general',
+    // Default rooms are provisioned at project creation (and lazily on a
+    // no-room send); no backfill here.
+    const channels = await this.chatRepo.listProjectChannels(projectId);
+
+    const isConsultant = await this.isProjectConsultant(projectId, userId);
+    const channelIds = channels.map((room) => room.id);
+    const myParticipantRoomIds = new Set(
+      await this.chatRepo.listParticipantRoomIds(userId, channelIds),
     );
-    if (generalRoom) {
-      await this.ensureChannelMembership(generalRoom, userId);
+
+    const visibleIds: string[] = [];
+    const toJoin: string[] = [];
+    for (const room of channels) {
+      const isParticipant = myParticipantRoomIds.has(room.id);
+      if (!this.canViewChannel(room, isConsultant, isParticipant)) continue;
+      visibleIds.push(room.id);
+      if (!isParticipant) toJoin.push(room.id);
     }
 
-    const rooms = await this.chatRepo.listRoomsForProject(projectId, userId);
-    const filtered = rooms.filter((room) => {
-      if (room.type === 'channel' && room.slug === 'general') {
-        return !!room.last_message;
-      }
-      return true;
-    });
-    return this.decorateRooms(filtered, userId);
+    // Lazy-join the viewer to every channel they may see (powers realtime
+    // fan-out + unread). After the first list these are already joined, so
+    // subsequent calls do no writes.
+    if (toJoin.length > 0) {
+      await Promise.all(
+        toJoin.map((roomId) =>
+          this.chatRepo.upsertParticipants(roomId, projectId, [userId]),
+        ),
+      );
+    }
+
+    const hydrated = await this.chatRepo.hydrateRoomsByIds(visibleIds, userId);
+    return this.decorateRooms(hydrated, userId);
   }
 
   /** Global DM list for the current user. */
@@ -188,7 +273,7 @@ export class ChatService {
         throw new NotFoundException('Chat room not found.');
       }
       await this.assertProjectAccess(room.project_id, userId);
-      await this.ensureChannelMembership(room, userId);
+      await this.ensureChannelAccess(room, userId);
     }
 
     const isParticipant = await this.chatRepo.isRoomParticipant(room.id, userId);
@@ -269,45 +354,56 @@ export class ChatService {
     }
 
     let room: ChatRoom;
-    // Whether the sender is already (or just became) a room participant, so the
-    // hot path can skip a redundant membership read.
-    let senderIsParticipant = false;
 
     if (dto.room_id) {
-      const existing = await this.chatRepo.findRoomById(dto.room_id);
-      if (!existing || existing.type !== 'channel' || existing.project_id !== projectId) {
-        throw new NotFoundException('Chat room not found.');
-      }
-      room = existing;
-    } else {
-      const slug = (dto.slug || 'general').trim().toLowerCase();
-      if (slug !== 'general') {
-        throw new BadRequestException('Only the general channel is supported.');
-      }
-
-      room = await this.chatRepo.upsertChannel({
-        projectId,
-        slug: 'general',
-        name: 'General',
-      });
-      const participantIds =
-        await this.chatRepo.listProjectParticipantUserIds(projectId);
-      await this.chatRepo.upsertParticipants(room.id, projectId, participantIds);
-      senderIsParticipant = participantIds.includes(senderId);
-    }
-
-    // assertProjectAccess above already confirmed the sender is a project
-    // member, so for a channel we just need them joined to the room (that is
-    // what surfaces it in their sidebar). One read + conditional join instead
-    // of the previous duplicate membership/participant round-trips.
-    if (!senderIsParticipant) {
-      const alreadyParticipant = await this.chatRepo.isRoomParticipant(
-        room.id,
+      // Fast path: the sender is already a participant (true right after
+      // listRooms joined them — the common case).
+      const joined = await this.chatRepo.findRoomForParticipant(
+        dto.room_id,
         senderId,
       );
-      if (!alreadyParticipant) {
-        await this.chatRepo.upsertParticipants(room.id, projectId, [senderId]);
+      if (
+        joined &&
+        joined.type === 'channel' &&
+        joined.project_id === projectId &&
+        !joined.is_archived
+      ) {
+        room = joined;
+      } else {
+        // Not yet joined: resolve the room, confirm it's a non-archived channel
+        // in this project, and grant access per the visibility rules.
+        const existing = await this.chatRepo.findRoomById(dto.room_id);
+        if (
+          !existing ||
+          existing.type !== 'channel' ||
+          existing.project_id !== projectId ||
+          existing.is_archived
+        ) {
+          throw new NotFoundException('Chat room not found.');
+        }
+        await this.ensureChannelAccess(existing, senderId);
+        if (!(await this.chatRepo.isRoomParticipant(existing.id, senderId))) {
+          throw new MissingPermissionException({
+            path: 'chat.send_messages',
+            message: 'You cannot post to this channel.',
+          });
+        }
+        room = existing;
       }
+    } else {
+      // Legacy / no-room send → resolve a default channel. Provisioning is
+      // idempotent, so this also self-heals a project missing default rooms.
+      await this.provisionDefaultChannels(projectId, senderId);
+      const slug = (dto.slug || '').trim().toLowerCase();
+      const resolved =
+        (slug ? await this.chatRepo.findChannelBySlug(projectId, slug) : null) ??
+        (await this.chatRepo.findChannelBySlug(projectId, 'client-room')) ??
+        (await this.chatRepo.findChannelBySlug(projectId, 'general'));
+      if (!resolved) {
+        throw new NotFoundException('Chat room not found.');
+      }
+      await this.ensureChannelAccess(resolved, senderId);
+      room = resolved;
     }
 
     const message = await this.chatRepo.createMessage({
@@ -490,5 +586,258 @@ export class ChatService {
       room_id: roomId,
       last_read_at: lastReadAt,
     };
+  }
+
+  // ── Channel management ────────────────────────────────────────────────────
+
+  /**
+   * Idempotently create the default channels for a project. Normal projects
+   * get the 4 PRD persona rooms; personal workspaces get a single #general.
+   * Membership is NOT seeded here — listRooms lazily joins each viewer to the
+   * rooms their persona may see, so this stays correct as members are added
+   * after creation (when only one persona exists yet).
+   */
+  async provisionDefaultChannels(
+    projectId: string,
+    creatorId: string,
+    mode?: 'project' | 'personal',
+  ): Promise<void> {
+    const resolvedMode =
+      mode ??
+      ((await this.chatRepo.getProjectIsPersonal(projectId))
+        ? 'personal'
+        : 'project');
+    const specs =
+      resolvedMode === 'personal'
+        ? PERSONAL_SYSTEM_ROOMS
+        : PROJECT_SYSTEM_ROOMS;
+
+    for (const spec of specs) {
+      const room = await this.chatRepo.upsertChannel({
+        projectId,
+        slug: spec.slug,
+        name: spec.name,
+        isPrivate: spec.isPrivate,
+        createdBy: creatorId,
+      });
+      // Seed the creator so the private default rooms are visible to them
+      // immediately — visibility is now pure membership. Idempotent.
+      await this.chatRepo.upsertParticipants(room.id, projectId, [creatorId]);
+    }
+  }
+
+  async createChannel(
+    projectId: string,
+    userId: string,
+    dto: CreateChannelDto,
+  ): Promise<ChatRoomWithLastMessage> {
+    await this.authorization.assertPermission(
+      userId,
+      projectId,
+      'chat.create_channels',
+    );
+
+    const name = dto.name?.trim();
+    if (!name) {
+      throw new BadRequestException('Channel name is required.');
+    }
+
+    const slug = await this.uniqueChannelSlug(projectId, name);
+    const room = await this.chatRepo.upsertChannel({
+      projectId,
+      slug,
+      name,
+      isPrivate: !!dto.is_private,
+      createdBy: userId,
+    });
+    await this.chatRepo.upsertParticipants(room.id, projectId, [userId]);
+
+    this.audit.log({
+      projectId,
+      actorId: userId,
+      action: 'channel.created',
+      entityType: 'chat_channel',
+      entityId: room.id,
+      metadata: { name, slug, is_private: !!dto.is_private },
+    });
+    this.notifyProjectRoomsChanged(projectId, room.id);
+
+    const [hydrated] = await this.chatRepo.hydrateRoomsByIds([room.id], userId);
+    return hydrated ?? { ...room, last_message: null, participants: [] };
+  }
+
+  async updateChannel(
+    projectId: string,
+    userId: string,
+    roomId: string,
+    dto: UpdateChannelDto,
+  ): Promise<ChatRoom> {
+    await this.authorization.assertPermission(
+      userId,
+      projectId,
+      'chat.manage_channels',
+    );
+
+    const room = await this.chatRepo.findRoomById(roomId);
+    if (!room || room.type !== 'channel' || room.project_id !== projectId) {
+      throw new NotFoundException('Chat room not found.');
+    }
+    if (DEFAULT_CHANNEL_SLUGS.has(room.slug) && dto.is_archived === true) {
+      throw new BadRequestException(
+        'Default project channels cannot be archived.',
+      );
+    }
+
+    const name = typeof dto.name === 'string' ? dto.name.trim() : undefined;
+    if (name !== undefined && name.length === 0) {
+      throw new BadRequestException('Channel name cannot be empty.');
+    }
+
+    const updated = await this.chatRepo.updateRoom(roomId, {
+      name,
+      is_archived: dto.is_archived,
+    });
+
+    this.audit.log({
+      projectId,
+      actorId: userId,
+      action: dto.is_archived === true ? 'channel.archived' : 'channel.updated',
+      entityType: 'chat_channel',
+      entityId: roomId,
+      metadata: { name, is_archived: dto.is_archived },
+    });
+    this.notifyProjectRoomsChanged(projectId, roomId);
+
+    return updated;
+  }
+
+  async listChannelMembers(roomId: string, userId: string) {
+    await this.assertRoomAccess(roomId, userId);
+    return this.chatRepo.listRoomParticipants(roomId);
+  }
+
+  async addChannelMember(
+    projectId: string,
+    userId: string,
+    roomId: string,
+    memberId: string,
+  ): Promise<{ ok: true }> {
+    await this.authorization.assertPermission(
+      userId,
+      projectId,
+      'chat.manage_channels',
+    );
+
+    const room = await this.chatRepo.findRoomById(roomId);
+    if (!room || room.type !== 'channel' || room.project_id !== projectId) {
+      throw new NotFoundException('Chat room not found.');
+    }
+    if (!(await this.chatRepo.isProjectMember(projectId, memberId))) {
+      throw new BadRequestException('User is not a member of this project.');
+    }
+
+    await this.chatRepo.upsertParticipants(roomId, projectId, [memberId]);
+
+    this.audit.log({
+      projectId,
+      actorId: userId,
+      action: 'channel.member_added',
+      entityType: 'chat_channel',
+      entityId: roomId,
+      metadata: { member_id: memberId },
+    });
+    this.notifyProjectRoomsChanged(projectId, roomId);
+
+    return { ok: true };
+  }
+
+  async removeChannelMember(
+    projectId: string,
+    userId: string,
+    roomId: string,
+    memberId: string,
+  ): Promise<{ ok: true }> {
+    await this.authorization.assertPermission(
+      userId,
+      projectId,
+      'chat.manage_channels',
+    );
+
+    const room = await this.chatRepo.findRoomById(roomId);
+    if (!room || room.type !== 'channel' || room.project_id !== projectId) {
+      throw new NotFoundException('Chat room not found.');
+    }
+
+    await this.chatRepo.removeParticipant(roomId, memberId);
+
+    this.audit.log({
+      projectId,
+      actorId: userId,
+      action: 'channel.member_removed',
+      entityType: 'chat_channel',
+      entityId: roomId,
+      metadata: { member_id: memberId },
+    });
+    this.notifyProjectRoomsChanged(projectId, roomId);
+
+    return { ok: true };
+  }
+
+  /** Project activity timeline (dispute-resolution history). */
+  async listActivity(
+    projectId: string,
+    userId: string,
+    opts: { limit?: number; offset?: number },
+  ) {
+    await this.authorization.assertPermission(userId, projectId, 'logs.view');
+    return this.audit.list(projectId, opts);
+  }
+
+  /**
+   * Notify every project member's inbox that the channel list changed so their
+   * sidebar/inbox refetches (a brand-new or renamed channel has no message
+   * event to piggyback on). Best-effort, off the response path.
+   */
+  private notifyProjectRoomsChanged(projectId: string, roomId: string): void {
+    void (async () => {
+      try {
+        const recipientIds =
+          await this.chatRepo.listProjectParticipantUserIds(projectId);
+        this.realtime.publishChatEvent({
+          recipientIds,
+          roomId,
+          projectId,
+          kind: 'message',
+        });
+      } catch {
+        // realtime is non-critical
+      }
+    })();
+  }
+
+  /** Slugify a channel name and ensure it's unique within the project. */
+  private async uniqueChannelSlug(
+    projectId: string,
+    name: string,
+  ): Promise<string> {
+    const base =
+      name
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80) || 'channel';
+
+    let slug = base;
+    let n = 1;
+    while (await this.chatRepo.findChannelBySlug(projectId, slug)) {
+      n += 1;
+      if (n > 50) {
+        slug = `${base}-${Date.now().toString(36)}`;
+        break;
+      }
+      slug = `${base}-${n}`;
+    }
+    return slug;
   }
 }

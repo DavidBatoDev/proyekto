@@ -46,8 +46,18 @@ function buildService(...queued: ReturnType<typeof thenable>[]) {
       return next;
     },
   };
-  return { service: new ProjectAuthorizationService(supabase), queued };
+  const audit: any = { log: jest.fn(), list: jest.fn() };
+  return {
+    service: new ProjectAuthorizationService(supabase, audit),
+    queued,
+    audit,
+  };
 }
+
+// consultant-lookup stub used by revoke (getProjectConsultantId). Pass the
+// consultant id, or null when the target isn't the consultant.
+const consultantLookup = (consultantId: string | null) =>
+  thenable({ data: { consultant_id: consultantId }, error: null });
 
 describe('ProjectAuthorizationService', () => {
   describe('roleSatisfies (role hierarchy)', () => {
@@ -216,19 +226,31 @@ describe('ProjectAuthorizationService', () => {
     });
   });
 
-  describe('revoke (last-owner protection)', () => {
+  describe('revoke (last-owner + consultant protection)', () => {
     it('removes a non-owner share without checking owner count', async () => {
       const { service } = buildService(
         thenable({ data: { role: 'editor' }, error: null }),
+        consultantLookup(null),
         thenable({ error: null }),
         thenable({ error: null }),
       );
       await expect(service.revoke('p1', 'u1')).resolves.toBeUndefined();
     });
 
+    it('refuses to remove the consultant', async () => {
+      const { service } = buildService(
+        thenable({ data: { role: 'editor' }, error: null }),
+        consultantLookup('u1'),
+      );
+      await expect(service.revoke('p1', 'u1')).rejects.toThrow(
+        /consultant cannot be removed/i,
+      );
+    });
+
     it('refuses to remove the last owner', async () => {
       const { service } = buildService(
         thenable({ data: { role: 'owner' }, error: null }),
+        consultantLookup(null),
         thenable({ count: 1, error: null }),
       );
       await expect(service.revoke('p1', 'u1')).rejects.toThrow(/last owner/);
@@ -237,6 +259,7 @@ describe('ProjectAuthorizationService', () => {
     it('removes an owner when other owners exist', async () => {
       const { service } = buildService(
         thenable({ data: { role: 'owner' }, error: null }),
+        consultantLookup(null),
         thenable({ count: 2, error: null }),
         thenable({ error: null }),
         thenable({ error: null }),

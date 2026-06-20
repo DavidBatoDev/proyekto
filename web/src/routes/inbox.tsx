@@ -5,6 +5,7 @@ import {
 	ChevronRight,
 	Hash,
 	Inbox,
+	Lock,
 	MessageSquare,
 	PanelRight,
 } from "lucide-react";
@@ -508,7 +509,11 @@ function InboxRow({
 			>
 				<div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
 					{isChannel ? (
-						<Hash className="h-4 w-4" />
+						entry.room.is_private ? (
+							<Lock className="h-4 w-4" />
+						) : (
+							<Hash className="h-4 w-4" />
+						)
 					) : (
 						<MessageSquare className="h-4 w-4" />
 					)}
@@ -920,7 +925,11 @@ function InboxThread({
 					<div className="flex min-w-0 items-center gap-3">
 						<div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-600">
 							{room.type === "channel" ? (
-								<Hash className="h-4 w-4" />
+								room.is_private ? (
+									<Lock className="h-4 w-4" />
+								) : (
+									<Hash className="h-4 w-4" />
+								)
 							) : (
 								<MessageSquare className="h-4 w-4" />
 							)}

@@ -41,6 +41,8 @@ export interface ChatRoom {
   type: ChatRoomType;
   slug: string;
   name: string | null;
+  is_private: boolean;
+  is_archived: boolean;
   created_at: string;
   updated_at: string;
   last_message: ChatMessage | null;
@@ -115,6 +117,69 @@ class ChatService {
     return this.request<ChatMemberCandidate[]>(`/projects/${projectId}/chat/members`, {
       method: "GET",
     });
+  }
+
+  // ── Channel management ──────────────────────────────────────────────────
+  createChannel(
+    projectId: string,
+    payload: { name: string; is_private?: boolean },
+  ): Promise<ChatRoom> {
+    return this.request<ChatRoom>(`/projects/${projectId}/chat/channels`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  updateChannel(
+    projectId: string,
+    roomId: string,
+    payload: { name?: string; is_archived?: boolean },
+  ): Promise<ChatRoom> {
+    return this.request<ChatRoom>(
+      `/projects/${projectId}/chat/channels/${roomId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    );
+  }
+
+  listChannelMembers(
+    projectId: string,
+    roomId: string,
+  ): Promise<ChatParticipant[]> {
+    return this.request<ChatParticipant[]>(
+      `/projects/${projectId}/chat/channels/${roomId}/members`,
+      { method: "GET" },
+    );
+  }
+
+  addChannelMember(
+    projectId: string,
+    roomId: string,
+    userId: string,
+  ): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>(
+      `/projects/${projectId}/chat/channels/${roomId}/members`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId }),
+      },
+    );
+  }
+
+  removeChannelMember(
+    projectId: string,
+    roomId: string,
+    userId: string,
+  ): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>(
+      `/projects/${projectId}/chat/channels/${roomId}/members/${userId}`,
+      { method: "DELETE" },
+    );
   }
 
   sendChannelMessage(

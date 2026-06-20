@@ -106,6 +106,104 @@ export function useSendChannelMessageMutation(projectId: string) {
   });
 }
 
+/**
+ * Create a new channel. Optionally seeds members for private channels (the
+ * create endpoint only joins the creator, so members are added afterwards).
+ */
+export function useCreateChannelMutation(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: {
+      name: string;
+      is_private?: boolean;
+      memberIds?: string[];
+    }) => {
+      const room = await chatService.createChannel(projectId, {
+        name: payload.name,
+        is_private: payload.is_private,
+      });
+      if (payload.is_private && payload.memberIds?.length) {
+        await Promise.all(
+          payload.memberIds.map((id) =>
+            chatService.addChannelMember(projectId, room.id, id).catch(() => null),
+          ),
+        );
+      }
+      return room;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
+    },
+  });
+}
+
+/** Rename or archive a channel. Invalidates the project's room list. */
+export function useUpdateChannelMutation(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: {
+      roomId: string;
+      name?: string;
+      is_archived?: boolean;
+    }) =>
+      chatService.updateChannel(projectId, payload.roomId, {
+        name: payload.name,
+        is_archived: payload.is_archived,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
+    },
+  });
+}
+
+/** Members of a single channel (for the manage-members modal). */
+export function useChannelMembersQuery(
+  projectId: string,
+  roomId: string | null,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: chatKeys.channelMembers(projectId, roomId ?? ""),
+    queryFn: () => chatService.listChannelMembers(projectId, roomId as string),
+    enabled: enabled && Boolean(projectId) && Boolean(roomId),
+    staleTime: 15 * 1000,
+  });
+}
+
+/** Add a member to a channel. Refreshes that channel's member list + rooms. */
+export function useAddChannelMemberMutation(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { roomId: string; userId: string }) =>
+      chatService.addChannelMember(projectId, payload.roomId, payload.userId),
+    onSuccess: (_data, { roomId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.channelMembers(projectId, roomId),
+      });
+      void queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
+    },
+  });
+}
+
+/** Remove a member from a channel. Refreshes that channel's member list + rooms. */
+export function useRemoveChannelMemberMutation(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { roomId: string; userId: string }) =>
+      chatService.removeChannelMember(projectId, payload.roomId, payload.userId),
+    onSuccess: (_data, { roomId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.channelMembers(projectId, roomId),
+      });
+      void queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
+    },
+  });
+}
+
 /** Send a DM message (global). Invalidates the DM room list. */
 export function useSendDmMessageMutation() {
   const queryClient = useQueryClient();
