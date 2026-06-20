@@ -8,6 +8,7 @@ import {
 	type Team,
 	type TeamInvite,
 } from "@/services/teams.service";
+import { TeamAvatar } from "@/components/team/TeamAvatar";
 import { useUser } from "@/stores/authStore";
 
 const AVATAR_PREVIEW_LIMIT = 6;
@@ -266,24 +267,6 @@ function TeamInviteCard({ invite }: { invite: TeamInvite }) {
 				</span>
 			</div>
 		</Link>
-	);
-}
-
-function TeamAvatar({ team }: { team: Team }) {
-	if (team.avatar_url) {
-		return (
-			<img
-				src={team.avatar_url}
-				alt={team.name}
-				className="h-10 w-10 shrink-0 rounded-xl object-cover"
-			/>
-		);
-	}
-	const initial = (team.name?.trim()[0] || "T").toUpperCase();
-	return (
-		<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
-			<span className="text-sm font-semibold">{initial}</span>
-		</div>
 	);
 }
 

@@ -9,9 +9,12 @@ import {
 	Save,
 	Settings,
 	Trash2,
+	Upload,
 	X,
 } from "lucide-react";
 import { TeamSettingsLayout } from "@/components/team/TeamSettingsLayout";
+import { TeamAvatar } from "@/components/team/TeamAvatar";
+import { UploadModal } from "@/components/profile/UploadModal";
 import { useToast } from "@/hooks/useToast";
 import { useAuthStore, useUser } from "@/stores/authStore";
 import {
@@ -19,6 +22,7 @@ import {
 	getTeam,
 	updateTeam,
 } from "@/services/teams.service";
+import { uploadService } from "@/services/upload.service";
 
 export const Route = createFileRoute("/teams/$teamId/settings/general")({
 	beforeLoad: () => {
@@ -50,6 +54,8 @@ function TeamGeneralSettings() {
 	const [descriptionDraft, setDescriptionDraft] = useState("");
 	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 	const [deleteText, setDeleteText] = useState("");
+	const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+	const [avatarModalOpen, setAvatarModalOpen] = useState(false);
 
 	useEffect(() => {
 		if (team) {
@@ -59,11 +65,16 @@ function TeamGeneralSettings() {
 	}, [team]);
 
 	const updateMutation = useMutation({
-		mutationFn: (patch: { name?: string; description?: string }) =>
-			updateTeam(teamId, patch),
+		mutationFn: (patch: {
+			name?: string;
+			description?: string;
+			avatar_url?: string;
+		}) => updateTeam(teamId, patch),
 		onSuccess: (updated) => {
 			queryClient.setQueryData(["teams", "detail", teamId], updated);
-			void queryClient.invalidateQueries({ queryKey: ["teams", "mine"] });
+			// Broad prefix so the left-rail team group and the dashboard
+			// "TEAMS" cards (both keyed under ["teams", ...]) refetch.
+			void queryClient.invalidateQueries({ queryKey: ["teams"] });
 			toast.success("Team updated.");
 		},
 		onError: (err) => toast.error((err as Error).message),
@@ -94,6 +105,41 @@ function TeamGeneralSettings() {
 			description: descriptionDraft.trim(),
 		});
 		setIsEditingDescription(false);
+	};
+
+	// The UploadModal validates type/size and hands back the chosen file(s);
+	// we only ever take the first (single-image avatar).
+	const handleAvatarUpload = async (files: File[]) => {
+		const file = files[0];
+		if (!file) return;
+		setIsUploadingAvatar(true);
+		let url: string;
+		try {
+			url = await uploadService.upload("avatars", file);
+		} catch (err) {
+			toast.error((err as Error).message || "Couldn't upload image.");
+			setIsUploadingAvatar(false);
+			return;
+		}
+		try {
+			await updateMutation.mutateAsync({ avatar_url: url });
+			setAvatarModalOpen(false);
+		} catch {
+			// updateMutation.onError already surfaced a toast.
+		} finally {
+			setIsUploadingAvatar(false);
+		}
+	};
+
+	const handleRemoveAvatar = async () => {
+		setIsUploadingAvatar(true);
+		try {
+			await updateMutation.mutateAsync({ avatar_url: "" });
+		} catch {
+			// updateMutation.onError already surfaced a toast.
+		} finally {
+			setIsUploadingAvatar(false);
+		}
 	};
 
 	const deleteConfirmMatches =
@@ -132,6 +178,60 @@ function TeamGeneralSettings() {
 
 					<div className="app-surface-card-strong overflow-hidden rounded-2xl">
 						<div className="space-y-7 px-5 py-5">
+							<section className="border-b border-slate-200 pb-6">
+								<div className="mb-2.5 flex items-center justify-between gap-2">
+									<h3 className="text-[18px] font-semibold text-slate-900">
+										Team photo
+									</h3>
+								</div>
+
+								<div className="flex items-center gap-4">
+									<TeamAvatar team={team} size="lg" />
+									{isOwner ? (
+										<div className="flex flex-col gap-2">
+											<div className="flex items-center gap-2">
+												<button
+													type="button"
+													onClick={() => setAvatarModalOpen(true)}
+													disabled={
+														isUploadingAvatar || updateMutation.isPending
+													}
+													className="app-cta inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+												>
+													{isUploadingAvatar ? (
+														<Loader2 className="h-4 w-4 animate-spin" />
+													) : (
+														<Upload className="h-4 w-4" />
+													)}
+													{team.avatar_url ? "Change photo" : "Upload photo"}
+												</button>
+												{team.avatar_url && (
+													<button
+														type="button"
+														onClick={() => void handleRemoveAvatar()}
+														disabled={
+															isUploadingAvatar || updateMutation.isPending
+														}
+														className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+													>
+														<Trash2 className="h-4 w-4" />
+														Remove
+													</button>
+												)}
+											</div>
+											<p className="text-[12px] text-slate-500">
+												Drag &amp; drop or browse — PNG, JPG, WEBP, or GIF, up
+												to 5MB.
+											</p>
+										</div>
+									) : (
+										<p className="text-[13px] text-slate-500">
+											Only the team owner can change the team photo.
+										</p>
+									)}
+								</div>
+							</section>
+
 							<section className="border-b border-slate-200 pb-6">
 								<div className="mb-2.5 flex items-center justify-between gap-2">
 									<h3 className="text-[18px] font-semibold text-slate-900">
@@ -309,6 +409,19 @@ function TeamGeneralSettings() {
 					</section>
 				)}
 			</div>
+
+			{isOwner && (
+				<UploadModal
+					isOpen={avatarModalOpen}
+					onClose={() => setAvatarModalOpen(false)}
+					title="Team photo"
+					accept="image/png,image/jpeg,image/webp,image/gif"
+					maxSizeMb={5}
+					aspectHint="1:1 (square)"
+					onUpload={(files) => void handleAvatarUpload(files)}
+					isUploading={isUploadingAvatar}
+				/>
+			)}
 
 			{isDeleteOpen &&
 				typeof document !== "undefined" &&

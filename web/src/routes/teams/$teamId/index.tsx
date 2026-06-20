@@ -15,6 +15,7 @@ import {
 	X,
 } from "lucide-react";
 import { AppSectionHeader, AppSurfaceCard } from "@/components/common/AppPrimitives";
+import { TeamAvatar } from "@/components/team/TeamAvatar";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { ModalPortal } from "@/components/common/ModalPortal";
 import { useToast } from "@/hooks/useToast";
@@ -474,11 +475,14 @@ function TeamDetailPage() {
 
 	return (
 		<DashboardShell>
-			<div className="w-full px-6 pb-6 pt-16">
-				<AppSectionHeader
-					title={team.name}
-					subtitle={team.description ?? undefined}
-				/>
+			<div className="w-full px-6 pb-6 pt-10">
+				<div className="flex items-center gap-4">
+					<TeamAvatar team={team} size="md" />
+					<AppSectionHeader
+						title={team.name}
+						subtitle={team.description ?? undefined}
+					/>
+				</div>
 
 				<div className="mt-8">
 					<div className="mb-3 flex items-center justify-between">

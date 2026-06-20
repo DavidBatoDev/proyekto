@@ -140,12 +140,12 @@ export function UploadModal({
             onClick={() => inputRef.current?.click()}
             className={`relative border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-2 py-8 cursor-pointer transition-colors ${
               dragging
-                ? "border-[#ff9933] bg-[#ff9933]/5"
-                : "border-gray-200 hover:border-[#ff9933]/50 hover:bg-gray-50"
+                ? "border-primary bg-primary/5"
+                : "border-gray-200 hover:border-primary/50 hover:bg-gray-50"
             }`}
           >
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${dragging ? "bg-[#ff9933]/10" : "bg-gray-100"}`}>
-              <Upload className={`w-5 h-5 transition-colors ${dragging ? "text-[#ff9933]" : "text-gray-400"}`} />
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${dragging ? "bg-primary/10" : "bg-gray-100"}`}>
+              <Upload className={`w-5 h-5 transition-colors ${dragging ? "text-primary" : "text-gray-400"}`} />
             </div>
             <div className="text-center">
               <p className="text-sm font-medium text-gray-700">
@@ -222,7 +222,7 @@ export function UploadModal({
           <button
             onClick={handleUpload}
             disabled={!hasValid || hasErrors || isUploading}
-            className="px-5 py-2 text-sm bg-[#ff9933] text-white rounded-lg hover:bg-[#e68829] disabled:opacity-60 transition-colors flex items-center gap-2"
+            className="px-5 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors flex items-center gap-2"
           >
             {isUploading ? (
               <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading…</>

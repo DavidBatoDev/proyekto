@@ -1,5 +1,6 @@
 import { Clock, Settings, Users } from "lucide-react";
 import type { Team } from "@/services/teams.service";
+import { TeamAvatar } from "@/components/team/TeamAvatar";
 import {
 	CollapsibleNavGroup,
 	SidebarSubLink,
@@ -59,7 +60,7 @@ export function TeamSidebarGroup({
 					onClick={onToggle}
 					className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-2 text-left text-sm font-medium text-slate-700 hover:text-slate-900"
 				>
-					<TeamAvatar team={team} />
+					<TeamAvatar team={team} size="sm" />
 					<span className="truncate">{team.name || "Untitled team"}</span>
 				</button>
 			}
@@ -74,23 +75,5 @@ export function TeamSidebarGroup({
 				/>
 			))}
 		</CollapsibleNavGroup>
-	);
-}
-
-function TeamAvatar({ team }: { team: Team }) {
-	if (team.avatar_url) {
-		return (
-			<img
-				src={team.avatar_url}
-				alt={team.name}
-				className="h-5 w-5 shrink-0 rounded-md object-cover"
-			/>
-		);
-	}
-	const initial = (team.name?.trim()[0] || "T").toUpperCase();
-	return (
-		<div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-slate-200 text-[10px] font-semibold text-slate-700">
-			{initial}
-		</div>
 	);
 }
