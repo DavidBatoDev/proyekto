@@ -46,5 +46,23 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: realtime
-        # Secrets (SUPABASE_JWT_SECRET, REALTIME_PUBLISH_TOKEN) are set once via
-        # `wrangler secret put` and persist across deploys — not managed here.
+          # Pin to the version used locally so CI deploys are reproducible and
+          # don't silently drift onto wrangler 4.
+          wranglerVersion: "3.114.17"
+        # Secrets (SUPABASE_JWT_SECRET, REALTIME_PUBLISH_TOKEN, SUPABASE_URL) are
+        # set once via `wrangler secret put` and persist across deploys — a
+        # `wrangler deploy` only updates code + [vars], so it never wipes them.
+
+      - name: Smoke test /health
+        run: |
+          URL="https://proyekto-realtime.lucky-mud-7121.workers.dev/health"
+          for i in 1 2 3 4 5; do
+            if curl -fsS "$URL" >/dev/null; then
+              echo "Realtime Worker health check passed"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying in 3s..."
+            sleep 3
+          done
+          echo "Realtime Worker /health did not return 200 within 5 attempts"
+          exit 1
