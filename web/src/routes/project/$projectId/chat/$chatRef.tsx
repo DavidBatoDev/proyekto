@@ -31,7 +31,7 @@ import {
   ChatSidebarSkeleton,
   ChatCenterShellSkeleton,
   ChatUnsendConfirmModal,
-  ChannelMembersModal,
+  ChannelDetailsPanel,
   CreateChannelModal,
   MessageList,
   TypingIndicator,
@@ -129,7 +129,6 @@ function ChatPage() {
   const [showPeoplePicker, setShowPeoplePicker] = useState(false);
   const [showSidebarMobile, setShowSidebarMobile] = useState(false);
   const [showCreateChannel, setShowCreateChannel] = useState(false);
-  const [showChannelMembers, setShowChannelMembers] = useState(false);
   const [isProfilePanelOpen, setIsProfilePanelOpen] = useState(true);
   const [selectedProfileUserId, setSelectedProfileUserId] = useState<string | null>(
     null,
@@ -934,13 +933,6 @@ function ChatPage() {
             });
           }}
           onOpenSidebar={() => setShowSidebarMobile(true)}
-          onManageMembers={
-            activeTarget.kind === "channel" &&
-            canManageChannels &&
-            activeRoom?.is_private
-              ? () => setShowChannelMembers(true)
-              : undefined
-          }
         />
       }
       messages={
@@ -981,14 +973,35 @@ function ChatPage() {
         isInitialChatBootLoading ? (
           <ChatProfilePanelSkeleton />
         ) : (
-          <ChatProfilePanel
-            member={activeProfilePreview}
-            isOpen={isProfilePanelOpen}
-            mode={activeTarget.kind}
-            projectMembers={projectMemberPreviews}
-            onToggle={() => setIsProfilePanelOpen((value) => !value)}
-            onClose={() => setIsProfilePanelOpen(false)}
-          />
+          activeTarget.kind === "channel" ? (
+            <ChannelDetailsPanel
+              projectId={projectId}
+              room={activeRoom ?? null}
+              members={members}
+              currentUserId={user?.id}
+              canManage={canManageChannels}
+              isOpen={isProfilePanelOpen}
+              onToggle={() => setIsProfilePanelOpen((value) => !value)}
+              onClose={() => setIsProfilePanelOpen(false)}
+              onExitChannel={() => {
+                if (defaultChannel) {
+                  void navigate({
+                    to: "/project/$projectId/chat/$chatRef",
+                    params: { projectId, chatRef: defaultChannel.id },
+                  });
+                }
+              }}
+            />
+          ) : (
+            <ChatProfilePanel
+              member={activeProfilePreview}
+              isOpen={isProfilePanelOpen}
+              mode={activeTarget.kind}
+              projectMembers={projectMemberPreviews}
+              onToggle={() => setIsProfilePanelOpen((value) => !value)}
+              onClose={() => setIsProfilePanelOpen(false)}
+            />
+          )
         )
       }
       isProfilePanelOpen={isInitialChatBootLoading ? true : isProfilePanelOpen}
@@ -1044,14 +1057,6 @@ function ChatPage() {
             toast.error("Could not create channel. Please try again.");
           }
         }}
-      />
-      <ChannelMembersModal
-        open={showChannelMembers}
-        projectId={projectId}
-        room={activeRoom ?? null}
-        members={members}
-        currentUserId={user?.id}
-        onClose={() => setShowChannelMembers(false)}
       />
       <ChatUnsendConfirmModal
         open={!!pendingUnsendMessage}

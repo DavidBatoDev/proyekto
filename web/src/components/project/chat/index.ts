@@ -7,7 +7,7 @@ export { TypingIndicator } from "./TypingIndicator";
 export { ChatProfilePanel } from "./ChatProfilePanel";
 export { ChatUnsendConfirmModal } from "./ChatUnsendConfirmModal";
 export { CreateChannelModal } from "./CreateChannelModal";
-export { ChannelMembersModal } from "./ChannelMembersModal";
+export { ChannelDetailsPanel } from "./ChannelDetailsPanel";
 export {
   ChatSidebarSkeleton,
   ChatCenterShellSkeleton,

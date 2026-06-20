@@ -280,6 +280,51 @@ describe('ChatService', () => {
     expect(upsertChannel).toHaveBeenCalledTimes(1);
   });
 
+  it('updateChannel toggles visibility via manage_channels', async () => {
+    const assertPermission = jest.fn().mockResolvedValue(undefined);
+    const updateRoom = jest
+      .fn()
+      .mockResolvedValue(channel('design-review', true));
+    const repo = buildRepo({
+      findRoomById: jest.fn().mockResolvedValue(channel('design-review', false)),
+      updateRoom,
+    });
+    const service = makeService(repo, { assertPermission });
+
+    await service.updateChannel('project-1', 'actor-1', 'room-design-review', {
+      is_private: true,
+    });
+
+    expect(assertPermission).toHaveBeenCalledWith(
+      'actor-1',
+      'project-1',
+      'chat.manage_channels',
+    );
+    expect(updateRoom).toHaveBeenCalledWith('room-design-review', {
+      name: undefined,
+      is_archived: undefined,
+      is_private: true,
+    });
+  });
+
+  it('leaveChannel removes the caller without manage_channels', async () => {
+    const assertPermission = jest.fn().mockResolvedValue(undefined);
+    const removeParticipant = jest.fn().mockResolvedValue(undefined);
+    const repo = buildRepo({
+      findRoomById: jest.fn().mockResolvedValue(channel('internal-team', true)),
+      removeParticipant,
+    });
+    const service = makeService(repo, { assertPermission });
+
+    await service.leaveChannel('project-1', 'viewer-1', 'room-internal-team');
+
+    expect(assertPermission).not.toHaveBeenCalled();
+    expect(removeParticipant).toHaveBeenCalledWith(
+      'room-internal-team',
+      'viewer-1',
+    );
+  });
+
   // ── DMs (unchanged behavior) ──────────────────────────────────────────────
   it('creates and reuses DM rooms by deterministic slug, no project_id', async () => {
     const upsertDm = jest.fn().mockResolvedValue(

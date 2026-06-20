@@ -133,7 +133,7 @@ class ChatService {
   updateChannel(
     projectId: string,
     roomId: string,
-    payload: { name?: string; is_archived?: boolean },
+    payload: { name?: string; is_archived?: boolean; is_private?: boolean },
   ): Promise<ChatRoom> {
     return this.request<ChatRoom>(
       `/projects/${projectId}/chat/channels/${roomId}`,
@@ -142,6 +142,13 @@ class ChatService {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       },
+    );
+  }
+
+  leaveChannel(projectId: string, roomId: string): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>(
+      `/projects/${projectId}/chat/channels/${roomId}/leave`,
+      { method: "DELETE" },
     );
   }
 
