@@ -18,14 +18,14 @@ const NAV_ITEMS = [
 
 // Per-section header themes
 const SECTION_THEMES = [
-  { bg: "bg-white/85 backdrop-blur-xl", border: "border-slate-200/70", text: "text-slate-600", logo: "text-slate-900" },
-  { bg: "bg-white/85 backdrop-blur-xl", border: "border-slate-200/70", text: "text-slate-600", logo: "text-slate-900" },
-  { bg: "bg-white/90 backdrop-blur-xl", border: "border-slate-200/70", text: "text-slate-600", logo: "text-slate-900" },
-  { bg: "bg-white/85 backdrop-blur-xl", border: "border-slate-200/70", text: "text-slate-600", logo: "text-slate-900" },
-  { bg: "bg-white/85 backdrop-blur-xl", border: "border-slate-200/70", text: "text-slate-600", logo: "text-slate-900" },
-  { bg: "bg-white/85 backdrop-blur-xl", border: "border-slate-200/70", text: "text-slate-600", logo: "text-slate-900" },
-  { bg: "bg-white/90 backdrop-blur-xl", border: "border-slate-200/70", text: "text-slate-600", logo: "text-slate-900" },
-  { bg: "bg-white/85 backdrop-blur-xl", border: "border-slate-200/70", text: "text-slate-600", logo: "text-slate-900" },
+  { bg: "bg-white/85 backdrop-blur-xl", border: "border-slate-200/70", text: "text-slate-600", logo: "text-primary" },
+  { bg: "bg-white/85 backdrop-blur-xl", border: "border-slate-200/70", text: "text-slate-600", logo: "text-primary" },
+  { bg: "bg-white/90 backdrop-blur-xl", border: "border-slate-200/70", text: "text-slate-600", logo: "text-primary" },
+  { bg: "bg-white/85 backdrop-blur-xl", border: "border-slate-200/70", text: "text-slate-600", logo: "text-primary" },
+  { bg: "bg-white/85 backdrop-blur-xl", border: "border-slate-200/70", text: "text-slate-600", logo: "text-primary" },
+  { bg: "bg-white/85 backdrop-blur-xl", border: "border-slate-200/70", text: "text-slate-600", logo: "text-primary" },
+  { bg: "bg-white/90 backdrop-blur-xl", border: "border-slate-200/70", text: "text-slate-600", logo: "text-primary" },
+  { bg: "bg-white/85 backdrop-blur-xl", border: "border-slate-200/70", text: "text-slate-600", logo: "text-primary" },
 ];
 
 const navContainerVariants = {

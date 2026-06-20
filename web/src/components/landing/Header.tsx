@@ -56,7 +56,7 @@ const Header = () => {
           <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 2, md: 3, lg: 4 } }}>
             {/* Logo */}
             <Box sx={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
-              <BrandMark className="h-[60px] text-slate-900" />
+              <BrandMark className="h-[60px] text-primary" />
             </Box>
 
             {/* Navigation Items */}

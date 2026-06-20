@@ -10,7 +10,7 @@ const Footer = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-16">
           {/* Brand and socials */}
           <div className="space-y-4">
-            <BrandMark className="h-12 text-slate-900" />
+            <BrandMark className="h-12 text-primary" />
             <div className="flex items-center gap-4 text-gray-800">
               <a
                 aria-label="Facebook"

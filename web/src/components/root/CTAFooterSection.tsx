@@ -82,7 +82,7 @@ export function CTAFooterSection({ isActive = false }: { isActive?: boolean }) {
       <div className="mt-16 border-t border-slate-200">
         <div className="grid grid-cols-1 gap-8 pt-8 md:grid-cols-5">
           <motion.div className="md:col-span-2" variants={colVariants(0)} initial="hidden" animate={animate}>
-            <BrandMark className="mb-4 h-10 text-slate-900" />
+            <BrandMark className="mb-4 h-10 text-primary" />
             <p className="max-w-sm text-sm text-slate-600">Turn your ideas into action, with Proyekto.</p>
           </motion.div>
 

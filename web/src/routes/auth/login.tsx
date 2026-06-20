@@ -221,7 +221,7 @@ function RouteComponent() {
     return (
       <SignupLayout>
         <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
-          <BrandMark className="h-8 text-slate-900" />
+          <BrandMark className="h-8 text-primary" />
 
           <div>
             <h1
@@ -412,7 +412,7 @@ function RouteComponent() {
     <SignupLayout>
       <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
         {/* Logo */}
-        <BrandMark className="h-8 text-slate-900" />
+        <BrandMark className="h-8 text-primary" />
 
         {/* Invite context banner */}
         {isInviteFlow && (

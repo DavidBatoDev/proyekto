@@ -128,7 +128,7 @@ function ForgotPasswordRoute() {
           gap: "24px",
         }}
       >
-        <BrandMark className="h-8 text-slate-900" />
+        <BrandMark className="h-8 text-primary" />
 
         <div>
           <h1

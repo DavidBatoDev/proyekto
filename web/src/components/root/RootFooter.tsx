@@ -7,7 +7,7 @@ export const RootFooter = () => {
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-10">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-5">
           <div className="md:col-span-2">
-            <BrandMark className="mb-4 h-10 text-slate-900" />
+            <BrandMark className="mb-4 h-10 text-primary" />
             <p className="max-w-sm text-sm text-slate-600">
               Turn your ideas into action, with Proyekto.
             </p>

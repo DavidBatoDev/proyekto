@@ -36,7 +36,7 @@ export function BrandMark({
       <span
         role="img"
         aria-label={ariaLabel}
-        className={`inline-flex aspect-square items-center justify-center rounded-lg bg-slate-900 font-extrabold leading-none text-white ${
+        className={`inline-flex aspect-square items-center justify-center rounded-lg bg-primary font-extrabold leading-none text-white ${
           className ?? ""
         }`}
         style={{
