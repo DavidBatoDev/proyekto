@@ -241,11 +241,9 @@ describe('ChatService', () => {
 
     expect(upsertChannel).toHaveBeenCalledTimes(4);
     expect(upsertParticipants).toHaveBeenCalledTimes(4);
-    expect(upsertParticipants).toHaveBeenCalledWith(
-      'room-internal-team',
-      'project-1',
-      ['creator-1'],
-    );
+    expect(upsertParticipants).toHaveBeenCalledWith('room-internal-team', [
+      'creator-1',
+    ]);
   });
 
   // ── Channel creation ────────────────────────────────────────────────────
@@ -358,9 +356,6 @@ describe('ChatService', () => {
 
     const room = await service.resolveDmRoom('actor-1', 'rec-1');
     expect(room.slug).toBe('actor-1_rec-1');
-    expect(upsertParticipants).toHaveBeenCalledWith(room.id, null, [
-      'actor-1',
-      'rec-1',
-    ]);
+    expect(upsertParticipants).toHaveBeenCalledWith(room.id, ['actor-1', 'rec-1']);
   });
 });

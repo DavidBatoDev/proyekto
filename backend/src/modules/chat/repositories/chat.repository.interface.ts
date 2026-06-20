@@ -54,7 +54,6 @@ export type ChatUser = {
 export type ChatParticipant = {
   room_id: string;
   user_id: string;
-  project_id: string | null;
   joined_at: string;
   last_read_at: string | null;
   user: ChatUser | null;
@@ -121,11 +120,7 @@ export interface ChatRepository {
   upsertDm(params: {
     slug: string;
   }): Promise<ChatRoom>;
-  upsertParticipants(
-    roomId: string,
-    projectId: string | null,
-    userIds: string[],
-  ): Promise<void>;
+  upsertParticipants(roomId: string, userIds: string[]): Promise<void>;
   removeParticipant(roomId: string, userId: string): Promise<void>;
   isRoomParticipant(roomId: string, userId: string): Promise<boolean>;
   /** All user ids participating in a room (for realtime inbox fan-out). */
