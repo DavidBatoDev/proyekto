@@ -13,6 +13,8 @@ export const chatKeys = {
   dmEligibleMembers: (projectId: string) =>
     ["chat", "dm-eligible-members", projectId] as const,
   roomMessages: (roomId: string) => ["chat", "room-messages", roomId] as const,
+  channelMembers: (projectId: string, roomId: string) =>
+    ["chat", "channel-members", projectId, roomId] as const,
 };
 
 export function fetchProjectChatRooms(projectId: string): Promise<ChatRoom[]> {
