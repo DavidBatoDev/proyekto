@@ -468,10 +468,11 @@ export class SupabaseChatRepository implements ChatRepository {
 
   async updateRoom(
     roomId: string,
-    patch: { name?: string; is_archived?: boolean },
+    patch: { name?: string; is_archived?: boolean; is_private?: boolean },
   ): Promise<ChatRoom> {
     const update: Record<string, unknown> = {};
     if (typeof patch.name === 'string') update.name = patch.name;
+    if (typeof patch.is_private === 'boolean') update.is_private = patch.is_private;
     if (typeof patch.is_archived === 'boolean') {
       update.is_archived = patch.is_archived;
       update.archived_at = patch.is_archived ? new Date().toISOString() : null;

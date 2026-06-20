@@ -138,7 +138,7 @@ export function useCreateChannelMutation(projectId: string) {
   });
 }
 
-/** Rename or archive a channel. Invalidates the project's room list. */
+/** Rename, archive, or toggle visibility of a channel. Invalidates the room list. */
 export function useUpdateChannelMutation(projectId: string) {
   const queryClient = useQueryClient();
 
@@ -147,11 +147,25 @@ export function useUpdateChannelMutation(projectId: string) {
       roomId: string;
       name?: string;
       is_archived?: boolean;
+      is_private?: boolean;
     }) =>
       chatService.updateChannel(projectId, payload.roomId, {
         name: payload.name,
         is_archived: payload.is_archived,
+        is_private: payload.is_private,
       }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
+    },
+  });
+}
+
+/** Leave a channel (self-service). Invalidates the project's room list. */
+export function useLeaveChannelMutation(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (roomId: string) => chatService.leaveChannel(projectId, roomId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: chatKeys.rooms(projectId) });
     },

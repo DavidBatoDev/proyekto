@@ -82,7 +82,7 @@ export class CreateChannelDto {
   is_private?: boolean;
 }
 
-/** Rename and/or archive a channel. */
+/** Rename, archive, and/or change the visibility of a channel. */
 export class UpdateChannelDto {
   @IsOptional()
   @IsString()
@@ -92,6 +92,10 @@ export class UpdateChannelDto {
   @IsOptional()
   @IsBoolean()
   is_archived?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  is_private?: boolean;
 }
 
 /** Add a project member to a private channel. */

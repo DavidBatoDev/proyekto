@@ -696,6 +696,7 @@ export class ChatService {
     const updated = await this.chatRepo.updateRoom(roomId, {
       name,
       is_archived: dto.is_archived,
+      is_private: dto.is_private,
     });
 
     this.audit.log({
@@ -704,7 +705,7 @@ export class ChatService {
       action: dto.is_archived === true ? 'channel.archived' : 'channel.updated',
       entityType: 'chat_channel',
       entityId: roomId,
-      metadata: { name, is_archived: dto.is_archived },
+      metadata: { name, is_archived: dto.is_archived, is_private: dto.is_private },
     });
     this.notifyProjectRoomsChanged(projectId, roomId);
 
@@ -777,6 +778,38 @@ export class ChatService {
       entityType: 'chat_channel',
       entityId: roomId,
       metadata: { member_id: memberId },
+    });
+    this.notifyProjectRoomsChanged(projectId, roomId);
+
+    return { ok: true };
+  }
+
+  /**
+   * Self-service: the caller leaves a channel they're in. No `manage_channels`
+   * permission required (unlike removeChannelMember). Public channels re-add the
+   * viewer on the next listRooms (lazy-join), so this is mainly for private ones.
+   */
+  async leaveChannel(
+    projectId: string,
+    userId: string,
+    roomId: string,
+  ): Promise<{ ok: true }> {
+    await this.assertProjectAccess(projectId, userId);
+
+    const room = await this.chatRepo.findRoomById(roomId);
+    if (!room || room.type !== 'channel' || room.project_id !== projectId) {
+      throw new NotFoundException('Chat room not found.');
+    }
+
+    await this.chatRepo.removeParticipant(roomId, userId);
+
+    this.audit.log({
+      projectId,
+      actorId: userId,
+      action: 'channel.left',
+      entityType: 'chat_channel',
+      entityId: roomId,
+      metadata: {},
     });
     this.notifyProjectRoomsChanged(projectId, roomId);
 

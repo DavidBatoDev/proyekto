@@ -102,6 +102,15 @@ export class ChatController {
     );
   }
 
+  @Delete('channels/:roomId/leave')
+  leaveChannel(
+    @Param('projectId') projectId: string,
+    @Param('roomId') roomId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.chatService.leaveChannel(projectId, user.id, roomId);
+  }
+
   @Get('rooms/:roomId/messages')
   listMessages(
     @Param('roomId') roomId: string,

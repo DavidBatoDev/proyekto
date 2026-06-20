@@ -102,7 +102,7 @@ export interface ChatRepository {
   /** Update mutable room fields (rename / archive). */
   updateRoom(
     roomId: string,
-    patch: { name?: string; is_archived?: boolean },
+    patch: { name?: string; is_archived?: boolean; is_private?: boolean },
   ): Promise<ChatRoom>;
   /** Whether the project is a personal (solo) workspace. */
   getProjectIsPersonal(projectId: string): Promise<boolean>;
