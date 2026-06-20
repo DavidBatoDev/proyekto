@@ -175,7 +175,7 @@ export function DashboardSidebar() {
 							to="/teams"
 							className={
 								currentPath === "/teams"
-									? "rounded bg-slate-900 p-1 text-white"
+									? "rounded bg-primary p-1 text-white"
 									: "rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
 							}
 							title="All teams"
@@ -220,7 +220,7 @@ export function DashboardSidebar() {
 							search={{ roadmapId: undefined }}
 							className={
 								currentPath === "/project-posting"
-									? "rounded bg-slate-900 p-1 text-white"
+									? "rounded bg-primary p-1 text-white"
 									: "rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
 							}
 							title="New project"

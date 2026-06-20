@@ -312,7 +312,7 @@ export function DashboardWidgets({
 							<button
 								type="button"
 								onClick={() => navigate({ to: "/project-posting", search: { roadmapId: undefined } })}
-								className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
+								className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
 							>
 								<Plus className="h-3.5 w-3.5" />
 								Create project
@@ -327,11 +327,11 @@ export function DashboardWidgets({
 							>
 								<span
 									className="pointer-events-none absolute -top-16 -right-16 w-44 h-44 rounded-full blur-3xl opacity-25"
-									style={{ backgroundColor: "#0f172a" }}
+									style={{ backgroundColor: "#2563eb" }}
 								/>
 								<span
 									className="pointer-events-none absolute -bottom-12 -left-12 w-32 h-32 rounded-full blur-3xl opacity-12"
-									style={{ backgroundColor: "#0f172a" }}
+									style={{ backgroundColor: "#2563eb" }}
 								/>
 								<span className="absolute top-4 right-4 text-slate-500 transition-colors duration-200 group-hover:text-slate-900">
 									{"->"}
@@ -351,11 +351,11 @@ export function DashboardWidgets({
 							>
 								<span
 									className="pointer-events-none absolute -top-16 -right-16 w-44 h-44 rounded-full blur-3xl opacity-25"
-									style={{ backgroundColor: "#0f172a" }}
+									style={{ backgroundColor: "#2563eb" }}
 								/>
 								<span
 									className="pointer-events-none absolute -bottom-12 -left-12 w-32 h-32 rounded-full blur-3xl opacity-12"
-									style={{ backgroundColor: "#0f172a" }}
+									style={{ backgroundColor: "#2563eb" }}
 								/>
 								<span className="absolute top-4 right-4 text-slate-500 transition-colors duration-200 group-hover:text-slate-900">
 									{"->"}
@@ -376,11 +376,11 @@ export function DashboardWidgets({
 							>
 								<span
 									className="pointer-events-none absolute -top-16 -right-16 w-44 h-44 rounded-full blur-3xl opacity-25"
-									style={{ backgroundColor: "#0f172a" }}
+									style={{ backgroundColor: "#2563eb" }}
 								/>
 								<span
 									className="pointer-events-none absolute -bottom-12 -left-12 w-32 h-32 rounded-full blur-3xl opacity-12"
-									style={{ backgroundColor: "#0f172a" }}
+									style={{ backgroundColor: "#2563eb" }}
 								/>
 								<span className="absolute top-4 right-4 text-slate-500 transition-colors duration-200 group-hover:text-slate-900">
 									{"->"}
@@ -441,7 +441,7 @@ export function DashboardWidgets({
 									const isUpcoming = index > 1;
 									const circleBaseClass = "w-3 h-3 rounded-full shrink-0";
 									const connectorColor =
-										index === 0 ? "#0f172a" : "rgb(226 232 240)";
+										index === 0 ? "#2563eb" : "rgb(226 232 240)";
 
 									return (
 										<div key={item.id} className="flex items-start gap-3">
@@ -450,7 +450,7 @@ export function DashboardWidgets({
 													className={circleBaseClass}
 													style={
 														isCurrent
-															? { backgroundColor: "#0f172a" }
+															? { backgroundColor: "#2563eb" }
 															: isNext
 																? {
 																		backgroundColor: "white",

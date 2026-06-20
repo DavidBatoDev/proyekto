@@ -121,7 +121,7 @@ export function ProjectSidebarLink({
 				params={{ projectId: project.id }}
 				className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
 					active
-						? "bg-slate-900 text-white shadow-sm"
+						? "bg-primary text-white shadow-sm"
 						: "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
 				}`}
 			>
@@ -231,7 +231,7 @@ function ProjectPopupMenu({
 								params={{ projectId: project.id }}
 								className={`flex items-center gap-3 px-3 py-2 text-sm transition-colors ${
 									active
-										? "bg-slate-900 text-white"
+										? "bg-primary text-white"
 										: "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
 								}`}
 							>
