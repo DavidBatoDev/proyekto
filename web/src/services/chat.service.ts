@@ -12,7 +12,6 @@ export interface ChatUser {
 export interface ChatParticipant {
   room_id: string;
   user_id: string;
-  project_id: string | null;
   joined_at: string;
   last_read_at: string | null;
   user: ChatUser | null;

@@ -148,7 +148,7 @@ export class ChatService {
 
     const isConsultant = await this.isProjectConsultant(room.project_id, userId);
     if (this.canViewChannel(room, isConsultant, false)) {
-      await this.chatRepo.upsertParticipants(room.id, room.project_id, [userId]);
+      await this.chatRepo.upsertParticipants(room.id, [userId]);
     }
   }
 
@@ -221,7 +221,7 @@ export class ChatService {
     if (toJoin.length > 0) {
       await Promise.all(
         toJoin.map((roomId) =>
-          this.chatRepo.upsertParticipants(roomId, projectId, [userId]),
+          this.chatRepo.upsertParticipants(roomId, [userId]),
         ),
       );
     }
@@ -462,7 +462,7 @@ export class ChatService {
 
       const slug = this.sortDmSlug(senderId, dto.recipient_id);
       room = await this.chatRepo.upsertDm({ slug });
-      await this.chatRepo.upsertParticipants(room.id, null, [
+      await this.chatRepo.upsertParticipants(room.id, [
         senderId,
         dto.recipient_id,
       ]);
@@ -505,7 +505,7 @@ export class ChatService {
 
     const slug = this.sortDmSlug(senderId, recipientId);
     const room = await this.chatRepo.upsertDm({ slug });
-    await this.chatRepo.upsertParticipants(room.id, null, [senderId, recipientId]);
+    await this.chatRepo.upsertParticipants(room.id, [senderId, recipientId]);
     return room;
   }
 
@@ -622,7 +622,7 @@ export class ChatService {
       });
       // Seed the creator so the private default rooms are visible to them
       // immediately — visibility is now pure membership. Idempotent.
-      await this.chatRepo.upsertParticipants(room.id, projectId, [creatorId]);
+      await this.chatRepo.upsertParticipants(room.id, [creatorId]);
     }
   }
 
@@ -650,7 +650,7 @@ export class ChatService {
       isPrivate: !!dto.is_private,
       createdBy: userId,
     });
-    await this.chatRepo.upsertParticipants(room.id, projectId, [userId]);
+    await this.chatRepo.upsertParticipants(room.id, [userId]);
 
     this.audit.log({
       projectId,
@@ -736,7 +736,7 @@ export class ChatService {
       throw new BadRequestException('User is not a member of this project.');
     }
 
-    await this.chatRepo.upsertParticipants(roomId, projectId, [memberId]);
+    await this.chatRepo.upsertParticipants(roomId, [memberId]);
 
     this.audit.log({
       projectId,

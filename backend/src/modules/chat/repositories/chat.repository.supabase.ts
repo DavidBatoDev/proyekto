@@ -79,7 +79,6 @@ type RawProjectSelect = {
 type RawParticipantRow = {
   room_id: string;
   user_id: string;
-  project_id: string | null;
   joined_at: string;
   last_read_at: string | null;
   user?:
@@ -541,7 +540,7 @@ export class SupabaseChatRepository implements ChatRepository {
       .from('chat_room_participants')
       .select(
         `
-        room_id, user_id, project_id, joined_at, last_read_at,
+        room_id, user_id, joined_at, last_read_at,
         user:profiles!chat_room_participants_user_id_fkey(id, display_name, avatar_url, email)
       `,
       )
@@ -551,7 +550,6 @@ export class SupabaseChatRepository implements ChatRepository {
     return ((data || []) as RawParticipantRow[]).map((row) => ({
       room_id: row.room_id,
       user_id: row.user_id,
-      project_id: row.project_id,
       joined_at: row.joined_at,
       last_read_at: row.last_read_at,
       user: this.pickSingle(row.user),
@@ -582,18 +580,13 @@ export class SupabaseChatRepository implements ChatRepository {
     return data as ChatRoom;
   }
 
-  async upsertParticipants(
-    roomId: string,
-    projectId: string | null,
-    userIds: string[],
-  ): Promise<void> {
+  async upsertParticipants(roomId: string, userIds: string[]): Promise<void> {
     const deduped = Array.from(new Set(userIds.filter(Boolean)));
     if (deduped.length === 0) return;
 
     const payload = deduped.map((userId) => ({
       room_id: roomId,
       user_id: userId,
-      project_id: projectId,
     }));
 
     const { error } = await this.supabase
@@ -657,7 +650,7 @@ export class SupabaseChatRepository implements ChatRepository {
         .from('chat_room_participants')
         .select(
           `
-          room_id, user_id, project_id, joined_at, last_read_at,
+          room_id, user_id, joined_at, last_read_at,
           user:profiles!chat_room_participants_user_id_fkey(id, display_name, avatar_url, email)
         `,
         )
@@ -685,7 +678,6 @@ export class SupabaseChatRepository implements ChatRepository {
       list.push({
         room_id: row.room_id,
         user_id: row.user_id,
-        project_id: row.project_id,
         joined_at: row.joined_at,
         last_read_at: row.last_read_at,
         user: this.pickSingle(row.user),
