@@ -91,8 +91,8 @@ code {
   --app-shadow-lg: 0 24px 48px rgba(15, 23, 42, 0.16);
   --app-accent: #0f172a;
   --app-accent-soft: rgba(15, 23, 42, 0.08);
-  --app-cta: #ff9933;
-  --app-cta-hover: #ea8b25;
+  --app-cta: oklch(0.546 0.245 262.881); /* blue-600 #2563eb (was orange #ff9933) */
+  --app-cta-hover: oklch(0.488 0.243 264.376); /* blue-700 #1d4ed8 */
   --app-duration-fast: 150ms;
   --app-duration-medium: 240ms;
   --app-duration-slow: 360ms;
@@ -103,14 +103,15 @@ code {
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.141 0.005 285.823);
   /* Convert the hex codes to oklch if theres a hex code */
-  --primary: oklch(77.37% 0.163 60.28);
-  --primary-dark: oklch(65.96% 0.138 60.19);
-  --primary-light: oklch(81.21% 0.136 63.4);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(65.65% 0.235 13.34);
-  --secondary-dark: oklch(54.12% 0.202 14.12);
-  --secondary-light: oklch(73.85% 0.21 12);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
+  /* Brand: blue-600 primary (landing "Use it your way" card) + dark-slate secondary ("Create Your Project Plan" CTA) */
+  --primary: oklch(0.546 0.245 262.881); /* blue-600  #2563eb */
+  --primary-dark: oklch(0.488 0.243 264.376); /* blue-700  #1d4ed8 */
+  --primary-light: oklch(0.932 0.032 255.585); /* blue-100  #dbeafe (soft hover tint) */
+  --primary-foreground: oklch(0.985 0 0); /* white */
+  --secondary: oklch(0.208 0.042 265.755); /* slate-900 #0f172a */
+  --secondary-dark: oklch(0.129 0.042 264.695); /* slate-950 #020617 */
+  --secondary-light: oklch(0.372 0.044 257.287); /* slate-700 #334155 */
+  --secondary-foreground: oklch(0.985 0 0); /* white (slate is dark — must be light) */
   --muted: oklch(0.967 0.001 286.375);
   --muted-foreground: oklch(0.552 0.016 285.938);
   --accent: oklch(0.967 0.001 286.375);
@@ -143,10 +144,10 @@ code {
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.141 0.005 285.823);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.21 0.006 285.885);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.623 0.214 259.815); /* blue-500 #3b82f6 (brighter for dark bg) */
+  --primary-foreground: oklch(0.985 0 0); /* white */
+  --secondary: oklch(0.372 0.044 257.287); /* slate-700 #334155 (visible on dark bg) */
+  --secondary-foreground: oklch(0.985 0 0); /* white */
   --muted: oklch(0.274 0.006 286.033);
   --muted-foreground: oklch(0.705 0.015 286.067);
   --accent: oklch(0.274 0.006 286.033);
@@ -171,47 +172,24 @@ code {
   --sidebar-ring: oklch(0.442 0.017 285.786);
 }
 
-/* Persona Themes */
-[data-theme="client"] {
-  /* Friendly Orange/Peach */
-  --primary: oklch(82% 0.13 65);
-  --primary-foreground: oklch(0.985 0 0);
-  --primary-dark: oklch(72% 0.14 60);
-  --primary-light: oklch(94% 0.05 65);
-
-  /* Soft Orange for Secondary */
-  --secondary: oklch(82% 0.13 65);
-  --secondary-foreground: oklch(0.985 0 0);
-  --secondary-dark: oklch(72% 0.14 60);
-  --secondary-light: oklch(94% 0.05 65);
-}
-
-[data-theme="freelancer"] {
-  /* Clean Light Blue */
-  --primary: oklch(85% 0.11 235);
-  --primary-foreground: oklch(0.2 0.02 235);
-  --primary-dark: oklch(75% 0.13 235);
-  --primary-light: oklch(95% 0.04 235);
-
-  /* Soft Slate/Navy for Secondary */
-  --secondary: oklch(55% 0.1 250);
-  --secondary-foreground: oklch(0.985 0 0);
-  --secondary-dark: oklch(45% 0.12 250);
-  --secondary-light: oklch(85% 0.06 250);
-}
-
+/*
+  Persona Themes — unified to the brand blue/slate palette (matches :root).
+  Per-persona color differentiation was intentionally retired so the whole app
+  reads with one brand identity. Selectors kept so the data-theme widgets still
+  resolve their tokens; values mirror :root.
+*/
+[data-theme="client"],
+[data-theme="freelancer"],
 [data-theme="consultant"] {
-  /* Soft Pink/Rose */
-  --primary: oklch(78% 0.16 15);
-  --primary-foreground: oklch(0.985 0 0);
-  --primary-dark: oklch(68% 0.18 15);
-  --primary-light: oklch(93% 0.06 15);
+  --primary: oklch(0.546 0.245 262.881); /* blue-600  #2563eb */
+  --primary-dark: oklch(0.488 0.243 264.376); /* blue-700  #1d4ed8 */
+  --primary-light: oklch(0.932 0.032 255.585); /* blue-100  #dbeafe */
+  --primary-foreground: oklch(0.985 0 0); /* white */
 
-  /* Soft Pink/Coral for Secondary */
-  --secondary: oklch(75% 0.16 20);
-  --secondary-foreground: oklch(0.985 0 0);
-  --secondary-dark: oklch(65% 0.18 20);
-  --secondary-light: oklch(90% 0.08 20);
+  --secondary: oklch(0.208 0.042 265.755); /* slate-900 #0f172a */
+  --secondary-dark: oklch(0.129 0.042 264.695); /* slate-950 #020617 */
+  --secondary-light: oklch(0.372 0.044 257.287); /* slate-700 #334155 */
+  --secondary-foreground: oklch(0.985 0 0); /* white */
 }
 
 @theme inline {
@@ -519,7 +497,7 @@ code {
 
 .app-cta:hover {
   background: var(--app-cta-hover);
-  box-shadow: 0 10px 20px rgba(234, 139, 37, 0.24);
+  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.24);
   transform: translateY(-1px);
 }
 
