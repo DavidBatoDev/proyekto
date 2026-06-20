@@ -1,8 +1,10 @@
 import { Link } from "@tanstack/react-router";
-import { MessageCircle, Search } from "lucide-react";
+import { Menu, MessageCircle, Search } from "lucide-react";
+import { useState } from "react";
 import { useAuthStore, useIsLoading } from "@/stores/authStore";
 import { Button } from "@/ui/button";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { MobileNavDrawer } from "./MobileNavDrawer";
 import { NotificationBell } from "./NotificationBell";
 import UserMenu from "./UserMenu";
 
@@ -10,6 +12,7 @@ const DashboardHeader = () => {
 	const { isAuthenticated, profile } = useAuthStore();
 	const isAuthLoading = useIsLoading();
 	const isLoading = isAuthLoading || (isAuthenticated && !profile);
+	const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
 	const navItems = [
 		{ label: "Home", to: "/dashboard" },
@@ -19,6 +22,16 @@ const DashboardHeader = () => {
 	return (
 		<div className="z-10 flex h-full w-full items-center justify-between px-4 sm:px-6">
 			<div className="flex min-w-0 items-center gap-3 sm:gap-4">
+				{isAuthenticated && (
+					<button
+						type="button"
+						onClick={() => setMobileNavOpen(true)}
+						aria-label="Open menu"
+						className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-700 transition-colors hover:bg-slate-100 lg:hidden"
+					>
+						<Menu size={22} />
+					</button>
+				)}
 				<Link
 					to="/"
 					className="flex shrink-0 items-center border-r border-slate-200 pr-3 sm:pr-4"
@@ -86,6 +99,13 @@ const DashboardHeader = () => {
 					</>
 				)}
 			</div>
+
+			{isAuthenticated && (
+				<MobileNavDrawer
+					isOpen={mobileNavOpen}
+					onClose={() => setMobileNavOpen(false)}
+				/>
+			)}
 		</div>
 	);
 };

@@ -294,15 +294,15 @@ export function DashboardWidgets({
 	};
 
 	return (
-		<div className="space-y-6 app-slide-up">
+		<div className="space-y-4 app-slide-up sm:space-y-6">
 			{leadContent}
 
-			<section className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
+			<section className="grid grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
 				<div className="space-y-6 min-w-0">
-					<div className="app-surface-card-strong p-8">
-						<div className="mb-6 flex items-start justify-between gap-4">
+					<div className="app-surface-card-strong p-5 sm:p-8">
+						<div className="mb-4 flex items-start justify-between gap-4 sm:mb-6">
 							<div>
-								<h2 className="text-[22px] font-semibold tracking-tight text-slate-900">
+								<h2 className="text-lg font-semibold tracking-tight text-slate-900 sm:text-[22px]">
 									Welcome back, {greetingName}
 								</h2>
 								<p className="mt-1 text-sm text-slate-600">
@@ -312,18 +312,18 @@ export function DashboardWidgets({
 							<button
 								type="button"
 								onClick={() => navigate({ to: "/project-posting", search: { roadmapId: undefined } })}
-								className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
+								className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-primary/90 sm:px-3 sm:text-sm"
 							>
 								<Plus className="h-3.5 w-3.5" />
 								Create project
 							</button>
 						</div>
 
-						<div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+						<div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
 							<button
 								type="button"
 								onClick={scrollToProjects}
-								className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+								className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm sm:p-6 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
 							>
 								<span
 									className="pointer-events-none absolute -top-16 -right-16 w-44 h-44 rounded-full blur-3xl opacity-25"
@@ -340,14 +340,14 @@ export function DashboardWidgets({
 									<FolderOpen className="w-4 h-4 text-slate-400" />
 									ACTIVE PROJECTS
 								</p>
-								<p className="relative z-10 text-4xl font-semibold text-slate-900">
+								<p className="relative z-10 text-2xl font-semibold text-slate-900 sm:text-4xl">
 									{isProjectsLoading ? "..." : primaryMetricValue}
 								</p>
 							</button>
 							<button
 								type="button"
 								onClick={scrollToAttention}
-								className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+								className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm sm:p-6 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
 							>
 								<span
 									className="pointer-events-none absolute -top-16 -right-16 w-44 h-44 rounded-full blur-3xl opacity-25"
@@ -364,7 +364,7 @@ export function DashboardWidgets({
 									<ShieldCheck className="w-4 h-4 text-slate-400" />
 									PENDING PROJECTS
 								</p>
-								<p className="relative z-10 text-4xl font-semibold text-slate-900">
+								<p className="relative z-10 text-2xl font-semibold text-slate-900 sm:text-4xl">
 									{secondaryMetricLoading ? "..." : secondaryMetricValue}
 								</p>
 							</button>
@@ -372,7 +372,7 @@ export function DashboardWidgets({
 								type="button"
 								onClick={openFirstProjectInvoices}
 								disabled={!invoiceTargetProject}
-								className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-70"
+								className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm sm:p-6 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-70"
 							>
 								<span
 									className="pointer-events-none absolute -top-16 -right-16 w-44 h-44 rounded-full blur-3xl opacity-25"
@@ -389,7 +389,7 @@ export function DashboardWidgets({
 									<ShieldCheck className="w-4 h-4 text-slate-400" />
 									INVOICES
 								</p>
-								<p className="relative z-10 text-3xl font-semibold text-slate-900">
+								<p className="relative z-10 text-xl font-semibold text-slate-900 sm:text-3xl">
 									{invoiceMetricLoading
 										? "..."
 										: invoiceMetricValue.toLocaleString(undefined, {
@@ -405,7 +405,7 @@ export function DashboardWidgets({
 						</div>
 					</div>
 
-					{children ? <div className="space-y-8">{children}</div> : null}
+					{children ? <div className="space-y-6 sm:space-y-8">{children}</div> : null}
 				</div>
 
 				<div className="xl:sticky xl:top-24 self-start space-y-4 min-w-0">

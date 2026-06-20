@@ -193,8 +193,8 @@ export function ProjectsGrid() {
 		>
 			<div className="mb-4">
 				<div className="flex items-center gap-2">
-					<div className="h-[18px] w-[18px] rounded-full bg-slate-900" />
-					<h2 className="text-[20px] font-semibold tracking-tight text-slate-900">
+					<div className="h-3 w-3 rounded-full bg-slate-900 sm:h-[18px] sm:w-[18px]" />
+					<h2 className="text-base font-semibold tracking-tight text-slate-900 sm:text-[20px]">
 						PROJECTS
 					</h2>
 				</div>
@@ -226,7 +226,7 @@ function ProjectsSection({
 }) {
 	return (
 		<section>
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+			<div className="grid grid-cols-2 gap-3 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
 				{isLoading ? (
 					<>
 						<ProjectCardSkeleton />
@@ -237,7 +237,7 @@ function ProjectsSection({
 					<ProjectsEmptyState
 						title={emptyTitle}
 						description={emptyDescription}
-						className="col-span-3"
+						className="col-span-full"
 					/>
 				) : (
 					cards.slice(0, 6).map((card, index) => {
@@ -301,9 +301,9 @@ function InviteCard({
 		<button
 			type="button"
 			onClick={() => openProjectInviteModal(invite.id)}
-			className="group flex h-[385px] flex-col rounded-2xl border border-slate-900 bg-slate-900 p-4 text-left text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-lg"
+			className="group flex h-auto flex-col sm:h-[385px] rounded-2xl border border-slate-900 bg-slate-900 p-4 text-left text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-lg"
 		>
-			<div className="flex-1 space-y-6">
+			<div className="flex-1 space-y-4 sm:space-y-6">
 				<div>
 					<div className="mb-2 flex items-center gap-2">
 						<span className="text-[16px] font-semibold text-slate-400">
@@ -411,15 +411,15 @@ export function ProjectCard({
 
 	return (
 		<div
-			className="group flex h-[385px] flex-col rounded-2xl border border-slate-200 bg-linear-to-b from-white from-95% to-transparent p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg"
+			className="group flex h-auto flex-col sm:h-[385px] rounded-2xl border border-slate-200 bg-linear-to-b from-white from-95% to-transparent p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg"
 			style={{
 				backgroundImage: `linear-gradient(to bottom, white 98%, ${statusColor}20)`,
 			}}
 		>
-			<div className="flex-1 space-y-6">
+			<div className="flex-1 space-y-4 sm:space-y-6">
 				<div>
 					<div className="flex items-center gap-2 mb-2">
-						<span className="text-[16px] font-semibold text-slate-500">
+						<span className="text-[14px] font-semibold text-slate-500 sm:text-[16px]">
 							#{number}
 						</span>
 						<div className="h-[25px] w-px bg-slate-300" />
@@ -440,10 +440,10 @@ export function ProjectCard({
 						</div>
 					</div>
 
-					<h3 className="mb-1 text-[16px] font-semibold tracking-tight text-slate-900">
+					<h3 className="mb-1 text-[14px] font-semibold tracking-tight text-slate-900 sm:text-[16px]">
 						{title}
 					</h3>
-					<p className="text-[14px]">
+					<p className="text-[13px] sm:text-[14px]">
 						<span className="font-semibold text-slate-600">Client:</span>
 						<span className="text-slate-600"> {client}</span>
 					</p>
@@ -471,10 +471,10 @@ export function ProjectCard({
 					<Clock className="mt-0.5 h-[18px] w-[18px] shrink-0 text-slate-500" />
 					<div className="space-y-2">
 						<div>
-							<p className="text-[14px] font-semibold text-slate-600">
+							<p className="text-[12px] font-semibold text-slate-600 sm:text-[14px]">
 								NEXT UP
 							</p>
-							<p className="text-[14px] text-slate-900">• {nextUp}</p>
+							<p className="text-[12px] text-slate-900 sm:text-[14px]">• {nextUp}</p>
 						</div>
 						{dueDate && (
 							<div className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5">
@@ -491,7 +491,7 @@ export function ProjectCard({
 					<Link
 						to="/project/$projectId/roadmap"
 						params={{ projectId }}
-						className="whitespace-nowrap text-[14px] font-semibold uppercase text-slate-700 transition-colors group-hover:text-slate-900"
+						className="whitespace-nowrap text-[12px] font-semibold uppercase text-slate-700 transition-colors group-hover:text-slate-900 sm:text-[14px]"
 					>
 						VIEW PROJECT -&gt;
 					</Link>
@@ -504,7 +504,7 @@ export function ProjectCard({
 function ProjectCardSkeleton() {
 	return (
 		<div className="bg-white rounded-xl shadow-sm p-4 h-[385px] flex flex-col border border-gray-100">
-			<div className="flex-1 space-y-6">
+			<div className="flex-1 space-y-4 sm:space-y-6">
 				<div>
 					<div className="flex items-center gap-2 mb-2 w-full">
 						<div className="w-8 h-4 bg-gray-200 rounded animate-pulse" />
