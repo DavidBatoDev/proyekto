@@ -14,6 +14,7 @@ import {
 	type InvoiceStatus,
 } from "@/services/invoice.service";
 import { useToast } from "@/hooks/useToast";
+import { ModalPortal } from "@/components/common/ModalPortal";
 
 export const Route = createFileRoute("/project/$projectId/payments")({
 	component: PaymentsPage,
@@ -220,6 +221,7 @@ function CreateInvoiceModal({
 	const [attachHours, setAttachHours] = useState(false);
 
 	return (
+		<ModalPortal>
 		<div
 			className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4"
 			onClick={onClose}
@@ -329,5 +331,6 @@ function CreateInvoiceModal({
 				</form>
 			</div>
 		</div>
+		</ModalPortal>
 	);
 }

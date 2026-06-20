@@ -2,6 +2,7 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import {
   Check,
   Loader2,
@@ -1092,6 +1093,7 @@ function FreelancerGoLivePage() {
       </div>
 
       {/* Success Modal */}
+      <ModalPortal>
       <AnimatePresence>
         {showSuccessModal && (
           <motion.div
@@ -1140,6 +1142,7 @@ function FreelancerGoLivePage() {
           </motion.div>
         )}
       </AnimatePresence>
+      </ModalPortal>
 
       <IdentityDocumentModal
         isOpen={identityModalOpen}

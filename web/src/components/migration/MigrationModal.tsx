@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, Loader2, Sparkles } from "lucide-react";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import type { Roadmap } from "@/types/roadmap";
 
 interface MigrationModalProps {
@@ -16,6 +17,7 @@ export function MigrationModal({
   onClose,
 }: MigrationModalProps) {
   return (
+    <ModalPortal>
     <AnimatePresence>
       {isOpen && (
         <>
@@ -122,5 +124,6 @@ export function MigrationModal({
         </>
       )}
     </AnimatePresence>
+    </ModalPortal>
   );
 }

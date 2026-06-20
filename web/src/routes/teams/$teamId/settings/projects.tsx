@@ -17,6 +17,7 @@ import {
 	listTeamProjects,
 	type TeamProjectAttachment,
 } from "@/services/teams.service";
+import { ModalPortal } from "@/components/common/ModalPortal";
 
 export const Route = createFileRoute("/teams/$teamId/settings/projects")({
 	beforeLoad: () => {
@@ -226,6 +227,7 @@ function TeamProjectsSettings() {
 			</div>
 
 			{confirmOpen && (
+				<ModalPortal>
 				<div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
 					<div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
 						<div className="border-b border-slate-100 bg-rose-50 px-6 py-4">
@@ -268,6 +270,7 @@ function TeamProjectsSettings() {
 						</div>
 					</div>
 				</div>
+				</ModalPortal>
 			)}
 		</TeamSettingsLayout>
 	);

@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Briefcase, X } from "lucide-react";
+import { ModalPortal } from "@/components/common/ModalPortal";
 
 interface MakeProjectDialogProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ export function MakeProjectDialog({
   roadmapName,
 }: MakeProjectDialogProps) {
   return (
+    <ModalPortal>
     <AnimatePresence>
       {isOpen && (
         <motion.div
@@ -86,5 +88,6 @@ export function MakeProjectDialog({
         </motion.div>
       )}
     </AnimatePresence>
+    </ModalPortal>
   );
 }

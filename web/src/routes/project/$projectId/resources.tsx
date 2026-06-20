@@ -27,6 +27,7 @@ import {
   useProjectResourcesQuery,
 } from "@/hooks/useProjectQueries";
 import { RequireProjectAccess } from "@/components/common/RequireProjectAccess";
+import { ModalPortal } from "@/components/common/ModalPortal";
 
 export const Route = createFileRoute("/project/$projectId/resources")({
   component: ResourcesRoute,
@@ -87,6 +88,7 @@ function ResourceModal({
   children: React.ReactNode;
 }) {
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/35 backdrop-blur-sm p-4">
       <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_48px_rgba(15,23,42,0.2)]">
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-4 py-3">
@@ -102,6 +104,7 @@ function ResourceModal({
         <div className="p-4">{children}</div>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 

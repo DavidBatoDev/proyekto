@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, Sparkles, Tag, X } from "lucide-react";
+import { ModalPortal } from "@/components/common/ModalPortal";
 
 export interface RoadmapMetadataFormData {
   title: string;
@@ -60,6 +61,7 @@ export function RoadmapMetadataModal({
   };
 
   return (
+    <ModalPortal>
     <AnimatePresence>
       {isOpen && (
         <motion.div
@@ -227,5 +229,6 @@ export function RoadmapMetadataModal({
         </motion.div>
       )}
     </AnimatePresence>
+    </ModalPortal>
   );
 }

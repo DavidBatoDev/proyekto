@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import {
 	ArrowLeft,
 	Briefcase,
@@ -510,6 +511,7 @@ function ProjectPostingPage() {
 			</div>
 
 			{/* Intent Modal */}
+			<ModalPortal>
 			<AnimatePresence>
 				{isVerifiedConsultant && showIntentModal && (
 					<motion.div
@@ -603,8 +605,10 @@ function ProjectPostingPage() {
 					</motion.div>
 				)}
 			</AnimatePresence>
+			</ModalPortal>
 
 			{/* Loading Modal for Pre-populating */}
+			<ModalPortal>
 			<AnimatePresence>
 				{isLoadingRoadmap && (
 					<motion.div
@@ -641,6 +645,7 @@ function ProjectPostingPage() {
 					</motion.div>
 				)}
 			</AnimatePresence>
+			</ModalPortal>
 		</div>
 	);
 }

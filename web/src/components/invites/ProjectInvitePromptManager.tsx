@@ -9,6 +9,7 @@ import {
 } from "@/services/notifications.service";
 import { useAuthStore } from "@/stores/authStore";
 import { useToast } from "@/hooks/useToast";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import { OPEN_PROJECT_INVITE_MODAL_EVENT } from "./projectInviteModalEvents";
 
 function getInviteNotificationId(
@@ -283,6 +284,7 @@ export function ProjectInvitePromptManager() {
   };
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-10050 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
       <div className="relative w-full max-w-lg rounded-2xl border border-gray-200 bg-white shadow-2xl">
         <button
@@ -388,5 +390,6 @@ export function ProjectInvitePromptManager() {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

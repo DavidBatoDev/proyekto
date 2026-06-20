@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { ProjectSettingsLayout } from "@/components/project/ProjectSettingsLayout";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { cleanHTML } from "@/components/common/RichTextEditor/utils/formatting";
 import { useToast } from "@/hooks/useToast";
@@ -831,6 +832,7 @@ function SettingsGeneralPage() {
         )}
       </div>
 
+      <ModalPortal>
       {showTransferSelectModal && (
         <div
           className={`fixed inset-0 z-60 flex items-center justify-center px-4 transition-opacity duration-200 ${
@@ -1267,6 +1269,7 @@ function SettingsGeneralPage() {
           </div>
         </div>
       )}
+      </ModalPortal>
     </ProjectSettingsLayout>
   );
 }

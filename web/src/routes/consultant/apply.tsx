@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate, redirect } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import {
   Check, Loader2, ExternalLink, Globe, Edit2, Plus, Trash2,
   Briefcase, GraduationCap, BadgeCheck, ShieldCheck,
@@ -800,6 +801,7 @@ function ConsultantApplyPage() {
       </div>
 
       {/* Success Modal */}
+      <ModalPortal>
       <AnimatePresence>
         {showSuccessModal && (
           <motion.div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -823,6 +825,7 @@ function ConsultantApplyPage() {
           </motion.div>
         )}
       </AnimatePresence>
+      </ModalPortal>
     </div>
   );
 }

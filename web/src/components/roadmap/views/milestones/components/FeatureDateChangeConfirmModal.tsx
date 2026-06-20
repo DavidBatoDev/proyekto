@@ -1,5 +1,6 @@
 import { CalendarRange, CheckCircle2, X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
+import { ModalPortal } from "@/components/common/ModalPortal";
 
 interface FeatureDateChangeConfirmModalProps {
 	isOpen: boolean;
@@ -55,6 +56,7 @@ export const FeatureDateChangeConfirmModal = ({
 	if (!shouldRender || !displayChange) return null;
 
 	return (
+		<ModalPortal>
 		<div
 			className={`fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[3px] transition-opacity duration-200 ${
 				isVisible ? "opacity-100" : "opacity-0"
@@ -149,5 +151,6 @@ export const FeatureDateChangeConfirmModal = ({
 				</div>
 			</div>
 		</div>
+		</ModalPortal>
 	);
 };

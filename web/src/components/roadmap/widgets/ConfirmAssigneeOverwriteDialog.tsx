@@ -1,5 +1,6 @@
 import { UserRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ModalPortal } from "@/components/common/ModalPortal";
 
 interface ConfirmAssigneeOverwriteDialogProps {
   isOpen: boolean;
@@ -37,6 +38,7 @@ export function ConfirmAssigneeOverwriteDialog({
   }
 
   return (
+    <ModalPortal>
     <div
       className={`fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[3px] transition-opacity duration-200 ${
         isVisible ? "opacity-100" : "opacity-0"
@@ -107,5 +109,6 @@ export function ConfirmAssigneeOverwriteDialog({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

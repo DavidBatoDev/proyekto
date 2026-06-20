@@ -4,6 +4,7 @@ import { Loader2, X } from "lucide-react";
 import { projectService } from "@/services/project.service";
 import { profileService } from "@/services/profile.service";
 import { useAuthStore } from "@/stores/authStore";
+import { ModalPortal } from "@/components/common/ModalPortal";
 
 interface InviteModalProps {
   open: boolean;
@@ -66,6 +67,7 @@ export function InviteModal({
   if (!open) return null;
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-[1000] bg-black/50 flex items-center justify-center p-4">
       <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-gray-200">
         <div className="p-5 border-b border-gray-100 flex items-center justify-between">
@@ -159,5 +161,6 @@ export function InviteModal({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

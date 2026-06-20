@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Map, X, Loader2 } from "lucide-react";
 import { roadmapService } from "@/services/roadmap.service";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import type { Roadmap } from "@/types/roadmap";
 
 interface LinkRoadmapModalProps {
@@ -82,6 +83,7 @@ export function LinkRoadmapModal({
   };
 
   return (
+    <ModalPortal>
     <>
       <AnimatePresence>
       {isOpen && (
@@ -246,5 +248,6 @@ export function LinkRoadmapModal({
       )}
       </AnimatePresence>
     </>
+    </ModalPortal>
   );
 }

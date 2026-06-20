@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import { useId } from "react";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import type { RoadmapMilestone } from "@/types/roadmap";
 import type { MilestoneModalMode } from "../hooks/useMilestoneEditor";
 
@@ -42,6 +43,7 @@ export const MilestoneEditorModal = ({
 	const colorId = `${inputIdPrefix}-color`;
 
 	return (
+		<ModalPortal>
 		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-[2px]">
 			<div className="w-full max-w-sm overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-2xl">
 				<div className="flex items-center justify-between border-b border-orange-100 bg-linear-to-r from-orange-50 to-amber-50 px-4 py-3">
@@ -162,5 +164,6 @@ export const MilestoneEditorModal = ({
 				</div>
 			</div>
 		</div>
+		</ModalPortal>
 	);
 };

@@ -1,6 +1,7 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import {
   ArrowRight,
   ArrowLeft,
@@ -1053,6 +1054,7 @@ function CloseConfirmModal({
   onConfirm: () => void;
 }) {
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
       <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_24px_48px_rgba(15,23,42,0.25)]">
         <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
@@ -1080,5 +1082,6 @@ function CloseConfirmModal({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

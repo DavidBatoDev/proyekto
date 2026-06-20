@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import { ChatAvatar } from "./Avatar";
 
 export function ChatUnsendConfirmModal({
@@ -22,6 +23,7 @@ export function ChatUnsendConfirmModal({
   onConfirm: () => void;
 }) {
   return (
+    <ModalPortal>
     <AnimatePresence>
       {open && (
         <>
@@ -101,5 +103,6 @@ export function ChatUnsendConfirmModal({
         </>
       )}
     </AnimatePresence>
+    </ModalPortal>
   );
 }

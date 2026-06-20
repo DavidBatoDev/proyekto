@@ -8,6 +8,7 @@ import {
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
 import { DashboardShell } from "@/components/layout/DashboardShell";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import { useToast } from "@/hooks/useToast";
 import { useAuthStore } from "@/stores/authStore";
 import {
@@ -258,6 +259,7 @@ function CreateTeamModal({ onClose }: { onClose: () => void }) {
 	});
 
 	return (
+		<ModalPortal>
 		<div
 			className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4"
 			onClick={onClose}
@@ -327,5 +329,6 @@ function CreateTeamModal({ onClose }: { onClose: () => void }) {
 				</form>
 			</div>
 		</div>
+		</ModalPortal>
 	);
 }
