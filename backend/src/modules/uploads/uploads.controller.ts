@@ -8,15 +8,17 @@ import {
   Inject,
   Injectable,
   Post,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { SupabaseClient } from '@supabase/supabase-js';
 import {
   DeleteObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import { R2_CLIENT, R2_CONFIG, type R2Config } from '../../config/r2.module';
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
@@ -26,7 +28,6 @@ import {
   ConfirmAvatarDto,
   ConfirmBannerDto,
   ConfirmProjectBannerDto,
-  SignedUrlDto,
 } from './dto/upload.dto';
 
 const BUCKET_CONFIG: Record<
@@ -76,8 +77,16 @@ const BUCKET_CONFIG: Record<
 /** Buckets that must NOT be publicly readable — uploaded to the private R2 bucket. */
 const PRIVATE_BUCKETS = new Set<string>(['identity_documents']);
 
-/** Presigned upload URLs are valid for 10 minutes. */
-const SIGNED_UPLOAD_TTL_SECONDS = 600;
+/**
+ * Minimal shape of a multer file (we don't depend on @types/multer).
+ * FileInterceptor uses memory storage by default, so `buffer` is populated.
+ */
+interface UploadedFileLike {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+}
 
 @Injectable()
 export class UploadsService {
@@ -87,54 +96,54 @@ export class UploadsService {
     @Inject(R2_CONFIG) private readonly r2Config: R2Config,
   ) {}
 
-  async createSignedUrl(userId: string, dto: SignedUrlDto) {
-    const config = BUCKET_CONFIG[dto.bucket];
+  async uploadFile(
+    userId: string,
+    bucketName: string,
+    file: UploadedFileLike,
+  ) {
+    if (!file) throw new BadRequestException('No file provided');
+
+    const config = BUCKET_CONFIG[bucketName];
     if (!config) throw new BadRequestException('Invalid bucket');
 
-    if (dto.fileSize > config.maxSize) {
+    if (file.size > config.maxSize) {
       throw new BadRequestException(
-        `File too large. Max size for ${dto.bucket} is ${config.maxSize / 1024 / 1024}MB`,
+        `File too large. Max size for ${bucketName} is ${config.maxSize / 1024 / 1024}MB`,
       );
     }
 
-    if (!config.allowedTypes.includes(dto.fileType)) {
+    if (!config.allowedTypes.includes(file.mimetype)) {
       throw new BadRequestException(
         `Invalid file type. Allowed: ${config.allowedTypes.join(', ')}`,
       );
     }
 
-    const ext = dto.fileName.split('.').pop();
-    // Keep the old bucket name as the R2 key prefix so existing public URLs map
-    // to `${publicBaseUrl}/${bucket}/...` with a single host rewrite.
-    const key = `${dto.bucket}/${userId}/${Date.now()}.${ext}`;
-    const isPrivate = PRIVATE_BUCKETS.has(dto.bucket);
+    const ext = file.originalname.split('.').pop();
+    // Keep the old bucket name as the R2 key prefix so public URLs map to
+    // `${publicBaseUrl}/${bucket}/...`.
+    const key = `${bucketName}/${userId}/${Date.now()}.${ext}`;
+    const isPrivate = PRIVATE_BUCKETS.has(bucketName);
     const bucket = isPrivate
       ? this.r2Config.privateBucket
       : this.r2Config.publicBucket;
 
-    // Presigned PUT — the browser uploads the bytes directly to R2. ContentType
-    // is signed, so the client must send a matching Content-Type header (it does).
-    const signedUrl = await getSignedUrl(
-      this.r2,
+    // Proxy the bytes to R2 from the backend. The browser only ever talks to
+    // our API, never R2's S3 endpoint (*.r2.cloudflarestorage.com) — which some
+    // client networks block at TLS — so uploads work on any client network.
+    await this.r2.send(
       new PutObjectCommand({
         Bucket: bucket,
         Key: key,
-        ContentType: dto.fileType,
+        Body: file.buffer,
+        ContentType: file.mimetype,
       }),
-      { expiresIn: SIGNED_UPLOAD_TTL_SECONDS },
     );
 
     // Public buckets resolve over the custom domain; private buckets have no
     // public URL, so we return the bare key (reads use a presigned GET later).
-    const publicUrl = isPrivate
-      ? key
-      : `${this.r2Config.publicBaseUrl}/${key}`;
+    const publicUrl = isPrivate ? key : `${this.r2Config.publicBaseUrl}/${key}`;
 
-    return {
-      signedUrl,
-      path: key,
-      publicUrl,
-    };
+    return { path: key, publicUrl };
   }
 
   async confirmAvatar(userId: string, dto: ConfirmAvatarDto) {
@@ -250,12 +259,16 @@ export class UploadsService {
 export class UploadsController {
   constructor(private readonly uploadsService: UploadsService) {}
 
-  @Post('signed-url')
-  createSignedUrl(
+  @Post('file')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024 } }),
+  )
+  uploadFile(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: SignedUrlDto,
+    @UploadedFile() file: UploadedFileLike,
+    @Body('bucket') bucket: string,
   ) {
-    return this.uploadsService.createSignedUrl(user.id, dto);
+    return this.uploadsService.uploadFile(user.id, bucket, file);
   }
 
   @Post('confirm-avatar')

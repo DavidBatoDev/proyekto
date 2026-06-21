@@ -1,12 +1,14 @@
 /**
  * Upload Service
  * Handles file uploads to Cloudflare R2 (S3-compatible).
- * All buckets use the same flow: the backend issues a presigned PUT URL, the
- * browser uploads the bytes directly, and the backend returns the public URL
- * (or, for private buckets, the object key).
+ * The browser POSTs the file to the backend (multipart); the backend proxies
+ * it to R2 and returns the public URL (or, for private buckets, the object
+ * key). The browser never touches R2's S3 endpoint
+ * (*.r2.cloudflarestorage.com), which some client networks block at TLS.
  */
 
-import apiClient from "@/api/axios";
+import apiClient, { API_BASE_URL } from "@/api/axios";
+import { getAccessToken } from "@/lib/supabase";
 
 export type UploadBucket =
   | "avatars"
@@ -16,48 +18,40 @@ export type UploadBucket =
   | "roadmap_previews"
   | "task_attachments";
 
-export interface SignedUrlResponse {
-  signedUrl: string;
-  path: string;
-  publicUrl: string;
-}
-
 class UploadService {
   private base = "/api/uploads";
 
   /**
-   * Full upload flow via backend signed URL:
-   * 1. Get a signed upload URL from the backend
-   * 2. PUT the file directly to Supabase Storage
-   * 3. Return the public URL
+   * Upload a file through the backend, which stores it in R2.
+   * Returns the public URL (public buckets) or the object key (private buckets).
+   * Uses native fetch so the browser sets the multipart boundary itself.
    */
   async upload(bucket: UploadBucket, file: File): Promise<string> {
-    const fileType = file.type || "application/octet-stream";
+    const token = await getAccessToken();
 
-    // Step 1 — get signed URL
-    const { data: meta } = await apiClient.post<{ data: SignedUrlResponse }>(
-      `${this.base}/signed-url`,
-      {
-        bucket,
-        fileType,
-        fileName: file.name,
-        fileSize: file.size,
-      },
-    );
-    const { signedUrl, publicUrl } = meta.data;
+    const form = new FormData();
+    form.append("bucket", bucket);
+    form.append("file", file);
 
-    // Step 2 — PUT directly to storage (no auth header needed for signed uploads)
-    const uploadRes = await fetch(signedUrl, {
-      method: "PUT",
-      headers: { "Content-Type": fileType },
-      body: file,
+    const res = await fetch(`${API_BASE_URL}${this.base}/file`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
     });
 
-    if (!uploadRes.ok) {
-      throw new Error(`Storage upload failed: ${uploadRes.statusText}`);
+    if (!res.ok) {
+      let message = `Upload failed (${res.status})`;
+      try {
+        const body = await res.json();
+        message = body?.message ?? body?.error ?? message;
+      } catch {
+        // non-JSON error body — keep the status-based message
+      }
+      throw new Error(message);
     }
 
-    return publicUrl;
+    const body = (await res.json()) as { data: { publicUrl: string } };
+    return body.data.publicUrl;
   }
 
   /**

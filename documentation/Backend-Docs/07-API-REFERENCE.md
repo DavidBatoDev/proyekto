@@ -134,7 +134,7 @@ Legend: 🔒 = JWT required · 👤 = guest also accepted · 🌐 = public · �
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/uploads/signed-url` | 🔒 | Generate a Supabase Storage signed upload URL |
+| `POST` | `/uploads/file` | 🔒 | Upload a file (multipart) to Cloudflare R2; returns the public URL |
 | `POST` | `/uploads/confirm-avatar` | 🔒 | Confirm avatar upload, update profile |
 | `POST` | `/uploads/confirm-banner` | 🔒 | Confirm banner upload, update profile |
 | `DELETE` | `/uploads/avatar` | 🔒 | Delete avatar from storage and profile |
