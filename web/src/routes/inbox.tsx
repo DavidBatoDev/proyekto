@@ -58,10 +58,8 @@ import {
 	type MentionCandidate,
 } from "@/components/project/chat";
 import type { ChatMemberProfilePreview } from "@/components/project/chat/ChatMemberProfileCard";
-import {
-	resolveMentions,
-	type MentionPick,
-} from "@/components/project/chat/mentions";
+import { resolveMentions } from "@/components/project/chat/mentions";
+import { useChatDraft } from "@/hooks/useChatDraft";
 
 export const Route = createFileRoute("/inbox")({
 	validateSearch: (search) => ({
@@ -594,13 +592,22 @@ function InboxThread({
 	const toggleReactionMutation = useToggleChatReactionMutation();
 	const deleteMessageMutation = useDeleteChatMessageMutation();
 
-	const [input, setInput] = useState("");
+	// Per-conversation composer draft, persisted to sessionStorage. Keyed to
+	// match the project chat route so the same DM shares a draft across surfaces.
+	const draftKey =
+		room.type === "dm"
+			? `dm:${
+					room.participants.find((p) => p.user_id !== currentUserId)
+						?.user_id ?? room.id
+				}`
+			: `channel:${room.id}`;
+	const draft = useChatDraft(draftKey);
+	const input = draft.text;
+	const pendingMentions = draft.mentions;
+	const addMention = draft.addMention;
 	const [pendingAttachments, setPendingAttachments] = useState<
 		PendingAttachment[]
 	>([]);
-	const [pendingMentions, setPendingMentions] = useState<MentionPick[]>([]);
-	const addMention = (pick: MentionPick) =>
-		setPendingMentions((prev) => [...prev, pick]);
 	const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
 	const objectUrlsRef = useRef<string[]>([]);
 	const rememberedCdnsRef = useRef<string[]>([]);
@@ -898,9 +905,8 @@ function InboxThread({
 		};
 
 		setOptimisticMessages((prev) => [...prev, optimistic]);
-		setInput("");
+		draft.clear();
 		setPendingAttachments([]);
-		setPendingMentions([]);
 		shouldStickToBottomRef.current = true;
 		requestAnimationFrame(() => {
 			const v = viewportRef.current;
@@ -1150,7 +1156,7 @@ function InboxThread({
 					onAddFiles={addFiles}
 					onRemoveAttachment={removeAttachment}
 					onChange={(next) => {
-						setInput(next);
+						draft.setText(next);
 						if (next.trim()) void startTyping();
 						else void stopTyping();
 					}}

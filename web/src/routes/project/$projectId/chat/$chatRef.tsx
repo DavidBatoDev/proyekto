@@ -64,10 +64,8 @@ import type {
   ChatMemberRole,
   ChatRoom,
 } from "@/services/chat.service";
-import {
-  resolveMentions,
-  type MentionPick,
-} from "@/components/project/chat/mentions";
+import { resolveMentions } from "@/components/project/chat/mentions";
+import { useChatDraft } from "@/hooks/useChatDraft";
 import {
   mergeThreadMessages,
   type ThreadUiMessage,
@@ -167,14 +165,8 @@ function ChatPage() {
   const [selectedProfileUserId, setSelectedProfileUserId] = useState<string | null>(
     null,
   );
-  const [messageInput, setMessageInput] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
-  const [pendingMentions, setPendingMentions] = useState<MentionPick[]>([]);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
-
-  const addMention = useCallback((pick: MentionPick) => {
-    setPendingMentions((prev) => [...prev, pick]);
-  }, []);
   // All object URLs we minted for image previews, revoked on unmount so a long
   // chat session doesn't leak them.
   const objectUrlsRef = useRef<string[]>([]);
@@ -415,11 +407,13 @@ function ChatPage() {
     activeTarget.kind === "channel"
       ? `channel:${activeTarget.roomId ?? "default"}`
       : `dm:${activeTarget.userId}`;
-  // Picks are scoped to the conversation they were made in (mentionables differ
-  // per room), so drop them when switching.
-  useEffect(() => {
-    setPendingMentions([]);
-  }, [conversationKey]);
+  // Per-conversation composer draft (text + @mention picks), persisted to
+  // sessionStorage and scoped by conversationKey — so switching conversations
+  // restores that conversation's own unsent message instead of bleeding.
+  const draft = useChatDraft(conversationKey);
+  const messageInput = draft.text;
+  const pendingMentions = draft.mentions;
+  const addMention = draft.addMention;
   const messagesQuery = useRoomMessagesQuery(activeRoomId ?? "");
   const messages = flattenRoomMessages(messagesQuery.data);
   const optimisticMessages = optimisticByConversation[conversationKey] ?? [];
@@ -928,9 +922,8 @@ function ChatPage() {
       ...prev,
       [conversationKey]: [...(prev[conversationKey] ?? []), optimisticMessage],
     }));
-    setMessageInput("");
+    draft.clear();
     setPendingAttachments([]);
-    setPendingMentions([]);
     shouldStickToBottomRef.current = true;
     requestAnimationFrame(() => {
       const viewport = messagesViewportRef.current;
@@ -1328,7 +1321,7 @@ function ChatPage() {
           onRemoveAttachment={removeAttachment}
           isUploading={isUploadingAttachments}
           onChange={(nextValue) => {
-            setMessageInput(nextValue);
+            draft.setText(nextValue);
             if (nextValue.trim()) {
               void startTyping();
             } else {
