@@ -37,6 +37,12 @@ export const R2_CONFIG = Symbol('R2_CONFIG');
             secretAccessKey: config.getOrThrow<string>('R2_SECRET_ACCESS_KEY'),
           },
           forcePathStyle: true,
+          // R2 rejects the aws-sdk v3 default flexible checksums (it sends an
+          // `aws-chunked` body with a CRC32 trailer), which aborts the TLS
+          // connection mid-request ("write EPROTO ... handshake failure"). Only
+          // compute/validate checksums when an operation strictly requires it.
+          requestChecksumCalculation: 'WHEN_REQUIRED',
+          responseChecksumValidation: 'WHEN_REQUIRED',
         });
       },
     },
