@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import {
   chatService,
+  type ChatAttachment,
   type ChatMemberCandidate,
   type ChatMessage,
   type ChatMessagesPage,
@@ -92,8 +93,8 @@ export function useSendChannelMessageMutation(projectId: string) {
   return useMutation({
     mutationFn: (
       payload:
-        | { room_id: string; content: string }
-        | { slug?: "general"; content: string },
+        | { room_id: string; content: string; attachments?: ChatAttachment[] }
+        | { slug?: "general"; content: string; attachments?: ChatAttachment[] },
     ) => chatService.sendChannelMessage(projectId, payload),
     // Keep `isPending` tied to the POST only. The thread already shows the
     // optimistic message and realtime reconciles it, so we refresh the room
@@ -225,8 +226,8 @@ export function useSendDmMessageMutation() {
   return useMutation({
     mutationFn: (
       payload:
-        | { room_id: string; content: string }
-        | { recipient_id: string; content: string },
+        | { room_id: string; content: string; attachments?: ChatAttachment[] }
+        | { recipient_id: string; content: string; attachments?: ChatAttachment[] },
     ) => chatService.sendDmMessage(payload),
     // See useSendChannelMessageMutation: non-blocking refresh so the composer
     // unlocks on POST completion; realtime handles thread reconciliation.

@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type {
+  ChatAttachmentDto,
   CreateChannelDto,
   SendChannelMessageDto,
   SendDmMessageDto,
@@ -12,7 +13,9 @@ import type {
 } from './dto/chat.dto';
 import { MissingPermissionException } from '../projects/authorization/missing-permission.exception';
 import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
+import { R2_CONFIG, type R2Config } from '../../config/r2.module';
 import type {
+  ChatAttachment,
   ChatRepository,
   ChatRoom,
   ChatRoomWithLastMessage,
@@ -63,7 +66,36 @@ export class ChatService {
     private readonly realtime: RealtimePublisher,
     private readonly authorization: ProjectAuthorizationService,
     private readonly audit: AuditService,
+    @Inject(R2_CONFIG) private readonly r2Config: R2Config,
   ) {}
+
+  /**
+   * Validate + normalize client-supplied attachments. Each `url` must point at
+   * our CDN under `chat_attachments/<senderId>/` — the prefix the realtime
+   * Worker writes when this user uploads — so a client can't attach an
+   * arbitrary external URL or reference another user's object.
+   */
+  private buildAttachments(
+    attachments: ChatAttachmentDto[] | undefined,
+    senderId: string,
+  ): ChatAttachment[] {
+    if (!attachments || attachments.length === 0) return [];
+
+    const prefix = `${this.r2Config.publicBaseUrl}/chat_attachments/${senderId}/`;
+    return attachments.map((attachment) => {
+      if (!attachment.url.startsWith(prefix)) {
+        throw new BadRequestException('Invalid attachment URL.');
+      }
+      return {
+        url: attachment.url,
+        name: attachment.name,
+        content_type: attachment.content_type,
+        size: attachment.size,
+        ...(attachment.width != null ? { width: attachment.width } : {}),
+        ...(attachment.height != null ? { height: attachment.height } : {}),
+      };
+    });
+  }
 
   /**
    * Fan a chat change out to every room participant's inbox DO. Fully
@@ -362,9 +394,12 @@ export class ChatService {
   ) {
     await this.assertProjectAccess(projectId, senderId);
 
-    const content = dto.content?.trim();
-    if (!content) {
-      throw new BadRequestException('Message content is required.');
+    const content = dto.content?.trim() ?? '';
+    const attachments = this.buildAttachments(dto.attachments, senderId);
+    if (!content && attachments.length === 0) {
+      throw new BadRequestException(
+        'Message content or an attachment is required.',
+      );
     }
 
     let room: ChatRoom;
@@ -424,6 +459,7 @@ export class ChatService {
       projectId,
       senderId,
       content,
+      attachments,
     });
 
     this.fanoutChat(room.id, projectId, 'message');
@@ -438,9 +474,12 @@ export class ChatService {
   }
 
   async sendDmMessage(senderId: string, dto: SendDmMessageDto) {
-    const content = dto.content?.trim();
-    if (!content) {
-      throw new BadRequestException('Message content is required.');
+    const content = dto.content?.trim() ?? '';
+    const attachments = this.buildAttachments(dto.attachments, senderId);
+    if (!content && attachments.length === 0) {
+      throw new BadRequestException(
+        'Message content or an attachment is required.',
+      );
     }
 
     let room: ChatRoom;
@@ -486,6 +525,7 @@ export class ChatService {
       projectId: null,
       senderId,
       content,
+      attachments,
     });
 
     this.fanoutChat(room.id, null, 'message');

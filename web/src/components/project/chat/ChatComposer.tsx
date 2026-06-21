@@ -1,27 +1,50 @@
 import { motion } from "framer-motion";
 import EmojiPicker, { Theme, type EmojiClickData } from "emoji-picker-react";
-import { Loader2, Send, Smile } from "lucide-react";
+import { FileText, Loader2, Paperclip, Send, Smile, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+
+/** A file queued in the composer, not yet uploaded/sent. */
+export interface PendingAttachment {
+  id: string;
+  file: File;
+  kind: "image" | "file";
+  /** Object URL for image previews (revoked after send). */
+  previewUrl?: string;
+}
 
 export function ChatComposer({
   value,
   placeholder,
   isSending,
+  isUploading,
+  attachments,
   onChange,
   onBlur,
   onSend,
+  onAddFiles,
+  onRemoveAttachment,
 }: {
   value: string;
   placeholder: string;
   isSending: boolean;
+  isUploading?: boolean;
+  attachments: PendingAttachment[];
   onChange: (value: string) => void;
   onBlur: () => void;
   onSend: () => void;
+  onAddFiles: (files: File[]) => void;
+  onRemoveAttachment: (id: string) => void;
 }) {
-  const disabled = isSending || value.trim().length === 0;
+  const hasAttachments = attachments.length > 0;
+  const disabled =
+    isSending ||
+    isUploading ||
+    (value.trim().length === 0 && !hasAttachments);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pickerContainerRef = useRef<HTMLDivElement | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const MAX_TEXTAREA_HEIGHT = 156;
 
   const adjustTextareaHeight = () => {
@@ -81,14 +104,82 @@ export function ChatComposer({
     });
   };
 
+  const handlePickedFiles = (fileList: FileList | null) => {
+    const files = Array.from(fileList ?? []);
+    if (files.length > 0) onAddFiles(files);
+  };
+
   return (
-    <footer className="sticky bottom-0 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur md:px-6">
-      <div className="relative rounded-3xl border border-slate-300 bg-slate-50 pl-3 pr-28 py-2">
+    <footer
+      className="sticky bottom-0 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur md:px-6"
+      onDragOver={(event) => {
+        if (event.dataTransfer?.types?.includes("Files")) {
+          event.preventDefault();
+          setIsDragging(true);
+        }
+      }}
+      onDragLeave={(event) => {
+        // Only clear when the pointer actually leaves the footer.
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          return;
+        }
+        setIsDragging(false);
+      }}
+      onDrop={(event) => {
+        if (!event.dataTransfer?.types?.includes("Files")) return;
+        event.preventDefault();
+        setIsDragging(false);
+        handlePickedFiles(event.dataTransfer.files);
+      }}
+    >
+      <div
+        className={`relative rounded-3xl border bg-slate-50 pl-3 pr-36 py-2 transition-colors ${
+          isDragging ? "border-violet-400 bg-violet-50" : "border-slate-300"
+        }`}
+      >
+        {hasAttachments && (
+          <div className="mb-2 flex flex-wrap gap-2 pt-1">
+            {attachments.map((attachment) => (
+              <div key={attachment.id} className="group/att relative">
+                {attachment.kind === "image" && attachment.previewUrl ? (
+                  <img
+                    src={attachment.previewUrl}
+                    alt={attachment.file.name}
+                    className="h-20 w-20 rounded-lg border border-slate-300 object-cover"
+                  />
+                ) : (
+                  <div className="flex h-20 w-44 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3">
+                    <FileText className="h-7 w-7 shrink-0 text-slate-500" />
+                    <span className="truncate text-xs text-slate-700">
+                      {attachment.file.name}
+                    </span>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onRemoveAttachment(attachment.id)}
+                  className="absolute -right-1.5 -top-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-white shadow hover:bg-slate-900"
+                  aria-label={`Remove ${attachment.file.name}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <textarea
           ref={textareaRef}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onBlur={onBlur}
+          onPaste={(event) => {
+            const files = Array.from(event.clipboardData?.files ?? []);
+            if (files.length > 0) {
+              event.preventDefault();
+              onAddFiles(files);
+            }
+          }}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
@@ -101,6 +192,26 @@ export function ChatComposer({
         />
 
         <div className="absolute right-3 top-2 inline-flex items-center gap-1">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(event) => {
+              handlePickedFiles(event.target.files);
+              event.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+            aria-label="Attach files"
+            title="Attach files"
+          >
+            <Paperclip className="w-5 h-5" />
+          </button>
+
           <div ref={pickerContainerRef} className="relative hidden md:block">
             <button
               type="button"
@@ -133,7 +244,7 @@ export function ChatComposer({
             disabled={disabled}
             className="app-cta inline-flex h-9 w-9 items-center justify-center rounded-full text-white disabled:opacity-55"
           >
-            {isSending ? (
+            {isSending || isUploading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <Send className="w-4 h-4" />

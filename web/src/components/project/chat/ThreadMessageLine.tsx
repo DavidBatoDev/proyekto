@@ -1,6 +1,59 @@
 import { motion } from "framer-motion";
-import { Trash2 } from "lucide-react";
+import { Download, FileText, Trash2 } from "lucide-react";
+import type { ChatAttachment } from "@/services/chat.service";
 import type { ThreadUiMessage } from "./thread";
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes < 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1,
+  );
+  const value = bytes / 1024 ** i;
+  return `${value >= 10 || i === 0 ? Math.round(value) : value.toFixed(1)} ${units[i]}`;
+}
+
+function AttachmentBlock({ attachment }: { attachment: ChatAttachment }) {
+  const isImage = attachment.content_type.startsWith("image/");
+
+  if (isImage) {
+    return (
+      <a
+        href={attachment.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block w-fit"
+      >
+        <img
+          src={attachment.url}
+          alt={attachment.name}
+          loading="lazy"
+          className="max-h-80 max-w-xs rounded-lg border border-slate-200 object-cover transition-opacity hover:opacity-95"
+        />
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={attachment.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      download={attachment.name}
+      className="flex w-fit max-w-xs items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 transition-colors hover:bg-slate-100"
+    >
+      <FileText className="h-8 w-8 shrink-0 text-slate-500" />
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-slate-800">
+          {attachment.name}
+        </p>
+        <p className="text-xs text-slate-500">{formatBytes(attachment.size)}</p>
+      </div>
+      <Download className="h-4 w-4 shrink-0 text-slate-400" />
+    </a>
+  );
+}
 
 export function ThreadMessageLine({
   message,
@@ -14,15 +67,30 @@ export function ThreadMessageLine({
   onRequestUnsend?: (message: ThreadUiMessage, bypassConfirm: boolean) => void;
 }) {
   const isSending = message.optimisticStatus === "sending";
+  const hasText = message.content.trim().length > 0;
+  const attachments = message.attachments ?? [];
   return (
     <div
       className={`group/line relative min-w-0 overflow-hidden ${
         isSending ? "opacity-70" : ""
       }`}
     >
-      <p className="text-[15px] leading-relaxed text-slate-900 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-        {message.content}
-      </p>
+      {hasText && (
+        <p className="text-[15px] leading-relaxed text-slate-900 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+          {message.content}
+        </p>
+      )}
+
+      {attachments.length > 0 && (
+        <div className={`flex flex-col gap-2 ${hasText ? "mt-1.5" : ""}`}>
+          {attachments.map((attachment, index) => (
+            <AttachmentBlock
+              key={`${message.id}-att-${index}`}
+              attachment={attachment}
+            />
+          ))}
+        </div>
+      )}
 
       {canUnsend && !message.optimisticStatus && (
         <button

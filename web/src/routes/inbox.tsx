@@ -37,7 +37,8 @@ import { useChatTyping } from "@/hooks/useChatTyping";
 import { useDmRealtime, useProjectsRealtime } from "@/hooks/useChatRealtime";
 import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
 import type { ProjectMember } from "@/services/project.service";
-import type { ChatRoom } from "@/services/chat.service";
+import type { ChatAttachment, ChatRoom } from "@/services/chat.service";
+import { uploadService } from "@/services/upload.service";
 import {
 	mergeThreadMessages,
 	type ThreadSender,
@@ -49,6 +50,7 @@ import {
 	ChatUnsendConfirmModal,
 	MessageList,
 	TypingIndicator,
+	type PendingAttachment,
 } from "@/components/project/chat";
 import type { ChatMemberProfilePreview } from "@/components/project/chat/ChatMemberProfileCard";
 
@@ -496,7 +498,15 @@ function InboxRow({
 	const title = getRoomTitle(entry.room, currentUserId);
 	const isChannel = entry.room.type === "channel";
 	const last = entry.room.last_message;
-	const previewText = last ? last.content : "No messages yet";
+	const lastAttachment = last?.attachments?.[0];
+	const previewText = last
+		? last.content.trim() ||
+			(lastAttachment
+				? lastAttachment.content_type.startsWith("image/")
+					? "📷 Photo"
+					: `📎 ${lastAttachment.name}`
+				: "No messages yet")
+		: "No messages yet";
 
 	return (
 		<li>
@@ -576,10 +586,50 @@ function InboxThread({
 	const deleteMessageMutation = useDeleteChatMessageMutation();
 
 	const [input, setInput] = useState("");
+	const [pendingAttachments, setPendingAttachments] = useState<
+		PendingAttachment[]
+	>([]);
+	const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
+	const objectUrlsRef = useRef<string[]>([]);
 	const [optimisticMessages, setOptimisticMessages] = useState<
 		ThreadUiMessage[]
 	>([]);
 	const optimisticOrderCounterRef = useRef(0);
+
+	const addFiles = (files: File[]) => {
+		const additions = files.map((file) => {
+			const isImage = file.type.startsWith("image/");
+			const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
+			if (previewUrl) objectUrlsRef.current.push(previewUrl);
+			return {
+				id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+				file,
+				kind: isImage ? ("image" as const) : ("file" as const),
+				previewUrl,
+			} satisfies PendingAttachment;
+		});
+		setPendingAttachments((prev) => [...prev, ...additions]);
+	};
+
+	const removeAttachment = (id: string) => {
+		setPendingAttachments((prev) => {
+			const target = prev.find((attachment) => attachment.id === id);
+			if (target?.previewUrl) {
+				URL.revokeObjectURL(target.previewUrl);
+				objectUrlsRef.current = objectUrlsRef.current.filter(
+					(url) => url !== target.previewUrl,
+				);
+			}
+			return prev.filter((attachment) => attachment.id !== id);
+		});
+	};
+
+	useEffect(() => {
+		return () => {
+			for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
+			objectUrlsRef.current = [];
+		};
+	}, []);
 
 	const [pendingUnsendMessage, setPendingUnsendMessage] =
 		useState<ThreadUiMessage | null>(null);
@@ -771,9 +821,19 @@ function InboxThread({
 		sendChannelMutation.isPending || sendDmMutation.isPending;
 
 	const handleSend = async () => {
-		if (!currentUserId || isSendingMessage) return;
+		if (!currentUserId || isSendingMessage || isUploadingAttachments) return;
 		const content = input.trim();
-		if (!content) return;
+		const pending = pendingAttachments;
+		if (!content && pending.length === 0) return;
+
+		const optimisticAttachments: ChatAttachment[] = pending.map(
+			(attachment) => ({
+				url: attachment.previewUrl ?? "",
+				name: attachment.file.name,
+				content_type: attachment.file.type || "application/octet-stream",
+				size: attachment.file.size,
+			}),
+		);
 
 		const tempId = `tmp-${Date.now()}-${Math.random()
 			.toString(36)
@@ -793,6 +853,7 @@ function InboxThread({
 			project_id: room.project_id,
 			sender_id: currentUserId,
 			content,
+			attachments: optimisticAttachments,
 			created_at: nowIso,
 			updated_at: nowIso,
 			optimisticStatus: "sending",
@@ -800,11 +861,40 @@ function InboxThread({
 
 		setOptimisticMessages((prev) => [...prev, optimistic]);
 		setInput("");
+		setPendingAttachments([]);
 		shouldStickToBottomRef.current = true;
 		requestAnimationFrame(() => {
 			const v = viewportRef.current;
 			if (v) v.scrollTop = v.scrollHeight;
 		});
+
+		const markFailed = () =>
+			setOptimisticMessages((prev) =>
+				prev.map((m) =>
+					m.id === tempId ? { ...m, optimisticStatus: "failed" } : m,
+				),
+			);
+
+		let uploadedAttachments: ChatAttachment[] = [];
+		if (pending.length > 0) {
+			setIsUploadingAttachments(true);
+			try {
+				uploadedAttachments = await Promise.all(
+					pending.map((attachment) =>
+						uploadService.uploadChatAttachment(attachment.file),
+					),
+				);
+			} catch {
+				markFailed();
+				void stopTyping();
+				return;
+			} finally {
+				setIsUploadingAttachments(false);
+			}
+		}
+
+		const attachmentsPayload =
+			uploadedAttachments.length > 0 ? uploadedAttachments : undefined;
 
 		try {
 			const result =
@@ -812,10 +902,12 @@ function InboxThread({
 					? await sendDmMutation.mutateAsync({
 							room_id: room.id,
 							content,
+							attachments: attachmentsPayload,
 						})
 					: await sendChannelMutation.mutateAsync({
 							room_id: room.id,
 							content,
+							attachments: attachmentsPayload,
 						});
 			void stopTyping();
 			setOptimisticMessages((prev) =>
@@ -824,6 +916,7 @@ function InboxThread({
 						? {
 								...m,
 								id: result.message.id,
+								attachments: result.message.attachments ?? m.attachments,
 								created_at: result.message.created_at,
 								updated_at: result.message.updated_at,
 								optimisticStatus: undefined,
@@ -996,6 +1089,10 @@ function InboxThread({
 					value={input}
 					placeholder={`Message ${title}`}
 					isSending={isSendingMessage}
+					isUploading={isUploadingAttachments}
+					attachments={pendingAttachments}
+					onAddFiles={addFiles}
+					onRemoveAttachment={removeAttachment}
 					onChange={(next) => {
 						setInput(next);
 						if (next.trim()) void startTyping();

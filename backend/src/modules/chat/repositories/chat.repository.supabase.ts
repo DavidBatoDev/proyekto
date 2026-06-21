@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import type {
+  ChatAttachment,
   ChatMemberCandidate,
   ChatMessage,
   ChatMessageReaction,
@@ -748,7 +749,9 @@ export class SupabaseChatRepository implements ChatRepository {
   }): Promise<ChatMessage[]> {
     let query = this.supabase
       .from('chat_room_messages')
-      .select('id, room_id, project_id, sender_id, content, created_at, updated_at')
+      .select(
+        'id, room_id, project_id, sender_id, content, attachments, created_at, updated_at',
+      )
       .eq('room_id', params.roomId)
       .order('created_at', { ascending: false })
       .limit(params.limit);
@@ -767,6 +770,7 @@ export class SupabaseChatRepository implements ChatRepository {
     projectId: string | null;
     senderId: string;
     content: string;
+    attachments?: ChatAttachment[];
   }): Promise<ChatMessage> {
     const { data, error } = await this.supabase
       .from('chat_room_messages')
@@ -775,8 +779,11 @@ export class SupabaseChatRepository implements ChatRepository {
         project_id: params.projectId,
         sender_id: params.senderId,
         content: params.content,
+        attachments: params.attachments ?? [],
       })
-      .select('id, room_id, project_id, sender_id, content, created_at, updated_at')
+      .select(
+        'id, room_id, project_id, sender_id, content, attachments, created_at, updated_at',
+      )
       .single();
 
     if (error || !data) {
@@ -789,7 +796,9 @@ export class SupabaseChatRepository implements ChatRepository {
   async findMessageById(messageId: string): Promise<ChatMessage | null> {
     const { data, error } = await this.supabase
       .from('chat_room_messages')
-      .select('id, room_id, project_id, sender_id, content, created_at, updated_at')
+      .select(
+        'id, room_id, project_id, sender_id, content, attachments, created_at, updated_at',
+      )
       .eq('id', messageId)
       .maybeSingle();
 

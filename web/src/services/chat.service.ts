@@ -17,12 +17,22 @@ export interface ChatParticipant {
   user: ChatUser | null;
 }
 
+export interface ChatAttachment {
+  url: string;
+  name: string;
+  content_type: string;
+  size: number;
+  width?: number;
+  height?: number;
+}
+
 export interface ChatMessage {
   id: string;
   room_id: string;
   project_id: string | null;
   sender_id: string;
   content: string;
+  attachments?: ChatAttachment[];
   created_at: string;
   updated_at: string;
   reactions?: ChatMessageReaction[];
@@ -68,12 +78,12 @@ export interface ChatMessagesPage {
 }
 
 type SendChannelPayload =
-  | { room_id: string; content: string }
-  | { slug?: "general"; content: string };
+  | { room_id: string; content: string; attachments?: ChatAttachment[] }
+  | { slug?: "general"; content: string; attachments?: ChatAttachment[] };
 
 type SendDmPayload =
-  | { room_id: string; content: string }
-  | { recipient_id: string; content: string };
+  | { room_id: string; content: string; attachments?: ChatAttachment[] }
+  | { recipient_id: string; content: string; attachments?: ChatAttachment[] };
 
 class ChatService {
   private async getAccessToken(): Promise<string> {

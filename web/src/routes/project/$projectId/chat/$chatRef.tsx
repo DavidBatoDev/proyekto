@@ -36,7 +36,9 @@ import {
   CreateChannelModal,
   MessageList,
   TypingIndicator,
+  type PendingAttachment,
 } from "@/components/project/chat";
+import { uploadService } from "@/services/upload.service";
 import {
   parseChatRef,
   roomRef,
@@ -44,6 +46,7 @@ import {
   toDmRef,
 } from "@/components/project/chat/chatRef";
 import type {
+  ChatAttachment,
   ChatMemberCandidate,
   ChatMessage,
   ChatMemberRole,
@@ -87,6 +90,20 @@ const SYSTEM_ROOM_ORDER: Record<string, number> = {
 function channelTitle(room: ChatRoom | null | undefined): string {
   if (!room) return "Channel";
   return room.name?.trim() || `#${room.slug}`;
+}
+
+/** Sidebar/last-message preview text, falling back to attachment labels. */
+function messagePreviewText(
+  message: ChatMessage | null | undefined,
+): string {
+  if (!message) return "";
+  const text = message.content?.trim();
+  if (text) return text;
+  const first = message.attachments?.[0];
+  if (first) {
+    return first.content_type.startsWith("image/") ? "📷 Photo" : `📎 ${first.name}`;
+  }
+  return "";
 }
 
 function getDisplayName(member: ChatMemberCandidate | null): string {
@@ -135,7 +152,47 @@ function ChatPage() {
     null,
   );
   const [messageInput, setMessageInput] = useState("");
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
+  // All object URLs we minted for image previews, revoked on unmount so a long
+  // chat session doesn't leak them.
+  const objectUrlsRef = useRef<string[]>([]);
   const optimisticOrderCounterRef = useRef(0);
+
+  const addFiles = useCallback((files: File[]) => {
+    const additions = files.map((file) => {
+      const isImage = file.type.startsWith("image/");
+      const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
+      if (previewUrl) objectUrlsRef.current.push(previewUrl);
+      return {
+        id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        file,
+        kind: isImage ? ("image" as const) : ("file" as const),
+        previewUrl,
+      } satisfies PendingAttachment;
+    });
+    setPendingAttachments((prev) => [...prev, ...additions]);
+  }, []);
+
+  const removeAttachment = useCallback((id: string) => {
+    setPendingAttachments((prev) => {
+      const target = prev.find((attachment) => attachment.id === id);
+      if (target?.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl);
+        objectUrlsRef.current = objectUrlsRef.current.filter(
+          (url) => url !== target.previewUrl,
+        );
+      }
+      return prev.filter((attachment) => attachment.id !== id);
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
+      objectUrlsRef.current = [];
+    };
+  }, []);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const fetchingOlderRef = useRef(false);
@@ -374,7 +431,9 @@ function ChatPage() {
         return {
           member,
           roomId: existingRoom?.id ?? null,
-          preview: existingRoom?.last_message?.content || "Start a conversation",
+          preview:
+            messagePreviewText(existingRoom?.last_message) ||
+            "Start a conversation",
           avatarUrl:
             member.user?.avatar_url ??
             existingRoom?.counterpart?.user?.avatar_url ??
@@ -674,10 +733,21 @@ function ChatPage() {
 
   const isSending = sendChannelMutation.isPending || sendDmMutation.isPending;
   const sendMessage = async () => {
-    if (!user || isSending) return;
+    if (!user || isSending || isUploadingAttachments) return;
 
     const content = messageInput.trim();
-    if (!content) return;
+    const pending = pendingAttachments;
+    if (!content && pending.length === 0) return;
+
+    // Local attachment previews so the optimistic bubble renders instantly;
+    // image previews reuse the blob URL until the server's CDN URL arrives.
+    const optimisticAttachments: ChatAttachment[] = pending.map((attachment) => ({
+      url: attachment.previewUrl ?? "",
+      name: attachment.file.name,
+      content_type: attachment.file.type || "application/octet-stream",
+      size: attachment.file.size,
+    }));
+
     const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const latestDisplayedCreatedAt =
       displayedMessages.length > 0
@@ -702,6 +772,7 @@ function ChatPage() {
       project_id: activeTarget.kind === "channel" ? projectId : null,
       sender_id: user.id,
       content,
+      attachments: optimisticAttachments,
       created_at: nowIso,
       updated_at: nowIso,
       optimisticStatus: "sending",
@@ -712,12 +783,45 @@ function ChatPage() {
       [conversationKey]: [...(prev[conversationKey] ?? []), optimisticMessage],
     }));
     setMessageInput("");
+    setPendingAttachments([]);
     shouldStickToBottomRef.current = true;
     requestAnimationFrame(() => {
       const viewport = messagesViewportRef.current;
       if (!viewport) return;
       viewport.scrollTop = viewport.scrollHeight;
     });
+
+    const markOptimisticFailed = () =>
+      setOptimisticByConversation((prev) => ({
+        ...prev,
+        [conversationKey]: (prev[conversationKey] ?? []).map((message) =>
+          message.id === tempId
+            ? { ...message, optimisticStatus: "failed" as const }
+            : message,
+        ),
+      }));
+
+    // Upload any queued files to R2 first; the message persists the CDN URLs.
+    let uploadedAttachments: ChatAttachment[] = [];
+    if (pending.length > 0) {
+      setIsUploadingAttachments(true);
+      try {
+        uploadedAttachments = await Promise.all(
+          pending.map((attachment) =>
+            uploadService.uploadChatAttachment(attachment.file),
+          ),
+        );
+      } catch {
+        markOptimisticFailed();
+        await stopTyping();
+        return;
+      } finally {
+        setIsUploadingAttachments(false);
+      }
+    }
+
+    const attachmentsPayload =
+      uploadedAttachments.length > 0 ? uploadedAttachments : undefined;
 
     try {
       let result:
@@ -730,18 +834,24 @@ function ChatPage() {
       if (activeTarget.kind === "channel") {
         result = await sendChannelMutation.mutateAsync(
           activeTarget.roomId
-            ? { room_id: activeTarget.roomId, content }
-            : { slug: "general", content },
+            ? {
+                room_id: activeTarget.roomId,
+                content,
+                attachments: attachmentsPayload,
+              }
+            : { slug: "general", content, attachments: attachmentsPayload },
         );
       } else if (activeTarget.roomId) {
         result = await sendDmMutation.mutateAsync({
           room_id: activeTarget.roomId,
           content,
+          attachments: attachmentsPayload,
         });
       } else {
         result = await sendDmMutation.mutateAsync({
           recipient_id: activeTarget.userId,
           content,
+          attachments: attachmentsPayload,
         });
       }
 
@@ -781,6 +891,7 @@ function ChatPage() {
                 project_id: result?.message?.project_id ?? message.project_id,
                 sender_id: result?.message?.sender_id ?? message.sender_id,
                 content: result?.message?.content ?? message.content,
+                attachments: result?.message?.attachments ?? message.attachments,
                 created_at: result?.message?.created_at ?? message.created_at,
                 updated_at: result?.message?.updated_at ?? message.updated_at,
                 reactions: result?.message?.reactions ?? [],
@@ -1019,6 +1130,10 @@ function ChatPage() {
       composer={
         <ChatComposer
           value={messageInput}
+          attachments={pendingAttachments}
+          onAddFiles={addFiles}
+          onRemoveAttachment={removeAttachment}
+          isUploading={isUploadingAttachments}
           onChange={(nextValue) => {
             setMessageInput(nextValue);
             if (nextValue.trim()) {

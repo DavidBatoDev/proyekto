@@ -103,12 +103,19 @@ describe('ChatService', () => {
       ...overrides,
     }) as ChatRepository;
 
+  const r2Config = {
+    publicBucket: 'proyekto-media',
+    privateBucket: 'proyekto-private',
+    publicBaseUrl: 'https://cdn.proyekto.tech',
+  };
+
   const makeService = (repo: ChatRepository, authOverrides = {}) =>
     new ChatService(
       repo,
       buildRealtime(),
       buildAuthorization(authOverrides),
       buildAudit(),
+      r2Config,
     );
 
   // ── Channels: arbitrary channel fixtures for visibility tests ──────────────
@@ -395,6 +402,94 @@ describe('ChatService', () => {
 
     expect(result.room.id).toBe('room-chan');
     expect(createMessage).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Attachments ───────────────────────────────────────────────────────────
+  it('rejects a channel message with neither content nor attachments', async () => {
+    const room = buildRoom({
+      id: 'room-chan',
+      project_id: 'project-1',
+      type: 'channel',
+      slug: 'general',
+    });
+    const createMessage = jest.fn();
+    const repo = buildRepo({
+      findRoomForParticipant: jest.fn().mockResolvedValue(room),
+      createMessage,
+    });
+    const service = makeService(repo);
+
+    await expect(
+      service.sendChannelMessage('project-1', 'actor-1', {
+        room_id: 'room-chan',
+        content: '',
+      }),
+    ).rejects.toThrow();
+    expect(createMessage).not.toHaveBeenCalled();
+  });
+
+  it('rejects an attachment URL outside the sender chat_attachments prefix', async () => {
+    const createMessage = jest.fn();
+    const repo = buildRepo({ createMessage });
+    const service = makeService(repo);
+
+    await expect(
+      service.sendChannelMessage('project-1', 'actor-1', {
+        room_id: 'room-chan',
+        content: '',
+        attachments: [
+          {
+            // Belongs to a different user's prefix → must be rejected.
+            url: 'https://cdn.proyekto.tech/chat_attachments/other-user/1.png',
+            name: '1.png',
+            content_type: 'image/png',
+            size: 100,
+          },
+        ],
+      }),
+    ).rejects.toThrow();
+    expect(createMessage).not.toHaveBeenCalled();
+  });
+
+  it('persists an attachment-only message with a valid CDN URL', async () => {
+    const room = buildRoom({
+      id: 'room-chan',
+      project_id: 'project-1',
+      type: 'channel',
+      slug: 'general',
+    });
+    const createMessage = jest.fn().mockResolvedValue({
+      id: 'msg-1',
+      room_id: 'room-chan',
+      project_id: 'project-1',
+      sender_id: 'actor-1',
+      content: '',
+      attachments: [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+    const repo = buildRepo({
+      findRoomForParticipant: jest.fn().mockResolvedValue(room),
+      createMessage,
+    });
+    const service = makeService(repo);
+
+    const url = 'https://cdn.proyekto.tech/chat_attachments/actor-1/1.png';
+    await service.sendChannelMessage('project-1', 'actor-1', {
+      room_id: 'room-chan',
+      content: '',
+      attachments: [
+        { url, name: '1.png', content_type: 'image/png', size: 100, width: 10, height: 20 },
+      ],
+    });
+
+    expect(createMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attachments: [
+          expect.objectContaining({ url, width: 10, height: 20 }),
+        ],
+      }),
+    );
   });
 
   it('resolveDmRoom creates and seeds participants for a fresh pair', async () => {

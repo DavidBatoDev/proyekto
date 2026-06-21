@@ -23,7 +23,45 @@ export type UploadBucket =
   | "project_banners"
   | "portfolio_projects"
   | "roadmap_previews"
-  | "task_attachments";
+  | "task_attachments"
+  | "chat_attachments";
+
+/** Full metadata for a chat attachment, persisted on the message. */
+export interface ChatAttachmentMeta {
+  url: string;
+  name: string;
+  content_type: string;
+  size: number;
+  width?: number;
+  height?: number;
+}
+
+/**
+ * Read an image's pixel dimensions client-side (so the thread can reserve
+ * layout space and avoid jank). Resolves null for non-images or on failure.
+ */
+function readImageSize(
+  file: File,
+): Promise<{ width: number; height: number } | null> {
+  if (!file.type.startsWith("image/")) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const size =
+        img.naturalWidth && img.naturalHeight
+          ? { width: img.naturalWidth, height: img.naturalHeight }
+          : null;
+      URL.revokeObjectURL(url);
+      resolve(size);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+    img.src = url;
+  });
+}
 
 class UploadService {
   private base = "/api/uploads";
@@ -109,6 +147,22 @@ class UploadService {
    */
   async uploadTaskAttachment(file: File): Promise<string> {
     return this.upload("task_attachments", file);
+  }
+
+  /**
+   * Upload a chat attachment (image or file) to R2 and return full metadata
+   * to persist on the message. Image dimensions are read client-side first.
+   */
+  async uploadChatAttachment(file: File): Promise<ChatAttachmentMeta> {
+    const size = await readImageSize(file);
+    const url = await this.upload("chat_attachments", file);
+    return {
+      url,
+      name: file.name,
+      content_type: file.type || "application/octet-stream",
+      size: file.size,
+      ...(size ? { width: size.width, height: size.height } : {}),
+    };
   }
 
   /**

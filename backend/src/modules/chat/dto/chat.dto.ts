@@ -1,4 +1,6 @@
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsInt,
   IsOptional,
@@ -9,6 +11,7 @@ import {
   Min,
   MinLength,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -23,6 +26,41 @@ export class ChatMessagesQueryDto {
   @Min(1)
   @Max(100)
   limit?: number;
+}
+
+/**
+ * One chat attachment. The bytes already live in R2 (uploaded via the realtime
+ * Worker's POST /uploads); this carries only the resulting public URL + display
+ * metadata. The service additionally verifies `url` belongs to our CDN under
+ * `chat_attachments/<senderId>/` so a client can't attach an arbitrary URL.
+ */
+export class ChatAttachmentDto {
+  @IsString()
+  @MaxLength(2048)
+  url: string;
+
+  @IsString()
+  @MaxLength(255)
+  name: string;
+
+  @IsString()
+  @MaxLength(255)
+  content_type: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(26_214_400) // 25 MiB
+  size: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  width?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  height?: number;
 }
 
 /**
@@ -41,9 +79,19 @@ export class SendChannelMessageDto {
   @MaxLength(120)
   slug?: string;
 
+  // Optional: a message may carry attachments only (no text). The service
+  // requires non-empty content OR at least one attachment.
+  @IsOptional()
   @IsString()
   @MaxLength(4000)
-  content: string;
+  content?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => ChatAttachmentDto)
+  attachments?: ChatAttachmentDto[];
 }
 
 /**
@@ -59,9 +107,18 @@ export class SendDmMessageDto {
   @IsUUID()
   recipient_id?: string;
 
+  // Optional: see SendChannelMessageDto — content OR attachments is required.
+  @IsOptional()
   @IsString()
   @MaxLength(4000)
-  content: string;
+  content?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => ChatAttachmentDto)
+  attachments?: ChatAttachmentDto[];
 }
 
 export class ToggleChatReactionDto {

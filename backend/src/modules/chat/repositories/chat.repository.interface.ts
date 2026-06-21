@@ -16,12 +16,22 @@ export type ChatRoom = {
   updated_at: string;
 };
 
+export type ChatAttachment = {
+  url: string;
+  name: string;
+  content_type: string;
+  size: number;
+  width?: number;
+  height?: number;
+};
+
 export type ChatMessage = {
   id: string;
   room_id: string;
   project_id: string | null;
   sender_id: string;
   content: string;
+  attachments: ChatAttachment[];
   created_at: string;
   updated_at: string;
   reactions?: ChatMessageReactionSummary[];
@@ -141,6 +151,7 @@ export interface ChatRepository {
     projectId: string | null;
     senderId: string;
     content: string;
+    attachments?: ChatAttachment[];
   }): Promise<ChatMessage>;
   findMessageById(messageId: string): Promise<ChatMessage | null>;
   listReactionsForMessages(params: {
