@@ -536,6 +536,12 @@ function ChatPage() {
       avatar_url: member.user?.avatar_url ?? null,
     }));
   }, [activeTarget.kind, activeDmMember, members]);
+
+  // Pill spans for the composer's live input (Messenger-style highlight).
+  const composerHighlightRanges = useMemo(
+    () => resolveMentions(messageInput, pendingMentions),
+    [messageInput, pendingMentions],
+  );
   const activeProfileUserId =
     activeTarget.kind === "dm" ? activeDmMember?.user_id ?? null : selectedProfileUserId;
   const senderMap = useMemo(() => {
@@ -1316,6 +1322,7 @@ function ChatPage() {
           attachments={pendingAttachments}
           mentionables={mentionables}
           canMention={canMentionMembers}
+          highlightRanges={composerHighlightRanges}
           onAddMention={addMention}
           onAddFiles={addFiles}
           onRemoveAttachment={removeAttachment}

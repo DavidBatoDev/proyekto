@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import EmojiPicker, { Theme, type EmojiClickData } from "emoji-picker-react";
 import { AtSign, FileText, Loader2, Paperclip, Send, Smile, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { EVERYONE_MENTION_ID, type MentionPick } from "./mentions";
 
 /** A file queued in the composer, not yet uploaded/sent. */
@@ -54,6 +54,42 @@ function initialsOf(name: string): string {
     .toUpperCase();
 }
 
+/**
+ * Render the mirror backdrop: the same text as the textarea but with mention
+ * runs wrapped in a violet pill. All text is transparent (the real textarea
+ * text paints on top) — the spans only contribute the highlight background.
+ */
+function renderHighlightBackdrop(
+  value: string,
+  ranges: { offset: number; length: number }[],
+) {
+  const spans = ranges
+    .filter(
+      (r) =>
+        r.offset >= 0 && r.length > 0 && r.offset + r.length <= value.length,
+    )
+    .sort((a, b) => a.offset - b.offset);
+
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  spans.forEach((r, i) => {
+    if (r.offset < cursor) return; // skip overlaps
+    if (r.offset > cursor) nodes.push(value.slice(cursor, r.offset));
+    nodes.push(
+      <span
+        key={`hl-${i}-${r.offset}`}
+        className="rounded bg-violet-200/80 box-decoration-clone"
+      >
+        {value.slice(r.offset, r.offset + r.length)}
+      </span>,
+    );
+    cursor = r.offset + r.length;
+  });
+  // Trailing text (plus a space so a trailing newline keeps its line height).
+  nodes.push(`${value.slice(cursor)}​`);
+  return nodes;
+}
+
 export function ChatComposer({
   value,
   placeholder,
@@ -62,6 +98,7 @@ export function ChatComposer({
   attachments,
   mentionables,
   canMention,
+  highlightRanges,
   onChange,
   onBlur,
   onSend,
@@ -76,6 +113,8 @@ export function ChatComposer({
   attachments: PendingAttachment[];
   mentionables?: MentionCandidate[];
   canMention?: boolean;
+  /** Spans of `value` to paint as mention pills behind the input. */
+  highlightRanges?: { offset: number; length: number }[];
   onChange: (value: string) => void;
   onBlur: () => void;
   onSend: () => void;
@@ -89,6 +128,7 @@ export function ChatComposer({
     isUploading ||
     (value.trim().length === 0 && !hasAttachments);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const backdropRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pickerContainerRef = useRef<HTMLDivElement | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -325,23 +365,37 @@ export function ChatComposer({
             </div>
           )}
 
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(event) => {
-              onChange(event.target.value);
-              syncMention(event.target.value, event.target.selectionStart);
-            }}
-            onClick={(event) =>
-              syncMention(
-                event.currentTarget.value,
-                event.currentTarget.selectionStart,
-              )
-            }
-            onBlur={() => {
-              closeMention();
-              onBlur();
-            }}
+          <div className="relative">
+            {/* Mirror backdrop that paints mention pills behind the text. */}
+            <div
+              ref={backdropRef}
+              aria-hidden
+              className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-1 py-1 text-sm leading-6 text-transparent select-none"
+            >
+              {renderHighlightBackdrop(value, highlightRanges ?? [])}
+            </div>
+            <textarea
+              ref={textareaRef}
+              value={value}
+              onChange={(event) => {
+                onChange(event.target.value);
+                syncMention(event.target.value, event.target.selectionStart);
+              }}
+              onScroll={(event) => {
+                if (backdropRef.current) {
+                  backdropRef.current.scrollTop = event.currentTarget.scrollTop;
+                }
+              }}
+              onClick={(event) =>
+                syncMention(
+                  event.currentTarget.value,
+                  event.currentTarget.selectionStart,
+                )
+              }
+              onBlur={() => {
+                closeMention();
+                onBlur();
+              }}
             onPaste={(event) => {
               const files = Array.from(event.clipboardData?.files ?? []);
               if (files.length > 0) {
@@ -379,10 +433,11 @@ export function ChatComposer({
                 onSend();
               }
             }}
-            placeholder={placeholder}
-            rows={1}
-            className="w-full resize-none bg-transparent px-1 py-1 text-sm leading-6 text-slate-900 placeholder:text-slate-500 focus:outline-none"
-          />
+              placeholder={placeholder}
+              rows={1}
+              className="relative w-full resize-none bg-transparent px-1 py-1 text-sm leading-6 text-slate-900 placeholder:text-slate-500 focus:outline-none"
+            />
+          </div>
 
           <div className="absolute right-3 top-2 inline-flex items-center gap-1">
             <input

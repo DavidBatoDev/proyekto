@@ -697,6 +697,12 @@ function InboxThread({
 		[room.participants, currentUserId],
 	);
 
+	// Pill spans for the composer's live input (Messenger-style highlight).
+	const composerHighlightRanges = useMemo(
+		() => resolveMentions(input, pendingMentions),
+		[input, pendingMentions],
+	);
+
 	const projectMembersQuery = useProjectMembersQuery(project?.id ?? "");
 	const projectMembers =
 		(projectMembersQuery.data as ProjectMember[] | undefined) ?? [];
@@ -1139,6 +1145,7 @@ function InboxThread({
 					attachments={pendingAttachments}
 					mentionables={mentionables}
 					canMention={mentionables.length > 0}
+					highlightRanges={composerHighlightRanges}
 					onAddMention={addMention}
 					onAddFiles={addFiles}
 					onRemoveAttachment={removeAttachment}
