@@ -1050,6 +1050,7 @@ function ChatPage() {
                 sender_id: result?.message?.sender_id ?? message.sender_id,
                 content: result?.message?.content ?? message.content,
                 attachments: result?.message?.attachments ?? message.attachments,
+                mentions: result?.message?.mentions ?? message.mentions,
                 created_at: result?.message?.created_at ?? message.created_at,
                 updated_at: result?.message?.updated_at ?? message.updated_at,
                 reactions: result?.message?.reactions ?? [],
