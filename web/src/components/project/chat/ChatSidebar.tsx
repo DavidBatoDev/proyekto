@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Hash, Lock, Plus, SquarePen } from "lucide-react";
+import { Hash, Lock, Plus, SquarePen, Star } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ChatMemberCandidate } from "@/services/chat.service";
 import { ChatAvatar } from "./Avatar";
@@ -19,6 +19,7 @@ type ChannelEntry = {
   title: string;
   isPrivate: boolean;
   hasUnread: boolean;
+  isStarred: boolean;
 };
 
 export function ChatSidebar({
@@ -31,6 +32,7 @@ export function ChatSidebar({
   canCreateChannels,
   onCreateChannel,
   onSelectChannel,
+  onToggleChannelStar,
   activeDmUserId,
   onTogglePeoplePicker,
   onSelectMember,
@@ -46,6 +48,7 @@ export function ChatSidebar({
   canCreateChannels: boolean;
   onCreateChannel: () => void;
   onSelectChannel: (roomId: string) => void;
+  onToggleChannelStar: (roomId: string) => void;
   activeDmUserId: string | null;
   onTogglePeoplePicker: () => void;
   onSelectMember: (userId: string, roomId: string | null) => void;
@@ -188,32 +191,65 @@ export function ChatSidebar({
                 const isActive = activeChannelRoomId === channel.roomId;
                 const isUnread = !isActive && channel.hasUnread;
                 return (
-                  <button
+                  <div
                     key={channel.roomId}
-                    type="button"
-                    onClick={() => onSelectChannel(channel.roomId)}
-                    className={`inline-flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors ${
+                    className={`group/row flex w-full items-center rounded-lg pr-1.5 transition-colors ${
                       isActive
                         ? "bg-primary text-white"
                         : "text-slate-700 hover:bg-slate-200/80"
                     }`}
                   >
-                    {channel.isPrivate ? (
-                      <Lock className="h-4 w-4 shrink-0" />
-                    ) : (
-                      <Hash className="h-4 w-4 shrink-0" />
-                    )}
-                    <span
-                      className={`truncate font-medium ${
-                        isUnread ? "font-bold text-slate-900" : ""
-                      }`}
+                    <button
+                      type="button"
+                      onClick={() => onSelectChannel(channel.roomId)}
+                      className="inline-flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
                     >
-                      {channel.title}
-                    </span>
+                      {channel.isPrivate ? (
+                        <Lock className="h-4 w-4 shrink-0" />
+                      ) : (
+                        <Hash className="h-4 w-4 shrink-0" />
+                      )}
+                      <span
+                        className={`truncate font-medium ${
+                          isUnread ? "font-bold" : ""
+                        }`}
+                      >
+                        {channel.title}
+                      </span>
+                    </button>
                     {isUnread ? (
-                      <span className="ml-auto h-2.5 w-2.5 shrink-0 rounded-full bg-slate-900" />
+                      <span
+                        className={`mr-1 h-2.5 w-2.5 shrink-0 rounded-full ${
+                          isActive ? "bg-white" : "bg-slate-900"
+                        }`}
+                      />
                     ) : null}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => onToggleChannelStar(channel.roomId)}
+                      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded transition-opacity ${
+                        channel.isStarred
+                          ? isActive
+                            ? "text-amber-200 opacity-100"
+                            : "text-amber-500 opacity-100"
+                          : isActive
+                            ? "text-white/80 opacity-0 hover:text-white group-hover/row:opacity-100"
+                            : "text-slate-400 opacity-0 hover:text-amber-500 group-hover/row:opacity-100"
+                      }`}
+                      aria-label={
+                        channel.isStarred ? "Unstar channel" : "Star channel"
+                      }
+                      title={
+                        channel.isStarred ? "Unstar channel" : "Star channel"
+                      }
+                    >
+                      <Star
+                        className={`h-3.5 w-3.5 ${
+                          channel.isStarred ? "fill-current" : ""
+                        }`}
+                      />
+                    </button>
+                  </div>
                 );
               })}
             </div>

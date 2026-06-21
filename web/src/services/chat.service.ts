@@ -49,6 +49,7 @@ export interface ChatRoom {
   counterpart?: ChatParticipant | null;
   viewer_last_read_at?: string | null;
   has_unread?: boolean;
+  is_starred?: boolean;
 }
 
 export type ChatMemberRole = "consultant" | "client" | "freelancer";
@@ -264,6 +265,13 @@ class ChatService {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emoji }),
       },
+    );
+  }
+
+  toggleRoomStar(roomId: string): Promise<{ starred: boolean }> {
+    return this.request<{ starred: boolean }>(
+      `/chat/rooms/${roomId}/star`,
+      { method: "POST" },
     );
   }
 

@@ -18,6 +18,7 @@ import {
   useSendChannelMessageMutation,
   useSendDmMessageMutation,
   useToggleChatReactionMutation,
+  useToggleRoomStarMutation,
   useMarkRoomReadMutation,
 } from "@/hooks/useChatQueries";
 import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
@@ -156,6 +157,7 @@ function ChatPage() {
   const sendChannelMutation = useSendChannelMessageMutation(projectId);
   const sendDmMutation = useSendDmMessageMutation();
   const toggleReactionMutation = useToggleChatReactionMutation();
+  const toggleRoomStarMutation = useToggleRoomStarMutation(projectId);
   const deleteMessageMutation = useDeleteChatMessageMutation();
   const createChannelMutation = useCreateChannelMutation(projectId);
   const permissionsQuery = useProjectMyPermissionsQuery(projectId);
@@ -221,6 +223,8 @@ function ChatPage() {
       channelRooms
         .filter((room) => room.type === "channel")
         .sort((a, b) => {
+          // Starred channels float to the top.
+          if (!!a.is_starred !== !!b.is_starred) return a.is_starred ? -1 : 1;
           const order = (room: ChatRoom) =>
             SYSTEM_ROOM_ORDER[room.slug] ?? 99;
           const ao = order(a);
@@ -401,6 +405,7 @@ function ChatPage() {
         title: channelTitle(room),
         isPrivate: room.is_private,
         hasUnread: hasUnreadForRoom(room, user?.id),
+        isStarred: !!room.is_starred,
       })),
     [channels, user?.id],
   );
@@ -894,6 +899,9 @@ function ChatPage() {
             }
             canCreateChannels={canCreateChannels}
             onCreateChannel={() => setShowCreateChannel(true)}
+            onToggleChannelStar={(roomId) =>
+              toggleRoomStarMutation.mutate({ roomId })
+            }
             onSelectChannel={(roomId) => {
               void navigate({
                 to: "/project/$projectId/chat/$chatRef",

@@ -96,6 +96,8 @@ describe('ChatService', () => {
       findMessageById: jest.fn().mockResolvedValue(null),
       listReactionsForMessages: jest.fn().mockResolvedValue(new Map()),
       toggleMessageReaction: jest.fn().mockResolvedValue(undefined),
+      toggleRoomStar: jest.fn().mockResolvedValue({ starred: true }),
+      listStarredRoomIds: jest.fn().mockResolvedValue(new Set<string>()),
       deleteMessage: jest.fn().mockResolvedValue(undefined),
       markRoomRead: jest.fn().mockResolvedValue(new Date().toISOString()),
       ...overrides,

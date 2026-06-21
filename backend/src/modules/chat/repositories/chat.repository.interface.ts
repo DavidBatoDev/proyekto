@@ -62,6 +62,7 @@ export type ChatParticipant = {
 export type ChatRoomWithLastMessage = ChatRoom & {
   last_message: ChatMessage | null;
   participants: ChatParticipant[];
+  is_starred?: boolean;
 };
 
 export type ChatMemberCandidate = {
@@ -151,6 +152,13 @@ export interface ChatRepository {
     userId: string;
     emoji: string;
   }): Promise<void>;
+  /** Toggle a personal star on a whole room (channel/DM); returns new state. */
+  toggleRoomStar(params: {
+    roomId: string;
+    userId: string;
+  }): Promise<{ starred: boolean }>;
+  /** Subset of `roomIds` that `userId` has starred. */
+  listStarredRoomIds(userId: string, roomIds: string[]): Promise<Set<string>>;
   deleteMessage(params: {
     messageId: string;
     senderId: string;

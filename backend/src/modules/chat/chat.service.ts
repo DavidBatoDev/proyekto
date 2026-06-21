@@ -155,10 +155,18 @@ export class ChatService {
     }
   }
 
-  private decorateRooms(
+  private async decorateRooms(
     rooms: ChatRoomWithLastMessage[],
     userId: string,
   ) {
+    const starredRoomIds =
+      rooms.length > 0
+        ? await this.chatRepo.listStarredRoomIds(
+            userId,
+            rooms.map((room) => room.id),
+          )
+        : new Set<string>();
+
     return rooms
       .sort((a, b) => {
         const aTime = a.last_message?.created_at ?? a.updated_at;
@@ -176,10 +184,12 @@ export class ChatService {
               new Date(viewerLastReadAt).getTime()
             : latestMessage.sender_id !== userId
           : false;
+        const isStarred = starredRoomIds.has(room.id);
 
         if (room.type !== 'dm') {
           return {
             ...room,
+            is_starred: isStarred,
             viewer_last_read_at: viewerLastReadAt,
             has_unread: hasUnread,
           };
@@ -188,6 +198,7 @@ export class ChatService {
           room.participants.find((p) => p.user_id !== userId) ?? null;
         return {
           ...room,
+          is_starred: isStarred,
           counterpart,
           viewer_last_read_at: viewerLastReadAt,
           has_unread: hasUnread,
@@ -537,6 +548,15 @@ export class ChatService {
     this.fanoutChat(message.room_id, message.project_id, 'reaction');
 
     return { ok: true };
+  }
+
+  /**
+   * Toggle a personal star on a whole room (favorite channel/DM). No fanout —
+   * stars are per-user; the client updates optimistically.
+   */
+  async toggleRoomStar(roomId: string, userId: string) {
+    await this.assertRoomAccess(roomId, userId);
+    return this.chatRepo.toggleRoomStar({ roomId, userId });
   }
 
   async unsendMessage(messageId: string, userId: string) {
