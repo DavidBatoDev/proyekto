@@ -18,6 +18,7 @@ import {
   useSendChannelMessageMutation,
   useSendDmMessageMutation,
   useToggleChatReactionMutation,
+  useToggleRoomStarMutation,
   useMarkRoomReadMutation,
 } from "@/hooks/useChatQueries";
 import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
@@ -156,6 +157,7 @@ function ChatPage() {
   const sendChannelMutation = useSendChannelMessageMutation(projectId);
   const sendDmMutation = useSendDmMessageMutation();
   const toggleReactionMutation = useToggleChatReactionMutation();
+  const toggleRoomStarMutation = useToggleRoomStarMutation(projectId);
   const deleteMessageMutation = useDeleteChatMessageMutation();
   const createChannelMutation = useCreateChannelMutation(projectId);
   const permissionsQuery = useProjectMyPermissionsQuery(projectId);
@@ -221,6 +223,8 @@ function ChatPage() {
       channelRooms
         .filter((room) => room.type === "channel")
         .sort((a, b) => {
+          // Starred channels float to the top.
+          if (!!a.is_starred !== !!b.is_starred) return a.is_starred ? -1 : 1;
           const order = (room: ChatRoom) =>
             SYSTEM_ROOM_ORDER[room.slug] ?? 99;
           const ao = order(a);
@@ -234,10 +238,12 @@ function ChatPage() {
   );
 
   // The channel a bare /chat or the legacy "channel-general" ref lands on.
+  // New projects start with #general; client-room is a fallback for any
+  // pre-existing projects that still have the old persona rooms.
   const defaultChannel = useMemo(
     () =>
-      channels.find((room) => room.slug === "client-room") ??
       channels.find((room) => room.slug === "general") ??
+      channels.find((room) => room.slug === "client-room") ??
       channels[0] ??
       null,
     [channels],
@@ -399,6 +405,7 @@ function ChatPage() {
         title: channelTitle(room),
         isPrivate: room.is_private,
         hasUnread: hasUnreadForRoom(room, user?.id),
+        isStarred: !!room.is_starred,
       })),
     [channels, user?.id],
   );
@@ -892,6 +899,9 @@ function ChatPage() {
             }
             canCreateChannels={canCreateChannels}
             onCreateChannel={() => setShowCreateChannel(true)}
+            onToggleChannelStar={(roomId) =>
+              toggleRoomStarMutation.mutate({ roomId })
+            }
             onSelectChannel={(roomId) => {
               void navigate({
                 to: "/project/$projectId/chat/$chatRef",
@@ -1036,6 +1046,10 @@ function ChatPage() {
         open={showCreateChannel}
         members={members}
         currentUserId={user?.id}
+        existingChannels={channels.map((room) => ({
+          slug: room.slug,
+          name: room.name,
+        }))}
         isSubmitting={createChannelMutation.isPending}
         onClose={() => {
           if (createChannelMutation.isPending) return;

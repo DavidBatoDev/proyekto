@@ -96,6 +96,8 @@ describe('ChatService', () => {
       findMessageById: jest.fn().mockResolvedValue(null),
       listReactionsForMessages: jest.fn().mockResolvedValue(new Map()),
       toggleMessageReaction: jest.fn().mockResolvedValue(undefined),
+      toggleRoomStar: jest.fn().mockResolvedValue({ starred: true }),
+      listStarredRoomIds: jest.fn().mockResolvedValue(new Set<string>()),
       deleteMessage: jest.fn().mockResolvedValue(undefined),
       markRoomRead: jest.fn().mockResolvedValue(new Date().toISOString()),
       ...overrides,
@@ -109,7 +111,7 @@ describe('ChatService', () => {
       buildAudit(),
     );
 
-  // ── Channels: the 4 default rooms (identified by slug now) ─────────────────
+  // ── Channels: arbitrary channel fixtures for visibility tests ──────────────
   const channel = (slug: string, isPrivate: boolean): ChatRoom =>
     buildRoom({
       id: `room-${slug}`,
@@ -220,7 +222,7 @@ describe('ChatService', () => {
     expect(shownResult.map((r) => r.id).sort()).toEqual(['room-priv', 'room-pub']);
   });
 
-  it('provisionDefaultChannels seeds the creator into every default room', async () => {
+  it('provisionDefaultChannels seeds the creator into the single #general room', async () => {
     const upsertParticipants = jest.fn().mockResolvedValue(undefined);
     const upsertChannel = jest
       .fn()
@@ -239,9 +241,13 @@ describe('ChatService', () => {
       'project',
     );
 
-    expect(upsertChannel).toHaveBeenCalledTimes(4);
-    expect(upsertParticipants).toHaveBeenCalledTimes(4);
-    expect(upsertParticipants).toHaveBeenCalledWith('room-internal-team', [
+    // Persona rooms are no longer auto-provisioned — only #general.
+    expect(upsertChannel).toHaveBeenCalledTimes(1);
+    expect(upsertChannel).toHaveBeenCalledWith(
+      expect.objectContaining({ slug: 'general', isPrivate: false }),
+    );
+    expect(upsertParticipants).toHaveBeenCalledTimes(1);
+    expect(upsertParticipants).toHaveBeenCalledWith('room-general', [
       'creator-1',
     ]);
   });

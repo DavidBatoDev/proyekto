@@ -50,6 +50,14 @@ export class ChatRoomsController {
     return this.chatService.markRoomRead(roomId, user.id);
   }
 
+  @Post('rooms/:roomId/star')
+  toggleRoomStar(
+    @Param('roomId') roomId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.chatService.toggleRoomStar(roomId, user.id);
+  }
+
   @Post('messages/:messageId/reactions')
   toggleReaction(
     @Param('messageId') messageId: string,

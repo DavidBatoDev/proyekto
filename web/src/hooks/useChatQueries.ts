@@ -317,6 +317,50 @@ export function useToggleChatReactionMutation() {
   });
 }
 
+/**
+ * Toggle a personal star on a whole room (favorite channel). Optimistically
+ * flips `is_starred` in both the project room list and the global DM list.
+ */
+export function useToggleRoomStarMutation(projectId: string) {
+  const queryClient = useQueryClient();
+
+  const flip = (rooms: ChatRoom[] | undefined, roomId: string) =>
+    rooms?.map((room) =>
+      room.id === roomId ? { ...room, is_starred: !room.is_starred } : room,
+    );
+
+  return useMutation({
+    mutationFn: (payload: { roomId: string }) =>
+      chatService.toggleRoomStar(payload.roomId),
+    onMutate: async (payload) => {
+      const roomsKey = chatKeys.rooms(projectId);
+      const dmKey = chatKeys.dmRooms();
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: roomsKey }),
+        queryClient.cancelQueries({ queryKey: dmKey }),
+      ]);
+      const prevRooms = queryClient.getQueryData<ChatRoom[]>(roomsKey);
+      const prevDms = queryClient.getQueryData<ChatRoom[]>(dmKey);
+      queryClient.setQueryData<ChatRoom[]>(roomsKey, (current) =>
+        flip(current, payload.roomId),
+      );
+      queryClient.setQueryData<ChatRoom[]>(dmKey, (current) =>
+        flip(current, payload.roomId),
+      );
+      return { prevRooms, prevDms, roomsKey, dmKey };
+    },
+    onError: (_error, _payload, context) => {
+      if (!context) return;
+      if (context.prevRooms) {
+        queryClient.setQueryData(context.roomsKey, context.prevRooms);
+      }
+      if (context.prevDms) {
+        queryClient.setQueryData(context.dmKey, context.prevDms);
+      }
+    },
+  });
+}
+
 export function useDeleteChatMessageMutation() {
   const queryClient = useQueryClient();
 

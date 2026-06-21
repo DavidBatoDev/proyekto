@@ -31,12 +31,15 @@ type SystemRoomSpec = {
   isPrivate: boolean;
 };
 
-/** The 4 PRD persona rooms auto-provisioned for a normal project. */
+/**
+ * Both normal projects and personal workspaces auto-provision a single public
+ * #general now. The 4 PRD persona rooms (Client Project Room / Internal Team /
+ * Consultant & Client / Consultant & PM) are no longer auto-created — they're
+ * offered as opt-in presets in the web "Create channel" modal
+ * (`CHANNEL_SUGGESTIONS` in web/src/components/project/chat/channelSuggestions.ts).
+ */
 const PROJECT_SYSTEM_ROOMS: SystemRoomSpec[] = [
-  { slug: 'client-room', name: 'Client Project Room', isPrivate: false },
-  { slug: 'internal-team', name: 'Internal Team', isPrivate: true },
-  { slug: 'consultant-client', name: 'Consultant & Client', isPrivate: true },
-  { slug: 'consultant-pm', name: 'Consultant & PM', isPrivate: true },
+  { slug: 'general', name: 'General', isPrivate: false },
 ];
 
 /** Personal (solo) workspaces just get a single public #general. */
@@ -152,10 +155,18 @@ export class ChatService {
     }
   }
 
-  private decorateRooms(
+  private async decorateRooms(
     rooms: ChatRoomWithLastMessage[],
     userId: string,
   ) {
+    const starredRoomIds =
+      rooms.length > 0
+        ? await this.chatRepo.listStarredRoomIds(
+            userId,
+            rooms.map((room) => room.id),
+          )
+        : new Set<string>();
+
     return rooms
       .sort((a, b) => {
         const aTime = a.last_message?.created_at ?? a.updated_at;
@@ -173,10 +184,12 @@ export class ChatService {
               new Date(viewerLastReadAt).getTime()
             : latestMessage.sender_id !== userId
           : false;
+        const isStarred = starredRoomIds.has(room.id);
 
         if (room.type !== 'dm') {
           return {
             ...room,
+            is_starred: isStarred,
             viewer_last_read_at: viewerLastReadAt,
             has_unread: hasUnread,
           };
@@ -185,6 +198,7 @@ export class ChatService {
           room.participants.find((p) => p.user_id !== userId) ?? null;
         return {
           ...room,
+          is_starred: isStarred,
           counterpart,
           viewer_last_read_at: viewerLastReadAt,
           has_unread: hasUnread,
@@ -397,7 +411,6 @@ export class ChatService {
       const slug = (dto.slug || '').trim().toLowerCase();
       const resolved =
         (slug ? await this.chatRepo.findChannelBySlug(projectId, slug) : null) ??
-        (await this.chatRepo.findChannelBySlug(projectId, 'client-room')) ??
         (await this.chatRepo.findChannelBySlug(projectId, 'general'));
       if (!resolved) {
         throw new NotFoundException('Chat room not found.');
@@ -537,6 +550,15 @@ export class ChatService {
     return { ok: true };
   }
 
+  /**
+   * Toggle a personal star on a whole room (favorite channel/DM). No fanout —
+   * stars are per-user; the client updates optimistically.
+   */
+  async toggleRoomStar(roomId: string, userId: string) {
+    await this.assertRoomAccess(roomId, userId);
+    return this.chatRepo.toggleRoomStar({ roomId, userId });
+  }
+
   async unsendMessage(messageId: string, userId: string) {
     const message = await this.chatRepo.findMessageById(messageId);
     if (!message) {
@@ -591,11 +613,10 @@ export class ChatService {
   // ── Channel management ────────────────────────────────────────────────────
 
   /**
-   * Idempotently create the default channels for a project. Normal projects
-   * get the 4 PRD persona rooms; personal workspaces get a single #general.
-   * Membership is NOT seeded here — listRooms lazily joins each viewer to the
-   * rooms their persona may see, so this stays correct as members are added
-   * after creation (when only one persona exists yet).
+   * Idempotently create the default channel(s) for a project. Both normal
+   * projects and personal workspaces now get a single public #general; the
+   * creator is seeded as a participant. The 4 PRD persona rooms are opt-in
+   * presets in the web create-channel modal, not auto-provisioned.
    */
   async provisionDefaultChannels(
     projectId: string,

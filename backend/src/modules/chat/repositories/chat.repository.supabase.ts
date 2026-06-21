@@ -890,6 +890,58 @@ export class SupabaseChatRepository implements ChatRepository {
     if (insertError) throw new Error(insertError.message);
   }
 
+  async toggleRoomStar(params: {
+    roomId: string;
+    userId: string;
+  }): Promise<{ starred: boolean }> {
+    const { data: existing, error: existingError } = await this.supabase
+      .from('chat_room_stars')
+      .select('id')
+      .eq('room_id', params.roomId)
+      .eq('user_id', params.userId)
+      .maybeSingle();
+
+    if (existingError && existingError.code !== 'PGRST116') {
+      throw new Error(existingError.message);
+    }
+
+    if (existing?.id) {
+      const { error: deleteError } = await this.supabase
+        .from('chat_room_stars')
+        .delete()
+        .eq('id', existing.id);
+      if (deleteError) throw new Error(deleteError.message);
+      return { starred: false };
+    }
+
+    const { error: insertError } = await this.supabase
+      .from('chat_room_stars')
+      .insert({ room_id: params.roomId, user_id: params.userId });
+
+    if (insertError) throw new Error(insertError.message);
+    return { starred: true };
+  }
+
+  async listStarredRoomIds(
+    userId: string,
+    roomIds: string[],
+  ): Promise<Set<string>> {
+    const starred = new Set<string>();
+    if (roomIds.length === 0) return starred;
+
+    const { data, error } = await this.supabase
+      .from('chat_room_stars')
+      .select('room_id')
+      .eq('user_id', userId)
+      .in('room_id', roomIds);
+
+    if (error) throw new Error(error.message);
+    for (const row of (data || []) as { room_id: string }[]) {
+      starred.add(row.room_id);
+    }
+    return starred;
+  }
+
   async deleteMessage(params: {
     messageId: string;
     senderId: string;
