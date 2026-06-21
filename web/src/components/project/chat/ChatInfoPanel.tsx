@@ -382,7 +382,7 @@ export function ChatInfoPanel({
                                 <span className="ml-1 text-xs text-slate-400">(you)</span>
                               )}
                             </span>
-                            {canManage && participant.user_id !== currentUserId && (
+                            {canManage && isPrivate && participant.user_id !== currentUserId && (
                               <button
                                 type="button"
                                 disabled={isBusy}

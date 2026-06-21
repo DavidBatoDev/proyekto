@@ -817,8 +817,30 @@ export class ChatService {
   }
 
   async listChannelMembers(roomId: string, userId: string) {
-    await this.assertRoomAccess(roomId, userId);
-    return this.chatRepo.listRoomParticipants(roomId);
+    const room = await this.assertRoomAccess(roomId, userId);
+    const participants = await this.chatRepo.listRoomParticipants(roomId);
+
+    // Private channel: membership is explicit — return the real participants.
+    if (room.is_private || !room.project_id) return participants;
+
+    // Public channel: open to the whole project, so list the full roster, not
+    // just whoever has lazy-joined by opening it. Reuse already-joined rows
+    // (keeps joined_at/last_read_at) and synthesize a display-only row for
+    // members who haven't opened the channel yet.
+    const candidates = await this.chatRepo.listProjectMemberCandidates(
+      room.project_id,
+    );
+    const joined = new Map(participants.map((p) => [p.user_id, p]));
+    return candidates.map(
+      (c) =>
+        joined.get(c.user_id) ?? {
+          room_id: roomId,
+          user_id: c.user_id,
+          joined_at: '',
+          last_read_at: null,
+          user: c.user,
+        },
+    );
   }
 
   async addChannelMember(

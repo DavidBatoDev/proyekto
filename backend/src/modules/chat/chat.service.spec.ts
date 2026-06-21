@@ -341,6 +341,77 @@ describe('ChatService', () => {
     );
   });
 
+  // ── Channel member list ───────────────────────────────────────────────────
+  it('listChannelMembers returns the full project roster for a public channel', async () => {
+    const participant = {
+      room_id: 'room-open',
+      user_id: 'p1',
+      joined_at: 't',
+      last_read_at: null,
+      user: { id: 'p1', display_name: 'P One', avatar_url: null, email: null },
+    };
+    const listProjectMemberCandidates = jest.fn().mockResolvedValue([
+      { user_id: 'p1', role: 'member', position: null, user: participant.user },
+      {
+        user_id: 'p2',
+        role: 'member',
+        position: null,
+        user: { id: 'p2', display_name: 'P Two', avatar_url: null, email: null },
+      },
+      {
+        user_id: 'viewer-1',
+        role: 'client',
+        position: 'Client',
+        user: { id: 'viewer-1', display_name: 'Me', avatar_url: null, email: null },
+      },
+    ]);
+    const repo = buildRepo({
+      findRoomById: jest.fn().mockResolvedValue(channel('open', false)),
+      listRoomParticipants: jest.fn().mockResolvedValue([participant]),
+      listProjectMemberCandidates,
+    });
+
+    const members = await makeService(repo).listChannelMembers(
+      'room-open',
+      'viewer-1',
+    );
+
+    expect(members.map((m) => m.user_id).sort()).toEqual([
+      'p1',
+      'p2',
+      'viewer-1',
+    ]);
+    // The already-joined row is reused; the rest are synthesized (no joined_at).
+    expect(members.find((m) => m.user_id === 'p1')?.joined_at).toBe('t');
+    expect(members.find((m) => m.user_id === 'p2')?.joined_at).toBe('');
+  });
+
+  it('listChannelMembers returns only explicit participants for a private channel', async () => {
+    const participants = [
+      {
+        room_id: 'room-secret',
+        user_id: 'p1',
+        joined_at: 't',
+        last_read_at: null,
+        user: { id: 'p1', display_name: 'P One', avatar_url: null, email: null },
+      },
+    ];
+    const listProjectMemberCandidates = jest.fn();
+    const repo = buildRepo({
+      findRoomById: jest.fn().mockResolvedValue(channel('secret', true)),
+      listRoomParticipants: jest.fn().mockResolvedValue(participants),
+      listProjectMemberCandidates,
+    });
+
+    const members = await makeService(repo).listChannelMembers(
+      'room-secret',
+      'viewer-1',
+    );
+
+    expect(members).toEqual(participants);
+    expect(listProjectMemberCandidates).not.toHaveBeenCalled();
+  });
+
   // ── DMs (unchanged behavior) ──────────────────────────────────────────────
   it('creates and reuses DM rooms by deterministic slug, no project_id', async () => {
     const upsertDm = jest.fn().mockResolvedValue(
