@@ -1,12 +1,12 @@
 /**
  * Upload Service
- * Handles file uploads to Supabase Storage.
- * - Standard buckets (avatars, banners, etc.): signed URL flow via backend.
- * - Task attachments: direct upload via authenticated Supabase client.
+ * Handles file uploads to Cloudflare R2 (S3-compatible).
+ * All buckets use the same flow: the backend issues a presigned PUT URL, the
+ * browser uploads the bytes directly, and the backend returns the public URL
+ * (or, for private buckets, the object key).
  */
 
 import apiClient from "@/api/axios";
-import { supabase } from "@/lib/supabase";
 
 export type UploadBucket =
   | "avatars"
@@ -18,7 +18,6 @@ export type UploadBucket =
 
 export interface SignedUrlResponse {
   signedUrl: string;
-  token: string;
   path: string;
   publicUrl: string;
 }
@@ -58,29 +57,6 @@ class UploadService {
       throw new Error(`Storage upload failed: ${uploadRes.statusText}`);
     }
 
-    return publicUrl;
-  }
-
-  /**
-   * Direct upload via authenticated Supabase client.
-   * Used for task_attachments — avoids the signed URL round-trip and backend
-   * file-type validation, which can fail for unusual mime types.
-   */
-  async uploadDirect(bucket: string, file: File): Promise<string> {
-    const { data: { session } } = await supabase.auth.getSession();
-    const userId = session?.user?.id;
-    if (!userId) throw new Error("Not authenticated");
-
-    const ext = file.name.includes(".") ? file.name.split(".").pop() : "";
-    const path = `${userId}/${Date.now()}${ext ? `.${ext}` : ""}`;
-
-    const { error } = await supabase.storage
-      .from(bucket)
-      .upload(path, file, { upsert: false, contentType: file.type || "application/octet-stream" });
-
-    if (error) throw new Error(error.message);
-
-    const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(path);
     return publicUrl;
   }
 
@@ -127,11 +103,11 @@ class UploadService {
   }
 
   /**
-   * Upload a task attachment directly via authenticated Supabase client.
+   * Upload a task attachment via the backend signed-URL flow.
    * Returns the public URL.
    */
   async uploadTaskAttachment(file: File): Promise<string> {
-    return this.uploadDirect("task_attachments", file);
+    return this.upload("task_attachments", file);
   }
 
   /**

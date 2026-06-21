@@ -59,6 +59,30 @@ class EnvironmentVariables {
   @IsString()
   SUPABASE_SERVICE_ROLE_KEY: string;
 
+  // Cloudflare R2 storage (S3-compatible). Public assets are served from
+  // R2_PUBLIC_BUCKET over the R2_PUBLIC_BASE_URL custom domain; private objects
+  // (identity documents) live in R2_PRIVATE_BUCKET with no public access.
+  @IsString()
+  R2_ACCOUNT_ID: string;
+
+  @IsString()
+  R2_ACCESS_KEY_ID: string;
+
+  @IsString()
+  R2_SECRET_ACCESS_KEY: string;
+
+  @IsOptional()
+  @IsString()
+  R2_PUBLIC_BUCKET: string = 'proyekto-media';
+
+  @IsOptional()
+  @IsString()
+  R2_PRIVATE_BUCKET: string = 'proyekto-private';
+
+  @IsOptional()
+  @IsString()
+  R2_PUBLIC_BASE_URL: string = 'https://cdn.proyekto.tech';
+
   // Supabase project JWT secret (Settings > API > JWT Settings). When set, the
   // auth guard verifies access tokens locally (HS256) instead of making a
   // network call to GoTrue on every request. Optional: if unset, the guard

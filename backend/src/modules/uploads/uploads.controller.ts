@@ -11,7 +11,14 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
+import {
+  DeleteObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
+import { R2_CLIENT, R2_CONFIG, type R2Config } from '../../config/r2.module';
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
@@ -66,10 +73,18 @@ const BUCKET_CONFIG: Record<
   },
 };
 
+/** Buckets that must NOT be publicly readable — uploaded to the private R2 bucket. */
+const PRIVATE_BUCKETS = new Set<string>(['identity_documents']);
+
+/** Presigned upload URLs are valid for 10 minutes. */
+const SIGNED_UPLOAD_TTL_SECONDS = 600;
+
 @Injectable()
 export class UploadsService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
+    @Inject(R2_CLIENT) private readonly r2: S3Client,
+    @Inject(R2_CONFIG) private readonly r2Config: R2Config,
   ) {}
 
   async createSignedUrl(userId: string, dto: SignedUrlDto) {
@@ -89,23 +104,36 @@ export class UploadsService {
     }
 
     const ext = dto.fileName.split('.').pop();
-    const path = `${userId}/${Date.now()}.${ext}`;
+    // Keep the old bucket name as the R2 key prefix so existing public URLs map
+    // to `${publicBaseUrl}/${bucket}/...` with a single host rewrite.
+    const key = `${dto.bucket}/${userId}/${Date.now()}.${ext}`;
+    const isPrivate = PRIVATE_BUCKETS.has(dto.bucket);
+    const bucket = isPrivate
+      ? this.r2Config.privateBucket
+      : this.r2Config.publicBucket;
 
-    const { data, error } = await this.supabase.storage
-      .from(dto.bucket)
-      .createSignedUploadUrl(path);
+    // Presigned PUT — the browser uploads the bytes directly to R2. ContentType
+    // is signed, so the client must send a matching Content-Type header (it does).
+    const signedUrl = await getSignedUrl(
+      this.r2,
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        ContentType: dto.fileType,
+      }),
+      { expiresIn: SIGNED_UPLOAD_TTL_SECONDS },
+    );
 
-    if (error) throw new BadRequestException(error.message);
-
-    const { data: publicData } = this.supabase.storage
-      .from(dto.bucket)
-      .getPublicUrl(path);
+    // Public buckets resolve over the custom domain; private buckets have no
+    // public URL, so we return the bare key (reads use a presigned GET later).
+    const publicUrl = isPrivate
+      ? key
+      : `${this.r2Config.publicBaseUrl}/${key}`;
 
     return {
-      signedUrl: data.signedUrl,
-      path,
-      token: data.token,
-      publicUrl: publicData.publicUrl,
+      signedUrl,
+      path: key,
+      publicUrl,
     };
   }
 
@@ -188,14 +216,21 @@ export class UploadsService {
       .eq('id', userId)
       .single();
 
-    if ((profile as Record<string, string> | null)?.avatar_url) {
-      const path = (profile as Record<string, string>).avatar_url
-        .split('/')
-        .pop();
-      if (path) {
-        await this.supabase.storage
-          .from('avatars')
-          .remove([`${userId}/${path}`]);
+    const avatarUrl = (profile as Record<string, string> | null)?.avatar_url;
+    if (avatarUrl) {
+      // Derive the R2 object key from the stored URL. Works for both the new
+      // custom-domain URLs (`${publicBaseUrl}/avatars/...`) and any legacy
+      // Supabase URLs (`.../object/public/avatars/...`) by slicing from the
+      // `avatars/` prefix. Best-effort: skip if the marker isn't present.
+      const idx = avatarUrl.indexOf('avatars/');
+      if (idx !== -1) {
+        const key = avatarUrl.slice(idx);
+        await this.r2.send(
+          new DeleteObjectCommand({
+            Bucket: this.r2Config.publicBucket,
+            Key: key,
+          }),
+        );
       }
     }
 

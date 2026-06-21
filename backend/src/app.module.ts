@@ -4,6 +4,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { validateEnv } from './config/env.validation';
 import { Redis } from '@upstash/redis';
 import { SupabaseModule } from './config/supabase.module';
+import { R2Module } from './config/r2.module';
 import { ThrottlerStorageRedisService } from './config/throttler-storage.service';
 import { RedisModule } from './config/redis.module';
 import { UPSTASH_REDIS_CLIENT } from './config/redis.tokens';
@@ -45,6 +46,7 @@ import { AppController } from './app.controller';
       }),
     }),
     SupabaseModule,
+    R2Module,
     AuthModule,
     UsersModule,
     ProfileModule,

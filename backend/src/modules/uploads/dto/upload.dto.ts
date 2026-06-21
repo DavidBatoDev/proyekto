@@ -13,7 +13,8 @@ type BucketName =
   | 'project_banners'
   | 'portfolio_projects'
   | 'identity_documents'
-  | 'roadmap_previews';
+  | 'roadmap_previews'
+  | 'task_attachments';
 
 export class SignedUrlDto {
   @IsEnum([
@@ -23,6 +24,7 @@ export class SignedUrlDto {
     'portfolio_projects',
     'identity_documents',
     'roadmap_previews',
+    'task_attachments',
   ])
   bucket: BucketName;
 
