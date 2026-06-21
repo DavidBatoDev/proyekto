@@ -592,7 +592,7 @@ function InboxThread({
 	const toggleReactionMutation = useToggleChatReactionMutation();
 	const deleteMessageMutation = useDeleteChatMessageMutation();
 
-	// Per-conversation composer draft, persisted to sessionStorage. Keyed to
+	// Per-conversation composer draft, persisted to localStorage. Keyed to
 	// match the project chat route so the same DM shares a draft across surfaces.
 	const draftKey =
 		room.type === "dm"

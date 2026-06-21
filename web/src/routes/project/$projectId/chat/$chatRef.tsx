@@ -408,7 +408,7 @@ function ChatPage() {
       ? `channel:${activeTarget.roomId ?? "default"}`
       : `dm:${activeTarget.userId}`;
   // Per-conversation composer draft (text + @mention picks), persisted to
-  // sessionStorage and scoped by conversationKey — so switching conversations
+  // localStorage and scoped by conversationKey — so switching conversations
   // restores that conversation's own unsent message instead of bleeding.
   const draft = useChatDraft(conversationKey);
   const messageInput = draft.text;

@@ -16,7 +16,7 @@ const storageKey = (conversationKey: string) =>
 const readDraft = (conversationKey: string): ChatDraft => {
   if (typeof window === "undefined" || !conversationKey) return EMPTY;
   try {
-    const raw = window.sessionStorage.getItem(storageKey(conversationKey));
+    const raw = window.localStorage.getItem(storageKey(conversationKey));
     if (!raw) return EMPTY;
     const parsed = JSON.parse(raw) as Partial<ChatDraft>;
     return {
@@ -32,9 +32,9 @@ const writeDraft = (conversationKey: string, draft: ChatDraft): void => {
   if (typeof window === "undefined" || !conversationKey) return;
   try {
     if (!draft.text && draft.mentions.length === 0) {
-      window.sessionStorage.removeItem(storageKey(conversationKey));
+      window.localStorage.removeItem(storageKey(conversationKey));
     } else {
-      window.sessionStorage.setItem(
+      window.localStorage.setItem(
         storageKey(conversationKey),
         JSON.stringify(draft),
       );
@@ -45,10 +45,11 @@ const writeDraft = (conversationKey: string, draft: ChatDraft): void => {
 };
 
 /**
- * Per-conversation composer draft persisted to sessionStorage. Switching
- * `conversationKey` returns that conversation's stored draft instantly (with a
- * read() fallback so there's no empty flash before the seeding effect runs).
- * Setters write through to sessionStorage so a refresh keeps the draft.
+ * Per-conversation composer draft persisted to localStorage (Slack-style: drafts
+ * survive a browser restart until sent/cleared). Switching `conversationKey`
+ * returns that conversation's stored draft instantly (with a read() fallback so
+ * there's no empty flash before the seeding effect runs). Setters write through
+ * to localStorage so a refresh keeps the draft.
  */
 export function useChatDraft(conversationKey: string) {
   const [drafts, setDrafts] = useState<Record<string, ChatDraft>>(() =>
