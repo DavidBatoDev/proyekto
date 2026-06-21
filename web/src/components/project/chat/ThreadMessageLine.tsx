@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { Download, FileText, Trash2 } from "lucide-react";
 import type { ChatAttachment } from "@/services/chat.service";
+import { resolveAttachmentSrc } from "./attachmentPreviewCache";
 import type { ThreadUiMessage } from "./thread";
 
 function formatBytes(bytes: number): string {
@@ -18,6 +19,9 @@ function AttachmentBlock({ attachment }: { attachment: ChatAttachment }) {
   const isImage = attachment.content_type.startsWith("image/");
 
   if (isImage) {
+    // Render just-sent images from their local blob (already decoded) so the
+    // optimistic→CDN swap doesn't reload the <img> and flash blank.
+    const displaySrc = resolveAttachmentSrc(attachment.url);
     return (
       <a
         href={attachment.url}
@@ -26,7 +30,7 @@ function AttachmentBlock({ attachment }: { attachment: ChatAttachment }) {
         className="block w-fit"
       >
         <img
-          src={attachment.url}
+          src={displaySrc}
           alt={attachment.name}
           loading="lazy"
           className="max-h-80 max-w-xs rounded-lg border border-slate-200 object-cover transition-opacity hover:opacity-95"

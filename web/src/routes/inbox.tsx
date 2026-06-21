@@ -40,6 +40,10 @@ import type { ProjectMember } from "@/services/project.service";
 import type { ChatAttachment, ChatRoom } from "@/services/chat.service";
 import { uploadService } from "@/services/upload.service";
 import {
+	forgetAttachmentBlob,
+	rememberAttachmentBlob,
+} from "@/components/project/chat/attachmentPreviewCache";
+import {
 	mergeThreadMessages,
 	type ThreadSender,
 	type ThreadUiMessage,
@@ -591,6 +595,7 @@ function InboxThread({
 	>([]);
 	const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
 	const objectUrlsRef = useRef<string[]>([]);
+	const rememberedCdnsRef = useRef<string[]>([]);
 	const [optimisticMessages, setOptimisticMessages] = useState<
 		ThreadUiMessage[]
 	>([]);
@@ -628,6 +633,8 @@ function InboxThread({
 		return () => {
 			for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
 			objectUrlsRef.current = [];
+			for (const cdn of rememberedCdnsRef.current) forgetAttachmentBlob(cdn);
+			rememberedCdnsRef.current = [];
 		};
 	}, []);
 
@@ -884,6 +891,17 @@ function InboxThread({
 						uploadService.uploadChatAttachment(attachment.file),
 					),
 				);
+				pending.forEach((attachment, index) => {
+					const uploaded = uploadedAttachments[index];
+					if (
+						attachment.kind === "image" &&
+						attachment.previewUrl &&
+						uploaded
+					) {
+						rememberAttachmentBlob(uploaded.url, attachment.previewUrl);
+						rememberedCdnsRef.current.push(uploaded.url);
+					}
+				});
 			} catch {
 				markFailed();
 				void stopTyping();

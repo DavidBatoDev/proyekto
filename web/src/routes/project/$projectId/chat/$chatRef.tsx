@@ -40,6 +40,10 @@ import {
 } from "@/components/project/chat";
 import { uploadService } from "@/services/upload.service";
 import {
+  forgetAttachmentBlob,
+  rememberAttachmentBlob,
+} from "@/components/project/chat/attachmentPreviewCache";
+import {
   parseChatRef,
   roomRef,
   toChannelRef,
@@ -157,6 +161,9 @@ function ChatPage() {
   // All object URLs we minted for image previews, revoked on unmount so a long
   // chat session doesn't leak them.
   const objectUrlsRef = useRef<string[]>([]);
+  // CDN URLs whose blob preview we registered in the shared cache, so we can
+  // forget them when this view unmounts (after the blobs are revoked).
+  const rememberedCdnsRef = useRef<string[]>([]);
   const optimisticOrderCounterRef = useRef(0);
 
   const addFiles = useCallback((files: File[]) => {
@@ -191,6 +198,8 @@ function ChatPage() {
     return () => {
       for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
       objectUrlsRef.current = [];
+      for (const cdn of rememberedCdnsRef.current) forgetAttachmentBlob(cdn);
+      rememberedCdnsRef.current = [];
     };
   }, []);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
@@ -811,6 +820,15 @@ function ChatPage() {
             uploadService.uploadChatAttachment(attachment.file),
           ),
         );
+        // Map each uploaded image's CDN URL to the local blob we already have,
+        // so the thread keeps rendering the blob (no reload/flash on swap).
+        pending.forEach((attachment, index) => {
+          const uploaded = uploadedAttachments[index];
+          if (attachment.kind === "image" && attachment.previewUrl && uploaded) {
+            rememberAttachmentBlob(uploaded.url, attachment.previewUrl);
+            rememberedCdnsRef.current.push(uploaded.url);
+          }
+        });
       } catch {
         markOptimisticFailed();
         await stopTyping();
