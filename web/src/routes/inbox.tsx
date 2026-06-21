@@ -59,7 +59,11 @@ import {
 } from "@/components/project/chat";
 import type { ChatMemberProfilePreview } from "@/components/project/chat/ChatMemberProfileCard";
 import { resolveMentions } from "@/components/project/chat/mentions";
-import { useChatDraft } from "@/hooks/useChatDraft";
+import {
+	readChatDraftText,
+	useChatDraft,
+	useChatDraftsVersion,
+} from "@/hooks/useChatDraft";
 
 export const Route = createFileRoute("/inbox")({
 	validateSearch: (search) => ({
@@ -515,6 +519,18 @@ function InboxRow({
 				: "No messages yet")
 		: "No messages yet";
 
+	// Show an unsent draft preview (Slack-style) when this conversation has one.
+	useChatDraftsVersion();
+	const draftKey = isChannel
+		? `channel:${entry.room.id}`
+		: `dm:${
+				entry.room.counterpart?.user_id ??
+				entry.room.participants.find((p) => p.user_id !== currentUserId)
+					?.user_id ??
+				entry.room.id
+			}`;
+	const draftText = readChatDraftText(draftKey).trim();
+
 	return (
 		<li>
 			<button
@@ -556,7 +572,14 @@ function InboxRow({
 								entry.hasUnread ? "text-slate-700" : "text-slate-500"
 							}`}
 						>
-							{previewText}
+							{draftText ? (
+								<>
+									<span className="font-medium text-rose-500">Draft:</span>{" "}
+									{draftText}
+								</>
+							) : (
+								previewText
+							)}
 						</p>
 						{entry.hasUnread && (
 							<span className="h-2 w-2 shrink-0 rounded-full bg-cyan-500" />

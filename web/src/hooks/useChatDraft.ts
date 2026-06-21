@@ -9,6 +9,8 @@ export interface ChatDraft {
 
 const EMPTY: ChatDraft = { text: "", mentions: [] };
 const STORAGE_PREFIX = "chat.draft.";
+// Same-tab signal so other consumers (sidebar previews) re-read on any write.
+const CHANGE_EVENT = "chat.draft.changed";
 
 const storageKey = (conversationKey: string) =>
   `${STORAGE_PREFIX}${conversationKey}`;
@@ -39,10 +41,40 @@ const writeDraft = (conversationKey: string, draft: ChatDraft): void => {
         JSON.stringify(draft),
       );
     }
+    window.dispatchEvent(
+      new CustomEvent(CHANGE_EVENT, { detail: { conversationKey } }),
+    );
   } catch {
     // ignore quota / unavailable storage
   }
 };
+
+/** Non-reactive read of just a conversation's draft text (for previews). */
+export function readChatDraftText(conversationKey: string): string {
+  return readDraft(conversationKey).text;
+}
+
+/**
+ * Bumps whenever any chat draft changes (this tab or another), so a component
+ * that renders draft previews via `readChatDraftText` re-reads. Cheap: a few
+ * sidebar rows re-reading localStorage on keystroke.
+ */
+export function useChatDraftsVersion(): number {
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    const bump = () => setVersion((n) => n + 1);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key?.startsWith(STORAGE_PREFIX)) bump();
+    };
+    window.addEventListener(CHANGE_EVENT, bump);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(CHANGE_EVENT, bump);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+  return version;
+}
 
 /**
  * Per-conversation composer draft persisted to localStorage (Slack-style: drafts

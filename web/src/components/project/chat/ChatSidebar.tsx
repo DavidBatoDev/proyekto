@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { Hash, Lock, Plus, SquarePen, Star } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ChatMemberCandidate } from "@/services/chat.service";
+import { readChatDraftText, useChatDraftsVersion } from "@/hooks/useChatDraft";
 import { ChatAvatar } from "./Avatar";
 
 type DmEntry = {
@@ -56,6 +57,8 @@ export function ChatSidebar({
   onCloseMobile: () => void;
 }) {
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
+  // Re-render DM rows when a draft changes so their preview stays in sync.
+  useChatDraftsVersion();
 
   const dmList = useMemo(() => {
     if (showUnreadOnly) return dmEntries.filter((entry) => !!entry.hasUnread);
@@ -275,6 +278,9 @@ export function ChatSidebar({
                 const previewText = shouldPrefixYou
                   ? `You: ${entry.preview}`
                   : entry.preview;
+                const draftText = readChatDraftText(
+                  `dm:${entry.member.user_id}`,
+                ).trim();
                 return (
                   <motion.button
                     layout
@@ -327,7 +333,20 @@ export function ChatSidebar({
                                 : "text-slate-500"
                           }`}
                         >
-                          {previewText}
+                          {draftText ? (
+                            <>
+                              <span
+                                className={`font-medium ${
+                                  isActive ? "text-rose-200" : "text-rose-500"
+                                }`}
+                              >
+                                Draft:
+                              </span>{" "}
+                              {draftText}
+                            </>
+                          ) : (
+                            previewText
+                          )}
                         </p>
                       </div>
                       <span className="h-5 w-5 shrink-0 inline-flex items-center justify-center" aria-hidden="true">
