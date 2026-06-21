@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import type {
   ChatAttachmentDto,
+  ChatMentionDto,
   CreateChannelDto,
   SendChannelMessageDto,
   SendDmMessageDto,
@@ -16,6 +17,8 @@ import { ProjectAuthorizationService } from '../projects/authorization/project-a
 import { R2_CONFIG, type R2Config } from '../../config/r2.module';
 import type {
   ChatAttachment,
+  ChatMention,
+  ChatMessage,
   ChatRepository,
   ChatRoom,
   ChatRoomWithLastMessage,
@@ -25,6 +28,10 @@ import {
   RealtimePublisher,
 } from '../realtime/realtime-publisher.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
+
+/** Sentinel `user_id` for an @everyone mention (expands to all room members). */
+const EVERYONE_MENTION_ID = 'everyone';
 
 export const CHAT_REPOSITORY = Symbol('CHAT_REPOSITORY');
 
@@ -67,7 +74,99 @@ export class ChatService {
     private readonly authorization: ProjectAuthorizationService,
     private readonly audit: AuditService,
     @Inject(R2_CONFIG) private readonly r2Config: R2Config,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  /**
+   * Normalize client-supplied @mention spans for storage. Validity of each
+   * `user_id` is enforced lazily at notify time (`fireMentionNotifications`),
+   * never on the send hot path — a bogus span at worst renders a chip and is
+   * dropped before any ping.
+   */
+  private buildMentions(
+    mentions: ChatMentionDto[] | undefined,
+  ): ChatMention[] {
+    if (!mentions || mentions.length === 0) return [];
+    return mentions.map((mention) => ({
+      user_id: mention.user_id,
+      name: mention.name,
+      offset: mention.offset,
+      length: mention.length,
+    }));
+  }
+
+  /**
+   * Best-effort, non-blocking mention pings (mirrors the task-comment mention
+   * flow). Expands @everyone to all room members, filters individual mentions to
+   * real members, drops the sender, and creates a `chat_mention` notification per
+   * recipient. Runs detached so it never adds latency to send.
+   */
+  private fireMentionNotifications(
+    room: ChatRoom,
+    message: ChatMessage,
+    senderId: string,
+    mentions: ChatMention[],
+  ): void {
+    if (!mentions.length) return;
+
+    void (async () => {
+      try {
+        const wantsEveryone = mentions.some(
+          (m) => m.user_id === EVERYONE_MENTION_ID,
+        );
+        const individualIds = mentions
+          .map((m) => m.user_id)
+          .filter((id) => id !== EVERYONE_MENTION_ID);
+        if (!wantsEveryone && individualIds.length === 0) return;
+
+        // Resolve who actually belongs to this room so a crafted payload can't
+        // ping outsiders. Channels span the whole project; DMs the two members.
+        const memberIds =
+          room.type === 'channel' && room.project_id
+            ? await this.chatRepo.listProjectParticipantUserIds(room.project_id)
+            : await this.chatRepo.listRoomParticipantUserIds(room.id);
+        const memberSet = new Set(memberIds);
+
+        const targets = new Set<string>();
+        if (wantsEveryone) {
+          for (const id of memberIds) targets.add(id);
+        }
+        for (const id of individualIds) {
+          if (memberSet.has(id)) targets.add(id);
+        }
+        targets.delete(senderId);
+        if (targets.size === 0) return;
+
+        const roomLabel =
+          room.type === 'channel'
+            ? `#${room.name || room.slug}`
+            : 'a direct message';
+        const linkUrl =
+          room.type === 'channel' && room.project_id
+            ? `/project/${room.project_id}/chat/${room.id}`
+            : '/inbox';
+
+        await Promise.allSettled(
+          Array.from(targets).map((userId) =>
+            this.notifications.createNotification({
+              user_id: userId,
+              actor_id: senderId,
+              project_id: room.project_id || undefined,
+              type_name: 'chat_mention',
+              content: {
+                message: `You were mentioned in ${roomLabel}`,
+                room_id: room.id,
+                message_id: message.id,
+              },
+              link_url: linkUrl,
+            }),
+          ),
+        );
+      } catch {
+        // notifications are non-critical
+      }
+    })();
+  }
 
   /**
    * Validate + normalize client-supplied attachments. Each `url` must point at
@@ -439,6 +538,7 @@ export class ChatService {
 
     const content = dto.content?.trim() ?? '';
     const attachments = this.buildAttachments(dto.attachments, senderId);
+    const mentions = this.buildMentions(dto.mentions);
     if (!content && attachments.length === 0) {
       throw new BadRequestException(
         'Message content or an attachment is required.',
@@ -503,9 +603,11 @@ export class ChatService {
       senderId,
       content,
       attachments,
+      mentions,
     });
 
     this.fanoutChat(room.id, projectId, 'message');
+    this.fireMentionNotifications(room, message, senderId, mentions);
 
     return {
       room,
@@ -519,6 +621,7 @@ export class ChatService {
   async sendDmMessage(senderId: string, dto: SendDmMessageDto) {
     const content = dto.content?.trim() ?? '';
     const attachments = this.buildAttachments(dto.attachments, senderId);
+    const mentions = this.buildMentions(dto.mentions);
     if (!content && attachments.length === 0) {
       throw new BadRequestException(
         'Message content or an attachment is required.',
@@ -569,9 +672,11 @@ export class ChatService {
       senderId,
       content,
       attachments,
+      mentions,
     });
 
     this.fanoutChat(room.id, null, 'message');
+    this.fireMentionNotifications(room, message, senderId, mentions);
 
     return {
       room,

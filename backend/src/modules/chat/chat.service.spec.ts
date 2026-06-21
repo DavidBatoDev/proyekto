@@ -112,13 +112,24 @@ describe('ChatService', () => {
     publicBaseUrl: 'https://cdn.proyekto.tech',
   };
 
-  const makeService = (repo: ChatRepository, authOverrides = {}) =>
+  const buildNotifications = (overrides = {}) =>
+    ({
+      createNotification: jest.fn().mockResolvedValue({ id: 'notif-1' }),
+      ...overrides,
+    }) as unknown as import('../notifications/notifications.service').NotificationsService;
+
+  const makeService = (
+    repo: ChatRepository,
+    authOverrides = {},
+    notifications = buildNotifications(),
+  ) =>
     new ChatService(
       repo,
       buildRealtime(),
       buildAuthorization(authOverrides),
       buildAudit(),
       r2Config,
+      notifications,
     );
 
   // ── Channels: arbitrary channel fixtures for visibility tests ──────────────
@@ -564,6 +575,109 @@ describe('ChatService', () => {
         ],
       }),
     );
+  });
+
+  // ── Mentions ────────────────────────────────────────────────────────────────
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+  const channelForMentions = () =>
+    buildRoom({
+      id: 'room-chan',
+      project_id: 'project-1',
+      type: 'channel',
+      slug: 'general',
+      name: 'General',
+    });
+
+  it('stores mentions and pings the mentioned member, never the sender', async () => {
+    const createMessage = jest.fn().mockResolvedValue({
+      id: 'msg-1',
+      room_id: 'room-chan',
+      project_id: 'project-1',
+      sender_id: 'actor-1',
+      content: 'hi @M Two',
+      attachments: [],
+      mentions: [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+    const repo = buildRepo({
+      findRoomForParticipant: jest.fn().mockResolvedValue(channelForMentions()),
+      createMessage,
+      listProjectParticipantUserIds: jest
+        .fn()
+        .mockResolvedValue(['actor-1', 'm2', 'm3']),
+    });
+    const createNotification = jest.fn().mockResolvedValue({ id: 'n1' });
+
+    await makeService(repo, {}, buildNotifications({ createNotification })).sendChannelMessage(
+      'project-1',
+      'actor-1',
+      {
+        room_id: 'room-chan',
+        content: 'hi @M Two',
+        mentions: [{ user_id: 'm2', name: 'M Two', offset: 3, length: 6 }],
+      },
+    );
+
+    expect(createMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mentions: [{ user_id: 'm2', name: 'M Two', offset: 3, length: 6 }],
+      }),
+    );
+
+    await flush();
+    expect(createNotification).toHaveBeenCalledTimes(1);
+    expect(createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: 'm2', type_name: 'chat_mention' }),
+    );
+  });
+
+  it('@everyone expands to every project member except the sender', async () => {
+    const repo = buildRepo({
+      findRoomForParticipant: jest.fn().mockResolvedValue(channelForMentions()),
+      listProjectParticipantUserIds: jest
+        .fn()
+        .mockResolvedValue(['actor-1', 'm2', 'm3']),
+    });
+    const createNotification = jest.fn().mockResolvedValue({ id: 'n1' });
+
+    await makeService(repo, {}, buildNotifications({ createNotification })).sendChannelMessage(
+      'project-1',
+      'actor-1',
+      {
+        room_id: 'room-chan',
+        content: 'heads up @everyone',
+        mentions: [{ user_id: 'everyone', name: 'everyone', offset: 9, length: 9 }],
+      },
+    );
+
+    await flush();
+    const notified = createNotification.mock.calls.map((c) => c[0].user_id).sort();
+    expect(notified).toEqual(['m2', 'm3']);
+  });
+
+  it('drops a mention of someone who is not a room member', async () => {
+    const repo = buildRepo({
+      findRoomForParticipant: jest.fn().mockResolvedValue(channelForMentions()),
+      listProjectParticipantUserIds: jest
+        .fn()
+        .mockResolvedValue(['actor-1', 'm2']),
+    });
+    const createNotification = jest.fn().mockResolvedValue({ id: 'n1' });
+
+    await makeService(repo, {}, buildNotifications({ createNotification })).sendChannelMessage(
+      'project-1',
+      'actor-1',
+      {
+        room_id: 'room-chan',
+        content: 'hi @Outsider',
+        mentions: [{ user_id: 'stranger', name: 'Outsider', offset: 3, length: 9 }],
+      },
+    );
+
+    await flush();
+    expect(createNotification).not.toHaveBeenCalled();
   });
 
   // ── Search + library ──────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import type {
   ChatLibraryAttachment,
   ChatLibraryLink,
   ChatMemberCandidate,
+  ChatMention,
   ChatMessage,
   ChatMessageReaction,
   ChatMessageReactionSummary,
@@ -753,7 +754,7 @@ export class SupabaseChatRepository implements ChatRepository {
     let query = this.supabase
       .from('chat_room_messages')
       .select(
-        'id, room_id, project_id, sender_id, content, attachments, created_at, updated_at',
+        'id, room_id, project_id, sender_id, content, attachments, mentions, created_at, updated_at',
       )
       .eq('room_id', params.roomId)
       .order('created_at', { ascending: false })
@@ -774,6 +775,7 @@ export class SupabaseChatRepository implements ChatRepository {
     senderId: string;
     content: string;
     attachments?: ChatAttachment[];
+    mentions?: ChatMention[];
   }): Promise<ChatMessage> {
     const { data, error } = await this.supabase
       .from('chat_room_messages')
@@ -783,9 +785,10 @@ export class SupabaseChatRepository implements ChatRepository {
         sender_id: params.senderId,
         content: params.content,
         attachments: params.attachments ?? [],
+        mentions: params.mentions ?? [],
       })
       .select(
-        'id, room_id, project_id, sender_id, content, attachments, created_at, updated_at',
+        'id, room_id, project_id, sender_id, content, attachments, mentions, created_at, updated_at',
       )
       .single();
 
@@ -830,7 +833,7 @@ export class SupabaseChatRepository implements ChatRepository {
     const { data, error } = await this.supabase
       .from('chat_room_messages')
       .select(
-        'id, room_id, project_id, sender_id, content, attachments, created_at, updated_at',
+        'id, room_id, project_id, sender_id, content, attachments, mentions, created_at, updated_at',
       )
       .eq('id', messageId)
       .maybeSingle();

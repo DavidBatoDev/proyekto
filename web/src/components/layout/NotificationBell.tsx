@@ -19,6 +19,7 @@ function notificationTitle(typeName?: string) {
 	if (typeName === "time_log_pending") return "Time log reset to pending";
 	if (typeName === "time_log_day_rejected") return "Daily logs rejected";
 	if (typeName === "time_log_comment_added") return "Time log comment";
+	if (typeName === "chat_mention") return "Mention";
 	return "Notification";
 }
 

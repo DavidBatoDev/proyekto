@@ -55,8 +55,13 @@ import {
 	MessageList,
 	TypingIndicator,
 	type PendingAttachment,
+	type MentionCandidate,
 } from "@/components/project/chat";
 import type { ChatMemberProfilePreview } from "@/components/project/chat/ChatMemberProfileCard";
+import {
+	resolveMentions,
+	type MentionPick,
+} from "@/components/project/chat/mentions";
 
 export const Route = createFileRoute("/inbox")({
 	validateSearch: (search) => ({
@@ -593,6 +598,9 @@ function InboxThread({
 	const [pendingAttachments, setPendingAttachments] = useState<
 		PendingAttachment[]
 	>([]);
+	const [pendingMentions, setPendingMentions] = useState<MentionPick[]>([]);
+	const addMention = (pick: MentionPick) =>
+		setPendingMentions((prev) => [...prev, pick]);
 	const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
 	const objectUrlsRef = useRef<string[]>([]);
 	const rememberedCdnsRef = useRef<string[]>([]);
@@ -675,6 +683,19 @@ function InboxThread({
 		}
 		return map;
 	}, [room.participants]);
+
+	// Mentionable people in this thread: the other participant(s).
+	const mentionables = useMemo<MentionCandidate[]>(
+		() =>
+			room.participants
+				.filter((p) => p.user_id && p.user_id !== currentUserId)
+				.map((p) => ({
+					user_id: p.user_id,
+					name: p.user?.display_name ?? p.user?.email ?? "Member",
+					avatar_url: p.user?.avatar_url ?? null,
+				})),
+		[room.participants, currentUserId],
+	);
 
 	const projectMembersQuery = useProjectMembersQuery(project?.id ?? "");
 	const projectMembers =
@@ -833,6 +854,9 @@ function InboxThread({
 		const pending = pendingAttachments;
 		if (!content && pending.length === 0) return;
 
+		const mentions = resolveMentions(content, pendingMentions);
+		const mentionsPayload = mentions.length > 0 ? mentions : undefined;
+
 		const optimisticAttachments: ChatAttachment[] = pending.map(
 			(attachment) => ({
 				url: attachment.previewUrl ?? "",
@@ -861,6 +885,7 @@ function InboxThread({
 			sender_id: currentUserId,
 			content,
 			attachments: optimisticAttachments,
+			mentions,
 			created_at: nowIso,
 			updated_at: nowIso,
 			optimisticStatus: "sending",
@@ -869,6 +894,7 @@ function InboxThread({
 		setOptimisticMessages((prev) => [...prev, optimistic]);
 		setInput("");
 		setPendingAttachments([]);
+		setPendingMentions([]);
 		shouldStickToBottomRef.current = true;
 		requestAnimationFrame(() => {
 			const v = viewportRef.current;
@@ -921,11 +947,13 @@ function InboxThread({
 							room_id: room.id,
 							content,
 							attachments: attachmentsPayload,
+							mentions: mentionsPayload,
 						})
 					: await sendChannelMutation.mutateAsync({
 							room_id: room.id,
 							content,
 							attachments: attachmentsPayload,
+							mentions: mentionsPayload,
 						});
 			void stopTyping();
 			setOptimisticMessages((prev) =>
@@ -1109,6 +1137,9 @@ function InboxThread({
 					isSending={isSendingMessage}
 					isUploading={isUploadingAttachments}
 					attachments={pendingAttachments}
+					mentionables={mentionables}
+					canMention={mentionables.length > 0}
+					onAddMention={addMention}
 					onAddFiles={addFiles}
 					onRemoveAttachment={removeAttachment}
 					onChange={(next) => {

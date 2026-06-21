@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { SupabaseModule } from '../../config/supabase.module';
 import { AuthorizationModule } from '../projects/authorization/authorization.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ActivityController } from './activity.controller';
 import { ChatController } from './chat.controller';
 import { ChatDmController } from './chat-dm.controller';
@@ -9,7 +10,7 @@ import { CHAT_REPOSITORY, ChatService } from './chat.service';
 import { SupabaseChatRepository } from './repositories/chat.repository.supabase';
 
 @Module({
-  imports: [SupabaseModule, AuthorizationModule],
+  imports: [SupabaseModule, AuthorizationModule, NotificationsModule],
   controllers: [
     ChatController,
     ChatDmController,

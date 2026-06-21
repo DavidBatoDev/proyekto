@@ -184,6 +184,7 @@ export function ThreadMessageGroup({
                 key={message.render_key ?? message.id}
                 message={message}
                 canUnsend={message.sender_id === currentUserId}
+                currentUserId={currentUserId}
                 isHighlighted={
                   !!highlightedMessageId && message.id === highlightedMessageId
                 }

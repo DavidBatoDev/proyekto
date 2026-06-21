@@ -44,6 +44,7 @@ import {
   ScrollToLatestButton,
   TypingIndicator,
   type PendingAttachment,
+  type MentionCandidate,
 } from "@/components/project/chat";
 import { uploadService } from "@/services/upload.service";
 import {
@@ -63,6 +64,10 @@ import type {
   ChatMemberRole,
   ChatRoom,
 } from "@/services/chat.service";
+import {
+  resolveMentions,
+  type MentionPick,
+} from "@/components/project/chat/mentions";
 import {
   mergeThreadMessages,
   type ThreadUiMessage,
@@ -164,7 +169,12 @@ function ChatPage() {
   );
   const [messageInput, setMessageInput] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [pendingMentions, setPendingMentions] = useState<MentionPick[]>([]);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
+
+  const addMention = useCallback((pick: MentionPick) => {
+    setPendingMentions((prev) => [...prev, pick]);
+  }, []);
   // All object URLs we minted for image previews, revoked on unmount so a long
   // chat session doesn't leak them.
   const objectUrlsRef = useRef<string[]>([]);
@@ -247,6 +257,9 @@ function ChatPage() {
   );
   const canManageChannels = Boolean(
     permissionsQuery.data?.chat?.manage_channels,
+  );
+  const canMentionMembers = Boolean(
+    permissionsQuery.data?.chat?.mention_members,
   );
   // The active room may be a project channel OR a global DM. Pick the
   // right list to optimistically update based on the room currently in view.
@@ -402,6 +415,11 @@ function ChatPage() {
     activeTarget.kind === "channel"
       ? `channel:${activeTarget.roomId ?? "default"}`
       : `dm:${activeTarget.userId}`;
+  // Picks are scoped to the conversation they were made in (mentionables differ
+  // per room), so drop them when switching.
+  useEffect(() => {
+    setPendingMentions([]);
+  }, [conversationKey]);
   const messagesQuery = useRoomMessagesQuery(activeRoomId ?? "");
   const messages = flattenRoomMessages(messagesQuery.data);
   const optimisticMessages = optimisticByConversation[conversationKey] ?? [];
@@ -497,6 +515,27 @@ function ChatPage() {
     activeTarget.kind === "dm"
       ? findMemberCandidate(members, activeTarget.userId)
       : null;
+
+  // People mentionable in the active conversation: every project member in a
+  // channel (the composer adds @everyone), or just the counterpart in a DM.
+  const mentionables = useMemo<MentionCandidate[]>(() => {
+    if (activeTarget.kind === "dm") {
+      return activeDmMember
+        ? [
+            {
+              user_id: activeDmMember.user_id,
+              name: getDisplayName(activeDmMember),
+              avatar_url: activeDmMember.user?.avatar_url ?? null,
+            },
+          ]
+        : [];
+    }
+    return members.map((member) => ({
+      user_id: member.user_id,
+      name: getDisplayName(member),
+      avatar_url: member.user?.avatar_url ?? null,
+    }));
+  }, [activeTarget.kind, activeDmMember, members]);
   const activeProfileUserId =
     activeTarget.kind === "dm" ? activeDmMember?.user_id ?? null : selectedProfileUserId;
   const senderMap = useMemo(() => {
@@ -834,6 +873,11 @@ function ChatPage() {
     const pending = pendingAttachments;
     if (!content && pending.length === 0) return;
 
+    // Resolve composer picks into @mention spans against the exact trimmed text
+    // we send, so offsets stay valid (the backend only re-trims, idempotently).
+    const mentions = resolveMentions(content, pendingMentions);
+    const mentionsPayload = mentions.length > 0 ? mentions : undefined;
+
     // Local attachment previews so the optimistic bubble renders instantly;
     // image previews reuse the blob URL until the server's CDN URL arrives.
     const optimisticAttachments: ChatAttachment[] = pending.map((attachment) => ({
@@ -868,6 +912,7 @@ function ChatPage() {
       sender_id: user.id,
       content,
       attachments: optimisticAttachments,
+      mentions,
       created_at: nowIso,
       updated_at: nowIso,
       optimisticStatus: "sending",
@@ -879,6 +924,7 @@ function ChatPage() {
     }));
     setMessageInput("");
     setPendingAttachments([]);
+    setPendingMentions([]);
     shouldStickToBottomRef.current = true;
     requestAnimationFrame(() => {
       const viewport = messagesViewportRef.current;
@@ -942,20 +988,28 @@ function ChatPage() {
                 room_id: activeTarget.roomId,
                 content,
                 attachments: attachmentsPayload,
+                mentions: mentionsPayload,
               }
-            : { slug: "general", content, attachments: attachmentsPayload },
+            : {
+                slug: "general",
+                content,
+                attachments: attachmentsPayload,
+                mentions: mentionsPayload,
+              },
         );
       } else if (activeTarget.roomId) {
         result = await sendDmMutation.mutateAsync({
           room_id: activeTarget.roomId,
           content,
           attachments: attachmentsPayload,
+          mentions: mentionsPayload,
         });
       } else {
         result = await sendDmMutation.mutateAsync({
           recipient_id: activeTarget.userId,
           content,
           attachments: attachmentsPayload,
+          mentions: mentionsPayload,
         });
       }
 
@@ -1259,6 +1313,9 @@ function ChatPage() {
         <ChatComposer
           value={messageInput}
           attachments={pendingAttachments}
+          mentionables={mentionables}
+          canMention={canMentionMembers}
+          onAddMention={addMention}
           onAddFiles={addFiles}
           onRemoveAttachment={removeAttachment}
           isUploading={isUploadingAttachments}

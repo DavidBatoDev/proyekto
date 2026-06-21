@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { Download, FileText, Trash2 } from "lucide-react";
 import type { ChatAttachment } from "@/services/chat.service";
 import { resolveAttachmentSrc } from "./attachmentPreviewCache";
+import { mentionsCurrentUser, renderMentionContent } from "./mentions";
 import type { ThreadUiMessage } from "./thread";
 
 function formatBytes(bytes: number): string {
@@ -63,28 +64,43 @@ export function ThreadMessageLine({
   message,
   canUnsend,
   isHighlighted,
+  currentUserId,
   onToggleReaction,
   onRequestUnsend,
 }: {
   message: ThreadUiMessage;
   canUnsend?: boolean;
   isHighlighted?: boolean;
+  currentUserId?: string;
   onToggleReaction?: (messageId: string, roomId: string, emoji: string) => void;
   onRequestUnsend?: (message: ThreadUiMessage, bypassConfirm: boolean) => void;
 }) {
   const isSending = message.optimisticStatus === "sending";
   const hasText = message.content.trim().length > 0;
   const attachments = message.attachments ?? [];
+  // Highlight the line when the viewer is pinged (directly or via @everyone),
+  // but not for their own messages — mirrors Discord.
+  const pingsViewer =
+    message.sender_id !== currentUserId &&
+    mentionsCurrentUser(message.mentions, currentUserId);
   return (
     <div
       data-message-id={message.id}
       className={`group/line relative min-w-0 overflow-hidden rounded-md transition-colors ${
         isSending ? "opacity-70" : ""
-      } ${isHighlighted ? "bg-amber-100 ring-2 ring-inset ring-amber-300" : ""}`}
+      } ${
+        isHighlighted
+          ? "bg-amber-100 ring-2 ring-inset ring-amber-300"
+          : pingsViewer
+            ? "bg-violet-50"
+            : ""
+      }`}
     >
       {hasText && (
         <p className="text-[15px] leading-relaxed text-slate-900 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-          {message.content}
+          {renderMentionContent(message.content, message.mentions, {
+            currentUserId,
+          })}
         </p>
       )}
 

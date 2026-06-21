@@ -26,6 +26,18 @@ export interface ChatAttachment {
   height?: number;
 }
 
+/**
+ * One @mention span inside a message. `user_id` is a member UUID, or the literal
+ * `"everyone"` sentinel for @everyone. `offset`/`length` locate the "@Name" run
+ * inside `content` so the thread can render a chip.
+ */
+export interface ChatMention {
+  user_id: string;
+  name: string;
+  offset: number;
+  length: number;
+}
+
 export interface ChatMessage {
   id: string;
   room_id: string;
@@ -33,6 +45,7 @@ export interface ChatMessage {
   sender_id: string;
   content: string;
   attachments?: ChatAttachment[];
+  mentions?: ChatMention[];
   created_at: string;
   updated_at: string;
   reactions?: ChatMessageReaction[];
@@ -114,12 +127,32 @@ export interface ChatMessageSearchResponse {
 }
 
 type SendChannelPayload =
-  | { room_id: string; content: string; attachments?: ChatAttachment[] }
-  | { slug?: "general"; content: string; attachments?: ChatAttachment[] };
+  | {
+      room_id: string;
+      content: string;
+      attachments?: ChatAttachment[];
+      mentions?: ChatMention[];
+    }
+  | {
+      slug?: "general";
+      content: string;
+      attachments?: ChatAttachment[];
+      mentions?: ChatMention[];
+    };
 
 type SendDmPayload =
-  | { room_id: string; content: string; attachments?: ChatAttachment[] }
-  | { recipient_id: string; content: string; attachments?: ChatAttachment[] };
+  | {
+      room_id: string;
+      content: string;
+      attachments?: ChatAttachment[];
+      mentions?: ChatMention[];
+    }
+  | {
+      recipient_id: string;
+      content: string;
+      attachments?: ChatAttachment[];
+      mentions?: ChatMention[];
+    };
 
 class ChatService {
   private async getAccessToken(): Promise<string> {

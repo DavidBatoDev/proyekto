@@ -9,6 +9,7 @@ import {
   chatService,
   type ChatAttachment,
   type ChatMemberCandidate,
+  type ChatMention,
   type ChatMessage,
   type ChatMessagesPage,
   type ChatRoom,
@@ -124,8 +125,18 @@ export function useSendChannelMessageMutation(projectId: string) {
   return useMutation({
     mutationFn: (
       payload:
-        | { room_id: string; content: string; attachments?: ChatAttachment[] }
-        | { slug?: "general"; content: string; attachments?: ChatAttachment[] },
+        | {
+            room_id: string;
+            content: string;
+            attachments?: ChatAttachment[];
+            mentions?: ChatMention[];
+          }
+        | {
+            slug?: "general";
+            content: string;
+            attachments?: ChatAttachment[];
+            mentions?: ChatMention[];
+          },
     ) => chatService.sendChannelMessage(projectId, payload),
     // Keep `isPending` tied to the POST only. The thread already shows the
     // optimistic message and realtime reconciles it, so we refresh the room
@@ -257,8 +268,18 @@ export function useSendDmMessageMutation() {
   return useMutation({
     mutationFn: (
       payload:
-        | { room_id: string; content: string; attachments?: ChatAttachment[] }
-        | { recipient_id: string; content: string; attachments?: ChatAttachment[] },
+        | {
+            room_id: string;
+            content: string;
+            attachments?: ChatAttachment[];
+            mentions?: ChatMention[];
+          }
+        | {
+            recipient_id: string;
+            content: string;
+            attachments?: ChatAttachment[];
+            mentions?: ChatMention[];
+          },
     ) => chatService.sendDmMessage(payload),
     // See useSendChannelMessageMutation: non-blocking refresh so the composer
     // unlocks on POST completion; realtime handles thread reconciliation.

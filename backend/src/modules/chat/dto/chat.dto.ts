@@ -64,6 +64,30 @@ export class ChatAttachmentDto {
 }
 
 /**
+ * One @mention span inside a message. `user_id` is a member UUID, or the literal
+ * `'everyone'` sentinel for an @everyone mention. `offset`/`length` point at the
+ * "@Name" run inside the (trimmed) message content so the thread can render a
+ * chip; validity of `user_id` is enforced at notify time, not here.
+ */
+export class ChatMentionDto {
+  @IsString()
+  @MaxLength(64)
+  user_id: string;
+
+  @IsString()
+  @MaxLength(120)
+  name: string;
+
+  @IsInt()
+  @Min(0)
+  offset: number;
+
+  @IsInt()
+  @Min(1)
+  length: number;
+}
+
+/**
  * Project-scoped channel send. Either `room_id` (existing room) or `slug`
  * (defaults to 'general') must resolve to a channel inside the path's
  * projectId.
@@ -92,6 +116,13 @@ export class SendChannelMessageDto {
   @ValidateNested({ each: true })
   @Type(() => ChatAttachmentDto)
   attachments?: ChatAttachmentDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => ChatMentionDto)
+  mentions?: ChatMentionDto[];
 }
 
 /**
@@ -119,6 +150,13 @@ export class SendDmMessageDto {
   @ValidateNested({ each: true })
   @Type(() => ChatAttachmentDto)
   attachments?: ChatAttachmentDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => ChatMentionDto)
+  mentions?: ChatMentionDto[];
 }
 
 export class ToggleChatReactionDto {

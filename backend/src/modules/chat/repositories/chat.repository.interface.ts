@@ -25,6 +25,17 @@ export type ChatAttachment = {
   height?: number;
 };
 
+/**
+ * One @mention span. `user_id` is a member UUID or the literal 'everyone'
+ * sentinel; `offset`/`length` locate the "@Name" run inside `content`.
+ */
+export type ChatMention = {
+  user_id: string;
+  name: string;
+  offset: number;
+  length: number;
+};
+
 export type ChatMessage = {
   id: string;
   room_id: string;
@@ -32,6 +43,7 @@ export type ChatMessage = {
   sender_id: string;
   content: string;
   attachments: ChatAttachment[];
+  mentions: ChatMention[];
   created_at: string;
   updated_at: string;
   reactions?: ChatMessageReactionSummary[];
@@ -173,6 +185,7 @@ export interface ChatRepository {
     senderId: string;
     content: string;
     attachments?: ChatAttachment[];
+    mentions?: ChatMention[];
   }): Promise<ChatMessage>;
   findMessageById(messageId: string): Promise<ChatMessage | null>;
   /** Word + fuzzy (pg_trgm) search of a single room's messages. */
