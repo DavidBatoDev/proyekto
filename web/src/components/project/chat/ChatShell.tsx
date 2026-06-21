@@ -6,6 +6,7 @@ export function ChatShell({
   centerShellOverride,
   header,
   messages,
+  messagesOverlay,
   typingIndicator,
   composer,
   profilePanel,
@@ -17,6 +18,8 @@ export function ChatShell({
   centerShellOverride?: ReactNode;
   header: ReactNode;
   messages: ReactNode;
+  /** Floating UI pinned to the message area (e.g. the jump-to-latest button). */
+  messagesOverlay?: ReactNode;
   typingIndicator?: ReactNode;
   composer: ReactNode;
   profilePanel?: ReactNode;
@@ -35,11 +38,14 @@ export function ChatShell({
           ) : (
             <>
               {header}
-              <div
-                ref={messagesContainerRef}
-                className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-5"
-              >
-                {messages}
+              <div className="relative flex-1 min-h-0">
+                <div
+                  ref={messagesContainerRef}
+                  className="h-full overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-5"
+                >
+                  {messages}
+                </div>
+                {messagesOverlay}
               </div>
               <div className="relative">
                 {typingIndicator ? (

@@ -35,6 +35,7 @@ import {
   ChannelDetailsPanel,
   CreateChannelModal,
   MessageList,
+  ScrollToLatestButton,
   TypingIndicator,
   type PendingAttachment,
 } from "@/components/project/chat";
@@ -204,6 +205,9 @@ function ChatPage() {
   }, []);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [hasNewBelow, setHasNewBelow] = useState(false);
+  const prevDisplayedCountRef = useRef(0);
   const fetchingOlderRef = useRef(false);
   const prependAnchorRef = useRef<{
     roomId: string | null;
@@ -679,6 +683,20 @@ function ChatPage() {
     }
   };
 
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const viewport = messagesViewportRef.current;
+    if (!viewport) return;
+    viewport.scrollTo({ top: viewport.scrollHeight, behavior });
+  }, []);
+
+  const handleJumpToLatest = useCallback(() => {
+    shouldStickToBottomRef.current = true;
+    setHasNewBelow(false);
+    setShowJumpToLatest(false);
+    scrollToBottom("smooth");
+    scheduleMarkActiveRoomRead(300);
+  }, [scrollToBottom, scheduleMarkActiveRoomRead]);
+
   useEffect(() => {
     const viewport = messagesViewportRef.current;
     if (!viewport) return;
@@ -694,13 +712,18 @@ function ChatPage() {
 
       const distanceToBottom =
         viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-      shouldStickToBottomRef.current = distanceToBottom <= 140;
-      if (distanceToBottom <= 140) {
+      const atBottom = distanceToBottom <= 140;
+      shouldStickToBottomRef.current = atBottom;
+      setShowJumpToLatest(distanceToBottom > 200);
+      if (atBottom) {
+        setHasNewBelow(false);
         scheduleMarkActiveRoomRead(500);
       }
     };
 
-    onScroll();
+    // No initial onScroll() call: a fresh thread starts at the top before the
+    // scroll-to-bottom runs, and calling it here would wrongly clear the
+    // stick-to-bottom default and skip the initial jump to the latest message.
     viewport.addEventListener("scroll", onScroll, { passive: true });
     return () => viewport.removeEventListener("scroll", onScroll);
   }, [
@@ -714,7 +737,29 @@ function ChatPage() {
     shouldStickToBottomRef.current = true;
     prependAnchorRef.current = null;
     fetchingOlderRef.current = false;
+    prevDisplayedCountRef.current = 0;
+    setShowJumpToLatest(false);
+    setHasNewBelow(false);
   }, [activeRoomId]);
+
+  // Keep the thread pinned to the newest message while we should stick to the
+  // bottom — re-running as content grows (async images, late layout, new
+  // messages) so opening a room reliably lands on the latest message and
+  // doesn't drift up as images finish loading.
+  useEffect(() => {
+    const viewport = messagesViewportRef.current;
+    if (!viewport) return;
+
+    const pinIfNeeded = () => {
+      if (shouldStickToBottomRef.current) {
+        viewport.scrollTop = viewport.scrollHeight;
+      }
+    };
+
+    const observer = new ResizeObserver(pinIfNeeded);
+    for (const child of Array.from(viewport.children)) observer.observe(child);
+    return () => observer.disconnect();
+  }, [activeRoomId, displayedMessages.length, scheduleMarkActiveRoomRead]);
 
   useEffect(() => {
     const viewport = messagesViewportRef.current;
@@ -731,6 +776,16 @@ function ChatPage() {
     typingNames.length,
     scheduleMarkActiveRoomRead,
   ]);
+
+  // Surface a "New messages" hint if the thread grows while scrolled up.
+  useEffect(() => {
+    const prev = prevDisplayedCountRef.current;
+    const next = displayedMessages.length;
+    prevDisplayedCountRef.current = next;
+    if (next > prev && !shouldStickToBottomRef.current) {
+      setHasNewBelow(true);
+    }
+  }, [displayedMessages.length]);
 
   useEffect(() => {
     return () => {
@@ -1105,6 +1160,13 @@ function ChatPage() {
               ? "Be the first to post in this channel."
               : "This DM room is created when you send the first message."
           }
+        />
+      }
+      messagesOverlay={
+        <ScrollToLatestButton
+          show={showJumpToLatest}
+          hasNew={hasNewBelow}
+          onClick={handleJumpToLatest}
         />
       }
       typingIndicator={<TypingIndicator names={typingNames} />}
