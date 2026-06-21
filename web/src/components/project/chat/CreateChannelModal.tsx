@@ -3,11 +3,25 @@ import { Hash, Lock, X } from "lucide-react";
 import type { ChatMemberCandidate } from "@/services/chat.service";
 import { ModalPortal } from "@/components/common/ModalPortal";
 import { ChatAvatar } from "./Avatar";
+import { CHANNEL_SUGGESTIONS } from "./channelSuggestions";
+
+/** Mirror of the backend `uniqueChannelSlug` base slugify (for dedupe). */
+function slugify(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || "channel"
+  );
+}
 
 export function CreateChannelModal({
   open,
   members,
   currentUserId,
+  existingChannels,
   isSubmitting,
   onClose,
   onCreate,
@@ -15,6 +29,8 @@ export function CreateChannelModal({
   open: boolean;
   members: ChatMemberCandidate[];
   currentUserId?: string;
+  /** Existing project channels — used to hide already-created suggestions. */
+  existingChannels: { slug: string; name: string | null }[];
   isSubmitting: boolean;
   onClose: () => void;
   onCreate: (payload: {
@@ -40,6 +56,23 @@ export function CreateChannelModal({
     () => members.filter((member) => member.user_id !== currentUserId),
     [members, currentUserId],
   );
+
+  // Hide a suggestion once a matching channel exists (by slug, by name-derived
+  // slug, or by case-insensitive name).
+  const availableSuggestions = useMemo(() => {
+    const takenSlugs = new Set(
+      existingChannels.map((c) => c.slug.toLowerCase()),
+    );
+    const takenNames = new Set(
+      existingChannels.map((c) => (c.name ?? "").trim().toLowerCase()),
+    );
+    return CHANNEL_SUGGESTIONS.filter(
+      (s) =>
+        !takenSlugs.has(s.slug) &&
+        !takenSlugs.has(slugify(s.name)) &&
+        !takenNames.has(s.name.toLowerCase()),
+    );
+  }, [existingChannels]);
 
   if (!open) return null;
 
@@ -76,6 +109,35 @@ export function CreateChannelModal({
         </div>
 
         <div className="space-y-4 px-5 py-4">
+          {availableSuggestions.length > 0 && (
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-slate-600">
+                Suggested channels
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {availableSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion.slug}
+                    type="button"
+                    title={suggestion.description}
+                    onClick={() => {
+                      setName(suggestion.name);
+                      setIsPrivate(suggestion.isPrivate);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-100"
+                  >
+                    {suggestion.isPrivate ? (
+                      <Lock className="h-3.5 w-3.5 text-slate-400" />
+                    ) : (
+                      <Hash className="h-3.5 w-3.5 text-slate-400" />
+                    )}
+                    {suggestion.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">
               Channel name

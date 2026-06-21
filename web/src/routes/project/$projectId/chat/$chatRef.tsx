@@ -234,10 +234,12 @@ function ChatPage() {
   );
 
   // The channel a bare /chat or the legacy "channel-general" ref lands on.
+  // New projects start with #general; client-room is a fallback for any
+  // pre-existing projects that still have the old persona rooms.
   const defaultChannel = useMemo(
     () =>
-      channels.find((room) => room.slug === "client-room") ??
       channels.find((room) => room.slug === "general") ??
+      channels.find((room) => room.slug === "client-room") ??
       channels[0] ??
       null,
     [channels],
@@ -1036,6 +1038,10 @@ function ChatPage() {
         open={showCreateChannel}
         members={members}
         currentUserId={user?.id}
+        existingChannels={channels.map((room) => ({
+          slug: room.slug,
+          name: room.name,
+        }))}
         isSubmitting={createChannelMutation.isPending}
         onClose={() => {
           if (createChannelMutation.isPending) return;
