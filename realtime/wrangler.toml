@@ -44,7 +44,10 @@ new_sqlite_classes = ["RealtimeRoom"]
 BACKEND_AUTHORIZE_URL = "https://api.proyekto.tech/api/realtime/authorize"
 # Comma-separated list of allowed origins (WebSocket + upload CORS). "*" allows
 # any (dev only). Apex 307-redirects to www, so the served origin is www.proyekto.tech.
-ALLOWED_ORIGINS = "https://www.proyekto.tech,https://proyekto.tech"
+# localhost:3000 is included so the web dev server (run against the deployed
+# worker) passes CORS; it's safe — only pages served from the dev's own machine
+# match it, and every upload/WS is still JWT-gated.
+ALLOWED_ORIGINS = "https://www.proyekto.tech,https://proyekto.tech,http://localhost:3000"
 # Public base URL for objects in the public R2 bucket (the upload route returns
 # `${R2_PUBLIC_BASE_URL}/${key}` for public buckets).
 R2_PUBLIC_BASE_URL = "https://cdn.proyekto.tech"
