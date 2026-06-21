@@ -49,6 +49,27 @@ function formatDate(value: string): string {
   });
 }
 
+/** A member row in the DM "Chat members" list (counterpart + self). */
+function DmMemberRow({
+  name,
+  sub,
+  avatarUrl,
+}: {
+  name: string;
+  sub?: string;
+  avatarUrl: string | null;
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg px-2 py-2">
+      <ChatAvatar name={name} avatarUrl={avatarUrl} size="sm" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-slate-800">{name}</p>
+        {sub && <p className="truncate text-xs text-slate-500">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
 /** Highlight the first case-insensitive occurrence of `query` in `text`. */
 function highlightMatch(text: string, query: string): ReactNode {
   const q = query.trim();
@@ -73,6 +94,7 @@ export function ChatInfoPanel({
   projectId,
   members,
   currentUserId,
+  currentUser,
   canManage,
   dmMember,
   isOpen,
@@ -87,6 +109,7 @@ export function ChatInfoPanel({
   projectId: string;
   members: ChatMemberCandidate[];
   currentUserId?: string;
+  currentUser: { name: string; avatarUrl: string | null; positionLabel: string } | null;
   canManage: boolean;
   dmMember: ChatMemberProfilePreview | null;
   isOpen: boolean;
@@ -383,26 +406,19 @@ export function ChatInfoPanel({
               ) : (
                 <div className="rounded-xl border border-slate-200 bg-white p-1.5">
                   {dmMember && (
-                    <div className="flex items-center gap-2 rounded-lg px-2 py-2">
-                      <ChatAvatar
-                        name={dmMember.name}
-                        avatarUrl={dmMember.avatarUrl}
-                        size="sm"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-slate-800">
-                          {dmMember.name}
-                        </p>
-                        <p className="truncate text-xs text-slate-500">
-                          {dmMember.positionLabel}
-                        </p>
-                      </div>
-                    </div>
+                    <DmMemberRow
+                      name={dmMember.name}
+                      sub={dmMember.positionLabel}
+                      avatarUrl={dmMember.avatarUrl ?? null}
+                    />
                   )}
-                  <div className="flex items-center gap-2 rounded-lg px-2 py-2">
-                    <ChatAvatar name="You" avatarUrl={null} size="sm" />
-                    <span className="text-sm text-slate-800">You</span>
-                  </div>
+                  {currentUser && (
+                    <DmMemberRow
+                      name={`${currentUser.name} (You)`}
+                      sub={currentUser.positionLabel}
+                      avatarUrl={currentUser.avatarUrl}
+                    />
+                  )}
                 </div>
               )}
             </ChatInfoSection>
