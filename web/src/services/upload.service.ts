@@ -1,14 +1,21 @@
 /**
  * Upload Service
- * Handles file uploads to Cloudflare R2 (S3-compatible).
- * The browser POSTs the file to the backend (multipart); the backend proxies
- * it to R2 and returns the public URL (or, for private buckets, the object
- * key). The browser never touches R2's S3 endpoint
- * (*.r2.cloudflarestorage.com), which some client networks block at TLS.
+ * Handles file uploads to Cloudflare R2.
+ * The browser POSTs the file (multipart) to a Cloudflare Worker that writes to
+ * R2 via a native binding and returns the public URL (or, for private buckets,
+ * the object key). This path never touches R2's S3 endpoint
+ * (*.r2.cloudflarestorage.com) — which some client networks block at TLS and
+ * which can be unprovisioned on new accounts — so uploads work everywhere.
  */
 
-import apiClient, { API_BASE_URL } from "@/api/axios";
+import apiClient from "@/api/axios";
 import { getAccessToken } from "@/lib/supabase";
+
+// Upload worker origin. Defaults to the deployed realtime worker (which hosts
+// POST /uploads); override with VITE_UPLOAD_WORKER_URL for local/dev workers.
+const UPLOAD_WORKER_URL =
+  import.meta.env.VITE_UPLOAD_WORKER_URL ||
+  "https://proyekto-realtime.lucky-mud-7121.workers.dev";
 
 export type UploadBucket =
   | "avatars"
@@ -22,7 +29,7 @@ class UploadService {
   private base = "/api/uploads";
 
   /**
-   * Upload a file through the backend, which stores it in R2.
+   * Upload a file via the Cloudflare Worker, which stores it in R2.
    * Returns the public URL (public buckets) or the object key (private buckets).
    * Uses native fetch so the browser sets the multipart boundary itself.
    */
@@ -33,7 +40,7 @@ class UploadService {
     form.append("bucket", bucket);
     form.append("file", file);
 
-    const res = await fetch(`${API_BASE_URL}${this.base}/file`, {
+    const res = await fetch(`${UPLOAD_WORKER_URL}/uploads`, {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: form,
@@ -50,8 +57,8 @@ class UploadService {
       throw new Error(message);
     }
 
-    const body = (await res.json()) as { data: { publicUrl: string } };
-    return body.data.publicUrl;
+    const body = (await res.json()) as { publicUrl: string };
+    return body.publicUrl;
   }
 
   /**

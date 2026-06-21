@@ -2,6 +2,12 @@
 export interface Env {
   /** Durable Object namespace; one instance per room key. */
   ROOMS: DurableObjectNamespace;
+  /** R2 bucket for public assets (avatars, banners, etc.); upload route. */
+  MEDIA: R2Bucket;
+  /** R2 bucket for private objects (identity documents); upload route. */
+  PRIVATE: R2Bucket;
+  /** Public base URL for the public R2 bucket (e.g. https://cdn.proyekto.tech). */
+  R2_PUBLIC_BASE_URL?: string;
   /**
    * Supabase project URL (e.g. https://<ref>.supabase.co). Used to fetch the
    * JWKS for verifying asymmetric (ES256/RS256) access tokens — the default

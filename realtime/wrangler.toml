@@ -18,6 +18,18 @@ compatibility_date = "2025-06-01"
 name = "ROOMS"
 class_name = "RealtimeRoom"
 
+# R2 buckets for the upload route (POST /uploads). The Worker writes objects via
+# these native bindings — it never touches the R2 S3 endpoint
+# (*.r2.cloudflarestorage.com), so uploads work regardless of the client's
+# network or the account's S3-endpoint cert state.
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "proyekto-media"
+
+[[r2_buckets]]
+binding = "PRIVATE"
+bucket_name = "proyekto-private"
+
 # SQLite-backed Durable Objects (modern default; eligible on the Workers free
 # plan as well as paid). The migration tag must stay stable across deploys.
 [[migrations]]
@@ -30,6 +42,9 @@ new_sqlite_classes = ["RealtimeRoom"]
 [vars]
 # Backend endpoint the Worker calls to authorize a connection (room access).
 BACKEND_AUTHORIZE_URL = "https://api.proyekto.tech/api/realtime/authorize"
-# Comma-separated list of allowed WebSocket origins. "*" allows any (dev only).
-# Apex 307-redirects to www, so the served origin is www.proyekto.tech.
+# Comma-separated list of allowed origins (WebSocket + upload CORS). "*" allows
+# any (dev only). Apex 307-redirects to www, so the served origin is www.proyekto.tech.
 ALLOWED_ORIGINS = "https://www.proyekto.tech,https://proyekto.tech"
+# Public base URL for objects in the public R2 bucket (the upload route returns
+# `${R2_PUBLIC_BASE_URL}/${key}` for public buckets).
+R2_PUBLIC_BASE_URL = "https://cdn.proyekto.tech"

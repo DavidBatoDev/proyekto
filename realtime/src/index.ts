@@ -37,6 +37,22 @@ export default {
         return await handlePublish(request, env);
       }
 
+      if (url.pathname === "/uploads") {
+        if (request.method === "OPTIONS") {
+          return new Response(null, {
+            status: 204,
+            headers: corsHeaders(request, env),
+          });
+        }
+        if (request.method === "POST") {
+          return await handleUpload(request, env);
+        }
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: corsHeaders(request, env),
+        });
+      }
+
       return new Response("Not found", { status: 404 });
     } catch (err) {
       console.error(
@@ -124,6 +140,149 @@ async function handlePublish(request: Request, env: Env): Promise<Response> {
     body: JSON.stringify({ event: body.event, payload: body.payload ?? {} }),
   });
   return stub.fetch(doRequest);
+}
+
+/**
+ * Per-bucket upload limits + allowed MIME types. Mirrors the backend's
+ * BUCKET_CONFIG. `private` buckets go to the PRIVATE R2 binding and return a
+ * bare object key (no public URL).
+ */
+const UPLOAD_BUCKETS: Record<
+  string,
+  { maxSize: number; allowedTypes: string[]; private?: boolean }
+> = {
+  avatars: {
+    maxSize: 5 * 1024 * 1024,
+    allowedTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+  },
+  banners: {
+    maxSize: 10 * 1024 * 1024,
+    allowedTypes: ["image/jpeg", "image/png", "image/webp"],
+  },
+  project_banners: {
+    maxSize: 10 * 1024 * 1024,
+    allowedTypes: ["image/jpeg", "image/png", "image/webp"],
+  },
+  portfolio_projects: {
+    maxSize: 20 * 1024 * 1024,
+    allowedTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+  },
+  identity_documents: {
+    maxSize: 10 * 1024 * 1024,
+    allowedTypes: ["image/jpeg", "image/png", "image/webp", "application/pdf"],
+    private: true,
+  },
+  roadmap_previews: {
+    maxSize: 10 * 1024 * 1024,
+    allowedTypes: ["image/jpeg", "image/png", "image/webp"],
+  },
+  task_attachments: {
+    maxSize: 5 * 1024 * 1024,
+    allowedTypes: [
+      "image/jpeg", "image/png", "image/webp", "image/gif",
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "text/plain", "text/csv",
+      "application/zip",
+      "application/octet-stream",
+    ],
+  },
+};
+
+/** Structural shape of an uploaded multipart File at runtime (workers-types' FormData typing omits DOM File). */
+interface FileLike {
+  readonly size: number;
+  readonly type: string;
+  readonly name: string;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+function corsHeaders(request: Request, env: Env): Record<string, string> {
+  const origin = request.headers.get("Origin") ?? "";
+  const allow = env.ALLOWED_ORIGINS?.trim();
+  const allowed =
+    !allow ||
+    allow === "*" ||
+    allow.split(",").map((o) => o.trim()).includes(origin);
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "authorization, content-type",
+    "Access-Control-Max-Age": "86400",
+    Vary: "Origin",
+  };
+  if (allowed && origin) headers["Access-Control-Allow-Origin"] = origin;
+  return headers;
+}
+
+function jsonResponse(
+  body: unknown,
+  status: number,
+  extra: Record<string, string> = {},
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json", ...extra },
+  });
+}
+
+/**
+ * POST /uploads — multipart file upload, written to R2 via a native binding.
+ * Auth: Supabase JWT (Bearer). Returns { path, publicUrl }; for private buckets
+ * publicUrl is the bare object key. This path never touches the R2 S3 endpoint.
+ */
+async function handleUpload(request: Request, env: Env): Promise<Response> {
+  const cors = corsHeaders(request, env);
+
+  const auth = request.headers.get("Authorization") ?? "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  const userId = await verifyToken(token, env);
+  if (!userId) return jsonResponse({ error: "Unauthorized" }, 401, cors);
+
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return jsonResponse({ error: "Invalid form data" }, 400, cors);
+  }
+
+  const bucket = String(form.get("bucket") ?? "");
+  const fileEntry = form.get("file");
+  // FormData values are File | string | null at runtime; a real upload is a File.
+  if (!fileEntry || typeof fileEntry === "string") {
+    return jsonResponse({ error: "No file provided" }, 400, cors);
+  }
+  const file = fileEntry as unknown as FileLike;
+
+  const config = UPLOAD_BUCKETS[bucket];
+  if (!config) return jsonResponse({ error: "Invalid bucket" }, 400, cors);
+  if (file.size > config.maxSize) {
+    return jsonResponse(
+      { error: `File too large. Max ${config.maxSize / 1024 / 1024}MB` },
+      400,
+      cors,
+    );
+  }
+  const contentType = file.type || "application/octet-stream";
+  if (!config.allowedTypes.includes(contentType)) {
+    return jsonResponse({ error: "Invalid file type" }, 400, cors);
+  }
+
+  const ext = file.name.includes(".") ? file.name.split(".").pop() : "";
+  const key = `${bucket}/${userId}/${Date.now()}${ext ? `.${ext}` : ""}`;
+  const target = config.private ? env.PRIVATE : env.MEDIA;
+  await target.put(key, await file.arrayBuffer(), {
+    httpMetadata: { contentType },
+  });
+
+  const base = (env.R2_PUBLIC_BASE_URL ?? "https://cdn.proyekto.tech").replace(
+    /\/+$/,
+    "",
+  );
+  const publicUrl = config.private ? key : `${base}/${key}`;
+  return jsonResponse({ path: key, publicUrl }, 200, cors);
 }
 
 // Cache the *fetched JWKS JSON* (plain data, safe to reuse across requests) and
