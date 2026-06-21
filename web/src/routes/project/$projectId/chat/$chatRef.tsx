@@ -1,5 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useProfile, useUser } from "@/stores/authStore";
 import { useChatTyping } from "@/hooks/useChatTyping";
@@ -204,6 +211,9 @@ function ChatPage() {
   }, []);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
+  // The room we've already auto-scrolled to the bottom for; lets us force a
+  // jump-to-latest exactly once when the (shared) thread first shows a new room.
+  const lastScrolledRoomRef = useRef<string | null>(null);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [hasNewBelow, setHasNewBelow] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
@@ -775,21 +785,28 @@ function ChatPage() {
     return () => observer.disconnect();
   }, [activeRoomId, displayedMessages.length, scheduleMarkActiveRoomRead]);
 
-  useEffect(() => {
+  // Keep the thread at the latest message. Runs before paint (no flash of the
+  // top). On a room switch we force the jump to the bottom once the new room's
+  // content is present — independent of the previous room's stick state, since
+  // the thread container is shared across conversations. Within the same room
+  // we only stick when the user is already at the bottom.
+  useLayoutEffect(() => {
     const viewport = messagesViewportRef.current;
     if (!viewport) return;
-    if (!shouldStickToBottomRef.current) return;
 
-    requestAnimationFrame(() => {
+    const roomChanged = lastScrolledRoomRef.current !== activeRoomId;
+    if (roomChanged) {
+      if (displayedMessages.length === 0) return; // wait for content to load
+      lastScrolledRoomRef.current = activeRoomId;
+      shouldStickToBottomRef.current = true;
       viewport.scrollTop = viewport.scrollHeight;
-      scheduleMarkActiveRoomRead(450);
-    });
-  }, [
-    activeRoomId,
-    displayedMessages.length,
-    typingNames.length,
-    scheduleMarkActiveRoomRead,
-  ]);
+      return;
+    }
+
+    if (shouldStickToBottomRef.current) {
+      viewport.scrollTop = viewport.scrollHeight;
+    }
+  }, [activeRoomId, displayedMessages.length, typingNames.length]);
 
   // Surface a "New messages" hint if the thread grows while scrolled up.
   useEffect(() => {
