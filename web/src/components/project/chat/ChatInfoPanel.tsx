@@ -154,6 +154,15 @@ export function ChatInfoPanel({
   const isSearching = debouncedQuery.trim().length >= 2;
 
   const channelMembers = channelMembersQuery.data ?? [];
+  const sortedChannelMembers = useMemo(
+    () =>
+      [...channelMembers].sort((a, b) => {
+        const an = a.user?.display_name || a.user?.email || a.user_id;
+        const bn = b.user?.display_name || b.user?.email || b.user_id;
+        return an.localeCompare(bn, undefined, { sensitivity: "base" });
+      }),
+    [channelMembers],
+  );
   const currentMemberIds = useMemo(
     () => new Set(channelMembers.map((m) => m.user_id)),
     [channelMembers],
@@ -361,7 +370,7 @@ export function ChatInfoPanel({
                     ) : channelMembers.length === 0 ? (
                       <p className="px-2 py-2 text-sm text-slate-400">No members yet.</p>
                     ) : (
-                      channelMembers.map((participant) => {
+                      sortedChannelMembers.map((participant) => {
                         const label =
                           participant.user?.display_name ||
                           participant.user?.email ||
