@@ -14,6 +14,7 @@ import type { AuthenticatedUser } from '../../common/interfaces/authenticated-re
 import { ChatService } from './chat.service';
 import {
   ChatMessagesQueryDto,
+  SearchMessagesQueryDto,
   ToggleChatReactionDto,
 } from './dto/chat.dto';
 
@@ -40,6 +41,28 @@ export class ChatRoomsController {
       query.before,
       query.limit,
     );
+  }
+
+  @Get('rooms/:roomId/messages/search')
+  searchMessages(
+    @Param('roomId') roomId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: SearchMessagesQueryDto,
+  ) {
+    return this.chatService.searchRoomMessages(
+      roomId,
+      user.id,
+      query.q,
+      query.limit,
+    );
+  }
+
+  @Get('rooms/:roomId/library')
+  getRoomLibrary(
+    @Param('roomId') roomId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.chatService.getRoomLibrary(roomId, user.id);
   }
 
   @Post('rooms/:roomId/read')

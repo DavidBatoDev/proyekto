@@ -3,10 +3,13 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import type {
   ChatAttachment,
+  ChatLibraryAttachment,
+  ChatLibraryLink,
   ChatMemberCandidate,
   ChatMessage,
   ChatMessageReaction,
   ChatMessageReactionSummary,
+  ChatMessageSearchHit,
   ChatParticipant,
   ChatRepository,
   ChatRole,
@@ -791,6 +794,36 @@ export class SupabaseChatRepository implements ChatRepository {
     }
 
     return data as ChatMessage;
+  }
+
+  async searchRoomMessages(params: {
+    roomId: string;
+    query: string;
+    limit: number;
+  }): Promise<ChatMessageSearchHit[]> {
+    const { data, error } = await this.supabase.rpc('chat_search_room_messages', {
+      p_room_id: params.roomId,
+      p_query: params.query,
+      p_limit: params.limit,
+    });
+    if (error) throw new Error(error.message);
+    return (data || []) as ChatMessageSearchHit[];
+  }
+
+  async listRoomAttachments(roomId: string): Promise<ChatLibraryAttachment[]> {
+    const { data, error } = await this.supabase.rpc('chat_room_attachments', {
+      p_room_id: roomId,
+    });
+    if (error) throw new Error(error.message);
+    return (data || []) as ChatLibraryAttachment[];
+  }
+
+  async listRoomLinks(roomId: string): Promise<ChatLibraryLink[]> {
+    const { data, error } = await this.supabase.rpc('chat_room_links', {
+      p_room_id: roomId,
+    });
+    if (error) throw new Error(error.message);
+    return (data || []) as ChatLibraryLink[];
   }
 
   async findMessageById(messageId: string): Promise<ChatMessage | null> {

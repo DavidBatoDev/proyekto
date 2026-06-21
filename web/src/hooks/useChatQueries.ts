@@ -83,6 +83,37 @@ export function useRoomMessagesQuery(roomId: string, limit = 30) {
   });
 }
 
+/** Shared media / files / links for a room (chat info panel). */
+export function useRoomLibraryQuery(roomId: string, enabled = true) {
+  return useQuery({
+    queryKey: chatKeys.roomLibrary(roomId),
+    queryFn: () => chatService.getRoomLibrary(roomId),
+    enabled: enabled && Boolean(roomId),
+    staleTime: 30 * 1000,
+    retry: 1,
+  });
+}
+
+/**
+ * Word + fuzzy search of a room's messages. Enabled once the (debounced) query
+ * is at least 2 chars; keeps prior results visible while the next query loads.
+ */
+export function useRoomMessageSearchQuery(
+  roomId: string,
+  query: string,
+  enabled = true,
+) {
+  const trimmed = query.trim();
+  return useQuery({
+    queryKey: chatKeys.roomSearch(roomId, trimmed),
+    queryFn: () => chatService.searchRoomMessages(roomId, trimmed),
+    enabled: enabled && Boolean(roomId) && trimmed.length >= 2,
+    staleTime: 15 * 1000,
+    placeholderData: (previous) => previous,
+    retry: 1,
+  });
+}
+
 /**
  * Send a channel message (project-scoped). Invalidates the project's room
  * list and the room's message thread.

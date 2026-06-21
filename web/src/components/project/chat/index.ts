@@ -9,6 +9,8 @@ export { ChatProfilePanel } from "./ChatProfilePanel";
 export { ChatUnsendConfirmModal } from "./ChatUnsendConfirmModal";
 export { CreateChannelModal } from "./CreateChannelModal";
 export { ChannelDetailsPanel } from "./ChannelDetailsPanel";
+export { ChatInfoPanel } from "./ChatInfoPanel";
+export { ChatInfoSection } from "./ChatInfoSection";
 export {
   ChatSidebarSkeleton,
   ChatCenterShellSkeleton,

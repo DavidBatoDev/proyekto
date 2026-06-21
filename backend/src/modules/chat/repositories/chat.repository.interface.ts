@@ -54,6 +54,27 @@ export type ChatMessageReactionSummary = {
   reacted_by_me: boolean;
 };
 
+export type ChatMessageSearchHit = ChatMessage & { score: number };
+
+export type ChatLibraryAttachment = {
+  message_id: string;
+  sender_id: string;
+  created_at: string;
+  url: string;
+  name: string | null;
+  content_type: string | null;
+  size: number | null;
+  width: number | null;
+  height: number | null;
+};
+
+export type ChatLibraryLink = {
+  message_id: string;
+  sender_id: string;
+  created_at: string;
+  url: string;
+};
+
 export type ChatUser = {
   id: string;
   display_name: string | null;
@@ -154,6 +175,16 @@ export interface ChatRepository {
     attachments?: ChatAttachment[];
   }): Promise<ChatMessage>;
   findMessageById(messageId: string): Promise<ChatMessage | null>;
+  /** Word + fuzzy (pg_trgm) search of a single room's messages. */
+  searchRoomMessages(params: {
+    roomId: string;
+    query: string;
+    limit: number;
+  }): Promise<ChatMessageSearchHit[]>;
+  /** Every attachment shared in a room (newest first). */
+  listRoomAttachments(roomId: string): Promise<ChatLibraryAttachment[]>;
+  /** Every URL found in a room's message text (newest first). */
+  listRoomLinks(roomId: string): Promise<ChatLibraryLink[]>;
   listReactionsForMessages(params: {
     messageIds: string[];
     viewerUserId: string;

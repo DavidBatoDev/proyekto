@@ -77,6 +77,42 @@ export interface ChatMessagesPage {
   next_before: string | null;
 }
 
+export interface ChatLibraryAttachment {
+  message_id: string;
+  sender_id: string;
+  created_at: string;
+  url: string;
+  name: string | null;
+  content_type: string | null;
+  size: number | null;
+  width: number | null;
+  height: number | null;
+}
+
+export interface ChatLibraryLink {
+  message_id: string;
+  sender_id: string;
+  created_at: string;
+  url: string;
+}
+
+export interface ChatRoomLibrary {
+  room_id: string;
+  media: ChatLibraryAttachment[];
+  files: ChatLibraryAttachment[];
+  links: ChatLibraryLink[];
+}
+
+export interface ChatMessageSearchHit extends ChatMessage {
+  score: number;
+}
+
+export interface ChatMessageSearchResponse {
+  room_id: string;
+  query: string;
+  results: ChatMessageSearchHit[];
+}
+
 type SendChannelPayload =
   | { room_id: string; content: string; attachments?: ChatAttachment[] }
   | { slug?: "general"; content: string; attachments?: ChatAttachment[] };
@@ -260,6 +296,27 @@ class ChatService {
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
     return this.request<ChatMessagesPage>(
       `/chat/rooms/${roomId}/messages${suffix}`,
+      { method: "GET" },
+    );
+  }
+
+  /** Shared media / files / links for a room (chat info panel library). */
+  getRoomLibrary(roomId: string): Promise<ChatRoomLibrary> {
+    return this.request<ChatRoomLibrary>(`/chat/rooms/${roomId}/library`, {
+      method: "GET",
+    });
+  }
+
+  /** Word + fuzzy search of a room's messages. */
+  searchRoomMessages(
+    roomId: string,
+    q: string,
+    limit = 30,
+  ): Promise<ChatMessageSearchResponse> {
+    const query = new URLSearchParams({ q });
+    if (limit) query.set("limit", String(limit));
+    return this.request<ChatMessageSearchResponse>(
+      `/chat/rooms/${roomId}/messages/search?${query.toString()}`,
       { method: "GET" },
     );
   }

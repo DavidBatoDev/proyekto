@@ -127,6 +127,21 @@ export class ToggleChatReactionDto {
   emoji: string;
 }
 
+/** Search a room's messages (word + fuzzy). */
+export class SearchMessagesQueryDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  q: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number;
+}
+
 /** Create a new (user-defined) channel in a project. */
 export class CreateChannelDto {
   @IsString()

@@ -94,6 +94,9 @@ describe('ChatService', () => {
         updated_at: new Date().toISOString(),
       }),
       findMessageById: jest.fn().mockResolvedValue(null),
+      searchRoomMessages: jest.fn().mockResolvedValue([]),
+      listRoomAttachments: jest.fn().mockResolvedValue([]),
+      listRoomLinks: jest.fn().mockResolvedValue([]),
       listReactionsForMessages: jest.fn().mockResolvedValue(new Map()),
       toggleMessageReaction: jest.fn().mockResolvedValue(undefined),
       toggleRoomStar: jest.fn().mockResolvedValue({ starred: true }),
@@ -490,6 +493,83 @@ describe('ChatService', () => {
         ],
       }),
     );
+  });
+
+  // ── Search + library ──────────────────────────────────────────────────────
+  const accessibleDmRepo = (overrides: Partial<ChatRepository>) =>
+    buildRepo({
+      findRoomById: jest.fn().mockResolvedValue(buildRoom({ id: 'room-1' })),
+      isRoomParticipant: jest.fn().mockResolvedValue(true),
+      ...overrides,
+    });
+
+  it('getRoomLibrary splits attachments into media vs files and asserts access', async () => {
+    const listRoomAttachments = jest.fn().mockResolvedValue([
+      {
+        message_id: 'm1', sender_id: 'u1', created_at: 't',
+        url: 'cdn/a.png', name: 'a.png', content_type: 'image/png',
+        size: 1, width: 2, height: 3,
+      },
+      {
+        message_id: 'm2', sender_id: 'u1', created_at: 't',
+        url: 'cdn/b.pdf', name: 'b.pdf', content_type: 'application/pdf',
+        size: 4, width: null, height: null,
+      },
+    ]);
+    const listRoomLinks = jest
+      .fn()
+      .mockResolvedValue([
+        { message_id: 'm3', sender_id: 'u1', created_at: 't', url: 'https://x.dev' },
+      ]);
+    const repo = accessibleDmRepo({ listRoomAttachments, listRoomLinks });
+
+    const result = await makeService(repo).getRoomLibrary('room-1', 'viewer-1');
+
+    expect(result.media.map((m) => m.url)).toEqual(['cdn/a.png']);
+    expect(result.files.map((f) => f.url)).toEqual(['cdn/b.pdf']);
+    expect(result.links).toHaveLength(1);
+  });
+
+  it('getRoomLibrary rejects a non-participant', async () => {
+    const repo = buildRepo({
+      findRoomById: jest.fn().mockResolvedValue(buildRoom({ id: 'room-1' })),
+      isRoomParticipant: jest.fn().mockResolvedValue(false),
+    });
+    await expect(
+      makeService(repo).getRoomLibrary('room-1', 'stranger-1'),
+    ).rejects.toThrow();
+  });
+
+  it('searchRoomMessages skips the repo for a blank query', async () => {
+    const searchRoomMessages = jest.fn();
+    const repo = accessibleDmRepo({ searchRoomMessages });
+
+    const result = await makeService(repo).searchRoomMessages(
+      'room-1',
+      'viewer-1',
+      '   ',
+    );
+
+    expect(result.results).toEqual([]);
+    expect(searchRoomMessages).not.toHaveBeenCalled();
+  });
+
+  it('searchRoomMessages delegates a real query to the repo', async () => {
+    const searchRoomMessages = jest
+      .fn()
+      .mockResolvedValue([{ id: 'm1', content: 'hello world', score: 1 }]);
+    const repo = accessibleDmRepo({ searchRoomMessages });
+
+    const result = await makeService(repo).searchRoomMessages(
+      'room-1',
+      'viewer-1',
+      'hello',
+    );
+
+    expect(searchRoomMessages).toHaveBeenCalledWith(
+      expect.objectContaining({ roomId: 'room-1', query: 'hello', limit: 30 }),
+    );
+    expect(result.results).toHaveLength(1);
   });
 
   it('resolveDmRoom creates and seeds participants for a fresh pair', async () => {

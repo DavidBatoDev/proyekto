@@ -62,11 +62,13 @@ function AttachmentBlock({ attachment }: { attachment: ChatAttachment }) {
 export function ThreadMessageLine({
   message,
   canUnsend,
+  isHighlighted,
   onToggleReaction,
   onRequestUnsend,
 }: {
   message: ThreadUiMessage;
   canUnsend?: boolean;
+  isHighlighted?: boolean;
   onToggleReaction?: (messageId: string, roomId: string, emoji: string) => void;
   onRequestUnsend?: (message: ThreadUiMessage, bypassConfirm: boolean) => void;
 }) {
@@ -75,9 +77,10 @@ export function ThreadMessageLine({
   const attachments = message.attachments ?? [];
   return (
     <div
-      className={`group/line relative min-w-0 overflow-hidden ${
+      data-message-id={message.id}
+      className={`group/line relative min-w-0 overflow-hidden rounded-md transition-colors ${
         isSending ? "opacity-70" : ""
-      }`}
+      } ${isHighlighted ? "bg-amber-100 ring-2 ring-inset ring-amber-300" : ""}`}
     >
       {hasText && (
         <p className="text-[15px] leading-relaxed text-slate-900 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">

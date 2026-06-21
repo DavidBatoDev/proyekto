@@ -15,6 +15,9 @@ export const chatKeys = {
   roomMessages: (roomId: string) => ["chat", "room-messages", roomId] as const,
   channelMembers: (projectId: string, roomId: string) =>
     ["chat", "channel-members", projectId, roomId] as const,
+  roomLibrary: (roomId: string) => ["chat", "room-library", roomId] as const,
+  roomSearch: (roomId: string, query: string) =>
+    ["chat", "room-search", roomId, query] as const,
 };
 
 export function fetchProjectChatRooms(projectId: string): Promise<ChatRoom[]> {

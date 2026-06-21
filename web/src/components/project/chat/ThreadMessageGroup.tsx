@@ -12,6 +12,7 @@ export function ThreadMessageGroup({
   group,
   isSelected = false,
   currentUserId,
+  highlightedMessageId,
   onSelectSender,
   onToggleReaction,
   onRequestUnsend,
@@ -19,6 +20,7 @@ export function ThreadMessageGroup({
   group: Group;
   isSelected?: boolean;
   currentUserId?: string;
+  highlightedMessageId?: string | null;
   onSelectSender?: (userId: string) => void;
   onToggleReaction?: (messageId: string, roomId: string, emoji: string) => void;
   onRequestUnsend?: (message: ThreadUiMessage, bypassConfirm: boolean) => void;
@@ -182,6 +184,9 @@ export function ThreadMessageGroup({
                 key={message.render_key ?? message.id}
                 message={message}
                 canUnsend={message.sender_id === currentUserId}
+                isHighlighted={
+                  !!highlightedMessageId && message.id === highlightedMessageId
+                }
                 onToggleReaction={onToggleReaction}
                 onRequestUnsend={onRequestUnsend}
               />

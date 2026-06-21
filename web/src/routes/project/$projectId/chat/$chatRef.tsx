@@ -25,14 +25,13 @@ import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 import {
   ChatComposer,
   ChatHeader,
-  ChatProfilePanel,
   ChatProfilePanelSkeleton,
   ChatShell,
   ChatSidebar,
   ChatSidebarSkeleton,
   ChatCenterShellSkeleton,
   ChatUnsendConfirmModal,
-  ChannelDetailsPanel,
+  ChatInfoPanel,
   CreateChannelModal,
   MessageList,
   ScrollToLatestButton,
@@ -207,6 +206,8 @@ function ChatPage() {
   const shouldStickToBottomRef = useRef(true);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [hasNewBelow, setHasNewBelow] = useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevDisplayedCountRef = useRef(0);
   const fetchingOlderRef = useRef(false);
   const prependAnchorRef = useRef<{
@@ -607,20 +608,6 @@ function ChatPage() {
     };
   }, [activeProfileQuery.data?.banner_url, activeMemberCandidate, activeProfileUserId, senderMap]);
 
-  const projectMemberPreviews = useMemo(() => {
-    return members.map((member) => {
-      const name = getDisplayName(member);
-      return {
-        userId: member.user_id,
-        name,
-        roleLabel: getRoleLabel(member.role),
-        positionLabel: member.position?.trim() || getRoleLabel(member.role),
-        avatarUrl: member.user?.avatar_url ?? null,
-        bannerUrl: null,
-      };
-    });
-  }, [members]);
-
   const scheduleMarkActiveRoomRead = useCallback(
     (delayMs = 550) => {
       if (!activeRoomId || !user?.id) return;
@@ -696,6 +683,33 @@ function ChatPage() {
     scrollToBottom("smooth");
     scheduleMarkActiveRoomRead(300);
   }, [scrollToBottom, scheduleMarkActiveRoomRead]);
+
+  // Scroll to a searched message (if it's in the loaded thread) and flash a
+  // highlight. Messages further back than the loaded pages can't be located in
+  // the DOM yet — the search result still shows their snippet.
+  const handleJumpToMessage = useCallback((messageId: string) => {
+    const viewport = messagesViewportRef.current;
+    const target = viewport?.querySelector<HTMLElement>(
+      `[data-message-id="${messageId}"]`,
+    );
+    if (target) {
+      shouldStickToBottomRef.current = false;
+      target.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+    setHighlightedMessageId(messageId);
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = setTimeout(
+      () => setHighlightedMessageId(null),
+      2200,
+    );
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     const viewport = messagesViewportRef.current;
@@ -1136,6 +1150,7 @@ function ChatPage() {
           messages={displayedMessages}
           senderMap={senderMap}
           currentUserId={user?.id}
+          highlightedMessageId={highlightedMessageId}
           selectedSenderId={null}
           onSelectSender={undefined}
           onToggleReaction={(messageId, roomId, emoji) => {
@@ -1174,35 +1189,30 @@ function ChatPage() {
         isInitialChatBootLoading ? (
           <ChatProfilePanelSkeleton />
         ) : (
-          activeTarget.kind === "channel" ? (
-            <ChannelDetailsPanel
-              projectId={projectId}
-              room={activeRoom ?? null}
-              members={members}
-              currentUserId={user?.id}
-              canManage={canManageChannels}
-              isOpen={isProfilePanelOpen}
-              onToggle={() => setIsProfilePanelOpen((value) => !value)}
-              onClose={() => setIsProfilePanelOpen(false)}
-              onExitChannel={() => {
-                if (defaultChannel) {
-                  void navigate({
-                    to: "/project/$projectId/chat/$chatRef",
-                    params: { projectId, chatRef: defaultChannel.id },
-                  });
-                }
-              }}
-            />
-          ) : (
-            <ChatProfilePanel
-              member={activeProfilePreview}
-              isOpen={isProfilePanelOpen}
-              mode={activeTarget.kind}
-              projectMembers={projectMemberPreviews}
-              onToggle={() => setIsProfilePanelOpen((value) => !value)}
-              onClose={() => setIsProfilePanelOpen(false)}
-            />
-          )
+          <ChatInfoPanel
+            mode={activeTarget.kind}
+            roomId={activeRoomId}
+            room={activeTarget.kind === "channel" ? activeRoom ?? null : null}
+            projectId={projectId}
+            members={members}
+            currentUserId={user?.id}
+            canManage={canManageChannels}
+            dmMember={
+              activeTarget.kind === "dm" ? activeProfilePreview : null
+            }
+            isOpen={isProfilePanelOpen}
+            onToggle={() => setIsProfilePanelOpen((value) => !value)}
+            onClose={() => setIsProfilePanelOpen(false)}
+            onJumpToMessage={handleJumpToMessage}
+            onExitChannel={() => {
+              if (defaultChannel) {
+                void navigate({
+                  to: "/project/$projectId/chat/$chatRef",
+                  params: { projectId, chatRef: defaultChannel.id },
+                });
+              }
+            }}
+          />
         )
       }
       isProfilePanelOpen={isInitialChatBootLoading ? true : isProfilePanelOpen}

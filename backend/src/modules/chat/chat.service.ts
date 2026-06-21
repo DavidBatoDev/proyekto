@@ -387,6 +387,49 @@ export class ChatService {
     };
   }
 
+  /** Word + fuzzy search of a room's messages (Messenger-style in-chat search). */
+  async searchRoomMessages(
+    roomId: string,
+    userId: string,
+    query: string,
+    limit = 30,
+  ) {
+    await this.assertRoomAccess(roomId, userId);
+
+    const q = query?.trim() ?? '';
+    if (!q) {
+      return { room_id: roomId, query: '', results: [] };
+    }
+
+    const results = await this.chatRepo.searchRoomMessages({
+      roomId,
+      query: q,
+      limit: Math.min(Math.max(limit, 1), 50),
+    });
+
+    return { room_id: roomId, query: q, results };
+  }
+
+  /** Shared media / files / links for a room (the chat info panel library). */
+  async getRoomLibrary(roomId: string, userId: string) {
+    await this.assertRoomAccess(roomId, userId);
+
+    const [attachments, links] = await Promise.all([
+      this.chatRepo.listRoomAttachments(roomId),
+      this.chatRepo.listRoomLinks(roomId),
+    ]);
+
+    const isImage = (contentType: string | null) =>
+      (contentType ?? '').startsWith('image/');
+
+    return {
+      room_id: roomId,
+      media: attachments.filter((a) => isImage(a.content_type)),
+      files: attachments.filter((a) => !isImage(a.content_type)),
+      links,
+    };
+  }
+
   async sendChannelMessage(
     projectId: string,
     senderId: string,

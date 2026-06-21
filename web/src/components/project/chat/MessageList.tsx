@@ -22,6 +22,7 @@ export function MessageList({
   isFetchingNextPage,
   emptyTitle,
   emptySubtitle,
+  highlightedMessageId,
 }: {
   isLoading: boolean;
   hasMessages: boolean;
@@ -36,6 +37,7 @@ export function MessageList({
   isFetchingNextPage: boolean;
   emptyTitle: string;
   emptySubtitle: string;
+  highlightedMessageId?: string | null;
 }) {
   if (isLoading) {
     return (
@@ -88,6 +90,7 @@ export function MessageList({
               group={block}
               isSelected={selectedSenderId === block.senderId}
               currentUserId={currentUserId}
+              highlightedMessageId={highlightedMessageId}
               onSelectSender={onSelectSender}
               onToggleReaction={onToggleReaction}
               onRequestUnsend={onRequestUnsend}
