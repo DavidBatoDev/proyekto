@@ -330,7 +330,7 @@ export function ChatComposer({
         )}
 
         <div
-          className={`relative rounded-3xl border bg-slate-50 pl-3 pr-36 py-2 transition-colors ${
+          className={`relative rounded-3xl border bg-slate-50 pl-3 pr-24 md:pr-36 py-2 transition-colors ${
             isDragging ? "border-violet-400 bg-violet-50" : "border-slate-300"
           }`}
         >

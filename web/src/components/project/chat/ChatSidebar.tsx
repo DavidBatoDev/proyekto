@@ -24,7 +24,6 @@ type ChannelEntry = {
 };
 
 export function ChatSidebar({
-  show,
   dmEntries,
   members,
   currentUserId,
@@ -38,9 +37,7 @@ export function ChatSidebar({
   onTogglePeoplePicker,
   onSelectMember,
   showPeoplePicker,
-  onCloseMobile,
 }: {
-  show: boolean;
   dmEntries: DmEntry[];
   members: ChatMemberCandidate[];
   currentUserId?: string;
@@ -54,7 +51,6 @@ export function ChatSidebar({
   onTogglePeoplePicker: () => void;
   onSelectMember: (userId: string, roomId: string | null) => void;
   showPeoplePicker: boolean;
-  onCloseMobile: () => void;
 }) {
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   // Re-render DM rows when a draft changes so their preview stays in sync.
@@ -88,25 +84,11 @@ export function ChatSidebar({
   };
 
   return (
-    <>
-      {show && (
-        <button
-          type="button"
-          className="fixed inset-0 bg-black/30 z-30 md:hidden"
-          onClick={onCloseMobile}
-          aria-label="Close conversations"
-        />
-      )}
-
-      <aside
-        className={`${
-          show ? "translate-x-0" : "-translate-x-full"
-        } fixed left-0 top-0 z-40 h-full w-[320px] border-r border-slate-200 bg-slate-50 transition-transform duration-200 ease-out md:static md:translate-x-0`}
-      >
+    <aside className="h-full border-r border-slate-200 bg-slate-50">
         <div className="h-full overflow-y-auto">
           <div className="border-b border-slate-200 bg-white/70 px-4 py-3">
             <div className="flex items-center justify-between gap-2">
-              <h1 className="text-[23px] font-semibold leading-none text-slate-900">
+              <h1 className="text-[18px] font-semibold leading-none text-slate-900 md:text-[23px]">
                 Direct messages
               </h1>
               <button
@@ -143,7 +125,7 @@ export function ChatSidebar({
             <button
               type="button"
               onClick={onTogglePeoplePicker}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 md:py-2.5 md:text-sm"
             >
               <Plus className="w-4 h-4" />
               New Message
@@ -298,7 +280,7 @@ export function ChatSidebar({
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <p
-                            className={`text-[15px] truncate ${
+                            className={`text-[13px] truncate md:text-[15px] ${
                               isUnread
                                 ? isActive
                                   ? "font-bold text-white"
@@ -309,7 +291,7 @@ export function ChatSidebar({
                             {label}
                           </p>
                           <span
-                            className={`text-[12px] shrink-0 ${
+                            className={`text-[11px] shrink-0 md:text-[12px] ${
                               isUnread
                                 ? isActive
                                   ? "font-semibold text-white/80"
@@ -323,7 +305,7 @@ export function ChatSidebar({
                           </span>
                         </div>
                         <p
-                          className={`text-[14px] truncate mt-0.5 ${
+                          className={`text-xs truncate mt-0.5 md:text-[14px] ${
                             isUnread
                               ? isActive
                                 ? "font-semibold text-white/90"
@@ -364,6 +346,5 @@ export function ChatSidebar({
           </div>
         </div>
       </aside>
-    </>
   );
 }

@@ -1,4 +1,4 @@
-import { Hash, MessageCircle, UserRoundSearch } from "lucide-react";
+import { ArrowLeft, Hash, UserRoundSearch } from "lucide-react";
 import { ChatAvatar } from "./Avatar";
 
 export function ChatHeader({
@@ -8,7 +8,7 @@ export function ChatHeader({
   avatarUrl,
   isProfilePanelOpen,
   onToggleProfilePanel,
-  onOpenSidebar,
+  onBack,
 }: {
   title: string;
   subtitle: string;
@@ -16,7 +16,8 @@ export function ChatHeader({
   avatarUrl?: string | null;
   isProfilePanelOpen?: boolean;
   onToggleProfilePanel?: () => void;
-  onOpenSidebar?: () => void;
+  /** Called on mobile to navigate back to the conversation list. */
+  onBack?: () => void;
 }) {
   return (
     <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur md:px-6 md:py-4">
@@ -24,11 +25,11 @@ export function ChatHeader({
         <div className="flex items-center gap-3 min-w-0">
         <button
           type="button"
-          onClick={onOpenSidebar}
+          onClick={onBack}
           className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 md:hidden"
-          aria-label="Open conversations"
+          aria-label="Back to conversations"
         >
-          <MessageCircle className="w-4 h-4" />
+          <ArrowLeft className="w-4 h-4" />
         </button>
 
         {isChannel ? (
@@ -43,7 +44,7 @@ export function ChatHeader({
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             {subtitle}
           </p>
-          <h2 className="truncate text-lg font-semibold text-slate-900">{title}</h2>
+          <h2 className="truncate text-base font-semibold text-slate-900 md:text-lg">{title}</h2>
         </div>
         </div>
 

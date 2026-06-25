@@ -67,7 +67,7 @@ export function mentionsCurrentUser(
 export function renderMentionContent(
   content: string,
   mentions: ChatMention[] | undefined,
-  opts?: { currentUserId?: string },
+  opts?: { currentUserId?: string; isMine?: boolean },
 ): ReactNode {
   if (!mentions?.length) return content;
 
@@ -100,9 +100,13 @@ export function renderMentionContent(
       <span
         key={`mention-${index}-${span.offset}`}
         className={`rounded px-1 font-medium ${
-          isSelf
-            ? "bg-violet-600 text-white"
-            : "bg-violet-100 text-violet-700"
+          opts?.isMine
+            ? isSelf
+              ? "bg-white/30 text-white"
+              : "bg-white/20 text-white"
+            : isSelf
+              ? "bg-violet-600 text-white"
+              : "bg-violet-100 text-violet-700"
         }`}
       >
         {text}
