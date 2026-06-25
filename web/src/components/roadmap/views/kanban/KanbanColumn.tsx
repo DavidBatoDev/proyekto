@@ -22,7 +22,7 @@ export function KanbanColumn({ column, rows, onCardClick }: KanbanColumnProps) {
 	const ids = useMemo(() => rows.map((row) => row.task.id), [rows]);
 
 	return (
-		<div className="flex-1 min-w-0 basis-0 flex flex-col bg-[#f1f2f4] rounded-xl">
+		<div className="flex-1 min-w-40 basis-0 flex flex-col bg-[#f1f2f4] rounded-xl md:min-w-0">
 			<div className="flex items-center justify-between gap-2 px-3 py-3 min-w-0">
 				<div className="flex items-center gap-2 min-w-0">
 					<span
@@ -32,14 +32,14 @@ export function KanbanColumn({ column, rows, onCardClick }: KanbanColumnProps) {
 						{column.label}
 					</span>
 				</div>
-				<span className="flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-full text-xs font-medium text-slate-600 bg-slate-200/70 shrink-0">
+				<span className="flex items-center justify-center min-w-6 h-6 px-1.5 rounded-full text-xs font-medium text-slate-600 bg-slate-200/70 shrink-0">
 					{rows.length}
 				</span>
 			</div>
 			<SortableContext items={ids} strategy={verticalListSortingStrategy}>
 				<div
 					ref={setNodeRef}
-					className={`flex-1 px-2 pb-2 space-y-2 overflow-y-auto transition-colors [scrollbar-width:thin] [scrollbar-color:theme(colors.slate.300)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-400 ${
+					className={`flex-1 px-2 pb-2 space-y-2 overflow-y-auto transition-colors [scrollbar-width:thin] [scrollbar-color:var(--color-slate-300)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-400 ${
 						isOver ? "bg-[#e4e6ea] rounded-b-xl" : ""
 					}`}
 				>

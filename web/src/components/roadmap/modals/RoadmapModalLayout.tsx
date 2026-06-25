@@ -8,7 +8,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, Plus, Calendar, Paperclip } from "lucide-react";
+import { ArrowLeft, X, Plus, Calendar, Paperclip } from "lucide-react";
 
 interface RoadmapModalLayoutProps {
   isOpen: boolean;
@@ -127,14 +127,24 @@ export const RoadmapModalLayout = ({
             transition={{ duration: 0.2, ease: "easeOut" }}
           />
 
-          {/* Modal */}
+          {/* Modal — full-screen on mobile, centered card on md+ */}
           <motion.div
-            className="relative bg-white rounded-xl shadow-2xl w-full max-w-6xl mx-4 max-h-[90vh] min-h-[600px] overflow-hidden flex"
+            className="relative flex w-full flex-col overflow-hidden bg-white shadow-2xl h-full max-h-full rounded-none md:h-auto md:max-h-[90vh] md:min-h-[600px] md:max-w-6xl md:mx-4 md:flex-row md:rounded-xl"
             initial={{ opacity: 0, y: 24, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 16, scale: 0.98 }}
             transition={{ duration: 0.24, ease: "easeOut" }}
           >
+            {/* Mobile back button (top-left) — the desktop close lives in the
+                right panel, which is hidden on small screens */}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Back"
+              className="absolute left-3 top-3 z-30 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-white/90 text-gray-600 shadow-sm hover:bg-gray-100 md:hidden"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
             {/* Main Content */}
             <form
               ref={scrollContainerRef}
@@ -143,7 +153,7 @@ export const RoadmapModalLayout = ({
             >
               {/* Sticky Mini Header - Shows when scrolled */}
               <div
-                className={`sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between transition-all duration-200 ${
+                className={`sticky top-0 z-10 bg-white border-b border-gray-200 pl-14 pr-4 py-3 md:px-6 flex items-center justify-between transition-all duration-200 ${
                   isScrolled
                     ? "opacity-100 translate-y-0"
                     : "opacity-0 -translate-y-full absolute pointer-events-none"
@@ -167,7 +177,7 @@ export const RoadmapModalLayout = ({
               </div>
 
               {/* Header */}
-              <div className="px-12 pt-6 pb-6">
+              <div className="px-4 pt-12 pb-4 md:px-12 md:pt-6 md:pb-6">
                 <div className="flex items-center gap-3 mb-6">
                   <button
                     type="button"
@@ -184,7 +194,7 @@ export const RoadmapModalLayout = ({
                     disabled={isReadOnly}
                     placeholder={titlePlaceholder}
                     required
-                    className="text-4xl font-bold text-gray-900 border-none outline-none bg-transparent w-full placeholder:text-gray-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="text-2xl md:text-4xl font-bold text-gray-900 border-none outline-none bg-transparent w-full placeholder:text-gray-300 disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                 </div>
 
@@ -221,14 +231,18 @@ export const RoadmapModalLayout = ({
               </div>
 
               {/* Content */}
-              <div className="px-12 pb-8">
-                {body}
+              <div className="px-4 pb-6 md:px-12">{body}</div>
+
+              {/* Sticky footer — pinned to the bottom of the scroll area on
+                  both mobile and desktop so the save action stays visible and
+                  never overlaps the form content (it occupies its own space). */}
+              <div className="sticky bottom-0 z-10 mt-auto border-t border-gray-200 bg-white px-4 py-3 md:px-12 md:py-4">
                 {footer}
               </div>
             </form>
 
-            {/* Right Panel - Comments */}
-            <div className="w-96 border-l border-gray-200 flex flex-col bg-white">
+            {/* Right Panel - Comments (desktop only) */}
+            <div className="hidden w-96 border-l border-gray-200 md:flex flex-col bg-white">
               <div className="px-6 border-b border-gray-200 flex items-center justify-between">
                 <div className="flex items-center flex-1 gap-0">
                   {tabs.map((tab) => (

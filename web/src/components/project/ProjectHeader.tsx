@@ -98,26 +98,26 @@ export function ProjectHeader() {
 				>
 					<Link
 						to="/dashboard"
-						className="rounded-md px-2 py-1.5 text-[15px] text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+						className="hidden rounded-md px-2 py-1.5 text-[15px] text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:block"
 					>
 						Dashboard
 					</Link>
-					<ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+					<ChevronRight className="hidden h-4 w-4 shrink-0 text-slate-400 sm:block" />
 					{isRoadmapOnly || !projectId ? (
-						<span className="max-w-[260px] truncate px-2 text-[15px] text-slate-900">
+						<span className="max-w-[100px] truncate px-2 text-[14px] text-slate-900 sm:max-w-[260px] sm:text-[15px]">
 							{title || "Untitled Project"}
 						</span>
 					) : (
 						<Link
 							to="/project/$projectId/overview"
 							params={{ projectId }}
-							className="max-w-[260px] truncate rounded-md px-2 py-1.5 text-[15px] text-slate-900 transition-colors hover:bg-slate-100"
+							className="max-w-[100px] truncate rounded-md px-2 py-1.5 text-[14px] text-slate-900 transition-colors hover:bg-slate-100 sm:max-w-[260px] sm:text-[15px]"
 						>
 							{title || "Untitled Project"}
 						</Link>
 					)}
 					<ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
-					<span className="truncate px-2 text-[15px] capitalize text-slate-600">
+					<span className="shrink-0 px-2 text-[14px] capitalize text-slate-600 sm:text-[15px]">
 						{isRoadmapOnly
 							? "Roadmap"
 							: resolveCurrentPageLabel(location.pathname, projectId)}
@@ -140,7 +140,7 @@ export function ProjectHeader() {
 
 				{viewingAs && (
 					<span
-						className={`rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${badgeClass}`}
+						className={`hidden rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider sm:inline ${badgeClass}`}
 					>
 						{viewingAs}
 					</span>
@@ -157,7 +157,7 @@ export function ProjectHeader() {
 
 				<button
 					type="button"
-					className="flex items-center justify-center rounded-full p-2 text-slate-700 transition-colors hover:bg-slate-100"
+					className="hidden items-center justify-center rounded-full p-2 text-slate-700 transition-colors hover:bg-slate-100 sm:flex"
 					aria-label="Messages"
 				>
 					<MessageCircle size={20} />

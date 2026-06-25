@@ -56,6 +56,13 @@ interface RoadmapLeftSidePanelProps {
 	) => void;
 	onNavigateToEpicTab?: (epicId: string) => void;
 	highlightedEpicId?: string | null;
+	/**
+	 * Compact mobile mode: a single tap opens the editor/detail panel instead of
+	 * navigating the (absent) canvas, drag-to-reorder is disabled, and the
+	 * hover-only quick-add buttons become always-visible (hover never fires on
+	 * touch). Defaults to false so desktop behaviour is unchanged.
+	 */
+	mobile?: boolean;
 }
 
 const TASK_NAVIGATE_OFFSET_X = 620;
@@ -149,6 +156,7 @@ type SortableFeatureRowProps = {
 	onOpenFeatureEditor?: (epicId: string, featureId: string) => void;
 	onOpenAddTaskPanel: (featureId: string) => void;
 	runAfterNavigationDelay: (callback: () => void) => void;
+	mobile?: boolean;
 };
 
 function SortableFeatureRow({
@@ -165,6 +173,7 @@ function SortableFeatureRow({
 	onOpenFeatureEditor,
 	onOpenAddTaskPanel,
 	runAfterNavigationDelay,
+	mobile = false,
 }: SortableFeatureRowProps) {
 	const {
 		attributes,
@@ -184,20 +193,22 @@ function SortableFeatureRow({
 	return (
 		<div ref={setNodeRef} style={style} className="min-w-0">
 			<div className="group relative h-8 w-full min-w-0 flex items-center gap-1 px-2 pr-9 text-xs text-gray-700 hover:bg-white hover:shadow-sm rounded-md transition-all border border-transparent hover:border-gray-200">
-				<div
-					{...(canDrag ? attributes : {})}
-					{...(canDrag ? listeners : {})}
-					onClick={(event) => event.stopPropagation()}
-					className={`inline-flex h-6 w-5 shrink-0 items-center justify-center rounded text-gray-400 ${
-						canDrag
-							? "cursor-grab hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
-							: "cursor-default opacity-50"
-					}`}
-					title="Drag to reorder feature"
-					aria-label={`Drag to reorder ${feature.title}`}
-				>
-					<GripVertical className="h-3.5 w-3.5" />
-				</div>
+				{!mobile && (
+					<div
+						{...(canDrag ? attributes : {})}
+						{...(canDrag ? listeners : {})}
+						onClick={(event) => event.stopPropagation()}
+						className={`inline-flex h-6 w-5 shrink-0 items-center justify-center rounded text-gray-400 ${
+							canDrag
+								? "cursor-grab hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
+								: "cursor-default opacity-50"
+						}`}
+						title="Drag to reorder feature"
+						aria-label={`Drag to reorder ${feature.title}`}
+					>
+						<GripVertical className="h-3.5 w-3.5" />
+					</div>
+				)}
 				{canCollapseFeature ? (
 					<button
 						type="button"
@@ -239,7 +250,9 @@ function SortableFeatureRow({
 				<button
 					type="button"
 					onClick={() => onOpenAddTaskPanel(feature.id)}
-					className="absolute right-2 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center justify-center w-6 h-6 text-gray-700 bg-white border border-gray-200 rounded hover:bg-gray-50 hover:border-primary hover:text-primary shadow-sm"
+					className={`absolute right-2 transition-opacity inline-flex items-center justify-center w-6 h-6 text-gray-700 bg-white border border-gray-200 rounded hover:bg-gray-50 hover:border-primary hover:text-primary shadow-sm ${
+						mobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+					}`}
 					title="Add task to feature"
 				>
 					<Plus className="w-3 h-3" />
@@ -278,6 +291,7 @@ export function RoadmapLeftSidePanel({
 	onNavigateToNode,
 	onNavigateToEpicTab,
 	highlightedEpicId,
+	mobile = false,
 }: RoadmapLeftSidePanelProps) {
 	return (
 		<div className="h-full w-full flex bg-white">
@@ -294,6 +308,7 @@ export function RoadmapLeftSidePanel({
 						onNavigateToNode={onNavigateToNode}
 						onNavigateToEpicTab={onNavigateToEpicTab}
 						highlightedEpicId={highlightedEpicId}
+						mobile={mobile}
 					/>
 				</div>
 			)}
@@ -314,6 +329,7 @@ interface ExplorerPanelProps {
 	) => void;
 	onNavigateToEpicTab?: (epicId: string) => void;
 	highlightedEpicId?: string | null;
+	mobile?: boolean;
 }
 
 function ExplorerPanel({
@@ -326,6 +342,7 @@ function ExplorerPanel({
 	onNavigateToNode,
 	onNavigateToEpicTab,
 	highlightedEpicId,
+	mobile = false,
 }: ExplorerPanelProps) {
 	const NAVIGATION_OPEN_DELAY_MS = 700;
 	const toast = useToast();
@@ -388,6 +405,9 @@ function ExplorerPanel({
 		!currentUserRole ||
 		currentUserRole === "owner" ||
 		currentUserRole === "editor";
+	// Drag-to-reorder is disabled on mobile (touch drag is fiddly); editing still
+	// happens via tap-to-open. Grip handles are hidden in this mode too.
+	const canDrag = !mobile && canEditRoadmap;
 	const sensors = useSensors(
 		useSensor(PointerSensor),
 		useSensor(KeyboardSensor, {
@@ -1003,7 +1023,7 @@ function ExplorerPanel({
 											<SortableEpicRow
 												key={epic.id}
 												epicId={epic.id}
-												canDrag={canEditRoadmap}
+												canDrag={canDrag}
 											>
 												{({ setNodeRef, style, handleAttributes, handleListeners }) => (
 													<div
@@ -1020,20 +1040,22 @@ function ExplorerPanel({
 																		: "text-gray-900 bg-gray-50 border-gray-200 hover:bg-white hover:shadow-sm"
 																}`}
 															>
-																<div
-																	{...handleAttributes}
-																	{...handleListeners}
-																	onClick={(event) => event.stopPropagation()}
-																	className={`inline-flex h-6 w-5 shrink-0 items-center justify-center rounded text-gray-400 ${
-																		canEditRoadmap
-																			? "cursor-grab hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
-																			: "cursor-default opacity-50"
-																	}`}
-																	title="Drag to reorder epic"
-																	aria-label={`Drag to reorder ${epic.title}`}
-																>
-																	<GripVertical className="h-3.5 w-3.5" />
-																</div>
+																{!mobile && (
+																	<div
+																		{...handleAttributes}
+																		{...handleListeners}
+																		onClick={(event) => event.stopPropagation()}
+																		className={`inline-flex h-6 w-5 shrink-0 items-center justify-center rounded text-gray-400 ${
+																			canEditRoadmap
+																				? "cursor-grab hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
+																				: "cursor-default opacity-50"
+																		}`}
+																		title="Drag to reorder epic"
+																		aria-label={`Drag to reorder ${epic.title}`}
+																	>
+																		<GripVertical className="h-3.5 w-3.5" />
+																	</div>
+																)}
 																{features.length > 0 ? (
 																	<button
 																		type="button"
@@ -1083,7 +1105,7 @@ function ExplorerPanel({
 															<button
 																type="button"
 																onClick={() => openAddFeatureModal(epic.id)}
-																className="absolute right-10 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center justify-center w-7 h-7 text-gray-700 bg-white border border-gray-200 rounded-md hover:bg-gray-50 hover:border-primary hover:text-primary shadow-sm"
+																className={`absolute right-10 transition-opacity inline-flex items-center justify-center w-7 h-7 text-gray-700 bg-white border border-gray-200 rounded-md hover:bg-gray-50 hover:border-primary hover:text-primary shadow-sm ${mobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
 																title="Add feature to epic"
 															>
 																<Plus className="w-3.5 h-3.5" />
@@ -1091,7 +1113,7 @@ function ExplorerPanel({
 															<button
 																type="button"
 																onClick={() => onNavigateToEpicTab?.(epic.id)}
-																className="shrink-0 inline-flex items-center gap-1 px-2 py-2 text-xs font-medium text-blue-700 bg-white border border-gray-200 rounded-lg hover:bg-blue-50 transition-colors"
+																className={`shrink-0 inline-flex items-center gap-1 px-2 py-2 text-xs font-medium text-blue-700 bg-white border border-gray-200 rounded-lg hover:bg-blue-50 transition-colors ${mobile ? "hidden" : ""}`}
 																title="Navigate to epic"
 															>
 																<ExternalLink className="w-3 h-3" />
@@ -1126,7 +1148,8 @@ function ExplorerPanel({
 																						feature={feature}
 																						epic={epic}
 																						currentEpicId={epic.id}
-																						canDrag={canEditRoadmap}
+																						canDrag={canDrag}
+																						mobile={mobile}
 																						isFeatureExpanded={isFeatureExpanded}
 																						canCollapseFeature={canCollapseFeature}
 																						taskCount={tasks.length}

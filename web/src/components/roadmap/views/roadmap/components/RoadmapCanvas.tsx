@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link2, Plus } from "lucide-react";
+import { CalendarDays, Link2, Plus } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { LinkRoadmapModal } from "@/components/roadmap/modals/LinkRoadmapModal";
+import { RoadmapLeftSidePanel } from "../../../panels/RoadmapLeftSidePanel";
 import { EpicTab } from "./EpicTab";
 import { MilestonesView } from "../../milestones/MilestonesView";
 import type { RoadmapCanvasProps } from "../models/types";
@@ -54,6 +55,7 @@ const RoadmapCanvas = ({
   onNodeOpen,
   onNodeClose,
   performanceMode = "normal",
+  mobile = false,
 }: RoadmapCanvasProps) => {
   const user = useUser();
   const profile = useAuthStore((s) => s.profile);
@@ -296,6 +298,66 @@ const RoadmapCanvas = ({
 
       {/* View Content */}
       <div className="flex-1 relative overflow-hidden">
+        {mobile ? (
+          viewMode === "milestones" ? (
+            <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
+                <CalendarDays className="h-6 w-6 text-slate-400" />
+              </div>
+              <h3 className="text-base font-semibold text-gray-900">
+                Milestones timeline
+              </h3>
+              <p className="mt-1 max-w-xs text-sm text-gray-500">
+                The milestones timeline is best viewed on a larger screen. Switch
+                to Roadmap to browse epics, features, and tasks.
+              </p>
+            </div>
+          ) : epics.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
+                <Plus className="h-8 w-8 text-gray-400" />
+              </div>
+              <h3 className="mb-2 text-lg font-semibold text-gray-900">
+                No Epics Yet
+              </h3>
+              <p className="mb-6 max-w-xs text-sm text-gray-600">
+                Create your first epic to start building this roadmap.
+              </p>
+              <button
+                onClick={() => setIsAddEpicModalOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-700"
+              >
+                <Plus className="h-4 w-4" />
+                Add Epic
+              </button>
+            </div>
+          ) : (
+            <RoadmapLeftSidePanel
+              messages={[]}
+              onSendMessage={() => {}}
+              isCollapsed={false}
+              mobile
+              highlightedEpicId={null}
+              onSelectEpic={handleSelectEpic}
+              onSelectFeature={(epicId, featureId) =>
+                handleOpenEditFeatureModal(epicId, featureId)
+              }
+              onSelectTask={(taskId) => handleSelectTask({ id: taskId })}
+              onOpenEpicEditor={handleSelectEpic}
+              onOpenFeatureEditor={(epicId, featureId) =>
+                handleOpenEditFeatureModal(epicId, featureId)
+              }
+              onOpenTaskDetail={(taskId) => handleSelectTask({ id: taskId })}
+              onNavigateToNode={(_nodeId, options) => {
+                if (options?.taskId) {
+                  handleSelectTask({ id: options.taskId });
+                }
+              }}
+              onNavigateToEpicTab={handleNavigateToEpicTab}
+            />
+          )
+        ) : (
+        <>
         {viewMode === "roadmap" && epics.length === 0 ? (
           // Empty state - no epics
           <div className="flex flex-col bg-[#F9F9F9] items-center justify-center h-full">
@@ -424,6 +486,8 @@ const RoadmapCanvas = ({
             onAddEpic={() => setIsAddEpicModalOpen(true)}
             onLinkRoadmap={canLinkExisting ? () => setIsLinkRoadmapModalOpen(true) : undefined}
           />
+        )}
+        </>
         )}
 
         <RoadmapCanvasOverlays

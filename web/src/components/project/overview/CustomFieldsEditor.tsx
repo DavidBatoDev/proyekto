@@ -88,11 +88,11 @@ export function CustomFieldsEditor({
           divider so it doesn't introduce a second header row. When there
           are no fields yet, the empty state itself surfaces it. */}
       {fields.length === 0 ? (
-        <section className="flex items-start gap-3 border-b border-slate-200 pb-7">
-          <CheckCircle2 className="mt-1.5 h-5 w-5 shrink-0 text-slate-300" />
+        <section className="flex items-start gap-2.5 border-b border-slate-200 pb-4 md:gap-3 md:pb-7">
+          <CheckCircle2 className="mt-1.5 h-4 w-4 shrink-0 text-slate-300 md:h-5 md:w-5" />
           <div className="flex-1">
-            <div className="mb-2.5 flex min-h-8 items-center justify-between gap-2">
-              <h2 className="text-[18px] font-semibold leading-none text-slate-400">
+            <div className="mb-2 flex min-h-7 items-center justify-between gap-2 md:mb-2.5 md:min-h-8">
+              <h2 className="text-[15px] font-semibold leading-none text-slate-400 md:text-[18px]">
                 Project details
               </h2>
               {canEdit && (
@@ -118,32 +118,32 @@ export function CustomFieldsEditor({
           {fields.map((row, index) => (
             <section
               key={`${row.position}-${row.key}-${index}`}
-              className="group flex items-start gap-3 border-b border-slate-200 pb-7 pt-7 first:pt-0"
+              className="group flex items-start gap-2.5 border-b border-slate-200 pb-4 pt-4 first:pt-0 md:gap-3 md:pb-7 md:pt-7"
             >
-              <CheckCircle2 className="mt-1.5 h-5 w-5 shrink-0 text-slate-700" />
+              <CheckCircle2 className="mt-1.5 h-4 w-4 shrink-0 text-slate-700 md:h-5 md:w-5" />
               <div className="min-w-0 flex-1">
-                <div className="mb-2.5 flex min-h-8 items-center justify-between gap-2">
-                  <h2 className="text-[18px] font-semibold uppercase leading-none text-slate-900">
+                <div className="mb-2 flex min-h-7 items-center justify-between gap-2 md:mb-2.5 md:min-h-8">
+                  <h2 className="text-[15px] font-semibold uppercase leading-none text-slate-900 md:text-[18px]">
                     {row.key}
                   </h2>
                   {canEdit && (
-                    <div className="flex shrink-0 items-center gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                    <div className="flex shrink-0 items-center gap-1 transition-opacity md:opacity-0 md:focus-within:opacity-100 md:group-hover:opacity-100">
                       <button
                         type="button"
                         onClick={() => setModal({ mode: "edit", index })}
-                        className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"
+                        className="inline-flex items-center gap-1 rounded-md p-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900 md:gap-1.5 md:px-2 md:py-1.5 md:text-sm"
                       >
-                        <Pencil className="h-4 w-4" />
-                        Edit
+                        <Pencil className="h-3.5 w-3.5" />
+                        <span className="hidden md:inline">Edit</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setConfirmDeleteIndex(index)}
                         aria-label="Delete field"
                         title="Delete field"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-rose-50 hover:text-rose-700"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-700 md:h-8 md:w-8"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   )}

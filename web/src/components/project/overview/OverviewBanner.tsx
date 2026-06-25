@@ -22,7 +22,7 @@ export function OverviewBanner({
 }: OverviewBannerProps) {
   return (
     <>
-      <div className="app-surface-card-strong relative mb-6 h-48 w-full overflow-hidden rounded-2xl">
+      <div className="app-surface-card-strong relative mb-4 h-32 w-full overflow-hidden rounded-2xl sm:h-40 md:mb-6 md:h-48">
         <div className="absolute inset-0 bg-linear-to-br from-slate-900 via-slate-800 to-slate-700" />
         {bannerUrl && (
           <img

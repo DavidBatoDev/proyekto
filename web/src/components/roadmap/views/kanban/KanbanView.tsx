@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/useToast";
 import { KanbanCard } from "./KanbanCard";
 import { KanbanColumn } from "./KanbanColumn";
 import { KanbanFilters } from "./KanbanFilters";
+import { KanbanListView } from "./KanbanListView";
 import { DEFAULT_KANBAN_COLUMNS, type KanbanTaskContext } from "./types";
 import {
 	applyBoardFilters,
@@ -211,29 +212,38 @@ export function KanbanView() {
 				searchQuery={searchQuery}
 				onSearchChange={setSearchQuery}
 			/>
-			<DndContext
-				sensors={sensors}
-				collisionDetection={closestCorners}
-				onDragStart={handleDragStart}
-				onDragOver={handleDragOver}
-				onDragEnd={handleDragEnd}
-				onDragCancel={handleDragCancel}
-			>
-				<div className="flex-1 overflow-x-hidden overflow-y-hidden">
-					<div className="flex gap-2 p-2 h-full w-full">
-						{DEFAULT_KANBAN_COLUMNS.map((column) => (
-							<KanbanColumn
-								key={column.id}
-								column={column}
-								rows={columns[column.id] ?? []}
-							/>
-						))}
+
+			{/* Mobile: grouped list view */}
+			<div className="flex-1 min-h-0 overflow-y-auto md:hidden">
+				<KanbanListView rows={filteredRows} />
+			</div>
+
+			{/* Desktop: drag-and-drop kanban board */}
+			<div className="hidden md:flex flex-col flex-1 min-h-0">
+				<DndContext
+					sensors={sensors}
+					collisionDetection={closestCorners}
+					onDragStart={handleDragStart}
+					onDragOver={handleDragOver}
+					onDragEnd={handleDragEnd}
+					onDragCancel={handleDragCancel}
+				>
+					<div className="flex-1 overflow-x-auto overflow-y-hidden">
+						<div className="flex gap-2 p-2 h-full w-full">
+							{DEFAULT_KANBAN_COLUMNS.map((column) => (
+								<KanbanColumn
+									key={column.id}
+									column={column}
+									rows={columns[column.id] ?? []}
+								/>
+							))}
+						</div>
 					</div>
-				</div>
-				<DragOverlay dropAnimation={{ duration: 200 }}>
-					{activeRow ? <KanbanCard row={activeRow} overlay /> : null}
-				</DragOverlay>
-			</DndContext>
+					<DragOverlay dropAnimation={{ duration: 200 }}>
+						{activeRow ? <KanbanCard row={activeRow} overlay /> : null}
+					</DragOverlay>
+				</DndContext>
+			</div>
 		</div>
 	);
 }

@@ -326,7 +326,7 @@ export const EpicModal = ({
         }
       >
         {/* Labels and Priority Row */}
-        <div className="flex gap-6 mb-6">
+        <div className="flex flex-col gap-4 mb-6 md:flex-row md:gap-6">
           {/* Labels */}
           <div className="flex-1">
             <h3 className="text-sm font-semibold text-gray-900 mb-2">Labels</h3>
@@ -338,7 +338,7 @@ export const EpicModal = ({
           </div>
 
           {/* Priority */}
-          <div className="w-48">
+          <div className="w-full md:w-48">
             <h3 className="text-sm font-semibold text-gray-900 mb-2">
               Priority
             </h3>

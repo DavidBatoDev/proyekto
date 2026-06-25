@@ -80,17 +80,17 @@ function WorkItemsBoardPage() {
   return (
     <div className="relative flex flex-col h-full min-h-0 bg-slate-50/30">
       {/* Header */}
-      <div className="px-6 py-2.5 bg-white border-b border-slate-100 shrink-0">
+      <div className="px-3 py-2 bg-white border-b border-slate-100 shrink-0 md:px-6 md:py-2.5">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#0f172a]/10 flex items-center justify-center shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-[#0f172a]/10 flex items-center justify-center shrink-0 md:w-8 md:h-8">
               <ListChecks className="w-4 h-4 text-[#0f172a]" />
             </div>
             <div className="leading-tight">
               <h1 className="text-sm font-semibold text-slate-900">
                 Work Items
               </h1>
-              <p className="text-[11px] text-slate-400">
+              <p className="hidden text-[11px] text-slate-400 md:block">
 				Board view of every task in this roadmap
 				</p>
 			</div>
@@ -105,7 +105,7 @@ function WorkItemsBoardPage() {
 					  params: { projectId },
 					})
 				}
-				className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+				className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
 			>
 				<ReceiptText className="w-3.5 h-3.5" />
 				Invoices

@@ -46,18 +46,18 @@ export function OverviewContent({
 
   return (
     <div className="w-full">
-      <header className="mb-8 mt-1 space-y-3 border-b border-slate-200 pb-5">
+      <header className="mb-5 mt-1 space-y-2 border-b border-slate-200 pb-3 md:mb-8 md:space-y-3 md:pb-5">
         <p className="app-section-kicker">Overview</p>
-        <h1 className="text-[28px] font-semibold uppercase leading-tight tracking-wide text-slate-900">
+        <h1 className="text-xl font-semibold uppercase leading-tight tracking-wide text-slate-900 md:text-[28px]">
           {projectTitle}
         </h1>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[13px] text-slate-700">
-            <span className="mr-1.5 font-semibold">Client:</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[12px] text-slate-700 md:px-3 md:py-1 md:text-[13px]">
+            <span className="mr-1 font-semibold">Client:</span>
             <span className="font-medium text-slate-500">{clientName ?? "-"}</span>
           </div>
-          <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[13px] text-slate-700">
-            <span className="mr-1.5 font-semibold">Consultant:</span>
+          <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[12px] text-slate-700 md:px-3 md:py-1 md:text-[13px]">
+            <span className="mr-1 font-semibold">Consultant:</span>
             <span className="font-medium text-slate-500">
               {consultantName ?? "-"}
             </span>
@@ -65,15 +65,15 @@ export function OverviewContent({
         </div>
       </header>
 
-      <div className="space-y-8">
+      <div className="space-y-5 md:space-y-8">
         {/* Project Summary — single rich-text section. Custom-shaped
             content (scope, constraints, risks, etc.) now lives in the
             user-defined custom_fields list below. */}
-        <section className="flex items-start gap-3 border-b border-slate-200 pb-7">
-          <CheckCircle2 className="mt-1.5 h-5 w-5 shrink-0 text-slate-700" />
+        <section className="flex items-start gap-2.5 border-b border-slate-200 pb-4 md:gap-3 md:pb-7">
+          <CheckCircle2 className="mt-1.5 h-4 w-4 shrink-0 text-slate-700 md:h-5 md:w-5" />
           <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-2 mb-2.5 min-h-[32px]">
-              <h2 className="text-[18px] font-semibold leading-none text-slate-900">
+            <div className="flex items-center justify-between gap-2 mb-2 min-h-7 md:mb-2.5 md:min-h-8">
+              <h2 className="text-[15px] font-semibold leading-none text-slate-900 md:text-[18px]">
                 Project Summary
               </h2>
               {canEdit && !editingSummary && (
@@ -83,10 +83,10 @@ export function OverviewContent({
                     setDraftSummary(summaryHtml);
                     setEditingSummary(true);
                   }}
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"
+                  className="inline-flex items-center gap-1 rounded-md p-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900 md:gap-1.5 md:px-2 md:text-sm"
                 >
-                  <Edit2 className="w-4 h-4" />
-                  Edit
+                  <Edit2 className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                  <span className="hidden md:inline">Edit</span>
                 </button>
               )}
               {canEdit && editingSummary && (

@@ -183,7 +183,7 @@ export function TeamPage({ projectId }: { projectId: string }) {
 
   if (isLoading) {
     return (
-      <div className="mx-auto w-full max-w-[1040px] px-5 py-8 md:px-8 md:py-10">
+      <div className="mx-auto w-full max-w-[1040px] px-3 py-5 sm:px-5 sm:py-8 md:px-8 md:py-10">
         <TeamSkeleton />
       </div>
     );
@@ -195,12 +195,12 @@ export function TeamPage({ projectId }: { projectId: string }) {
     pendingInvites.length === 0;
 
   return (
-    <div className="mx-auto w-full max-w-[1040px] px-5 py-8 md:px-8 md:py-10">
+    <div className="mx-auto w-full max-w-[1040px] px-3 py-5 sm:px-5 sm:py-8 md:px-8 md:py-10">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="app-section-kicker">Team</p>
-          <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+          <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 md:text-2xl">
             Project team
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
@@ -231,7 +231,7 @@ export function TeamPage({ projectId }: { projectId: string }) {
       </div>
 
       {/* Body */}
-      <div className="mt-8 space-y-6">
+      <div className="mt-5 space-y-4 md:mt-8 md:space-y-6">
         {showFullEmpty ? (
           <AppEmptyState
             icon={Users}
@@ -345,7 +345,7 @@ function PendingInvitesCard({
             return (
               <li
                 key={invite.id}
-                className="flex items-center justify-between gap-3 px-5 py-3"
+                className="flex items-center justify-between gap-2 px-3 py-3 sm:gap-3 sm:px-5"
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
@@ -512,17 +512,17 @@ function AttachedTeamCard({
               <button
                 type="button"
                 onClick={() => setPickerOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 sm:px-2.5"
               >
                 <Plus className="h-3.5 w-3.5" />
-                Add from team
+                <span className="hidden sm:inline">Add from team</span>
               </button>
             )}
             {team && (
               <Link
                 to="/teams/$teamId"
                 params={{ teamId: team.id }}
-                className="text-xs font-medium text-slate-500 hover:text-slate-900"
+                className="hidden text-xs font-medium text-slate-500 hover:text-slate-900 sm:block"
               >
                 Open team →
               </Link>

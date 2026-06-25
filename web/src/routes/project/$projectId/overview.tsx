@@ -269,8 +269,8 @@ function OverviewPage() {
 
   return (
     <div className="h-full w-full overflow-y-auto app-shell-bg">
-      <div className="px-5 py-6 md:px-8 md:py-8">
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-7">
+      <div className="px-3 py-4 sm:px-5 sm:py-6 md:px-8 md:py-8">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-7">
           <div className="flex flex-col">
             <BringInAConsultantCard
               isPersonalWorkspace={Boolean(
@@ -291,8 +291,8 @@ function OverviewPage() {
               />
             </div>
 
-            <div className="app-surface-card app-slide-up p-5 md:p-7">
-              <div className="mb-4 flex items-center gap-2">
+            <div className="app-surface-card app-slide-up p-4 md:p-7">
+              <div className="mb-3 flex items-center gap-2 md:mb-4">
                 <span className="text-xs font-medium text-slate-500">Status</span>
                 <StatusBadgeSelector
                   projectId={projectId}

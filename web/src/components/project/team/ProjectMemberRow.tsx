@@ -49,8 +49,8 @@ export function ProjectMemberRow({
 }: ProjectMemberRowProps) {
   const showActions = Boolean(onEditRole || onRemove);
   const rowClassName = isMuted
-    ? "flex items-center justify-between gap-3 px-5 py-3 opacity-60"
-    : "flex items-center justify-between gap-3 px-5 py-3";
+    ? "flex items-center justify-between gap-2 px-3 py-3 opacity-60 sm:gap-3 sm:px-5"
+    : "flex items-center justify-between gap-2 px-3 py-3 sm:gap-3 sm:px-5";
 
   return (
     <li className={rowClassName}>

@@ -71,7 +71,7 @@ export default function ProjectUserMenu({ role }: ProjectUserMenuProps) {
 					</div>
 				)}
 
-				<div className="flex flex-col items-start leading-tight">
+				<div className="hidden flex-col items-start leading-tight sm:flex">
 					<span className="max-w-[120px] truncate text-sm font-semibold text-slate-900">
 						{getDisplayName()}
 					</span>

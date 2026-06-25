@@ -12,10 +12,10 @@ export function OverviewSidebar({ timelineItems, members }: OverviewSidebarProps
   const visibleItems = timelineItems.slice(0, MAX_OVERVIEW_MILESTONES);
 
   return (
-    <aside className="sticky top-6 self-start space-y-5 md:pl-2">
+    <aside className="sticky top-6 self-start space-y-4 md:pl-2 md:space-y-5">
       {/* Milestones */}
-      <div className="app-surface-card p-5">
-        <h2 className="mb-4 text-base font-semibold text-slate-900">
+      <div className="app-surface-card p-4 md:p-5">
+        <h2 className="mb-3 text-sm font-semibold text-slate-900 md:mb-4 md:text-base">
           Milestones
         </h2>
         {timelineItems.length === 0 ? (
@@ -37,21 +37,21 @@ export function OverviewSidebar({ timelineItems, members }: OverviewSidebarProps
               const style = milestoneState(item.status);
               const DotIcon = style.icon;
               return (
-                <div key={item.id} className="relative pb-5 pl-9 last:pb-0">
+                <div key={item.id} className="relative pb-4 pl-9 last:pb-0 md:pb-5">
                   {index < visibleItems.length - 1 && (
                     <span className="absolute bottom-0 left-[15px] top-7 w-px bg-slate-200" />
                   )}
                   <span
-                    className={`absolute left-0 top-0 flex h-8 w-8 items-center justify-center rounded-full border-2 ${style.dot}`}
+                    className={`absolute left-0 top-0 flex h-7 w-7 items-center justify-center rounded-full border-2 md:h-8 md:w-8 ${style.dot}`}
                   >
-                    <DotIcon className="w-4 h-4" />
+                    <DotIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
                   </span>
                   <p
-                    className={`text-[14px] font-semibold leading-5 ${style.title}`}
+                    className={`text-[13px] font-semibold leading-5 md:text-[14px] ${style.title}`}
                   >
                     {item.title}
                   </p>
-                  <p className="mt-1 inline-flex items-center gap-1 text-[12px] text-slate-500">
+                  <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-slate-500 md:mt-1 md:text-[12px]">
                     <Calendar className="w-3.5 h-3.5" />
                     {new Date(item.target_date).toLocaleDateString(undefined, {
                       month: "short",
@@ -69,8 +69,8 @@ export function OverviewSidebar({ timelineItems, members }: OverviewSidebarProps
       </div>
 
       {/* Project Team */}
-      <div className="app-surface-card p-5">
-        <h2 className="mb-3 text-base font-semibold text-slate-900">
+      <div className="app-surface-card p-4 md:p-5">
+        <h2 className="mb-2.5 text-sm font-semibold text-slate-900 md:mb-3 md:text-base">
           Project Team
         </h2>
         {members.length === 0 ? (

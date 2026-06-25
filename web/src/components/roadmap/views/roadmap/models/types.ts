@@ -70,6 +70,12 @@ export interface RoadmapCanvasProps extends RoadmapCanvasControllerProps {
 	onExport?: () => void;
 	canEditTimelineDates?: boolean;
 	hideMiniMap?: boolean;
+	/**
+	 * Compact mobile mode: render the epic/feature/task explorer tree instead of
+	 * the XYFlow canvas (which is unusable on phones), while keeping the editor
+	 * overlays mounted so tap-to-edit still works. Defaults to false.
+	 */
+	mobile?: boolean;
 }
 
 export type UseRoadmapCanvasControllerArgs = RoadmapCanvasControllerProps;

@@ -7,6 +7,7 @@ import {
 import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
 import { ProjectSidebar } from "@/components/project/ProjectSidebar";
+import { ProjectBottomNav } from "@/components/project/ProjectBottomNav";
 import {
 	useLinkedRoadmapQuery,
 	useProjectDetailQuery,
@@ -65,17 +66,29 @@ function ProjectLayout() {
 	return (
 		<div className="app-shell-bg flex h-screen flex-col overflow-hidden pt-14">
 			<div className="flex flex-1 overflow-hidden">
-				<ProjectSidebar
-					project={project}
-					projectId={projectId}
-					hasProject={!isRoadmapOnly && !!project}
-					roadmapId={linkedRoadmapId ?? undefined}
-					compactMode={isChatRoute}
-				/>
-				<main className="flex-1 overflow-hidden">
+				{/* Sidebar — desktop only */}
+				<div className="hidden md:block">
+					<ProjectSidebar
+						project={project}
+						projectId={projectId}
+						hasProject={!isRoadmapOnly && !!project}
+						roadmapId={linkedRoadmapId ?? undefined}
+						compactMode={isChatRoute}
+					/>
+				</div>
+
+				{/* Bottom padding on mobile reserves space above the fixed bottom nav */}
+				<main className="flex-1 overflow-hidden pb-16 md:pb-0">
 					<Outlet />
 				</main>
 			</div>
+
+			{/* Bottom nav — mobile only (self-hides on md+) */}
+			<ProjectBottomNav
+				projectId={projectId}
+				hasProject={!isRoadmapOnly && !!project}
+				roadmapId={linkedRoadmapId ?? undefined}
+			/>
 		</div>
 	);
 }

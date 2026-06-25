@@ -28,7 +28,9 @@ import {
 } from "@/components/roadmap";
 import { ConfirmAssigneeOverwriteDialog } from "@/components/roadmap/widgets/ConfirmAssigneeOverwriteDialog";
 import { RoadmapTopBar } from "../../RoadmapTopBar";
+import { MobileRoadmapView } from "./MobileRoadmapView";
 import { RoadmapPageSkeleton } from "../../RoadmapPageSkeleton";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { useProjectSettingsStore } from "@/stores/projectSettingsStore";
 import {
   roadmapService,
@@ -220,6 +222,7 @@ export function RoadmapViewContent({
   const [roadmapError, setRoadmapError] = useState<string | null>(null);
   const [isJsonPanelOpen, setIsJsonPanelOpen] = useState(false);
   const [isSavingRoadmapJson, setIsSavingRoadmapJson] = useState(false);
+  const isMobile = useIsMobile();
   const [isAiChatPanelOpen, setIsAiChatPanelOpen] = useState(false);
   const [isResizingChatPanel, setIsResizingChatPanel] = useState(false);
   const [chatPanelWidth, setChatPanelWidth] = useState(
@@ -801,6 +804,26 @@ export function RoadmapViewContent({
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
 
+      {isMobile ? (
+        <MobileRoadmapView
+          projectId={projectId}
+          roadmap={roadmap}
+          performanceMode={performanceMode}
+          isAiChatPanelOpen={isAiChatPanelOpen}
+          onToggleAiPanel={() => {
+            setIsAiChatPanelOpen((prev) => {
+              if (prev) return false;
+              setChatPanelWidth(CHAT_PANEL_DEFAULT_WIDTH);
+              return true;
+            });
+          }}
+          onEditBrief={() => setIsBriefOpen(true)}
+          onShare={() => setIsShareModalOpen(true)}
+          onNodeOpen={handleNodeOpen}
+          onNodeClose={handleNodeClose}
+        />
+      ) : (
+        <>
       {/* Top navigation bar: view tabs + share/export */}
       <RoadmapTopBar
         onEditBrief={() => setIsBriefOpen(true)}
@@ -897,6 +920,8 @@ export function RoadmapViewContent({
           </div>
         )}
       </div>
+        </>
+      )}
 
       {/* Edit Roadmap Modal */}
       <RoadmapMetadataModal

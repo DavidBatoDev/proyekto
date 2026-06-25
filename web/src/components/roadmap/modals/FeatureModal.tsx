@@ -363,7 +363,7 @@ export const FeatureModal = ({
         }
       >
         {/* Status (derived from tasks) and Deliverable Row */}
-        <div className="flex gap-6 mb-6">
+        <div className="flex flex-col gap-4 mb-6 md:flex-row md:gap-6">
           {/* Status — read-only, derived from child task statuses */}
           <div className="flex-1">
             <h3 className="text-sm font-semibold text-gray-900 mb-2">Status</h3>
@@ -376,7 +376,7 @@ export const FeatureModal = ({
           </div>
 
           {/* Is Deliverable */}
-          <div className="w-48">
+          <div className="w-full md:w-48">
             <h3 className="text-sm font-semibold text-gray-900 mb-2">
               Deliverable
             </h3>

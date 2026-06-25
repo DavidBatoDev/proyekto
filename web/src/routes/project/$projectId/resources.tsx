@@ -451,7 +451,7 @@ function ResourcesPage() {
     }
 
     return (
-      <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+      <div className="max-h-48 space-y-1.5 overflow-y-auto pr-1 md:max-h-64 md:space-y-2">
         {links.map((link, index) => {
           const canMoveUp = index > 0;
           const canMoveDown = index < links.length - 1;
@@ -540,38 +540,38 @@ function ResourcesPage() {
 
   return (
     <div className="app-shell-bg h-full w-full overflow-y-auto">
-      <div className="w-full px-4 py-6 md:px-8 md:py-8">
-        <div className="app-surface-card-strong p-6">
-          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+      <div className="w-full px-3 py-4 md:px-8 md:py-8">
+        <div className="app-surface-card-strong p-4 md:p-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <div className="mb-1 flex items-center gap-2">
-                <BookOpen className="h-5 w-5 text-slate-700" />
-                <h1 className="text-2xl font-bold text-slate-900">Resources</h1>
+                <BookOpen className="h-4 w-4 text-slate-700 md:h-5 md:w-5" />
+                <h1 className="text-lg font-bold text-slate-900 md:text-2xl">Resources</h1>
               </div>
-              <p className="text-sm text-slate-600">
+              <p className="text-xs text-slate-600 md:text-sm">
                 Organize project links, docs, and references in a clean workspace.
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 md:w-[300px]">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
-                <p className="text-lg font-bold text-slate-800">{totalFolders}</p>
+            <div className="grid grid-cols-2 gap-2 md:w-[300px] md:gap-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-center md:p-3">
+                <p className="text-base font-bold text-slate-800 md:text-lg">{totalFolders}</p>
                 <p className="text-xs text-slate-500">Folders</p>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
-                <p className="text-lg font-bold text-slate-800">{totalLinks}</p>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-center md:p-3">
+                <p className="text-base font-bold text-slate-800 md:text-lg">{totalLinks}</p>
                 <p className="text-xs text-slate-500">Hyperlinks</p>
               </div>
             </div>
           </div>
 
-          <div className="mt-5 flex flex-wrap items-center gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-2 md:mt-5">
             <button
               type="button"
               onClick={() => setFolderForm({ name: "" })}
-              className="app-cta inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-white"
+              className="app-cta inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-white md:px-3 md:py-2 md:text-sm"
             >
-              <Folder className="h-4 w-4" />
+              <Folder className="h-3.5 w-3.5 md:h-4 md:w-4" />
               New folder
             </button>
             <button
@@ -579,9 +579,9 @@ function ResourcesPage() {
               onClick={() =>
                 setLinkForm({ title: "", url: "", description: "", folder_id: "" })
               }
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 md:px-3 md:py-2 md:text-sm"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-3.5 w-3.5 md:h-4 md:w-4" />
               Add link
             </button>
           </div>
@@ -590,10 +590,10 @@ function ResourcesPage() {
         {resourcesQuery.isPending ? (
           <ResourcesSkeleton />
         ) : (
-          <div className="mt-8 space-y-6">
+          <div className="mt-5 space-y-4 md:mt-8 md:space-y-6">
             <section className="space-y-4">
-              <div className="flex flex-col gap-3 app-surface-card p-4 md:flex-row md:items-center md:justify-between">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+              <div className="flex flex-col gap-2 app-surface-card p-3 md:flex-row md:items-center md:justify-between md:gap-3 md:p-4">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-700 md:text-sm">
                   Folders
                 </h2>
                 <div className="flex w-full flex-col gap-2 sm:flex-row md:w-auto">
@@ -623,7 +623,7 @@ function ResourcesPage() {
               </div>
 
               {folderCards.length === 0 && !showUncategorizedCard ? (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center md:p-10">
                   <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-700">
                     <Folder className="h-6 w-6" />
                   </div>
@@ -635,7 +635,7 @@ function ResourcesPage() {
               ) : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {showUncategorizedCard ? (
-                    <div className="group/folder min-h-[320px] app-surface-card p-4 transition hover:border-slate-300 hover:shadow-md">
+                    <div className="group/folder app-surface-card p-3 transition hover:border-slate-300 hover:shadow-md md:min-h-[280px] md:p-4">
                       <div className="mb-3 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5">
                         <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -674,7 +674,7 @@ function ResourcesPage() {
                   return (
                     <div
                       key={folder.id}
-                      className="group/folder min-h-[320px] app-surface-card p-4 transition hover:border-slate-300 hover:shadow-md"
+                      className="group/folder app-surface-card p-3 transition hover:border-slate-300 hover:shadow-md md:min-h-[280px] md:p-4"
                     >
                       <div className="mb-3 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5">
                         <div className="flex items-start justify-between gap-3">
