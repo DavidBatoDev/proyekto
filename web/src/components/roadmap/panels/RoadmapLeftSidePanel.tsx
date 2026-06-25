@@ -25,6 +25,8 @@ import { CSS } from "@dnd-kit/utilities";
 import type { Message } from "./ChatPanel";
 import { useEpics, useRoadmapStore } from "@/stores/roadmapStore";
 import type { RoadmapEpic, RoadmapFeature } from "@/types/roadmap";
+import { TaskListItem } from "../widgets/TaskListItem";
+import { deriveFeatureStatus } from "@/utils/featureStatus";
 import { useToast } from "@/hooks/useToast";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -244,6 +246,26 @@ function SortableFeatureRow({
 						{feature.title}
 					</span>
 				</Tooltip>
+				{(() => {
+					const derivedStatus = deriveFeatureStatus(feature.tasks);
+					const badgeColor =
+						derivedStatus === "completed"
+							? "bg-green-100 text-green-700"
+							: derivedStatus === "in_progress"
+								? "bg-blue-100 text-blue-700"
+								: derivedStatus === "in_review"
+									? "bg-purple-100 text-purple-700"
+									: derivedStatus === "blocked"
+										? "bg-red-100 text-red-700"
+										: "bg-gray-100 text-gray-600";
+					return (
+						<span
+							className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium capitalize ${badgeColor}`}
+						>
+							{derivedStatus.replace(/_/g, " ")}
+						</span>
+					);
+				})()}
 				{taskCount > 0 && (
 					<span className="text-xs font-normal text-gray-500">{taskCount}</span>
 				)}
@@ -358,6 +380,7 @@ function ExplorerPanel({
 		reorderEpicsInRoadmap,
 		previewEpicOrderInRoadmap,
 		moveFeatureBetweenEpics,
+		updateTask,
 	} = useRoadmapStore(
 		useShallow((state) => ({
 			openAddFeatureModal: state.openAddFeatureModal,
@@ -367,6 +390,7 @@ function ExplorerPanel({
 			reorderEpicsInRoadmap: state.reorderEpicsInRoadmap,
 			previewEpicOrderInRoadmap: state.previewEpicOrderInRoadmap,
 			moveFeatureBetweenEpics: state.moveFeatureBetweenEpics,
+			updateTask: state.updateTask,
 		})),
 	);
 	const explorerConfig = ROADMAP_STRUCTURE_EXPLORER_CONFIG.roadmap;
@@ -433,38 +457,6 @@ function ExplorerPanel({
 			delayedOpenTimeouts.current = [];
 		};
 	}, []);
-
-	const getTaskTextClasses = (status?: string) => {
-		switch (status) {
-			case "done":
-				return "text-gray-400 line-through";
-			case "in_progress":
-				return "text-blue-600";
-			case "in_review":
-				return "text-orange-600";
-			case "blocked":
-				return "text-red-600";
-			case "todo":
-			default:
-				return "text-gray-600";
-		}
-	};
-
-	const getTaskDotClasses = (status?: string) => {
-		switch (status) {
-			case "done":
-				return "bg-gray-400";
-			case "in_progress":
-				return "bg-blue-500";
-			case "in_review":
-				return "bg-orange-500";
-			case "blocked":
-				return "bg-red-500";
-			case "todo":
-			default:
-				return "bg-gray-400";
-		}
-	};
 
 	const handleSearchResultClick = (result: ExplorerSearchResult) => {
 		if (result.type === "epic") {
@@ -1164,61 +1156,53 @@ function ExplorerPanel({
 																					/>
 
 																					{/* Tasks */}
-																					{explorerConfig.showTaskRows &&
-																						isFeatureExpanded &&
-																						tasks.length > 0 && (
-																							<div className="mt-0.5 space-y-0 pl-6 border-l-2 border-gray-200">
+																					{explorerConfig.showTaskRows && isFeatureExpanded && tasks.length > 0 && (
+																						<div className="ml-2 mt-1 mb-1 overflow-hidden rounded-lg border border-gray-200 bg-white">
+																							<div className="flex flex-col gap-0.5 px-2 py-1">
 																								{tasks.map((task) => (
-																									<button
+																									<TaskListItem
 																										key={task.id}
-																										onClick={() => {
-																											onSelectTask?.(task.id);
-																											onNavigateToNode?.(
-																												feature.id,
-																												{
-																													offsetX:
-																														TASK_NAVIGATE_OFFSET_X,
-																													taskId: task.id,
-																												},
+																										task={task}
+																										density="compact"
+																										onClick={(clicked) => {
+																											if (mobile) {
+																												onOpenTaskDetail?.(clicked.id);
+																												return;
+																											}
+																											onSelectTask?.(clicked.id);
+																											onNavigateToNode?.(feature.id, {
+																												offsetX: TASK_NAVIGATE_OFFSET_X,
+																												taskId: clicked.id,
+																											});
+																										}}
+																										onToggleComplete={() => {
+																											void Promise.resolve(
+																												updateTask({
+																													...task,
+																													status: task.status === "done" ? "todo" : "done",
+																												}),
+																											).catch(() => undefined);
+																										}}
+																										onUpdateStatus={(_taskId, status) => {
+																											void Promise.resolve(updateTask({ ...task, status })).catch(
+																												() => undefined,
 																											);
 																										}}
-																										className="w-full flex items-center gap-1.5 px-2 py-0.5 text-[10px] hover:bg-white rounded transition-colors"
-																									>
-																										<div
-																											className={`w-1.5 h-1.5 rounded-full ${getTaskDotClasses(task.status)}`}
-																										/>
-																										<Tooltip title={task.title} enterDelay={600} placement="right" arrow>
-																											<span
-																												onClick={(event) => {
-																													event.stopPropagation();
-																													onNavigateToNode?.(
-																														feature.id,
-																														{
-																															offsetX:
-																																TASK_NAVIGATE_OFFSET_X,
-																															taskId: task.id,
-																														},
-																													);
-																												}}
-																												onDoubleClick={(event) => {
-																													event.stopPropagation();
-																													runAfterNavigationDelay(
-																														() => {
-																															onOpenTaskDetail?.(
-																																task.id,
-																															);
-																														},
-																													);
-																												}}
-																												className={`truncate text-left flex-1 transition-colors hover:text-primary ${getTaskTextClasses(task.status)}`}
-																											>
-																												{task.title}
-																											</span>
-																										</Tooltip>
-																									</button>
+																									/>
 																								))}
 																							</div>
-																						)}
+																							{canEditRoadmap && (
+																								<button
+																									type="button"
+																									onClick={() => openAddTaskPanel(feature.id)}
+																									className="flex w-full items-center justify-center gap-1.5 border-t border-gray-100 px-3 py-1.5 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900"
+																								>
+																									<Plus className="h-3.5 w-3.5" />
+																									Add Task
+																								</button>
+																							)}
+																						</div>
+																					)}
 																				</div>
 																			);
 																		})}
