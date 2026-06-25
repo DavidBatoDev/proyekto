@@ -36,6 +36,14 @@ export type ChatMention = {
   length: number;
 };
 
+/** Lean preview of the message a reply quotes (masked if the target is deleted). */
+export type ChatReplyPreview = {
+  id: string;
+  sender_id: string;
+  content: string;
+  deleted_at: string | null;
+};
+
 export type ChatMessage = {
   id: string;
   room_id: string;
@@ -44,6 +52,10 @@ export type ChatMessage = {
   content: string;
   attachments: ChatAttachment[];
   mentions: ChatMention[];
+  edited_at: string | null;
+  deleted_at: string | null;
+  reply_to_id: string | null;
+  reply_to?: ChatReplyPreview | null;
   created_at: string;
   updated_at: string;
   reactions?: ChatMessageReactionSummary[];
@@ -186,8 +198,19 @@ export interface ChatRepository {
     content: string;
     attachments?: ChatAttachment[];
     mentions?: ChatMention[];
+    replyToId?: string | null;
   }): Promise<ChatMessage>;
   findMessageById(messageId: string): Promise<ChatMessage | null>;
+  /** Edit a message's text + mentions (sender-only, non-deleted). */
+  updateMessageContent(params: {
+    messageId: string;
+    senderId: string;
+    content: string;
+    mentions: ChatMention[];
+    editedAt: string;
+  }): Promise<ChatMessage>;
+  /** Fetch reply targets by id (for quote hydration). */
+  findReplyTargets(messageIds: string[]): Promise<ChatMessage[]>;
   /** Word + fuzzy (pg_trgm) search of a single room's messages. */
   searchRoomMessages(params: {
     roomId: string;
@@ -214,9 +237,11 @@ export interface ChatRepository {
   }): Promise<{ starred: boolean }>;
   /** Subset of `roomIds` that `userId` has starred. */
   listStarredRoomIds(userId: string, roomIds: string[]): Promise<Set<string>>;
-  deleteMessage(params: {
+  /** Soft-delete (tombstone): set deleted_at, keep the row for audit. */
+  softDeleteMessage(params: {
     messageId: string;
     senderId: string;
+    deletedAt: string;
   }): Promise<void>;
   markRoomRead(params: {
     roomId: string;

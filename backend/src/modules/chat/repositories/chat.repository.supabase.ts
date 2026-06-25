@@ -24,6 +24,9 @@ import type {
 const ROOM_COLUMNS =
   'id, project_id, type, slug, name, is_private, is_archived, archived_at, created_by, created_at, updated_at';
 
+const MESSAGE_COLUMNS =
+  'id, room_id, project_id, sender_id, content, attachments, mentions, edited_at, deleted_at, reply_to_id, created_at, updated_at';
+
 type ProjectRoleData = {
   client_id: string;
   consultant_id: string | null;
@@ -753,9 +756,7 @@ export class SupabaseChatRepository implements ChatRepository {
   }): Promise<ChatMessage[]> {
     let query = this.supabase
       .from('chat_room_messages')
-      .select(
-        'id, room_id, project_id, sender_id, content, attachments, mentions, created_at, updated_at',
-      )
+      .select(MESSAGE_COLUMNS)
       .eq('room_id', params.roomId)
       .order('created_at', { ascending: false })
       .limit(params.limit);
@@ -776,6 +777,7 @@ export class SupabaseChatRepository implements ChatRepository {
     content: string;
     attachments?: ChatAttachment[];
     mentions?: ChatMention[];
+    replyToId?: string | null;
   }): Promise<ChatMessage> {
     const { data, error } = await this.supabase
       .from('chat_room_messages')
@@ -786,10 +788,9 @@ export class SupabaseChatRepository implements ChatRepository {
         content: params.content,
         attachments: params.attachments ?? [],
         mentions: params.mentions ?? [],
+        reply_to_id: params.replyToId ?? null,
       })
-      .select(
-        'id, room_id, project_id, sender_id, content, attachments, mentions, created_at, updated_at',
-      )
+      .select(MESSAGE_COLUMNS)
       .single();
 
     if (error || !data) {
@@ -832,13 +833,37 @@ export class SupabaseChatRepository implements ChatRepository {
   async findMessageById(messageId: string): Promise<ChatMessage | null> {
     const { data, error } = await this.supabase
       .from('chat_room_messages')
-      .select(
-        'id, room_id, project_id, sender_id, content, attachments, mentions, created_at, updated_at',
-      )
+      .select(MESSAGE_COLUMNS)
       .eq('id', messageId)
       .maybeSingle();
 
     if (error || !data) return null;
+    return data as ChatMessage;
+  }
+
+  async updateMessageContent(params: {
+    messageId: string;
+    senderId: string;
+    content: string;
+    mentions: ChatMention[];
+    editedAt: string;
+  }): Promise<ChatMessage> {
+    const { data, error } = await this.supabase
+      .from('chat_room_messages')
+      .update({
+        content: params.content,
+        mentions: params.mentions,
+        edited_at: params.editedAt,
+      })
+      .eq('id', params.messageId)
+      .eq('sender_id', params.senderId)
+      .is('deleted_at', null)
+      .select(MESSAGE_COLUMNS)
+      .single();
+
+    if (error || !data) {
+      throw new Error(error?.message || 'Failed to edit message');
+    }
     return data as ChatMessage;
   }
 
@@ -987,17 +1012,31 @@ export class SupabaseChatRepository implements ChatRepository {
     return starred;
   }
 
-  async deleteMessage(params: {
+  async softDeleteMessage(params: {
     messageId: string;
     senderId: string;
+    deletedAt: string;
   }): Promise<void> {
+    // Soft delete: keep the row (and its content) for the audit/dispute
+    // foundation; the read projection masks content before it reaches clients.
     const { error } = await this.supabase
       .from('chat_room_messages')
-      .delete()
+      .update({ deleted_at: params.deletedAt })
       .eq('id', params.messageId)
       .eq('sender_id', params.senderId);
 
     if (error) throw new Error(error.message);
+  }
+
+  async findReplyTargets(messageIds: string[]): Promise<ChatMessage[]> {
+    if (messageIds.length === 0) return [];
+    const { data, error } = await this.supabase
+      .from('chat_room_messages')
+      .select(MESSAGE_COLUMNS)
+      .in('id', messageIds);
+
+    if (error) throw new Error(error.message);
+    return (data || []) as ChatMessage[];
   }
 
   async markRoomRead(params: {

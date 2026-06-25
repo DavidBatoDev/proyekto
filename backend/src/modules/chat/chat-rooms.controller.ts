@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -14,6 +15,7 @@ import type { AuthenticatedUser } from '../../common/interfaces/authenticated-re
 import { ChatService } from './chat.service';
 import {
   ChatMessagesQueryDto,
+  EditMessageDto,
   SearchMessagesQueryDto,
   ToggleChatReactionDto,
 } from './dto/chat.dto';
@@ -88,6 +90,15 @@ export class ChatRoomsController {
     @Body() dto: ToggleChatReactionDto,
   ) {
     return this.chatService.toggleMessageReaction(messageId, user.id, dto.emoji);
+  }
+
+  @Patch('messages/:messageId')
+  editMessage(
+    @Param('messageId') messageId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: EditMessageDto,
+  ) {
+    return this.chatService.editMessage(messageId, user.id, dto);
   }
 
   @Delete('messages/:messageId')

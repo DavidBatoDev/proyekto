@@ -8,6 +8,7 @@ import type {
   ChatAttachmentDto,
   ChatMentionDto,
   CreateChannelDto,
+  EditMessageDto,
   SendChannelMessageDto,
   SendDmMessageDto,
   UpdateChannelDto,
@@ -19,6 +20,7 @@ import type {
   ChatAttachment,
   ChatMention,
   ChatMessage,
+  ChatReplyPreview,
   ChatRepository,
   ChatRoom,
   ChatRoomWithLastMessage,
@@ -197,6 +199,20 @@ export class ChatService {
   }
 
   /**
+   * Lean preview of a reply target for the quote UI. Truncated, and content is
+   * blanked when the target is itself soft-deleted (so a deleted message's text
+   * can't leak through a reply that quotes it).
+   */
+  private toReplyPreview(target: ChatMessage): ChatReplyPreview {
+    return {
+      id: target.id,
+      sender_id: target.sender_id,
+      content: target.deleted_at ? '' : target.content.slice(0, 200),
+      deleted_at: target.deleted_at,
+    };
+  }
+
+  /**
    * Fan a chat change out to every room participant's inbox DO. Fully
    * off the response path (the participant lookup + publish run detached) so
    * it never adds latency to the send/react hot path.
@@ -316,10 +332,17 @@ export class ChatService {
             : latestMessage.sender_id !== userId
           : false;
         const isStarred = starredRoomIds.has(room.id);
+        // Mask a soft-deleted last message so the sidebar shows a tombstone
+        // preview ("Message deleted") instead of leaking the original text.
+        const maskedLastMessage =
+          latestMessage && latestMessage.deleted_at
+            ? { ...latestMessage, content: '', attachments: [], mentions: [] }
+            : latestMessage;
 
         if (room.type !== 'dm') {
           return {
             ...room,
+            last_message: maskedLastMessage,
             is_starred: isStarred,
             viewer_last_read_at: viewerLastReadAt,
             has_unread: hasUnread,
@@ -329,6 +352,7 @@ export class ChatService {
           room.participants.find((p) => p.user_id !== userId) ?? null;
         return {
           ...room,
+          last_message: maskedLastMessage,
           is_starred: isStarred,
           counterpart,
           viewer_last_read_at: viewerLastReadAt,
@@ -471,10 +495,45 @@ export class ChatService {
           })
         : new Map<string, { emoji: string; count: number; reacted_by_me: boolean }[]>();
 
-    const enrichedMessages = chronologicalMessages.map((message) => ({
-      ...message,
-      reactions: reactionsByMessage.get(message.id) ?? [],
-    }));
+    // Hydrate a lean preview of any quoted (reply target) messages so the thread
+    // can render the quote without a second round-trip per reply.
+    const replyTargetIds = Array.from(
+      new Set(
+        chronologicalMessages
+          .map((m) => m.reply_to_id)
+          .filter((id): id is string => !!id),
+      ),
+    );
+    const replyById = new Map(
+      (replyTargetIds.length > 0
+        ? await this.chatRepo.findReplyTargets(replyTargetIds)
+        : []
+      ).map((target) => [target.id, target]),
+    );
+
+    const enrichedMessages = chronologicalMessages.map((message) => {
+      const target = message.reply_to_id
+        ? replyById.get(message.reply_to_id) ?? null
+        : null;
+      const reply_to = target ? this.toReplyPreview(target) : null;
+      // Soft-deleted: never ship the original content/attachments/mentions to
+      // the client — only the tombstone marker (deleted_at).
+      if (message.deleted_at) {
+        return {
+          ...message,
+          content: '',
+          attachments: [],
+          mentions: [],
+          reactions: [],
+          reply_to,
+        };
+      }
+      return {
+        ...message,
+        reactions: reactionsByMessage.get(message.id) ?? [],
+        reply_to,
+      };
+    });
 
     const nextBefore =
       messages.length === safeLimit ? messages[messages.length - 1]?.created_at : null;
@@ -604,6 +663,7 @@ export class ChatService {
       content,
       attachments,
       mentions,
+      replyToId: dto.reply_to_id ?? null,
     });
 
     this.fanoutChat(room.id, projectId, 'message');
@@ -673,6 +733,7 @@ export class ChatService {
       content,
       attachments,
       mentions,
+      replyToId: dto.reply_to_id ?? null,
     });
 
     this.fanoutChat(room.id, null, 'message');
@@ -763,14 +824,71 @@ export class ChatService {
       });
     }
 
-    await this.chatRepo.deleteMessage({
+    await this.chatRepo.softDeleteMessage({
       messageId,
       senderId: userId,
+      deletedAt: new Date().toISOString(),
     });
 
     this.fanoutChat(message.room_id, message.project_id, 'message');
 
     return { ok: true };
+  }
+
+  /**
+   * Edit a message's text + @mentions (sender-only). Attachments are unchanged
+   * and a deleted message can't be edited. Stamps edited_at to drive the
+   * "(edited)" label, then fans the change out so every viewer refetches.
+   */
+  async editMessage(messageId: string, userId: string, dto: EditMessageDto) {
+    const message = await this.chatRepo.findMessageById(messageId);
+    if (!message) {
+      throw new NotFoundException('Chat message not found.');
+    }
+
+    await this.assertRoomAccess(message.room_id, userId);
+
+    if (message.sender_id !== userId) {
+      throw new MissingPermissionException({
+        path: null,
+        message: 'You can only edit your own messages.',
+        label: 'edit another member’s message',
+      });
+    }
+    if (message.deleted_at) {
+      throw new BadRequestException('You cannot edit a deleted message.');
+    }
+
+    const content = dto.content?.trim() ?? '';
+    const mentions = this.buildMentions(dto.mentions);
+    const hasAttachments = (message.attachments?.length ?? 0) > 0;
+    if (!content && !hasAttachments) {
+      throw new BadRequestException(
+        'Message content or an attachment is required.',
+      );
+    }
+
+    const updated = await this.chatRepo.updateMessageContent({
+      messageId,
+      senderId: userId,
+      content,
+      mentions,
+      editedAt: new Date().toISOString(),
+    });
+
+    this.fanoutChat(message.room_id, message.project_id, 'message');
+
+    const reactionsByMessage = await this.chatRepo.listReactionsForMessages({
+      messageIds: [messageId],
+      viewerUserId: userId,
+    });
+
+    return {
+      message: {
+        ...updated,
+        reactions: reactionsByMessage.get(messageId) ?? [],
+      },
+    };
   }
 
   async markRoomRead(roomId: string, userId: string) {

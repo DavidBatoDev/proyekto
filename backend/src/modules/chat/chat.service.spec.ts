@@ -94,6 +94,21 @@ describe('ChatService', () => {
         updated_at: new Date().toISOString(),
       }),
       findMessageById: jest.fn().mockResolvedValue(null),
+      updateMessageContent: jest.fn().mockResolvedValue({
+        id: 'msg-1',
+        room_id: 'room-1',
+        project_id: null,
+        sender_id: 'actor-1',
+        content: 'edited',
+        attachments: [],
+        mentions: [],
+        edited_at: new Date().toISOString(),
+        deleted_at: null,
+        reply_to_id: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }),
+      findReplyTargets: jest.fn().mockResolvedValue([]),
       searchRoomMessages: jest.fn().mockResolvedValue([]),
       listRoomAttachments: jest.fn().mockResolvedValue([]),
       listRoomLinks: jest.fn().mockResolvedValue([]),
@@ -101,7 +116,7 @@ describe('ChatService', () => {
       toggleMessageReaction: jest.fn().mockResolvedValue(undefined),
       toggleRoomStar: jest.fn().mockResolvedValue({ starred: true }),
       listStarredRoomIds: jest.fn().mockResolvedValue(new Set<string>()),
-      deleteMessage: jest.fn().mockResolvedValue(undefined),
+      softDeleteMessage: jest.fn().mockResolvedValue(undefined),
       markRoomRead: jest.fn().mockResolvedValue(new Date().toISOString()),
       ...overrides,
     }) as ChatRepository;
@@ -768,5 +783,131 @@ describe('ChatService', () => {
     const room = await service.resolveDmRoom('actor-1', 'rec-1');
     expect(room.slug).toBe('actor-1_rec-1');
     expect(upsertParticipants).toHaveBeenCalledWith(room.id, ['actor-1', 'rec-1']);
+  });
+
+  // ── Edit + soft-delete ──────────────────────────────────────────────────
+  const ownMessage = (overrides: Record<string, unknown> = {}) => ({
+    id: 'msg-1',
+    room_id: 'room-1',
+    project_id: null,
+    sender_id: 'actor-1',
+    content: 'original',
+    attachments: [],
+    mentions: [],
+    edited_at: null,
+    deleted_at: null,
+    reply_to_id: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    ...overrides,
+  });
+
+  const editableRepo = (overrides: Partial<ChatRepository>) =>
+    buildRepo({
+      findMessageById: jest.fn().mockResolvedValue(ownMessage()),
+      findRoomById: jest.fn().mockResolvedValue(buildRoom({ id: 'room-1' })),
+      isRoomParticipant: jest.fn().mockResolvedValue(true),
+      ...overrides,
+    });
+
+  it('editMessage updates content + mentions and stamps edited_at', async () => {
+    const updateMessageContent = jest
+      .fn()
+      .mockResolvedValue(ownMessage({ content: 'updated', edited_at: 't' }));
+    const repo = editableRepo({ updateMessageContent });
+
+    const result = await makeService(repo).editMessage('msg-1', 'actor-1', {
+      content: 'updated',
+    });
+
+    expect(updateMessageContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: 'msg-1',
+        senderId: 'actor-1',
+        content: 'updated',
+        editedAt: expect.any(String),
+      }),
+    );
+    expect(result.message.edited_at).toBe('t');
+  });
+
+  it('editMessage rejects editing another member’s message', async () => {
+    const updateMessageContent = jest.fn();
+    const repo = editableRepo({
+      findMessageById: jest
+        .fn()
+        .mockResolvedValue(ownMessage({ sender_id: 'someone-else' })),
+      updateMessageContent,
+    });
+
+    await expect(
+      makeService(repo).editMessage('msg-1', 'actor-1', { content: 'x' }),
+    ).rejects.toThrow();
+    expect(updateMessageContent).not.toHaveBeenCalled();
+  });
+
+  it('editMessage rejects editing a deleted message', async () => {
+    const updateMessageContent = jest.fn();
+    const repo = editableRepo({
+      findMessageById: jest.fn().mockResolvedValue(ownMessage({ deleted_at: 't' })),
+      updateMessageContent,
+    });
+
+    await expect(
+      makeService(repo).editMessage('msg-1', 'actor-1', { content: 'x' }),
+    ).rejects.toThrow();
+    expect(updateMessageContent).not.toHaveBeenCalled();
+  });
+
+  it('editMessage rejects blanking content with no attachments', async () => {
+    const updateMessageContent = jest.fn();
+    const repo = editableRepo({ updateMessageContent });
+
+    await expect(
+      makeService(repo).editMessage('msg-1', 'actor-1', { content: '   ' }),
+    ).rejects.toThrow();
+    expect(updateMessageContent).not.toHaveBeenCalled();
+  });
+
+  it('unsendMessage soft-deletes (tombstone) rather than hard-deleting', async () => {
+    const softDeleteMessage = jest.fn().mockResolvedValue(undefined);
+    const repo = editableRepo({ softDeleteMessage });
+
+    const result = await makeService(repo).unsendMessage('msg-1', 'actor-1');
+
+    expect(softDeleteMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: 'msg-1',
+        senderId: 'actor-1',
+        deletedAt: expect.any(String),
+      }),
+    );
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('listRoomMessages masks a soft-deleted message', async () => {
+    const repo = editableRepo({
+      listRoomMessages: jest.fn().mockResolvedValue([
+        ownMessage({
+          id: 'm-del',
+          content: 'secret',
+          deleted_at: 't',
+          attachments: [{ url: 'x' }],
+          mentions: [{ user_id: 'u' }],
+        }),
+        ownMessage({ id: 'm-ok', content: 'visible' }),
+      ]),
+    });
+
+    const result = await makeService(repo).listRoomMessages('room-1', 'viewer-1');
+
+    const del = result.messages.find((m) => m.id === 'm-del')!;
+    expect(del.content).toBe('');
+    expect(del.attachments).toEqual([]);
+    expect(del.mentions).toEqual([]);
+    expect(del.deleted_at).toBe('t');
+
+    const ok = result.messages.find((m) => m.id === 'm-ok')!;
+    expect(ok.content).toBe('visible');
   });
 });

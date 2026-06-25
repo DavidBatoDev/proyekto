@@ -123,6 +123,11 @@ export class SendChannelMessageDto {
   @ValidateNested({ each: true })
   @Type(() => ChatMentionDto)
   mentions?: ChatMentionDto[];
+
+  // Optional: the message this one replies to (quote).
+  @IsOptional()
+  @IsUUID()
+  reply_to_id?: string;
 }
 
 /**
@@ -150,6 +155,29 @@ export class SendDmMessageDto {
   @ValidateNested({ each: true })
   @Type(() => ChatAttachmentDto)
   attachments?: ChatAttachmentDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => ChatMentionDto)
+  mentions?: ChatMentionDto[];
+
+  // Optional: the message this one replies to (quote).
+  @IsOptional()
+  @IsUUID()
+  reply_to_id?: string;
+}
+
+/**
+ * Edit an existing message's text + @mentions (sender-only). Attachments are
+ * unchanged; the service requires non-empty content OR an existing attachment.
+ */
+export class EditMessageDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  content?: string;
 
   @IsOptional()
   @IsArray()
