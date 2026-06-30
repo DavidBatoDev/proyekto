@@ -35,6 +35,14 @@ const config: CapacitorConfig = {
       responseTimeout: 20,
       resetWhenUpdate: true,
     },
+    // Android 15 (targetSdk 35) enforces edge-to-edge; the Android WebView's
+    // env(safe-area-inset-*) is unreliable on Capacitor 7, so this plugin applies
+    // the system-bar insets to the WebView — content stops drawing under the status
+    // bar / gesture nav. Android-only (no-op on iOS/web).
+    EdgeToEdge: {
+      // Single key in v7 — colors BOTH the status bar and navigation bar.
+      backgroundColor: '#ffffff',
+    },
   },
 };
 

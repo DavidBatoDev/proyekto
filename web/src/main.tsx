@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
@@ -11,6 +12,15 @@ import { AuthInitializer } from "./components/auth/AuthInitializer";
 // No-op/harmless on web (native bridge absent → rejects), so the browser build
 // and Vercel deploy are unaffected.
 CapacitorUpdater.notifyAppReady().catch(() => {});
+
+// Android 15 draws edge-to-edge; this plugin pads the WebView below the status bar
+// and above the gesture nav (the Android WebView's env(safe-area-inset-*) is
+// unreliable on Capacitor 7). Android-only — never loaded on iOS/web.
+if (Capacitor.getPlatform() === "android") {
+  void import("@capawesome/capacitor-android-edge-to-edge-support")
+    .then(({ EdgeToEdge }) => EdgeToEdge.enable())
+    .catch(() => {});
+}
 
 // Import the generated route tree
 import { routeTree } from "./routeTree.gen";
