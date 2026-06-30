@@ -1,0 +1,37 @@
+# Groups GitHub's auto-generated release notes (generate_release_notes) into
+# changelog sections by PR label. Add the matching label to a PR and it lands in
+# the right section; unlabeled PRs fall into "Other Changes".
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+    authors:
+      - dependabot
+      - github-actions
+  categories:
+    - title: ✨ Features
+      labels:
+        - feature
+        - feat
+        - enhancement
+    - title: 🐛 Fixes
+      labels:
+        - bug
+        - fix
+        - bugfix
+    - title: ⚠️ Breaking Changes
+      labels:
+        - breaking
+        - breaking-change
+    - title: 🔒 Security
+      labels:
+        - security
+    - title: 🧹 Maintenance
+      labels:
+        - chore
+        - ci
+        - refactor
+        - docs
+    - title: 📦 Other Changes
+      labels:
+        - "*"
