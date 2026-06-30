@@ -1,0 +1,130 @@
+name: Mobile OTA — Publish Web Bundle
+
+# Builds the web app and publishes it as an OTA bundle to the self-hosted update
+# server (backend mobile-updates module + R2). Installed apps pick it up on the
+# next foreground/cold-start. Pure web/JS/CSS changes only — see web/MOBILE.md §9
+# for the native-compatibility rule (bump native_build_min on native changes).
+#
+# Ships DARK: the job is gated on the OTA_PUBLISH_ENABLED repo variable, so it is
+# a no-op until you opt in (create the OTA_PUBLISH_TOKEN secret + set the var).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '.github/workflows/mobile-ota-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      native_build_min:
+        description: 'Minimum native versionCode/build this bundle requires'
+        default: '1'
+      channel:
+        description: 'Release channel'
+        default: 'production'
+
+concurrency:
+  group: mobile-ota-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: production
+    # No-op until OTA is opted into for this repo.
+    if: ${{ vars.OTA_PUBLISH_ENABLED != '' }}
+    defaults:
+      run:
+        working-directory: web
+    env:
+      API: https://api.proyekto.tech/api
+      NATIVE_BUILD_MIN: ${{ github.event.inputs.native_build_min || '1' }}
+      CHANNEL: ${{ github.event.inputs.channel || 'production' }}
+      BUNDLE_VERSION: ${{ github.event.inputs.native_build_min || '1' }}.${{ github.run_number }}
+      CHANGELOG: ${{ github.event.head_commit.message || github.sha }}
+      OTA_PUBLISH_TOKEN: ${{ secrets.OTA_PUBLISH_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install + build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Zip dist contents (index.html at zip root)
+        run: |
+          # `cd dist` first so paths inside the zip are `index.html`, `assets/...`
+          # NOT `dist/index.html`. Capgo requires index.html at the zip root.
+          cd dist && zip -r -X ../bundle.zip . && cd ..
+
+      - name: Compute sha256 + size
+        id: hash
+        run: |
+          CHECKSUM=$(sha256sum bundle.zip | awk '{print $1}')   # lowercase hex
+          SIZE=$(stat -c%s bundle.zip)
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+          echo "Bundle $BUNDLE_VERSION — sha256=$CHECKSUM size=$SIZE bytes"
+
+      - name: Publish bundle (presign → PUT → register) per platform
+        env:
+          CHECKSUM: ${{ steps.hash.outputs.checksum }}
+          SIZE: ${{ steps.hash.outputs.size }}
+        run: |
+          set -euo pipefail
+
+          publish_one () {
+            local PLATFORM="$1"
+
+            # 1) Presign a direct-to-R2 upload (CI never holds R2 creds).
+            local PRESIGN
+            PRESIGN=$(curl -fsS -X POST "$API/mobile-updates/bundles/presign" \
+              -H "authorization: Bearer $OTA_PUBLISH_TOKEN" \
+              -H 'content-type: application/json' \
+              -d "$(jq -nc --arg p "$PLATFORM" --arg ch "$CHANNEL" --arg v "$BUNDLE_VERSION" \
+                    '{platform:$p,channel:$ch,version:$v}')")
+            local UPLOAD_URL DOWNLOAD_URL KEY
+            UPLOAD_URL=$(echo "$PRESIGN" | jq -r '.data.uploadUrl')
+            DOWNLOAD_URL=$(echo "$PRESIGN" | jq -r '.data.downloadUrl')
+            KEY=$(echo "$PRESIGN" | jq -r '.data.key')
+
+            # 2) Upload the zip to R2. Content-Type MUST match the presign.
+            curl -fsS -X PUT "$UPLOAD_URL" -H 'content-type: application/zip' -T bundle.zip
+
+            # 3) Register the metadata row.
+            curl -fsS -X POST "$API/mobile-updates/bundles" \
+              -H "authorization: Bearer $OTA_PUBLISH_TOKEN" \
+              -H 'content-type: application/json' \
+              -d "$(jq -nc \
+                    --arg p "$PLATFORM" --arg ch "$CHANNEL" --arg v "$BUNDLE_VERSION" \
+                    --argjson nbm "$NATIVE_BUILD_MIN" --arg key "$KEY" --arg url "$DOWNLOAD_URL" \
+                    --arg cs "$CHECKSUM" --argjson sz "$SIZE" \
+                    --arg cb "ci:${{ github.run_id }}" --arg cl "$CHANGELOG" \
+                    '{platform:$p,channel:$ch,version:$v,native_build_min:$nbm,r2_key:$key,url:$url,checksum:$cs,size_bytes:$sz,created_by:$cb,changelog:$cl}')" \
+              >/dev/null
+            echo "Published $PLATFORM bundle $BUNDLE_VERSION (native_build_min=$NATIVE_BUILD_MIN)"
+          }
+
+          # One web bundle serves both platforms (dist is platform-agnostic).
+          publish_one android
+          publish_one ios
+
+      - name: Summary
+        run: |
+          {
+            echo "### Mobile OTA published"
+            echo "- Version: \`$BUNDLE_VERSION\`  (channel \`$CHANNEL\`, native_build_min \`$NATIVE_BUILD_MIN\`)"
+            echo "- sha256: \`${{ steps.hash.outputs.checksum }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
