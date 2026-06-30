@@ -156,7 +156,7 @@ export function ProjectBottomNav({
   return (
     <>
       {/* ── Fixed bottom navigation bar ── */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 flex h-16 items-stretch border-t border-slate-200 bg-white/95 backdrop-blur md:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 flex h-app-nav items-stretch border-t border-slate-200 bg-white/95 pb-safe backdrop-blur md:hidden">
         {visiblePrimary.map((item) => {
           const Icon = item.icon;
           return (
@@ -221,7 +221,7 @@ export function ProjectBottomNav({
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ duration: 0.25, ease: "easeOut" }}
-              className="fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl bg-white px-4 pb-10 pt-4 md:hidden"
+              className="fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl bg-white px-4 pb-app-sheet pt-4 md:hidden"
             >
               {/* Drag handle */}
               <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-200" />

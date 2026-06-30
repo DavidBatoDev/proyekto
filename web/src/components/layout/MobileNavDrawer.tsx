@@ -73,7 +73,7 @@ export function MobileNavDrawer({
 				aria-modal="true"
 				aria-label="Navigation"
 				inert={!isOpen}
-				className={`fixed inset-y-0 left-0 z-[61] flex w-[280px] max-w-[85vw] flex-col bg-white shadow-xl transition-transform duration-200 ease-out lg:hidden ${
+				className={`fixed inset-y-0 left-0 z-[61] flex w-[280px] max-w-[85vw] flex-col bg-white pt-safe pb-safe shadow-xl transition-transform duration-200 ease-out lg:hidden ${
 					isOpen ? "translate-x-0" : "-translate-x-full"
 				}`}
 			>

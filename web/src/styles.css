@@ -5,6 +5,29 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ── Safe-area (notch / status bar / gesture-nav) insets ──────────────────────
+   The native shells (Capacitor) draw edge-to-edge under Android 15 (targetSdk 35),
+   so app chrome must clear the status bar (top) and gesture nav (bottom). env()
+   needs viewport-fit=cover (set in index.html) and resolves to 0 on web/desktop,
+   so every utility below is inert off-native. Vars are overridable for testing. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+.pt-safe { padding-top: var(--safe-top); }
+.pb-safe { padding-bottom: var(--safe-bottom); }
+.pl-safe { padding-left: var(--safe-left); }
+.pr-safe { padding-right: var(--safe-right); }
+/* Global header (h-14) extended up under the status bar: bg fills it, content below. */
+.h-app-header { height: calc(3.5rem + var(--safe-top)); }
+.pt-app-header { padding-top: calc(3.5rem + var(--safe-top)); }
+/* Mobile bottom nav (h-16) extended down under the gesture bar + content clearance. */
+.h-app-nav { height: calc(4rem + var(--safe-bottom)); }
+.pb-app-nav { padding-bottom: calc(4rem + var(--safe-bottom)); }
+.pb-app-sheet { padding-bottom: calc(2.5rem + var(--safe-bottom)); }
+
 html {
   scroll-behavior: smooth;
 }

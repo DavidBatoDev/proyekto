@@ -64,7 +64,7 @@ function ProjectLayout() {
 	// at this route shell). Personal workspaces never show the card.
 
 	return (
-		<div className="app-shell-bg flex h-screen flex-col overflow-hidden pt-14">
+		<div className="app-shell-bg flex h-screen flex-col overflow-hidden pt-app-header">
 			<div className="flex flex-1 overflow-hidden">
 				{/* Sidebar — desktop only */}
 				<div className="hidden md:block">
@@ -78,7 +78,7 @@ function ProjectLayout() {
 				</div>
 
 				{/* Bottom padding on mobile reserves space above the fixed bottom nav */}
-				<main className="flex-1 overflow-hidden pb-16 md:pb-0">
+				<main className="flex-1 overflow-hidden pb-app-nav md:pb-0">
 					<Outlet />
 				</main>
 			</div>
