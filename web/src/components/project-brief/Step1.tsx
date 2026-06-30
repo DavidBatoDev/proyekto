@@ -17,7 +17,7 @@ export function Step1({ formData, updateFormData, compact = false }: Step1Props)
   return (
     <div className={spacing}>
       {/* Project Title & Category */}
-      <div className={`grid grid-cols-2 ${gridGap}`}>
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${gridGap}`}>
         <div>
           <label className={`block font-semibold text-[#333438] ${labelSize}`}>
             Project Title*
@@ -84,7 +84,7 @@ export function Step1({ formData, updateFormData, compact = false }: Step1Props)
         <label className={`block font-semibold text-[#333438] ${compact ? "text-sm mb-2" : "text-sm mb-4"}`}>
           What is the current state of the project?
         </label>
-        <div className={`grid grid-cols-2 ${gridGap}`}>
+        <div className={`grid grid-cols-1 sm:grid-cols-2 ${gridGap}`}>
           <TileOption
             name="projectState"
             value="idea"

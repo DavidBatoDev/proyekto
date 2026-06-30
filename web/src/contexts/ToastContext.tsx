@@ -4,6 +4,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   type ReactNode,
 } from "react";
 import { CheckCircle2, XCircle, AlertTriangle, Info, X } from "lucide-react";
@@ -65,6 +66,7 @@ const STYLE: Record<
 };
 
 let nextId = 0;
+const MAX_TOASTS = 4;
 
 function ToastItem({
   toast,
@@ -95,7 +97,7 @@ function ToastItem({
   return (
     <div
       className={`
-        flex items-start gap-3 w-80 bg-white rounded-xl shadow-lg border border-slate-200
+        flex items-start gap-3 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-lg border border-slate-200
         border-l-4 ${style.bar} px-4 py-3
         transition-all duration-300 ease-out
         ${visible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-4"}
@@ -125,10 +127,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const showToast = useCallback(
     ({ message, severity = "info", duration = 5000 }: ToastOptions) => {
-      setToasts((prev) => [
-        ...prev,
-        { id: ++nextId, message, severity, duration },
-      ]);
+      setToasts((prev) => {
+        // De-dupe: if an identical toast is already showing, don't stack another
+        // (guards against callers that fire the same error in a render/loop).
+        if (prev.some((t) => t.message === message && t.severity === severity)) {
+          return prev;
+        }
+        const next = [...prev, { id: ++nextId, message, severity, duration }];
+        // Cap the stack so a burst can never fill the screen — drop the oldest.
+        return next.length > MAX_TOASTS ? next.slice(next.length - MAX_TOASTS) : next;
+      });
     },
     [],
   );
@@ -161,10 +169,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [showToast],
   );
 
+  // Stable identity so consumers that depend on the toast API in effect deps
+  // (e.g. /auth/verify) don't re-run on every toast → avoids a render loop.
+  const value = useMemo(
+    () => ({ showToast, success, error, warning, info }),
+    [showToast, success, error, warning, info],
+  );
+
   return (
-    <ToastContext.Provider value={{ showToast, success, error, warning, info }}>
+    <ToastContext.Provider value={value}>
       {children}
-      <div className="fixed top-4 right-4 z-9999 flex flex-col gap-2 pointer-events-none">
+      <div className="fixed top-4 right-4 left-4 z-9999 flex flex-col items-end gap-2 pointer-events-none sm:left-auto">
         {toasts.map((t) => (
           <div key={t.id} className="pointer-events-auto">
             <ToastItem toast={t} onDismiss={dismiss} />

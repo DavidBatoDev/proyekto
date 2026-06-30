@@ -48,7 +48,7 @@ export function StepIndicator({
         </motion.div>
       </div>
       <p
-        className={`mt-2 text-xs transition-colors duration-300 ${labelClass}`}
+        className={`mt-2 max-w-20 text-center text-xs leading-tight transition-colors duration-300 ${labelClass}`}
       >
         {label}
       </p>

@@ -343,11 +343,11 @@ function ProjectPostingPage() {
 					/>
 				</div>
 
-				{/* Step Content */}
-				<div className="grid grid-cols-[400px_1fr] gap-12">
+				{/* Step Content — single column on mobile, two columns from lg up. */}
+				<div className="grid grid-cols-1 gap-8 lg:grid-cols-[360px_1fr] lg:gap-12">
 					{/* Left Side - Step Info */}
 					<div className="relative">
-						<div className="sticky top-[120px]">
+						<div className="lg:sticky lg:top-[120px]">
 							<AnimatePresence mode="wait">
 								{currentStep === 1 && (
 									<motion.div
@@ -408,7 +408,7 @@ function ProjectPostingPage() {
 					</div>
 
 					{/* Right Side - Form */}
-					<div className="min-h-[500px]">
+					<div className="min-h-[500px] min-w-0">
 						<AnimatePresence mode="wait">
 							{currentStep === 1 && (
 								<motion.div
@@ -706,7 +706,7 @@ function IntentOptionCard({
  */
 function StepperBar({ filled }: { filled: boolean }) {
 	return (
-		<div className="-mt-6 mx-2 h-1 w-32 overflow-hidden rounded-full bg-slate-200">
+		<div className="-mt-6 mx-1 h-1 w-10 overflow-hidden rounded-full bg-slate-200 sm:mx-2 sm:w-20 lg:w-32">
 			<motion.div
 				className="h-full bg-slate-900"
 				initial={{ width: "0%" }}
@@ -825,7 +825,7 @@ function Step3({
 				<p className="block text-sm font-semibold text-[#333438] mb-4">
 					When do you want to start?*
 				</p>
-				<div className="grid grid-cols-3 gap-4">
+				<div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
 					<TileOption
 						name="startDate"
 						value="immediately"

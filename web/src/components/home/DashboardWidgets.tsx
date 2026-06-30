@@ -300,8 +300,8 @@ export function DashboardWidgets({
 			<section className="grid grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
 				<div className="space-y-6 min-w-0">
 					<div className="app-surface-card-strong p-5 sm:p-8">
-						<div className="mb-4 flex items-start justify-between gap-4 sm:mb-6">
-							<div>
+						<div className="mb-4 flex flex-col items-start gap-3 sm:mb-6 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+							<div className="min-w-0">
 								<h2 className="text-lg font-semibold tracking-tight text-slate-900 sm:text-[22px]">
 									Welcome back, {greetingName}
 								</h2>

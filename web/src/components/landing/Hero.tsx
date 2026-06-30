@@ -34,10 +34,10 @@ const Hero = () => {
           {/* Left content */}
           <div className="sm:col-span-7">
             <h1 className="text-start text-4xl md:text-6xl lg:text-7xl font-extrabold leading-tight tracking-tight text-gray-900">
-              Turn your project idea into action � easily
+              Turn your project idea into action — easily
             </h1>
             <p className="text-start mt-4 text-lg md:text-xl text-gray-600 max-w-2xl">
-              Start planning your project step-by-step and invite your team. No complex setups, no guesswork � just clarity from the get-go.
+              Start planning your project step-by-step and invite your team. No complex setups, no guesswork — just clarity from the get-go.
             </p>
             <div className="flex gap-4 mt-6">
               <Button variant="contained" colorScheme="primary" size="lg">

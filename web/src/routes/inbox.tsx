@@ -2,6 +2,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+	ArrowLeft,
 	ChevronRight,
 	Hash,
 	Inbox,
@@ -333,7 +334,14 @@ function InboxPage() {
 		<DashboardShell>
 			<div className="h-[calc(100vh-3.5rem)] px-4 py-4 sm:px-6 lg:px-8">
 				<div className="flex h-full min-h-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
-					<aside className="hidden md:flex w-[340px] shrink-0 flex-col border-r border-slate-200 bg-white">
+					{/* Mobile is single-pane: show the list when nothing is selected,
+					    the thread (with a back button) once a room is picked. md+ shows
+					    both panes side by side. */}
+					<aside
+						className={`${
+							search.r ? "hidden md:flex" : "flex"
+						} w-full shrink-0 flex-col border-r border-slate-200 bg-white md:w-[340px]`}
+					>
 						<div className="border-b border-slate-200 px-4 py-3">
 							<div className="flex items-center justify-between">
 								<h1 className="text-base font-semibold text-slate-900">
@@ -390,12 +398,23 @@ function InboxPage() {
 						</div>
 					</aside>
 
-					<section className="flex min-w-0 flex-1 bg-white">
+					<section
+						className={`${
+							search.r ? "flex" : "hidden md:flex"
+						} min-w-0 flex-1 bg-white`}
+					>
 						{selectedEntry ? (
 							<InboxThread
 								key={selectedEntry.room.id}
 								entry={selectedEntry}
 								currentUserId={user?.id}
+								onBack={() =>
+									navigate({
+										to: "/inbox",
+										search: { r: undefined },
+										replace: true,
+									})
+								}
 								onAfterSend={() => {
 									if (selectedEntry.room.type === "dm") {
 										void queryClient.invalidateQueries({
@@ -597,10 +616,12 @@ function InboxThread({
 	entry,
 	currentUserId,
 	onAfterSend,
+	onBack,
 }: {
 	entry: InboxEntry;
 	currentUserId?: string;
 	onAfterSend: () => void;
+	onBack?: () => void;
 }) {
 	const { project, room } = entry;
 	const profile = useProfile();
@@ -1095,8 +1116,18 @@ function InboxThread({
 	return (
 		<>
 			<div className="flex h-full min-h-0 flex-1 min-w-0 flex-col">
-				<header className="flex items-center justify-between gap-3 border-b border-slate-200 px-6 py-3">
+				<header className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-6">
 					<div className="flex min-w-0 items-center gap-3">
+						{onBack && (
+							<button
+								type="button"
+								onClick={onBack}
+								className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 md:hidden"
+								aria-label="Back to conversations"
+							>
+								<ArrowLeft className="h-5 w-5" />
+							</button>
+						)}
 						<div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-600">
 							{room.type === "channel" ? (
 								room.is_private ? (

@@ -37,10 +37,22 @@ export interface PresentationContextValue {
 
 export const PresentationContext = createContext<PresentationContextValue>(null!);
 
+// Safe no-op fallback for when the landing Header/Footer are rendered OUTSIDE a
+// PresentationContainer (e.g. the /consultant marketing page reuses <Header />).
+// Returning this instead of throwing keeps those pages from crashing to the
+// error boundary; the section-scroll actions simply become no-ops there.
+const FALLBACK_PRESENTATION_CONTEXT: PresentationContextValue = {
+  activeSection: 0,
+  totalSections: SECTION_IDS.length,
+  goToSection: () => {},
+  goNext: () => {},
+  goPrev: () => {},
+  isTransitioning: false,
+  sectionIds: SECTION_IDS,
+  sectionLabels: SECTION_LABELS,
+};
+
 export function usePresentationContext(): PresentationContextValue {
   const ctx = useContext(PresentationContext);
-  if (!ctx) {
-    throw new Error("usePresentationContext must be used within PresentationContainer");
-  }
-  return ctx;
+  return ctx ?? FALLBACK_PRESENTATION_CONTEXT;
 }
