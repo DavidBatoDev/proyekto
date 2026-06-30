@@ -205,6 +205,43 @@ class EnvironmentVariables {
   @IsOptional()
   @IsNumber()
   REALTIME_PUBLISH_TIMEOUT_MS?: number;
+
+  // Firebase Admin (FCM) push notifications. When all three are set, the backend
+  // sends pushes to registered device tokens via firebase-admin; unset = push is
+  // a no-op (dev/CI/tests), so the rest of the app is unaffected. FIREBASE_PRIVATE_KEY
+  // is the service-account PEM; store it with literal "\n" escapes (un-escaped at runtime).
+  @IsOptional()
+  @IsString()
+  FIREBASE_PROJECT_ID?: string;
+
+  @IsOptional()
+  @IsString()
+  FIREBASE_CLIENT_EMAIL?: string;
+
+  @IsOptional()
+  @IsString()
+  FIREBASE_PRIVATE_KEY?: string;
+
+  // Keyless auth: when 'true' (and FIREBASE_PROJECT_ID is set, with no key pair),
+  // the backend authenticates to FCM via Application Default Credentials —
+  // Workload Identity on Cloud Run or `gcloud auth application-default login`
+  // locally. Use this when org policy blocks downloadable service-account keys.
+  @IsOptional()
+  @IsString()
+  FIREBASE_USE_ADC?: string;
+
+  // Upper bound (ms) on the FCM send awaited inside notification creation, so a
+  // slow/failing push never blocks the action that created the notification.
+  @IsOptional()
+  @IsNumber()
+  PUSH_SEND_TIMEOUT_MS?: number;
+
+  // Shared bearer secret guarding the self-hosted OTA publish endpoints
+  // (/api/mobile-updates/bundles*). Only CI needs it; the public check/stats
+  // endpoints work without it. Unset = publishing is closed (guard denies all).
+  @IsOptional()
+  @IsString()
+  OTA_PUBLISH_TOKEN?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

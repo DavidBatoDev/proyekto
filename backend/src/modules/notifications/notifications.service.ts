@@ -1,6 +1,14 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
+import { buildPushMessage } from '../push/notification-push';
+import { PushService } from '../push/push.service';
 import {
   CreateNotificationDto,
   MarkNotificationReadDto,
@@ -9,8 +17,12 @@ import {
 
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
+    private readonly push: PushService,
+    private readonly config: ConfigService,
   ) {}
 
   async listForUser(userId: string, query: NotificationsQueryDto) {
@@ -132,7 +144,7 @@ export class NotificationsService {
       .insert({
         user_id: payload.user_id,
         project_id: payload.project_id || null,
-        type_id: type.id,
+        type_id: (type as { id: string }).id,
         actor_id: payload.actor_id || null,
         content: payload.content || {},
         link_url: payload.link_url || null,
@@ -146,6 +158,36 @@ export class NotificationsService {
       );
     }
 
+    // Best-effort FCM push to the recipient's devices. The in-app row above is
+    // the source of truth; push is fired with a bounded timeout and never
+    // rethrows, so a delivery failure can't block or break the action that
+    // created the notification. (Bounded await rather than a detached promise
+    // because Cloud Run may freeze instance CPU once the response is sent.)
+    await this.sendPush(payload, data.id as string);
+
     return data;
+  }
+
+  private async sendPush(
+    payload: CreateNotificationDto,
+    notificationId: string,
+  ): Promise<void> {
+    const timeoutMs = this.config.get<number>('PUSH_SEND_TIMEOUT_MS', 1500);
+    const message = buildPushMessage({
+      notificationId,
+      typeName: payload.type_name,
+      content: payload.content,
+      linkUrl: payload.link_url,
+      projectId: payload.project_id,
+    });
+
+    try {
+      await Promise.race([
+        this.push.sendToUser(payload.user_id, message),
+        new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+      ]);
+    } catch (err) {
+      this.logger.warn(`push send failed: ${(err as Error)?.message}`);
+    }
   }
 }

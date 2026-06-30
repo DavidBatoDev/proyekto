@@ -29,6 +29,9 @@ jobs:
       PUBLIC_API_URL: ${{ vars.PUBLIC_API_URL }}
       CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
       REALTIME_WORKER_URL: ${{ vars.REALTIME_WORKER_URL }}
+      FCM_PUSH_ENABLED: ${{ vars.FCM_PUSH_ENABLED }}
+      FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+      OTA_PUBLISH_ENABLED: ${{ vars.OTA_PUBLISH_ENABLED }}
 
     steps:
       - name: Checkout
@@ -79,6 +82,33 @@ jobs:
             echo "Realtime (Durable Objects) publish enabled for this deploy."
           else
             echo "Realtime publish disabled (set the REALTIME_WORKER_URL repo var to enable)."
+          fi
+
+          # Firebase Cloud Messaging push — KEYLESS (Workload Identity / ADC).
+          # Gated on the FCM_PUSH_ENABLED repo var. The Cloud Run runtime SA
+          # authenticates to FCM via Application Default Credentials, so NO key
+          # secret is stored. To enable: grant the runtime SA
+          # roles/firebasecloudmessaging.admin on the Firebase project, then set the
+          # FCM_PUSH_ENABLED repo var (and optionally the FIREBASE_PROJECT_ID repo
+          # var; defaults to tech-proyekto-app). Until then push is a no-op.
+          if [[ -n "${FCM_PUSH_ENABLED:-}" ]]; then
+            FIREBASE_PROJECT_ID_VALUE="${FIREBASE_PROJECT_ID:-tech-proyekto-app}"
+            ENV_VARS="${ENV_VARS},FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID_VALUE},FIREBASE_USE_ADC=true,PUSH_SEND_TIMEOUT_MS=1500"
+            echo "FCM push enabled (keyless ADC) for this deploy."
+          else
+            echo "FCM push disabled (grant the runtime SA FCM access, then set the FCM_PUSH_ENABLED repo var to enable)."
+          fi
+
+          # Self-hosted OTA (mobile live-update) publish secret. Gated on the
+          # OTA_PUBLISH_ENABLED repo var. The public check/stats endpoints work
+          # without it; only the CI publish endpoints need the token. To enable:
+          # create the OTA_PUBLISH_TOKEN secret in Secret Manager, then set the
+          # OTA_PUBLISH_ENABLED repo var.
+          if [[ -n "${OTA_PUBLISH_ENABLED:-}" ]]; then
+            SECRETS="${SECRETS},OTA_PUBLISH_TOKEN=OTA_PUBLISH_TOKEN:latest"
+            echo "OTA publish endpoint enabled for this deploy."
+          else
+            echo "OTA publish disabled (create OTA_PUBLISH_TOKEN secret, then set the OTA_PUBLISH_ENABLED repo var to enable)."
           fi
 
           gcloud run deploy "${{ vars.GCP_SERVICE_NAME }}" \

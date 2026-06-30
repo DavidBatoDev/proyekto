@@ -23,6 +23,8 @@ import { RoadmapsModule } from './modules/roadmaps/roadmaps.module';
 import { RoadmapSharesModule } from './modules/roadmap-shares/roadmap-shares.module';
 import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { PushModule } from './modules/push/push.module';
+import { MobileUpdatesModule } from './modules/mobile-updates/mobile-updates.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { TeamsModule } from './modules/teams/teams.module';
 import { TeamTimeModule } from './modules/team-time/team-time.module';
@@ -61,6 +63,8 @@ import { AppController } from './app.controller';
     RoadmapSharesModule,
     MarketplaceModule,
     NotificationsModule,
+    PushModule,
+    MobileUpdatesModule,
     ChatModule,
     TeamsModule,
     TeamTimeModule,

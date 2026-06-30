@@ -74,7 +74,7 @@ async function createApp(): Promise<express.Express> {
     new RequestTimeoutInterceptor(requestTimeoutMs),
     new RequestLoggingInterceptor(slowRequestThresholdMs),
     new CachePolicyInterceptor(reflector),
-    new ResponseInterceptor(),
+    new ResponseInterceptor(reflector),
   );
 
   await app.init();

@@ -69,7 +69,7 @@ async function bootstrap() {
     new RequestTimeoutInterceptor(requestTimeoutMs),
     new RequestLoggingInterceptor(slowRequestThresholdMs),
     new CachePolicyInterceptor(reflector),
-    new ResponseInterceptor(),
+    new ResponseInterceptor(reflector),
   );
 
   // Let Cloud Run's SIGTERM drain in-flight requests via Nest's shutdown hooks.
