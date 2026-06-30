@@ -1,9 +1,16 @@
+import { CapacitorUpdater } from "@capgo/capacitor-updater";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 
 import * as TanStackQueryProvider from "./integrations/tanstack-query/root-provider.tsx";
 import { AuthInitializer } from "./components/auth/AuthInitializer";
+
+// Tell the OTA updater the web bundle booted OK, so it commits the new bundle
+// instead of rolling back after appReadyTimeout. Fire as early as possible.
+// No-op/harmless on web (native bridge absent → rejects), so the browser build
+// and Vercel deploy are unaffected.
+CapacitorUpdater.notifyAppReady().catch(() => {});
 
 // Import the generated route tree
 import { routeTree } from "./routeTree.gen";

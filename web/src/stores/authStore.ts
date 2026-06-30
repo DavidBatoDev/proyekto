@@ -7,6 +7,30 @@ import { create } from "zustand";
 import { supabase } from "../lib/supabase";
 import type { Profile, Session, User } from "../types";
 
+/**
+ * Best-effort removal of this device's FCM token on logout, so a signed-out
+ * device stops receiving pushes. Runs while the user is still authenticated (the
+ * DELETE needs the JWT). Dynamic-imported + native-gated so the web bundle and
+ * web logout flow are unaffected. All errors are swallowed to keep logout
+ * idempotent.
+ */
+async function unregisterCurrentDeviceToken(): Promise<void> {
+  try {
+    const { isNativePlatform, getToken } = await import(
+      "../services/pushNotifications"
+    );
+    if (!isNativePlatform()) return;
+    const token = await getToken();
+    if (!token) return;
+    const { deviceTokensService } = await import(
+      "../services/deviceTokens.service"
+    );
+    await deviceTokensService.unregister(token);
+  } catch {
+    // ignore — logout must stay idempotent
+  }
+}
+
 interface AuthState {
   user: User | null;
   session: Session | null;
@@ -135,6 +159,9 @@ export const useAuthStore = create<AuthStore>((set) => ({
         clearAuthState();
         return;
       }
+
+      // Drop this device's push token before the JWT is cleared (native only).
+      await unregisterCurrentDeviceToken();
 
       const { error } = await supabase.auth.signOut({ scope: "local" });
       if (error && !isSessionMissingError(error)) throw error;

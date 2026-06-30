@@ -6,6 +6,7 @@ import Header from "../components/layout/Header";
 import { MigrationHandler } from "../components/migration";
 import { FloatingActiveTimer } from "../components/team-time/FloatingActiveTimer";
 import { ToastProvider } from "../contexts/ToastContext";
+import { usePushNotifications } from "../hooks/usePushNotifications";
 import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
 
 interface MyRouterContext {
@@ -17,6 +18,9 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 });
 
 function RootLayout() {
+	// Native FCM push lifecycle (no-op on web). Lives here so it can navigate on tap.
+	usePushNotifications();
+
 	return (
 		<ToastProvider>
 			<Header />

@@ -16,3 +16,22 @@ playwright/.auth/user.json
 # local playwright run artifacts
 pw-*/
 test-results/
+
+# Capacitor — the android/ and ios/ projects ARE committed (reproducible native
+# config), but build artifacts and the Firebase secret config files are not.
+/android/.gradle
+/android/build
+/android/app/build
+/android/app/release
+/android/capacitor-cordova-android-plugins
+/android/local.properties
+/android/app/src/main/assets/public
+/ios/App/Pods
+/ios/App/build
+/ios/App/App/public
+/ios/App/DerivedData
+/ios/capacitor-cordova-ios-plugins
+
+# Firebase native config — secrets, never commit
+/android/app/google-services.json
+/ios/App/App/GoogleService-Info.plist
