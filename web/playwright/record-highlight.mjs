@@ -210,18 +210,23 @@ await step("work-items: drag cards", async () => {
     return true;
   }
 
-  // pick up to two (from -> to) pairs where `from` has cards and to != from
+  // Drag a card over to the next column, then bring one back — two visible
+  // moves that leave the column counts net-zero (so repeated runs don't drift
+  // the real board).
   const withCards = counts.map((c, i) => ({ c, i })).filter((x) => x.c > 0).map((x) => x.i);
-  let drags = 0;
-  for (const from of withCards) {
-    if (drags >= 2) break;
-    const to = from + 1 < colCount ? from + 1 : from - 1;
-    if (to < 0 || to === from) continue;
-    console.log(`[rec] drag card ${from} -> ${to}`);
-    if (await dragFirstCard(from, to)) drags++;
-    await sleep(500);
+  if (withCards.length) {
+    const a = withCards[0];
+    const b = a + 1 < colCount ? a + 1 : a - 1;
+    if (b >= 0 && b !== a) {
+      console.log(`[rec] drag card ${a} -> ${b}`);
+      await dragFirstCard(a, b);
+      await sleep(700);
+      console.log(`[rec] drag card ${b} -> ${a} (return)`);
+      await dragFirstCard(b, a);
+    }
+  } else {
+    console.warn("[rec] no draggable cards found");
   }
-  if (drags === 0) console.warn("[rec] no draggable cards found");
 });
 
 // ── Beat 4: Chat — send a message (DM list hidden by init script) ─────────────
