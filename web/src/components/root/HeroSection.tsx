@@ -3,12 +3,12 @@ import { motion } from "framer-motion";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { usePresentationContext } from "@/contexts/PresentationContext";
 
-// Full-screen hero background video. This is a placeholder stock clip — swap it
-// for a branded, self-hosted (R2 / cdn.proyekto.tech) MP4 for production
-// reliability. A dark gradient backs the video so reduced-motion users (for whom
-// the video is hidden) still see an intentional hero.
-const HERO_VIDEO_SRC =
-  "https://videos.pexels.com/video-files/852421/852421-hd_1920_1080_30fps.mp4";
+// Full-screen hero background video: a real in-app highlight (roadmap canvas →
+// milestones timeline → AI assistant), recorded with Playwright and served from
+// web/public/. A dark gradient overlays it so reduced-motion users (for whom the
+// video is hidden) still see an intentional hero. To refresh the footage, re-run
+// `node playwright/record-highlight.mjs` and re-encode to web/public/hero-highlight.mp4.
+const HERO_VIDEO_SRC = "/hero-highlight.mp4";
 
 export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}) => {
   const { goToSection } = usePresentationContext();
