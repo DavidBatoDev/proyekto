@@ -10,6 +10,7 @@ export type TemplateEntry = {
   complexity: "Beginner" | "Intermediate" | "Advanced";
   description: string;
   milestones: string[];
+  image: string;
 };
 
 const complexityStyles: Record<TemplateEntry["complexity"], string> = {
@@ -30,8 +31,18 @@ export function TemplateEntryCard({ template, index }: Props) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-30px" }}
       transition={{ duration: 0.26, delay: index * 0.04 }}
-      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_2px_8px_rgba(15,23,42,0.06)] transition-[border-color,box-shadow] duration-200 hover:border-blue-400 hover:shadow-[0_8px_24px_rgba(37,99,235,0.18)]"
+      className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.06)] transition-[border-color,box-shadow] duration-200 hover:border-blue-400 hover:shadow-[0_8px_24px_rgba(37,99,235,0.18)]"
     >
+      <div className="h-32 w-full overflow-hidden bg-slate-100">
+        <img
+          src={template.image}
+          alt=""
+          loading="lazy"
+          className="h-full w-full object-cover"
+        />
+      </div>
+
+      <div className="p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">{template.category}</p>
@@ -85,6 +96,7 @@ export function TemplateEntryCard({ template, index }: Props) {
           <ArrowUpRight className="h-4 w-4 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
         </span>
       </Link>
+      </div>
     </motion.article>
   );
 }

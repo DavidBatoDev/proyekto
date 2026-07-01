@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "engines": {
-    "node": ">=20 <21"
+    "node": ">=22"
   },
   "scripts": {
     "clean:dist": "node scripts/clean-dist.mjs",

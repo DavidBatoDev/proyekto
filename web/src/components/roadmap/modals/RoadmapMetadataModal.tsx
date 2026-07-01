@@ -1,12 +1,14 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2, Sparkles, Tag, X } from "lucide-react";
+import { ImagePlus, Loader2, Sparkles, Tag, X } from "lucide-react";
 import { ModalPortal } from "@/components/common/ModalPortal";
+import { uploadService } from "@/services/upload.service";
 
 export interface RoadmapMetadataFormData {
   title: string;
   description: string;
   category: string;
+  preview_url: string;
 }
 
 interface RoadmapMetadataModalProps {
@@ -41,6 +43,23 @@ export function RoadmapMetadataModal({
 }: RoadmapMetadataModalProps) {
   const trimmedTitle = useMemo(() => formData.title.trim(), [formData.title]);
   const isSaveDisabled = isSubmitting || trimmedTitle.length === 0;
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [thumbUploading, setThumbUploading] = useState(false);
+  const [thumbError, setThumbError] = useState<string | null>(null);
+
+  const handleThumbUpload = async (file: File) => {
+    setThumbError(null);
+    setThumbUploading(true);
+    try {
+      const url = await uploadService.upload("roadmap_previews", file);
+      onUpdateFormData({ preview_url: url });
+    } catch (err) {
+      setThumbError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setThumbUploading(false);
+    }
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -203,6 +222,69 @@ export function RoadmapMetadataModal({
                     {formData.category.length}/{CATEGORY_LIMIT}
                   </span>
                 </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-gray-800">
+                  Thumbnail
+                </label>
+                <p className="text-xs text-gray-500">
+                  Shown on the roadmap card.
+                </p>
+                {formData.preview_url ? (
+                  <div className="space-y-2">
+                    <img
+                      src={formData.preview_url}
+                      alt="Roadmap thumbnail"
+                      className="h-28 w-auto rounded-lg border border-gray-200 object-cover shadow-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={thumbUploading}
+                      className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {thumbUploading ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <ImagePlus className="h-3.5 w-3.5" />
+                      )}
+                      {thumbUploading ? "Uploading…" : "Replace image"}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={thumbUploading}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 py-4 text-gray-500 transition-colors hover:border-orange-400 hover:text-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {thumbUploading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="text-sm">Uploading…</span>
+                      </>
+                    ) : (
+                      <>
+                        <ImagePlus className="h-4 w-4" />
+                        <span className="text-sm">Click to upload image</span>
+                      </>
+                    )}
+                  </button>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void handleThumbUpload(file);
+                  }}
+                />
+                {thumbError && (
+                  <p className="text-xs text-red-500">{thumbError}</p>
+                )}
               </div>
             </div>
 

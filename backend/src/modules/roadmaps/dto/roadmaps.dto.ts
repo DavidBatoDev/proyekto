@@ -4,6 +4,7 @@ import {
   IsDateString,
   IsEnum,
   IsIn,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -32,7 +33,8 @@ export class CreateRoadmapDto {
   @IsDateString() @IsOptional() start_date?: string;
   @IsDateString() @IsOptional() end_date?: string;
   @IsOptional() settings?: Record<string, unknown>;
-  @IsString() @IsOptional() preview_url?: string;
+  // Required: every roadmap must have a thumbnail so cards always render one.
+  @IsString() @IsNotEmpty() preview_url: string;
   @IsBoolean() @IsOptional() is_public?: boolean;
   @IsBoolean() @IsOptional() is_templatable?: boolean;
 }

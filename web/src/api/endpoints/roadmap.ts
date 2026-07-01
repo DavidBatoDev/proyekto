@@ -21,7 +21,8 @@ export interface CreateRoadmapDto {
   start_date?: string;
   end_date?: string;
   settings?: Record<string, any>;
-  preview_url?: string;
+  // Required: every roadmap must have a thumbnail for its card.
+  preview_url: string;
 }
 
 export interface UpdateRoadmapDto {
