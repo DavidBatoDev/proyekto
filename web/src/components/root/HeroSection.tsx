@@ -1,119 +1,107 @@
 import { Link } from "@tanstack/react-router";
-import { Button } from "@/ui/button";
 import { motion } from "framer-motion";
 import { ArrowRight, Sparkles } from "lucide-react";
-import { HeroLivePreview } from "./HeroLivePreview";
 import { usePresentationContext } from "@/contexts/PresentationContext";
+
+// Full-screen hero background video. This is a placeholder stock clip — swap it
+// for a branded, self-hosted (R2 / cdn.proyekto.tech) MP4 for production
+// reliability. A dark gradient backs the video so reduced-motion users (for whom
+// the video is hidden) still see an intentional hero.
+const HERO_VIDEO_SRC =
+  "https://videos.pexels.com/video-files/852421/852421-hd_1920_1080_30fps.mp4";
 
 export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}) => {
   const { goToSection } = usePresentationContext();
 
   return (
-    <section className="relative flex flex-col pt-24 pb-6">
-      <motion.div
-        animate={{ scale: [1, 1.18, 1], opacity: [0.4, 0.6, 0.4] }}
-        transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
-        className="pointer-events-none absolute -top-20 left-[14%] h-72 w-72 rounded-full bg-cyan-200/40 blur-3xl"
+    <section className="relative -mt-20 flex min-h-screen items-center justify-center overflow-hidden bg-slate-950">
+      {/* Background video — hidden for users who prefer reduced motion */}
+      <video
+        className="absolute inset-0 h-full w-full object-cover motion-reduce:hidden"
+        autoPlay
+        loop
+        muted
+        playsInline
+        preload="metadata"
+        aria-hidden="true"
+      >
+        <source src={HERO_VIDEO_SRC} type="video/mp4" />
+      </video>
+
+      {/* Ambient glow (visible through the video and when it is absent) */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(900px_600px_at_50%_-10%,rgba(34,211,238,0.18),transparent_60%)]"
       />
-      <motion.div
-        animate={{ scale: [1, 1.22, 1], opacity: [0.5, 0.7, 0.5] }}
-        transition={{ duration: 9, repeat: Infinity, ease: "easeInOut", delay: 1.5 }}
-        className="pointer-events-none absolute -right-14 top-1/3 h-72 w-72 rounded-full bg-indigo-200/50 blur-3xl"
+
+      {/* Legibility overlay so the white copy always reads over the footage */}
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-gradient-to-b from-slate-950/80 via-slate-950/55 to-slate-950/90"
       />
 
-      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-10">
-      <div className="relative grid grid-cols-1 items-center gap-10 lg:grid-cols-[1fr_1.06fr]">
-        <div className="flex flex-col justify-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35 }}
-            className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-300/70 bg-white/85 px-3 py-1.5 text-xs font-semibold tracking-[0.08em] text-slate-700"
-          >
-            <Sparkles className="h-3.5 w-3.5 text-cyan-600" />
-            Simple. Flexible. Powerful.
-          </motion.div>
+      <div className="relative z-10 mx-auto flex max-w-4xl flex-col items-center px-6 pt-24 text-center">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35 }}
+          className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold tracking-[0.08em] text-white/90 backdrop-blur"
+        >
+          <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
+          Simple. Flexible. Powerful.
+        </motion.div>
 
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.06 }}
-            className="mt-5 text-balance text-4xl font-semibold leading-[1.05] tracking-tight text-slate-900 sm:text-5xl lg:text-6xl font-['Space_Grotesk']"
-          >
-            <span className="block sm:inline">Turn ideas</span>{" "}
-            <span className="block sm:inline">into action</span>
-          </motion.h1>
+        <motion.h1
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.06 }}
+          className="mt-6 text-balance text-5xl font-bold leading-[1.03] tracking-tight text-white sm:text-6xl lg:text-7xl font-['Space_Grotesk']"
+        >
+          Turn ideas into action
+        </motion.h1>
 
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.12 }}
-            className="mt-4 max-w-xl text-sm leading-relaxed text-slate-600 sm:text-base"
-          >
-            Start planning your project step-by-step and invite your team. No complex setups, no guesswork — just clarity from the get-go.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.2 }}
-            className="mt-7 flex flex-wrap items-center gap-3"
-          >
-            <Link
-              to="/auth/signup"
-              search={{ redirect: undefined }}
-            >
-              <Button
-                variant="contained"
-                colorScheme="primary"
-                className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.26)] hover:bg-slate-800"
-              >
-                Create Your Project Plan
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
-
-            <button
-              type="button"
-              onClick={() => goToSection(2)}
-              className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition-all hover:border-slate-900 hover:text-slate-900"
-            >
-              See How It Works
-            </button>
-          </motion.div>
-
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.26 }}
-            className="mt-4 text-xs text-slate-500"
-          >
-            Free to start. No credit card required.
-          </motion.p>
-
-        </div>
+        <motion.p
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.12 }}
+          className="mt-5 max-w-2xl text-base leading-relaxed text-white/80 sm:text-lg"
+        >
+          Plan your project step-by-step, invite your team, and let expert
+          consultants and AI-architected roadmaps turn your vision into shipped
+          software.
+        </motion.p>
 
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.45, delay: 0.18 }}
-          className="relative"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+          className="mt-8 flex flex-wrap items-center justify-center gap-3"
         >
-          {/* Ambient glow behind the card */}
-          <motion.div
-            animate={{ opacity: [0.3, 0.55, 0.3], scale: [1, 1.06, 1] }}
-            transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-            className="pointer-events-none absolute -inset-4 rounded-[40px] bg-blue-200/40 blur-2xl"
-          />
-          {/* Floating card */}
-          <motion.div
-            animate={{ y: [0, -10, 0] }}
-            transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
+          <Link to="/auth/signup" search={{ redirect: undefined }}>
+            <span className="inline-flex items-center gap-2 rounded-full bg-cyan-400 px-7 py-3.5 text-sm font-semibold text-slate-950 shadow-[0_14px_36px_rgba(34,211,238,0.35)] transition-colors hover:bg-cyan-300">
+              Create Your Project Plan
+              <ArrowRight className="h-4 w-4" />
+            </span>
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => goToSection(2)}
+            className="inline-flex items-center gap-2 rounded-full border border-white/60 px-6 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-white/10"
           >
-            <HeroLivePreview />
-          </motion.div>
+            See How It Works
+            <ArrowRight className="h-4 w-4" />
+          </button>
         </motion.div>
-      </div>
+
+        <motion.p
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.26 }}
+          className="mt-5 text-xs text-white/60"
+        >
+          Free to start. No credit card required.
+        </motion.p>
       </div>
     </section>
   );
