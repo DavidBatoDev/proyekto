@@ -554,6 +554,7 @@ export class TeamTimeService {
     if (log.member_user_id === callerId) {
       throw new ForbiddenException('You cannot review your own time logs.');
     }
+    this.assertNotPaidDecision(dto.decision);
     const rows = await this.applyReview([logId], callerId, dto.decision, dto.reason);
     const reviewed = rows[0];
     if (!reviewed) throw new NotFoundException('Time log not found');
@@ -589,6 +590,7 @@ export class TeamTimeService {
     if (rows.some((r) => r.member_user_id === callerId)) {
       throw new ForbiddenException('You cannot review your own time logs.');
     }
+    this.assertNotPaidDecision(dto.decision);
     const reviewedRows = await this.applyReview(
       dto.log_ids,
       callerId,
@@ -1282,6 +1284,19 @@ export class TeamTimeService {
       items,
       total: count ?? 0,
     };
+  }
+
+  /**
+   * The 'paid' transition is owned by the payouts module — marking logs paid
+   * must create a payout record (POST /api/payouts). Reject 'paid' here so
+   * there is exactly one path to a paid log: paid ⟺ a payout row exists.
+   */
+  private assertNotPaidDecision(decision: TimeLogReviewDecision): void {
+    if (decision === 'paid') {
+      throw new BadRequestException(
+        'Record a payout to mark logs as paid (POST /api/payouts).',
+      );
+    }
   }
 
   private async applyReview(

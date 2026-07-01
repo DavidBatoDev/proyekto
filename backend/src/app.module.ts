@@ -14,6 +14,7 @@ import { UsersModule } from './modules/users/users.module';
 import { ProfileModule } from './modules/profile/profile.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { PayoutsModule } from './modules/payouts/payouts.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { ConsultantsModule } from './modules/consultants/consultants.module';
 import { ApplicationsModule } from './modules/applications/applications.module';
@@ -54,6 +55,7 @@ import { AppController } from './app.controller';
     ProfileModule,
     ProjectsModule,
     PaymentsModule,
+    PayoutsModule,
     AdminModule,
     ConsultantsModule,
     ApplicationsModule,

@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import {
 	createFileRoute,
 	Link,
@@ -5,19 +6,18 @@ import {
 	redirect,
 	useLocation,
 } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { Clock, Coins, Loader2 } from "lucide-react";
+import { Clock, Coins, Loader2, Wallet } from "lucide-react";
 import {
 	AppSectionHeader,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
 import { DashboardShell } from "@/components/layout/DashboardShell";
-import { useAuthStore, useUser } from "@/stores/authStore";
 import {
 	getTeam,
 	hasAnyActiveRate,
 	listTeamMembers,
 } from "@/services/teams.service";
+import { useAuthStore, useUser } from "@/stores/authStore";
 
 export const Route = createFileRoute("/teams/$teamId/time")({
 	beforeLoad: () => {
@@ -27,7 +27,7 @@ export const Route = createFileRoute("/teams/$teamId/time")({
 	component: TeamTimeLayout,
 });
 
-type TabId = "my-logs" | "team-logs" | "manage-rates";
+type TabId = "my-logs" | "team-logs" | "manage-rates" | "payouts";
 
 interface TabSpec {
 	id: TabId;
@@ -35,7 +35,8 @@ interface TabSpec {
 	to:
 		| "/teams/$teamId/time/my-logs"
 		| "/teams/$teamId/time/team-logs"
-		| "/teams/$teamId/time/manage-rates";
+		| "/teams/$teamId/time/manage-rates"
+		| "/teams/$teamId/time/payouts";
 	icon: typeof Clock;
 }
 
@@ -100,10 +101,10 @@ function TeamTimeLayout() {
 					<AppSurfaceCard>
 						<div className="space-y-3 p-6 text-sm text-slate-600">
 							<p>
-								Time tracking lets members log time on tasks across this
-								team's projects, and lets owners and admins approve those logs
-								and manage rates. The owner can enable it from team settings;
-								it requires consultant verification.
+								Time tracking lets members log time on tasks across this team's
+								projects, and lets owners and admins approve those logs and
+								manage rates. The owner can enable it from team settings; it
+								requires consultant verification.
 							</p>
 							<Link
 								to="/teams/$teamId/settings/time"
@@ -144,6 +145,14 @@ function TeamTimeLayout() {
 			icon: Coins,
 		});
 	}
+	if (isApprover) {
+		tabs.push({
+			id: "payouts",
+			label: "Payouts",
+			to: "/teams/$teamId/time/payouts",
+			icon: Wallet,
+		});
+	}
 
 	if (tabs.length === 0) {
 		return (
@@ -178,6 +187,7 @@ function TeamTimeLayout() {
 		if (path.includes("/time/my-logs")) return "my-logs";
 		if (path.includes("/time/team-logs")) return "team-logs";
 		if (path.includes("/time/manage-rates")) return "manage-rates";
+		if (path.includes("/time/payouts")) return "payouts";
 		// On a log detail page or the bare /time route, no tab highlights
 		// (the redirector at index.tsx will route /time to a tab).
 		return null;

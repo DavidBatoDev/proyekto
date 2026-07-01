@@ -1,38 +1,45 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-	ArrowLeft,
-	Check,
-	FolderKanban,
-	Loader2,
-	RotateCcw,
-	X,
-} from "lucide-react";
-import { useToast } from "@/hooks/useToast";
-import { useUser } from "@/stores/authStore";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, FolderKanban, Loader2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { ScrollNavButtons } from "@/components/common/ScrollNavButtons";
+import { FilterSelect } from "@/components/team-time/FilterSelect";
+import { LogStatusFilter } from "@/components/team-time/LogStatusFilter";
+import { PayMemberModal } from "@/components/team-time/PayMemberModal";
+import {
+	type ReviewOnlyDecision,
+	TeamApprovalsInbox,
+} from "@/components/team-time/TeamApprovalsInbox";
+import {
+	computeLogStats,
+	TeamLogsStatsCard,
+} from "@/components/team-time/TeamLogsStatsCard";
+import { useToast } from "@/hooks/useToast";
+import {
+	type TaskTimeLog,
+	teamTimeService,
+	type TimeLogStatus,
+} from "@/services/team-time.service";
 import {
 	listMemberRates,
 	listTeamMembers,
 	type TeamMember,
 	type TeamMemberRate,
 } from "@/services/teams.service";
-import {
-	teamTimeService,
-	type TaskTimeLog,
-	type TimeLogReviewDecision,
-	type TimeLogStatus,
-} from "@/services/team-time.service";
-import { TeamApprovalsGrid } from "@/components/team-time/TeamApprovalsGrid";
-import {
-	TeamLogsStatsCard,
-	computeLogStats,
-} from "@/components/team-time/TeamLogsStatsCard";
+import { useUser } from "@/stores/authStore";
 
-export const Route = createFileRoute("/teams/$teamId/time/manage-rates/$userId")({
+export const Route = createFileRoute(
+	"/teams/$teamId/time/manage-rates/$userId",
+)({
 	component: MemberLogsRoute,
 });
+
+interface PayTarget {
+	memberId: string;
+	memberLabel: string;
+	currency: string;
+	logs: TaskTimeLog[];
+}
 
 function memberDisplayName(m: TeamMember | undefined): string {
 	if (!m) return "—";
@@ -50,12 +57,10 @@ function MemberLogsRoute() {
 	const qc = useQueryClient();
 	const navigate = useNavigate();
 
-	const [statusFilter, setStatusFilter] = useState<TimeLogStatus | "all">(
-		"all",
-	);
+	const [statusSet, setStatusSet] = useState<Set<TimeLogStatus>>(new Set());
 	const [projectFilter, setProjectFilter] = useState<string>("");
-	const [selected, setSelected] = useState<Set<string>>(new Set());
-
+	const [busyLogIds, setBusyLogIds] = useState<Set<string>>(new Set());
+	const [payTarget, setPayTarget] = useState<PayTarget | null>(null);
 
 	const membersQuery = useQuery({
 		queryKey: ["team", teamId, "members"],
@@ -87,73 +92,78 @@ function MemberLogsRoute() {
 			teamId,
 			"member-logs",
 			userId,
-			{ statusFilter, projectFilter },
+			{ projectFilter },
 		],
 		queryFn: () =>
 			teamTimeService.listTeamLogs(teamId, {
-				status: statusFilter === "all" ? undefined : statusFilter,
 				project_id: projectFilter || undefined,
 				member_user_id: userId,
 				limit: 200,
 			}),
 	});
 
-	const items = logsQuery.data?.items ?? [];
+	// Status is filtered client-side so any combination can be selected at once
+	// (empty set = all statuses).
+	const items = useMemo(() => {
+		const all = logsQuery.data?.items ?? [];
+		return statusSet.size === 0
+			? all
+			: all.filter((log) => statusSet.has(log.status));
+	}, [logsQuery.data, statusSet]);
 	const logStats = useMemo(() => computeLogStats(items), [items]);
 
-	const reviewBulkMutation = useMutation({
-		mutationFn: async (input: {
-			ids: string[];
-			decision: TimeLogReviewDecision;
-		}) => teamTimeService.reviewLogsBulk(input.ids, input.decision),
-		onSuccess: (data) => {
-			toast.success(`Reviewed ${data.reviewed} log(s).`);
-			setSelected(new Set());
-			qc.invalidateQueries({ queryKey: ["team-time", teamId] });
-		},
-		onError: (e: Error) => toast.error(e.message),
-	});
-
-	const reviewSingleMutation = useMutation({
-		mutationFn: (input: {
-			logId: string;
-			decision: TimeLogReviewDecision;
-		}) => teamTimeService.reviewLog(input.logId, input.decision),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["team-time", teamId] });
-		},
-		onError: (e: Error) => toast.error(e.message),
-	});
-
-	const submitDecision = (decision: TimeLogReviewDecision) => {
-		if (selected.size === 0) return;
-		reviewBulkMutation.mutate({ ids: Array.from(selected), decision });
-	};
-
-	const toggleOne = (id: string, checked: boolean) => {
-		setSelected((prev) => {
+	const markBusy = (ids: string[], busy: boolean) =>
+		setBusyLogIds((prev) => {
 			const next = new Set(prev);
-			if (checked) next.add(id);
-			else next.delete(id);
+			for (const id of ids) {
+				if (busy) next.add(id);
+				else next.delete(id);
+			}
 			return next;
 		});
-	};
-	const toggleAll = (checked: boolean, eligibleIds: string[]) => {
-		setSelected(checked ? new Set(eligibleIds) : new Set());
+
+	const reviewMutation = useMutation({
+		mutationFn: async (input: {
+			ids: string[];
+			decision: ReviewOnlyDecision;
+		}) => {
+			markBusy(input.ids, true);
+			return teamTimeService.reviewLogsBulk(input.ids, input.decision);
+		},
+		onSuccess: (data, variables) => {
+			toast.success(`Updated ${data.reviewed} log(s).`);
+			markBusy(variables.ids, false);
+			qc.invalidateQueries({ queryKey: ["team-time", teamId] });
+		},
+		onError: (e: Error, variables) => {
+			markBusy(variables.ids, false);
+			toast.error(e.message);
+		},
+	});
+
+	const handleReviewLogs = async (
+		ids: string[],
+		decision: ReviewOnlyDecision,
+	) => {
+		if (ids.length === 0) return;
+		await reviewMutation.mutateAsync({ ids, decision });
 	};
 
-	const rowPendingById = useMemo<Record<string, boolean>>(() => {
-		const map: Record<string, boolean> = {};
-		if (
-			reviewSingleMutation.isPending &&
-			reviewSingleMutation.variables
-		) {
-			map[reviewSingleMutation.variables.logId] = true;
-		}
-		return map;
-	}, [reviewSingleMutation.isPending, reviewSingleMutation.variables]);
-
-	const reviewSyncById = rowPendingById;
+	const handlePayMember = (
+		memberId: string,
+		logIds: string[],
+		currency: string,
+	) => {
+		const idSet = new Set(logIds);
+		const logs = items.filter((log) => idSet.has(log.id));
+		if (logs.length === 0) return;
+		setPayTarget({
+			memberId,
+			memberLabel: memberDisplayName(member),
+			currency,
+			logs,
+		});
+	};
 
 	const handleOpenInRoadmap = (log: TaskTimeLog) => {
 		if (!log.task_id) return;
@@ -212,119 +222,55 @@ function MemberLogsRoute() {
 			/>
 
 			<div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
-				<div
-					role="tablist"
-					aria-label="Filter by status"
-					className="inline-flex items-center rounded-lg bg-slate-100 p-0.5"
-				>
-					{(
-						[
-							{ value: "all", label: "All" },
-							{ value: "pending", label: "Pending" },
-							{ value: "approved", label: "Approved" },
-							{ value: "rejected", label: "Rejected" },
-						] as const
-					).map((opt) => {
-						const active = statusFilter === opt.value;
-						return (
-							<button
-								key={opt.value}
-								type="button"
-								role="tab"
-								aria-selected={active}
-								onClick={() => setStatusFilter(opt.value)}
-								className={
-									active
-										? "rounded-md bg-white px-3 py-1 text-xs font-medium text-slate-900 shadow-sm"
-										: "rounded-md px-3 py-1 text-xs font-medium text-slate-500 hover:text-slate-700"
-								}
-							>
-								{opt.label}
-							</button>
-						);
-					})}
-				</div>
+				<LogStatusFilter value={statusSet} onChange={setStatusSet} />
 
-				<label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white pl-2.5 pr-1 focus-within:border-sky-400 focus-within:ring-1 focus-within:ring-sky-200">
-					<FolderKanban className="h-3.5 w-3.5 text-slate-400" />
-					<select
-						value={projectFilter}
-						onChange={(e) => setProjectFilter(e.target.value)}
-						className="border-0 bg-transparent py-1 pr-2 text-xs text-slate-700 focus:outline-none focus:ring-0"
-					>
-						<option value="">All projects</option>
-						{(projectsQuery.data ?? []).map((p) => (
-							<option key={p.id} value={p.id}>
-								{p.title ?? "(untitled)"}
-							</option>
-						))}
-					</select>
-				</label>
+				<FilterSelect
+					value={projectFilter}
+					onChange={setProjectFilter}
+					icon={<FolderKanban className="h-3.5 w-3.5" />}
+					placeholder="All projects"
+					options={[
+						{ value: "", label: "All projects" },
+						...(projectsQuery.data ?? []).map((p) => ({
+							value: p.id,
+							label: p.title ?? "(untitled)",
+						})),
+					]}
+				/>
 
-				<div className="ml-auto flex items-center gap-2">
-					<span
-						className={
-							selected.size === 0
-								? "hidden text-xs text-slate-400 sm:inline"
-								: "inline-flex items-center rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-200"
-						}
-					>
-						{selected.size === 0
-							? "Select rows to review"
-							: `${selected.size} selected`}
-					</span>
-					<div className="inline-flex items-center overflow-hidden rounded-lg border border-slate-200 shadow-sm">
-						<button
-							type="button"
-							disabled={selected.size === 0 || reviewBulkMutation.isPending}
-							onClick={() => submitDecision("approved")}
-							className="inline-flex items-center gap-1.5 border-r border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:bg-white disabled:text-slate-300 disabled:hover:bg-white"
-						>
-							<Check className="h-3.5 w-3.5" />
-							Approve
-						</button>
-						<button
-							type="button"
-							disabled={selected.size === 0 || reviewBulkMutation.isPending}
-							onClick={() => submitDecision("rejected")}
-							className="inline-flex items-center gap-1.5 border-r border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:bg-white disabled:text-slate-300 disabled:hover:bg-white"
-						>
-							<X className="h-3.5 w-3.5" />
-							Reject
-						</button>
-						<button
-							type="button"
-							disabled={selected.size === 0 || reviewBulkMutation.isPending}
-							onClick={() => submitDecision("pending")}
-							className="inline-flex items-center gap-1.5 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-white"
-						>
-							<RotateCcw className="h-3.5 w-3.5" />
-							Reset
-						</button>
-					</div>
-				</div>
+				{(projectsQuery.isPending || logsQuery.isFetching) && (
+					<Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
+				)}
 			</div>
 
-			<TeamApprovalsGrid
+			<TeamApprovalsInbox
 				logs={items}
 				loadingLogs={logsQuery.isPending}
-				canApprove
 				currentUserId={user?.id ?? null}
-				selectedLogIds={selected}
-				rowPendingById={rowPendingById}
-				reviewSyncById={reviewSyncById}
-				onToggleSelectLog={toggleOne}
-				onToggleSelectAll={toggleAll}
-				onReviewLog={async (logId, decision) => {
-					await reviewSingleMutation.mutateAsync({ logId, decision });
-				}}
+				busyLogIds={busyLogIds}
+				onReviewLogs={handleReviewLogs}
+				onPayMember={handlePayMember}
 				onOpenTaskInRoadmap={handleOpenInRoadmap}
 				canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
-				onApproveSelected={() => submitDecision("approved")}
-				onRejectSelected={() => submitDecision("rejected")}
-				onResetSelected={() => submitDecision("pending")}
-				approvingSelected={reviewBulkMutation.isPending}
 			/>
+
+			{payTarget && (
+				<PayMemberModal
+					isOpen
+					teamId={teamId}
+					memberId={payTarget.memberId}
+					memberLabel={payTarget.memberLabel}
+					currency={payTarget.currency}
+					logs={payTarget.logs}
+					onClose={() => setPayTarget(null)}
+					onSuccess={() => {
+						setPayTarget(null);
+						qc.invalidateQueries({ queryKey: ["team-time", teamId] });
+						qc.invalidateQueries({ queryKey: ["payouts", teamId] });
+					}}
+				/>
+			)}
+
 			<ScrollNavButtons />
 		</div>
 	);

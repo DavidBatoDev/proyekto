@@ -54,6 +54,24 @@ export function formatHours(seconds: number | null | undefined): string {
 	return (seconds / 3600).toFixed(2);
 }
 
+/** Semantic badge classes for a time-log status. Shared across grids/inbox. */
+export function statusBadgeClass(status: string): string {
+	if (status === "approved") return "bg-emerald-100 text-emerald-700";
+	if (status === "paid") return "bg-indigo-100 text-indigo-700";
+	if (status === "rejected") return "bg-rose-100 text-rose-700";
+	if (status === "running") return "bg-sky-100 text-sky-700";
+	if (status === "mixed") return "bg-slate-100 text-slate-700";
+	return "bg-amber-100 text-amber-700"; // pending
+}
+
+/** Fee for one log from its own rate/duration snapshot (0 if still running). */
+export function logFee(log: TaskTimeLog): number {
+	const rate = Number(log.rate_snapshot ?? 0);
+	const seconds = log.duration_seconds ?? 0;
+	if (!Number.isFinite(rate) || rate <= 0 || seconds <= 0) return 0;
+	return (seconds / 3600) * rate;
+}
+
 // ─── live "now" subscription ─────────────────────────────────────────
 //
 // A single shared 1Hz timer drives every cell that needs a live
