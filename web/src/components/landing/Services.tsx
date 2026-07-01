@@ -4,29 +4,6 @@ const Services = () => {
       id="services"
       className="relative w-full lg:min-h-[1333px] bg-white py-20 overflow-hidden scroll-mt-32"
     >
-      {/* Figma background line art */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-20"
-        style={{
-          backgroundImage:
-            "url('https://www.figma.com/api/mcp/asset/428970e6-9933-4ac3-9ed2-cfd92a88bffe'), url('https://www.figma.com/api/mcp/asset/e4ebf49c-210e-475b-8444-f8e83258df68')",
-          backgroundRepeat: "no-repeat, no-repeat",
-          backgroundPosition: "center 30%, center 10%",
-          backgroundSize: "2000px auto, 2400px auto",
-        }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-25"
-        style={{
-          backgroundImage:
-            "url('https://www.figma.com/api/mcp/asset/178bb81a-7686-40ef-b0f7-da38dfa9327d')",
-          backgroundRepeat: "no-repeat",
-          backgroundPosition: "center",
-          backgroundSize: "1200px 1200px",
-        }}
-      />
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 opacity-60"

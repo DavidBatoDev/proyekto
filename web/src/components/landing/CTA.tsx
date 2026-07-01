@@ -13,20 +13,6 @@ const CTA = () => {
             "linear-gradient(91deg, rgba(231,32,116,0.35) 0%, rgba(255,255,255,0.9) 50%, rgba(255,153,51,0.35) 100%)",
         }}
       >
-        {/* Pattern anchored bottom-right inside the card */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0"
-          style={{
-            backgroundImage:
-              "url('https://www.figma.com/api/mcp/asset/6f563af2-30fa-40dc-a304-ea73e75559f8')",
-            backgroundRepeat: "no-repeat",
-            backgroundSize: "720px 720px",
-            backgroundPosition: "90% 85%",
-            opacity: 0.6,
-          }}
-        />
-
         <div className="relative flex flex-col items-center text-center gap-6 md:gap-8 max-w-3xl mx-auto">
           <div className="text-base text-gray-900">
             <span className="font-semibold text-primary">Pro</span>fessional.{" "}

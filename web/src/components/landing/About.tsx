@@ -4,47 +4,28 @@ const About = () => {
       id="about"
       className="relative w-full min-h-[620px] flex items-center overflow-hidden bg-linear-to-br from-orange-50 via-white to-orange-50 py-20 scroll-mt-32"
     >
-      {/* Wave background from Figma */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 -top-36 h-[660px] opacity-80"
-        style={{
-          backgroundImage:
-            "url('https://www.figma.com/api/mcp/asset/ad15367b-fcf4-4987-83a2-e0344809af13')",
-          backgroundRepeat: "no-repeat",
-          backgroundSize: "2000px 660px",
-          backgroundPosition: "center top",
-        }}
-      />
-
-      {/* Subtle line art */}
-      {/* <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-15"
-        style={{
-          backgroundImage:
-            "url('https://www.figma.com/api/mcp/asset/401294d3-a0ee-4f4c-8db8-a104e5af9bfc'), url('https://www.figma.com/api/mcp/asset/8487b178-52f2-4e6e-b3be-b20653ae46fb')",
-          backgroundRepeat: "no-repeat, no-repeat",
-          backgroundPosition: "50% 40%, 50% 10%",
-          backgroundSize: "1600px auto, 1900px auto",
-        }}
-      /> */}
-
       <div className="container mx-auto px-6 md:px-12 lg:px-24 relative">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center">
           {/* Left side - Rotated card with vertical text */}
           <div className="flex justify-center lg:justify-start relative">
             <div
-              className="relative bg-gray-800 flex items-center justify-start shadow-xl"
+              className="relative flex items-center justify-start overflow-hidden bg-gray-800 bg-cover bg-center shadow-xl"
               style={{
                 width: "497.508px",
                 height: "333.767px",
                 transform: "rotate(5.99deg)",
                 transformOrigin: "center",
+                backgroundImage:
+                  "url('https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=600&fit=crop&q=80')",
               }}
             >
+              {/* Dark overlay keeps the vertical wordmark legible over the photo */}
               <div
-                className="text-white font-bold uppercase"
+                aria-hidden
+                className="absolute inset-0 bg-gray-900/55"
+              />
+              <div
+                className="relative text-white font-bold uppercase"
                 style={{
                   writingMode: "vertical-rl",
                   transform: "rotate(-180.095deg)",

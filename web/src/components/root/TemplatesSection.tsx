@@ -14,6 +14,8 @@ const templates: TemplateEntry[] = [
     complexity: "Beginner",
     description: "Ship a usable SaaS MVP with clear milestones from scope to first paying users.",
     milestones: ["Scope framing", "Core product sprint", "Billing setup", "Launch checklist"],
+    image:
+      "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&h=400&fit=crop&q=80",
   },
   {
     id: "ai-copilot",
@@ -23,6 +25,8 @@ const templates: TemplateEntry[] = [
     complexity: "Intermediate",
     description: "Define use cases, safety rules, and deployment steps for a production AI assistant.",
     milestones: ["Use-case map", "Knowledge integration", "Guardrails", "Pilot rollout"],
+    image:
+      "https://images.unsplash.com/photo-1677442136019-21780ecad995?w=800&h=400&fit=crop&q=80",
   },
   {
     id: "web-app-replatform",
@@ -32,6 +36,8 @@ const templates: TemplateEntry[] = [
     complexity: "Advanced",
     description: "Modernize architecture and delivery velocity without interrupting active users.",
     milestones: ["Audit + architecture", "Incremental migration", "Performance pass", "Release hardening"],
+    image:
+      "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?w=800&h=400&fit=crop&q=80",
   },
   {
     id: "ecom-growth-engine",
@@ -41,6 +47,8 @@ const templates: TemplateEntry[] = [
     complexity: "Intermediate",
     description: "Turn your store into a repeatable conversion system with prioritized growth sprints.",
     milestones: ["Funnel baseline", "Conversion fixes", "Lifecycle flows", "Experiment cadence"],
+    image:
+      "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=800&h=400&fit=crop&q=80",
   },
   {
     id: "ai-automation-stack",
@@ -50,6 +58,8 @@ const templates: TemplateEntry[] = [
     complexity: "Beginner",
     description: "Build a practical automation layer that removes repetitive operational bottlenecks.",
     milestones: ["Workflow discovery", "Integration map", "Automation sprint", "Team handoff"],
+    image:
+      "https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&h=400&fit=crop&q=80",
   },
   {
     id: "saas-scale-ops",
@@ -59,6 +69,8 @@ const templates: TemplateEntry[] = [
     complexity: "Advanced",
     description: "Strengthen retention, reliability, and release cadence before the next growth wave.",
     milestones: ["Retention deep dive", "Workflow redesign", "Ops automation", "Scale QA"],
+    image:
+      "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&h=400&fit=crop&q=80",
   },
 ];
 

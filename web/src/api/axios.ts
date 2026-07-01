@@ -41,18 +41,15 @@ apiClient.interceptors.request.use(
       if (token && config.headers) {
         config.headers.Authorization = `Bearer ${token}`;
       } else {
-        // No auth session, check for guest user
-        const guestUserId =
-          localStorage.getItem("proyekto_guest_user_id") ??
-          localStorage.getItem("prdigy_guest_user_id");
-        if (
-          guestUserId &&
-          localStorage.getItem("proyekto_guest_user_id") === null
-        ) {
-          localStorage.setItem("proyekto_guest_user_id", guestUserId);
-        }
-        if (guestUserId && config.headers) {
-          config.headers["X-Guest-User-Id"] = guestUserId;
+        // No auth session — authenticate as a guest. The backend guard
+        // (SupabaseAuthGuard) matches this header against
+        // profiles.guest_session_id (a bearer-style secret), so we must send
+        // the guest SESSION id, not the profile id.
+        const guestSessionId =
+          localStorage.getItem("proyekto_guest_session_id") ??
+          localStorage.getItem("prdigy_guest_session_id");
+        if (guestSessionId && config.headers) {
+          config.headers["X-Guest-User-Id"] = guestSessionId;
         }
       }
     } catch (error) {

@@ -514,6 +514,7 @@ export function RoadmapViewContent({
       title: fullRoadmap.name || "",
       category: fullRoadmap.category || "",
       description: fullRoadmap.description || "",
+      preview_url: fullRoadmap.preview_url || "",
     });
   }, [applyRoadmapSnapshot, roadmapLiveQuery.data]);
 
@@ -532,6 +533,7 @@ export function RoadmapViewContent({
     title: "",
     category: "",
     description: "",
+    preview_url: "",
   });
 
   // Share Modal state
@@ -625,6 +627,9 @@ export function RoadmapViewContent({
         name: formData.title || "Untitled Roadmap",
         description: formData.description,
         category: formData.category,
+        ...(formData.preview_url
+          ? { preview_url: formData.preview_url }
+          : {}),
       });
 
       setIsBriefOpen(false);

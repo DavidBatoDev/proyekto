@@ -74,6 +74,14 @@ class UploadService {
   async upload(bucket: UploadBucket, file: File): Promise<string> {
     const token = await getAccessToken();
 
+    // Guests have no Supabase session. The upload Worker requires a Bearer JWT
+    // and returns 401 without one, so route guest uploads through the backend
+    // /uploads/file endpoint instead — its guard honours the X-Guest-User-Id
+    // header that apiClient injects automatically.
+    if (!token) {
+      return this.uploadViaBackend(bucket, file);
+    }
+
     const form = new FormData();
     form.append("bucket", bucket);
     form.append("file", file);
@@ -97,6 +105,27 @@ class UploadService {
 
     const body = (await res.json()) as { publicUrl: string };
     return body.publicUrl;
+  }
+
+  /**
+   * Upload via the backend (multipart → R2), used when there is no Supabase
+   * session so guest identity (X-Guest-User-Id, injected by apiClient) is
+   * honoured. The backend wraps its response in the standard `{ data }`
+   * envelope, so the public URL lives at `data.data.publicUrl`.
+   */
+  private async uploadViaBackend(
+    bucket: UploadBucket,
+    file: File,
+  ): Promise<string> {
+    const form = new FormData();
+    form.append("bucket", bucket);
+    form.append("file", file);
+
+    const res = await apiClient.post<{
+      data: { path: string; publicUrl: string };
+    }>(`${this.base}/file`, form);
+
+    return res.data.data.publicUrl;
   }
 
   /**

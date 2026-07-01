@@ -16,19 +16,6 @@ const Hero = () => {
         }}
       />
 
-      {/* Background line art */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 h-full opacity-20"
-        style={{
-          backgroundImage:
-            "url('https://www.figma.com/api/mcp/asset/401294d3-a0ee-4f4c-8db8-a104e5af9bfc'), url('https://www.figma.com/api/mcp/asset/8487b178-52f2-4e6e-b3be-b20653ae46fb')",
-          backgroundRepeat: "no-repeat, no-repeat",
-          backgroundPosition: "50% 0%, 50% -120px",
-          backgroundSize: "1800px auto, 2200px auto",
-        }}
-      />
-
       <div className="container mx-auto px-6 md:px-12 lg:px-14 relative">
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-8 sm:gap-12 items-center">
           {/* Left content */}

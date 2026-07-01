@@ -25,7 +25,16 @@ const References = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
           {/* Top Left - Healthcare Data Migration */}
           <div className="flex flex-col lg:flex-row lg:h-[412px] overflow-hidden">
-            <div className="w-full lg:w-1/2 min-h-[250px] lg:h-full" style={{ backgroundColor: '#D9D9D9' }}></div>
+            <div
+              className="w-full lg:w-1/2 min-h-[250px] lg:h-full bg-cover bg-center"
+              style={{
+                backgroundColor: "#D9D9D9",
+                backgroundImage:
+                  "url('https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&h=600&fit=crop&q=80')",
+              }}
+              role="img"
+              aria-label="Healthcare data migration case study"
+            ></div>
             <div className="w-full lg:w-1/2 bg-transparent p-8 flex flex-col justify-between lg:h-full">
               <div>
                 <h3 className="text-2xl font-bold text-gray-900 mb-4">
@@ -45,7 +54,16 @@ const References = () => {
 
           {/* Top Right - E-Commerce Re-Platforming */}
           <div className="flex flex-col lg:flex-row lg:h-[412px] overflow-hidden">
-            <div className="w-full lg:w-1/2 min-h-[250px] lg:h-full" style={{ backgroundColor: '#D9D9D9' }}></div>
+            <div
+              className="w-full lg:w-1/2 min-h-[250px] lg:h-full bg-cover bg-center"
+              style={{
+                backgroundColor: "#D9D9D9",
+                backgroundImage:
+                  "url('https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=800&h=600&fit=crop&q=80')",
+              }}
+              role="img"
+              aria-label="E-commerce re-platforming case study"
+            ></div>
             <div className="w-full lg:w-1/2 bg-transparent p-8 flex flex-col justify-between lg:h-full">
               <div>
                 <h3 className="text-2xl font-bold text-gray-900 mb-4">
@@ -65,7 +83,16 @@ const References = () => {
 
           {/* Bottom Left - Fintech App Launch */}
           <div className="flex flex-col lg:flex-row-reverse lg:h-[412px] overflow-hidden">
-            <div className="w-full lg:w-1/2 min-h-[250px] lg:h-full" style={{ backgroundColor: '#D9D9D9' }}></div>
+            <div
+              className="w-full lg:w-1/2 min-h-[250px] lg:h-full bg-cover bg-center"
+              style={{
+                backgroundColor: "#D9D9D9",
+                backgroundImage:
+                  "url('https://images.unsplash.com/photo-1601597111158-2fceff292cdc?w=800&h=600&fit=crop&q=80')",
+              }}
+              role="img"
+              aria-label="Fintech app launch case study"
+            ></div>
             <div className="w-full lg:w-1/2 bg-transparent p-8 flex flex-col justify-between lg:h-full">
               <div>
                 <h3 className="text-2xl font-bold text-gray-900 mb-4">
@@ -85,7 +112,16 @@ const References = () => {
 
           {/* Bottom Right - SaaS MVP Under Budget */}
           <div className="flex flex-col lg:flex-row-reverse lg:h-[412px] overflow-hidden">
-            <div className="w-full lg:w-1/2 min-h-[250px] lg:h-full" style={{ backgroundColor: '#D9D9D9' }}></div>
+            <div
+              className="w-full lg:w-1/2 min-h-[250px] lg:h-full bg-cover bg-center"
+              style={{
+                backgroundColor: "#D9D9D9",
+                backgroundImage:
+                  "url('https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&h=600&fit=crop&q=80')",
+              }}
+              role="img"
+              aria-label="SaaS MVP under budget case study"
+            ></div>
             <div className="w-full lg:w-1/2 bg-transparent p-8 flex flex-col justify-between lg:h-full">
               <div>
                 <h3 className="text-2xl font-bold text-gray-900 mb-4">
