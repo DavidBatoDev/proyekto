@@ -1,4 +1,9 @@
-export type LogPeriodPreset = "this_week" | "this_month" | "cutoff" | "custom";
+export type LogPeriodPreset =
+	| "this_week"
+	| "this_month"
+	| "cutoff"
+	| "custom"
+	| "all_time";
 export type CutoffHalf = "1" | "2";
 
 export interface TeamLogPeriodSearch {
@@ -19,10 +24,18 @@ export interface TeamLogResolvedPeriod {
 	cutoffHalf: CutoffHalf;
 }
 
-const PRESETS: LogPeriodPreset[] = ["this_week", "this_month", "cutoff", "custom"];
+const PRESETS: LogPeriodPreset[] = [
+	"this_week",
+	"this_month",
+	"cutoff",
+	"custom",
+	"all_time",
+];
 
 function isPreset(value: unknown): value is LogPeriodPreset {
-	return typeof value === "string" && PRESETS.includes(value as LogPeriodPreset);
+	return (
+		typeof value === "string" && PRESETS.includes(value as LogPeriodPreset)
+	);
 }
 
 function isIsoLike(value: unknown): value is string {
@@ -88,10 +101,16 @@ export function parseTeamLogPeriodSearch(
 	const from = isIsoLike(search.from) ? search.from : undefined;
 	const to = isIsoLike(search.to) ? search.to : undefined;
 	const cutoffMonth =
-		typeof search.cutoff_month === "string" && /^\d{4}-\d{2}$/.test(search.cutoff_month)
+		typeof search.cutoff_month === "string" &&
+		/^\d{4}-\d{2}$/.test(search.cutoff_month)
 			? search.cutoff_month
 			: undefined;
-	const cutoffHalf = search.cutoff_half === "2" ? "2" : search.cutoff_half === "1" ? "1" : undefined;
+	const cutoffHalf =
+		search.cutoff_half === "2"
+			? "2"
+			: search.cutoff_half === "1"
+				? "1"
+				: undefined;
 	return {
 		preset,
 		from,
@@ -117,7 +136,10 @@ function monthBounds(now: Date): { from: Date; to: Date } {
 	return { from, to };
 }
 
-function cutoffBounds(month: string, half: CutoffHalf): { from: Date; to: Date } {
+function cutoffBounds(
+	month: string,
+	half: CutoffHalf,
+): { from: Date; to: Date } {
 	const parsed = parseMonthInput(month) ?? new Date();
 	const year = parsed.getFullYear();
 	const monthIndex = parsed.getMonth();
@@ -144,7 +166,10 @@ export function resolveTeamLogPeriod(
 
 	let fromDate: Date;
 	let toDate: Date;
-	if (preset === "this_month") {
+	if (preset === "all_time") {
+		fromDate = new Date(2000, 0, 1);
+		toDate = new Date(now.getFullYear() + 5, 11, 31);
+	} else if (preset === "this_month") {
 		const bounds = monthBounds(now);
 		fromDate = bounds.from;
 		toDate = bounds.to;
@@ -203,7 +228,10 @@ export function buildTeamLogPeriodSearch(
 export function buildCustomPeriodFromDateInputs(
 	fromDate: string,
 	toDate: string,
-): Pick<TeamLogResolvedPeriod, "fromIso" | "toIso" | "customFromDate" | "customToDate"> | null {
+): Pick<
+	TeamLogResolvedPeriod,
+	"fromIso" | "toIso" | "customFromDate" | "customToDate"
+> | null {
 	const parsedFrom = parseDateInput(fromDate);
 	const parsedTo = parseDateInput(toDate);
 	if (!parsedFrom || !parsedTo) return null;
@@ -216,6 +244,55 @@ export function buildCustomPeriodFromDateInputs(
 		customFromDate: toLocalDateInput(from),
 		customToDate: toLocalDateInput(to),
 	};
+}
+
+// ─── cross-tab persistence ───────────────────────────────────────────────
+// The period lives in the team-logs route's URL search, which is lost when
+// the user visits another Time tab. Mirror it into localStorage per team so
+// it can be restored (e.g. a custom range the user set) on return.
+
+const PERIOD_STORAGE_PREFIX = "teamLogPeriod:";
+
+export function loadStoredPeriodSearch(
+	teamId: string,
+): TeamLogPeriodSearch | null {
+	try {
+		const raw = localStorage.getItem(`${PERIOD_STORAGE_PREFIX}${teamId}`);
+		if (!raw) return null;
+		const parsed = parseTeamLogPeriodSearch(JSON.parse(raw));
+		return parsed.preset ? parsed : null;
+	} catch {
+		return null;
+	}
+}
+
+export function storePeriodSearch(
+	teamId: string,
+	search: TeamLogPeriodSearch,
+): void {
+	try {
+		localStorage.setItem(
+			`${PERIOD_STORAGE_PREFIX}${teamId}`,
+			JSON.stringify(search),
+		);
+	} catch {
+		// ignore quota / unavailable storage
+	}
+}
+
+export function periodRangeLabel(period: TeamLogResolvedPeriod): string {
+	if (period.preset === "all_time") return "All time";
+	const start = new Date(period.fromIso);
+	const end = new Date(period.toIso);
+	if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+		return "Invalid period";
+	}
+	const fmt = new Intl.DateTimeFormat(undefined, {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+	});
+	return `${fmt.format(start)} – ${fmt.format(end)}`;
 }
 
 export function cutoffLabel(month: string, half: CutoffHalf): string {

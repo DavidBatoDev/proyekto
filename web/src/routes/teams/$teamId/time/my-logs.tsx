@@ -4,11 +4,22 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ScrollNavButtons } from "@/components/common/ScrollNavButtons";
 import { SidePanel } from "@/components/roadmap/panels/SidePanel";
 import {
+	buildCustomPeriodFromDateInputs,
+	buildTeamLogPeriodSearch,
+	type CutoffHalf,
+	type LogPeriodPreset,
+	loadStoredPeriodSearch,
+	parseTeamLogPeriodSearch,
+	resolveTeamLogPeriod,
+	storePeriodSearch,
+} from "@/components/team-time/log-period";
+import { TeamLogsPeriodFilter } from "@/components/team-time/TeamLogsPeriodFilter";
+import {
 	computeLogStats,
 	TeamLogsStatsCard,
 } from "@/components/team-time/TeamLogsStatsCard";
 import { TeamMemberRateHistoryDrawer } from "@/components/team-time/TeamMemberRateHistoryDrawer";
-import { TeamMyLogsGrid } from "@/components/team-time/TeamMyLogsGrid";
+import { TeamMyLogsList } from "@/components/team-time/TeamMyLogsList";
 import {
 	AddLogModal,
 	DeleteTimeLogModal,
@@ -33,6 +44,7 @@ import { useUser } from "@/stores/authStore";
 import type { RoadmapTask } from "@/types/roadmap";
 
 export const Route = createFileRoute("/teams/$teamId/time/my-logs")({
+	validateSearch: parseTeamLogPeriodSearch,
 	component: MyLogsTab,
 	beforeLoad: async ({ params }) => {
 		void params;
@@ -41,10 +53,57 @@ export const Route = createFileRoute("/teams/$teamId/time/my-logs")({
 
 function MyLogsTab() {
 	const { teamId } = Route.useParams();
+	const search = Route.useSearch();
 	const user = useUser();
 	const toast = useToast();
 	const qc = useQueryClient();
 	const navigate = useNavigate();
+
+	const period = useMemo(() => resolveTeamLogPeriod(search), [search]);
+
+	useEffect(() => {
+		// Keep the chosen period in localStorage (shared with Team Logs, keyed by
+		// team) so a custom range survives moving between Time tabs and back.
+		if (search.preset && search.from && search.to) {
+			storePeriodSearch(teamId, search);
+			return;
+		}
+		const restored = loadStoredPeriodSearch(teamId);
+		void navigate({
+			to: "/teams/$teamId/time/my-logs",
+			params: { teamId },
+			search: restored ?? buildTeamLogPeriodSearch(period),
+			replace: true,
+		});
+	}, [navigate, period, search, teamId]);
+
+	const updatePeriod = (
+		preset: LogPeriodPreset,
+		overrides?: Partial<typeof period>,
+	) => {
+		const next = resolveTeamLogPeriod({
+			preset,
+			from: overrides?.fromIso ?? period.fromIso,
+			to: overrides?.toIso ?? period.toIso,
+			cutoff_month: overrides?.cutoffMonth ?? period.cutoffMonth,
+			cutoff_half: overrides?.cutoffHalf ?? period.cutoffHalf,
+		});
+		void navigate({
+			to: "/teams/$teamId/time/my-logs",
+			params: { teamId },
+			search: buildTeamLogPeriodSearch(next),
+			replace: true,
+		});
+	};
+
+	const onApplyCustomRange = (fromDate: string, toDate: string) => {
+		const next = buildCustomPeriodFromDateInputs(fromDate, toDate);
+		if (!next) {
+			toast.error("Enter a valid custom date range.");
+			return;
+		}
+		updatePeriod("custom", { fromIso: next.fromIso, toIso: next.toIso });
+	};
 	// ─── Modal / form state ─────────────────────────────────────────────────
 	const [addOpen, setAddOpen] = useState(false);
 	const [addProjectId, setAddProjectId] = useState("");
@@ -78,9 +137,17 @@ function MyLogsTab() {
 	});
 
 	const logsQuery = useQuery({
-		queryKey: ["team-time", teamId, "my-logs", user?.id],
+		queryKey: [
+			"team-time",
+			teamId,
+			"my-logs",
+			user?.id,
+			{ from: period.fromIso, to: period.toIso },
+		],
 		queryFn: () =>
 			teamTimeService.listMyTeamLogs(teamId, {
+				from: period.fromIso,
+				to: period.toIso,
 				limit: 200,
 			}),
 		enabled: Boolean(user?.id),
@@ -370,20 +437,38 @@ function MyLogsTab() {
 
 	return (
 		<>
-			{/* Legacy-style rate + totals card */}
-			<TeamLogsStatsCard
-				rate={activeRate}
-				stats={stats}
-				fallbackCurrency={activeRate?.currency || "USD"}
-				loading={logsQuery.isPending}
-				canShowHistory={hasRateHistory}
-				onOpenHistory={hasRateHistory ? () => setHistoryOpen(true) : undefined}
-				includePaidColumn={false}
-				includeTrainingRate={false}
-				rateLabel="Rate"
-			/>
-			{/* Logs table */}
-			<TeamMyLogsGrid
+			{/* Date range filter */}
+			<div className="mb-3">
+				<TeamLogsPeriodFilter
+					period={period}
+					onPresetChange={(preset) => updatePeriod(preset)}
+					onCutoffMonthChange={(month) =>
+						updatePeriod("cutoff", { cutoffMonth: month })
+					}
+					onCutoffHalfChange={(half: CutoffHalf) =>
+						updatePeriod("cutoff", { cutoffHalf: half })
+					}
+					onApplyCustomRange={onApplyCustomRange}
+				/>
+			</div>
+			{/* Rate + balance summary */}
+			<div className="mb-4">
+				<TeamLogsStatsCard
+					rate={activeRate}
+					stats={stats}
+					fallbackCurrency={activeRate?.currency || "USD"}
+					loading={logsQuery.isPending}
+					canShowHistory={hasRateHistory}
+					onOpenHistory={
+						hasRateHistory ? () => setHistoryOpen(true) : undefined
+					}
+					includePaidColumn
+					includeTrainingRate={false}
+					rateLabel="Rate"
+				/>
+			</div>
+			{/* Activity — e-wallet style transaction list */}
+			<TeamMyLogsList
 				logs={allLogs}
 				tasks={tasksForRowQuery.data ?? []}
 				ownRateByProjectId={ownRateByProjectId}

@@ -16,9 +16,11 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { SupabaseClient } from '@supabase/supabase-js';
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import { R2_CLIENT, R2_CONFIG, type R2Config } from '../../config/r2.module';
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
@@ -51,6 +53,10 @@ const BUCKET_CONFIG: Record<
     allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
   },
   identity_documents: {
+    maxSize: 10 * 1024 * 1024,
+    allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
+  },
+  payout_proofs: {
     maxSize: 10 * 1024 * 1024,
     allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
   },
@@ -89,7 +95,7 @@ const BUCKET_CONFIG: Record<
 };
 
 /** Buckets that must NOT be publicly readable — uploaded to the private R2 bucket. */
-const PRIVATE_BUCKETS = new Set<string>(['identity_documents']);
+const PRIVATE_BUCKETS = new Set<string>(['identity_documents', 'payout_proofs']);
 
 /**
  * Minimal shape of a multer file (we don't depend on @types/multer).
@@ -158,6 +164,23 @@ export class UploadsService {
     const publicUrl = isPrivate ? key : `${this.r2Config.publicBaseUrl}/${key}`;
 
     return { path: key, publicUrl };
+  }
+
+  /**
+   * Presigned GET URL for an object in the private R2 bucket (identity
+   * documents, payout proofs, …). Callers MUST authorize the viewer before
+   * calling this — the returned URL grants time-limited read access.
+   */
+  async getPrivateSignedUrl(key: string, expiresInSeconds = 300): Promise<string> {
+    if (!key) throw new BadRequestException('No object key provided');
+    return getSignedUrl(
+      this.r2,
+      new GetObjectCommand({
+        Bucket: this.r2Config.privateBucket,
+        Key: key,
+      }),
+      { expiresIn: expiresInSeconds },
+    );
   }
 
   async confirmAvatar(userId: string, dto: ConfirmAvatarDto) {

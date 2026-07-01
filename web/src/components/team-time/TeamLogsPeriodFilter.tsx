@@ -1,9 +1,27 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+	addMonths,
+	eachDayOfInterval,
+	endOfDay,
+	endOfMonth,
+	endOfWeek,
+	format,
+	isBefore,
+	isSameDay,
+	isSameMonth,
+	isWithinInterval,
+	startOfDay,
+	startOfMonth,
+	startOfWeek,
+	subDays,
+} from "date-fns";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	type CutoffHalf,
-	type LogPeriodPreset,
-	type TeamLogResolvedPeriod,
 	cutoffLabel,
+	type LogPeriodPreset,
+	periodRangeLabel,
+	type TeamLogResolvedPeriod,
 } from "./log-period";
 
 interface TeamLogsPeriodFilterProps {
@@ -14,6 +32,16 @@ interface TeamLogsPeriodFilterProps {
 	onApplyCustomRange: (fromDate: string, toDate: string) => void;
 }
 
+const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+function parseYmd(value: string): Date | null {
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+	const d = new Date(`${value}T00:00:00`);
+	return Number.isNaN(d.getTime()) ? null : d;
+}
+
+type PopoverMode = "range" | "cutoff";
+
 export function TeamLogsPeriodFilter({
 	period,
 	onPresetChange,
@@ -21,130 +49,529 @@ export function TeamLogsPeriodFilter({
 	onCutoffHalfChange,
 	onApplyCustomRange,
 }: TeamLogsPeriodFilterProps) {
-	const [customFrom, setCustomFrom] = useState(period.customFromDate);
-	const [customTo, setCustomTo] = useState(period.customToDate);
+	const [open, setOpen] = useState(false);
+	const [mode, setMode] = useState<PopoverMode>("range");
+	const [draftStart, setDraftStart] = useState<Date | null>(null);
+	const [draftEnd, setDraftEnd] = useState<Date | null>(null);
+	const [hover, setHover] = useState<Date | null>(null);
+	const [viewMonth, setViewMonth] = useState<Date>(startOfMonth(new Date()));
+	const wrapRef = useRef<HTMLDivElement | null>(null);
 
+	const label = useMemo(() => periodRangeLabel(period), [period]);
+
+	// Initialise the draft from the current period each time the popover opens.
 	useEffect(() => {
-		setCustomFrom(period.customFromDate);
-		setCustomTo(period.customToDate);
-	}, [period.customFromDate, period.customToDate]);
+		if (!open) return;
+		const start = parseYmd(period.customFromDate);
+		const end = parseYmd(period.customToDate);
+		setDraftStart(start);
+		setDraftEnd(end);
+		setHover(null);
+		setMode(period.preset === "cutoff" ? "cutoff" : "range");
+		setViewMonth(startOfMonth(start ?? new Date()));
+	}, [open, period.customFromDate, period.customToDate, period.preset]);
 
-	const rangeLabel = useMemo(() => {
-		const start = new Date(period.fromIso);
-		const end = new Date(period.toIso);
-		if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-			return "Invalid period";
+	// Close on outside click / Escape.
+	useEffect(() => {
+		if (!open) return;
+		const onPointer = (e: MouseEvent) => {
+			if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+		};
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") setOpen(false);
+		};
+		document.addEventListener("mousedown", onPointer);
+		document.addEventListener("keydown", onKey);
+		return () => {
+			document.removeEventListener("mousedown", onPointer);
+			document.removeEventListener("keydown", onKey);
+		};
+	}, [open]);
+
+	const pickDay = (day: Date) => {
+		if (!draftStart || draftEnd) {
+			setDraftStart(day);
+			setDraftEnd(null);
+			return;
 		}
-		const fmt = new Intl.DateTimeFormat(undefined, {
-			month: "short",
-			day: "numeric",
-			year: "numeric",
-		});
-		return `${fmt.format(start)} - ${fmt.format(end)}`;
-	}, [period.fromIso, period.toIso]);
+		if (isBefore(day, draftStart)) {
+			setDraftStart(day);
+			return;
+		}
+		setDraftEnd(day);
+	};
+
+	const applyRange = () => {
+		if (!draftStart || !draftEnd) return;
+		onApplyCustomRange(
+			format(draftStart, "yyyy-MM-dd"),
+			format(draftEnd, "yyyy-MM-dd"),
+		);
+		setOpen(false);
+	};
+
+	const applyQuickRange = (from: Date, to: Date) => {
+		onApplyCustomRange(format(from, "yyyy-MM-dd"), format(to, "yyyy-MM-dd"));
+		setOpen(false);
+	};
+
+	const applyPreset = (preset: LogPeriodPreset) => {
+		onPresetChange(preset);
+		setOpen(false);
+	};
+
+	const today = startOfDay(new Date());
+
+	const presetRail: {
+		key: string;
+		label: string;
+		active: boolean;
+		onSelect: () => void;
+	}[] = [
+		{
+			key: "today",
+			label: "Today",
+			active: false,
+			onSelect: () => applyQuickRange(today, today),
+		},
+		{
+			key: "yesterday",
+			label: "Yesterday",
+			active: false,
+			onSelect: () => applyQuickRange(subDays(today, 1), subDays(today, 1)),
+		},
+		{
+			key: "this_week",
+			label: "This week",
+			active: period.preset === "this_week",
+			onSelect: () => applyPreset("this_week"),
+		},
+		{
+			key: "last_7",
+			label: "Last 7 days",
+			active: false,
+			onSelect: () => applyQuickRange(subDays(today, 6), today),
+		},
+		{
+			key: "this_month",
+			label: "This month",
+			active: period.preset === "this_month",
+			onSelect: () => applyPreset("this_month"),
+		},
+		{
+			key: "last_30",
+			label: "Last 30 days",
+			active: false,
+			onSelect: () => applyQuickRange(subDays(today, 29), today),
+		},
+		{
+			key: "cutoff",
+			label: "Cutoff (PH)",
+			active: period.preset === "cutoff",
+			onSelect: () => setMode("cutoff"),
+		},
+		{
+			key: "all_time",
+			label: "All time",
+			active: period.preset === "all_time",
+			onSelect: () => applyPreset("all_time"),
+		},
+	];
 
 	return (
-		<div className="space-y-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm">
+		<div
+			ref={wrapRef}
+			className="relative rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
+		>
 			<div className="flex flex-wrap items-center gap-3">
-				<div className="inline-flex items-center rounded-lg bg-slate-100 p-0.5">
-					{([
-						{ id: "this_week", label: "This week" },
-						{ id: "this_month", label: "This month" },
-						{ id: "cutoff", label: "Cutoff" },
-						{ id: "custom", label: "Custom" },
-					] as const).map((item) => {
-						const active = period.preset === item.id;
-						return (
-							<button
-								key={item.id}
-								type="button"
-								onClick={() => onPresetChange(item.id)}
-								className={
-									active
-										? "rounded-md bg-white px-3 py-1 text-xs font-medium text-slate-900 shadow-sm"
-										: "rounded-md px-3 py-1 text-xs font-medium text-slate-500 hover:text-slate-700"
-								}
-							>
-								{item.label}
-							</button>
-						);
-					})}
-				</div>
-				<span className="text-xs font-medium text-slate-600">{rangeLabel}</span>
+				<span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+					Period
+				</span>
+				<button
+					type="button"
+					onClick={() => setOpen((v) => !v)}
+					aria-expanded={open}
+					className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50"
+				>
+					<CalendarDays className="h-4 w-4 text-slate-400" />
+					{label}
+					<ChevronRight
+						className={`h-3.5 w-3.5 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`}
+					/>
+				</button>
 			</div>
 
-			{period.preset === "cutoff" && (
-				<div className="flex flex-wrap items-center gap-3">
-					<label className="inline-flex items-center gap-2 text-xs text-slate-600">
-						<span className="font-semibold uppercase tracking-wide text-slate-500">
-							Month
-						</span>
-						<input
-							type="month"
-							value={period.cutoffMonth}
-							onChange={(e) => onCutoffMonthChange(e.target.value)}
-							className="rounded-md border border-slate-300 px-2 py-1 text-xs"
-						/>
-					</label>
-					<div className="inline-flex items-center rounded-lg bg-slate-100 p-0.5">
-						{(["1", "2"] as const).map((half) => {
-							const active = period.cutoffHalf === half;
-							return (
-								<button
-									key={half}
-									type="button"
-									onClick={() => onCutoffHalfChange(half)}
-									className={
-										active
-											? "rounded-md bg-white px-3 py-1 text-xs font-medium text-slate-900 shadow-sm"
-											: "rounded-md px-3 py-1 text-xs font-medium text-slate-500 hover:text-slate-700"
-									}
-									title={cutoffLabel(period.cutoffMonth, half)}
-								>
-									{half === "1" ? "1-15" : "16-EOM"}
-								</button>
-							);
-						})}
-					</div>
-					<span className="text-xs text-slate-500">
-						{cutoffLabel(period.cutoffMonth, period.cutoffHalf)}
-					</span>
-				</div>
-			)}
+			{open && (
+				<div className="absolute left-4 top-full z-50 mt-2 w-[min(42rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+					<div className="flex flex-col sm:flex-row">
+						{/* Preset rail */}
+						<div className="shrink-0 border-b border-slate-100 p-2 sm:w-44 sm:border-b-0 sm:border-r">
+							<div className="grid grid-cols-2 gap-1 sm:grid-cols-1">
+								{presetRail.map((p) => (
+									<button
+										key={p.key}
+										type="button"
+										onClick={p.onSelect}
+										className={`rounded-lg px-3 py-1.5 text-left text-xs font-medium transition-colors ${
+											p.active
+												? "bg-sky-50 text-sky-700"
+												: "text-slate-600 hover:bg-slate-50"
+										}`}
+									>
+										{p.label}
+									</button>
+								))}
+							</div>
+						</div>
 
-			{period.preset === "custom" && (
-				<div className="flex flex-wrap items-end gap-2">
-					<label className="space-y-1 text-xs">
-						<span className="font-semibold uppercase tracking-wide text-slate-500">
-							From
-						</span>
-						<input
-							type="date"
-							value={customFrom}
-							onChange={(e) => setCustomFrom(e.target.value)}
-							className="block rounded-md border border-slate-300 px-2 py-1 text-xs"
-						/>
-					</label>
-					<label className="space-y-1 text-xs">
-						<span className="font-semibold uppercase tracking-wide text-slate-500">
-							To
-						</span>
-						<input
-							type="date"
-							value={customTo}
-							onChange={(e) => setCustomTo(e.target.value)}
-							className="block rounded-md border border-slate-300 px-2 py-1 text-xs"
-						/>
-					</label>
-					<button
-						type="button"
-						onClick={() => onApplyCustomRange(customFrom, customTo)}
-						className="rounded-md border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"
-					>
-						Apply
-					</button>
+						{/* Calendar / cutoff area */}
+						<div className="min-w-0 flex-1 p-3">
+							{mode === "cutoff" ? (
+								<CutoffControls
+									period={period}
+									onCutoffMonthChange={onCutoffMonthChange}
+									onCutoffHalfChange={onCutoffHalfChange}
+									onDone={() => setOpen(false)}
+									onBackToRange={() => setMode("range")}
+								/>
+							) : (
+								<>
+									<div className="mb-3 flex items-center gap-2">
+										<RangeChip
+											label="From"
+											value={
+												draftStart ? format(draftStart, "MMM d, yyyy") : "—"
+											}
+										/>
+										<span className="text-slate-300">→</span>
+										<RangeChip
+											label="To"
+											value={draftEnd ? format(draftEnd, "MMM d, yyyy") : "—"}
+										/>
+									</div>
+
+									<div className="flex items-start gap-4">
+										<div className="relative">
+											<button
+												type="button"
+												onClick={() => setViewMonth((m) => addMonths(m, -1))}
+												className="absolute -left-1 top-0 rounded-md p-1 text-slate-400 hover:bg-slate-100"
+												aria-label="Previous month"
+											>
+												<ChevronLeft className="h-4 w-4" />
+											</button>
+											<MonthGrid
+												month={viewMonth}
+												draftStart={draftStart}
+												draftEnd={draftEnd}
+												hover={hover}
+												onHover={setHover}
+												onPick={pickDay}
+											/>
+										</div>
+										<div className="relative hidden md:block">
+											<button
+												type="button"
+												onClick={() => setViewMonth((m) => addMonths(m, 1))}
+												className="absolute -right-1 top-0 rounded-md p-1 text-slate-400 hover:bg-slate-100"
+												aria-label="Next month"
+											>
+												<ChevronRight className="h-4 w-4" />
+											</button>
+											<MonthGrid
+												month={addMonths(viewMonth, 1)}
+												draftStart={draftStart}
+												draftEnd={draftEnd}
+												hover={hover}
+												onHover={setHover}
+												onPick={pickDay}
+											/>
+										</div>
+										{/* Next-month arrow for single-calendar (mobile) layouts */}
+										<button
+											type="button"
+											onClick={() => setViewMonth((m) => addMonths(m, 1))}
+											className="rounded-md p-1 text-slate-400 hover:bg-slate-100 md:hidden"
+											aria-label="Next month"
+										>
+											<ChevronRight className="h-4 w-4" />
+										</button>
+									</div>
+
+									<div className="mt-3 flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+										<button
+											type="button"
+											onClick={() => setOpen(false)}
+											className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100"
+										>
+											Cancel
+										</button>
+										<button
+											type="button"
+											onClick={applyRange}
+											disabled={!draftStart || !draftEnd}
+											className="rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+										>
+											Apply
+										</button>
+									</div>
+								</>
+							)}
+						</div>
+					</div>
 				</div>
 			)}
+		</div>
+	);
+}
+
+function RangeChip({ label, value }: { label: string; value: string }) {
+	return (
+		<div className="flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5">
+			<div className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+				{label}
+			</div>
+			<div className="text-xs font-medium tabular-nums text-slate-700">
+				{value}
+			</div>
+		</div>
+	);
+}
+
+function MonthGrid({
+	month,
+	draftStart,
+	draftEnd,
+	hover,
+	onHover,
+	onPick,
+}: {
+	month: Date;
+	draftStart: Date | null;
+	draftEnd: Date | null;
+	hover: Date | null;
+	onHover: (d: Date | null) => void;
+	onPick: (d: Date) => void;
+}) {
+	const days = useMemo(
+		() =>
+			eachDayOfInterval({
+				start: startOfWeek(startOfMonth(month)),
+				end: endOfWeek(endOfMonth(month)),
+			}),
+		[month],
+	);
+
+	// Effective range endpoints for highlighting (draftEnd, else the hovered day).
+	const end = draftEnd ?? (draftStart && hover ? hover : null);
+	let lo = draftStart;
+	let hi = end;
+	if (lo && hi && isBefore(hi, lo)) {
+		[lo, hi] = [hi, lo];
+	}
+
+	return (
+		<div className="w-56">
+			<div className="mb-2 text-center text-xs font-semibold text-slate-700">
+				{format(month, "MMMM yyyy")}
+			</div>
+			<div className="grid grid-cols-7 gap-0.5">
+				{WEEKDAYS.map((w) => (
+					<div
+						key={w}
+						className="py-1 text-center text-[10px] font-semibold text-slate-400"
+					>
+						{w}
+					</div>
+				))}
+				{days.map((day) => {
+					const inMonth = isSameMonth(day, month);
+					const isStart = draftStart && isSameDay(day, draftStart);
+					const isEnd = draftEnd && isSameDay(day, draftEnd);
+					const isEndpoint = isStart || isEnd;
+					const inRange =
+						lo &&
+						hi &&
+						isWithinInterval(day, { start: startOfDay(lo), end: endOfDay(hi) });
+					const isToday = isSameDay(day, new Date());
+					return (
+						<button
+							key={day.toISOString()}
+							type="button"
+							onMouseEnter={() => onHover(day)}
+							onMouseLeave={() => onHover(null)}
+							onClick={() => onPick(day)}
+							className={`flex h-8 items-center justify-center text-xs transition-colors ${
+								isEndpoint
+									? "rounded-md bg-sky-600 font-semibold text-white"
+									: inRange
+										? "bg-sky-100 text-sky-800"
+										: inMonth
+											? "rounded-md text-slate-700 hover:bg-slate-100"
+											: "rounded-md text-slate-300 hover:bg-slate-50"
+							} ${inRange && !isEndpoint ? "" : "rounded-md"} ${
+								isToday && !isEndpoint ? "ring-1 ring-inset ring-sky-300" : ""
+							}`}
+						>
+							{format(day, "d")}
+						</button>
+					);
+				})}
+			</div>
+		</div>
+	);
+}
+
+const MONTH_LABELS = [
+	"Jan",
+	"Feb",
+	"Mar",
+	"Apr",
+	"May",
+	"Jun",
+	"Jul",
+	"Aug",
+	"Sep",
+	"Oct",
+	"Nov",
+	"Dec",
+];
+
+function CutoffMonthPicker({
+	value,
+	onChange,
+}: {
+	value: string;
+	onChange: (month: string) => void;
+}) {
+	const parsed = /^\d{4}-\d{2}$/.test(value)
+		? value
+		: format(new Date(), "yyyy-MM");
+	const [yearStr, monthStr] = parsed.split("-");
+	const selectedYear = Number(yearStr);
+	const selectedMonthIndex = Number(monthStr) - 1;
+	const [viewYear, setViewYear] = useState(selectedYear);
+
+	// Follow external changes to the selected month (e.g. preset reset).
+	useEffect(() => {
+		setViewYear(selectedYear);
+	}, [selectedYear]);
+
+	return (
+		<div className="w-fit rounded-lg border border-slate-200 p-1.5">
+			<div className="mb-1 flex items-center justify-between gap-2">
+				<button
+					type="button"
+					onClick={() => setViewYear((y) => y - 1)}
+					className="rounded p-0.5 text-slate-400 hover:bg-slate-100"
+					aria-label="Previous year"
+				>
+					<ChevronLeft className="h-3.5 w-3.5" />
+				</button>
+				<span className="text-[11px] font-semibold tabular-nums text-slate-700">
+					{viewYear}
+				</span>
+				<button
+					type="button"
+					onClick={() => setViewYear((y) => y + 1)}
+					className="rounded p-0.5 text-slate-400 hover:bg-slate-100"
+					aria-label="Next year"
+				>
+					<ChevronRight className="h-3.5 w-3.5" />
+				</button>
+			</div>
+			<div className="grid grid-cols-3 gap-0.5">
+				{MONTH_LABELS.map((m, i) => {
+					const active = i === selectedMonthIndex && viewYear === selectedYear;
+					return (
+						<button
+							key={m}
+							type="button"
+							onClick={() =>
+								onChange(`${viewYear}-${String(i + 1).padStart(2, "0")}`)
+							}
+							className={`rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
+								active
+									? "bg-sky-600 font-semibold text-white"
+									: "text-slate-600 hover:bg-slate-100"
+							}`}
+						>
+							{m}
+						</button>
+					);
+				})}
+			</div>
+		</div>
+	);
+}
+
+function CutoffControls({
+	period,
+	onCutoffMonthChange,
+	onCutoffHalfChange,
+	onDone,
+	onBackToRange,
+}: {
+	period: TeamLogResolvedPeriod;
+	onCutoffMonthChange: (month: string) => void;
+	onCutoffHalfChange: (half: CutoffHalf) => void;
+	onDone: () => void;
+	onBackToRange: () => void;
+}) {
+	return (
+		<div className="space-y-3">
+			<div className="flex items-center justify-between">
+				<span className="text-xs font-semibold text-slate-700">
+					Payroll cutoff
+				</span>
+				<button
+					type="button"
+					onClick={onBackToRange}
+					className="text-[11px] font-medium text-sky-600 hover:underline"
+				>
+					Use calendar instead
+				</button>
+			</div>
+			<div className="space-y-1.5">
+				<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+					Month
+				</span>
+				<CutoffMonthPicker
+					value={period.cutoffMonth}
+					onChange={onCutoffMonthChange}
+				/>
+			</div>
+			<div className="inline-flex items-center gap-0.5 rounded-xl bg-slate-100 p-1">
+				{(["1", "2"] as const).map((half) => {
+					const active = period.cutoffHalf === half;
+					return (
+						<button
+							key={half}
+							type="button"
+							onClick={() => onCutoffHalfChange(half)}
+							className={
+								active
+									? "rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 shadow-sm"
+									: "rounded-lg px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-800"
+							}
+						>
+							{half === "1" ? "1–15" : "16–EOM"}
+						</button>
+					);
+				})}
+			</div>
+			<div className="text-xs text-slate-400">
+				{cutoffLabel(period.cutoffMonth, period.cutoffHalf)}
+			</div>
+			<div className="flex justify-end border-t border-slate-100 pt-3">
+				<button
+					type="button"
+					onClick={onDone}
+					className="rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"
+				>
+					Done
+				</button>
+			</div>
 		</div>
 	);
 }

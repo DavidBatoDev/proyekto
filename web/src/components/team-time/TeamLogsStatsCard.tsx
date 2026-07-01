@@ -1,6 +1,7 @@
-import { History } from "lucide-react";
+import { History, Wallet } from "lucide-react";
 import type { TaskTimeLog } from "@/services/team-time.service";
 import type { TeamMemberRate } from "@/services/teams.service";
+import { formatMoney } from "./time-utils";
 
 type Bucket = {
 	pendingFees: number;
@@ -73,6 +74,135 @@ interface TeamLogsStatsCardProps {
 	rateLabel?: string;
 }
 
+type SegKey = "pending" | "approved" | "paid" | "rejected";
+
+interface Segment {
+	key: SegKey;
+	label: string;
+	amount: number;
+	bar: string;
+	dot: string;
+	text: string;
+}
+
+const SEGMENT_STYLES: Record<
+	SegKey,
+	{ label: string; bar: string; dot: string; text: string }
+> = {
+	pending: {
+		label: "Pending",
+		bar: "bg-amber-400",
+		dot: "bg-amber-400",
+		text: "text-amber-700",
+	},
+	approved: {
+		label: "Approved",
+		bar: "bg-emerald-500",
+		dot: "bg-emerald-500",
+		text: "text-emerald-700",
+	},
+	paid: {
+		label: "Paid",
+		bar: "bg-indigo-500",
+		dot: "bg-indigo-500",
+		text: "text-indigo-700",
+	},
+	rejected: {
+		label: "Rejected",
+		bar: "bg-rose-400",
+		dot: "bg-rose-400",
+		text: "text-rose-700",
+	},
+};
+
+function CurrencyReport({
+	currency,
+	bucket,
+	includePaid,
+}: {
+	currency: string;
+	bucket: Bucket;
+	includePaid: boolean;
+}) {
+	const segments: Segment[] = (
+		[
+			{ key: "pending", amount: bucket.pendingFees },
+			{ key: "approved", amount: bucket.approvedFees },
+			...(includePaid
+				? [{ key: "paid" as const, amount: bucket.paidFees }]
+				: []),
+			{ key: "rejected", amount: bucket.rejectedFees },
+		] as { key: SegKey; amount: number }[]
+	).map((s) => ({ ...SEGMENT_STYLES[s.key], key: s.key, amount: s.amount }));
+
+	const total = segments.reduce((sum, s) => sum + s.amount, 0);
+	const outstanding = bucket.pendingFees + bucket.approvedFees;
+
+	return (
+		<div className="px-4 py-4 sm:px-5">
+			{/* Hero row: total billed + outstanding */}
+			<div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+				<div>
+					<div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+						Total billed · {currency}
+					</div>
+					<div className="mt-0.5 text-2xl font-bold tabular-nums text-slate-900">
+						{formatMoney(total, currency)}
+					</div>
+				</div>
+				<div className="text-right">
+					<div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+						Outstanding
+					</div>
+					<div className="mt-0.5 text-lg font-semibold tabular-nums text-amber-700">
+						{formatMoney(outstanding, currency)}
+					</div>
+				</div>
+			</div>
+
+			{/* Composition bar */}
+			<div className="mt-3 flex h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+				{total > 0 &&
+					segments.map((s) =>
+						s.amount > 0 ? (
+							<div
+								key={s.key}
+								className={s.bar}
+								style={{ width: `${(s.amount / total) * 100}%` }}
+								title={`${s.label}: ${formatMoney(s.amount, currency)}`}
+							/>
+						) : null,
+					)}
+			</div>
+
+			{/* Legend breakdown */}
+			<div className="mt-3.5 grid grid-cols-2 gap-x-6 gap-y-2.5 sm:grid-cols-4">
+				{segments.map((s) => {
+					const pct = total > 0 ? Math.round((s.amount / total) * 100) : 0;
+					return (
+						<div key={s.key} className="min-w-0">
+							<div className="flex items-center gap-1.5">
+								<span className={`h-2 w-2 shrink-0 rounded-full ${s.dot}`} />
+								<span className="truncate text-[11px] font-medium text-slate-500">
+									{s.label}
+								</span>
+								<span className="ml-auto text-[10px] tabular-nums text-slate-400">
+									{pct}%
+								</span>
+							</div>
+							<div
+								className={`mt-0.5 pl-3.5 text-sm font-semibold tabular-nums ${s.text}`}
+							>
+								{formatMoney(s.amount, currency)}
+							</div>
+						</div>
+					);
+				})}
+			</div>
+		</div>
+	);
+}
+
 export function TeamLogsStatsCard({
 	rate,
 	stats,
@@ -86,76 +216,26 @@ export function TeamLogsStatsCard({
 }: TeamLogsStatsCardProps) {
 	const renderCurrencies =
 		stats.currencies.length > 0 ? stats.currencies : [fallbackCurrency];
-	const pick = (
-		field:
-			| "pendingFees"
-			| "approvedFees"
-			| "paidFees"
-			| "rejectedFees"
-			| "totalFees",
-		cur: string,
-	) => stats.buckets[cur]?.[field] ?? 0;
-	const columns: {
-		label: string;
-		values: { currency: string; amount: number }[];
-		emphasize?: boolean;
-		isHours?: boolean;
-	}[] = [
-		{
-			label: "Pending Balance",
-			values: renderCurrencies.map((c) => ({
-				currency: c,
-				amount: pick("pendingFees", c),
-			})),
-			emphasize: true,
-		},
-		{
-			label: "Approved",
-			values: renderCurrencies.map((c) => ({
-				currency: c,
-				amount: pick("approvedFees", c),
-			})),
-		},
-		...(includePaidColumn
-			? [
-					{
-						label: "Paid",
-						values: renderCurrencies.map((c) => ({
-							currency: c,
-							amount: pick("paidFees", c),
-						})),
-					},
-				]
-			: []),
-		{
-			label: "Rejected",
-			values: renderCurrencies.map((c) => ({
-				currency: c,
-				amount: pick("rejectedFees", c),
-			})),
-		},
-		{
-			label: "All works",
-			values: renderCurrencies.map((c) => ({
-				currency: c,
-				amount: pick("totalFees", c),
-			})),
-		},
-		{
-			label: "Total hours",
-			values: [{ currency: "h", amount: stats.totalHours }],
-			isHours: true,
-		},
-	];
+	const emptyBucket: Bucket = {
+		pendingFees: 0,
+		approvedFees: 0,
+		paidFees: 0,
+		rejectedFees: 0,
+		totalFees: 0,
+	};
 
 	return (
-		<div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-			<div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-200 px-3 py-2 text-xs">
+		<div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+			{/* Rate header */}
+			<div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 bg-slate-50/60 px-4 py-2.5 text-xs sm:px-5">
+				<span className="inline-flex items-center gap-1.5 text-slate-400">
+					<Wallet className="h-3.5 w-3.5" />
+				</span>
 				{rate ? (
 					<>
 						{rate.custom_id ? (
-							<span className="inline-flex items-center gap-1.5 text-sm">
-								<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+							<span className="inline-flex items-center gap-1.5">
+								<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
 									ID
 								</span>
 								<span className="font-mono font-semibold text-slate-900">
@@ -166,23 +246,23 @@ export function TeamLogsStatsCard({
 							<span className="italic text-slate-400">No ID</span>
 						)}
 						<span className="inline-flex items-center gap-1.5">
-							<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+							<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
 								{rateLabel}
 							</span>
 							<span className="text-sm font-semibold text-slate-900">
 								{Number(rate.hourly_rate).toFixed(2)} {rate.currency || "USD"}
-								<span className="font-normal text-slate-500">/hr</span>
+								<span className="font-normal text-slate-400">/hr</span>
 							</span>
 						</span>
 						{includeTrainingRate && (
 							<span className="inline-flex items-center gap-1.5">
-								<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+								<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
 									Training
 								</span>
 								<span className="text-sm font-semibold text-slate-900">
 									{Number(rate.training_hourly_rate).toFixed(2)}{" "}
 									{rate.currency || "USD"}
-									<span className="font-normal text-slate-500">/hr</span>
+									<span className="font-normal text-slate-400">/hr</span>
 								</span>
 							</span>
 						)}
@@ -195,67 +275,56 @@ export function TeamLogsStatsCard({
 				) : (
 					<span className="italic text-slate-400">No active rate</span>
 				)}
-				{canShowHistory && onOpenHistory && (
-					<button
-						type="button"
-						onClick={onOpenHistory}
-						className="ml-auto inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-					>
-						<History className="h-3.5 w-3.5" />
-						History
-					</button>
-				)}
+				<span className="ml-auto inline-flex items-center gap-1.5">
+					<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+						Total hours
+					</span>
+					{loading ? (
+						<span className="inline-block h-4 w-12 animate-pulse rounded bg-slate-200" />
+					) : (
+						<span className="text-sm font-semibold tabular-nums text-sky-700">
+							{stats.totalHours.toFixed(2)} h
+						</span>
+					)}
+					{canShowHistory && onOpenHistory && (
+						<button
+							type="button"
+							onClick={onOpenHistory}
+							className="ml-2 inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+						>
+							<History className="h-3.5 w-3.5" />
+							History
+						</button>
+					)}
+				</span>
 			</div>
 
-			<div className="overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-				<table className="w-full min-w-[640px] border-collapse text-xs">
-					<thead>
-						<tr className="bg-slate-50 text-slate-600">
-							<th className="w-20 border-r border-slate-200 px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-								&nbsp;
-							</th>
-							{columns.map((col) => (
-								<th
-									key={col.label}
-									className="border-r border-slate-200 px-3 py-1.5 text-right text-[11px] font-semibold last:border-r-0"
-								>
-									{col.label}
-								</th>
-							))}
-						</tr>
-					</thead>
-					<tbody>
-						<tr className="border-t border-slate-200 bg-white">
-							<th className="border-r border-slate-200 px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-700">
-								Totals
-							</th>
-							{columns.map((col) => (
-								<td
-									key={col.label}
-									className={`border-r border-slate-200 px-3 py-2 text-right tabular-nums last:border-r-0 align-top ${
-										col.emphasize
-											? "font-bold text-slate-900"
-											: "text-slate-700"
-									}`}
-								>
-									{loading ? (
-										<span>—</span>
-									) : (
-										<div className="flex flex-col items-end gap-0.5">
-											{col.values.map((v) => (
-												<span key={v.currency}>
-													{v.amount.toFixed(2)}
-													{col.isHours ? " h" : ` ${v.currency}`}
-												</span>
-											))}
-										</div>
-									)}
-								</td>
-							))}
-						</tr>
-					</tbody>
-				</table>
-			</div>
+			{/* Balance report */}
+			{loading ? (
+				<div className="space-y-3 px-4 py-4 sm:px-5">
+					<div className="h-8 w-40 animate-pulse rounded bg-slate-100" />
+					<div className="h-2.5 w-full animate-pulse rounded-full bg-slate-100" />
+					<div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+						{[0, 1, 2, 3].map((i) => (
+							<div
+								key={i}
+								className="h-9 animate-pulse rounded bg-slate-100"
+							/>
+						))}
+					</div>
+				</div>
+			) : (
+				<div className="divide-y divide-slate-100">
+					{renderCurrencies.map((cur) => (
+						<CurrencyReport
+							key={cur}
+							currency={cur}
+							bucket={stats.buckets[cur] ?? emptyBucket}
+							includePaid={includePaidColumn}
+						/>
+					))}
+				</div>
+			)}
 		</div>
 	);
 }

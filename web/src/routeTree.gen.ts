@@ -59,6 +59,7 @@ import { Route as TeamsTeamIdTimeIndexRouteImport } from './routes/teams/$teamId
 import { Route as TeamsTeamIdSettingsIndexRouteImport } from './routes/teams/$teamId/settings/index'
 import { Route as ProjectProjectIdSettingsIndexRouteImport } from './routes/project/$projectId/settings/index'
 import { Route as TeamsTeamIdTimeTeamLogsRouteImport } from './routes/teams/$teamId/time/team-logs'
+import { Route as TeamsTeamIdTimePayoutsRouteImport } from './routes/teams/$teamId/time/payouts'
 import { Route as TeamsTeamIdTimeMyLogsRouteImport } from './routes/teams/$teamId/time/my-logs'
 import { Route as TeamsTeamIdSettingsTimeRouteImport } from './routes/teams/$teamId/settings/time'
 import { Route as TeamsTeamIdSettingsProjectsRouteImport } from './routes/teams/$teamId/settings/projects'
@@ -332,6 +333,11 @@ const TeamsTeamIdTimeTeamLogsRoute = TeamsTeamIdTimeTeamLogsRouteImport.update({
   path: '/team-logs',
   getParentRoute: () => TeamsTeamIdTimeRouteRoute,
 } as any)
+const TeamsTeamIdTimePayoutsRoute = TeamsTeamIdTimePayoutsRouteImport.update({
+  id: '/payouts',
+  path: '/payouts',
+  getParentRoute: () => TeamsTeamIdTimeRouteRoute,
+} as any)
 const TeamsTeamIdTimeMyLogsRoute = TeamsTeamIdTimeMyLogsRouteImport.update({
   id: '/my-logs',
   path: '/my-logs',
@@ -485,6 +491,7 @@ export interface FileRoutesByFullPath {
   '/teams/$teamId/settings/projects': typeof TeamsTeamIdSettingsProjectsRoute
   '/teams/$teamId/settings/time': typeof TeamsTeamIdSettingsTimeRoute
   '/teams/$teamId/time/my-logs': typeof TeamsTeamIdTimeMyLogsRoute
+  '/teams/$teamId/time/payouts': typeof TeamsTeamIdTimePayoutsRoute
   '/teams/$teamId/time/team-logs': typeof TeamsTeamIdTimeTeamLogsRoute
   '/project/$projectId/settings': typeof ProjectProjectIdSettingsIndexRoute
   '/teams/$teamId/settings': typeof TeamsTeamIdSettingsIndexRoute
@@ -550,6 +557,7 @@ export interface FileRoutesByTo {
   '/teams/$teamId/settings/projects': typeof TeamsTeamIdSettingsProjectsRoute
   '/teams/$teamId/settings/time': typeof TeamsTeamIdSettingsTimeRoute
   '/teams/$teamId/time/my-logs': typeof TeamsTeamIdTimeMyLogsRoute
+  '/teams/$teamId/time/payouts': typeof TeamsTeamIdTimePayoutsRoute
   '/teams/$teamId/time/team-logs': typeof TeamsTeamIdTimeTeamLogsRoute
   '/project/$projectId/settings': typeof ProjectProjectIdSettingsIndexRoute
   '/teams/$teamId/settings': typeof TeamsTeamIdSettingsIndexRoute
@@ -619,6 +627,7 @@ export interface FileRoutesById {
   '/teams/$teamId/settings/projects': typeof TeamsTeamIdSettingsProjectsRoute
   '/teams/$teamId/settings/time': typeof TeamsTeamIdSettingsTimeRoute
   '/teams/$teamId/time/my-logs': typeof TeamsTeamIdTimeMyLogsRoute
+  '/teams/$teamId/time/payouts': typeof TeamsTeamIdTimePayoutsRoute
   '/teams/$teamId/time/team-logs': typeof TeamsTeamIdTimeTeamLogsRoute
   '/project/$projectId/settings/': typeof ProjectProjectIdSettingsIndexRoute
   '/teams/$teamId/settings/': typeof TeamsTeamIdSettingsIndexRoute
@@ -689,6 +698,7 @@ export interface FileRouteTypes {
     | '/teams/$teamId/settings/projects'
     | '/teams/$teamId/settings/time'
     | '/teams/$teamId/time/my-logs'
+    | '/teams/$teamId/time/payouts'
     | '/teams/$teamId/time/team-logs'
     | '/project/$projectId/settings'
     | '/teams/$teamId/settings'
@@ -754,6 +764,7 @@ export interface FileRouteTypes {
     | '/teams/$teamId/settings/projects'
     | '/teams/$teamId/settings/time'
     | '/teams/$teamId/time/my-logs'
+    | '/teams/$teamId/time/payouts'
     | '/teams/$teamId/time/team-logs'
     | '/project/$projectId/settings'
     | '/teams/$teamId/settings'
@@ -822,6 +833,7 @@ export interface FileRouteTypes {
     | '/teams/$teamId/settings/projects'
     | '/teams/$teamId/settings/time'
     | '/teams/$teamId/time/my-logs'
+    | '/teams/$teamId/time/payouts'
     | '/teams/$teamId/time/team-logs'
     | '/project/$projectId/settings/'
     | '/teams/$teamId/settings/'
@@ -1218,6 +1230,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TeamsTeamIdTimeTeamLogsRouteImport
       parentRoute: typeof TeamsTeamIdTimeRouteRoute
     }
+    '/teams/$teamId/time/payouts': {
+      id: '/teams/$teamId/time/payouts'
+      path: '/payouts'
+      fullPath: '/teams/$teamId/time/payouts'
+      preLoaderRoute: typeof TeamsTeamIdTimePayoutsRouteImport
+      parentRoute: typeof TeamsTeamIdTimeRouteRoute
+    }
     '/teams/$teamId/time/my-logs': {
       id: '/teams/$teamId/time/my-logs'
       path: '/my-logs'
@@ -1421,6 +1440,7 @@ const ProjectProjectIdRouteWithChildren =
 
 interface TeamsTeamIdTimeRouteRouteChildren {
   TeamsTeamIdTimeMyLogsRoute: typeof TeamsTeamIdTimeMyLogsRoute
+  TeamsTeamIdTimePayoutsRoute: typeof TeamsTeamIdTimePayoutsRoute
   TeamsTeamIdTimeTeamLogsRoute: typeof TeamsTeamIdTimeTeamLogsRoute
   TeamsTeamIdTimeIndexRoute: typeof TeamsTeamIdTimeIndexRoute
   TeamsTeamIdTimeLogLogIdRoute: typeof TeamsTeamIdTimeLogLogIdRoute
@@ -1430,6 +1450,7 @@ interface TeamsTeamIdTimeRouteRouteChildren {
 
 const TeamsTeamIdTimeRouteRouteChildren: TeamsTeamIdTimeRouteRouteChildren = {
   TeamsTeamIdTimeMyLogsRoute: TeamsTeamIdTimeMyLogsRoute,
+  TeamsTeamIdTimePayoutsRoute: TeamsTeamIdTimePayoutsRoute,
   TeamsTeamIdTimeTeamLogsRoute: TeamsTeamIdTimeTeamLogsRoute,
   TeamsTeamIdTimeIndexRoute: TeamsTeamIdTimeIndexRoute,
   TeamsTeamIdTimeLogLogIdRoute: TeamsTeamIdTimeLogLogIdRoute,

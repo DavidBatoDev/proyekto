@@ -29,6 +29,7 @@ import { SpecializationModal } from "@/components/profile/SpecializationModal";
 import { LicenseModal } from "@/components/profile/LicenseModal";
 import { IdentityDocumentModal } from "@/components/profile/IdentityDocumentModal";
 import { AccountTypeSection } from "@/components/profile/AccountTypeSection";
+import { PayoutMethodsSection } from "@/components/profile/PayoutMethodsSection";
 import {
   User,
   Camera,
@@ -1790,6 +1791,9 @@ function ProfilePage() {
                   )}
                 </Card>
               )}
+
+              {/* Payout methods (own profile only) */}
+              {isOwner && <PayoutMethodsSection />}
             </div>
           </div>
         </div>
