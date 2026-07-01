@@ -8,7 +8,9 @@ import { usePresentationContext } from "@/contexts/PresentationContext";
 // web/public/. A dark gradient overlays it so reduced-motion users (for whom the
 // video is hidden) still see an intentional hero. To refresh the footage, re-run
 // `node playwright/record-highlight.mjs` and re-encode to web/public/hero-highlight.mp4.
-const HERO_VIDEO_SRC = "/hero-highlight.mp4";
+// Bump the ?v= query whenever the clip is re-recorded — the filename is stable
+// and served with a 4h browser cache, so the version param forces a refetch.
+const HERO_VIDEO_SRC = "/hero-highlight.mp4?v=2";
 
 export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}) => {
   const { goToSection } = usePresentationContext();
@@ -37,7 +39,7 @@ export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}
       {/* Legibility overlay so the white copy always reads over the footage */}
       <div
         aria-hidden
-        className="absolute inset-0 bg-gradient-to-b from-slate-950/80 via-slate-950/55 to-slate-950/90"
+        className="absolute inset-0 bg-linear-to-b from-slate-950/80 via-slate-950/55 to-slate-950/90"
       />
 
       <div className="relative z-10 mx-auto flex max-w-4xl flex-col items-center px-6 pt-24 text-center">

@@ -47,24 +47,40 @@ const context = await browser.newContext({
   reducedMotion: "no-preference",
 });
 
-// Hide the chat "Direct Messages" list as soon as it renders — it contains real
-// DMs (incl. offensive text) unfit for a public video. Channels stay visible.
+// Keep real DMs and collaborator names off camera in the chat beat:
+//  1. A document-start stylesheet hides the right "DETAILS / Chat members"
+//     panel (the only <aside> with the max-w-[92vw] class) before first paint.
+//  2. A MutationObserver hides the left-sidebar "Direct Messages" list (nested,
+//     no unique class) as it renders. Channels stay visible.
 await context.addInitScript(() => {
-  const hide = () => {
+  const norm = (s) => (s || "").trim().toLowerCase();
+  const injectStyle = () => {
+    if (document.getElementById("__pw_hide")) return;
+    const style = document.createElement("style");
+    style.id = "__pw_hide";
+    style.textContent = "aside.max-w-\\[92vw\\]{display:none !important;}";
+    (document.head || document.documentElement).appendChild(style);
+  };
+  const hideDMs = () => {
     for (const p of document.querySelectorAll("aside p")) {
-      if ((p.textContent || "").trim().toLowerCase() === "direct messages") {
-        const box = p.parentElement;
-        if (box) box.style.setProperty("display", "none", "important");
+      if (norm(p.textContent) === "direct messages") {
+        p.parentElement?.style.setProperty("display", "none", "important");
       }
     }
   };
+  const run = () => {
+    injectStyle();
+    hideDMs();
+  };
   const start = () => {
-    hide();
-    new MutationObserver(hide).observe(document.documentElement, {
+    run();
+    new MutationObserver(run).observe(document.documentElement, {
       childList: true,
       subtree: true,
     });
   };
+  // Defer DOM work to DOMContentLoaded — at document_start documentElement can be
+  // null (appending a <style> then throws and aborts the whole init script).
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", start);
   } else {
@@ -234,29 +250,7 @@ await step("chat: send a message", async () => {
   await page.goto(chatUrl, { waitUntil: "domcontentloaded" });
   const composer = page.locator('textarea[placeholder*="Message"]').first();
   await composer.waitFor({ timeout: 45_000 });
-  await sleep(1200);
-  // Hide the entire right "DETAILS" panel (it lists real collaborator names
-  // under "Chat members"). Climb from the DETAILS header to the ~320px panel
-  // container and hide it.
-  await page
-    .evaluate(() => {
-      const norm = (s) => (s || "").trim().toLowerCase();
-      for (const n of document.querySelectorAll("*")) {
-        if (norm(n.textContent) === "details") {
-          let el = n;
-          for (let i = 0; i < 6 && el.parentElement; i++) {
-            el = el.parentElement;
-            const w = el.getBoundingClientRect().width;
-            if (w > 240 && w < 560) {
-              el.style.setProperty("display", "none", "important");
-              return;
-            }
-          }
-        }
-      }
-    })
-    .catch(() => {});
-  await sleep(600);
+  await sleep(1200); // DM list + DETAILS panel already hidden by the init-script observer
   await composer.click();
   const msg = "Hey team 👋 kicking off the launch sprint — roadmap's looking great!";
   try {
