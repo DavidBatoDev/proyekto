@@ -18,6 +18,8 @@ import {
   Plus,
   Calendar,
   Maximize2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import type { FeatureStatus, RoadmapFeature, RoadmapTask } from "@/types/roadmap";
 import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
@@ -94,6 +96,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   const [isCardTaskDropActive, setIsCardTaskDropActive] = useState(false);
   const [isAddTaskDropActive, setIsAddTaskDropActive] = useState(false);
   const [isTaskListModalOpen, setIsTaskListModalOpen] = useState(false);
+  const [taskPage, setTaskPage] = useState(0);
   const derivedStatus = deriveFeatureStatus(feature.tasks);
 
   const getWidgetBorderColor = (status: FeatureStatus) => {
@@ -506,32 +509,68 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
           <div className="absolute top-1/2 -translate-y-1/2 left-[500px] w-10 h-0.5 bg-emerald-400" />
 
           {/* Task List - positioned to the right */}
-          <div
-            className="absolute top-1/2 -translate-y-1/2 left-[540px] w-max rounded-xl border border-gray-200 bg-white shadow-sm cursor-pointer"
-            onClick={(e) => { e.stopPropagation(); setIsTaskListModalOpen(true); }}
-          >
-            {/* Task list header */}
-            <div className="flex items-center justify-between px-2.5 pt-2 pb-1 hover:bg-gray-50 transition-colors">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                Tasks · {feature.tasks?.length ?? 0}
-              </span>
-              <Maximize2 className="w-3 h-3 text-gray-500 ml-4" />
-            </div>
+          {(() => {
+            const STATUS_ORDER: Record<string, number> = {
+              todo: 0, in_progress: 1, in_review: 2, done: 3, blocked: 4,
+            };
+            const ITEM_H = 28;
+            const GAP = 6;
+            const availH = cardHeight ? cardHeight - 42 : ITEM_H * 10;
+            const perCol = Math.max(1, Math.floor((availH + GAP) / (ITEM_H + GAP)));
+            const sorted = [...(feature.tasks ?? [])].sort(
+              (a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99),
+            );
+            const windowSize = perCol * 2;
+            const totalPages = Math.ceil(sorted.length / windowSize);
+            const safePage = Math.min(taskPage, Math.max(0, totalPages - 1));
+            const pageTasks = sorted.slice(safePage * windowSize, (safePage + 1) * windowSize);
+            const pageCols: typeof sorted[] = [
+              pageTasks.slice(0, perCol),
+              pageTasks.slice(perCol),
+            ].filter((col) => col.length > 0);
 
-            <div className="p-1.5 pt-0">
-              {(() => {
-                const ITEM_H = 28; // compact TaskListItem ~height px
-                const GAP = 6;     // gap-1.5
-                const availH = cardHeight ? cardHeight - 34 : ITEM_H * 10;
-                const perCol = Math.max(1, Math.floor((availH + GAP) / (ITEM_H + GAP)));
-                const tasks = feature.tasks ?? [];
-                const cols: typeof tasks[] = [];
-                for (let i = 0; i < tasks.length; i += perCol) {
-                  cols.push(tasks.slice(i, i + perCol));
-                }
-                return (
+            return (
+              <div
+                className="absolute top-1/2 -translate-y-1/2 left-[540px] w-max rounded-xl border border-gray-200 bg-white shadow-sm cursor-pointer"
+                onClick={(e) => { e.stopPropagation(); setIsTaskListModalOpen(true); }}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between px-2.5 pt-2 pb-1 hover:bg-gray-50 transition-colors">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                    Tasks · {sorted.length}
+                  </span>
+                  <div className="flex items-center gap-1 ml-4">
+                    {totalPages > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={safePage === 0}
+                          onClick={(e) => { e.stopPropagation(); setTaskPage((p) => Math.max(0, p - 1)); }}
+                          className="p-0.5 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <ChevronLeft className="w-3 h-3 text-gray-500" />
+                        </button>
+                        <span className="text-[10px] text-gray-400 tabular-nums">
+                          {safePage + 1}/{totalPages}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={safePage >= totalPages - 1}
+                          onClick={(e) => { e.stopPropagation(); setTaskPage((p) => Math.min(totalPages - 1, p + 1)); }}
+                          className="p-0.5 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <ChevronRight className="w-3 h-3 text-gray-500" />
+                        </button>
+                      </>
+                    )}
+                    <Maximize2 className="w-3 h-3 text-gray-500 ml-1" />
+                  </div>
+                </div>
+
+                {/* Columns */}
+                <div className="p-1.5 pt-0">
                   <div className="flex gap-1.5">
-                    {cols.map((col, ci) => (
+                    {pageCols.map((col, ci) => (
                       <div key={ci} className="flex flex-col gap-1.5">
                         {col.map((task) => (
                           <div key={task.id} className="w-[270px]" onClick={(e) => e.stopPropagation()}>
@@ -558,10 +597,10 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
                       </div>
                     ))}
                   </div>
-                );
-              })()}
-            </div>
-          </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {isTaskListModalOpen && (
             <TaskListModal
