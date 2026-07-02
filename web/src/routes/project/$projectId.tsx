@@ -2,7 +2,6 @@ import {
 	createFileRoute,
 	Outlet,
 	redirect,
-	useRouterState,
 } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
@@ -27,8 +26,6 @@ export const Route = createFileRoute("/project/$projectId")({
 
 function ProjectLayout() {
 	const { projectId } = Route.useParams();
-	const routerState = useRouterState();
-	const currentPath = routerState.location.pathname;
 	const setSidebarExpanded = useProjectSettingsStore(
 		(state) => state.setSidebarExpanded,
 	);
@@ -39,7 +36,6 @@ function ProjectLayout() {
 	);
 	const project = isRoadmapOnly ? null : (projectQuery.data ?? null);
 	const linkedRoadmapId = linkedRoadmapQuery.data?.id ?? null;
-	const isChatRoute = currentPath.includes(`/project/${projectId}/chat`);
 	const isLoading =
 		!isRoadmapOnly && (projectQuery.isPending || linkedRoadmapQuery.isPending);
 
@@ -73,7 +69,6 @@ function ProjectLayout() {
 						projectId={projectId}
 						hasProject={!isRoadmapOnly && !!project}
 						roadmapId={linkedRoadmapId ?? undefined}
-						compactMode={isChatRoute}
 					/>
 				</div>
 

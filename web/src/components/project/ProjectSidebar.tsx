@@ -26,7 +26,6 @@ interface ProjectSidebarProps {
   hasProject?: boolean;
   /** The id of the roadmap linked to this project, if any */
   roadmapId?: string;
-  compactMode?: boolean;
 }
 
 export function ProjectSidebar({
@@ -34,7 +33,6 @@ export function ProjectSidebar({
   projectId,
   hasProject,
   roadmapId,
-  compactMode = false,
 }: ProjectSidebarProps) {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
@@ -190,14 +188,10 @@ export function ProjectSidebar({
   return (
     <div className="relative z-50 h-full w-14 shrink-0">
       <aside
-        onMouseEnter={() => {
-          if (!compactMode) setIsExpanded(true);
-        }}
-        onMouseLeave={() => {
-          if (!compactMode) setIsExpanded(false);
-        }}
+        onMouseEnter={() => setIsExpanded(true)}
+        onMouseLeave={() => setIsExpanded(false)}
         className={`absolute left-0 top-0 flex h-full overflow-hidden border-r border-slate-200 bg-white/90 shadow-sm backdrop-blur transition-all duration-300 ease-in-out ${
-          compactMode ? "w-14" : isExpanded ? "w-56 shadow-lg" : "w-14"
+          isExpanded ? "w-56 shadow-lg" : "w-14"
         }`}
       >
         <div className="flex w-full flex-col overflow-y-auto py-3">
@@ -205,8 +199,8 @@ export function ProjectSidebar({
           <div className="mb-1">
             <button
               type="button"
-              onClick={() => isExpanded && !compactMode && setProjectsOpen((v) => !v)}
-              title={!isExpanded || compactMode ? "Projects" : undefined}
+              onClick={() => isExpanded && setProjectsOpen((v) => !v)}
+              title={!isExpanded ? "Projects" : undefined}
               className="mx-2 flex w-[calc(100%-16px)] items-center rounded-lg p-2 text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-900"
             >
               <div className="flex h-6 w-6 shrink-0 items-center justify-center">
@@ -214,14 +208,14 @@ export function ProjectSidebar({
               </div>
               <span
                 className={`ml-3 flex-1 truncate text-left text-sm font-medium transition-all duration-300 ${
-                  isExpanded && !compactMode
+                  isExpanded
                     ? "translate-x-0 opacity-100"
                     : "-translate-x-4 opacity-0"
                 }`}
               >
                 {project?.title || "Projects"}
               </span>
-              {isExpanded && !compactMode && (
+              {isExpanded && (
                 <motion.span
                   animate={{ rotate: projectsOpen ? 90 : 0 }}
                   transition={{ duration: 0.18, ease: "easeOut" }}
@@ -233,7 +227,7 @@ export function ProjectSidebar({
             </button>
 
             <AnimatePresence initial={false}>
-              {isExpanded && !compactMode && projectsOpen && allProjects.length > 0 && (
+              {isExpanded && projectsOpen && allProjects.length > 0 && (
                 <motion.div
                   key="projects-list"
                   initial={{ height: 0, opacity: 0 }}
@@ -312,7 +306,7 @@ export function ProjectSidebar({
                     <Link
                       key={item.label}
                       to={item.to}
-                      title={!isExpanded || compactMode ? item.label : undefined}
+                      title={!isExpanded ? item.label : undefined}
                       className={`mx-2 flex items-center overflow-hidden rounded-lg p-2 transition-all ${
                         isActive
                           ? "bg-primary text-white shadow-sm"
@@ -330,7 +324,7 @@ export function ProjectSidebar({
                       </div>
                       <span
                         className={`ml-3 whitespace-nowrap text-sm font-medium transition-all duration-300 ${
-                          isExpanded && !compactMode
+                          isExpanded
                             ? "opacity-100 translate-x-0"
                             : "opacity-0 -translate-x-4"
                         }`}
