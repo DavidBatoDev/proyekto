@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
@@ -11,9 +11,11 @@ import {
   MessageSquare,
   BookOpen,
   Settings,
+  FolderKanban,
+  ChevronRight,
 } from "lucide-react";
-import { useState } from "react";
-import type { Project } from "@/services/project.service";
+import { AnimatePresence, motion } from "framer-motion";
+import { projectService, type Project } from "@/services/project.service";
 import { chatKeys, fetchProjectChatRooms } from "@/queries/chat";
 import { useUser } from "@/stores/authStore";
 import type { ChatRoom } from "@/services/chat.service";
@@ -46,6 +48,15 @@ export function ProjectSidebar({
   const effectiveRoadmapId = roadmapId ?? roadmapIdFromPath;
 
   const [isExpanded, setIsExpanded] = useState(false);
+  const [projectsOpen, setProjectsOpen] = useState(false);
+
+  const projectsQuery = useQuery({
+    queryKey: ["dashboard", "projects", user?.id ?? "anonymous"] as const,
+    queryFn: () => projectService.listDashboardProjects(),
+    enabled: Boolean(user?.id),
+    staleTime: 30 * 1000,
+  });
+  const allProjects = (projectsQuery.data as Project[] | undefined) ?? [];
 
   // If we're on a project route (like /project/.../overview), we should show tabs.
   // We can assume it's a project if `hasProject` is strictly true or false,
@@ -190,6 +201,88 @@ export function ProjectSidebar({
         }`}
       >
         <div className="flex w-full flex-col overflow-y-auto py-3">
+          {/* Projects dropdown — top of sidebar */}
+          <div className="mb-1">
+            <button
+              type="button"
+              onClick={() => isExpanded && !compactMode && setProjectsOpen((v) => !v)}
+              title={!isExpanded || compactMode ? "Projects" : undefined}
+              className="mx-2 flex w-[calc(100%-16px)] items-center rounded-lg p-2 text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-900"
+            >
+              <div className="flex h-6 w-6 shrink-0 items-center justify-center">
+                <FolderKanban className="h-5 w-5" />
+              </div>
+              <span
+                className={`ml-3 flex-1 truncate text-left text-sm font-medium transition-all duration-300 ${
+                  isExpanded && !compactMode
+                    ? "translate-x-0 opacity-100"
+                    : "-translate-x-4 opacity-0"
+                }`}
+              >
+                {project?.title || "Projects"}
+              </span>
+              {isExpanded && !compactMode && (
+                <motion.span
+                  animate={{ rotate: projectsOpen ? 90 : 0 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                  className="flex shrink-0"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </motion.span>
+              )}
+            </button>
+
+            <AnimatePresence initial={false}>
+              {isExpanded && !compactMode && projectsOpen && allProjects.length > 0 && (
+                <motion.div
+                  key="projects-list"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{
+                    height: { duration: 0.24, ease: [0.22, 1, 0.36, 1] },
+                    opacity: { duration: 0.18, ease: "easeOut" },
+                  }}
+                  className="overflow-hidden"
+                >
+                  <div className="mx-2 mt-1 space-y-0.5 pb-1">
+                    {allProjects.map((p) => {
+                      const isCurrent = p.id === projectId;
+                      return (
+                        <Link
+                          key={p.id}
+                          to="/project/$projectId/overview"
+                          params={{ projectId: p.id }}
+                          className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
+                            isCurrent
+                              ? "bg-primary text-white shadow-sm"
+                              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                          }`}
+                        >
+                          <span
+                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-bold uppercase ${
+                              isCurrent
+                                ? "bg-white/20 text-white"
+                                : "bg-primary/10 text-primary"
+                            }`}
+                          >
+                            {(p.title || "P").charAt(0)}
+                          </span>
+                          <span className="truncate">{p.title || "Untitled"}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Separator between projects list and nav sections */}
+          <div className="px-3 pb-2">
+            <div className="h-px bg-slate-200" />
+          </div>
+
           {visibleSections.map((section, sectionIndex) => (
             <div key={section.title} className="mb-2">
               {sectionIndex > 0 && (
