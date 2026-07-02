@@ -403,8 +403,10 @@ export const RoadmapView = ({
     queryKey: ["team-time", "running-log", user?.id ?? "anonymous"],
     queryFn: () => teamTimeService.getMyRunningLog(),
     enabled: Boolean(user?.id),
-    refetchInterval: 3_000,
-    refetchIntervalInBackground: true,
+    // Fast 3s poll only while a timer runs (to highlight the active task);
+    // lazy 30s heartbeat otherwise, and never poll a hidden tab.
+    refetchInterval: (query) => (query.state.data ? 3_000 : 30_000),
+    refetchIntervalInBackground: false,
     retry: 1,
   });
   const runningTaskId = runningLogQuery.data?.task_id ?? null;

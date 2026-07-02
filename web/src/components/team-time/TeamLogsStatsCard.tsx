@@ -17,6 +17,13 @@ export type LogStats = {
 	totalHours: number;
 };
 
+/** Zero-state stats — used as a fallback while a summary query is loading. */
+export const EMPTY_LOG_STATS: LogStats = {
+	buckets: {},
+	currencies: [],
+	totalHours: 0,
+};
+
 export function computeLogStats(logs: TaskTimeLog[]): LogStats {
 	const buckets: Record<string, Bucket> = {};
 	let totalSeconds = 0;
@@ -136,22 +143,32 @@ function CurrencyReport({
 	).map((s) => ({ ...SEGMENT_STYLES[s.key], key: s.key, amount: s.amount }));
 
 	const total = segments.reduce((sum, s) => sum + s.amount, 0);
-	const outstanding = bucket.pendingFees + bucket.approvedFees;
+	// Billable = approved + paid (confirmed billable work). Pending is not yet
+	// billable and rejected is non-billable, so neither counts toward it.
+	const billable = bucket.approvedFees + bucket.paidFees;
+	// Outstanding = approved but not yet paid — billable money still owed.
+	const outstanding = bucket.approvedFees;
 
 	return (
 		<div className="px-4 py-4 sm:px-5">
-			{/* Hero row: total billed + outstanding */}
+			{/* Hero row: billable (approved + paid) + outstanding (approved) */}
 			<div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
 				<div>
-					<div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-						Total billed · {currency}
+					<div
+						className="text-[10px] font-semibold uppercase tracking-wider text-slate-400"
+						title="Approved + paid — the confirmed billable amount. Pending is not yet billable; rejected is non-billable."
+					>
+						Billable · {currency}
 					</div>
 					<div className="mt-0.5 text-2xl font-bold tabular-nums text-slate-900">
-						{formatMoney(total, currency)}
+						{formatMoney(billable, currency)}
 					</div>
 				</div>
 				<div className="text-right">
-					<div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+					<div
+						className="text-[10px] font-semibold uppercase tracking-wider text-slate-400"
+						title="Approved but not yet paid — billable money still owed."
+					>
 						Outstanding
 					</div>
 					<div className="mt-0.5 text-lg font-semibold tabular-nums text-amber-700">
@@ -273,7 +290,7 @@ export function TeamLogsStatsCard({
 						)}
 					</>
 				) : (
-					<span className="italic text-slate-400">No active rate</span>
+					<span className="italic text-slate-400"></span>
 				)}
 				<span className="ml-auto inline-flex items-center gap-1.5">
 					<span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">

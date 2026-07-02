@@ -1,24 +1,30 @@
 import {
+	AlertTriangle,
 	Check,
 	ChevronDown,
 	ChevronRight,
 	ClipboardCheck,
-	Coins,
-	ExternalLink,
 	Loader2,
 	RotateCcw,
 	Wallet,
 	X,
 } from "lucide-react";
 import { memo, useMemo, useState } from "react";
+import { useToast } from "@/contexts/ToastContext";
 import type { TaskTimeLog, TimeLogStatus } from "@/services/team-time.service";
+import { BillableAmount } from "./BillableAmount";
+import { buildLogRowActions } from "./logRowActions";
 import { type ActionMenuItem, RowActionsMenu } from "./RowActionsMenu";
 import {
 	formatHours,
+	formatLogEnd,
+	formatLogStart,
 	formatMoney,
 	initialsFromName,
+	isUnusuallyLongLog,
 	liveDurationSecondsFromLog,
 	logFee,
+	memberLabel,
 	statusBadgeClass,
 	useLiveNowMs,
 } from "./time-utils";
@@ -30,23 +36,6 @@ const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
 	month: "short",
 	day: "numeric",
 });
-const TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
-	hour: "2-digit",
-	minute: "2-digit",
-});
-
-function memberLabel(log: TaskTimeLog): string {
-	return (
-		log.member?.display_name ||
-		[log.member?.first_name, log.member?.last_name]
-			.filter(Boolean)
-			.join(" ")
-			.trim() ||
-		log.member?.email ||
-		log.member_user_id ||
-		"Unknown member"
-	);
-}
 
 interface MemberGroup {
 	memberId: string;
@@ -54,7 +43,8 @@ interface MemberGroup {
 	avatarUrl: string | null;
 	logs: TaskTimeLog[];
 	totalSeconds: number;
-	feesByCurrency: Map<string, number>;
+	/** Approved + paid fees per currency — the confirmed billable total. */
+	billableByCurrency: Map<string, number>;
 	statusCounts: Record<TimeLogStatus, number>;
 	runningCount: number;
 	/** Approved, ended logs grouped by currency — the payable buckets. */
@@ -72,7 +62,7 @@ function buildGroups(logs: TaskTimeLog[]): MemberGroup[] {
 				avatarUrl: log.member?.avatar_url ?? null,
 				logs: [],
 				totalSeconds: 0,
-				feesByCurrency: new Map(),
+				billableByCurrency: new Map(),
 				statusCounts: { pending: 0, approved: 0, paid: 0, rejected: 0 },
 				runningCount: 0,
 				approvedByCurrency: new Map(),
@@ -84,9 +74,14 @@ function buildGroups(logs: TaskTimeLog[]): MemberGroup[] {
 		if (!log.ended_at) group.runningCount += 1;
 		group.totalSeconds += log.duration_seconds ?? 0;
 		const fee = logFee(log);
-		if (fee > 0) {
+		// Billable = approved + paid only. Pending is not yet billable and
+		// rejected is non-billable, so neither contributes to the total.
+		if (fee > 0 && (log.status === "approved" || log.status === "paid")) {
 			const cur = log.currency_snapshot || "USD";
-			group.feesByCurrency.set(cur, (group.feesByCurrency.get(cur) ?? 0) + fee);
+			group.billableByCurrency.set(
+				cur,
+				(group.billableByCurrency.get(cur) ?? 0) + fee,
+			);
 		}
 		if (log.status === "approved" && log.ended_at) {
 			const cur = log.currency_snapshot || "USD";
@@ -111,9 +106,9 @@ function buildGroups(logs: TaskTimeLog[]): MemberGroup[] {
 	);
 }
 
-function feesLabel(feesByCurrency: Map<string, number>): string {
-	if (feesByCurrency.size === 0) return "—";
-	return Array.from(feesByCurrency.entries())
+function billableLabel(billableByCurrency: Map<string, number>): string {
+	if (billableByCurrency.size === 0) return "—";
+	return Array.from(billableByCurrency.entries())
 		.map(([cur, amount]) => formatMoney(amount, cur))
 		.join(" · ");
 }
@@ -135,7 +130,12 @@ interface TeamApprovalsInboxProps {
 		logIds: string[],
 		decision: ReviewOnlyDecision,
 	) => void | Promise<void>;
-	onPayMember: (memberId: string, logIds: string[], currency: string) => void;
+	onPayMember: (
+		memberId: string,
+		logIds: string[],
+		currency: string,
+		payAll?: boolean,
+	) => void;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
 	canOpenTaskInRoadmap: (taskId: string | null) => boolean;
 }
@@ -299,16 +299,26 @@ export function TeamApprovalsInbox({
 							</button>
 
 							<div className="hidden text-right sm:block">
-								<div className="text-xs text-slate-400">Hours</div>
+								<div
+									className="text-xs text-slate-400"
+									title="Tracked duration"
+								>
+									Hours
+								</div>
 								<div className="text-sm font-semibold tabular-nums text-slate-700">
 									{formatHours(group.totalSeconds)}
 								</div>
 							</div>
 
 							<div className="hidden text-right md:block">
-								<div className="text-xs text-slate-400">Fees</div>
+								<div
+									className="text-xs text-slate-400"
+									title="Approved + paid — the confirmed billable amount. Pending is not yet billable; rejected is non-billable."
+								>
+									Billable
+								</div>
 								<div className="text-sm font-semibold tabular-nums text-emerald-700">
-									{feesLabel(group.feesByCurrency)}
+									{billableLabel(group.billableByCurrency)}
 								</div>
 							</div>
 
@@ -317,10 +327,13 @@ export function TeamApprovalsInbox({
 									type="button"
 									onClick={() => {
 										if (singleApproved) {
+											// payAll: settle EVERY approved log in this currency,
+											// not just the ≤200 loaded into this group.
 											onPayMember(
 												group.memberId,
 												singleApproved[1].ids,
 												singleApproved[0],
+												true,
 											);
 										} else {
 											// Multiple currencies — expand so the payer can pick.
@@ -471,7 +484,12 @@ interface MemberDrilldownProps {
 		logIds: string[],
 		decision: ReviewOnlyDecision,
 	) => void | Promise<void>;
-	onPayMember: (memberId: string, logIds: string[], currency: string) => void;
+	onPayMember: (
+		memberId: string,
+		logIds: string[],
+		currency: string,
+		payAll?: boolean,
+	) => void;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
 	canOpenTaskInRoadmap: (taskId: string | null) => boolean;
 }
@@ -495,6 +513,23 @@ function MemberDrilldown({
 		eligibleIds.length > 0 && eligibleIds.every((id) => selected.has(id));
 	const someSelected =
 		eligibleIds.some((id) => selected.has(id)) && !allSelected;
+
+	// Unusually long logs float to the top so they're reviewed first; within
+	// each partition the existing newest-first order is preserved (stable sort).
+	const ordered = useMemo(() => {
+		const arr = [...group.logs];
+		arr.sort(
+			(a, b) => Number(isUnusuallyLongLog(b)) - Number(isUnusuallyLongLog(a)),
+		);
+		return arr;
+	}, [group.logs]);
+
+	// Client-side pagination — a member can have hundreds of logs; render a page
+	// at a time with a "Load more" so the drilldown stays scannable.
+	const PAGE = 25;
+	const [visible, setVisible] = useState(PAGE);
+	const shown = ordered.slice(0, visible);
+	const remaining = ordered.length - shown.length;
 
 	return (
 		<div className="border-t border-slate-200 bg-slate-50/60">
@@ -522,14 +557,24 @@ function MemberDrilldown({
 						<th className="px-2 py-2 font-semibold">Project</th>
 						<th className="px-2 py-2 font-semibold">Task</th>
 						<th className="px-2 py-2 font-semibold">Time</th>
-						<th className="px-2 py-2 text-right font-semibold">Hours</th>
-						<th className="px-2 py-2 text-right font-semibold">Fees</th>
+						<th
+							className="px-2 py-2 text-right font-semibold"
+							title="Tracked duration"
+						>
+							Hours
+						</th>
+						<th
+							className="px-2 py-2 text-right font-semibold"
+							title="Approved + paid count as billable. Pending is not yet billable; rejected is non-billable."
+						>
+							Billable
+						</th>
 						<th className="px-2 py-2 font-semibold">Status</th>
 						<th className="w-10 px-2 py-2" />
 					</tr>
 				</thead>
 				<tbody>
-					{group.logs.map((log) => (
+					{shown.map((log) => (
 						<DrilldownRow
 							key={log.id}
 							log={log}
@@ -549,6 +594,17 @@ function MemberDrilldown({
 					))}
 				</tbody>
 			</table>
+			{remaining > 0 && (
+				<div className="border-t border-slate-200 px-3 py-2 text-center">
+					<button
+						type="button"
+						onClick={() => setVisible((v) => v + PAGE)}
+						className="rounded-md px-3 py-1 text-[11px] font-semibold text-sky-600 hover:bg-sky-50"
+					>
+						Load {Math.min(PAGE, remaining)} more ({remaining} remaining)
+					</button>
+				</div>
+			)}
 		</div>
 	);
 }
@@ -581,10 +637,16 @@ const DrilldownRow = memo(function DrilldownRow({
 		logIds: string[],
 		decision: ReviewOnlyDecision,
 	) => void | Promise<void>;
-	onPayMember: (memberId: string, logIds: string[], currency: string) => void;
+	onPayMember: (
+		memberId: string,
+		logIds: string[],
+		currency: string,
+		payAll?: boolean,
+	) => void;
 	onOpenTaskInRoadmap: (log: TaskTimeLog) => void;
 	canOpenTaskInRoadmap: (taskId: string | null) => boolean;
 }) {
+	const toast = useToast();
 	const isRunning = !log.ended_at;
 	const nowMs = useLiveNowMs(isRunning);
 	const seconds = liveDurationSecondsFromLog(log, nowMs);
@@ -594,77 +656,31 @@ const DrilldownRow = memo(function DrilldownRow({
 	const ended = log.ended_at ? new Date(log.ended_at) : null;
 	const isSelf = log.member_user_id === currentUserId;
 
-	const menuItems = useMemo<ActionMenuItem[]>(() => {
-		const items: ActionMenuItem[] = [];
-		if (eligible && !isSelf) {
-			if (log.status === "pending") {
-				items.push(
-					{
-						id: "approve",
-						label: "Approve",
-						icon: <Check className="h-3.5 w-3.5" />,
-						onSelect: () => void onReviewLogs([log.id], "approved"),
-						tone: "success",
-					},
-					{
-						id: "reject",
-						label: "Reject",
-						icon: <X className="h-3.5 w-3.5" />,
-						onSelect: () => void onReviewLogs([log.id], "rejected"),
-						tone: "warning",
-					},
-				);
-			} else if (log.status === "approved") {
-				items.push(
-					{
-						id: "pay",
-						label: "Pay this log",
-						icon: <Coins className="h-3.5 w-3.5" />,
-						onSelect: () => onPayMember(memberId, [log.id], currency),
-						tone: "info",
-					},
-					{
-						id: "reject",
-						label: "Reject",
-						icon: <X className="h-3.5 w-3.5" />,
-						onSelect: () => void onReviewLogs([log.id], "rejected"),
-						tone: "warning",
-					},
-					{
-						id: "pending",
-						label: "Set pending",
-						icon: <RotateCcw className="h-3.5 w-3.5" />,
-						onSelect: () => void onReviewLogs([log.id], "pending"),
-					},
-				);
-			} else if (log.status === "rejected") {
-				items.push({
-					id: "pending",
-					label: "Set pending",
-					icon: <RotateCcw className="h-3.5 w-3.5" />,
-					onSelect: () => void onReviewLogs([log.id], "pending"),
-				});
-			}
-		}
-		items.push({
-			id: "open-roadmap",
-			label: "Open task in roadmap",
-			icon: <ExternalLink className="h-3.5 w-3.5" />,
-			onSelect: () => onOpenTaskInRoadmap(log),
-			disabled: !canOpenTaskInRoadmap(log.task_id),
-		});
-		return items;
-	}, [
-		eligible,
-		isSelf,
-		log,
-		memberId,
-		currency,
-		onReviewLogs,
-		onPayMember,
-		onOpenTaskInRoadmap,
-		canOpenTaskInRoadmap,
-	]);
+	const menuItems = useMemo<ActionMenuItem[]>(
+		() =>
+			buildLogRowActions({
+				log,
+				eligible,
+				isSelf,
+				memberId,
+				currency,
+				onReviewLogs,
+				onPayMember,
+				onOpenTaskInRoadmap,
+				canOpenTaskInRoadmap,
+			}),
+		[
+			eligible,
+			isSelf,
+			log,
+			memberId,
+			currency,
+			onReviewLogs,
+			onPayMember,
+			onOpenTaskInRoadmap,
+			canOpenTaskInRoadmap,
+		],
+	);
 
 	return (
 		<tr className="border-t border-slate-200/70 hover:bg-white">
@@ -698,28 +714,54 @@ const DrilldownRow = memo(function DrilldownRow({
 			</td>
 			<td className="max-w-[160px] px-2 py-2 align-middle">
 				<span
-					className="block truncate text-slate-700"
-					title={log.task?.title ?? ""}
+					className={`block truncate ${log.task?.title ? "text-slate-700" : "italic text-slate-400"}`}
+					title={
+						log.task?.title || "General time — not linked to a specific task."
+					}
 				>
-					{log.task?.title || "—"}
+					{log.task?.title || "No task"}
 				</span>
 			</td>
 			<td className="px-2 py-2 align-middle tabular-nums text-slate-500">
-				{TIME_FORMATTER.format(started)}
+				{formatLogStart(started)}
 				{" – "}
 				{isRunning ? (
 					<span className="text-sky-600">now</span>
 				) : ended ? (
-					TIME_FORMATTER.format(ended)
+					formatLogEnd(started, ended)
 				) : (
 					"—"
 				)}
 			</td>
 			<td className="px-2 py-2 text-right align-middle tabular-nums font-semibold text-slate-700">
-				{(seconds / 3600).toFixed(2)}
+				<span className="inline-flex items-center justify-end gap-1">
+					{isUnusuallyLongLog(log) && (
+						<button
+							type="button"
+							className="inline-flex text-amber-500 hover:text-amber-600"
+							onClick={(e) => {
+								e.stopPropagation();
+								toast.warning(
+									`${memberLabel(log)} logged ${(seconds / 3600).toFixed(2)}h in a single entry — unusually long. A timer may have been left running; verify before approving.`,
+								);
+							}}
+						>
+							<AlertTriangle
+								className="h-3.5 w-3.5"
+								aria-label="Unusually long log"
+							/>
+						</button>
+					)}
+					{(seconds / 3600).toFixed(2)}
+				</span>
 			</td>
-			<td className="px-2 py-2 text-right align-middle tabular-nums font-semibold text-emerald-700">
-				{fee > 0 ? formatMoney(fee, currency) : "—"}
+			<td className="px-2 py-2 text-right align-middle tabular-nums font-semibold">
+				<BillableAmount
+					status={log.status}
+					running={isRunning}
+					fee={fee}
+					currency={currency}
+				/>
 			</td>
 			<td className="px-2 py-2 align-middle">
 				<span

@@ -1,4 +1,7 @@
 import {
+	AlertTriangle,
+	ChevronDown,
+	ChevronRight,
 	ExternalLink,
 	FolderKanban,
 	Pencil,
@@ -12,10 +15,13 @@ import type {
 	ProjectTaskOption,
 	TaskTimeLog,
 } from "@/services/team-time.service";
+import { BillableAmount } from "./BillableAmount";
 import { type ActionMenuItem, RowActionsMenu } from "./RowActionsMenu";
 import {
-	formatMoney,
+	formatLogEnd,
+	formatLogStart,
 	initialsFromName,
+	isUnusuallyLongLog,
 	liveDurationSecondsFromLog,
 	statusBadgeClass,
 	useLiveNowMs,
@@ -25,16 +31,6 @@ const DAY_HEADER_FORMATTER = new Intl.DateTimeFormat(undefined, {
 	weekday: "long",
 	month: "long",
 	day: "numeric",
-});
-const TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
-	hour: "2-digit",
-	minute: "2-digit",
-});
-const SHORT_DATE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
-	month: "short",
-	day: "numeric",
-	hour: "2-digit",
-	minute: "2-digit",
 });
 
 function toLocalDayKey(value: string): string | null {
@@ -91,8 +87,22 @@ export function TeamMyLogsList({
 	onOpenAddLog,
 }: TeamMyLogsListProps) {
 	const [openMenuRowId, setOpenMenuRowId] = useState<string | null>(null);
+	const [unusualOpen, setUnusualOpen] = useState(false);
 
 	const hasActiveLog = useMemo(() => logs.some((l) => !l.ended_at), [logs]);
+
+	// Unusually long logs (likely forgotten timers) are pulled out of the normal
+	// day flow so they don't inflate day totals and are easy to find and fix.
+	const unusualLogs = useMemo(
+		() =>
+			logs
+				.filter(isUnusuallyLongLog)
+				.sort(
+					(a, b) =>
+						new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
+				),
+		[logs],
+	);
 
 	const taskTitleById = useMemo(() => {
 		const map = new Map<string, string>();
@@ -103,6 +113,7 @@ export function TeamMyLogsList({
 	const days = useMemo<DayGroup[]>(() => {
 		const byDay = new Map<string, TaskTimeLog[]>();
 		for (const log of logs) {
+			if (isUnusuallyLongLog(log)) continue; // shown in the "Needs review" section
 			const key = toLocalDayKey(log.started_at) ?? "unknown";
 			const bucket = byDay.get(key);
 			if (bucket) bucket.push(log);
@@ -130,6 +141,27 @@ export function TeamMyLogsList({
 		return groups;
 	}, [logs]);
 
+	const renderRow = (log: TaskTimeLog) => (
+		<MyLogTxnRow
+			key={log.id}
+			log={log}
+			taskTitleById={taskTitleById}
+			fallbackRate={ownRateByProjectId[log.project_id]}
+			isRowPending={Boolean(rowPendingById[log.id])}
+			taskSyncing={Boolean(taskSyncById[log.id])}
+			hasActiveLog={hasActiveLog}
+			loadingTasks={loadingTasks}
+			openMenuRowId={openMenuRowId}
+			onSetOpenMenuRowId={setOpenMenuRowId}
+			onStopLog={onStopLog}
+			onOpenTaskModal={onOpenTaskModal}
+			onEditLog={onEditLog}
+			onDeleteLog={onDeleteLog}
+			onOpenTaskInRoadmap={onOpenTaskInRoadmap}
+			canOpenInRoadmap={canOpenTaskInRoadmap(log.task_id)}
+		/>
+	);
+
 	if (loadingLogs) return <MyLogsListSkeleton />;
 
 	return (
@@ -146,7 +178,35 @@ export function TeamMyLogsList({
 				</button>
 			</div>
 
-			{days.length === 0 ? (
+			{unusualLogs.length > 0 && (
+				<section className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/40">
+					<button
+						type="button"
+						onClick={() => setUnusualOpen((v) => !v)}
+						className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+					>
+						{unusualOpen ? (
+							<ChevronDown className="h-4 w-4 text-amber-600" />
+						) : (
+							<ChevronRight className="h-4 w-4 text-amber-600" />
+						)}
+						<AlertTriangle className="h-4 w-4 text-amber-500" />
+						<span className="text-xs font-semibold text-amber-800">
+							Needs review — unusually long ({unusualLogs.length})
+						</span>
+						<span className="ml-auto text-[11px] text-amber-700">
+							A timer may have been left running
+						</span>
+					</button>
+					{unusualOpen && (
+						<div className="divide-y divide-amber-100 border-t border-amber-100 bg-white">
+							{unusualLogs.map(renderRow)}
+						</div>
+					)}
+				</section>
+			)}
+
+			{days.length === 0 && unusualLogs.length === 0 ? (
 				<button
 					type="button"
 					onClick={onOpenAddLog}
@@ -173,26 +233,7 @@ export function TeamMyLogsList({
 							<DayTotal logs={day.logs} active={day.hasRunning} />
 						</div>
 						<div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-							{day.logs.map((log) => (
-								<MyLogTxnRow
-									key={log.id}
-									log={log}
-									taskTitleById={taskTitleById}
-									fallbackRate={ownRateByProjectId[log.project_id]}
-									isRowPending={Boolean(rowPendingById[log.id])}
-									taskSyncing={Boolean(taskSyncById[log.id])}
-									hasActiveLog={hasActiveLog}
-									loadingTasks={loadingTasks}
-									openMenuRowId={openMenuRowId}
-									onSetOpenMenuRowId={setOpenMenuRowId}
-									onStopLog={onStopLog}
-									onOpenTaskModal={onOpenTaskModal}
-									onEditLog={onEditLog}
-									onDeleteLog={onDeleteLog}
-									onOpenTaskInRoadmap={onOpenTaskInRoadmap}
-									canOpenInRoadmap={canOpenTaskInRoadmap(log.task_id)}
-								/>
-							))}
+							{day.logs.map(renderRow)}
 						</div>
 					</section>
 				))
@@ -275,21 +316,13 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 
 	const started = new Date(log.started_at);
 	const ended = log.ended_at ? new Date(log.ended_at) : null;
-	const startedLabel = Number.isNaN(started.getTime())
-		? "—"
-		: TIME_FORMATTER.format(started);
-	const endedLabel = isRunning
-		? "now"
-		: ended
-			? started.toDateString() === ended.toDateString()
-				? TIME_FORMATTER.format(ended)
-				: SHORT_DATE_TIME_FORMATTER.format(ended)
-			: "—";
+	const startedLabel = formatLogStart(started);
+	const endedLabel = isRunning ? "now" : ended ? formatLogEnd(started, ended) : "—";
 
 	const taskTitle =
 		log.task?.title ||
 		(log.task_id ? taskTitleById.get(log.task_id) : undefined) ||
-		"Untitled task";
+		(log.task_id ? "Untitled task" : "No task");
 	const projectTitle = log.project?.title || log.project_id;
 
 	const menuItems = useMemo<ActionMenuItem[]>(() => {
@@ -377,7 +410,7 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-1.5">
 					<span
-						className="truncate text-sm font-medium text-slate-800"
+						className={`truncate text-sm font-medium ${log.task_id ? "text-slate-800" : "italic text-slate-400"}`}
 						title={taskTitle}
 					>
 						{taskTitle}
@@ -400,10 +433,23 @@ const MyLogTxnRow = memo(function MyLogTxnRow({
 
 			{/* Amount + hours */}
 			<div className="hidden shrink-0 text-right sm:block">
-				<div className="text-sm font-semibold tabular-nums text-emerald-700">
-					{fee !== null ? formatMoney(fee, currency) : "—"}
+				<div className="text-sm font-semibold tabular-nums">
+					<BillableAmount
+						status={log.status}
+						running={isRunning}
+						fee={fee}
+						currency={currency}
+					/>
 				</div>
-				<div className="text-[11px] tabular-nums text-slate-400">
+				<div className="flex items-center justify-end gap-1 text-[11px] tabular-nums text-slate-400">
+					{isUnusuallyLongLog(log) && (
+						<span
+							title="Unusually long — a timer may have been left running."
+							className="inline-flex text-amber-500"
+						>
+							<AlertTriangle className="h-3 w-3" aria-label="Unusually long log" />
+						</span>
+					)}
 					{hours.toFixed(2)} h
 				</div>
 			</div>

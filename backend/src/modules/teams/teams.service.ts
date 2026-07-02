@@ -39,6 +39,7 @@ export interface TeamRow {
   is_personal: boolean;
   time_tracking_enabled: boolean;
   retroactive_log_days: number | null;
+  default_currency: string;
   created_at: string;
   updated_at: string;
   // Populated by listMyTeams for the team-list UI. Other endpoints that
@@ -344,6 +345,9 @@ export class TeamsService {
     }
     if (dto.retroactive_log_days !== undefined) {
       patch.retroactive_log_days = dto.retroactive_log_days;
+    }
+    if (dto.default_currency !== undefined) {
+      patch.default_currency = dto.default_currency;
     }
 
     const { data, error } = await this.supabase

@@ -34,6 +34,22 @@ const TIME_LOG_SELECT = `
 
 type TaskWorkType = 'real_work' | 'training';
 
+/** Per-currency fee totals for a set of logs, split by status. */
+export interface SummaryBucket {
+  pendingFees: number;
+  approvedFees: number;
+  paidFees: number;
+  rejectedFees: number;
+  totalFees: number;
+}
+
+/** Accurate log aggregates over a full filtered set (mirrors the web LogStats). */
+export interface LogsSummary {
+  buckets: Record<string, SummaryBucket>;
+  currencies: string[];
+  totalHours: number;
+}
+
 const TIME_LOG_COMMENT_SELECT = `
   id, log_id, author_user_id, body, created_at, updated_at,
   author:profiles!time_log_comments_author_user_id_fkey(
@@ -467,6 +483,22 @@ export class TeamTimeService {
     });
   }
 
+  /** Accurate totals for the caller's own logs (not capped by the list limit). */
+  async myTeamLogsSummary(
+    callerId: string,
+    teamId: string,
+    query: ListLogsQueryDto,
+  ): Promise<LogsSummary> {
+    await this.assertTeamMember(callerId, teamId);
+    return this.logsSummary({
+      project_id: query.project_id,
+      from: query.from,
+      to: query.to,
+      team_id: teamId,
+      member_user_id: callerId,
+    });
+  }
+
   async getMyTeamProjectRate(
     callerId: string,
     teamId: string,
@@ -485,6 +517,22 @@ export class TeamTimeService {
   ): Promise<{ items: TimeLogRow[]; total: number }> {
     await this.assertTeamApprover(callerId, teamId);
     return this.listLogs({ ...query, team_id: teamId });
+  }
+
+  /** Accurate team totals (respecting project/member filters, not the list cap). */
+  async teamLogsSummary(
+    callerId: string,
+    teamId: string,
+    query: ListLogsQueryDto,
+  ): Promise<LogsSummary> {
+    await this.assertTeamApprover(callerId, teamId);
+    return this.logsSummary({
+      project_id: query.project_id,
+      member_user_id: query.member_user_id,
+      from: query.from,
+      to: query.to,
+      team_id: teamId,
+    });
   }
 
   async listTeamLogProjects(
@@ -1246,6 +1294,82 @@ export class TeamTimeService {
   }
 
   // ─── helpers ─────────────────────────────────────────────────────────
+
+  /**
+   * Accurate per-status / per-currency totals over the ENTIRE filtered set,
+   * independent of the paginated list cap. Fetches only the four columns
+   * needed for the sums and pages through in blocks so a team with thousands
+   * of logs still reports correct hours/fees (the list view is capped at 200,
+   * so its client-side totals under-count — this endpoint does not).
+   */
+  private async logsSummary(filters: {
+    status?: string;
+    project_id?: string;
+    member_user_id?: string;
+    team_id?: string;
+    from?: string;
+    to?: string;
+  }): Promise<LogsSummary> {
+    const PAGE = 1000;
+    const buckets: Record<string, SummaryBucket> = {};
+    let totalSeconds = 0;
+    const ensureBucket = (cur: string): SummaryBucket => {
+      if (!buckets[cur]) {
+        buckets[cur] = {
+          pendingFees: 0,
+          approvedFees: 0,
+          paidFees: 0,
+          rejectedFees: 0,
+          totalFees: 0,
+        };
+      }
+      return buckets[cur];
+    };
+
+    for (let offset = 0; ; offset += PAGE) {
+      let q = this.supabase
+        .from('task_time_logs')
+        .select('status, currency_snapshot, duration_seconds, rate_snapshot')
+        .order('started_at', { ascending: false })
+        .range(offset, offset + PAGE - 1);
+      if (filters.status) q = q.eq('status', filters.status);
+      if (filters.project_id) q = q.eq('project_id', filters.project_id);
+      if (filters.member_user_id)
+        q = q.eq('member_user_id', filters.member_user_id);
+      if (filters.team_id) q = q.eq('team_id', filters.team_id);
+      if (filters.from) q = q.gte('started_at', filters.from);
+      if (filters.to) q = q.lte('started_at', filters.to);
+
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      const rows = (data ?? []) as Array<{
+        status: string;
+        currency_snapshot: string | null;
+        duration_seconds: number | null;
+        rate_snapshot: number | string | null;
+      }>;
+      for (const row of rows) {
+        const seconds = row.duration_seconds ?? 0;
+        if (seconds > 0) totalSeconds += seconds;
+        const rate = Number(row.rate_snapshot ?? 0);
+        if (!Number.isFinite(rate) || rate <= 0 || seconds <= 0) continue;
+        const fees = (seconds / 3600) * rate;
+        const bucket = ensureBucket(row.currency_snapshot || 'USD');
+        bucket.totalFees += fees;
+        if (row.status === 'pending') bucket.pendingFees += fees;
+        else if (row.status === 'approved') bucket.approvedFees += fees;
+        else if (row.status === 'paid') bucket.paidFees += fees;
+        else if (row.status === 'rejected') bucket.rejectedFees += fees;
+      }
+      if (rows.length < PAGE) break;
+    }
+
+    return {
+      buckets,
+      currencies: Object.keys(buckets).sort(),
+      totalHours: totalSeconds / 3600,
+    };
+  }
 
   private async listLogs(filters: {
     status?: string;

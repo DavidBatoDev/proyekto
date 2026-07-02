@@ -23,6 +23,7 @@ export interface Team {
 	is_personal: boolean;
 	time_tracking_enabled: boolean;
 	retroactive_log_days?: number | null;
+	default_currency?: string | null;
 	created_at: string;
 	updated_at: string;
 	// Populated by listMyTeams. Other endpoints that return a single
@@ -193,6 +194,7 @@ export async function updateTeam(
 		avatar_url?: string;
 		time_tracking_enabled?: boolean;
 		retroactive_log_days?: number;
+		default_currency?: "USD" | "CAD" | "PHP";
 	},
 ): Promise<Team> {
 	try {

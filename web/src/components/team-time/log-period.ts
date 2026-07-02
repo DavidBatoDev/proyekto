@@ -1,6 +1,7 @@
 export type LogPeriodPreset =
 	| "this_week"
 	| "this_month"
+	| "this_year"
 	| "cutoff"
 	| "custom"
 	| "all_time";
@@ -27,6 +28,7 @@ export interface TeamLogResolvedPeriod {
 const PRESETS: LogPeriodPreset[] = [
 	"this_week",
 	"this_month",
+	"this_year",
 	"cutoff",
 	"custom",
 	"all_time",
@@ -173,6 +175,9 @@ export function resolveTeamLogPeriod(
 		const bounds = monthBounds(now);
 		fromDate = bounds.from;
 		toDate = bounds.to;
+	} else if (preset === "this_year") {
+		fromDate = new Date(now.getFullYear(), 0, 1);
+		toDate = new Date(now.getFullYear(), 11, 31);
 	} else if (preset === "cutoff") {
 		const bounds = cutoffBounds(cutoffMonth, cutoffHalf);
 		fromDate = bounds.from;

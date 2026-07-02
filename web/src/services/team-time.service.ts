@@ -119,6 +119,25 @@ export interface ListLogsQuery {
 	limit?: number;
 }
 
+/** Per-currency fee totals split by status (mirrors the backend LogsSummary). */
+export interface LogsSummaryBucket {
+	pendingFees: number;
+	approvedFees: number;
+	paidFees: number;
+	rejectedFees: number;
+	totalFees: number;
+}
+
+/**
+ * Accurate log aggregates over the full filtered set — not capped by the 200-row
+ * list limit. Structurally compatible with the web `LogStats` used by the stats card.
+ */
+export interface LogsSummary {
+	buckets: Record<string, LogsSummaryBucket>;
+	currencies: string[];
+	totalHours: number;
+}
+
 type ApiResponse<T> = { data: T };
 
 function extractError(error: unknown, fallback: string): Error {
@@ -376,6 +395,61 @@ export const teamTimeService = {
 		} catch (e) {
 			throw extractError(e, "Failed to fetch team logs");
 		}
+	},
+
+	async getTeamLogsSummary(
+		teamId: string,
+		query?: ListLogsQuery,
+	): Promise<LogsSummary> {
+		try {
+			const res = await apiClient.get<ApiResponse<LogsSummary>>(
+				`/api/team-time/teams/${teamId}/logs/summary`,
+				{ params: query },
+			);
+			return res.data.data;
+		} catch (e) {
+			throw extractError(e, "Failed to fetch team log totals");
+		}
+	},
+
+	async getMyTeamLogsSummary(
+		teamId: string,
+		query?: ListLogsQuery,
+	): Promise<LogsSummary> {
+		try {
+			const res = await apiClient.get<ApiResponse<LogsSummary>>(
+				`/api/team-time/teams/${teamId}/my/summary`,
+				{ params: query },
+			);
+			return res.data.data;
+		} catch (e) {
+			throw extractError(e, "Failed to fetch your log totals");
+		}
+	},
+
+	/**
+	 * Every approved log for a member (approved ⟹ unpaid), paginated past the
+	 * 200-row list cap and filtered to one currency — the complete set the
+	 * "Pay member" action must cover so a busy member isn't silently under-paid.
+	 */
+	async listAllMemberApprovedLogs(
+		teamId: string,
+		memberId: string,
+		currency: string,
+	): Promise<TaskTimeLog[]> {
+		const PAGE = 200;
+		const out: TaskTimeLog[] = [];
+		for (let page = 1; ; page++) {
+			const res = await this.listTeamLogs(teamId, {
+				member_user_id: memberId,
+				status: "approved",
+				page,
+				limit: PAGE,
+			});
+			out.push(...res.items);
+			if (res.items.length < PAGE) break;
+		}
+		return out.filter((log) => (log.currency_snapshot || "USD") === currency);
 	},
 
 	async listTeamLogProjects(

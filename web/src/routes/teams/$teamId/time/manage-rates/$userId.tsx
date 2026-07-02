@@ -11,7 +11,7 @@ import {
 	TeamApprovalsInbox,
 } from "@/components/team-time/TeamApprovalsInbox";
 import {
-	computeLogStats,
+	EMPTY_LOG_STATS,
 	TeamLogsStatsCard,
 } from "@/components/team-time/TeamLogsStatsCard";
 import { useToast } from "@/hooks/useToast";
@@ -102,6 +102,24 @@ function MemberLogsRoute() {
 			}),
 	});
 
+	// Accurate totals for this member over the full set (not the 200-row cap).
+	const summaryQuery = useQuery({
+		queryKey: [
+			"team-time",
+			teamId,
+			"member-logs",
+			userId,
+			"summary",
+			{ projectFilter },
+		],
+		queryFn: () =>
+			teamTimeService.getTeamLogsSummary(teamId, {
+				project_id: projectFilter || undefined,
+				member_user_id: userId,
+			}),
+	});
+	const logStats = summaryQuery.data ?? EMPTY_LOG_STATS;
+
 	// Status is filtered client-side so any combination can be selected at once
 	// (empty set = all statuses).
 	const items = useMemo(() => {
@@ -110,7 +128,8 @@ function MemberLogsRoute() {
 			? all
 			: all.filter((log) => statusSet.has(log.status));
 	}, [logsQuery.data, statusSet]);
-	const logStats = useMemo(() => computeLogStats(items), [items]);
+	const listCapped =
+		(logsQuery.data?.total ?? 0) > (logsQuery.data?.items.length ?? 0);
 
 	const markBusy = (ids: string[], busy: boolean) =>
 		setBusyLogIds((prev) => {
@@ -149,13 +168,30 @@ function MemberLogsRoute() {
 		await reviewMutation.mutateAsync({ ids, decision });
 	};
 
-	const handlePayMember = (
+	const handlePayMember = async (
 		memberId: string,
 		logIds: string[],
 		currency: string,
+		payAll?: boolean,
 	) => {
-		const idSet = new Set(logIds);
-		const logs = items.filter((log) => idSet.has(log.id));
+		// "Pay all approved" must cover every approved log in the currency, not
+		// just the ≤200 loaded; explicit selections pay exactly the given ids.
+		let logs: TaskTimeLog[];
+		if (payAll) {
+			try {
+				logs = await teamTimeService.listAllMemberApprovedLogs(
+					teamId,
+					memberId,
+					currency,
+				);
+			} catch (e) {
+				toast.error((e as Error).message);
+				return;
+			}
+		} else {
+			const idSet = new Set(logIds);
+			logs = items.filter((log) => idSet.has(log.id));
+		}
 		if (logs.length === 0) return;
 		setPayTarget({
 			memberId,
@@ -218,7 +254,7 @@ function MemberLogsRoute() {
 				rate={firstActiveRate}
 				stats={logStats}
 				fallbackCurrency={firstActiveRate?.currency ?? "USD"}
-				loading={logsQuery.isPending}
+				loading={summaryQuery.isPending}
 			/>
 
 			<div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
@@ -242,6 +278,13 @@ function MemberLogsRoute() {
 					<Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
 				)}
 			</div>
+
+			{listCapped && (
+				<p className="px-1 text-xs text-slate-400">
+					Showing the most recent 200 logs — filter by project to see the rest.
+					Totals above cover everything.
+				</p>
+			)}
 
 			<TeamApprovalsInbox
 				logs={items}

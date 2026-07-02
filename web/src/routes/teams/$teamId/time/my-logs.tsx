@@ -13,9 +13,16 @@ import {
 	resolveTeamLogPeriod,
 	storePeriodSearch,
 } from "@/components/team-time/log-period";
+import { TimeLogCalendar } from "@/components/team-time/calendar/TimeLogCalendar";
+import {
+	loadTimeView,
+	storeTimeView,
+	type TimeViewMode,
+	TimeViewToggle,
+} from "@/components/team-time/calendar/TimeViewToggle";
 import { TeamLogsPeriodFilter } from "@/components/team-time/TeamLogsPeriodFilter";
 import {
-	computeLogStats,
+	EMPTY_LOG_STATS,
 	TeamLogsStatsCard,
 } from "@/components/team-time/TeamLogsStatsCard";
 import { TeamMemberRateHistoryDrawer } from "@/components/team-time/TeamMemberRateHistoryDrawer";
@@ -26,6 +33,7 @@ import {
 	EditLogModal,
 } from "@/components/team-time/TeamTimeModals";
 import {
+	confirmStopLongTimer,
 	fromLocalDateTimeInput,
 	toLocalDateTimeInput,
 } from "@/components/team-time/time-utils";
@@ -60,6 +68,14 @@ function MyLogsTab() {
 	const navigate = useNavigate();
 
 	const period = useMemo(() => resolveTeamLogPeriod(search), [search]);
+
+	const [viewMode, setViewMode] = useState<TimeViewMode>(() =>
+		loadTimeView(teamId, "my"),
+	);
+	const changeViewMode = (mode: TimeViewMode) => {
+		setViewMode(mode);
+		storeTimeView(teamId, "my", mode);
+	};
 
 	useEffect(() => {
 		// Keep the chosen period in localStorage (shared with Team Logs, keyed by
@@ -158,6 +174,15 @@ function MyLogsTab() {
 		queryFn: () => teamTimeService.listTeamLogProjects(teamId),
 	});
 
+	// Recent logs independent of the selected period, purely to dot the days you
+	// worked in the calendar. Without a from/to the API returns your most recent
+	// logs (capped at 200), so the indicator survives narrow period selections.
+	const workedDaysQuery = useQuery({
+		queryKey: ["team-time", teamId, "my-logs", "worked-days", user?.id],
+		queryFn: () => teamTimeService.listMyTeamLogs(teamId, { limit: 200 }),
+		enabled: Boolean(user?.id),
+	});
+
 	const tasksForAddQuery = useQuery({
 		queryKey: ["team-time", teamId, "project-tasks", addProjectId],
 		queryFn: () => teamTimeService.listTeamProjectTasks(teamId, addProjectId),
@@ -195,7 +220,42 @@ function MyLogsTab() {
 	);
 
 	const allLogs = logsQuery.data?.items ?? [];
-	const stats = useMemo(() => computeLogStats(allLogs), [allLogs]);
+
+	// Accurate totals over the full period, not just the 200-row list cap.
+	const summaryQuery = useQuery({
+		queryKey: [
+			"team-time",
+			teamId,
+			"my-logs",
+			"summary",
+			user?.id,
+			{ from: period.fromIso, to: period.toIso },
+		],
+		queryFn: () =>
+			teamTimeService.getMyTeamLogsSummary(teamId, {
+				from: period.fromIso,
+				to: period.toIso,
+			}),
+		enabled: Boolean(user?.id),
+	});
+	const stats = summaryQuery.data ?? EMPTY_LOG_STATS;
+	const listCapped =
+		(logsQuery.data?.total ?? 0) > (logsQuery.data?.items.length ?? 0);
+
+	// Local `yyyy-MM-dd` keys for every day with a log, so the period calendar
+	// can dot the days you actually worked (period-independent — see query above).
+	const workedDays = useMemo(() => {
+		const set = new Set<string>();
+		for (const log of workedDaysQuery.data?.items ?? []) {
+			const d = new Date(log.started_at);
+			set.add(
+				`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+					d.getDate(),
+				).padStart(2, "0")}`,
+			);
+		}
+		return set;
+	}, [workedDaysQuery.data]);
 
 	// Prefill project when add modal opens
 	useEffect(() => {
@@ -349,9 +409,18 @@ function MyLogsTab() {
 
 	const handleStop = useCallback(
 		async (id: string) => {
+			// Guard against a forgotten timer that has been running unusually long.
+			const log = allLogs.find((l) => l.id === id);
+			if (log && !log.ended_at) {
+				const elapsed = Math.max(
+					0,
+					Math.floor((Date.now() - new Date(log.started_at).getTime()) / 1000),
+				);
+				if (!confirmStopLongTimer(elapsed)) return;
+			}
 			await stopMutation.mutateAsync(id);
 		},
-		[stopMutation],
+		[stopMutation, allLogs],
 	);
 	const handleDelete = useCallback(
 		(id: string) => {
@@ -437,53 +506,76 @@ function MyLogsTab() {
 
 	return (
 		<>
-			{/* Date range filter */}
-			<div className="mb-3">
-				<TeamLogsPeriodFilter
-					period={period}
-					onPresetChange={(preset) => updatePeriod(preset)}
-					onCutoffMonthChange={(month) =>
-						updatePeriod("cutoff", { cutoffMonth: month })
-					}
-					onCutoffHalfChange={(half: CutoffHalf) =>
-						updatePeriod("cutoff", { cutoffHalf: half })
-					}
-					onApplyCustomRange={onApplyCustomRange}
-				/>
+			<div className="mb-3 flex justify-end">
+				<TimeViewToggle value={viewMode} onChange={changeViewMode} />
 			</div>
-			{/* Rate + balance summary */}
-			<div className="mb-4">
-				<TeamLogsStatsCard
-					rate={activeRate}
-					stats={stats}
-					fallbackCurrency={activeRate?.currency || "USD"}
-					loading={logsQuery.isPending}
-					canShowHistory={hasRateHistory}
-					onOpenHistory={
-						hasRateHistory ? () => setHistoryOpen(true) : undefined
-					}
-					includePaidColumn
-					includeTrainingRate={false}
-					rateLabel="Rate"
+
+			{viewMode === "calendar" ? (
+				<TimeLogCalendar
+					teamId={teamId}
+					mode="my"
+					currentUserId={user?.id ?? null}
+					onOpenTaskInRoadmap={handleOpenInRoadmap}
+					canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
 				/>
-			</div>
-			{/* Activity — e-wallet style transaction list */}
-			<TeamMyLogsList
-				logs={allLogs}
-				tasks={tasksForRowQuery.data ?? []}
-				ownRateByProjectId={ownRateByProjectId}
-				loadingLogs={logsQuery.isPending}
-				loadingTasks={tasksForRowQuery.isFetching}
-				taskSyncById={{}}
-				rowPendingById={rowPendingById}
-				onOpenTaskModal={handleOpenTaskModal}
-				onStopLog={handleStop}
-				onDeleteLog={handleDelete}
-				onEditLog={handleEdit}
-				onOpenTaskInRoadmap={handleOpenInRoadmap}
-				canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
-				onOpenAddLog={() => setAddOpen(true)}
-			/>
+			) : (
+				<>
+					{/* Rate + balance summary */}
+					<div className="mb-3">
+						<TeamLogsStatsCard
+							rate={activeRate}
+							stats={stats}
+							fallbackCurrency={activeRate?.currency || "USD"}
+							loading={summaryQuery.isPending}
+							canShowHistory={hasRateHistory}
+							onOpenHistory={
+								hasRateHistory ? () => setHistoryOpen(true) : undefined
+							}
+							includePaidColumn
+							includeTrainingRate={false}
+							rateLabel="Rate"
+						/>
+					</div>
+					{/* Date range filter (below the summary) */}
+					<div className="mb-4">
+						<TeamLogsPeriodFilter
+							period={period}
+							onPresetChange={(preset) => updatePeriod(preset)}
+							onCutoffMonthChange={(month) =>
+								updatePeriod("cutoff", { cutoffMonth: month })
+							}
+							onCutoffHalfChange={(half: CutoffHalf) =>
+								updatePeriod("cutoff", { cutoffHalf: half })
+							}
+							onApplyCustomRange={onApplyCustomRange}
+							workedDays={workedDays}
+						/>
+					</div>
+					{listCapped && (
+						<p className="mb-2 px-1 text-xs text-slate-400">
+							Showing your most recent 200 logs for this period — narrow the
+							range to see the rest. Totals above cover the full period.
+						</p>
+					)}
+					{/* Activity — e-wallet style transaction list */}
+					<TeamMyLogsList
+						logs={allLogs}
+						tasks={tasksForRowQuery.data ?? []}
+						ownRateByProjectId={ownRateByProjectId}
+						loadingLogs={logsQuery.isPending}
+						loadingTasks={tasksForRowQuery.isFetching}
+						taskSyncById={{}}
+						rowPendingById={rowPendingById}
+						onOpenTaskModal={handleOpenTaskModal}
+						onStopLog={handleStop}
+						onDeleteLog={handleDelete}
+						onEditLog={handleEdit}
+						onOpenTaskInRoadmap={handleOpenInRoadmap}
+						canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
+						onOpenAddLog={() => setAddOpen(true)}
+					/>
+				</>
+			)}
 
 			{/* Rate history drawer */}
 			<TeamMemberRateHistoryDrawer

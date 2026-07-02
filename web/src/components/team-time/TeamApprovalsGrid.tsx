@@ -58,7 +58,7 @@ type TeamApprovalsRow = {
 	member_label: string;
 	project_label: string;
 	task_id: string | null;
-	task_title: string;
+	task_title: string | null;
 	time_in: string;
 	status: TaskTimeLog["status"] | "mixed";
 	is_running: boolean;
@@ -633,7 +633,7 @@ export function TeamApprovalsGrid({
 			const taskTitle =
 				distinctTaskIds.size > 1
 					? `${distinctTaskIds.size} tasks`
-					: firstLog.task?.title ?? "-";
+					: (firstLog.task?.title ?? null);
 
 			const memberLabel =
 				firstLog.member?.display_name ||
@@ -792,8 +792,13 @@ export function TeamApprovalsGrid({
 				cell: (info) => {
 					const row = info.row.original;
 					return (
-						<span className="block truncate" title={row.task_title}>
-							{row.task_title || "-"}
+						<span
+							className={`block truncate ${row.task_title ? "" : "italic text-slate-400"}`}
+							title={
+								row.task_title ?? "General time — not linked to a specific task."
+							}
+						>
+							{row.task_title ?? "No task"}
 						</span>
 					);
 				},

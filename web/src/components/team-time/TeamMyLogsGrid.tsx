@@ -596,14 +596,16 @@ export function TeamMyLogsGrid({
 					const taskTitle =
 						row.log.task?.title ||
 						(row.task_id ? taskTitleById.get(row.task_id) : undefined) ||
-						"-";
+						null;
 					return (
 						<div className="flex items-center gap-1.5">
 							<span
-								title={taskTitle}
-								className="block truncate rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700"
+								title={
+									taskTitle ?? "General time — not linked to a specific task."
+								}
+								className={`block truncate rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] ${taskTitle ? "text-slate-700" : "italic text-slate-400"}`}
 							>
-								{taskTitle}
+								{taskTitle ?? "No task"}
 							</span>
 							{taskSyncById[row.id] && (
 								<Loader2
