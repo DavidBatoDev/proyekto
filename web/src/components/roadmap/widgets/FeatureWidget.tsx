@@ -507,8 +507,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
 
           {/* Task List - positioned to the right */}
           <div
-            className="absolute top-1/2 -translate-y-1/2 left-[540px] rounded-xl border border-gray-200 bg-white shadow-sm cursor-pointer overflow-hidden"
-            style={{ maxHeight: cardHeight }}
+            className="absolute top-1/2 -translate-y-1/2 left-[540px] w-max rounded-xl border border-gray-200 bg-white shadow-sm cursor-pointer"
             onClick={(e) => { e.stopPropagation(); setIsTaskListModalOpen(true); }}
           >
             {/* Task list header */}
@@ -519,44 +518,48 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
               <Maximize2 className="w-3 h-3 text-gray-500 ml-4" />
             </div>
 
-            <div className="p-1.5 pt-0 overflow-hidden">
-              <div className="grid grid-flow-col grid-rows-[repeat(10,auto)] gap-1.5 auto-cols-max">
-                {feature.tasks?.map((task) => (
-                  <div key={task.id} className="w-[270px]" onClick={(e) => e.stopPropagation()}>
-                    <TaskListItem
-                      task={task}
-                      density="compact"
-                      editors={taskEditorsByNodeId?.get(task.id)}
-                      isRunning={runningTaskId === task.id}
-                      pulseToken={
-                        pulseTaskId === task.id ? pulseTaskToken : undefined
-                      }
-                      onClick={onSelectTask}
-                      onToggleComplete={(taskId) => {
-                        const taskToUpdate = feature.tasks?.find(
-                          (t) => t.id === taskId,
-                        );
-                        if (!taskToUpdate) return;
-                        safelyUpdateTask({
-                          ...taskToUpdate,
-                          status:
-                            taskToUpdate.status === "done" ? "todo" : "done",
-                        });
-                      }}
-                      onUpdateStatus={(taskId, status) => {
-                        const taskToUpdate = feature.tasks?.find(
-                          (t) => t.id === taskId,
-                        );
-                        if (!taskToUpdate) return;
-                        safelyUpdateTask({
-                          ...taskToUpdate,
-                          status,
-                        });
-                      }}
-                    />
+            <div className="p-1.5 pt-0">
+              {(() => {
+                const ITEM_H = 28; // compact TaskListItem ~height px
+                const GAP = 6;     // gap-1.5
+                const availH = cardHeight ? cardHeight - 34 : ITEM_H * 10;
+                const perCol = Math.max(1, Math.floor((availH + GAP) / (ITEM_H + GAP)));
+                const tasks = feature.tasks ?? [];
+                const cols: typeof tasks[] = [];
+                for (let i = 0; i < tasks.length; i += perCol) {
+                  cols.push(tasks.slice(i, i + perCol));
+                }
+                return (
+                  <div className="flex gap-1.5">
+                    {cols.map((col, ci) => (
+                      <div key={ci} className="flex flex-col gap-1.5">
+                        {col.map((task) => (
+                          <div key={task.id} className="w-[270px]" onClick={(e) => e.stopPropagation()}>
+                            <TaskListItem
+                              task={task}
+                              density="compact"
+                              editors={taskEditorsByNodeId?.get(task.id)}
+                              isRunning={runningTaskId === task.id}
+                              pulseToken={pulseTaskId === task.id ? pulseTaskToken : undefined}
+                              onClick={onSelectTask}
+                              onToggleComplete={(taskId) => {
+                                const t = feature.tasks?.find((t) => t.id === taskId);
+                                if (!t) return;
+                                safelyUpdateTask({ ...t, status: t.status === "done" ? "todo" : "done" });
+                              }}
+                              onUpdateStatus={(taskId, status) => {
+                                const t = feature.tasks?.find((t) => t.id === taskId);
+                                if (!t) return;
+                                safelyUpdateTask({ ...t, status });
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                );
+              })()}
             </div>
           </div>
 
