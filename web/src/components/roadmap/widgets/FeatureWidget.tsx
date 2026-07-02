@@ -87,6 +87,8 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     void Promise.resolve(onUpdateTask(task)).catch(() => undefined);
   };
   const descriptionRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [cardHeight, setCardHeight] = useState<number | undefined>(undefined);
   const [hasOverflow, setHasOverflow] = useState(false);
   const [isPulsing, setIsPulsing] = useState(false);
   const [isCardTaskDropActive, setIsCardTaskDropActive] = useState(false);
@@ -177,6 +179,14 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     };
   }, [isReducedMotion, pulseToken]);
 
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setCardHeight(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const getToolbarItemType = (
     event: Pick<DragEvent<HTMLElement>, "dataTransfer">,
   ): ToolbarItemType | null => {
@@ -233,15 +243,14 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   return (
     <>
       <motion.div
-        className={`relative group bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-80 flex flex-col ${canEditRoadmap ? "cursor-pointer active:cursor-grabbing" : "cursor-pointer"} ${
-          isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
-        } ${isOptimisticFeature ? "opacity-75" : ""} ${
-          isCardTaskDropActive
+        ref={cardRef}
+        className={`relative group bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-80 flex flex-col ${canEditRoadmap ? "cursor-pointer active:cursor-grabbing" : "cursor-pointer"} ${isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
+          } ${isOptimisticFeature ? "opacity-75" : ""} ${isCardTaskDropActive
             ? "border-emerald-500 ring-2 ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.3),0_12px_24px_rgba(16,185,129,0.22)]"
             : isGlobalTaskDropHighlight
               ? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
               : getWidgetBorderColor(derivedStatus)
-        }`}
+          }`}
         style={
           editingBorderColor(editors)
             ? { borderColor: editingBorderColor(editors) }
@@ -328,15 +337,13 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
               event.stopPropagation();
               onAddTask(feature.id);
             }}
-            className={`absolute top-1/2 -translate-y-1/2 -right-4 w-8 h-8 rounded-full bg-emerald-500 text-white shadow-lg flex items-center justify-center hover:bg-emerald-400 transition-all duration-200 ease-out z-10 cursor-pointer ${
-              toolbarDraggingType === "task"
-                ? `opacity-100 scale-100 ring-2 ${
-                    isAddTaskDropActive
-                      ? "ring-emerald-400 shadow-[0_0_0_1px_rgba(16,185,129,0.35),0_10px_22px_rgba(16,185,129,0.35)]"
-                      : "ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.24),0_8px_18px_rgba(16,185,129,0.28)]"
-                  }`
-                : "opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100"
-            }`}
+            className={`absolute top-1/2 -translate-y-1/2 -right-4 w-8 h-8 rounded-full bg-emerald-500 text-white shadow-lg flex items-center justify-center hover:bg-emerald-400 transition-all duration-200 ease-out z-10 cursor-pointer ${toolbarDraggingType === "task"
+              ? `opacity-100 scale-100 ring-2 ${isAddTaskDropActive
+                ? "ring-emerald-400 shadow-[0_0_0_1px_rgba(16,185,129,0.35),0_10px_22px_rgba(16,185,129,0.35)]"
+                : "ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.24),0_8px_18px_rgba(16,185,129,0.28)]"
+              }`
+              : "opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100"
+              }`}
             title="Add task"
           >
             <Plus className="w-4 h-4" />
@@ -476,16 +483,16 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
               <span>
                 {feature.start_date
                   ? new Date(feature.start_date).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                    })
+                    month: "short",
+                    day: "numeric",
+                  })
                   : "—"}
                 {" → "}
                 {feature.end_date
                   ? new Date(feature.end_date).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                    })
+                    month: "short",
+                    day: "numeric",
+                  })
                   : "—"}
               </span>
             </div>
@@ -500,20 +507,21 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
 
           {/* Task List - positioned to the right */}
           <div
-            className="absolute top-1/2 -translate-y-1/2 left-[540px] rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden cursor-pointer max-h-80 flex flex-col"
+            className="absolute top-1/2 -translate-y-1/2 left-[540px] rounded-xl border border-gray-200 bg-white shadow-sm cursor-pointer overflow-hidden"
+            style={{ maxHeight: cardHeight }}
             onClick={(e) => { e.stopPropagation(); setIsTaskListModalOpen(true); }}
           >
             {/* Task list header */}
-            <div className="flex items-center justify-between px-2.5 pt-2 pb-1 hover:bg-gray-50 transition-colors shrink-0">
+            <div className="flex items-center justify-between px-2.5 pt-2 pb-1 hover:bg-gray-50 transition-colors">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                 Tasks · {feature.tasks?.length ?? 0}
               </span>
-              <Maximize2 className="w-3 h-3 text-gray-500" />
+              <Maximize2 className="w-3 h-3 text-gray-500 ml-4" />
             </div>
 
-            <div className="flex-1 overflow-y-auto p-1.5 pt-0">
-              <div className="grid grid-flow-col grid-rows-5 gap-1.5 auto-cols-max">
-                {feature.tasks?.slice(0, 10).map((task) => (
+            <div className="p-1.5 pt-0 overflow-hidden">
+              <div className="grid grid-flow-col grid-rows-[repeat(10,auto)] gap-1.5 auto-cols-max">
+                {feature.tasks?.map((task) => (
                   <div key={task.id} className="w-[270px]" onClick={(e) => e.stopPropagation()}>
                     <TaskListItem
                       task={task}
