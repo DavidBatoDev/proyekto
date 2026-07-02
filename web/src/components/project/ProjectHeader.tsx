@@ -97,15 +97,22 @@ export function ProjectHeader() {
 		})),
 	});
 
-	type EnrichedTeam = Team & { projectMemberCount: number | null };
+	type EnrichedTeam = Team & { projectMemberCount: number | null; currentUserIsMember: boolean };
 	const teams: EnrichedTeam[] = projectTeamLinks
 		.map((_, i) => {
 			const team = teamDetailResults[i]?.data ?? null;
 			if (!team) return null;
-			const memberCount = curatedMemberResults[i]?.data?.length ?? null;
-			return { ...team, projectMemberCount: memberCount };
+			const members = curatedMemberResults[i]?.data ?? null;
+			const memberCount = members?.length ?? null;
+			const currentUserIsMember = user?.id
+				? (members?.some((m) => m.user_id === user.id) ?? false)
+				: false;
+			return { ...team, projectMemberCount: memberCount, currentUserIsMember };
 		})
 		.filter((t): t is EnrichedTeam => t !== null);
+
+	// Only show teams where the current user is an assigned member
+	const visibleTeams = teams.filter((t) => t.currentUserIsMember);
 
 	// Dropdown state for multi-team breadcrumb
 	const [teamsDropdownOpen, setTeamsDropdownOpen] = useState(false);
@@ -121,9 +128,11 @@ export function ProjectHeader() {
 		return () => document.removeEventListener("mousedown", onMouseDown);
 	}, [teamsDropdownOpen]);
 
-	const totalProjectMembers = curatedMemberResults.every((r) => r.data != null)
-		? curatedMemberResults.reduce((sum, r) => sum + (r.data?.length ?? 0), 0)
+	// Deduplicate members across teams by user_id so cross-team members count once
+	const allMemberIds = curatedMemberResults.every((r) => r.data != null)
+		? new Set(curatedMemberResults.flatMap((r) => (r.data ?? []).map((m) => m.user_id)))
 		: null;
+	const totalProjectMembers = allMemberIds?.size ?? null;
 
 	const title = project?.title ?? (isRoadmapOnly ? "Roadmap" : "Project");
 	const showMakeProject = isRoadmapOnly;
@@ -161,22 +170,22 @@ export function ProjectHeader() {
 					<ChevronRight className="hidden h-4 w-4 shrink-0 text-slate-400 sm:block" />
 
 					{/* Single team crumb */}
-					{teams.length === 1 && (
+					{visibleTeams.length === 1 && (
 						<>
 							<Link
 								to="/teams/$teamId"
-								params={{ teamId: teams[0].id }}
+								params={{ teamId: visibleTeams[0].id }}
 								className="hidden items-center gap-1.5 rounded-md px-2 py-1.5 text-[14px] text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:flex"
 							>
-								<TeamAvatar team={teams[0]} size="sm" />
-								<span className="truncate">{teams[0].name}</span>
+								<TeamAvatar team={visibleTeams[0]} size="sm" />
+								<span className="truncate">{visibleTeams[0].name}</span>
 							</Link>
 							<ChevronRight className="hidden h-4 w-4 shrink-0 text-slate-400 sm:block" />
 						</>
 					)}
 
 					{/* Multi-team dropdown crumb */}
-					{teams.length >= 2 && (
+					{visibleTeams.length >= 2 && (
 						<>
 							<div
 								ref={teamsDropdownRef}
@@ -188,7 +197,7 @@ export function ProjectHeader() {
 									className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[14px] text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
 								>
 									<div className="flex -space-x-1.5">
-										{teams.slice(0, 2).map((t) => (
+										{visibleTeams.slice(0, 2).map((t) => (
 											<TeamAvatar
 												key={t.id}
 												team={t}
@@ -197,7 +206,7 @@ export function ProjectHeader() {
 											/>
 										))}
 									</div>
-									<span>{teams.length} Teams</span>
+									<span>{visibleTeams.length} Teams</span>
 									<motion.span
 										animate={{ rotate: teamsDropdownOpen ? 180 : 0 }}
 										transition={{ duration: 0.18, ease: "easeOut" }}
@@ -216,7 +225,7 @@ export function ProjectHeader() {
 											transition={{ duration: 0.15, ease: "easeOut" }}
 											className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg"
 										>
-											{teams.map((team) => (
+											{visibleTeams.map((team) => (
 												<Link
 													key={team.id}
 													to="/teams/$teamId"
