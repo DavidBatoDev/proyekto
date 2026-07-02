@@ -1,10 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { CircularProgress } from "@mui/material";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../stores/authStore";
 import { useToast } from "../../hooks/useToast";
 import { completeOnboarding } from "../../lib/auth-api";
+import { fetchProfile, profileKeys } from "../../queries/profile";
 
 export const Route = createFileRoute("/auth/callback")({
   component: AuthCallbackPage,
@@ -13,6 +15,7 @@ export const Route = createFileRoute("/auth/callback")({
 function AuthCallbackPage() {
   const navigate = useNavigate();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const finalizeOAuth = async () => {
@@ -116,6 +119,16 @@ function AuthCallbackPage() {
             // Non-fatal: the welcome deck re-attempts completion as a backstop.
             console.error("OAuth onboarding completion failed:", err);
           }
+          // Seed the profile the same way the password signup flow does
+          // (SignupForm.tsx), so /welcome renders immediately instead of hanging
+          // on a null profile until a manual refresh.
+          try {
+            const fresh = await fetchProfile(user.id);
+            queryClient.setQueryData(profileKeys.byUser(user.id), fresh);
+            useAuthStore.setState({ profile: fresh });
+          } catch (refetchErr) {
+            console.error("Profile refetch after OAuth onboarding failed:", refetchErr);
+          }
           navigate({ to: "/welcome", replace: true });
         }
       } catch (error) {
@@ -128,7 +141,7 @@ function AuthCallbackPage() {
     };
 
     finalizeOAuth();
-  }, [navigate, toast]);
+  }, [navigate, toast, queryClient]);
 
   return (
     <div
