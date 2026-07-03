@@ -1,8 +1,8 @@
-import { memo, useMemo, useState, useRef, useEffect } from "react";
+import { memo, useMemo, useState, useRef, useEffect, type HTMLAttributes } from "react";
 import { createPortal } from "react-dom";
 import { Tooltip } from "@mui/material";
 import { useDroppable } from "@dnd-kit/core";
-import { Check, Trash2, ChevronDown, Search, UserPlus } from "lucide-react";
+import { Check, Trash2, ChevronDown, Search, UserPlus, GripVertical } from "lucide-react";
 import type { RoadmapTask, TaskStatus } from "@/types/roadmap";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
@@ -54,6 +54,11 @@ interface TaskListItemProps {
   isRunning?: boolean;
   /** Collaborators who currently have this task's detail open. */
   editors?: CollaboratorInfo[];
+  dragHandleProps?: {
+    attributes: HTMLAttributes<HTMLElement>;
+    listeners: Record<string, unknown> | undefined;
+    setActivatorNodeRef?: (element: HTMLElement | null) => void;
+  };
 }
 
 const STATUS_OPTIONS: TaskStatus[] = [
@@ -129,8 +134,9 @@ export const TaskListItem = memo(
     onUpdateStatus,
     density = "normal",
     pulseToken,
-      isRunning = false,
+    isRunning = false,
     editors,
+    dragHandleProps,
   }: TaskListItemProps) => {
     const isCompleted = task.status === "done";
     const isOptimisticTask = task.id.startsWith("temp-");
@@ -390,6 +396,20 @@ export const TaskListItem = memo(
         }
         onClick={() => onClick?.(task)}
       >
+        {/* Drag handle */}
+        {dragHandleProps && (
+          <button
+            type="button"
+            ref={dragHandleProps.setActivatorNodeRef}
+            className={`nodrag group/handle shrink-0 flex items-center touch-none cursor-grab opacity-60 group-hover:opacity-100 transition-opacity ${isCompact ? "w-3" : "w-4"}`}
+            onClick={(e) => e.stopPropagation()}
+            {...(dragHandleProps.attributes as Record<string, unknown>)}
+            {...(dragHandleProps.listeners ?? {})}
+          >
+            <GripVertical className={`text-gray-500 group-hover/handle:text-gray-800 transition-colors ${isCompact ? "w-3 h-3" : "w-4 h-4"}`} />
+          </button>
+        )}
+
         {/* Checkbox */}
         <button
           type="button"

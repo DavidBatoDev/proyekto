@@ -946,9 +946,13 @@ export const taskService = {
 	 */
 	async reorder(featureId: string, reorders: ReorderTaskDto[]): Promise<void> {
 		try {
+			const items = reorders.map((item) => ({
+				id: item.task_id,
+				position: item.new_order_index,
+			}));
 			await apiClient.patch(`/api/tasks/reorder`, {
 				feature_id: featureId,
-				reorders,
+				items,
 			});
 		} catch (error) {
 			throw handleServiceError(error, `Reorder tasks in feature ${featureId}`);

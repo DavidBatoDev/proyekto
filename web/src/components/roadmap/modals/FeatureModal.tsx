@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, type FormEvent } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, type FormEvent } from "react";
 import { Plus, Edit2, ChevronDown, ChevronUp, Calendar, X } from "lucide-react";
 import type {
   Comment,
@@ -12,7 +12,7 @@ import { useRoadmapStore } from "@/stores/roadmapStore";
 import { useToast } from "@/hooks/useToast";
 import { RoadmapModalLayout } from "./RoadmapModalLayout";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
-import { TaskListItem } from "../widgets/TaskListItem";
+import { SortableTaskList } from "../widgets/SortableTaskList";
 import { CommentsSection } from "../shared/CommentsSection";
 import { commentsService } from "@/services/roadmap.service";
 import { UnsavedChangesConfirmModal } from "../shared/UnsavedChangesConfirmModal";
@@ -60,12 +60,13 @@ export const FeatureModal = ({
 }: FeatureModalProps) => {
   const user = useUser();
   const toast = useToast();
-  const { milestones, reassignFeatureToMilestone, pendingCommentId, setPendingCommentId } = useRoadmapStore(
+  const { milestones, reassignFeatureToMilestone, pendingCommentId, setPendingCommentId, reorderTasksInFeature } = useRoadmapStore(
     useShallow((s) => ({
       milestones: s.milestones,
       reassignFeatureToMilestone: s.reassignFeatureToMilestone,
       pendingCommentId: s.pendingCommentId,
       setPendingCommentId: s.setPendingCommentId,
+      reorderTasksInFeature: s.reorderTasksInFeature,
     })),
   );
   const currentMilestoneId = useMemo(() => {
@@ -326,6 +327,13 @@ export const FeatureModal = ({
     await commentsService.deleteFeatureComment(featureId, commentId);
     setComments((prev) => prev.filter((comment) => comment.id !== commentId));
   };
+  const handleReorderTasks = useCallback(
+    (fId: string, orderedIds: string[]) => {
+      void reorderTasksInFeature(fId, orderedIds);
+    },
+    [reorderTasksInFeature],
+  );
+
   const autoProgress = calculateFeatureProgressFromTasks(tasks);
   const completedTasks = getCompletedTaskCount(tasks);
 
@@ -694,39 +702,31 @@ export const FeatureModal = ({
           {/* Tasks List */}
           {tasks.length ? (
             <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
-              {tasks.map((task) => (
-                <TaskListItem
-                  key={task.id ?? task.title}
-                  task={task}
+              {featureId ? (
+                <SortableTaskList
+                  tasks={tasks}
+                  featureId={featureId}
+                  onReorder={handleReorderTasks}
                   onDelete={isReadOnlyPending ? undefined : onDeleteTask}
                   onClick={onSelectTask}
                   onToggleComplete={(taskId) => {
                     if (isReadOnlyPending) return;
                     const taskToUpdate = tasks.find((t) => t.id === taskId);
-                    if (!taskToUpdate) return;
-                    if (!onUpdateTask) return;
+                    if (!taskToUpdate || !onUpdateTask) return;
                     void Promise.resolve(
-                      onUpdateTask({
-                        ...taskToUpdate,
-                        status:
-                          taskToUpdate.status === "done" ? "todo" : "done",
-                      }),
+                      onUpdateTask({ ...taskToUpdate, status: taskToUpdate.status === "done" ? "todo" : "done" }),
                     ).catch(() => undefined);
                   }}
                   onUpdateStatus={(taskId, status) => {
                     if (isReadOnlyPending) return;
                     const taskToUpdate = tasks.find((t) => t.id === taskId);
-                    if (!taskToUpdate) return;
-                    if (!onUpdateTask) return;
+                    if (!taskToUpdate || !onUpdateTask) return;
                     void Promise.resolve(
-                      onUpdateTask({
-                        ...taskToUpdate,
-                        status,
-                      }),
+                      onUpdateTask({ ...taskToUpdate, status }),
                     ).catch(() => undefined);
                   }}
                 />
-              ))}
+              ) : null}
             </div>
           ) : (
             <div className="text-center py-8">

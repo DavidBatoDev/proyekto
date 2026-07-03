@@ -1,8 +1,10 @@
+import { useCallback } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { RoadmapFeature, RoadmapTask, TaskStatus } from "@/types/roadmap";
-import { TaskListItem } from "../widgets/TaskListItem";
+import { SortableTaskList } from "../widgets/SortableTaskList";
+import { useRoadmapStore } from "@/stores/roadmapStore";
 
 interface TaskListModalProps {
   feature: RoadmapFeature;
@@ -19,6 +21,7 @@ export function TaskListModal({
 }: TaskListModalProps) {
   const tasks = feature.tasks ?? [];
   const doneCount = tasks.filter((t) => t.status === "done").length;
+  const reorderTasksInFeature = useRoadmapStore((s) => s.reorderTasksInFeature);
 
   const handleToggleComplete = (taskId: string) => {
     const task = tasks.find((t) => t.id === taskId);
@@ -31,6 +34,13 @@ export function TaskListModal({
     if (!task || !onUpdateTask) return;
     onUpdateTask({ ...task, status });
   };
+
+  const handleReorder = useCallback(
+    (fId: string, orderedIds: string[]) => {
+      void reorderTasksInFeature(fId, orderedIds);
+    },
+    [reorderTasksInFeature],
+  );
 
   return createPortal(
     <AnimatePresence>
@@ -76,22 +86,15 @@ export function TaskListModal({
                 No tasks yet
               </div>
             ) : (
-              <div>
-                {tasks.map((task) => (
-                  <TaskListItem
-                    key={task.id}
-                    task={task}
-                    density="normal"
-                    onClick={onSelectTask}
-                    onToggleComplete={
-                      onUpdateTask ? handleToggleComplete : undefined
-                    }
-                    onUpdateStatus={
-                      onUpdateTask ? handleUpdateStatus : undefined
-                    }
-                  />
-                ))}
-              </div>
+              <SortableTaskList
+                tasks={tasks}
+                featureId={feature.id}
+                density="normal"
+                onReorder={handleReorder}
+                onClick={onSelectTask}
+                onToggleComplete={onUpdateTask ? handleToggleComplete : undefined}
+                onUpdateStatus={onUpdateTask ? handleUpdateStatus : undefined}
+              />
             )}
           </div>
         </motion.div>

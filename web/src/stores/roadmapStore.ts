@@ -145,6 +145,7 @@ interface RoadmapActions {
     nextStatus: RoadmapTask["status"],
   ) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
+  reorderTasksInFeature: (featureId: string, orderedTaskIds: string[]) => Promise<void>;
 
   // Kanban board
   setBoardFilters: (
@@ -2118,6 +2119,63 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         tempToRealNodeId: rollbackTempToRealNodeId,
         isLoadingTask: false,
       });
+      throw error;
+    }
+  },
+
+  reorderTasksInFeature: async (featureId: string, orderedTaskIds: string[]) => {
+    const { epics } = get();
+
+    const feature = epics
+      .flatMap((e) => e.features ?? [])
+      .find((f) => f.id === featureId);
+    if (!feature || !feature.tasks?.length) return;
+
+    const currentTaskIds = (feature.tasks ?? []).map((t) => t.id);
+    const currentTaskIdSet = new Set(currentTaskIds);
+    const seen = new Set<string>();
+    const normalizedIds: string[] = [];
+    for (const id of orderedTaskIds) {
+      if (!id || !currentTaskIdSet.has(id) || seen.has(id)) continue;
+      seen.add(id);
+      normalizedIds.push(id);
+    }
+    for (const id of currentTaskIds) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      normalizedIds.push(id);
+    }
+
+    const taskById = new Map((feature.tasks ?? []).map((t) => [t.id, t]));
+
+    const optimisticEpics = epics.map((epic) => ({
+      ...epic,
+      features: (epic.features ?? []).map((f) => {
+        if (f.id !== featureId) return f;
+        return {
+          ...f,
+          tasks: normalizedIds
+            .map((id, index) => {
+              const task = taskById.get(id);
+              if (!task) return null;
+              return { ...task, position: index };
+            })
+            .filter((t): t is RoadmapTask => t !== null),
+        };
+      }),
+    }));
+
+    set({ epics: optimisticEpics });
+
+    try {
+      const reorderPatch = normalizedIds.map((taskId, index) => ({
+        task_id: taskId,
+        new_order_index: index,
+      }));
+      await taskService.reorder(featureId, reorderPatch);
+    } catch (error) {
+      console.error(`Failed to reorder tasks in feature ${featureId}:`, error);
+      set({ epics });
       throw error;
     }
   },

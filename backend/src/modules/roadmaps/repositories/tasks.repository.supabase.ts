@@ -187,18 +187,32 @@ export class TasksRepositorySupabase implements ITasksRepository {
   }
 
   async bulkReorder(featureId: string, dto: BulkReorderDto): Promise<void> {
-    const updates = dto.items.map((item) =>
+    const now = new Date().toISOString();
+    const TEMP_OFFSET = 1_000_000;
+
+    // Phase 1: shift all rows to unique temp positions so the
+    // (feature_id, position) unique constraint can't be transiently violated
+    // while positions are being reassigned.
+    const phase1 = dto.items.map((item, idx) =>
       this.db
         .from('roadmap_tasks')
-        .update({
-          position: item.position,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ position: TEMP_OFFSET + idx, updated_at: now })
         .eq('id', item.id)
         .eq('feature_id', featureId),
     );
-    const results = await Promise.all(updates);
-    for (const { error } of results) {
+    for (const { error } of await Promise.all(phase1)) {
+      if (error) throw new Error(error.message);
+    }
+
+    // Phase 2: set final positions (all unique, no conflicts).
+    const phase2 = dto.items.map((item) =>
+      this.db
+        .from('roadmap_tasks')
+        .update({ position: item.position })
+        .eq('id', item.id)
+        .eq('feature_id', featureId),
+    );
+    for (const { error } of await Promise.all(phase2)) {
       if (error) throw new Error(error.message);
     }
   }

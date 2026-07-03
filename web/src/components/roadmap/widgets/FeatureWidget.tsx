@@ -1,5 +1,6 @@
 import {
   memo,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -18,13 +19,12 @@ import {
   Plus,
   Calendar,
   Maximize2,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
 import type { FeatureStatus, RoadmapFeature, RoadmapTask } from "@/types/roadmap";
 import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
-import { TaskListItem } from "./TaskListItem";
 import { TaskListModal } from "../modals/TaskListModal";
+import { SortableTaskList } from "./SortableTaskList";
+import { useRoadmapStore } from "@/stores/roadmapStore";
 import {
   calculateFeatureProgressFromTasks,
   getCompletedTaskCount,
@@ -84,19 +84,25 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     taskEditorsByNodeId,
   } = data;
   const isReducedMotion = performanceMode === "reducedMotion";
+  const reorderTasksInFeature = useRoadmapStore((s) => s.reorderTasksInFeature);
   const safelyUpdateTask = (task: RoadmapTask) => {
     if (!onUpdateTask) return;
     void Promise.resolve(onUpdateTask(task)).catch(() => undefined);
   };
+  const handleReorderTasks = useCallback(
+    (fId: string, orderedIds: string[]) => {
+      void reorderTasksInFeature(fId, orderedIds);
+    },
+    [reorderTasksInFeature],
+  );
   const descriptionRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
-  const [cardHeight, setCardHeight] = useState<number | undefined>(undefined);
+
   const [hasOverflow, setHasOverflow] = useState(false);
   const [isPulsing, setIsPulsing] = useState(false);
   const [isCardTaskDropActive, setIsCardTaskDropActive] = useState(false);
   const [isAddTaskDropActive, setIsAddTaskDropActive] = useState(false);
   const [isTaskListModalOpen, setIsTaskListModalOpen] = useState(false);
-  const [taskPage, setTaskPage] = useState(0);
   const derivedStatus = deriveFeatureStatus(feature.tasks);
 
   const getWidgetBorderColor = (status: FeatureStatus) => {
@@ -182,13 +188,6 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     };
   }, [isReducedMotion, pulseToken]);
 
-  useEffect(() => {
-    const el = cardRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setCardHeight(el.offsetHeight));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   const getToolbarItemType = (
     event: Pick<DragEvent<HTMLElement>, "dataTransfer">,
@@ -510,88 +509,50 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
 
           {/* Task List - positioned to the right */}
           {(() => {
-            const ITEM_H = 28;
-            const GAP = 6;
-            const availH = cardHeight ? cardHeight - 42 : ITEM_H * 10;
-            const perCol = Math.max(1, Math.floor((availH + GAP) / (ITEM_H + GAP)));
             const allTasks = feature.tasks ?? [];
-            const windowSize = perCol * 2;
-            const totalPages = Math.ceil(allTasks.length / windowSize);
-            const safePage = Math.min(taskPage, Math.max(0, totalPages - 1));
-            const pageTasks = allTasks.slice(safePage * windowSize, (safePage + 1) * windowSize);
-            const pageCols: typeof allTasks[] = [
-              pageTasks.slice(0, perCol),
-              pageTasks.slice(perCol),
-            ].filter((col) => col.length > 0);
-
             return (
               <div
-                className="absolute top-1/2 -translate-y-1/2 left-[540px] w-max rounded-xl border border-gray-200 bg-white shadow-sm cursor-pointer"
-                onClick={(e) => { e.stopPropagation(); setIsTaskListModalOpen(true); }}
+                className="absolute top-1/2 -translate-y-1/2 left-[540px] w-[290px] rounded-xl border border-gray-200 bg-white shadow-sm"
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
               >
                 {/* Header */}
-                <div className="flex items-center justify-between px-2.5 pt-2 pb-1 hover:bg-gray-50 transition-colors">
+                <div
+                  className="flex items-center justify-between px-2.5 pt-2 pb-1 hover:bg-gray-50 transition-colors cursor-pointer"
+                  onClick={(e) => { e.stopPropagation(); setIsTaskListModalOpen(true); }}
+                >
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                     Tasks · {allTasks.length}
                   </span>
-                  <div className="flex items-center gap-1 ml-4">
-                    {totalPages > 1 && (
-                      <>
-                        <button
-                          type="button"
-                          disabled={safePage === 0}
-                          onClick={(e) => { e.stopPropagation(); setTaskPage((p) => Math.max(0, p - 1)); }}
-                          className="p-0.5 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                        >
-                          <ChevronLeft className="w-3 h-3 text-gray-500" />
-                        </button>
-                        <span className="text-[10px] text-gray-400 tabular-nums">
-                          {safePage + 1}/{totalPages}
-                        </span>
-                        <button
-                          type="button"
-                          disabled={safePage >= totalPages - 1}
-                          onClick={(e) => { e.stopPropagation(); setTaskPage((p) => Math.min(totalPages - 1, p + 1)); }}
-                          className="p-0.5 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                        >
-                          <ChevronRight className="w-3 h-3 text-gray-500" />
-                        </button>
-                      </>
-                    )}
-                    <Maximize2 className="w-3 h-3 text-gray-500 ml-1" />
-                  </div>
+                  <Maximize2 className="w-3 h-3 text-gray-500" />
                 </div>
 
-                {/* Columns */}
-                <div className="p-1.5 pt-0">
-                  <div className="flex gap-1.5">
-                    {pageCols.map((col, ci) => (
-                      <div key={ci} className="flex flex-col gap-1.5">
-                        {col.map((task) => (
-                          <div key={task.id} className="w-[270px]" onClick={(e) => e.stopPropagation()}>
-                            <TaskListItem
-                              task={task}
-                              density="compact"
-                              editors={taskEditorsByNodeId?.get(task.id)}
-                              isRunning={runningTaskId === task.id}
-                              pulseToken={pulseTaskId === task.id ? pulseTaskToken : undefined}
-                              onClick={onSelectTask}
-                              onToggleComplete={(taskId) => {
-                                const t = feature.tasks?.find((t) => t.id === taskId);
-                                if (!t) return;
-                                safelyUpdateTask({ ...t, status: t.status === "done" ? "todo" : "done" });
-                              }}
-                              onUpdateStatus={(taskId, status) => {
-                                const t = feature.tasks?.find((t) => t.id === taskId);
-                                if (!t) return;
-                                safelyUpdateTask({ ...t, status });
-                              }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
+                {/* Sortable task list */}
+                <div
+                  className="max-h-[240px] overflow-y-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <SortableTaskList
+                    tasks={allTasks}
+                    featureId={feature.id}
+                    density="compact"
+                    onReorder={handleReorderTasks}
+                    onClick={onSelectTask}
+                    pulseTaskId={pulseTaskId}
+                    pulseTaskToken={pulseTaskToken}
+                    runningTaskId={runningTaskId}
+                    taskEditorsByNodeId={taskEditorsByNodeId}
+                    onToggleComplete={(taskId) => {
+                      const t = feature.tasks?.find((t) => t.id === taskId);
+                      if (!t) return;
+                      safelyUpdateTask({ ...t, status: t.status === "done" ? "todo" : "done" });
+                    }}
+                    onUpdateStatus={(taskId, status) => {
+                      const t = feature.tasks?.find((t) => t.id === taskId);
+                      if (!t) return;
+                      safelyUpdateTask({ ...t, status });
+                    }}
+                  />
                 </div>
               </div>
             );
