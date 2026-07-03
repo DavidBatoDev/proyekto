@@ -510,21 +510,16 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
 
           {/* Task List - positioned to the right */}
           {(() => {
-            const STATUS_ORDER: Record<string, number> = {
-              todo: 0, in_progress: 1, in_review: 2, done: 3, blocked: 4,
-            };
             const ITEM_H = 28;
             const GAP = 6;
             const availH = cardHeight ? cardHeight - 42 : ITEM_H * 10;
             const perCol = Math.max(1, Math.floor((availH + GAP) / (ITEM_H + GAP)));
-            const sorted = [...(feature.tasks ?? [])].sort(
-              (a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99),
-            );
+            const allTasks = feature.tasks ?? [];
             const windowSize = perCol * 2;
-            const totalPages = Math.ceil(sorted.length / windowSize);
+            const totalPages = Math.ceil(allTasks.length / windowSize);
             const safePage = Math.min(taskPage, Math.max(0, totalPages - 1));
-            const pageTasks = sorted.slice(safePage * windowSize, (safePage + 1) * windowSize);
-            const pageCols: typeof sorted[] = [
+            const pageTasks = allTasks.slice(safePage * windowSize, (safePage + 1) * windowSize);
+            const pageCols: typeof allTasks[] = [
               pageTasks.slice(0, perCol),
               pageTasks.slice(perCol),
             ].filter((col) => col.length > 0);
@@ -537,7 +532,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
                 {/* Header */}
                 <div className="flex items-center justify-between px-2.5 pt-2 pb-1 hover:bg-gray-50 transition-colors">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                    Tasks · {sorted.length}
+                    Tasks · {allTasks.length}
                   </span>
                   <div className="flex items-center gap-1 ml-4">
                     {totalPages > 1 && (
