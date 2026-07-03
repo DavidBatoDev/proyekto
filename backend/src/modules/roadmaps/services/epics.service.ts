@@ -10,6 +10,8 @@ import {
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
 import { RedisCacheInvalidationService } from '../../../common/cache/redis-cache-invalidation.service';
 import { RealtimePublisher } from '../../realtime/realtime-publisher.service';
+import { NotificationsService } from '../../notifications/notifications.service';
+import { extractMentionedUserIds } from '../utils/mention-parser';
 
 export const EPICS_REPOSITORY = Symbol('EPICS_REPOSITORY');
 const TEMP_EPIC_ID_PREFIX = 'temp-epic-';
@@ -21,6 +23,7 @@ export class EpicsService {
     private readonly roadmapAuthz: RoadmapAuthorizationService,
     private readonly cacheInvalidation: RedisCacheInvalidationService,
     private readonly realtime: RealtimePublisher,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private notify(roadmapId: string | null, userId: string): void {
@@ -77,7 +80,49 @@ export class EpicsService {
 
   async addComment(epicId: string, dto: AddCommentDto, userId: string) {
     await this.roadmapAuthz.assertEpicCommentPermission(epicId, userId);
-    return this.repo.addComment(epicId, dto, userId);
+    const comment = await this.repo.addComment(epicId, dto, userId);
+
+    void this.fireMentionNotifications(epicId, dto.content, userId).catch(
+      () => {},
+    );
+
+    return comment;
+  }
+
+  private async fireMentionNotifications(
+    epicId: string,
+    html: string,
+    authorId: string,
+  ): Promise<void> {
+    const mentionedIds = extractMentionedUserIds(html).filter(
+      (id) => id !== authorId,
+    );
+    if (!mentionedIds.length) return;
+
+    const roadmapId = await this.roadmapAuthz.resolveRoadmapId({ epicId });
+    const projectId = roadmapId
+      ? await this.roadmapAuthz.resolveProjectId(roadmapId)
+      : null;
+    const linkUrl =
+      projectId && roadmapId
+        ? `/project/${projectId}/roadmap/${roadmapId}`
+        : null;
+
+    await Promise.allSettled(
+      mentionedIds.map((userId) =>
+        this.notificationsService.createNotification({
+          user_id: userId,
+          actor_id: authorId,
+          type_name: 'epic_comment_mention',
+          project_id: projectId ?? undefined,
+          link_url: linkUrl ?? undefined,
+          content: {
+            epic_id: epicId,
+            message: 'You were mentioned in an epic comment.',
+          },
+        }),
+      ),
+    );
   }
 
   async updateComment(

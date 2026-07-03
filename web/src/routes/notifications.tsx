@@ -39,6 +39,9 @@ function getNotificationTitle(item: NotificationItem) {
   if (name === "time_log_pending") return "Time log reset to pending";
   if (name === "time_log_day_rejected") return "Daily logs rejected";
   if (name === "time_log_comment_added") return "Time log comment";
+  if (name === "task_comment_mention") return "Mentioned in task";
+  if (name === "feature_comment_mention") return "Mentioned in feature";
+  if (name === "epic_comment_mention") return "Mentioned in epic";
   return "Notification";
 }
 
@@ -88,6 +91,13 @@ function getNotificationIcon(item: NotificationItem) {
   }
   if (name === "time_log_comment_added") {
     return <MessageCircle className="w-5 h-5 text-orange-500" />;
+  }
+  if (
+    name === "task_comment_mention" ||
+    name === "feature_comment_mention" ||
+    name === "epic_comment_mention"
+  ) {
+    return <MessageCircle className="w-5 h-5 text-violet-500" />;
   }
   return <Info className="w-5 h-5 text-gray-400" />;
 }

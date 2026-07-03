@@ -46,13 +46,27 @@ export class TaskExtrasService {
     );
     if (!mentionedIds.length) return;
 
+    const roadmapId = await this.roadmapAuthz.resolveRoadmapId({ taskId });
+    const projectId = roadmapId
+      ? await this.roadmapAuthz.resolveProjectId(roadmapId)
+      : null;
+    const linkUrl =
+      projectId && roadmapId
+        ? `/project/${projectId}/roadmap/${roadmapId}`
+        : null;
+
     await Promise.allSettled(
       mentionedIds.map((userId) =>
         this.notificationsService.createNotification({
           user_id: userId,
           actor_id: authorId,
           type_name: 'task_comment_mention',
-          content: { task_id: taskId },
+          project_id: projectId ?? undefined,
+          link_url: linkUrl ?? undefined,
+          content: {
+            task_id: taskId,
+            message: 'You were mentioned in a task comment.',
+          },
         }),
       ),
     );

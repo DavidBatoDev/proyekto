@@ -14,6 +14,8 @@ const NOTIFICATION_TITLES: Record<string, string> = {
   team_invite_received: 'Team invitation',
   task_assigned: 'Task assigned',
   task_comment_mention: 'You were mentioned',
+  feature_comment_mention: 'You were mentioned',
+  epic_comment_mention: 'You were mentioned',
   invoice_issued: 'New invoice',
   time_log_approval_requested: 'Time log needs approval',
   time_log_marked_paid: 'Time log paid',
