@@ -1015,7 +1015,7 @@ export const SidePanel = ({
                 </div>
               ) : descriptionDraft ? (
                 <div
-                  className="text-sm text-gray-700 leading-relaxed prose prose-sm max-w-none border border-gray-200 rounded-lg px-4 py-3 bg-gray-50 cursor-text [&_p]:my-0 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                  className="text-sm text-gray-700 leading-relaxed border border-gray-200 rounded-lg px-4 py-3 bg-gray-50 cursor-text wrap-break-word [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1 [&_li]:my-0.5 [&_a]:text-blue-600 [&_a]:underline [&_strong]:font-semibold [&_b]:font-semibold [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold"
                   onClick={() => !isInteractionDisabled && setIsEditingDescription(true)}
                   dangerouslySetInnerHTML={{ __html: descriptionDraft }}
                 />

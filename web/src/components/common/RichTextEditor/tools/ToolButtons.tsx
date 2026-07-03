@@ -10,6 +10,9 @@ import {
   Paperclip,
   FileCode,
   HelpCircle,
+  Underline,
+  Strikethrough,
+  Eraser,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 
@@ -179,13 +182,81 @@ export function ItalicTool({
   );
 }
 
-export function MoreTool() {
+interface MoreToolProps {
+  onCommand: (command: string) => void;
+  activeFormats: Set<string>;
+}
+
+export function MoreTool({ onCommand, activeFormats }: MoreToolProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setIsOpen(false);
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [isOpen]);
+
+  const items = [
+    {
+      label: "Underline",
+      icon: <Underline className="w-4 h-4" />,
+      command: "underline",
+      active: activeFormats.has("underline"),
+    },
+    {
+      label: "Strikethrough",
+      icon: <Strikethrough className="w-4 h-4" />,
+      command: "strikeThrough",
+      active: activeFormats.has("strikeThrough"),
+    },
+    {
+      label: "Remove formatting",
+      icon: <Eraser className="w-4 h-4" />,
+      command: "removeFormat",
+      active: false,
+    },
+  ];
+
   return (
-    <ToolButton
-      icon={<MoreHorizontal className="w-4 h-4" />}
-      onClick={() => {}}
-      tooltip="More options"
-    />
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((v) => !v)}
+        className={`p-1.5 rounded transition-colors ${
+          isOpen ? "bg-gray-200 text-gray-900" : "text-gray-700 hover:bg-gray-100"
+        }`}
+        title="More options"
+      >
+        <MoreHorizontal className="w-4 h-4" />
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 top-full z-50 mt-1 min-w-[180px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+          {items.map((item) => (
+            <button
+              key={item.command}
+              type="button"
+              onClick={() => {
+                onCommand(item.command);
+                setIsOpen(false);
+              }}
+              className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-sm transition-colors ${
+                item.active
+                  ? "bg-blue-50 text-blue-600"
+                  : "text-gray-700 hover:bg-gray-100"
+              }`}
+            >
+              {item.icon}
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
