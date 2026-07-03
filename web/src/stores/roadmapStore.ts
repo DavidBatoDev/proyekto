@@ -61,6 +61,7 @@ interface RoadmapState {
   openEpicEditorId: string | null;
   openFeatureEditor: { epicId: string; featureId: string } | null;
   openTaskDetailId: string | null;
+  pendingCommentId: string | null;
   activeEpicId: string | null;
 
   // UI State - Canvas View Mode (shared so RoadmapViewContent can react)
@@ -189,6 +190,7 @@ interface RoadmapActions {
   clearOpenFeatureEditorModal: () => void;
   openTaskDetail: (taskId: string) => void;
   clearOpenTaskDetail: () => void;
+  setPendingCommentId: (id: string | null) => void;
   setActiveEpicId: (epicId: string | null) => void;
 
   // Canvas view-mode actions
@@ -364,6 +366,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
   openEpicEditorId: null,
   openFeatureEditor: null,
   openTaskDetailId: null,
+  pendingCommentId: null,
   activeEpicId: null,
   addFeatureEpicId: null,
   addTaskFeatureId: null,
@@ -815,6 +818,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
       openEpicEditorId: null,
       openFeatureEditor: null,
       openTaskDetailId: null,
+      pendingCommentId: null,
       activeEpicId: null,
       addFeatureEpicId: null,
       addTaskFeatureId: null,
@@ -2365,6 +2369,10 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 
   clearOpenTaskDetail: () => {
     set({ openTaskDetailId: null });
+  },
+
+  setPendingCommentId: (id: string | null) => {
+    set({ pendingCommentId: id });
   },
 
   isOptimisticNodeId: (id: string | null | undefined) =>

@@ -90,7 +90,8 @@ export class FeaturesService {
     await this.roadmapAuthz.assertFeatureCommentPermission(featureId, userId);
     const comment = await this.repo.addComment(featureId, dto, userId);
 
-    void this.fireMentionNotifications(featureId, dto.content, userId).catch(
+    const commentId = (comment as { id?: string }).id;
+    void this.fireMentionNotifications(featureId, dto.content, userId, commentId).catch(
       () => {},
     );
 
@@ -101,6 +102,7 @@ export class FeaturesService {
     featureId: string,
     html: string,
     authorId: string,
+    commentId?: string,
   ): Promise<void> {
     const mentionedIds = extractMentionedUserIds(html).filter(
       (id) => id !== authorId,
@@ -113,7 +115,7 @@ export class FeaturesService {
       : null;
     const linkUrl =
       projectId && roadmapId
-        ? `/project/${projectId}/roadmap/${roadmapId}`
+        ? `/project/${projectId}/roadmap/${roadmapId}?nodeId=${featureId}${commentId ? `&commentId=${commentId}` : ''}`
         : null;
 
     await Promise.allSettled(

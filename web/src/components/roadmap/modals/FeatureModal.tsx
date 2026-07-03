@@ -60,10 +60,12 @@ export const FeatureModal = ({
 }: FeatureModalProps) => {
   const user = useUser();
   const toast = useToast();
-  const { milestones, reassignFeatureToMilestone } = useRoadmapStore(
+  const { milestones, reassignFeatureToMilestone, pendingCommentId, setPendingCommentId } = useRoadmapStore(
     useShallow((s) => ({
       milestones: s.milestones,
       reassignFeatureToMilestone: s.reassignFeatureToMilestone,
+      pendingCommentId: s.pendingCommentId,
+      setPendingCommentId: s.setPendingCommentId,
     })),
   );
   const currentMilestoneId = useMemo(() => {
@@ -673,6 +675,8 @@ export const FeatureModal = ({
           }
           isLoading={loadingComments}
           emptyMessage="No comments yet for this feature."
+          highlightCommentId={pendingCommentId ?? undefined}
+          onHighlightConsumed={() => setPendingCommentId(null)}
         />
       ) : (
         <div className="text-center py-8">

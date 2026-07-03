@@ -29,7 +29,8 @@ export class TaskExtrasService {
     const comment = await this.repo.addComment(taskId, dto, userId);
 
     // Fire in-app notifications for @mentioned users (best-effort, non-blocking)
-    void this.fireMentionNotifications(taskId, dto.content, userId).catch(
+    const commentId = (comment as { id?: string }).id;
+    void this.fireMentionNotifications(taskId, dto.content, userId, commentId).catch(
       () => {},
     );
 
@@ -40,6 +41,7 @@ export class TaskExtrasService {
     taskId: string,
     html: string,
     authorId: string,
+    commentId?: string,
   ): Promise<void> {
     const mentionedIds = extractMentionedUserIds(html).filter(
       (id) => id !== authorId,
@@ -52,7 +54,7 @@ export class TaskExtrasService {
       : null;
     const linkUrl =
       projectId && roadmapId
-        ? `/project/${projectId}/roadmap/${roadmapId}`
+        ? `/project/${projectId}/roadmap/${roadmapId}?nodeId=${taskId}${commentId ? `&commentId=${commentId}` : ''}`
         : null;
 
     await Promise.allSettled(

@@ -82,7 +82,8 @@ export class EpicsService {
     await this.roadmapAuthz.assertEpicCommentPermission(epicId, userId);
     const comment = await this.repo.addComment(epicId, dto, userId);
 
-    void this.fireMentionNotifications(epicId, dto.content, userId).catch(
+    const commentId = (comment as { id?: string }).id;
+    void this.fireMentionNotifications(epicId, dto.content, userId, commentId).catch(
       () => {},
     );
 
@@ -93,6 +94,7 @@ export class EpicsService {
     epicId: string,
     html: string,
     authorId: string,
+    commentId?: string,
   ): Promise<void> {
     const mentionedIds = extractMentionedUserIds(html).filter(
       (id) => id !== authorId,
@@ -105,7 +107,7 @@ export class EpicsService {
       : null;
     const linkUrl =
       projectId && roadmapId
-        ? `/project/${projectId}/roadmap/${roadmapId}`
+        ? `/project/${projectId}/roadmap/${roadmapId}?nodeId=${epicId}${commentId ? `&commentId=${commentId}` : ''}`
         : null;
 
     await Promise.allSettled(

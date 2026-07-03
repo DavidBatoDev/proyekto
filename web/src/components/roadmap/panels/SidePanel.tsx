@@ -176,6 +176,10 @@ export const SidePanel = ({
   const profile = useProfile();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<TabType>("details");
+  const { pendingCommentId, setPendingCommentId } = useRoadmapStore((s) => ({
+    pendingCommentId: s.pendingCommentId,
+    setPendingCommentId: s.setPendingCommentId,
+  }));
   const [editedTask, setEditedTask] = useState<RoadmapTask | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
@@ -389,6 +393,13 @@ export const SidePanel = ({
     const checklistDiffers = checklistStr(checklistItems) !== checklistStr(initialChecklistRef.current);
     return fieldsDiffer || checklistDiffers;
   }, [editedTask, isCreateMode, newTaskData, descriptionDraft, checklistItems]);
+
+  // Auto-switch to comments tab when arriving via a notification deep-link
+  useEffect(() => {
+    if (isOpen && pendingCommentId && !isCreateMode) {
+      setActiveTab("comments");
+    }
+  }, [isOpen, pendingCommentId, isCreateMode]);
 
   useEffect(() => {
     if (!isOpen || isCreateMode || activeTab !== "comments" || !task?.id)
@@ -1383,6 +1394,8 @@ export const SidePanel = ({
             isLoading={isLoadingComments}
             emptyMessage="No comments yet for this task."
             mentionUsers={mentionUsers}
+            highlightCommentId={pendingCommentId ?? undefined}
+            onHighlightConsumed={() => setPendingCommentId(null)}
           />
         )}
       </div>

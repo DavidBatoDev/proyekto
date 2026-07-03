@@ -58,6 +58,7 @@ interface RoadmapViewContentProps {
   roadmapId: string;
   projectId: string;
   deepLinkNodeId?: string | null;
+  deepLinkCommentId?: string | null;
   urlView?: RoadmapUrlView | null;
   onDeepLinkNodeConsumed?: (view: RoadmapUrlView) => void;
   onViewChange?: (view: RoadmapUrlView) => void;
@@ -172,6 +173,7 @@ export function RoadmapViewContent({
   roadmapId,
   projectId,
   deepLinkNodeId,
+  deepLinkCommentId,
   urlView,
   onDeepLinkNodeConsumed,
   onViewChange,
@@ -192,6 +194,7 @@ export function RoadmapViewContent({
     openEpicEditor,
     openFeatureEditor,
     openTaskDetail,
+    setPendingCommentId,
     canvasViewMode,
     setCanvasViewMode,
     updateTask,
@@ -208,6 +211,7 @@ export function RoadmapViewContent({
       openEpicEditor: state.openEpicEditor,
       openFeatureEditor: state.openFeatureEditorModal,
       openTaskDetail: state.openTaskDetail,
+      setPendingCommentId: state.setPendingCommentId,
       canvasViewMode: state.canvasViewMode,
       setCanvasViewMode: state.setCanvasViewMode,
       updateTask: state.updateTask,
@@ -311,15 +315,21 @@ export function RoadmapViewContent({
       openTaskDetail(target.taskId);
     }
 
+    if (deepLinkCommentId) {
+      setPendingCommentId(deepLinkCommentId);
+    }
+
     onDeepLinkNodeConsumed?.(urlView ?? toRoadmapUrlView(canvasViewMode));
   }, [
     canvasViewMode,
+    deepLinkCommentId,
     deepLinkNodeId,
     navigateToNode,
     onDeepLinkNodeConsumed,
     openEpicEditor,
     openFeatureEditor,
     openTaskDetail,
+    setPendingCommentId,
     roadmap,
     roadmapId,
     urlView,
