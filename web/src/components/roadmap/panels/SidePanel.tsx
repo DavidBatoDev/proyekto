@@ -176,10 +176,8 @@ export const SidePanel = ({
   const profile = useProfile();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<TabType>("details");
-  const { pendingCommentId, setPendingCommentId } = useRoadmapStore((s) => ({
-    pendingCommentId: s.pendingCommentId,
-    setPendingCommentId: s.setPendingCommentId,
-  }));
+  const pendingCommentId = useRoadmapStore((s) => s.pendingCommentId);
+  const setPendingCommentId = useRoadmapStore((s) => s.setPendingCommentId);
   const [editedTask, setEditedTask] = useState<RoadmapTask | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [isLoadingComments, setIsLoadingComments] = useState(false);

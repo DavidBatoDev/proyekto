@@ -86,10 +86,8 @@ export const EpicModal = ({
   isPendingCreate = false,
 }: EpicModalProps) => {
   const user = useUser();
-  const { pendingCommentId, setPendingCommentId } = useRoadmapStore((s) => ({
-    pendingCommentId: s.pendingCommentId,
-    setPendingCommentId: s.setPendingCommentId,
-  }));
+  const pendingCommentId = useRoadmapStore((s) => s.pendingCommentId);
+  const setPendingCommentId = useRoadmapStore((s) => s.setPendingCommentId);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<EpicPriority>("medium");
