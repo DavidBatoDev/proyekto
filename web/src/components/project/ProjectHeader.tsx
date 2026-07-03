@@ -9,11 +9,13 @@ import {
 	Briefcase,
 	ChevronDown,
 	ChevronRight,
+	FolderKanban,
 	MessageCircle,
 	Search,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
+import { projectService, type Project } from "@/services/project.service";
 import { AnimatePresence, motion } from "framer-motion";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { useProjectDetailQuery } from "@/hooks/useProjectQueries";
@@ -28,6 +30,25 @@ import {
 	type ProjectTeam,
 } from "@/services/teams.service";
 import ProjectUserMenu from "./ProjectUserMenu";
+
+// Compute the destination path when switching projects, preserving the current view.
+// roadmap/$roadmapId and work-items/$roadmapId strip the sub-ID so the layout route
+// auto-redirects to the new project's linked roadmap.
+const getProjectSwitchPath = (
+	pathname: string,
+	fromProjectId: string,
+	toProjectId: string,
+): string => {
+	const base = pathname.replace(
+		`/project/${fromProjectId}/`,
+		`/project/${toProjectId}/`,
+	);
+	const roadmapStripped = base.match(/^(\/project\/[^/]+\/roadmap)\/[^/]+/);
+	if (roadmapStripped) return roadmapStripped[1];
+	const workItemsStripped = base.match(/^(\/project\/[^/]+\/work-items)\/[^/]+/);
+	if (workItemsStripped) return workItemsStripped[1];
+	return base;
+};
 
 const resolveCurrentPageLabel = (pathname: string, projectId: string) => {
 	if (pathname.includes("/roadmap")) return "Roadmap";
@@ -127,6 +148,28 @@ export function ProjectHeader() {
 		document.addEventListener("mousedown", onMouseDown);
 		return () => document.removeEventListener("mousedown", onMouseDown);
 	}, [teamsDropdownOpen]);
+
+	// All projects for the project-switcher dropdown
+	const allProjectsQuery = useQuery({
+		queryKey: ["dashboard", "projects", user?.id ?? "anonymous"] as const,
+		queryFn: () => projectService.listDashboardProjects(),
+		enabled: Boolean(user?.id) && !isRoadmapOnly,
+		staleTime: 30_000,
+	});
+	const allProjects = (allProjectsQuery.data as Project[] | undefined) ?? [];
+
+	const [projectsDropdownOpen, setProjectsDropdownOpen] = useState(false);
+	const projectsDropdownRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (!projectsDropdownOpen) return;
+		const onMouseDown = (e: MouseEvent) => {
+			if (!projectsDropdownRef.current?.contains(e.target as Node)) {
+				setProjectsDropdownOpen(false);
+			}
+		};
+		document.addEventListener("mousedown", onMouseDown);
+		return () => document.removeEventListener("mousedown", onMouseDown);
+	}, [projectsDropdownOpen]);
 
 	// Deduplicate members across teams by user_id so cross-team members count once
 	const allMemberIds = curatedMemberResults.every((r) => r.data != null)
@@ -245,19 +288,75 @@ export function ProjectHeader() {
 						</>
 					)}
 
-					{/* Project name */}
+					{/* Project name — with switcher dropdown when not roadmap-only */}
 					{isRoadmapOnly || !projectId ? (
 						<span className="max-w-[100px] truncate px-2 text-[14px] text-slate-900 sm:max-w-[260px] sm:text-[15px]">
 							{title || "Untitled Project"}
 						</span>
 					) : (
-						<Link
-							to="/project/$projectId/overview"
-							params={{ projectId }}
-							className="max-w-[100px] truncate rounded-md px-2 py-1.5 text-[14px] text-slate-900 transition-colors hover:bg-slate-100 sm:max-w-[260px] sm:text-[15px]"
-						>
-							{title || "Untitled Project"}
-						</Link>
+						<div ref={projectsDropdownRef} className="relative">
+							<button
+								type="button"
+								onClick={() => setProjectsDropdownOpen((v) => !v)}
+								className="flex max-w-[120px] items-center gap-1 rounded-md px-2 py-1.5 text-[14px] text-slate-900 transition-colors hover:bg-slate-100 sm:max-w-[260px] sm:text-[15px]"
+							>
+								<span className="truncate">{title || "Untitled Project"}</span>
+								<motion.span
+									animate={{ rotate: projectsDropdownOpen ? 180 : 0 }}
+									transition={{ duration: 0.18, ease: "easeOut" }}
+									className="flex shrink-0"
+								>
+									<ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+								</motion.span>
+							</button>
+
+							<AnimatePresence>
+								{projectsDropdownOpen && (
+									<motion.div
+										initial={{ opacity: 0, y: -6, scale: 0.97 }}
+										animate={{ opacity: 1, y: 0, scale: 1 }}
+										exit={{ opacity: 0, y: -6, scale: 0.97 }}
+										transition={{ duration: 0.15, ease: "easeOut" }}
+										className="absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg"
+									>
+										{allProjects.length === 0 ? (
+											<p className="px-3 py-2 text-sm text-slate-400">No projects</p>
+										) : (
+											allProjects.map((p) => {
+												const isCurrent = p.id === projectId;
+												const targetPath = getProjectSwitchPath(location.pathname, projectId, p.id);
+												return (
+													<button
+														key={p.id}
+														type="button"
+														onClick={() => {
+															setProjectsDropdownOpen(false);
+															void navigate({ to: targetPath });
+														}}
+														className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+															isCurrent
+																? "bg-primary text-white shadow-sm"
+																: "text-slate-700 hover:bg-slate-50"
+														}`}
+													>
+														<span
+															className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${
+																isCurrent
+																	? "bg-white/20 text-white"
+																	: "bg-primary/10 text-primary"
+															}`}
+														>
+															{p.title?.[0]?.toUpperCase() ?? <FolderKanban className="h-3.5 w-3.5" />}
+														</span>
+														<span className="truncate font-medium">{p.title || "Untitled"}</span>
+													</button>
+												);
+											})
+										)}
+									</motion.div>
+								)}
+							</AnimatePresence>
+						</div>
 					)}
 					<ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
 					<span className="shrink-0 px-2 text-[14px] capitalize text-slate-600 sm:text-[15px]">
