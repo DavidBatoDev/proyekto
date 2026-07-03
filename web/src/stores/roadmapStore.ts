@@ -1911,6 +1911,17 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
     }));
 
     try {
+      // due_date: if the field is explicitly absent (undefined) and the stored task
+      // had a date, send null to clear. If both are absent/null, omit entirely.
+      const storedDueDate = (currentTask as { due_date?: string | null }).due_date;
+      const incomingDueDate = (task as { due_date?: string | null }).due_date;
+      const dueDatePayload =
+        incomingDueDate !== undefined
+          ? incomingDueDate
+          : storedDueDate != null
+            ? null
+            : undefined;
+
       const updated = await taskService.update(taskId, {
         title: task.title,
         description: task.description,
@@ -1919,7 +1930,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         work_type: task.work_type,
         position: task.position ?? undefined,
         assignee_id: task.assignee_id ?? undefined,
-        due_date: task.due_date ?? undefined,
+        due_date: dueDatePayload,
         completed_at: task.completed_at ?? undefined,
         checklist: task.checklist,
       });

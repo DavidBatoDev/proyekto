@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   X,
-  Calendar,
   CheckSquare,
   Search,
   ChevronDown,
@@ -32,6 +31,7 @@ import { useToast } from "@/hooks/useToast";
 import { CommentsSection } from "../shared/CommentsSection";
 import { UnsavedChangesConfirmModal } from "../shared/UnsavedChangesConfirmModal";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
+import { DueDatePicker } from "./DueDatePicker";
 import { Button } from "@/ui/button";
 import { useProfile, useUser } from "@/stores/authStore";
 import { useRoadmapStore } from "@/stores/roadmapStore";
@@ -98,16 +98,6 @@ const isSameTaskDraftSnapshot = (
   left.assigneeId === right.assigneeId &&
   left.dueDate === right.dueDate &&
   left.description === right.description;
-
-const formatPillDate = (dateStr?: string): string | null => {
-  if (!dateStr) return null;
-  const [y, m, d] = dateStr.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-};
 
 const toDateInputValue = (value?: string) => {
   if (!value) return "";
@@ -254,10 +244,10 @@ export const SidePanel = ({
       setChecklistItems(initialChecklist);
       initialChecklistRef.current = initialChecklist;
     }
-  // Use stable identity keys (id + updated_at) instead of the task object reference.
-  // Zustand creates new task objects on every store mutation, so using `task` directly
-  // would reset the snapshot (and lose hasUnsavedChanges) on any unrelated store update.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Use stable identity keys (id + updated_at) instead of the task object reference.
+    // Zustand creates new task objects on every store mutation, so using `task` directly
+    // would reset the snapshot (and lose hasUnsavedChanges) on any unrelated store update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCreateMode, task?.id, task?.updated_at]);
 
   useEffect(() => {
@@ -375,7 +365,7 @@ export const SidePanel = ({
       blocking: prev.blocking.filter((d) => d.id !== depId),
       blocked_by: prev.blocked_by.filter((d) => d.id !== depId),
     }));
-    await taskService.removeDependency(task.id, depId).catch(() => {});
+    await taskService.removeDependency(task.id, depId).catch(() => { });
   };
 
   const hasUnsavedChanges = useMemo(() => {
@@ -436,13 +426,13 @@ export const SidePanel = ({
       updated_at: now,
       user: user
         ? {
-            id: user.id,
-            display_name: profile?.display_name ?? undefined,
-            first_name: profile?.first_name ?? undefined,
-            last_name: profile?.last_name ?? undefined,
-            avatar_url: profile?.avatar_url ?? undefined,
-            email: profile?.email ?? user.email ?? undefined,
-          }
+          id: user.id,
+          display_name: profile?.display_name ?? undefined,
+          first_name: profile?.first_name ?? undefined,
+          last_name: profile?.last_name ?? undefined,
+          avatar_url: profile?.avatar_url ?? undefined,
+          email: profile?.email ?? user.email ?? undefined,
+        }
         : undefined,
     };
 
@@ -544,13 +534,13 @@ export const SidePanel = ({
     const assigneeId = member?.user_id;
     const assignee = member?.user
       ? {
-          id: member.user.id,
-          display_name: member.user.display_name,
-          avatar_url: member.user.avatar_url,
-          email: member.user.email,
-          first_name: member.user.first_name,
-          last_name: member.user.last_name,
-        }
+        id: member.user.id,
+        display_name: member.user.display_name,
+        avatar_url: member.user.avatar_url,
+        email: member.user.email,
+        first_name: member.user.first_name,
+        last_name: member.user.last_name,
+      }
       : undefined;
 
     if (isCreateMode) {
@@ -563,10 +553,10 @@ export const SidePanel = ({
       setEditedTask((prev) =>
         prev
           ? {
-              ...prev,
-              assignee_id: assigneeId,
-              assignee,
-            }
+            ...prev,
+            assignee_id: assigneeId,
+            assignee,
+          }
           : prev,
       );
     }
@@ -909,34 +899,17 @@ export const SidePanel = ({
         </div>
 
         {/* Due Date */}
-        <div className="relative flex items-center gap-1.5 pl-2 pr-2.5 h-7 text-xs font-medium rounded-full border border-gray-200 bg-white cursor-pointer hover:bg-gray-50 transition-colors">
-          <Calendar className="w-3 h-3 text-gray-400 shrink-0" />
-          <span
-            className={
-              (isCreateMode ? toDateInputValue(newTaskData.due_date) : toDateInputValue(editedTask?.due_date))
-                ? "text-gray-700"
-                : "text-gray-400"
+        <DueDatePicker
+          value={isCreateMode ? toDateInputValue(newTaskData.due_date) : toDateInputValue(editedTask?.due_date)}
+          onChange={(dueDate) => {
+            if (isCreateMode) {
+              setNewTaskData({ ...newTaskData, due_date: dueDate });
+            } else {
+              setEditedTask(editedTask ? { ...editedTask, due_date: dueDate } : null);
             }
-          >
-            {formatPillDate(
-              isCreateMode ? toDateInputValue(newTaskData.due_date) : toDateInputValue(editedTask?.due_date),
-            ) ?? "Due date"}
-          </span>
-          <input
-            type="date"
-            value={isCreateMode ? toDateInputValue(newTaskData.due_date) : toDateInputValue(editedTask?.due_date)}
-            onChange={(e) => {
-              const dueDate = e.target.value || undefined;
-              if (isCreateMode) {
-                setNewTaskData({ ...newTaskData, due_date: dueDate });
-              } else {
-                setEditedTask(editedTask ? { ...editedTask, due_date: dueDate } : null);
-              }
-            }}
-            disabled={isInteractionDisabled}
-            className="absolute inset-0 opacity-0 cursor-pointer w-full disabled:cursor-not-allowed"
-          />
-        </div>
+          }}
+          disabled={isInteractionDisabled}
+        />
       </div>
 
       {/* Tabs - only show in edit mode */}
@@ -946,11 +919,10 @@ export const SidePanel = ({
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 ${
-                activeTab === tab
-                  ? "text-primary border-primary"
-                  : "text-gray-600 hover:text-gray-900 border-transparent"
-              }`}
+              className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 ${activeTab === tab
+                ? "text-primary border-primary"
+                : "text-gray-600 hover:text-gray-900 border-transparent"
+                }`}
             >
               {tab === "details" ? "Overview" : tab === "comments" ? "Comments" : "History"}
             </button>
@@ -1056,11 +1028,10 @@ export const SidePanel = ({
                         setChecklistItems(next);
                         if (editedTask) setEditedTask({ ...editedTask, checklist: next });
                       }}
-                      className={`shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${
-                        item.completed
-                          ? "border-emerald-500 bg-emerald-500"
-                          : "border-gray-300 bg-white"
-                      }`}
+                      className={`shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${item.completed
+                        ? "border-emerald-500 bg-emerald-500"
+                        : "border-gray-300 bg-white"
+                        }`}
                     >
                       {item.completed && <Check className="w-2.5 h-2.5 text-white" />}
                     </button>

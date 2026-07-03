@@ -221,7 +221,7 @@ export class UpdateTaskDto {
   status?: string;
   @IsUUID() @IsOptional() assignee_id?: string;
   @IsNumber() @IsOptional() @Min(0) position?: number;
-  @IsDateString() @IsOptional() due_date?: string;
+  @IsDateString() @IsOptional() due_date?: string | null;
   @IsDateString() @IsOptional() completed_at?: string;
   @IsIn(['real_work', 'training']) @IsOptional() work_type?: 'real_work' | 'training';
   @IsArray() @IsOptional() @ValidateNested({ each: true }) @Type(() => ChecklistItemDto)
