@@ -2,23 +2,34 @@ import { Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { usePresentationContext } from "@/contexts/PresentationContext";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 // Full-screen hero background video: a real in-app highlight (roadmap canvas →
 // milestones timeline → AI assistant), recorded with Playwright and served from
 // web/public/. A dark gradient overlays it so reduced-motion users (for whom the
 // video is hidden) still see an intentional hero. To refresh the footage, re-run
 // `node playwright/record-highlight.mjs` and re-encode to web/public/hero-highlight.mp4.
-// Bump the ?v= query whenever the clip is re-recorded — the filename is stable
+// Bump the ?v= query whenever a clip is re-recorded — the filename is stable
 // and served with a 4h browser cache, so the version param forces a refetch.
+// There are two cuts of the same tour: a 16:9 landscape clip for desktop and a
+// 9:19.5 portrait clip for phones (re-run `record-highlight-mobile.mjs`).
 const HERO_VIDEO_SRC = "/hero-highlight.mp4?v=2";
+const HERO_VIDEO_SRC_MOBILE = "/hero-highlight-mobile.mp4?v=1";
 
 export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}) => {
   const { goToSection } = usePresentationContext();
+  // Serve the portrait clip on phones and the landscape clip on desktop —
+  // object-cover would otherwise crop the 16:9 footage to a narrow vertical
+  // slice on a phone screen. `key` forces the <video> to reload its source when
+  // the breakpoint flips.
+  const isMobile = useIsMobile();
+  const videoSrc = isMobile ? HERO_VIDEO_SRC_MOBILE : HERO_VIDEO_SRC;
 
   return (
     <section className="relative -mt-20 flex min-h-screen items-center justify-center overflow-hidden bg-slate-950">
       {/* Background video — hidden for users who prefer reduced motion */}
       <video
+        key={videoSrc}
         className="absolute inset-0 h-full w-full object-cover motion-reduce:hidden"
         autoPlay
         loop
@@ -27,7 +38,7 @@ export const HeroSection = ({ isActive: _isActive }: { isActive?: boolean } = {}
         preload="metadata"
         aria-hidden="true"
       >
-        <source src={HERO_VIDEO_SRC} type="video/mp4" />
+        <source src={videoSrc} type="video/mp4" />
       </video>
 
       {/* Ambient glow (visible through the video and when it is absent) */}

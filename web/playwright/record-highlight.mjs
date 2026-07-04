@@ -27,8 +27,11 @@ const OUT_DIR = process.env.OUT_DIR || "C:/tmp/pw-record";
 const STORAGE_STATE = process.env.STORAGE_STATE || "playwright/.auth/user.json";
 const HEADLESS = process.env.HEADLESS !== "0";
 const [VPW, VPH] = (process.env.VIEWPORT || "1440x810").split("x").map(Number);
-const RW = 1920;
-const RH = 1080;
+// Output (upscale) size — landscape 1920×1080 by default; for the mobile hero we
+// record a portrait viewport (e.g. 540x960) and upscale to 1080×1920. Keep the
+// output aspect ratio equal to the viewport's so ffmpeg scales without padding.
+const RW = Number(process.env.OUT_W) || 1920;
+const RH = Number(process.env.OUT_H) || 1080;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const roadmapUrl = `${BASE_URL}/project/${PROJECT_ID}/roadmap/${ROADMAP_ID}?view=roadmapView`;
