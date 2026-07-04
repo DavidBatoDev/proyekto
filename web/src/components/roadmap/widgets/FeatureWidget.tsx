@@ -97,8 +97,10 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   );
   const descriptionRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const taskListRef = useRef<HTMLDivElement>(null);
 
   const [hasOverflow, setHasOverflow] = useState(false);
+  const [taskListHasScroll, setTaskListHasScroll] = useState(false);
   const [isPulsing, setIsPulsing] = useState(false);
   const [isCardTaskDropActive, setIsCardTaskDropActive] = useState(false);
   const [isAddTaskDropActive, setIsAddTaskDropActive] = useState(false);
@@ -172,6 +174,15 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     if (!el) return;
     setHasOverflow(el.scrollHeight > el.clientHeight + 1);
   }, [feature.description]);
+
+  useEffect(() => {
+    const el = taskListRef.current;
+    if (!el) {
+      setTaskListHasScroll(false);
+      return;
+    }
+    setTaskListHasScroll(el.scrollHeight > el.clientHeight + 1);
+  }, [feature.tasks]);
 
   useEffect(() => {
     if (isReducedMotion) {
@@ -529,7 +540,8 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
 
                 {/* Sortable task list */}
                 <div
-                  className="max-h-[240px] overflow-y-auto"
+                  ref={taskListRef}
+                  className={`nowheel max-h-[240px] overflow-y-auto ${taskListHasScroll ? "pl-2.5" : ""} [scrollbar-width:thin] [scrollbar-color:transparent_transparent] hover:[scrollbar-color:theme(colors.gray.300)_white] [&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar-track]:bg-white [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-white [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:transition-colors [&:hover::-webkit-scrollbar-thumb]:bg-gray-300 [&:hover::-webkit-scrollbar-thumb:hover]:bg-gray-400`}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <SortableTaskList
