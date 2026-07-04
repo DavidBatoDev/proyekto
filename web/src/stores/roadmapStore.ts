@@ -90,6 +90,7 @@ interface FeatureData {
   is_deliverable: boolean;
   start_date?: string;
   end_date?: string;
+  assignee_ids?: string[];
 }
 
 interface RoadmapActions {
@@ -1314,6 +1315,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         is_deliverable: data.is_deliverable,
         start_date: data.start_date,
         end_date: data.end_date,
+        assignee_ids: data.assignee_ids,
       });
 
       set((state) => ({
@@ -1405,6 +1407,9 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         actual_hours: feature.actual_hours,
         start_date: feature.start_date ?? null,
         end_date: feature.end_date ?? null,
+        // Only sent when the caller explicitly set the feature team;
+        // undefined tells the backend to leave assignees untouched.
+        assignee_ids: feature.assignee_ids,
       });
 
       set((state) => ({
@@ -1794,6 +1799,8 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
               description: data.description,
               checklist: data.checklist,
               assignee: data.assignee,
+              assignee_ids: data.assignee_ids,
+              assignees: data.assignees,
               labels: data.labels,
             };
 
@@ -1825,6 +1832,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         priority: data.priority || "medium",
         work_type: data.work_type || "real_work",
         assignee_id: data.assignee_id,
+        assignee_ids: data.assignee_ids,
         position: optimisticPosition,
         due_date: data.due_date,
         checklist: data.checklist ?? [],
@@ -1930,6 +1938,9 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         work_type: task.work_type,
         position: task.position ?? undefined,
         assignee_id: task.assignee_id ?? undefined,
+        // Only sent when the caller explicitly set the multi-assignee list;
+        // undefined tells the backend to leave assignees untouched.
+        assignee_ids: task.assignee_ids,
         due_date: dueDatePayload,
         completed_at: task.completed_at ?? undefined,
         checklist: task.checklist,

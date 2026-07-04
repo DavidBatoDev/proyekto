@@ -10,9 +10,21 @@ import {
 } from './roadmaps.repository.interface';
 import { CreateRoadmapDto, UpdateRoadmapDto } from '../dto/roadmaps.dto';
 
+const ASSIGNEE_PROFILE_COLS =
+  'id, display_name, avatar_url, email, first_name, last_name';
+
 @Injectable()
 export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
   constructor(@Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient) {}
+
+  // Join embeds arrive as `[{ profile: {...} }]`; flatten to a plain profile
+  // array so the API contract exposes `assignees: [{...}]`.
+  private flattenAssignees(row: any): any[] {
+    const raw = Array.isArray(row?.assignees) ? row.assignees : [];
+    return raw
+      .map((entry: any) => entry?.profile)
+      .filter((p: any) => p && typeof p.id === 'string');
+  }
 
   private sortByPosition<T extends { position?: number }>(items: T[]): T[] {
     return [...items].sort((a, b) => {
@@ -32,9 +44,13 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
         Array.isArray(epic?.features) ? epic.features : [],
       ).map((feature: any) => ({
         ...feature,
+        assignees: this.flattenAssignees(feature),
         tasks: this.sortByPosition(
           Array.isArray(feature?.tasks) ? feature.tasks : [],
-        ),
+        ).map((task: any) => ({
+          ...task,
+          assignees: this.flattenAssignees(task),
+        })),
       }));
 
       return {
@@ -59,10 +75,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
         .select('id')
         .or(`client_id.eq.${userId},consultant_id.eq.${userId}`),
       // Slice 3b: project membership now lives in project_shares.
-      this.db
-        .from('project_access')
-        .select('project_id')
-        .eq('user_id', userId),
+      this.db.from('project_access').select('project_id').eq('user_id', userId),
     ]);
 
     if (principalError) throw new Error(principalError.message);
@@ -229,22 +242,26 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     const includeTaskAssigneeProfile =
       options?.includeTaskAssigneeProfile !== false;
     const taskSelect = includeTaskAssigneeProfile
-      ? 'tasks:roadmap_tasks(*, assignee:profiles(id, display_name, avatar_url, email, first_name, last_name))'
+      ? `tasks:roadmap_tasks(*, assignee:profiles(${ASSIGNEE_PROFILE_COLS}), assignees:roadmap_task_assignees(profile:profiles(${ASSIGNEE_PROFILE_COLS})))`
       : 'tasks:roadmap_tasks(*)';
+    const featureSelect = `features:roadmap_features(*, ${taskSelect}, assignees:roadmap_feature_assignees(profile:profiles(${ASSIGNEE_PROFILE_COLS})))`;
 
-    const query = this.db
-      .from('roadmaps')
-      .select(
-        `
+    // Widened to `string` so Supabase skips literal-type parsing of this
+    // dynamically-built select (the nested embeds exceed its parser); the
+    // result is consumed as `any` and normalized below.
+    const selectString: string = `
         *,
         project:projects(id, title),
         milestones:roadmap_milestones(*),
-        epics:roadmap_epics(*, features:roadmap_features(*, ${taskSelect}))
-      `,
-      )
-      .eq('id', id);
+        epics:roadmap_epics(*, ${featureSelect})
+      `;
 
-    const { data, error } = await query.single();
+    const query = this.db.from('roadmaps').select(selectString).eq('id', id);
+
+    const { data, error } = (await query.single()) as {
+      data: any;
+      error: any;
+    };
     if (error && error.code !== 'PGRST116') throw new Error(error.message);
 
     if (!data) return null;
@@ -292,7 +309,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
         *,
         project:projects(id, title),
         milestones:roadmap_milestones(*),
-        epics:roadmap_epics(*, features:roadmap_features(*, tasks:roadmap_tasks(*, assignee:profiles(id, display_name, avatar_url, email, first_name, last_name))))
+        epics:roadmap_epics(*, features:roadmap_features(*, tasks:roadmap_tasks(*, assignee:profiles(${ASSIGNEE_PROFILE_COLS}), assignees:roadmap_task_assignees(profile:profiles(${ASSIGNEE_PROFILE_COLS}))), assignees:roadmap_feature_assignees(profile:profiles(${ASSIGNEE_PROFILE_COLS}))))
       `,
       )
       .in('id', [...roadmapIds])

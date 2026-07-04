@@ -51,7 +51,7 @@ export class TasksService {
       'roadmap.create_tasks',
     );
     const task = await this.repo.create(dto, userId);
-    await this.notifyTaskAssignee(task, userId);
+    await this.notifyTaskAssignees(task, this.assigneeIdsOf(task), userId);
     await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
     this.notify(
       await this.roadmapAuthz.resolveRoadmapId({ featureId: dto.feature_id }),
@@ -80,9 +80,12 @@ export class TasksService {
       },
       userId,
     );
-    await this.notifyTaskAssignee(task, userId);
+    await this.notifyTaskAssignees(task, this.assigneeIdsOf(task), userId);
     await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
-    this.notify(await this.roadmapAuthz.resolveRoadmapId({ featureId }), userId);
+    this.notify(
+      await this.roadmapAuthz.resolveRoadmapId({ featureId }),
+      userId,
+    );
     return task;
   }
 
@@ -91,13 +94,19 @@ export class TasksService {
     if (!existing) throw new NotFoundException('Task not found');
     await this.roadmapAuthz.assertTaskPermission(id, userId, 'roadmap.edit');
     const task = await this.repo.update(id, dto, userId);
-    const previousAssignee = existing.assignee_id ?? null;
-    const nextAssignee = task?.assignee_id ?? null;
-    if (nextAssignee && nextAssignee !== previousAssignee) {
-      await this.notifyTaskAssignee(task, userId);
+    // Notify only assignees that are newly added by this update.
+    const previousAssignees = new Set(this.assigneeIdsOf(existing));
+    const newlyAssigned = this.assigneeIdsOf(task).filter(
+      (assigneeId) => !previousAssignees.has(assigneeId),
+    );
+    if (newlyAssigned.length) {
+      await this.notifyTaskAssignees(task, newlyAssigned, userId);
     }
     await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
-    this.notify(await this.roadmapAuthz.resolveRoadmapId({ taskId: id }), userId);
+    this.notify(
+      await this.roadmapAuthz.resolveRoadmapId({ taskId: id }),
+      userId,
+    );
     return task;
   }
 
@@ -113,14 +122,21 @@ export class TasksService {
     );
     const reordered = await this.repo.bulkReorder(featureId, dto);
     await this.cacheInvalidation.invalidatePublicRoadmapTemplatesCache();
-    this.notify(await this.roadmapAuthz.resolveRoadmapId({ featureId }), userId);
+    this.notify(
+      await this.roadmapAuthz.resolveRoadmapId({ featureId }),
+      userId,
+    );
     return reordered;
   }
 
   async remove(id: string, userId: string) {
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundException('Task not found');
-    await this.roadmapAuthz.assertTaskPermission(id, userId, 'roadmap.edit_tasks');
+    await this.roadmapAuthz.assertTaskPermission(
+      id,
+      userId,
+      'roadmap.edit_tasks',
+    );
     // The parent feature outlives the task — resolve via it (no post-delete read).
     const featureId =
       typeof existing.feature_id === 'string' ? existing.feature_id : null;
@@ -188,7 +204,9 @@ export class TasksService {
         .select('id')
         .single();
       if (createEpicErr || !createdEpic) {
-        throw new Error(createEpicErr?.message ?? 'Failed to create default epic');
+        throw new Error(
+          createEpicErr?.message ?? 'Failed to create default epic',
+        );
       }
       epicId = createdEpic.id as string;
     }
@@ -220,10 +238,28 @@ export class TasksService {
     return createdFeature.id as string;
   }
 
-  private async notifyTaskAssignee(task: any, actorId: string): Promise<void> {
-    const assigneeId =
-      typeof task?.assignee_id === 'string' ? task.assignee_id : null;
-    if (!assigneeId || assigneeId === actorId) return;
+  /** Collects the full assignee id set of a task, tolerating both the legacy
+   * single assignee_id and the normalized assignees[] array. */
+  private assigneeIdsOf(task: any): string[] {
+    const ids = new Set<string>();
+    if (Array.isArray(task?.assignees)) {
+      for (const a of task.assignees) {
+        if (typeof a?.id === 'string') ids.add(a.id);
+      }
+    }
+    if (typeof task?.assignee_id === 'string') ids.add(task.assignee_id);
+    return [...ids];
+  }
+
+  private async notifyTaskAssignees(
+    task: any,
+    assigneeIds: string[],
+    actorId: string,
+  ): Promise<void> {
+    const recipients = [...new Set(assigneeIds)].filter(
+      (assigneeId) => assigneeId && assigneeId !== actorId,
+    );
+    if (!recipients.length) return;
 
     const title =
       typeof task?.title === 'string' && task.title.trim().length > 0
@@ -242,31 +278,31 @@ export class TasksService {
         .eq('id', featureId)
         .maybeSingle();
       if (!error) {
-        const row = (data ?? null) as
-          | {
-              epic: {
-                roadmap: { project_id: string | null } | null;
-              } | null;
-            }
-          | null;
+        const row = (data ?? null) as {
+          epic: {
+            roadmap: { project_id: string | null } | null;
+          } | null;
+        } | null;
         projectId = row?.epic?.roadmap?.project_id ?? null;
       }
     }
 
-    await this.notifications.createNotification({
-      user_id: assigneeId,
-      project_id: projectId ?? undefined,
-      type_name: 'task_assigned',
-      actor_id: actorId,
-      content: {
-        task_id: task?.id ?? null,
-        task_title: title,
-        message: `You were assigned to "${title}".`,
-      },
-      link_url:
-        projectId && task?.id
-          ? `/project/${projectId}/roadmap?taskId=${task.id}`
-          : undefined,
-    });
+    for (const assigneeId of recipients) {
+      await this.notifications.createNotification({
+        user_id: assigneeId,
+        project_id: projectId ?? undefined,
+        type_name: 'task_assigned',
+        actor_id: actorId,
+        content: {
+          task_id: task?.id ?? null,
+          task_title: title,
+          message: `You were assigned to "${title}".`,
+        },
+        link_url:
+          projectId && task?.id
+            ? `/project/${projectId}/roadmap?taskId=${task.id}`
+            : undefined,
+      });
+    }
   }
 }

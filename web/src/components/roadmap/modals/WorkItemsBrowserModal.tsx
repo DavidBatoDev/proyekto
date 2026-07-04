@@ -80,9 +80,7 @@ function ColumnRow({
 			type="button"
 			onClick={onClick}
 			className={`group flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
-				isActive
-					? "bg-primary text-white"
-					: "text-slate-700 hover:bg-slate-50"
+				isActive ? "bg-primary text-white" : "text-slate-700 hover:bg-slate-50"
 			}`}
 		>
 			<div className="min-w-0">
@@ -186,7 +184,10 @@ export function WorkItemsBrowserModal({
 
 	const selectedRoadmap = useMemo(() => {
 		if (!selectedRoadmapId) return null;
-		return (roadmaps ?? []).find((roadmap) => roadmap.id === selectedRoadmapId) ?? null;
+		return (
+			(roadmaps ?? []).find((roadmap) => roadmap.id === selectedRoadmapId) ??
+			null
+		);
 	}, [roadmaps, selectedRoadmapId]);
 
 	const effectiveProjectId = useMemo(() => {
@@ -255,6 +256,7 @@ export function WorkItemsBrowserModal({
 		is_deliverable: boolean;
 		start_date?: string;
 		end_date?: string;
+		assignee_ids?: string[];
 	}) => {
 		if (!selectedEpicId) return;
 		const epicBefore = useRoadmapStore
@@ -267,6 +269,7 @@ export function WorkItemsBrowserModal({
 			is_deliverable: data.is_deliverable,
 			start_date: data.start_date,
 			end_date: data.end_date,
+			assignee_ids: data.assignee_ids,
 		});
 		const newId = await detectNewId(beforeIds, () => {
 			const epic = useRoadmapStore

@@ -25,12 +25,16 @@ const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(
 	function CardSurface({ row, overlay, dragging, className, ...rest }, ref) {
 		const { task, feature, epic, milestone, project } = row;
 
-		const assigneeLabel =
-			task.assignee?.display_name ||
-			[task.assignee?.first_name, task.assignee?.last_name]
-				.filter(Boolean)
-				.join(" ") ||
-			task.assignee?.email;
+		const assigneeProfiles = task.assignees?.length
+			? task.assignees
+			: task.assignee
+				? [task.assignee]
+				: [];
+		const nameOfProfile = (p: (typeof assigneeProfiles)[number]) =>
+			p.display_name ||
+			[p.first_name, p.last_name].filter(Boolean).join(" ") ||
+			p.email ||
+			"Member";
 
 		const dueDate = task.due_date ? new Date(task.due_date) : null;
 		const isOverdue =
@@ -97,17 +101,35 @@ const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(
 							</span>
 						)}
 					</div>
-					{assigneeLabel && (
-						<div className="flex items-center gap-1">
-							{task.assignee?.avatar_url ? (
-								<img
-									src={task.assignee.avatar_url}
-									alt={assigneeLabel}
-									className="w-5 h-5 rounded-full"
-								/>
-							) : (
-								<div className="w-5 h-5 rounded-full bg-black text-white flex items-center justify-center text-[10px] font-medium">
-									{assigneeLabel.charAt(0).toUpperCase()}
+					{assigneeProfiles.length > 0 && (
+						<div className="flex items-center">
+							{assigneeProfiles.slice(0, 3).map((profile, index) => {
+								const label = nameOfProfile(profile);
+								return profile.avatar_url ? (
+									<img
+										key={profile.id}
+										src={profile.avatar_url}
+										alt={label}
+										title={label}
+										className={`w-5 h-5 rounded-full ring-1 ring-white ${
+											index > 0 ? "-ml-1.5" : ""
+										}`}
+									/>
+								) : (
+									<div
+										key={profile.id}
+										title={label}
+										className={`w-5 h-5 rounded-full bg-black text-white flex items-center justify-center text-[10px] font-medium ring-1 ring-white ${
+											index > 0 ? "-ml-1.5" : ""
+										}`}
+									>
+										{label.charAt(0).toUpperCase()}
+									</div>
+								);
+							})}
+							{assigneeProfiles.length > 3 && (
+								<div className="w-5 h-5 -ml-1.5 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-[9px] font-semibold ring-1 ring-white">
+									+{assigneeProfiles.length - 3}
 								</div>
 							)}
 						</div>

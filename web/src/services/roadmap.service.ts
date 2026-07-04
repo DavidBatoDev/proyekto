@@ -244,6 +244,7 @@ export interface CreateFeatureDto {
 	estimated_hours?: number;
 	start_date?: string;
 	end_date?: string;
+	assignee_ids?: string[];
 }
 
 export interface UpdateFeatureDto {
@@ -256,6 +257,7 @@ export interface UpdateFeatureDto {
 	actual_hours?: number;
 	start_date?: string | null;
 	end_date?: string | null;
+	assignee_ids?: string[];
 }
 
 export interface ReorderFeatureDto {
@@ -278,6 +280,7 @@ export interface CreateTaskDto {
 	work_type?: TaskWorkType;
 	position?: number;
 	assignee_id?: string | null;
+	assignee_ids?: string[];
 	due_date?: string;
 	checklist?: ChecklistItem[];
 }
@@ -299,6 +302,7 @@ export interface UpdateTaskDto {
 	work_type?: TaskWorkType;
 	position?: number;
 	assignee_id?: string | null;
+	assignee_ids?: string[];
 	due_date?: string | null;
 	completed_at?: string;
 	checklist?: ChecklistItem[];
