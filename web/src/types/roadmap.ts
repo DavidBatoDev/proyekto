@@ -133,6 +133,9 @@ export interface RoadmapFeature {
   end_date?: string;
   created_at: string;
   updated_at: string;
+  // The explicit "feature team". Write via assignee_ids; read via assignees.
+  assignee_ids?: string[];
+  assignees?: AssigneeProfile[];
   // Computed fields
   progress?: number;
   comments?: Comment[]; // Comments on this feature
@@ -145,11 +148,25 @@ export interface ChecklistItem {
   completed: boolean;
 }
 
+// A person who can be assigned to a task or feature. Shape mirrors the profile
+// columns embedded by the backend (`assignee:profiles(...)`).
+export interface AssigneeProfile {
+  id: string;
+  display_name?: string;
+  avatar_url?: string;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+}
+
 export interface RoadmapTask {
   id: string;
   feature_id: string;
   title: string;
+  // Legacy single-assignee FK, kept as the "primary" assignee (= assignees[0]).
   assignee_id?: string | null;
+  // Full multi-assignee set. Write via assignee_ids; read via assignees.
+  assignee_ids?: string[];
   status: TaskStatus;
   priority: TaskPriority;
   position: number;
@@ -161,14 +178,10 @@ export interface RoadmapTask {
   // Additional optional fields
   description?: string | null;
   checklist?: ChecklistItem[];
-  assignee?: {
-    id: string;
-    display_name?: string;
-    avatar_url?: string;
-    email?: string;
-    first_name?: string;
-    last_name?: string;
-  };
+  // Primary assignee profile (legacy single-assignee reads).
+  assignee?: AssigneeProfile;
+  // Full assignee profiles from the join table.
+  assignees?: AssigneeProfile[];
   labels?: string[];
 }
 

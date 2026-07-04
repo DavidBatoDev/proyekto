@@ -8,9 +8,85 @@ import {
   BulkReorderDto,
 } from '../dto/roadmaps.dto';
 
+const PROFILE_COLS =
+  'id, display_name, avatar_url, email, first_name, last_name';
+
+// Embeds the many-to-many assignees alongside the legacy single assignee. The
+// join rows come back as `[{ profile: {...} }]`; normalizeAssignees flattens
+// them to a plain `assignees: [{...}]` array for the API contract.
+const ASSIGNEES_EMBED = `assignees:roadmap_task_assignees(profile:profiles(${PROFILE_COLS}))`;
+
 @Injectable()
 export class TasksRepositorySupabase implements ITasksRepository {
   constructor(@Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient) {}
+
+  private normalizeAssignees<T extends { assignees?: any }>(
+    row: T | null,
+  ): T | null {
+    if (!row) return row;
+    const raw = Array.isArray(row.assignees) ? row.assignees : [];
+    const assignees = raw
+      .map((entry: any) => entry?.profile)
+      .filter((p: any) => p && typeof p.id === 'string');
+    return { ...row, assignees };
+  }
+
+  /** dto.assignee_ids is canonical when present; otherwise fall back to the
+   * legacy single assignee_id. Returns null when the caller didn't touch
+   * assignees at all (so update can skip syncing). */
+  private resolveAssigneeIds(dto: {
+    assignee_ids?: string[];
+    assignee_id?: string | null;
+  }): string[] | null {
+    if (dto.assignee_ids !== undefined) {
+      return [...new Set(dto.assignee_ids.filter(Boolean))];
+    }
+    if (dto.assignee_id !== undefined) {
+      return dto.assignee_id ? [dto.assignee_id] : [];
+    }
+    return null;
+  }
+
+  /** Reconciles the join table to exactly `assigneeIds`. Returns which ids were
+   * added/removed so callers can drive notifications and audit logging. */
+  private async syncTaskAssignees(
+    taskId: string,
+    assigneeIds: string[],
+    userId?: string,
+  ): Promise<{ added: string[]; removed: string[] }> {
+    const { data: existingRows, error: readErr } = await this.db
+      .from('roadmap_task_assignees')
+      .select('assignee_id')
+      .eq('task_id', taskId);
+    if (readErr) throw new Error(readErr.message);
+
+    const existing = new Set(
+      (existingRows ?? []).map((r: any) => r.assignee_id as string),
+    );
+    const next = new Set(assigneeIds);
+    const added = [...next].filter((id) => !existing.has(id));
+    const removed = [...existing].filter((id) => !next.has(id));
+
+    if (removed.length) {
+      const { error } = await this.db
+        .from('roadmap_task_assignees')
+        .delete()
+        .eq('task_id', taskId)
+        .in('assignee_id', removed);
+      if (error) throw new Error(error.message);
+    }
+    if (added.length) {
+      const { error } = await this.db.from('roadmap_task_assignees').insert(
+        added.map((assignee_id) => ({
+          task_id: taskId,
+          assignee_id,
+          assigned_by: userId ?? null,
+        })),
+      );
+      if (error) throw new Error(error.message);
+    }
+    return { added, removed };
+  }
 
   private async getNextPosition(featureId: string): Promise<number> {
     const { data, error } = await this.db
@@ -31,13 +107,11 @@ export class TasksRepositorySupabase implements ITasksRepository {
   async findByFeature(featureId: string): Promise<any[]> {
     const { data, error } = await this.db
       .from('roadmap_tasks')
-      .select(
-        '*, assignee:profiles(id, display_name, avatar_url, email, first_name, last_name)',
-      )
+      .select(`*, assignee:profiles(${PROFILE_COLS}), ${ASSIGNEES_EMBED}`)
       .eq('feature_id', featureId)
       .order('position', { ascending: true });
     if (error) throw new Error(error.message);
-    return data ?? [];
+    return (data ?? []).map((row) => this.normalizeAssignees(row));
   }
 
   async findByRoadmap(roadmapId: string): Promise<any[]> {
@@ -45,7 +119,8 @@ export class TasksRepositorySupabase implements ITasksRepository {
       .from('roadmap_tasks')
       .select(
         `*,
-         assignee:profiles(id, display_name, avatar_url, email, first_name, last_name),
+         assignee:profiles(${PROFILE_COLS}),
+         ${ASSIGNEES_EMBED},
          feature:roadmap_features!inner(
            id,
            title,
@@ -58,19 +133,17 @@ export class TasksRepositorySupabase implements ITasksRepository {
       .eq('feature.roadmap_id', roadmapId)
       .order('position', { ascending: true });
     if (error) throw new Error(error.message);
-    return data ?? [];
+    return (data ?? []).map((row) => this.normalizeAssignees(row));
   }
 
   async findById(id: string): Promise<any | null> {
     const { data, error } = await this.db
       .from('roadmap_tasks')
-      .select(
-        '*, assignee:profiles(id, display_name, avatar_url, email, first_name, last_name)',
-      )
+      .select(`*, assignee:profiles(${PROFILE_COLS}), ${ASSIGNEES_EMBED}`)
       .eq('id', id)
       .single();
     if (error && error.code !== 'PGRST116') throw new Error(error.message);
-    return data ?? null;
+    return this.normalizeAssignees(data ?? null);
   }
 
   private async logChanges(
@@ -107,13 +180,16 @@ export class TasksRepositorySupabase implements ITasksRepository {
         ? dto.position
         : await this.getNextPosition(dto.feature_id);
 
+    const assigneeIds = this.resolveAssigneeIds(dto) ?? [];
+    const primaryAssignee = assigneeIds[0] ?? null;
+
     const dbPayload = {
       feature_id: dto.feature_id,
       title: dto.title,
       description: dto.description ?? null,
       priority: dto.priority,
       status: dto.status ?? 'todo',
-      assignee_id: dto.assignee_id,
+      assignee_id: primaryAssignee,
       due_date: dto.due_date,
       position: resolvedPosition,
       work_type: dto.work_type ?? 'real_work',
@@ -122,18 +198,20 @@ export class TasksRepositorySupabase implements ITasksRepository {
     const { data, error } = await this.db
       .from('roadmap_tasks')
       .insert(dbPayload)
-      .select(
-        '*, assignee:profiles(id, display_name, avatar_url, email, first_name, last_name)',
-      )
+      .select('id')
       .single();
     if (error) throw new Error(error.message);
+
+    if (assigneeIds.length) {
+      await this.syncTaskAssignees(data.id, assigneeIds, userId);
+    }
 
     // Log creation
     await this.logChanges(data.id, userId, [
       { field: 'created', old: null, new: dto.title },
     ]).catch(() => {});
 
-    return data;
+    return this.findById(data.id);
   }
 
   async update(id: string, dto: UpdateTaskDto, userId?: string): Promise<any> {
@@ -142,12 +220,18 @@ export class TasksRepositorySupabase implements ITasksRepository {
       existing = await this.findById(id);
     }
 
+    const assigneeIds = this.resolveAssigneeIds(dto);
+    const touchesAssignees = assigneeIds !== null;
+    const primaryAssignee = touchesAssignees
+      ? (assigneeIds[0] ?? null)
+      : undefined;
+
     const dbPayload = {
       ...(dto.title !== undefined && { title: dto.title }),
       ...(dto.description !== undefined && { description: dto.description }),
       ...(dto.priority !== undefined && { priority: dto.priority }),
       ...(dto.status !== undefined && { status: dto.status }),
-      ...(dto.assignee_id !== undefined && { assignee_id: dto.assignee_id }),
+      ...(touchesAssignees && { assignee_id: primaryAssignee }),
       ...(dto.position !== undefined && { position: dto.position }),
       ...(dto.due_date !== undefined && { due_date: dto.due_date }),
       ...(dto.completed_at !== undefined && { completed_at: dto.completed_at }),
@@ -155,20 +239,31 @@ export class TasksRepositorySupabase implements ITasksRepository {
       ...(dto.checklist !== undefined && { checklist: dto.checklist }),
       updated_at: new Date().toISOString(),
     };
-    const { data, error } = await this.db
+    const { error } = await this.db
       .from('roadmap_tasks')
       .update(dbPayload)
-      .eq('id', id)
-      .select(
-        '*, assignee:profiles(id, display_name, avatar_url, email, first_name, last_name)',
-      )
-      .single();
+      .eq('id', id);
     if (error) throw new Error(error.message);
+
+    let assigneeChanges: { added: string[]; removed: string[] } = {
+      added: [],
+      removed: [],
+    };
+    if (touchesAssignees) {
+      assigneeChanges = await this.syncTaskAssignees(id, assigneeIds, userId);
+    }
 
     // Audit log — only tracked fields
     if (userId && existing) {
-      const tracked: Array<{ field: string; old: string | null; new: string | null }> = [];
-      const check = (field: string, getter: (t: any) => string | null | undefined) => {
+      const tracked: Array<{
+        field: string;
+        old: string | null;
+        new: string | null;
+      }> = [];
+      const check = (
+        field: string,
+        getter: (t: any) => string | null | undefined,
+      ) => {
         const oldVal = getter(existing) ?? null;
         const newVal = getter(dto) ?? null;
         if (newVal !== null && newVal !== oldVal) {
@@ -177,13 +272,17 @@ export class TasksRepositorySupabase implements ITasksRepository {
       };
       check('status', (t) => t.status);
       check('priority', (t) => t.priority);
-      check('assignee_id', (t) => t.assignee_id);
-      check('due_date', (t) => t.due_date);
       check('title', (t) => t.title);
+      for (const added of assigneeChanges.added) {
+        tracked.push({ field: 'assignee_added', old: null, new: added });
+      }
+      for (const removed of assigneeChanges.removed) {
+        tracked.push({ field: 'assignee_removed', old: removed, new: null });
+      }
       await this.logChanges(id, userId, tracked).catch(() => {});
     }
 
-    return data;
+    return this.findById(id);
   }
 
   async bulkReorder(featureId: string, dto: BulkReorderDto): Promise<void> {
