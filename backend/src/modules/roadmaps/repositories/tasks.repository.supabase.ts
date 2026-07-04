@@ -110,7 +110,7 @@ export class TasksRepositorySupabase implements ITasksRepository {
   async findByFeature(featureId: string): Promise<any[]> {
     const { data, error } = await this.db
       .from('roadmap_tasks')
-      .select(`*, assignee:profiles(${PROFILE_COLS}), ${ASSIGNEES_EMBED}`)
+      .select(`*, assignee:profiles!roadmap_tasks_assignee_id_fkey(${PROFILE_COLS}), ${ASSIGNEES_EMBED}`)
       .eq('feature_id', featureId)
       .order('position', { ascending: true });
     if (error) throw new Error(error.message);
@@ -122,7 +122,7 @@ export class TasksRepositorySupabase implements ITasksRepository {
       .from('roadmap_tasks')
       .select(
         `*,
-         assignee:profiles(${PROFILE_COLS}),
+         assignee:profiles!roadmap_tasks_assignee_id_fkey(${PROFILE_COLS}),
          ${ASSIGNEES_EMBED},
          feature:roadmap_features!inner(
            id,
@@ -142,7 +142,7 @@ export class TasksRepositorySupabase implements ITasksRepository {
   async findById(id: string): Promise<any | null> {
     const { data, error } = await this.db
       .from('roadmap_tasks')
-      .select(`*, assignee:profiles(${PROFILE_COLS}), ${ASSIGNEES_EMBED}`)
+      .select(`*, assignee:profiles!roadmap_tasks_assignee_id_fkey(${PROFILE_COLS}), ${ASSIGNEES_EMBED}`)
       .eq('id', id)
       .single();
     if (error && error.code !== 'PGRST116') throw new Error(error.message);

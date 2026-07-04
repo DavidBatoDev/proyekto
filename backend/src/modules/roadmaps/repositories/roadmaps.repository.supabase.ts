@@ -242,7 +242,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     const includeTaskAssigneeProfile =
       options?.includeTaskAssigneeProfile !== false;
     const taskSelect = includeTaskAssigneeProfile
-      ? `tasks:roadmap_tasks(*, assignee:profiles(${ASSIGNEE_PROFILE_COLS}), assignees:roadmap_task_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS})))`
+      ? `tasks:roadmap_tasks(*, assignee:profiles!roadmap_tasks_assignee_id_fkey(${ASSIGNEE_PROFILE_COLS}), assignees:roadmap_task_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS})))`
       : 'tasks:roadmap_tasks(*)';
     const featureSelect = `features:roadmap_features(*, ${taskSelect}, assignees:roadmap_feature_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS})))`;
 
@@ -309,7 +309,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
         *,
         project:projects(id, title),
         milestones:roadmap_milestones(*),
-        epics:roadmap_epics(*, features:roadmap_features(*, tasks:roadmap_tasks(*, assignee:profiles(${ASSIGNEE_PROFILE_COLS}), assignees:roadmap_task_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS}))), assignees:roadmap_feature_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS}))))
+        epics:roadmap_epics(*, features:roadmap_features(*, tasks:roadmap_tasks(*, assignee:profiles!roadmap_tasks_assignee_id_fkey(${ASSIGNEE_PROFILE_COLS}), assignees:roadmap_task_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS}))), assignees:roadmap_feature_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS}))))
       `,
       )
       .in('id', [...roadmapIds])
@@ -806,7 +806,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
       const { data: taskData, error: tasksError } = await this.db
         .from('roadmap_tasks')
         .select(
-          'id, feature_id, title, assignee_id, position, status, work_type, due_date, updated_at, assignee:profiles(id, display_name, avatar_url, email, first_name, last_name)',
+          'id, feature_id, title, assignee_id, position, status, work_type, due_date, updated_at, assignee:profiles!roadmap_tasks_assignee_id_fkey(id, display_name, avatar_url, email, first_name, last_name)',
         )
         .in('feature_id', featureIds)
         .order('position', { ascending: true });
