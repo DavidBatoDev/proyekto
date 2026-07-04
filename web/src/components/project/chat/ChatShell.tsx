@@ -34,10 +34,11 @@ export function ChatShell({
 }) {
   return (
     <div className="app-shell-bg h-full overflow-hidden">
-      <div className="h-full md:grid md:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_minmax(320px,340px)]">
+      {/* md: 2-column grid (sidebar + chat); xl: flex row so the chat expands smoothly when the details panel collapses */}
+      <div className="h-full md:grid md:grid-cols-[320px_minmax(0,1fr)] xl:flex">
 
         {/* ── Conversation list — full-screen page on mobile, static column on md+ ── */}
-        <div className={`h-full ${mobileView === "list" ? "block" : "hidden"} md:block`}>
+        <div className={`h-full xl:w-80 xl:shrink-0 ${mobileView === "list" ? "block" : "hidden"} md:block`}>
           {sidebar}
         </div>
 
@@ -45,6 +46,7 @@ export function ChatShell({
         <section
           className={`min-h-0 min-w-0 max-w-full flex-col overflow-hidden bg-white
             md:mx-4 md:my-4 md:h-[calc(100%-2rem)] md:rounded-[1.25rem] md:border md:border-[#c9d4e2] md:shadow-[0_16px_36px_rgba(15,23,42,0.1)]
+            xl:flex-1
             ${mobileView === "chat" ? "flex h-full" : "hidden"} md:flex`}
         >
           {centerShellOverride ? (
@@ -76,7 +78,8 @@ export function ChatShell({
         {/* ── Right panel ──────────────────────────────────────────────────────────
             Mobile (< md):  full-screen page, shown when mobileView === "info"
             Tablet (md–xl): fixed overlay sliding from the right
-            Desktop (xl+):  static grid column
+            Desktop (xl+):  flex column that animates its width so the chat
+                            expands/contracts in sync with the panel open state
         ─────────────────────────────────────────────────────────────────────── */}
 
         {/* Mobile full-screen info page */}
@@ -90,7 +93,7 @@ export function ChatShell({
           </div>
         )}
 
-        {/* Tablet overlay + desktop static column */}
+        {/* Tablet overlay (md–xl): slides in from the right as a fixed panel */}
         <AnimatePresence>
           {profilePanel && isProfilePanelOpen && (
             <>
@@ -109,13 +112,26 @@ export function ChatShell({
                 animate={{ x: 0, opacity: 1 }}
                 exit={{ x: 24, opacity: 0 }}
                 transition={{ duration: 0.22, ease: "easeOut" }}
-                className="fixed right-0 top-0 z-50 hidden h-full w-[340px] max-w-[92vw] overflow-y-auto border-l border-slate-200 bg-slate-50 shadow-[0_16px_40px_rgba(0,0,0,0.16)] md:block xl:static xl:shadow-none"
+                className="fixed right-0 top-0 z-50 hidden h-full w-[340px] max-w-[92vw] overflow-y-auto border-l border-slate-200 bg-slate-50 shadow-[0_16px_40px_rgba(0,0,0,0.16)] md:block xl:hidden"
               >
                 {profilePanel}
               </motion.aside>
             </>
           )}
         </AnimatePresence>
+
+        {/* Desktop panel (xl+): always in the flex flow, width animates open/closed */}
+        {profilePanel && (
+          <motion.div
+            className="hidden xl:block shrink-0 overflow-hidden border-l border-slate-200 bg-slate-50"
+            animate={{ width: isProfilePanelOpen ? 340 : 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+          >
+            <div className="h-full w-[340px] overflow-y-auto">
+              {profilePanel}
+            </div>
+          </motion.div>
+        )}
       </div>
     </div>
   );

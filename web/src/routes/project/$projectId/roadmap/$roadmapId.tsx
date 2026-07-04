@@ -25,17 +25,19 @@ export const Route = createFileRoute("/project/$projectId/roadmap/$roadmapId")({
     nodeId?: string;
     node?: string;
     view?: RoadmapDetailView;
+    commentId?: string;
   } => ({
     nodeId: parseStringParam(search.nodeId),
     node: parseStringParam(search.node),
     view: parseViewParam(search.view),
+    commentId: parseStringParam(search.commentId),
   }),
   component: RoadmapViewPage,
 });
 
 function RoadmapViewPage() {
   const { projectId, roadmapId } = Route.useParams();
-  const { nodeId, node, view } = Route.useSearch();
+  const { nodeId, node, view, commentId } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const effectiveNodeId = nodeId ?? node;
   const resolveCanonicalNodeId = useRoadmapStore(
@@ -193,6 +195,7 @@ function RoadmapViewPage() {
       roadmapId={roadmapId}
       projectId={projectId}
       deepLinkNodeId={safeEffectiveNodeId ?? null}
+      deepLinkCommentId={commentId ?? null}
       urlView={view ?? null}
       onDeepLinkNodeConsumed={handleDeepLinkNodeConsumed}
       onViewChange={handleViewChange}

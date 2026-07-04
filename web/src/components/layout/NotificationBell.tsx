@@ -20,6 +20,9 @@ function notificationTitle(typeName?: string) {
 	if (typeName === "time_log_day_rejected") return "Daily logs rejected";
 	if (typeName === "time_log_comment_added") return "Time log comment";
 	if (typeName === "chat_mention") return "Mention";
+	if (typeName === "task_comment_mention") return "Mentioned in task";
+	if (typeName === "feature_comment_mention") return "Mentioned in feature";
+	if (typeName === "epic_comment_mention") return "Mentioned in epic";
 	return "Notification";
 }
 

@@ -8,6 +8,7 @@ import type {
 } from "@/types/roadmap";
 import { deriveFeatureStatus } from "@/utils/featureStatus";
 import { useUser } from "@/auth";
+import { useRoadmapStore } from "@/stores/roadmapStore";
 import { RoadmapModalLayout } from "./RoadmapModalLayout";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { LabelSelector } from "@/components/common/LabelSelector";
@@ -85,6 +86,8 @@ export const EpicModal = ({
   isPendingCreate = false,
 }: EpicModalProps) => {
   const user = useUser();
+  const pendingCommentId = useRoadmapStore((s) => s.pendingCommentId);
+  const setPendingCommentId = useRoadmapStore((s) => s.setPendingCommentId);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<EpicPriority>("medium");
@@ -690,6 +693,8 @@ export const EpicModal = ({
           }
           isLoading={loadingComments}
           emptyMessage="No comments yet for this epic."
+          highlightCommentId={pendingCommentId ?? undefined}
+          onHighlightConsumed={() => setPendingCommentId(null)}
         />
       ) : (
         <div className="text-center py-8">

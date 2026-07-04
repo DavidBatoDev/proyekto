@@ -244,6 +244,7 @@ export interface CreateFeatureDto {
 	estimated_hours?: number;
 	start_date?: string;
 	end_date?: string;
+	assignee_ids?: string[];
 }
 
 export interface UpdateFeatureDto {
@@ -256,6 +257,7 @@ export interface UpdateFeatureDto {
 	actual_hours?: number;
 	start_date?: string | null;
 	end_date?: string | null;
+	assignee_ids?: string[];
 }
 
 export interface ReorderFeatureDto {
@@ -278,6 +280,7 @@ export interface CreateTaskDto {
 	work_type?: TaskWorkType;
 	position?: number;
 	assignee_id?: string | null;
+	assignee_ids?: string[];
 	due_date?: string;
 	checklist?: ChecklistItem[];
 }
@@ -299,6 +302,7 @@ export interface UpdateTaskDto {
 	work_type?: TaskWorkType;
 	position?: number;
 	assignee_id?: string | null;
+	assignee_ids?: string[];
 	due_date?: string | null;
 	completed_at?: string;
 	checklist?: ChecklistItem[];
@@ -946,9 +950,13 @@ export const taskService = {
 	 */
 	async reorder(featureId: string, reorders: ReorderTaskDto[]): Promise<void> {
 		try {
+			const items = reorders.map((item) => ({
+				id: item.task_id,
+				position: item.new_order_index,
+			}));
 			await apiClient.patch(`/api/tasks/reorder`, {
 				feature_id: featureId,
-				reorders,
+				items,
 			});
 		} catch (error) {
 			throw handleServiceError(error, `Reorder tasks in feature ${featureId}`);

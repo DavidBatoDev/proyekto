@@ -12,6 +12,8 @@ import {
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
 import { RedisCacheInvalidationService } from '../../../common/cache/redis-cache-invalidation.service';
 import { RealtimePublisher } from '../../realtime/realtime-publisher.service';
+import { NotificationsService } from '../../notifications/notifications.service';
+import { extractMentionedUserIds } from '../utils/mention-parser';
 
 export const FEATURES_REPOSITORY = Symbol('FEATURES_REPOSITORY');
 
@@ -22,6 +24,7 @@ export class FeaturesService {
     private readonly roadmapAuthz: RoadmapAuthorizationService,
     private readonly cacheInvalidation: RedisCacheInvalidationService,
     private readonly realtime: RealtimePublisher,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private notify(roadmapId: string | null, userId: string): void {
@@ -85,7 +88,51 @@ export class FeaturesService {
 
   async addComment(featureId: string, dto: AddCommentDto, userId: string) {
     await this.roadmapAuthz.assertFeatureCommentPermission(featureId, userId);
-    return this.repo.addComment(featureId, dto, userId);
+    const comment = await this.repo.addComment(featureId, dto, userId);
+
+    const commentId = (comment as { id?: string }).id;
+    void this.fireMentionNotifications(featureId, dto.content, userId, commentId).catch(
+      () => {},
+    );
+
+    return comment;
+  }
+
+  private async fireMentionNotifications(
+    featureId: string,
+    html: string,
+    authorId: string,
+    commentId?: string,
+  ): Promise<void> {
+    const mentionedIds = extractMentionedUserIds(html).filter(
+      (id) => id !== authorId,
+    );
+    if (!mentionedIds.length) return;
+
+    const roadmapId = await this.roadmapAuthz.resolveRoadmapId({ featureId });
+    const projectId = roadmapId
+      ? await this.roadmapAuthz.resolveProjectId(roadmapId)
+      : null;
+    const linkUrl =
+      projectId && roadmapId
+        ? `/project/${projectId}/roadmap/${roadmapId}?nodeId=${featureId}${commentId ? `&commentId=${commentId}` : ''}`
+        : null;
+
+    await Promise.allSettled(
+      mentionedIds.map((userId) =>
+        this.notificationsService.createNotification({
+          user_id: userId,
+          actor_id: authorId,
+          type_name: 'feature_comment_mention',
+          project_id: projectId ?? undefined,
+          link_url: linkUrl ?? undefined,
+          content: {
+            feature_id: featureId,
+            message: 'You were mentioned in a feature comment.',
+          },
+        }),
+      ),
+    );
   }
 
   async updateComment(

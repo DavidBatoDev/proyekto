@@ -83,6 +83,15 @@ export class RoadmapAuthorizationService {
   }
 
   /**
+   * Resolve the project_id that owns the given roadmap. Returns null if the
+   * roadmap is not found or is not attached to a project (personal roadmaps).
+   */
+  async resolveProjectId(roadmapId: string): Promise<string | null> {
+    const meta = await this.getRoadmapMeta(roadmapId);
+    return meta?.project_id ?? null;
+  }
+
+  /**
    * Resolve the owning roadmap id from whichever entity id is available.
    * Used by write services to address the realtime room. Reuses the same
    * lookups the permission checks walk. Returns null if nothing resolves.

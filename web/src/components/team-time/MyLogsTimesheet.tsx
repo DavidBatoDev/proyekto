@@ -98,7 +98,7 @@ function buildGridData(
 				projectId: log.project_id,
 				projectTitle: log.project?.title || log.project_id,
 				taskId: log.task_id,
-				taskTitle: log.task?.title || "—",
+				taskTitle: log.task?.title || "No task",
 				hoursByDay: {},
 				logsInPeriod: [],
 			});
@@ -687,7 +687,9 @@ export function MyLogsTimesheet({
 															{isRunningRow && (
 																<span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-sky-500" />
 															)}
-															<span className="truncate text-slate-600">
+															<span
+																className={`truncate ${task.taskId ? "text-slate-600" : "italic text-slate-400"}`}
+															>
 																{task.taskTitle}
 															</span>
 														</div>

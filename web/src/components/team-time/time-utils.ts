@@ -31,6 +31,20 @@ export const liveDurationSecondsFromLog = (log: TaskTimeLog, nowMs: number) => {
 	return Math.max(0, Math.floor((nowMs - started) / 1000));
 };
 
+/** Display name for a log's member, falling back through name parts to the raw id. */
+export function memberLabel(log: TaskTimeLog): string {
+	return (
+		log.member?.display_name ||
+		[log.member?.first_name, log.member?.last_name]
+			.filter(Boolean)
+			.join(" ")
+			.trim() ||
+		log.member?.email ||
+		log.member_user_id ||
+		"Unknown member"
+	);
+}
+
 export function initialsFromName(name?: string | null) {
 	const base = (name || "?").trim();
 	if (!base) return "?";
@@ -52,6 +66,62 @@ export function formatMoney(amount: number, currency: string): string {
 export function formatHours(seconds: number | null | undefined): string {
 	if (!seconds || seconds <= 0) return "0.00";
 	return (seconds / 3600).toFixed(2);
+}
+
+// ─── log time-range formatting (shared by My Logs + Team Logs) ───────
+const TIME_ONLY_FORMATTER = new Intl.DateTimeFormat(undefined, {
+	hour: "2-digit",
+	minute: "2-digit",
+});
+const SHORT_DATE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+	month: "short",
+	day: "numeric",
+	hour: "2-digit",
+	minute: "2-digit",
+});
+
+/** A log's start time, formatted time-only (em dash on an invalid date). */
+export function formatLogStart(started: Date): string {
+	return Number.isNaN(started.getTime()) ? "—" : TIME_ONLY_FORMATTER.format(started);
+}
+
+/**
+ * A log's end time. Time-only when it lands on the same calendar day as the
+ * start; includes the short date otherwise — so a multi-day log reads
+ * "09:02 PM – Jun 30, 09:02 PM" instead of a misleading "09:02 PM – 09:02 PM".
+ */
+export function formatLogEnd(started: Date, ended: Date): string {
+	if (Number.isNaN(ended.getTime())) return "—";
+	return started.toDateString() === ended.toDateString()
+		? TIME_ONLY_FORMATTER.format(ended)
+		: SHORT_DATE_TIME_FORMATTER.format(ended);
+}
+
+/**
+ * Logs longer than this are almost always a timer someone forgot to stop.
+ * Used to flag them in the UI and to confirm before recording on stop.
+ */
+export const LONG_LOG_THRESHOLD_SECONDS = 16 * 3600; // 16h
+
+/** True for a completed log whose duration exceeds LONG_LOG_THRESHOLD_SECONDS. */
+export function isUnusuallyLongLog(log: TaskTimeLog): boolean {
+	if (!log.ended_at) return false;
+	return (log.duration_seconds ?? 0) > LONG_LOG_THRESHOLD_SECONDS;
+}
+
+/**
+ * When stopping a timer that has run unusually long, ask the user to confirm
+ * before recording it — a forgotten timer would otherwise log a large amount
+ * of billable time. Returns true when it is safe to proceed with the stop.
+ */
+export function confirmStopLongTimer(elapsedSeconds: number): boolean {
+	if (elapsedSeconds <= LONG_LOG_THRESHOLD_SECONDS) return true;
+	const hours = (elapsedSeconds / 3600).toFixed(1);
+	return window.confirm(
+		`This timer has been running for ${hours} hours — unusually long, and a ` +
+			`forgotten timer will record a large amount of billable time.\n\n` +
+			`Stop and record it anyway?`,
+	);
 }
 
 /** Semantic badge classes for a time-log status. Shared across grids/inbox. */

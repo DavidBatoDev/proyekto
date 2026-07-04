@@ -72,6 +72,18 @@ function TeamTimeSettings() {
 		onError: (e: Error) => toast.error(e.message),
 	});
 
+	const currencyMutation = useMutation({
+		mutationFn: (currency: "USD" | "CAD" | "PHP") =>
+			updateTeam(teamId, { default_currency: currency }),
+		onSuccess: (updated) => {
+			toast.success(`Default currency set to ${updated.default_currency}`);
+			qc.invalidateQueries({ queryKey: ["teams", "detail", teamId] });
+			qc.invalidateQueries({ queryKey: ["team", teamId] });
+		},
+		onError: (e: Error) => toast.error(e.message),
+	});
+	const currency = (team?.default_currency ?? "USD") as "USD" | "CAD" | "PHP";
+
 	return (
 		<TeamSettingsLayout teamId={teamId} teamName={team?.name}>
 			<section className="space-y-3">
@@ -214,6 +226,38 @@ function TeamTimeSettings() {
 										>
 											{retroPolicyMutation.isPending ? "Saving..." : "Save policy"}
 										</button>
+									</div>
+								</div>
+							)}
+
+							{enabled && isOwner && (
+								<div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+									<p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+										Default currency
+									</p>
+									<p className="mt-1 text-xs text-slate-500">
+										Used as the fallback currency for member rates and new logs.
+										Existing logs keep the currency frozen when they were recorded.
+									</p>
+									<div className="mt-3 inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+										{(["USD", "CAD", "PHP"] as const).map((code) => {
+											const active = currency === code;
+											return (
+												<button
+													key={code}
+													type="button"
+													disabled={active || currencyMutation.isPending}
+													onClick={() => currencyMutation.mutate(code)}
+													className={
+														active
+															? "rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 shadow-sm"
+															: "rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-800 disabled:opacity-60"
+													}
+												>
+													{code}
+												</button>
+											);
+										})}
 									</div>
 								</div>
 							)}

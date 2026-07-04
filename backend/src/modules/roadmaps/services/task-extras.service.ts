@@ -29,7 +29,8 @@ export class TaskExtrasService {
     const comment = await this.repo.addComment(taskId, dto, userId);
 
     // Fire in-app notifications for @mentioned users (best-effort, non-blocking)
-    void this.fireMentionNotifications(taskId, dto.content, userId).catch(
+    const commentId = (comment as { id?: string }).id;
+    void this.fireMentionNotifications(taskId, dto.content, userId, commentId).catch(
       () => {},
     );
 
@@ -40,11 +41,21 @@ export class TaskExtrasService {
     taskId: string,
     html: string,
     authorId: string,
+    commentId?: string,
   ): Promise<void> {
     const mentionedIds = extractMentionedUserIds(html).filter(
       (id) => id !== authorId,
     );
     if (!mentionedIds.length) return;
+
+    const roadmapId = await this.roadmapAuthz.resolveRoadmapId({ taskId });
+    const projectId = roadmapId
+      ? await this.roadmapAuthz.resolveProjectId(roadmapId)
+      : null;
+    const linkUrl =
+      projectId && roadmapId
+        ? `/project/${projectId}/roadmap/${roadmapId}?nodeId=${taskId}${commentId ? `&commentId=${commentId}` : ''}`
+        : null;
 
     await Promise.allSettled(
       mentionedIds.map((userId) =>
@@ -52,7 +63,12 @@ export class TaskExtrasService {
           user_id: userId,
           actor_id: authorId,
           type_name: 'task_comment_mention',
-          content: { task_id: taskId },
+          project_id: projectId ?? undefined,
+          link_url: linkUrl ?? undefined,
+          content: {
+            task_id: taskId,
+            message: 'You were mentioned in a task comment.',
+          },
         }),
       ),
     );

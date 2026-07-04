@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import type { Comment } from "@/types/roadmap";
 import type { MentionUser } from "@/components/common/RichTextEditor/types";
@@ -17,6 +17,8 @@ interface CommentsSectionProps {
   isLoading?: boolean;
   emptyMessage?: string;
   mentionUsers?: MentionUser[];
+  highlightCommentId?: string;
+  onHighlightConsumed?: () => void;
 }
 
 export const CommentsSection = ({
@@ -30,6 +32,8 @@ export const CommentsSection = ({
   isLoading = false,
   emptyMessage = "No comments yet. Be the first to comment!",
   mentionUsers,
+  highlightCommentId,
+  onHighlightConsumed,
 }: CommentsSectionProps) => {
   const [commentInput, setCommentInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -43,6 +47,22 @@ export const CommentsSection = ({
   const [isMutatingCommentId, setIsMutatingCommentId] = useState<string | null>(
     null,
   );
+  const [flashingCommentId, setFlashingCommentId] = useState<string | null>(null);
+  const commentRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  useEffect(() => {
+    if (!highlightCommentId || isLoading || comments.length === 0) return;
+    const el = commentRefsMap.current.get(highlightCommentId);
+    if (!el) return;
+
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setFlashingCommentId(highlightCommentId);
+    const timer = setTimeout(() => {
+      setFlashingCommentId(null);
+      onHighlightConsumed?.();
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [highlightCommentId, isLoading, comments.length, onHighlightConsumed]);
 
   const sanitizeCommentHtml = (rawHtml: string) => {
     const cleaned = cleanHTML(rawHtml);
@@ -188,7 +208,18 @@ export const CommentsSection = ({
             });
 
             return (
-              <div key={comment.id} className="flex gap-3">
+              <div
+                key={comment.id}
+                ref={(el) => {
+                  if (el) commentRefsMap.current.set(comment.id, el);
+                  else commentRefsMap.current.delete(comment.id);
+                }}
+                className={`flex gap-3 rounded-xl transition-colors duration-200 ${
+                  flashingCommentId === comment.id
+                    ? "bg-violet-50 ring-1 ring-violet-200"
+                    : ""
+                }`}
+              >
                 {/* Avatar */}
                 {comment.user?.avatar_url ? (
                   <img

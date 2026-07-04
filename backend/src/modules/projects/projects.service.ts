@@ -17,6 +17,7 @@ import {
 import { REDIS_CACHE_KEYS } from '../../common/cache/redis-cache.keys';
 import { RedisCacheInvalidationService } from '../../common/cache/redis-cache-invalidation.service';
 import { ProjectTeamsService } from '../teams/project-teams.service';
+import { generateRoadmapThumbnailDataUri } from '../roadmaps/roadmap-thumbnail.util';
 export const PROJECTS_REPOSITORY = Symbol('PROJECTS_REPOSITORY');
 import type { ProjectsRepository } from './repositories/projects.repository.interface';
 import {
@@ -127,6 +128,9 @@ export class ProjectsService {
         project_id: projectId,
         owner_id: userId,
         status: 'draft',
+        // preview_url is NOT NULL; the id doesn't exist yet, so seed on the name
+        // (same fallback the web create form uses when there's no id).
+        preview_url: generateRoadmapThumbnailDataUri(name, name),
       })
       .select('id, name')
       .single();

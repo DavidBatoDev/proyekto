@@ -54,6 +54,10 @@ export class UpdateTeamDto {
   @IsNumber()
   @Min(0)
   retroactive_log_days?: number;
+
+  @IsOptional()
+  @IsIn(['USD', 'CAD', 'PHP'])
+  default_currency?: 'USD' | 'CAD' | 'PHP';
 }
 
 export const TEAM_MEMBER_ROLES = ['owner', 'admin', 'member'] as const;

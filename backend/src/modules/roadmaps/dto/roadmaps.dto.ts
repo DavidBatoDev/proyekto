@@ -162,6 +162,10 @@ export class CreateFeatureDto {
   @IsNumber() @IsOptional() @Min(0) estimated_hours?: number;
   @IsDateString() @IsOptional() start_date?: string;
   @IsDateString() @IsOptional() end_date?: string;
+  @IsArray()
+  @IsOptional()
+  @IsUUID('all', { each: true })
+  assignee_ids?: string[];
 }
 
 export class UpdateFeatureDto {
@@ -174,6 +178,10 @@ export class UpdateFeatureDto {
   @IsNumber() @IsOptional() @Min(0) actual_hours?: number;
   @IsDateString() @IsOptional() start_date?: string | null;
   @IsDateString() @IsOptional() end_date?: string | null;
+  @IsArray()
+  @IsOptional()
+  @IsUUID('all', { each: true })
+  assignee_ids?: string[];
 }
 
 export class LinkMilestoneDto {
@@ -196,10 +204,19 @@ export class CreateTaskDto {
   @IsOptional()
   status?: string;
   @IsUUID() @IsOptional() assignee_id?: string;
+  @IsArray()
+  @IsOptional()
+  @IsUUID('all', { each: true })
+  assignee_ids?: string[];
   @IsDateString() @IsOptional() due_date?: string;
   @IsNumber() @IsOptional() @Min(0) position?: number;
-  @IsIn(['real_work', 'training']) @IsOptional() work_type?: 'real_work' | 'training';
-  @IsArray() @IsOptional() @ValidateNested({ each: true }) @Type(() => ChecklistItemDto)
+  @IsIn(['real_work', 'training']) @IsOptional() work_type?:
+    | 'real_work'
+    | 'training';
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => ChecklistItemDto)
   checklist?: ChecklistItemDto[];
 }
 
@@ -209,7 +226,9 @@ export class QuickCreateTaskFromTimerDto {
   @IsUUID() @IsOptional() assignee_id?: string;
   @IsDateString() @IsOptional() due_date?: string;
   @IsIn(['timer']) @IsOptional() source?: 'timer';
-  @IsIn(['real_work', 'training']) @IsOptional() work_type?: 'real_work' | 'training';
+  @IsIn(['real_work', 'training']) @IsOptional() work_type?:
+    | 'real_work'
+    | 'training';
 }
 
 export class UpdateTaskDto {
@@ -220,11 +239,20 @@ export class UpdateTaskDto {
   @IsOptional()
   status?: string;
   @IsUUID() @IsOptional() assignee_id?: string;
+  @IsArray()
+  @IsOptional()
+  @IsUUID('all', { each: true })
+  assignee_ids?: string[];
   @IsNumber() @IsOptional() @Min(0) position?: number;
-  @IsDateString() @IsOptional() due_date?: string;
+  @IsDateString() @IsOptional() due_date?: string | null;
   @IsDateString() @IsOptional() completed_at?: string;
-  @IsIn(['real_work', 'training']) @IsOptional() work_type?: 'real_work' | 'training';
-  @IsArray() @IsOptional() @ValidateNested({ each: true }) @Type(() => ChecklistItemDto)
+  @IsIn(['real_work', 'training']) @IsOptional() work_type?:
+    | 'real_work'
+    | 'training';
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => ChecklistItemDto)
   checklist?: ChecklistItemDto[];
 }
 

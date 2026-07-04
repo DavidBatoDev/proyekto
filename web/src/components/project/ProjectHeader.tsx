@@ -7,22 +7,47 @@ import {
 } from "@tanstack/react-router";
 import {
 	Briefcase,
+	ChevronDown,
 	ChevronRight,
+	FolderKanban,
 	MessageCircle,
 	Search,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useQuery, useQueries } from "@tanstack/react-query";
+import { projectService, type Project } from "@/services/project.service";
+import { AnimatePresence, motion } from "framer-motion";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { useProjectDetailQuery } from "@/hooks/useProjectQueries";
 import { useUser } from "@/stores/authStore";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { TeamAvatar } from "@/components/team/TeamAvatar";
+import {
+	listProjectTeams,
+	getTeam,
+	listCuratedMembers,
+	type Team,
+	type ProjectTeam,
+} from "@/services/teams.service";
 import ProjectUserMenu from "./ProjectUserMenu";
 
-const roleBadgeColor: Record<string, string> = {
-	CONSULTANT: "border-slate-300 bg-slate-100 text-slate-700",
-	CLIENT: "border-slate-300 bg-slate-100 text-slate-700",
-	OWNER: "border-slate-300 bg-slate-100 text-slate-700",
-	MEMBER: "border-slate-300 bg-slate-100 text-slate-700",
-	VIEWER: "border-slate-300 bg-slate-100 text-slate-700",
+// Compute the destination path when switching projects, preserving the current view.
+// roadmap/$roadmapId and work-items/$roadmapId strip the sub-ID so the layout route
+// auto-redirects to the new project's linked roadmap.
+const getProjectSwitchPath = (
+	pathname: string,
+	fromProjectId: string,
+	toProjectId: string,
+): string => {
+	const base = pathname.replace(
+		`/project/${fromProjectId}/`,
+		`/project/${toProjectId}/`,
+	);
+	const roadmapStripped = base.match(/^(\/project\/[^/]+\/roadmap)\/[^/]+/);
+	if (roadmapStripped) return roadmapStripped[1];
+	const workItemsStripped = base.match(/^(\/project\/[^/]+\/work-items)\/[^/]+/);
+	if (workItemsStripped) return workItemsStripped[1];
+	return base;
 };
 
 const resolveCurrentPageLabel = (pathname: string, projectId: string) => {
@@ -67,6 +92,91 @@ export function ProjectHeader() {
 		});
 	};
 
+	// Fetch teams attached to this project
+	const projectTeamsQuery = useQuery({
+		queryKey: ["project-teams", projectId],
+		queryFn: () => listProjectTeams(projectId),
+		enabled: Boolean(projectId && !isRoadmapOnly),
+		staleTime: 60_000,
+	});
+	const projectTeamLinks: ProjectTeam[] = projectTeamsQuery.data ?? [];
+
+	const teamDetailResults = useQueries({
+		queries: projectTeamLinks.map((pt) => ({
+			queryKey: ["team", pt.team_id],
+			queryFn: () => getTeam(pt.team_id),
+			staleTime: 60_000,
+		})),
+	});
+
+	// Curated members = the project-team subset (members invited to this project from each team)
+	const curatedMemberResults = useQueries({
+		queries: projectTeamLinks.map((pt) => ({
+			queryKey: ["project-team-members", projectId, pt.team_id],
+			queryFn: () => listCuratedMembers(projectId, pt.team_id),
+			staleTime: 60_000,
+		})),
+	});
+
+	type EnrichedTeam = Team & { projectMemberCount: number | null; currentUserIsMember: boolean };
+	const teams: EnrichedTeam[] = projectTeamLinks
+		.map((_, i) => {
+			const team = teamDetailResults[i]?.data ?? null;
+			if (!team) return null;
+			const members = curatedMemberResults[i]?.data ?? null;
+			const memberCount = members?.length ?? null;
+			const currentUserIsMember = user?.id
+				? (members?.some((m) => m.user_id === user.id) ?? false)
+				: false;
+			return { ...team, projectMemberCount: memberCount, currentUserIsMember };
+		})
+		.filter((t): t is EnrichedTeam => t !== null);
+
+	// Only show teams where the current user is an assigned member
+	const visibleTeams = teams.filter((t) => t.currentUserIsMember);
+
+	// Dropdown state for multi-team breadcrumb
+	const [teamsDropdownOpen, setTeamsDropdownOpen] = useState(false);
+	const teamsDropdownRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (!teamsDropdownOpen) return;
+		const onMouseDown = (e: MouseEvent) => {
+			if (!teamsDropdownRef.current?.contains(e.target as Node)) {
+				setTeamsDropdownOpen(false);
+			}
+		};
+		document.addEventListener("mousedown", onMouseDown);
+		return () => document.removeEventListener("mousedown", onMouseDown);
+	}, [teamsDropdownOpen]);
+
+	// All projects for the project-switcher dropdown
+	const allProjectsQuery = useQuery({
+		queryKey: ["dashboard", "projects", user?.id ?? "anonymous"] as const,
+		queryFn: () => projectService.listDashboardProjects(),
+		enabled: Boolean(user?.id) && !isRoadmapOnly,
+		staleTime: 30_000,
+	});
+	const allProjects = (allProjectsQuery.data as Project[] | undefined) ?? [];
+
+	const [projectsDropdownOpen, setProjectsDropdownOpen] = useState(false);
+	const projectsDropdownRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (!projectsDropdownOpen) return;
+		const onMouseDown = (e: MouseEvent) => {
+			if (!projectsDropdownRef.current?.contains(e.target as Node)) {
+				setProjectsDropdownOpen(false);
+			}
+		};
+		document.addEventListener("mousedown", onMouseDown);
+		return () => document.removeEventListener("mousedown", onMouseDown);
+	}, [projectsDropdownOpen]);
+
+	// Deduplicate members across teams by user_id so cross-team members count once
+	const allMemberIds = curatedMemberResults.every((r) => r.data != null)
+		? new Set(curatedMemberResults.flatMap((r) => (r.data ?? []).map((m) => m.user_id)))
+		: null;
+	const totalProjectMembers = allMemberIds?.size ?? null;
+
 	const title = project?.title ?? (isRoadmapOnly ? "Roadmap" : "Project");
 	const showMakeProject = isRoadmapOnly;
 	const viewingAs = isRoadmapOnly
@@ -78,9 +188,6 @@ export function ProjectHeader() {
 					? "CLIENT"
 					: "MEMBER"
 			: undefined;
-
-	const badgeClass =
-		roleBadgeColor[(viewingAs ?? "").toUpperCase()] ?? roleBadgeColor.VIEWER;
 
 	return (
 		<div className="z-10 flex h-full w-full items-center justify-between px-4 sm:px-6">
@@ -96,6 +203,7 @@ export function ProjectHeader() {
 					aria-label="Breadcrumb"
 					className="flex min-w-0 items-center gap-1 text-sm font-medium text-slate-900"
 				>
+					{/* Dashboard */}
 					<Link
 						to="/dashboard"
 						className="hidden rounded-md px-2 py-1.5 text-[15px] text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:block"
@@ -103,18 +211,152 @@ export function ProjectHeader() {
 						Dashboard
 					</Link>
 					<ChevronRight className="hidden h-4 w-4 shrink-0 text-slate-400 sm:block" />
+
+					{/* Single team crumb */}
+					{visibleTeams.length === 1 && (
+						<>
+							<Link
+								to="/teams/$teamId"
+								params={{ teamId: visibleTeams[0].id }}
+								className="hidden items-center gap-1.5 rounded-md px-2 py-1.5 text-[14px] text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:flex"
+							>
+								<TeamAvatar team={visibleTeams[0]} size="sm" />
+								<span className="truncate">{visibleTeams[0].name}</span>
+							</Link>
+							<ChevronRight className="hidden h-4 w-4 shrink-0 text-slate-400 sm:block" />
+						</>
+					)}
+
+					{/* Multi-team dropdown crumb */}
+					{visibleTeams.length >= 2 && (
+						<>
+							<div
+								ref={teamsDropdownRef}
+								className="relative hidden sm:block"
+							>
+								<button
+									type="button"
+									onClick={() => setTeamsDropdownOpen((v) => !v)}
+									className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[14px] text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+								>
+									<div className="flex -space-x-1.5">
+										{visibleTeams.slice(0, 2).map((t) => (
+											<TeamAvatar
+												key={t.id}
+												team={t}
+												size="sm"
+												className="ring-2 ring-white"
+											/>
+										))}
+									</div>
+									<span>{visibleTeams.length} Teams</span>
+									<motion.span
+										animate={{ rotate: teamsDropdownOpen ? 180 : 0 }}
+										transition={{ duration: 0.18, ease: "easeOut" }}
+										className="flex"
+									>
+										<ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+									</motion.span>
+								</button>
+
+								<AnimatePresence>
+									{teamsDropdownOpen && (
+										<motion.div
+											initial={{ opacity: 0, y: -6, scale: 0.97 }}
+											animate={{ opacity: 1, y: 0, scale: 1 }}
+											exit={{ opacity: 0, y: -6, scale: 0.97 }}
+											transition={{ duration: 0.15, ease: "easeOut" }}
+											className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg"
+										>
+											{visibleTeams.map((team) => (
+												<Link
+													key={team.id}
+													to="/teams/$teamId"
+													params={{ teamId: team.id }}
+													onClick={() => setTeamsDropdownOpen(false)}
+													className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50"
+												>
+													<TeamAvatar team={team} size="sm" />
+													<span className="truncate font-medium">{team.name}</span>
+												</Link>
+											))}
+										</motion.div>
+									)}
+								</AnimatePresence>
+							</div>
+							<ChevronRight className="hidden h-4 w-4 shrink-0 text-slate-400 sm:block" />
+						</>
+					)}
+
+					{/* Project name — with switcher dropdown when not roadmap-only */}
 					{isRoadmapOnly || !projectId ? (
 						<span className="max-w-[100px] truncate px-2 text-[14px] text-slate-900 sm:max-w-[260px] sm:text-[15px]">
 							{title || "Untitled Project"}
 						</span>
 					) : (
-						<Link
-							to="/project/$projectId/overview"
-							params={{ projectId }}
-							className="max-w-[100px] truncate rounded-md px-2 py-1.5 text-[14px] text-slate-900 transition-colors hover:bg-slate-100 sm:max-w-[260px] sm:text-[15px]"
-						>
-							{title || "Untitled Project"}
-						</Link>
+						<div ref={projectsDropdownRef} className="relative">
+							<button
+								type="button"
+								onClick={() => setProjectsDropdownOpen((v) => !v)}
+								className="flex max-w-[120px] items-center gap-1 rounded-md px-2 py-1.5 text-[14px] text-slate-900 transition-colors hover:bg-slate-100 sm:max-w-[260px] sm:text-[15px]"
+							>
+								<span className="truncate">{title || "Untitled Project"}</span>
+								<motion.span
+									animate={{ rotate: projectsDropdownOpen ? 180 : 0 }}
+									transition={{ duration: 0.18, ease: "easeOut" }}
+									className="flex shrink-0"
+								>
+									<ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+								</motion.span>
+							</button>
+
+							<AnimatePresence>
+								{projectsDropdownOpen && (
+									<motion.div
+										initial={{ opacity: 0, y: -6, scale: 0.97 }}
+										animate={{ opacity: 1, y: 0, scale: 1 }}
+										exit={{ opacity: 0, y: -6, scale: 0.97 }}
+										transition={{ duration: 0.15, ease: "easeOut" }}
+										className="absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg"
+									>
+										{allProjects.length === 0 ? (
+											<p className="px-3 py-2 text-sm text-slate-400">No projects</p>
+										) : (
+											allProjects.map((p) => {
+												const isCurrent = p.id === projectId;
+												const targetPath = getProjectSwitchPath(location.pathname, projectId, p.id);
+												return (
+													<button
+														key={p.id}
+														type="button"
+														onClick={() => {
+															setProjectsDropdownOpen(false);
+															void navigate({ to: targetPath });
+														}}
+														className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+															isCurrent
+																? "bg-primary text-white shadow-sm"
+																: "text-slate-700 hover:bg-slate-50"
+														}`}
+													>
+														<span
+															className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${
+																isCurrent
+																	? "bg-white/20 text-white"
+																	: "bg-primary/10 text-primary"
+															}`}
+														>
+															{p.title?.[0]?.toUpperCase() ?? <FolderKanban className="h-3.5 w-3.5" />}
+														</span>
+														<span className="truncate font-medium">{p.title || "Untitled"}</span>
+													</button>
+												);
+											})
+										)}
+									</motion.div>
+								)}
+							</AnimatePresence>
+						</div>
 					)}
 					<ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
 					<span className="shrink-0 px-2 text-[14px] capitalize text-slate-600 sm:text-[15px]">
@@ -138,11 +380,9 @@ export function ProjectHeader() {
 					</button>
 				)}
 
-				{viewingAs && (
-					<span
-						className={`hidden rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider sm:inline ${badgeClass}`}
-					>
-						{viewingAs}
+				{totalProjectMembers != null && totalProjectMembers > 0 && (
+					<span className="hidden rounded border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-bold tracking-wider text-slate-700 sm:inline">
+						{totalProjectMembers} members
 					</span>
 				)}
 

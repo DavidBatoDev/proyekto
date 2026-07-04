@@ -25,6 +25,7 @@ export function RowActionsMenu({
 	items,
 	disabled,
 	loading,
+	menuZIndexClassName = "z-70",
 }: {
 	rowId: string;
 	openMenuRowId: string | null;
@@ -32,6 +33,8 @@ export function RowActionsMenu({
 	items: ActionMenuItem[];
 	disabled?: boolean;
 	loading?: boolean;
+	/** Override when the menu is portalled above a higher-stacked modal (default sits below modals like PayMemberModal at z-165). */
+	menuZIndexClassName?: string;
 }) {
 	const triggerRef = useRef<HTMLButtonElement | null>(null);
 	const menuRef = useRef<HTMLDivElement | null>(null);
@@ -107,7 +110,7 @@ export function RowActionsMenu({
 				? createPortal(
 						<div
 							ref={menuRef}
-							className="fixed z-70 min-w-[200px] rounded-lg border border-slate-200 bg-white p-1 shadow-lg"
+							className={`fixed ${menuZIndexClassName} min-w-[200px] rounded-lg border border-slate-200 bg-white p-1 shadow-lg`}
 							style={{
 								top: menuPosition.top,
 								left: menuPosition.left,

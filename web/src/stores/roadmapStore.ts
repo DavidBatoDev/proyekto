@@ -61,6 +61,7 @@ interface RoadmapState {
   openEpicEditorId: string | null;
   openFeatureEditor: { epicId: string; featureId: string } | null;
   openTaskDetailId: string | null;
+  pendingCommentId: string | null;
   activeEpicId: string | null;
 
   // UI State - Canvas View Mode (shared so RoadmapViewContent can react)
@@ -89,6 +90,7 @@ interface FeatureData {
   is_deliverable: boolean;
   start_date?: string;
   end_date?: string;
+  assignee_ids?: string[];
 }
 
 interface RoadmapActions {
@@ -144,6 +146,7 @@ interface RoadmapActions {
     nextStatus: RoadmapTask["status"],
   ) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
+  reorderTasksInFeature: (featureId: string, orderedTaskIds: string[]) => Promise<void>;
 
   // Kanban board
   setBoardFilters: (
@@ -189,6 +192,7 @@ interface RoadmapActions {
   clearOpenFeatureEditorModal: () => void;
   openTaskDetail: (taskId: string) => void;
   clearOpenTaskDetail: () => void;
+  setPendingCommentId: (id: string | null) => void;
   setActiveEpicId: (epicId: string | null) => void;
 
   // Canvas view-mode actions
@@ -364,6 +368,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
   openEpicEditorId: null,
   openFeatureEditor: null,
   openTaskDetailId: null,
+  pendingCommentId: null,
   activeEpicId: null,
   addFeatureEpicId: null,
   addTaskFeatureId: null,
@@ -815,6 +820,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
       openEpicEditorId: null,
       openFeatureEditor: null,
       openTaskDetailId: null,
+      pendingCommentId: null,
       activeEpicId: null,
       addFeatureEpicId: null,
       addTaskFeatureId: null,
@@ -1309,6 +1315,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         is_deliverable: data.is_deliverable,
         start_date: data.start_date,
         end_date: data.end_date,
+        assignee_ids: data.assignee_ids,
       });
 
       set((state) => ({
@@ -1400,6 +1407,9 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         actual_hours: feature.actual_hours,
         start_date: feature.start_date ?? null,
         end_date: feature.end_date ?? null,
+        // Only sent when the caller explicitly set the feature team;
+        // undefined tells the backend to leave assignees untouched.
+        assignee_ids: feature.assignee_ids,
       });
 
       set((state) => ({
@@ -1789,6 +1799,8 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
               description: data.description,
               checklist: data.checklist,
               assignee: data.assignee,
+              assignee_ids: data.assignee_ids,
+              assignees: data.assignees,
               labels: data.labels,
             };
 
@@ -1820,6 +1832,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         priority: data.priority || "medium",
         work_type: data.work_type || "real_work",
         assignee_id: data.assignee_id,
+        assignee_ids: data.assignee_ids,
         position: optimisticPosition,
         due_date: data.due_date,
         checklist: data.checklist ?? [],
@@ -1906,6 +1919,17 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
     }));
 
     try {
+      // due_date: if the field is explicitly absent (undefined) and the stored task
+      // had a date, send null to clear. If both are absent/null, omit entirely.
+      const storedDueDate = (currentTask as { due_date?: string | null }).due_date;
+      const incomingDueDate = (task as { due_date?: string | null }).due_date;
+      const dueDatePayload =
+        incomingDueDate !== undefined
+          ? incomingDueDate
+          : storedDueDate != null
+            ? null
+            : undefined;
+
       const updated = await taskService.update(taskId, {
         title: task.title,
         description: task.description,
@@ -1914,7 +1938,10 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         work_type: task.work_type,
         position: task.position ?? undefined,
         assignee_id: task.assignee_id ?? undefined,
-        due_date: task.due_date ?? undefined,
+        // Only sent when the caller explicitly set the multi-assignee list;
+        // undefined tells the backend to leave assignees untouched.
+        assignee_ids: task.assignee_ids,
+        due_date: dueDatePayload,
         completed_at: task.completed_at ?? undefined,
         checklist: task.checklist,
       });
@@ -2114,6 +2141,63 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         tempToRealNodeId: rollbackTempToRealNodeId,
         isLoadingTask: false,
       });
+      throw error;
+    }
+  },
+
+  reorderTasksInFeature: async (featureId: string, orderedTaskIds: string[]) => {
+    const { epics } = get();
+
+    const feature = epics
+      .flatMap((e) => e.features ?? [])
+      .find((f) => f.id === featureId);
+    if (!feature || !feature.tasks?.length) return;
+
+    const currentTaskIds = (feature.tasks ?? []).map((t) => t.id);
+    const currentTaskIdSet = new Set(currentTaskIds);
+    const seen = new Set<string>();
+    const normalizedIds: string[] = [];
+    for (const id of orderedTaskIds) {
+      if (!id || !currentTaskIdSet.has(id) || seen.has(id)) continue;
+      seen.add(id);
+      normalizedIds.push(id);
+    }
+    for (const id of currentTaskIds) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      normalizedIds.push(id);
+    }
+
+    const taskById = new Map((feature.tasks ?? []).map((t) => [t.id, t]));
+
+    const optimisticEpics = epics.map((epic) => ({
+      ...epic,
+      features: (epic.features ?? []).map((f) => {
+        if (f.id !== featureId) return f;
+        return {
+          ...f,
+          tasks: normalizedIds
+            .map((id, index) => {
+              const task = taskById.get(id);
+              if (!task) return null;
+              return { ...task, position: index };
+            })
+            .filter((t): t is RoadmapTask => t !== null),
+        };
+      }),
+    }));
+
+    set({ epics: optimisticEpics });
+
+    try {
+      const reorderPatch = normalizedIds.map((taskId, index) => ({
+        task_id: taskId,
+        new_order_index: index,
+      }));
+      await taskService.reorder(featureId, reorderPatch);
+    } catch (error) {
+      console.error(`Failed to reorder tasks in feature ${featureId}:`, error);
+      set({ epics });
       throw error;
     }
   },
@@ -2365,6 +2449,10 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 
   clearOpenTaskDetail: () => {
     set({ openTaskDetailId: null });
+  },
+
+  setPendingCommentId: (id: string | null) => {
+    set({ pendingCommentId: id });
   },
 
   isOptimisticNodeId: (id: string | null | undefined) =>

@@ -23,10 +23,13 @@
 /* Global header (h-14) extended up under the status bar: bg fills it, content below. */
 .h-app-header { height: calc(3.5rem + var(--safe-top)); }
 .pt-app-header { padding-top: calc(3.5rem + var(--safe-top)); }
-/* Mobile bottom nav (h-16) extended down under the gesture bar + content clearance. */
+/* Mobile bottom nav (h-16) extended down under the gesture bar + content clearance.
+   Scoped to <768px so no md:pb-0 override is needed on desktop. */
 .h-app-nav { height: calc(4rem + var(--safe-bottom)); }
-.pb-app-nav { padding-bottom: calc(4rem + var(--safe-bottom)); }
-.pb-app-sheet { padding-bottom: calc(2.5rem + var(--safe-bottom)); }
+@media (max-width: 767px) {
+  .pb-app-nav { padding-bottom: calc(4rem + var(--safe-bottom)); }
+  .pb-app-sheet { padding-bottom: calc(2.5rem + var(--safe-bottom)); }
+}
 
 html {
   scroll-behavior: smooth;

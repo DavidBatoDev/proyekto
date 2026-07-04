@@ -403,8 +403,10 @@ export const RoadmapView = ({
     queryKey: ["team-time", "running-log", user?.id ?? "anonymous"],
     queryFn: () => teamTimeService.getMyRunningLog(),
     enabled: Boolean(user?.id),
-    refetchInterval: 3_000,
-    refetchIntervalInBackground: true,
+    // Fast 3s poll only while a timer runs (to highlight the active task);
+    // lazy 30s heartbeat otherwise, and never poll a hidden tab.
+    refetchInterval: (query) => (query.state.data ? 3_000 : 30_000),
+    refetchIntervalInBackground: false,
     retry: 1,
   });
   const runningTaskId = runningLogQuery.data?.task_id ?? null;
@@ -1707,10 +1709,10 @@ export const RoadmapView = ({
         }}
       />
 
-      <div className="absolute bottom-4 right-4 bg-white/90 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-700 shadow-sm">
+      <div className="absolute bottom-16 right-4 bg-white/90 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-700 shadow-sm">
         Zoom {Math.round(zoom * 100)}%
       </div>
-      <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-2xl border border-gray-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur select-none">
+      <div className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 rounded-2xl border border-gray-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur select-none">
         <div className="flex items-center gap-2">
           <div className="mr-1 inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-gray-500">
             <GripHorizontal className="h-3 w-3" />

@@ -30,6 +30,11 @@ interface TeamLogsPeriodFilterProps {
 	onCutoffMonthChange: (month: string) => void;
 	onCutoffHalfChange: (half: CutoffHalf) => void;
 	onApplyCustomRange: (fromDate: string, toDate: string) => void;
+	/**
+	 * Set of `yyyy-MM-dd` (local) day keys the viewer logged time on. Days in
+	 * this set show a small dot in the calendar so you can see when you worked.
+	 */
+	workedDays?: Set<string>;
 }
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -48,6 +53,7 @@ export function TeamLogsPeriodFilter({
 	onCutoffMonthChange,
 	onCutoffHalfChange,
 	onApplyCustomRange,
+	workedDays,
 }: TeamLogsPeriodFilterProps) {
 	const [open, setOpen] = useState(false);
 	const [mode, setMode] = useState<PopoverMode>("range");
@@ -165,6 +171,12 @@ export function TeamLogsPeriodFilter({
 			onSelect: () => applyQuickRange(subDays(today, 29), today),
 		},
 		{
+			key: "this_year",
+			label: "This year",
+			active: period.preset === "this_year",
+			onSelect: () => applyPreset("this_year"),
+		},
+		{
 			key: "cutoff",
 			label: "Cutoff (PH)",
 			active: period.preset === "cutoff",
@@ -179,10 +191,7 @@ export function TeamLogsPeriodFilter({
 	];
 
 	return (
-		<div
-			ref={wrapRef}
-			className="relative rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
-		>
+		<div ref={wrapRef} className="relative">
 			<div className="flex flex-wrap items-center gap-3">
 				<span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
 					Period
@@ -267,6 +276,7 @@ export function TeamLogsPeriodFilter({
 												hover={hover}
 												onHover={setHover}
 												onPick={pickDay}
+												workedDays={workedDays}
 											/>
 										</div>
 										<div className="relative hidden md:block">
@@ -285,6 +295,7 @@ export function TeamLogsPeriodFilter({
 												hover={hover}
 												onHover={setHover}
 												onPick={pickDay}
+												workedDays={workedDays}
 											/>
 										</div>
 										{/* Next-month arrow for single-calendar (mobile) layouts */}
@@ -345,6 +356,7 @@ function MonthGrid({
 	hover,
 	onHover,
 	onPick,
+	workedDays,
 }: {
 	month: Date;
 	draftStart: Date | null;
@@ -352,6 +364,7 @@ function MonthGrid({
 	hover: Date | null;
 	onHover: (d: Date | null) => void;
 	onPick: (d: Date) => void;
+	workedDays?: Set<string>;
 }) {
 	const days = useMemo(
 		() =>
@@ -394,6 +407,7 @@ function MonthGrid({
 						hi &&
 						isWithinInterval(day, { start: startOfDay(lo), end: endOfDay(hi) });
 					const isToday = isSameDay(day, new Date());
+					const worked = inMonth && workedDays?.has(format(day, "yyyy-MM-dd"));
 					return (
 						<button
 							key={day.toISOString()}
@@ -401,7 +415,8 @@ function MonthGrid({
 							onMouseEnter={() => onHover(day)}
 							onMouseLeave={() => onHover(null)}
 							onClick={() => onPick(day)}
-							className={`flex h-8 items-center justify-center text-xs transition-colors ${
+							title={worked ? "You logged time on this day" : undefined}
+							className={`relative flex h-8 items-center justify-center text-xs transition-colors ${
 								isEndpoint
 									? "rounded-md bg-sky-600 font-semibold text-white"
 									: inRange
@@ -414,6 +429,13 @@ function MonthGrid({
 							}`}
 						>
 							{format(day, "d")}
+							{worked && (
+								<span
+									className={`absolute bottom-1 h-1 w-1 rounded-full ${
+										isEndpoint ? "bg-white" : "bg-emerald-500"
+									}`}
+								/>
+							)}
 						</button>
 					);
 				})}

@@ -53,7 +53,7 @@ export function RichTextToolbar({
           />
         );
       case "more":
-        return <MoreTool key={index} />;
+        return <MoreTool key={index} onCommand={onCommand} activeFormats={activeFormats} />;
       case "bulletList":
       case "numberedList":
         // Only render once for list tool
@@ -110,7 +110,7 @@ export function RichTextToolbar({
         {tools.includes("image") && (
           <ImageTool onInsertImage={handleInsertImage} />
         )}
-        {tools.includes("more") && <MoreTool />}
+        {tools.includes("more") && <MoreTool onCommand={onCommand} activeFormats={activeFormats} />}
       </div>
 
       {/* Right side tools */}

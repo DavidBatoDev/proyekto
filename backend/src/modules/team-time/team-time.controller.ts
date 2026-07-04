@@ -131,6 +131,15 @@ export class TeamTimeController {
     return this.service.listMyTeamLogs(user.id, teamId, query);
   }
 
+  @Get('teams/:teamId/my/summary')
+  myTeamLogsSummary(
+    @Param('teamId') teamId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListLogsQueryDto,
+  ) {
+    return this.service.myTeamLogsSummary(user.id, teamId, query);
+  }
+
   @Get('teams/:teamId/projects/:projectId/my-rate')
   myProjectRate(
     @Param('teamId') teamId: string,
@@ -156,6 +165,15 @@ export class TeamTimeController {
     @Query() query: ListLogsQueryDto,
   ) {
     return this.service.listTeamLogs(user.id, teamId, query);
+  }
+
+  @Get('teams/:teamId/logs/summary')
+  teamLogsSummary(
+    @Param('teamId') teamId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListLogsQueryDto,
+  ) {
+    return this.service.teamLogsSummary(user.id, teamId, query);
   }
 
   @Get('teams/:teamId/projects')

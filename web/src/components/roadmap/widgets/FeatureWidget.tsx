@@ -1,5 +1,6 @@
 import {
   memo,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -21,8 +22,9 @@ import {
 } from "lucide-react";
 import type { FeatureStatus, RoadmapFeature, RoadmapTask } from "@/types/roadmap";
 import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
-import { TaskListItem } from "./TaskListItem";
 import { TaskListModal } from "../modals/TaskListModal";
+import { SortableTaskList } from "./SortableTaskList";
+import { useRoadmapStore } from "@/stores/roadmapStore";
 import {
   calculateFeatureProgressFromTasks,
   getCompletedTaskCount,
@@ -82,11 +84,20 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     taskEditorsByNodeId,
   } = data;
   const isReducedMotion = performanceMode === "reducedMotion";
+  const reorderTasksInFeature = useRoadmapStore((s) => s.reorderTasksInFeature);
   const safelyUpdateTask = (task: RoadmapTask) => {
     if (!onUpdateTask) return;
     void Promise.resolve(onUpdateTask(task)).catch(() => undefined);
   };
+  const handleReorderTasks = useCallback(
+    (fId: string, orderedIds: string[]) => {
+      void reorderTasksInFeature(fId, orderedIds);
+    },
+    [reorderTasksInFeature],
+  );
   const descriptionRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+
   const [hasOverflow, setHasOverflow] = useState(false);
   const [isPulsing, setIsPulsing] = useState(false);
   const [isCardTaskDropActive, setIsCardTaskDropActive] = useState(false);
@@ -177,6 +188,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     };
   }, [isReducedMotion, pulseToken]);
 
+
   const getToolbarItemType = (
     event: Pick<DragEvent<HTMLElement>, "dataTransfer">,
   ): ToolbarItemType | null => {
@@ -233,15 +245,14 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   return (
     <>
       <motion.div
-        className={`relative group bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-80 flex flex-col ${canEditRoadmap ? "cursor-pointer active:cursor-grabbing" : "cursor-pointer"} ${
-          isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
-        } ${isOptimisticFeature ? "opacity-75" : ""} ${
-          isCardTaskDropActive
+        ref={cardRef}
+        className={`relative group bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-80 flex flex-col ${canEditRoadmap ? "cursor-pointer active:cursor-grabbing" : "cursor-pointer"} ${isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
+          } ${isOptimisticFeature ? "opacity-75" : ""} ${isCardTaskDropActive
             ? "border-emerald-500 ring-2 ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.3),0_12px_24px_rgba(16,185,129,0.22)]"
             : isGlobalTaskDropHighlight
               ? "border-emerald-400 ring-2 ring-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.22),0_10px_24px_rgba(16,185,129,0.18)]"
               : getWidgetBorderColor(derivedStatus)
-        }`}
+          }`}
         style={
           editingBorderColor(editors)
             ? { borderColor: editingBorderColor(editors) }
@@ -328,15 +339,13 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
               event.stopPropagation();
               onAddTask(feature.id);
             }}
-            className={`absolute top-1/2 -translate-y-1/2 -right-4 w-8 h-8 rounded-full bg-emerald-500 text-white shadow-lg flex items-center justify-center hover:bg-emerald-400 transition-all duration-200 ease-out z-10 cursor-pointer ${
-              toolbarDraggingType === "task"
-                ? `opacity-100 scale-100 ring-2 ${
-                    isAddTaskDropActive
-                      ? "ring-emerald-400 shadow-[0_0_0_1px_rgba(16,185,129,0.35),0_10px_22px_rgba(16,185,129,0.35)]"
-                      : "ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.24),0_8px_18px_rgba(16,185,129,0.28)]"
-                  }`
-                : "opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100"
-            }`}
+            className={`absolute top-1/2 -translate-y-1/2 -right-4 w-8 h-8 rounded-full bg-emerald-500 text-white shadow-lg flex items-center justify-center hover:bg-emerald-400 transition-all duration-200 ease-out z-10 cursor-pointer ${toolbarDraggingType === "task"
+              ? `opacity-100 scale-100 ring-2 ${isAddTaskDropActive
+                ? "ring-emerald-400 shadow-[0_0_0_1px_rgba(16,185,129,0.35),0_10px_22px_rgba(16,185,129,0.35)]"
+                : "ring-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.24),0_8px_18px_rgba(16,185,129,0.28)]"
+              }`
+              : "opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100"
+              }`}
             title="Add task"
           >
             <Plus className="w-4 h-4" />
@@ -476,16 +485,16 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
               <span>
                 {feature.start_date
                   ? new Date(feature.start_date).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                    })
+                    month: "short",
+                    day: "numeric",
+                  })
                   : "—"}
                 {" → "}
                 {feature.end_date
                   ? new Date(feature.end_date).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                    })
+                    month: "short",
+                    day: "numeric",
+                  })
                   : "—"}
               </span>
             </div>
@@ -499,58 +508,55 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
           <div className="absolute top-1/2 -translate-y-1/2 left-[500px] w-10 h-0.5 bg-emerald-400" />
 
           {/* Task List - positioned to the right */}
-          <div
-            className="absolute top-1/2 -translate-y-1/2 left-[540px] rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden cursor-pointer max-h-80 flex flex-col"
-            onClick={(e) => { e.stopPropagation(); setIsTaskListModalOpen(true); }}
-          >
-            {/* Task list header */}
-            <div className="flex items-center justify-between px-2.5 pt-2 pb-1 hover:bg-gray-50 transition-colors shrink-0">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                Tasks · {feature.tasks?.length ?? 0}
-              </span>
-              <Maximize2 className="w-3 h-3 text-gray-500" />
-            </div>
+          {(() => {
+            const allTasks = feature.tasks ?? [];
+            return (
+              <div
+                className="absolute top-1/2 -translate-y-1/2 left-[540px] w-[290px] rounded-xl border border-gray-200 bg-white shadow-sm"
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div
+                  className="flex items-center justify-between px-2.5 pt-2 pb-1 hover:bg-gray-50 transition-colors cursor-pointer"
+                  onClick={(e) => { e.stopPropagation(); setIsTaskListModalOpen(true); }}
+                >
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                    Tasks · {allTasks.length}
+                  </span>
+                  <Maximize2 className="w-3 h-3 text-gray-500" />
+                </div>
 
-            <div className="flex-1 overflow-y-auto p-1.5 pt-0">
-              <div className="grid grid-flow-col grid-rows-5 gap-1.5 auto-cols-max">
-                {feature.tasks?.slice(0, 10).map((task) => (
-                  <div key={task.id} className="w-[270px]" onClick={(e) => e.stopPropagation()}>
-                    <TaskListItem
-                      task={task}
-                      density="compact"
-                      editors={taskEditorsByNodeId?.get(task.id)}
-                      isRunning={runningTaskId === task.id}
-                      pulseToken={
-                        pulseTaskId === task.id ? pulseTaskToken : undefined
-                      }
-                      onClick={onSelectTask}
-                      onToggleComplete={(taskId) => {
-                        const taskToUpdate = feature.tasks?.find(
-                          (t) => t.id === taskId,
-                        );
-                        if (!taskToUpdate) return;
-                        safelyUpdateTask({
-                          ...taskToUpdate,
-                          status:
-                            taskToUpdate.status === "done" ? "todo" : "done",
-                        });
-                      }}
-                      onUpdateStatus={(taskId, status) => {
-                        const taskToUpdate = feature.tasks?.find(
-                          (t) => t.id === taskId,
-                        );
-                        if (!taskToUpdate) return;
-                        safelyUpdateTask({
-                          ...taskToUpdate,
-                          status,
-                        });
-                      }}
-                    />
-                  </div>
-                ))}
+                {/* Sortable task list */}
+                <div
+                  className="max-h-[240px] overflow-y-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <SortableTaskList
+                    tasks={allTasks}
+                    featureId={feature.id}
+                    density="compact"
+                    onReorder={handleReorderTasks}
+                    onClick={onSelectTask}
+                    pulseTaskId={pulseTaskId}
+                    pulseTaskToken={pulseTaskToken}
+                    runningTaskId={runningTaskId}
+                    taskEditorsByNodeId={taskEditorsByNodeId}
+                    onToggleComplete={(taskId) => {
+                      const t = feature.tasks?.find((t) => t.id === taskId);
+                      if (!t) return;
+                      safelyUpdateTask({ ...t, status: t.status === "done" ? "todo" : "done" });
+                    }}
+                    onUpdateStatus={(taskId, status) => {
+                      const t = feature.tasks?.find((t) => t.id === taskId);
+                      if (!t) return;
+                      safelyUpdateTask({ ...t, status });
+                    }}
+                  />
+                </div>
               </div>
-            </div>
-          </div>
+            );
+          })()}
 
           {isTaskListModalOpen && (
             <TaskListModal

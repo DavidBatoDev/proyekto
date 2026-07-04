@@ -13,7 +13,11 @@ import { useToast } from "@/contexts/ToastContext";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { teamTimeService } from "@/services/team-time.service";
 import { useUser } from "@/stores/authStore";
-import { liveDurationSecondsFromLog, useLiveNowMs } from "./time-utils";
+import {
+	confirmStopLongTimer,
+	liveDurationSecondsFromLog,
+	useLiveNowMs,
+} from "./time-utils";
 
 const TIMER_VISIBLE_PATH_PREFIXES = [
 	"/dashboard",
@@ -69,8 +73,12 @@ export function FloatingActiveTimer() {
 		queryKey: ["team-time", "running-log", user?.id ?? "anonymous"] as const,
 		queryFn: () => teamTimeService.getMyRunningLog(),
 		enabled: Boolean(user?.id) && shouldRender,
-		refetchInterval: 3_000,
-		refetchIntervalInBackground: true,
+		// Poll fast (3s) only while a timer is actually running so the elapsed
+		// display ticks; otherwise fall back to a lazy 30s heartbeat (a timer
+		// started in this tab updates the cache immediately via invalidation).
+		// No background polling — pause entirely when the tab is hidden.
+		refetchInterval: (query) => (query.state.data ? 3_000 : 30_000),
+		refetchIntervalInBackground: false,
 		retry: 1,
 	});
 
@@ -262,7 +270,10 @@ export function FloatingActiveTimer() {
 					) : null}
 					<button
 						type="button"
-						onClick={() => stopMutation.mutate(log.id)}
+						onClick={() => {
+							if (!confirmStopLongTimer(elapsedSeconds)) return;
+							stopMutation.mutate(log.id);
+						}}
 						disabled={stopMutation.isPending}
 						className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-70"
 					>
