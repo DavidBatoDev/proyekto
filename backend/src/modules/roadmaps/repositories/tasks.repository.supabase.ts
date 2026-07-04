@@ -14,7 +14,10 @@ const PROFILE_COLS =
 // Embeds the many-to-many assignees alongside the legacy single assignee. The
 // join rows come back as `[{ profile: {...} }]`; normalizeAssignees flattens
 // them to a plain `assignees: [{...}]` array for the API contract.
-const ASSIGNEES_EMBED = `assignees:roadmap_task_assignees(profile:profiles(${PROFILE_COLS}))`;
+// `profile:profiles!assignee_id(...)` disambiguates the embed: the join table
+// has two FKs to profiles (assignee_id and assigned_by), so a bare
+// `profiles(...)` is ambiguous and PostgREST rejects it with a 300.
+const ASSIGNEES_EMBED = `assignees:roadmap_task_assignees(profile:profiles!assignee_id(${PROFILE_COLS}))`;
 
 @Injectable()
 export class TasksRepositorySupabase implements ITasksRepository {

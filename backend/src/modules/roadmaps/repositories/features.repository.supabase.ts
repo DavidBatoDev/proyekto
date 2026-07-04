@@ -17,8 +17,9 @@ const PROFILE_COLS =
   'id, display_name, avatar_url, email, first_name, last_name';
 
 // The explicit "feature team". Join rows come back as `[{ profile: {...} }]`;
-// normalizeAssignees flattens them to `assignees: [{...}]`.
-const ASSIGNEES_EMBED = `assignees:roadmap_feature_assignees(profile:profiles(${PROFILE_COLS}))`;
+// normalizeAssignees flattens them to `assignees: [{...}]`. The `!assignee_id`
+// hint disambiguates the two FKs to profiles (assignee_id and assigned_by).
+const ASSIGNEES_EMBED = `assignees:roadmap_feature_assignees(profile:profiles!assignee_id(${PROFILE_COLS}))`;
 
 @Injectable()
 export class FeaturesRepositorySupabase implements IFeaturesRepository {

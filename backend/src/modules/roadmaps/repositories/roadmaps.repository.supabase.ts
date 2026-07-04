@@ -242,9 +242,9 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
     const includeTaskAssigneeProfile =
       options?.includeTaskAssigneeProfile !== false;
     const taskSelect = includeTaskAssigneeProfile
-      ? `tasks:roadmap_tasks(*, assignee:profiles(${ASSIGNEE_PROFILE_COLS}), assignees:roadmap_task_assignees(profile:profiles(${ASSIGNEE_PROFILE_COLS})))`
+      ? `tasks:roadmap_tasks(*, assignee:profiles(${ASSIGNEE_PROFILE_COLS}), assignees:roadmap_task_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS})))`
       : 'tasks:roadmap_tasks(*)';
-    const featureSelect = `features:roadmap_features(*, ${taskSelect}, assignees:roadmap_feature_assignees(profile:profiles(${ASSIGNEE_PROFILE_COLS})))`;
+    const featureSelect = `features:roadmap_features(*, ${taskSelect}, assignees:roadmap_feature_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS})))`;
 
     // Widened to `string` so Supabase skips literal-type parsing of this
     // dynamically-built select (the nested embeds exceed its parser); the
@@ -309,7 +309,7 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
         *,
         project:projects(id, title),
         milestones:roadmap_milestones(*),
-        epics:roadmap_epics(*, features:roadmap_features(*, tasks:roadmap_tasks(*, assignee:profiles(${ASSIGNEE_PROFILE_COLS}), assignees:roadmap_task_assignees(profile:profiles(${ASSIGNEE_PROFILE_COLS}))), assignees:roadmap_feature_assignees(profile:profiles(${ASSIGNEE_PROFILE_COLS}))))
+        epics:roadmap_epics(*, features:roadmap_features(*, tasks:roadmap_tasks(*, assignee:profiles(${ASSIGNEE_PROFILE_COLS}), assignees:roadmap_task_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS}))), assignees:roadmap_feature_assignees(profile:profiles!assignee_id(${ASSIGNEE_PROFILE_COLS}))))
       `,
       )
       .in('id', [...roadmapIds])
