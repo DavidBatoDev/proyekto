@@ -79,7 +79,23 @@ describe("auth continuation storage", () => {
 			redirectTo: "/project/roadmap/convert/roadmap-1",
 			source: "login",
 			authMethod: "google",
+			postSignupWelcomeRequired: false,
 		});
+	});
+
+	it("marks signup continuations as welcome-required", () => {
+		const continuation = rememberAuthContinuation({
+			redirectTo: "/project/roadmap/convert/roadmap-1",
+			source: "signup",
+			authMethod: "google",
+		});
+
+		expect(continuation).toMatchObject({
+			source: "signup",
+			authMethod: "google",
+			postSignupWelcomeRequired: true,
+		});
+		expect(getAuthContinuation()?.postSignupWelcomeRequired).toBe(true);
 	});
 
 	it("drops stale continuation state", () => {
@@ -122,12 +138,54 @@ describe("auth continuation storage", () => {
 });
 
 describe("resolvePostAuthDestination", () => {
+	it("sends Google signup continuations through welcome even after provisioning", () => {
+		rememberAuthContinuation({
+			redirectTo: "/project/roadmap/convert/roadmap-1",
+			source: "signup",
+			authMethod: "google",
+		});
+
+		expect(
+			resolvePostAuthDestination({
+				hasCompletedOnboarding: true,
+			}),
+		).toBe("/welcome");
+	});
+
+	it("sends password signup continuations through welcome", () => {
+		rememberAuthContinuation({
+			source: "signup",
+			authMethod: "password",
+		});
+
+		expect(
+			resolvePostAuthDestination({
+				hasCompletedOnboarding: true,
+			}),
+		).toBe("/welcome");
+	});
+
 	it("sends completed users with a pending roadmap to conversion", () => {
 		rememberPendingRoadmap("roadmap-abc");
 
 		expect(
 			resolvePostAuthDestination({
 				explicitRedirect: "/dashboard",
+				hasCompletedOnboarding: true,
+			}),
+		).toBe("/project/roadmap/convert/roadmap-abc");
+	});
+
+	it("sends Google login continuations with a pending roadmap directly to conversion", () => {
+		rememberPendingRoadmap("roadmap-abc");
+		rememberAuthContinuation({
+			redirectTo: "/dashboard",
+			source: "login",
+			authMethod: "google",
+		});
+
+		expect(
+			resolvePostAuthDestination({
 				hasCompletedOnboarding: true,
 			}),
 		).toBe("/project/roadmap/convert/roadmap-abc");

@@ -15,6 +15,7 @@ export interface AuthContinuation {
 	authMethod: AuthContinuationMethod;
 	lane?: AuthContinuationLane;
 	intent?: AuthContinuationIntent;
+	postSignupWelcomeRequired?: boolean;
 	createdAt: string;
 }
 
@@ -52,6 +53,12 @@ function isAuthContinuation(value: unknown): value is AuthContinuation {
 	) {
 		return false;
 	}
+	if (
+		candidate.postSignupWelcomeRequired !== undefined &&
+		typeof candidate.postSignupWelcomeRequired !== "boolean"
+	) {
+		return false;
+	}
 	return typeof candidate.createdAt === "string";
 }
 
@@ -65,12 +72,14 @@ export function rememberAuthContinuation({
 	authMethod,
 	lane,
 	intent,
+	postSignupWelcomeRequired,
 }: {
 	redirectTo?: string | null;
 	source: AuthContinuationSource;
 	authMethod: AuthContinuationMethod;
 	lane?: AuthContinuationLane;
 	intent?: AuthContinuationIntent;
+	postSignupWelcomeRequired?: boolean;
 }): AuthContinuation | null {
 	const storage = getStorage();
 	if (!storage) return null;
@@ -80,6 +89,7 @@ export function rememberAuthContinuation({
 		source,
 		authMethod,
 		createdAt: new Date().toISOString(),
+		postSignupWelcomeRequired: postSignupWelcomeRequired ?? source === "signup",
 		...(safeRedirect ? { redirectTo: safeRedirect } : {}),
 		...(lane ? { lane } : {}),
 		...(intent ? { intent } : {}),
@@ -115,6 +125,8 @@ export function getAuthContinuation(
 
 		return {
 			...parsed,
+			postSignupWelcomeRequired:
+				parsed.postSignupWelcomeRequired ?? parsed.source === "signup",
 			...(normalizeRedirectPath(parsed.redirectTo)
 				? { redirectTo: normalizeRedirectPath(parsed.redirectTo) }
 				: { redirectTo: undefined }),
@@ -135,6 +147,11 @@ export function resolvePostAuthDestination({
 	hasCompletedOnboarding,
 	nowMs,
 }: ResolvePostAuthDestinationOptions = {}): string {
+	const continuation = getAuthContinuation(nowMs);
+	if (continuation?.postSignupWelcomeRequired) {
+		return "/welcome";
+	}
+
 	const pending = getPendingProjectFromRoadmap();
 	if (pending?.roadmapId) {
 		return hasCompletedOnboarding === false
@@ -142,7 +159,6 @@ export function resolvePostAuthDestination({
 			: createRoadmapConversionPath(pending.roadmapId);
 	}
 
-	const continuation = getAuthContinuation(nowMs);
 	const redirectTo =
 		normalizeRedirectPath(explicitRedirect) ?? continuation?.redirectTo;
 	if (redirectTo) {
