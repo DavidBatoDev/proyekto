@@ -16,6 +16,7 @@ import { REDIS_CACHE_KEYS } from '../../../common/cache/redis-cache.keys';
 import { RedisCacheInvalidationService } from '../../../common/cache/redis-cache-invalidation.service';
 import { MissingPermissionException } from '../../projects/authorization/missing-permission.exception';
 import type { IRoadmapsRepository } from '../repositories/roadmaps.repository.interface';
+import { countRoadmapChildren } from '../repositories/roadmaps.repository.supabase';
 import {
   CreateRoadmapDto,
   UpdateRoadmapDto,
@@ -63,23 +64,7 @@ export class RoadmapsService {
       );
     }
 
-    const counts = await Promise.all(
-      ['roadmap_epics', 'roadmap_milestones', 'roadmap_features'].map(
-        async (table) => {
-          const { count, error } = await this.supabase
-            .from(table)
-            .select('id', { head: true, count: 'exact' })
-            .eq('roadmap_id', current.id);
-          if (error) {
-            throw new Error(
-              `Failed to count ${table} for roadmap ${current.id}: ${error.message}`,
-            );
-          }
-          return count ?? 0;
-        },
-      ),
-    );
-    const totalChildren = counts.reduce((sum, n) => sum + n, 0);
+    const totalChildren = await countRoadmapChildren(this.supabase, current.id);
     if (totalChildren > 0) {
       throw new BadRequestException(
         'Current roadmap is not empty; only empty roadmaps can be replaced.',
@@ -97,9 +82,7 @@ export class RoadmapsService {
       throw new NotFoundException('Replacement roadmap not found');
     }
     if (replacement.owner_id !== userId) {
-      throw new ForbiddenException(
-        'You can only link a roadmap you own.',
-      );
+      throw new ForbiddenException('You can only link a roadmap you own.');
     }
     if (replacement.project_id) {
       throw new BadRequestException(

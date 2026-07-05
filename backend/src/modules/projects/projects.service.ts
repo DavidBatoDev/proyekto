@@ -18,6 +18,7 @@ import { REDIS_CACHE_KEYS } from '../../common/cache/redis-cache.keys';
 import { RedisCacheInvalidationService } from '../../common/cache/redis-cache-invalidation.service';
 import { ProjectTeamsService } from '../teams/project-teams.service';
 import { generateRoadmapThumbnailDataUri } from '../roadmaps/roadmap-thumbnail.util';
+import { countRoadmapChildren } from '../roadmaps/repositories/roadmaps.repository.supabase';
 export const PROJECTS_REPOSITORY = Symbol('PROJECTS_REPOSITORY');
 import type { ProjectsRepository } from './repositories/projects.repository.interface';
 import {
@@ -67,6 +68,12 @@ import type {
 interface CacheReadOptions {
   onCacheStatus?: (status: AppCacheStatus) => void;
 }
+
+type RoadmapLinkCandidate = {
+  id: string;
+  title: string;
+  roadmap_id: string;
+};
 
 @Injectable()
 export class ProjectsService {
@@ -373,6 +380,51 @@ export class ProjectsService {
 
   async listUserProjects(userId: string): Promise<Project[]> {
     return this.projectsRepo.findByUser(userId);
+  }
+
+  /**
+   * Projects that can receive an unlinked roadmap via replace-for-project:
+   * owned by the caller (client) AND currently linked to an EMPTY roadmap.
+   * replaceProjectRoadmap re-validates on confirm, so stale candidates just
+   * error cleanly.
+   */
+  async listRoadmapLinkCandidates(
+    userId: string,
+  ): Promise<RoadmapLinkCandidate[]> {
+    const projects = await this.projectsRepo.findByUser(userId);
+    const owned = projects.filter((project) => project.client_id === userId);
+    if (owned.length === 0) return [];
+
+    const { data: roadmaps, error } = await this.supabase
+      .from('roadmaps')
+      .select('id, project_id')
+      .in(
+        'project_id',
+        owned.map((project) => project.id),
+      );
+    if (error) throw new Error(error.message);
+
+    const roadmapIdByProject = new Map<string, string>();
+    for (const row of (roadmaps ?? []) as Array<{
+      id: string;
+      project_id: string;
+    }>) {
+      roadmapIdByProject.set(row.project_id, row.id);
+    }
+
+    const candidates = await Promise.all(
+      owned.map(async (project) => {
+        const roadmapId = roadmapIdByProject.get(project.id);
+        if (!roadmapId) return null;
+        const children = await countRoadmapChildren(this.supabase, roadmapId);
+        if (children > 0) return null;
+        return { id: project.id, title: project.title, roadmap_id: roadmapId };
+      }),
+    );
+
+    return candidates.filter(
+      (candidate): candidate is RoadmapLinkCandidate => candidate !== null,
+    );
   }
 
   async listDashboardProjects(

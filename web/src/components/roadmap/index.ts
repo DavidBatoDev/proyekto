@@ -32,7 +32,6 @@ export {
   RoadmapMetadataModal,
   type RoadmapMetadataFormData,
 } from "./modals/RoadmapMetadataModal";
-export { MakeProjectDialog } from "./modals/MakeProjectDialog";
 export { RoadmapModalLayout } from "./modals/RoadmapModalLayout";
 
 // Shared utilities

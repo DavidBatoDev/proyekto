@@ -219,6 +219,12 @@ export interface DashboardSummary {
   };
 }
 
+export interface RoadmapLinkCandidate {
+  id: string;
+  title: string;
+  roadmap_id: string;
+}
+
 export interface ProjectInvite {
   id: string;
   project_id: string;
@@ -453,6 +459,40 @@ class ProjectService {
 
     const result = await response.json();
     return result.data;
+  }
+
+  /**
+   * List projects the user can link an unlinked roadmap into — i.e.
+   * projects whose currently linked roadmap is still empty.
+   */
+  async listRoadmapLinkCandidates(): Promise<RoadmapLinkCandidate[]> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      throw new Error("Authentication required");
+    }
+
+    const response = await fetch(
+      `${import.meta.env.VITE_API_URL}/api/projects/roadmap-link-candidates`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(
+        extractApiErrorMessage(error, "Failed to fetch link candidates"),
+      );
+    }
+
+    const result = await response.json();
+    return result.data as RoadmapLinkCandidate[];
   }
 
   async getDashboardSummary(params?: {

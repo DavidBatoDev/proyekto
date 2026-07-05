@@ -81,6 +81,13 @@ export class ProjectsController {
     return this.projectsService.getDashboardSummary(user.id, query);
   }
 
+  // Static route — must be declared before @Get(':id') so "roadmap-link-
+  // candidates" is not swallowed as a project id.
+  @Get('roadmap-link-candidates')
+  listRoadmapLinkCandidates(@CurrentUser() user: AuthenticatedUser) {
+    return this.projectsService.listRoadmapLinkCandidates(user.id);
+  }
+
   @Post()
   createProject(
     @CurrentUser() user: AuthenticatedUser,

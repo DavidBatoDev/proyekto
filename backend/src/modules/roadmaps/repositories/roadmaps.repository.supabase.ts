@@ -13,6 +13,37 @@ import { CreateRoadmapDto, UpdateRoadmapDto } from '../dto/roadmaps.dto';
 const ASSIGNEE_PROFILE_COLS =
   'id, display_name, avatar_url, email, first_name, last_name';
 
+/**
+ * Counts a roadmap's direct children (epics, milestones, features) — the
+ * canonical "is this roadmap empty?" check shared by
+ * RoadmapsService.replaceProjectRoadmap and
+ * ProjectsService.listRoadmapLinkCandidates. Standalone (takes the client as
+ * an argument) so the projects module can reuse it without importing
+ * RoadmapsModule, which itself imports ProjectsModule — a DI cycle.
+ */
+export async function countRoadmapChildren(
+  db: SupabaseClient,
+  roadmapId: string,
+): Promise<number> {
+  const counts = await Promise.all(
+    ['roadmap_epics', 'roadmap_milestones', 'roadmap_features'].map(
+      async (table) => {
+        const { count, error } = await db
+          .from(table)
+          .select('id', { head: true, count: 'exact' })
+          .eq('roadmap_id', roadmapId);
+        if (error) {
+          throw new Error(
+            `Failed to count ${table} for roadmap ${roadmapId}: ${error.message}`,
+          );
+        }
+        return count ?? 0;
+      },
+    ),
+  );
+  return counts.reduce((sum, n) => sum + n, 0);
+}
+
 @Injectable()
 export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
   constructor(@Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient) {}
@@ -1093,6 +1124,22 @@ export class RoadmapsRepositorySupabase implements IRoadmapsRepository {
       .eq('owner_id', guestProfile.id)
       .select('id');
     if (error) throw new Error(error.message);
-    return { migrated: (data ?? []).length };
+
+    // Carry the AI chat threads over with the roadmaps — the sessions
+    // service scopes every query by user_id, so without this the migrated
+    // user loses the conversation that built their roadmap (and the rows
+    // cascade-delete with the guest profile). Roadmaps first (the
+    // guest-status trigger watches roadmap ownership), sessions second.
+    const migratedIds = (data ?? []).map((row: { id: string }) => row.id);
+    if (migratedIds.length > 0) {
+      const { error: sessionsError } = await this.db
+        .from('roadmap_ai_sessions')
+        .update({ user_id: userId })
+        .eq('user_id', guestProfile.id)
+        .in('roadmap_id', migratedIds);
+      if (sessionsError) throw new Error(sessionsError.message);
+    }
+
+    return { migrated: migratedIds.length };
   }
 }

@@ -10,8 +10,10 @@ import {
 	ChevronDown,
 	ChevronRight,
 	FolderKanban,
+	Link2,
 	MessageCircle,
 	Search,
+	UserPlus,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
@@ -29,6 +31,7 @@ import {
 	type Team,
 	type ProjectTeam,
 } from "@/services/teams.service";
+import { LinkToProjectModal } from "@/components/roadmap/modals/LinkToProjectModal";
 import ProjectUserMenu from "./ProjectUserMenu";
 
 // Compute the destination path when switching projects, preserving the current view.
@@ -91,6 +94,28 @@ export function ProjectHeader() {
 			search: { roadmapId: childRoadmapId },
 		});
 	};
+
+	// Guests on the roadmap-only view get sign-up/log-in CTAs that redirect
+	// back here so MigrationHandler / post-signup migration can claim the draft.
+	const guestRedirect = childRoadmapId
+		? `/project/n/roadmap/${childRoadmapId}`
+		: undefined;
+
+	const handleGuestSignup = () => {
+		navigate({
+			to: "/auth/signup",
+			search: guestRedirect ? { redirect: guestRedirect } : {},
+		});
+	};
+
+	const handleGuestLogin = () => {
+		navigate({
+			to: "/auth/login",
+			search: guestRedirect ? { redirect: guestRedirect } : {},
+		});
+	};
+
+	const [isLinkProjectModalOpen, setIsLinkProjectModalOpen] = useState(false);
 
 	// Fetch teams attached to this project
 	const projectTeamsQuery = useQuery({
@@ -178,7 +203,8 @@ export function ProjectHeader() {
 	const totalProjectMembers = allMemberIds?.size ?? null;
 
 	const title = project?.title ?? (isRoadmapOnly ? "Roadmap" : "Project");
-	const showMakeProject = isRoadmapOnly;
+	const showMakeProject = isRoadmapOnly && !!user;
+	const showGuestSignupCta = isRoadmapOnly && !user;
 	const viewingAs = isRoadmapOnly
 		? undefined
 		: user?.id && project
@@ -368,16 +394,48 @@ export function ProjectHeader() {
 			</div>
 
 			<div className="flex shrink-0 items-center gap-2 sm:gap-3">
+				{showGuestSignupCta && (
+					<>
+						<button
+							type="button"
+							onClick={handleGuestSignup}
+							className="app-cta inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium text-white"
+							title="Create an account to keep this roadmap"
+						>
+							<UserPlus className="h-4 w-4" />
+							Sign up to save this roadmap
+						</button>
+						<button
+							type="button"
+							onClick={handleGuestLogin}
+							className="whitespace-nowrap px-1 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
+						>
+							Log in
+						</button>
+					</>
+				)}
+
 				{showMakeProject && (
-					<button
-						type="button"
-						onClick={handleMakeProject}
-						className="app-cta inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium text-white"
-						title="Convert to Project for Consultant Bidding"
-					>
-						<Briefcase className="h-4 w-4" />
-						Make this a Project
-					</button>
+					<>
+						<button
+							type="button"
+							onClick={() => setIsLinkProjectModalOpen(true)}
+							className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+							title="Link this roadmap to an existing project"
+						>
+							<Link2 className="h-4 w-4" />
+							Link to existing project
+						</button>
+						<button
+							type="button"
+							onClick={handleMakeProject}
+							className="app-cta inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium text-white"
+							title="Convert to Project for Consultant Bidding"
+						>
+							<Briefcase className="h-4 w-4" />
+							Make this a Project
+						</button>
+					</>
 				)}
 
 				{totalProjectMembers != null && totalProjectMembers > 0 && (
@@ -409,6 +467,14 @@ export function ProjectHeader() {
 					<ProjectUserMenu role={viewingAs} />
 				</div>
 			</div>
+
+			{childRoadmapId && (
+				<LinkToProjectModal
+					isOpen={isLinkProjectModalOpen}
+					onClose={() => setIsLinkProjectModalOpen(false)}
+					roadmapId={childRoadmapId}
+				/>
+			)}
 		</div>
 	);
 }
