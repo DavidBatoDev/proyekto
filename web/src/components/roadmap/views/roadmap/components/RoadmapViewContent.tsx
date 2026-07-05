@@ -55,6 +55,10 @@ import {
 	restoreGuestRoadmapCta,
 	setPendingProjectFromRoadmap,
 } from "@/lib/guestRoadmapConversion";
+import {
+	consumePendingRoadmapAiPrompt,
+	consumePendingRoadmapMetadataModal,
+} from "@/lib/roadmapPageHandoff";
 
 interface PendingAssignment {
 	taskId: string;
@@ -84,12 +88,6 @@ const LEFT_PANEL_MAX_WIDTH = 600;
 const LEFT_PANEL_STORAGE_KEY = "roadmap.leftPanel.width";
 const CANVAS_MIN_WIDTH = 560;
 const TASK_NAVIGATE_OFFSET_X = 620;
-// Hero-prompt handoff (written by HeroChatInput on the homepage): the prompt
-// waits under this roadmap-scoped sessionStorage key and is read-and-removed
-// on mount so refresh/back can never double-send the first AI turn. Keep the
-// literal in sync with web/src/components/root/HeroChatInput.tsx.
-const PENDING_AI_PROMPT_KEY_PREFIX = "proyekto_pending_ai_prompt:";
-
 const clampPanelWidth = (value: number, maxAllowed: number) =>
 	Math.min(Math.max(value, CHAT_PANEL_MIN_WIDTH), maxAllowed);
 
@@ -270,16 +268,7 @@ export function RoadmapViewContent({
 	// AI prompt exists for this roadmap, open the assistant panel and hand the
 	// message down so it auto-sends as the first agent turn.
 	useEffect(() => {
-		let pendingPrompt: string | null = null;
-		try {
-			const key = `${PENDING_AI_PROMPT_KEY_PREFIX}${roadmapId}`;
-			pendingPrompt = window.sessionStorage.getItem(key);
-			if (pendingPrompt !== null) {
-				window.sessionStorage.removeItem(key);
-			}
-		} catch {
-			// sessionStorage unavailable — skip the handoff.
-		}
+		const pendingPrompt = consumePendingRoadmapAiPrompt(roadmapId);
 		if (!pendingPrompt) return;
 		setInitialAiMessage(pendingPrompt);
 		setIsAiChatPanelOpen(true);
@@ -622,6 +611,13 @@ export function RoadmapViewContent({
 	const canCommentRoadmap = canEditRoadmap || currentUserRole === "commenter";
 	const showReadOnlyPermissionNote =
 		Boolean(currentUserRole) && !canEditRoadmap && !canCommentRoadmap;
+
+	useEffect(() => {
+		if (!roadmap || !canEditRoadmap) return;
+		if (!consumePendingRoadmapMetadataModal(roadmapId)) return;
+		setIsBriefOpen(true);
+	}, [canEditRoadmap, roadmap, roadmapId]);
+
 	// Guest working on an unlinked roadmap (`projectId === "n"` with no signed
 	// in user): show the persistent sign-up CTA so the roadmap isn't lost when
 	// the guest session expires.

@@ -1,115 +1,68 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Loader2, Send } from "lucide-react";
 import { useId, useState } from "react";
-import { getOrCreateGuestUser } from "@/lib/guestAuth";
-import { rememberGuestRoadmap } from "@/lib/guestRoadmapConversion";
-import { generateRoadmapThumbnailDataUri } from "@/lib/roadmapThumbnail";
-import { roadmapService } from "@/services/roadmap.service";
-import { useIsAuthenticated, useIsLoading } from "@/stores/authStore";
+import { deriveRoadmapNameFromPrompt } from "@/lib/roadmapCreationFlow";
+import { createRoadmapIntakeDraft } from "@/lib/roadmapIntakeDraft";
+import { PENDING_AI_PROMPT_KEY_PREFIX } from "@/lib/roadmapPageHandoff";
 
 /**
- * sessionStorage handoff key prefix shared with RoadmapViewContent: the hero
- * writes the prompt under `proyekto_pending_ai_prompt:<roadmapId>` right
- * before navigating, and the roadmap page reads-and-removes it on mount to
- * auto-open the AI panel and send the message as the first agent turn. Keep
- * the literal in sync with RoadmapViewContent's copy.
+ * Re-exported for existing tests and callsites. The roadmap page reads and
+ * removes this handoff key on mount, then auto-sends the prompt to the AI panel.
  */
-export const PENDING_AI_PROMPT_KEY_PREFIX = "proyekto_pending_ai_prompt:";
-
-export const HERO_GUEST_SESSION_ERROR =
-	"Couldn't start a session. Please check your connection and try again.";
-
-const ROADMAP_NAME_MAX_LENGTH = 60;
-const FALLBACK_ROADMAP_NAME = "New Roadmap";
-
-/**
- * Derive a roadmap name from the hero prompt: collapse whitespace and keep
- * the first ~60 characters so long prompts still make a readable card title.
- */
-export function deriveRoadmapNameFromPrompt(message: string): string {
-	const collapsed = message.trim().replace(/\s+/g, " ");
-	if (!collapsed) return FALLBACK_ROADMAP_NAME;
-	if (collapsed.length <= ROADMAP_NAME_MAX_LENGTH) return collapsed;
-	return `${collapsed.slice(0, ROADMAP_NAME_MAX_LENGTH).trimEnd()}…`;
-}
+export { deriveRoadmapNameFromPrompt, PENDING_AI_PROMPT_KEY_PREFIX };
 
 interface SubmitHeroPromptOptions {
-	isAuthenticated: boolean;
 	navigate: (args: {
-		to: "/project/$projectId/roadmap/$roadmapId";
-		params: { projectId: string; roadmapId: string };
+		to: "/project/$projectId/roadmap/create";
+		params: { projectId: string };
+		search: { draftId: string };
 	}) => void | Promise<void>;
 }
 
 /**
- * Orchestrates the hero submit (mirrors RoadmapBuilder's proven create flow):
- * lazily mint a guest identity when unauthenticated, create an unlinked draft
- * roadmap (no `project_id`), stash the prompt for the roadmap page to
- * auto-send, then navigate to the roadmap-only view (`projectId === "n"`).
- * Exported for unit tests.
+ * Persist the first idea, then open the chat-style roadmap setup page. The
+ * roadmap is created only after the user confirms name/category/thumbnail.
  */
 export async function submitHeroPrompt(
 	message: string,
-	{ isAuthenticated, navigate }: SubmitHeroPromptOptions,
+	{ navigate }: SubmitHeroPromptOptions,
 ): Promise<void> {
-	if (!isAuthenticated) {
-		const guestId = await getOrCreateGuestUser().catch(() => null);
-		if (!guestId) throw new Error(HERO_GUEST_SESSION_ERROR);
-	}
-
-	const name = deriveRoadmapNameFromPrompt(message);
-	const roadmap = await roadmapService.create({
-		name,
-		description: "",
-		status: "draft",
-		settings: {},
-		preview_url: generateRoadmapThumbnailDataUri(name, name),
+	const draftId = createRoadmapIntakeDraft({
+		prompt: message,
+		source: "hero",
+		projectId: "n",
 	});
 
-	if (!isAuthenticated) {
-		rememberGuestRoadmap({ roadmapId: roadmap.id, title: name });
-	}
-
-	sessionStorage.setItem(PENDING_AI_PROMPT_KEY_PREFIX + roadmap.id, message);
-
 	await navigate({
-		to: "/project/$projectId/roadmap/$roadmapId",
-		params: { projectId: "n", roadmapId: roadmap.id },
+		to: "/project/$projectId/roadmap/create",
+		params: { projectId: "n" },
+		search: { draftId },
 	});
 }
 
 /**
- * Chat-style prompt input for the homepage hero: type an idea, and Proyekto
- * creates a draft roadmap (guest-owned for anonymous visitors) and lets the
- * AI agent build it from the prompt. Self-contained so it can be re-mounted
- * elsewhere on the landing page without restructuring.
+ * Chat-style prompt input for the homepage hero. Submitting opens a full-page
+ * AI setup step before the roadmap is created.
  */
 export function HeroChatInput() {
 	const navigate = useNavigate();
 	const inputId = useId();
-	const isAuthenticated = useIsAuthenticated();
-	const isAuthLoading = useIsLoading();
 	const [message, setMessage] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const canSubmit = Boolean(message.trim()) && !isSubmitting && !isAuthLoading;
+	const canSubmit = Boolean(message.trim()) && !isSubmitting;
 
 	const handleSubmit = async () => {
 		if (!canSubmit) return;
 		setError(null);
 		setIsSubmitting(true);
 		try {
-			await submitHeroPrompt(message.trim(), { isAuthenticated, navigate });
-			// Success navigates away — keep the spinner on until unmount.
+			await submitHeroPrompt(message.trim(), { navigate });
+			// Success navigates away; keep the spinner on until unmount.
 		} catch (submitError) {
 			console.error("Failed to start a roadmap from the hero:", submitError);
-			setError(
-				submitError instanceof Error &&
-					submitError.message === HERO_GUEST_SESSION_ERROR
-					? HERO_GUEST_SESSION_ERROR
-					: "Something went wrong creating your roadmap. Please try again.",
-			);
+			setError("Something went wrong starting your roadmap. Please try again.");
 			setIsSubmitting(false);
 		}
 	};
@@ -136,7 +89,7 @@ export function HeroChatInput() {
 						disabled={isSubmitting}
 						rows={2}
 						maxLength={2000}
-						placeholder='Describe your project idea — e.g. "Build a booking app for my tutoring business"'
+						placeholder='Describe your project idea - e.g. "Build a booking app for my tutoring business"'
 						className="max-h-40 min-h-13 flex-1 resize-none bg-transparent px-3 py-2.5 text-left text-sm leading-relaxed text-white placeholder:text-white/50 focus:outline-none disabled:opacity-60 sm:text-base"
 					/>
 					<button

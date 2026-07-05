@@ -7,6 +7,7 @@ import {
 	Inbox,
 	Loader,
 	ArrowRight,
+	Plus,
 	Trash2,
 } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
@@ -232,6 +233,14 @@ export function RoadmapsGrid() {
 					<p className="text-sm text-slate-600">
 						Post your project vision to trigger consultant matching and automatically generate your roadmap.
 					</p>
+					<Link
+						to="/project/$projectId/roadmap/create"
+						params={{ projectId: "n" }}
+						className="mt-5 inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+					>
+						<Plus className="h-4 w-4" />
+						Create roadmap
+					</Link>
 				</div>
 			) : (
 				<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 items-stretch">
