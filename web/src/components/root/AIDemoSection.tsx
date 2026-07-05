@@ -1,6 +1,23 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, ListTodo, GitBranch, Send } from "lucide-react";
+import {
+  Bot,
+  CalendarDays,
+  FileText,
+  GitBranch,
+  GripVertical,
+  Layers,
+  ListTodo,
+  Maximize2,
+  MessageCircle,
+  Minus,
+  Plus,
+  RotateCcw,
+  Search,
+  Send,
+  Share2,
+  Sparkles,
+} from "lucide-react";
 
 type DemoPhase = "idle" | "greeting" | "typing" | "thinking" | "done";
 
@@ -22,101 +39,112 @@ type MockRoadmap = {
   epics: MockEpic[];
 };
 
-const FEATURE_H = 108;
-const FEATURE_GAP = 12;
-
-const ROADMAPS: Record<string, MockRoadmap> = {
-  saas: {
-    name: "SaaS MVP Launch",
-    epics: [
-      {
-        title: "Core API & Integration",
-        description: "Core API and SDKs that expose the product's core functionality to developers.",
-        features: [
-          { title: "Public REST API", description: "Design and implement REST endpoints with versioning.", taskCount: 4, tasks: ["Define API surface", "Implement endpoints", "Add rate limiting"] },
-          { title: "API Key Management", description: "User registration, API key issuance, and rotation.", taskCount: 3, tasks: ["Build signup flow", "Key generation", "Auth middleware"] },
-        ],
-      },
-      {
-        title: "Launch & Business Ops",
-        description: "Billing, launch readiness, and go-to-market preparation for paying customers.",
-        features: [
-          { title: "Billing & Plans", description: "Integrate Stripe and define pricing tiers.", taskCount: 3, tasks: ["Stripe integration", "Pricing tiers", "Invoice automation"] },
-          { title: "Marketing Launch", description: "Blog, social channels, and launch campaign.", taskCount: 4, tasks: ["Landing page", "Blog post", "Social setup"] },
-        ],
-      },
-    ],
-  },
-  mobile: {
-    name: "Mobile App Build",
-    epics: [
-      {
-        title: "Design & Prototyping",
-        description: "UX wireframes, visual design system, and an interactive prototype for sign-off.",
-        features: [
-          { title: "UX Wireframes & Flow", description: "Map key user journeys and produce low-fi wireframes.", taskCount: 4, tasks: ["User journeys", "Wireframes", "Flow review"] },
-          { title: "UI Design System", description: "Tokens, components, and screens ready for dev handoff.", taskCount: 5, tasks: ["Design tokens", "Component kit", "Screen designs"] },
-        ],
-      },
-      {
-        title: "Build & App Store Launch",
-        description: "Core screen development, API integration, and App Store submission.",
-        features: [
-          { title: "Core Screens & Auth", description: "Build primary screens and implement the auth flow.", taskCount: 7, tasks: ["Onboarding screens", "Auth integration", "Core screens"] },
-          { title: "App Store Submission", description: "Prepare assets, pass review, and publish.", taskCount: 4, tasks: ["App icons", "Store listing", "Review submission"] },
-        ],
-      },
-    ],
-  },
-  ecommerce: {
-    name: "E-commerce Launch",
-    epics: [
-      {
-        title: "Store & Catalog",
-        description: "Platform setup, product catalog, and fully functional checkout.",
-        features: [
-          { title: "Platform Setup", description: "Configure domain, branding, and payment gateway.", taskCount: 4, tasks: ["Domain setup", "Branding", "Payment gateway"] },
-          { title: "Product Pages & Checkout", description: "Build product listings, categories, and checkout flow.", taskCount: 6, tasks: ["Product pages", "Categories", "Checkout flow"] },
-        ],
-      },
-      {
-        title: "Marketing & Growth",
-        description: "SEO foundations, social presence, and paid acquisition campaigns.",
-        features: [
-          { title: "SEO & Content", description: "On-page SEO, blog posts, and meta setup.", taskCount: 3, tasks: ["On-page SEO", "Blog setup", "Meta tags"] },
-          { title: "Paid Campaigns", description: "Google and Meta ad campaigns targeting ideal customers.", taskCount: 4, tasks: ["Ad creative", "Google Ads", "Meta Ads"] },
-        ],
-      },
-    ],
-  },
-  website: {
-    name: "Website Build",
-    epics: [
-      {
-        title: "Strategy & Design",
-        description: "Site goals, wireframes, and a polished visual design ready for development.",
-        features: [
-          { title: "Discovery & Wireframes", description: "Define goals, sitemap, and low-fi wireframes.", taskCount: 3, tasks: ["Goals & sitemap", "Content plan", "Wireframes"] },
-          { title: "Visual Design", description: "Final designs for all pages with brand system.", taskCount: 5, tasks: ["Design system", "Page designs", "Prototype review"] },
-        ],
-      },
-      {
-        title: "Development & Launch",
-        description: "Frontend build, CMS integration, and production deployment.",
-        features: [
-          { title: "Frontend Development", description: "Build all pages, responsive at every breakpoint.", taskCount: 7, tasks: ["Page builds", "Responsive QA", "CMS setup"] },
-          { title: "Deploy & Analytics", description: "Production deploy, SEO, and analytics wired up.", taskCount: 3, tasks: ["Deploy", "Analytics", "Performance"] },
-        ],
-      },
-    ],
-  },
+type DemoTurn = {
+  prompt: string;
+  response: string;
+  visibleEpicCount: number;
 };
 
-const CYCLE_SUGGESTIONS: { text: string; roadmapKey: keyof typeof ROADMAPS }[] = [
-  { text: "Build a SaaS MVP", roadmapKey: "saas" },
-  { text: "Launch an e-commerce store", roadmapKey: "ecommerce" },
-  { text: "Build a mobile app", roadmapKey: "mobile" },
-  { text: "Create a website", roadmapKey: "website" },
+const FULL_STACK_ROADMAP: MockRoadmap = {
+  name: "Full-Stack Fitness App Roadmap",
+  epics: [
+    {
+      title: "Phase 1 - Platform Foundation",
+      description:
+        "Stand up the app shell, authentication, database model, API layer, and deployment pipeline.",
+      features: [
+        {
+          title: "Auth, Profiles & Roles",
+          description: "Create secure onboarding, sessions, user profiles, and role-aware access.",
+          taskCount: 5,
+          tasks: ["Email and OAuth login", "Profile setup", "Protected routes"],
+        },
+        {
+          title: "Backend, Database & CI",
+          description: "Design core entities, API contracts, environments, and automated deploys.",
+          taskCount: 6,
+          tasks: ["Schema design", "API modules", "Preview deployments"],
+        },
+        {
+          title: "App Shell & Design System",
+          description: "Create responsive navigation, shared components, and product-ready layouts.",
+          taskCount: 4,
+          tasks: ["Navigation shell", "Reusable UI kit", "Responsive states"],
+        },
+      ],
+    },
+    {
+      title: "Phase 2 - Core Product Experience",
+      description:
+        "Build the workout planning, session logging, progress tracking, and responsive dashboard flows.",
+      features: [
+        {
+          title: "Workout Builder",
+          description: "Let users create routines with exercises, sets, reps, rest timers, and notes.",
+          taskCount: 7,
+          tasks: ["Exercise catalog", "Routine templates", "Set and rep editor"],
+        },
+        {
+          title: "Progress Dashboard",
+          description: "Surface workout history, streaks, personal records, and weekly summaries.",
+          taskCount: 5,
+          tasks: ["Activity timeline", "PR cards", "Weekly insights"],
+        },
+        {
+          title: "Nutrition & Body Metrics",
+          description: "Track goals, meals, measurements, and lightweight health progress signals.",
+          taskCount: 5,
+          tasks: ["Meal logging", "Body metrics", "Goal comparisons"],
+        },
+      ],
+    },
+    {
+      title: "Phase 3 - Launch & Growth",
+      description:
+        "Prepare beta release, notifications, team workflows, analytics, and monetization experiments.",
+      features: [
+        {
+          title: "Release Readiness",
+          description: "Add QA coverage, observability, seed data, support flows, and launch checklist.",
+          taskCount: 6,
+          tasks: ["E2E smoke tests", "Error monitoring", "Launch checklist"],
+        },
+        {
+          title: "Retention & Monetization",
+          description: "Ship reminders, achievements, referral hooks, pricing tests, and analytics.",
+          taskCount: 5,
+          tasks: ["Workout reminders", "Achievement badges", "Pricing experiment"],
+        },
+        {
+          title: "Team Operations & Support",
+          description: "Prepare admin tools, feedback loops, customer support, and launch reporting.",
+          taskCount: 4,
+          tasks: ["Admin dashboard", "Feedback intake", "Support playbooks"],
+        },
+      ],
+    },
+  ],
+};
+
+const DEMO_TURNS: DemoTurn[] = [
+  {
+    prompt: "Build a full-stack fitness app roadmap.",
+    response:
+      "Phase 1 is ready: platform foundation, auth, database, API, and deployment work are now mapped.",
+    visibleEpicCount: 1,
+  },
+  {
+    prompt: "Add the core product experience for workouts and progress tracking.",
+    response:
+      "Phase 2 added: workout planning, session logging, progress dashboards, and user-facing flows.",
+    visibleEpicCount: 2,
+  },
+  {
+    prompt: "Add launch readiness and growth work as phase three.",
+    response:
+      "Phase 3 added: QA, release readiness, reminders, analytics, and monetization experiments.",
+    visibleEpicCount: 3,
+  },
 ];
 
 function TypingIndicator() {
@@ -134,152 +162,491 @@ function TypingIndicator() {
   );
 }
 
-function ConnectorLines({ featureCount }: { featureCount: number }) {
-  const totalH = featureCount * FEATURE_H + (featureCount - 1) * FEATURE_GAP;
-  const epicCenterY = totalH / 2;
-  const featureCenters = Array.from({ length: featureCount }, (_, i) =>
-    i * (FEATURE_H + FEATURE_GAP) + FEATURE_H / 2
-  );
+const STATUS_STYLES = [
+  {
+    featureLabel: "not started",
+    taskLabel: "todo",
+    border: "border-gray-300",
+    featureBadge: "bg-gray-100 text-gray-800 border-gray-300",
+    taskBadge: "bg-gray-100 text-gray-800",
+    stroke: "#94a3b8",
+    progress: "0%",
+    progressWidth: "0%",
+  },
+] as const;
+
+const FLOW_LAYOUT = {
+  epicLeft: 66,
+  epicTop: 110,
+  epicWidth: 286,
+  epicHeight: 190,
+  epicGap: 590,
+  featureLeft: 430,
+  featureWidth: 320,
+  featureHeight: 152,
+  featureGap: 198,
+  taskLeft: 780,
+  taskTopOffset: -4,
+  taskWidth: 156,
+  canvasMinWidth: 980,
+};
+
+function getEpicTop(epicIndex: number) {
+  return FLOW_LAYOUT.epicTop + epicIndex * FLOW_LAYOUT.epicGap;
+}
+
+function getFeatureTop(epicIndex: number, featureIndex: number) {
+  return getEpicTop(epicIndex) - 52 + featureIndex * FLOW_LAYOUT.featureGap;
+}
+
+function RoadmapStructurePanel({
+  roadmap,
+  phase,
+  visibleEpicCount,
+}: {
+  roadmap: MockRoadmap | null;
+  phase: DemoPhase;
+  visibleEpicCount: number;
+}) {
+  const visibleEpics = roadmap?.epics.slice(0, visibleEpicCount) ?? [];
+  const features = visibleEpics.flatMap((epic) => epic.features);
+  const featureCount = features.length;
+  const taskCount = features.reduce((sum, feature) => sum + feature.taskCount, 0);
+  const isPopulated = visibleEpics.length > 0;
 
   return (
-    <div className="relative w-8 shrink-0" style={{ height: totalH }}>
-      <div className="absolute bg-slate-200" style={{ top: epicCenterY - 0.5, left: 0, width: 14, height: 1 }} />
-      {featureCount > 1 && (
-        <div
-          className="absolute bg-slate-200"
-          style={{ left: 13.5, top: featureCenters[0], height: featureCenters[featureCount - 1] - featureCenters[0], width: 1 }}
-        />
-      )}
-      {featureCenters.map((cy, i) => (
-        <div key={i} className="absolute bg-slate-200" style={{ top: cy - 0.5, left: 14, width: 14, height: 1 }} />
-      ))}
-    </div>
+    <aside className="hidden min-w-0 border-r border-slate-200 bg-white lg:flex lg:w-[300px] lg:flex-col">
+      <div className="border-b border-slate-200 px-4 py-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-base font-semibold text-slate-950">Roadmap Structure</h3>
+          <span className="text-xs font-medium text-slate-500">
+            {visibleEpics.length} {visibleEpics.length === 1 ? "epic" : "epics"}
+          </span>
+        </div>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <div className="rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-400">
+            Search epics, features, tasks...
+          </div>
+        </div>
+        <div className="mt-4 flex items-center gap-4 text-xs text-slate-600">
+          <span className="flex items-center gap-1.5">
+            <Layers className="h-4 w-4 text-slate-500" />
+            {featureCount} features
+          </span>
+          <span className="flex items-center gap-1.5">
+            <FileText className="h-4 w-4 text-slate-500" />
+            {taskCount} tasks
+          </span>
+          <span className="ml-auto flex items-center gap-3">
+            <RotateCcw className="h-4 w-4 text-slate-500" />
+            <span className="h-4 w-4 rounded border border-slate-300" />
+          </span>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-hidden px-4 py-4">
+        <motion.div
+          animate={phase === "thinking" ? { opacity: [0.55, 0.9, 0.55] } : { opacity: 1 }}
+          transition={{ duration: 1.2, repeat: phase === "thinking" ? Infinity : 0 }}
+          className="space-y-3"
+        >
+          {isPopulated &&
+            visibleEpics.map((epic, epicIndex) => (
+              <motion.div
+                key={epic.title}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.28, delay: epicIndex * 0.08 }}
+                className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 shadow-sm"
+              >
+                <div className="mb-3 flex items-center gap-2">
+                  <GripVertical className="h-4 w-4 text-slate-400" />
+                  <GitBranch className="h-4 w-4 text-slate-400" />
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
+                    {epic.title}
+                  </span>
+                  <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-500">
+                    {epic.features.length}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  {epic.features.map((feature, featureIndex) => {
+                    const status = STATUS_STYLES[0];
+                    return (
+                      <motion.div
+                        key={`${epic.title}-${feature.title}`}
+                        initial={{ opacity: 0, x: -8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.24, delay: featureIndex * 0.05 }}
+                        className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-slate-600"
+                      >
+                        <GripVertical className="h-3.5 w-3.5 text-slate-300" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+                        <span className="min-w-0 flex-1 truncate">{feature.title}</span>
+                        <span className={`rounded-md border px-1.5 py-0.5 ${status.featureBadge}`}>
+                          {status.featureLabel}
+                        </span>
+                        <span className="text-slate-500">{feature.taskCount}</span>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            ))}
+        </motion.div>
+      </div>
+    </aside>
   );
 }
 
-function EpicCard({ epic, featureCount, animated, epicIndex }: { epic: MockEpic | null; featureCount: number; animated: boolean; epicIndex: number }) {
-  const groupH = featureCount * FEATURE_H + (featureCount - 1) * FEATURE_GAP;
-
-  if (!epic) {
-    return <div className="w-[38%] shrink-0 rounded-xl border border-dashed border-slate-200 bg-slate-50/60" style={{ height: groupH }} />;
-  }
+function FlowEpicNode({
+  epic,
+  epicIndex,
+  phase,
+}: {
+  epic: MockEpic;
+  epicIndex: number;
+  phase: DemoPhase;
+}) {
+  const status = STATUS_STYLES[0];
+  const taskCount = epic.features.reduce((sum, feature) => sum + feature.taskCount, 0);
 
   return (
     <motion.div
-      initial={animated ? { opacity: 0, x: -10 } : false}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.3, delay: epicIndex * 0.18 }}
-      className="w-[38%] shrink-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col justify-center"
-      style={{ height: groupH }}
+      initial={phase === "done" ? { opacity: 0, scale: 0.96, x: -16 } : false}
+      animate={{ opacity: 1, scale: 1, x: 0 }}
+      transition={{ duration: 0.36, delay: epicIndex * 0.08 }}
+      className={`absolute overflow-hidden rounded-[1.65rem] border-2 ${status.border} bg-white p-5 pb-6 shadow-md`}
+      style={{
+        left: FLOW_LAYOUT.epicLeft,
+        top: getEpicTop(epicIndex),
+        width: FLOW_LAYOUT.epicWidth,
+        height: FLOW_LAYOUT.epicHeight,
+      }}
     >
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="text-sm font-semibold text-slate-900 leading-snug">{epic.title}</h3>
-        <div className="flex gap-1 shrink-0 mt-0.5">
-          <div className="h-3.5 w-3.5 rounded bg-slate-100" />
-          <div className="h-3.5 w-3.5 rounded bg-slate-100" />
-          <div className="h-3.5 w-3.5 rounded bg-slate-100" />
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-600">
+          Epic
+        </span>
+        <div className="flex gap-1 pt-1">
+          <span className="h-2 w-2 rounded-full bg-slate-200" />
+          <span className="h-2 w-2 rounded-full bg-slate-200" />
         </div>
       </div>
-      <p className="mt-2 text-xs leading-relaxed text-slate-500 line-clamp-3">{epic.description}</p>
+      <h3 className="line-clamp-2 text-sm font-bold leading-tight text-slate-950">{epic.title}</h3>
+      <p className="mt-2 line-clamp-2 text-[10px] leading-relaxed text-slate-500/95">
+        {epic.description}
+      </p>
       <div className="mt-3">
-        <div className="mb-1 flex items-center justify-between">
-          <span className="text-[10px] text-slate-400">Progress</span>
-          <span className="text-[10px] text-slate-400">0%</span>
+        <div className="mb-1 flex items-center justify-between text-[9px] text-slate-400">
+          <span>Progress</span>
+          <span>{status.progress}</span>
         </div>
-        <div className="h-1 rounded-full bg-slate-100" />
+        <div className="h-1.5 overflow-hidden rounded-full bg-gray-200">
+          <div
+            className="h-full rounded-full bg-primary"
+            style={{ width: status.progressWidth }}
+          />
+        </div>
       </div>
-      <div className="mt-2.5 flex items-center gap-1">
-        <GitBranch className="h-3 w-3 text-slate-400" />
-        <span className="text-[10px] text-slate-400">{epic.features.length} features</span>
+      <div className="mt-2 flex items-center justify-between text-[9px] text-slate-400">
+        <span>{epic.features.length} features</span>
+        <span>{taskCount} tasks</span>
       </div>
     </motion.div>
   );
 }
 
-function FeatureCard({ feature, animated, epicIndex, featureIndex }: { feature: MockFeature | null; animated: boolean; epicIndex: number; featureIndex: number }) {
-  if (!feature) {
-    return <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60" style={{ height: FEATURE_H }} />;
-  }
+function FlowFeatureNode({
+  feature,
+  epicIndex,
+  featureIndex,
+  phase,
+}: {
+  feature: MockFeature;
+  epicIndex: number;
+  featureIndex: number;
+  phase: DemoPhase;
+}) {
+  const status = STATUS_STYLES[0];
 
   return (
     <motion.div
-      initial={animated ? { opacity: 0, x: 10 } : false}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.28, delay: epicIndex * 0.18 + featureIndex * 0.12 + 0.08 }}
-      className="relative rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
-      style={{ height: FEATURE_H }}
+      initial={phase === "done" ? { opacity: 0, scale: 0.96, x: -10 } : false}
+      animate={{ opacity: 1, scale: 1, x: 0 }}
+      transition={{ duration: 0.32, delay: featureIndex * 0.07 + 0.12 }}
+      className="absolute overflow-hidden rounded-[1.45rem] border-2 border-transparent bg-white p-4 pb-5 shadow-md"
+      style={{
+        left: FLOW_LAYOUT.featureLeft,
+        top: getFeatureTop(epicIndex, featureIndex),
+        width: FLOW_LAYOUT.featureWidth,
+        height: FLOW_LAYOUT.featureHeight,
+      }}
     >
-      <span className="absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full bg-amber-400" />
-      <p className="pr-5 text-xs font-semibold text-slate-900 leading-snug">{feature.title}</p>
-      <p className="mt-1 text-[10px] leading-relaxed text-slate-500 line-clamp-2">{feature.description}</p>
-      <span className="mt-1.5 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-medium text-slate-500">
-        not started
-      </span>
-      <div className="mt-2">
-        <div className="mb-1 flex items-center justify-between">
-          <span className="text-[9px] text-slate-400">Progress</span>
-          <span className="text-[9px] text-slate-400">0%</span>
+      <div className="mb-2 flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-bold text-slate-900">{feature.title}</p>
+          <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-slate-500/95">
+            {feature.description}
+          </p>
         </div>
-        <div className="h-0.5 rounded-full bg-slate-100" />
+        <div className="mt-1 flex shrink-0 gap-1">
+          <span className="h-2 w-2 rounded-full bg-slate-200" />
+          <span className="h-2 w-2 rounded-full bg-slate-200" />
+        </div>
       </div>
-      <div className="mt-1.5 flex items-center gap-1">
-        <ListTodo className="h-2.5 w-2.5 text-slate-400" />
-        <span className="text-[9px] text-slate-400">{feature.taskCount} tasks</span>
-        <span className="ml-auto text-[9px] text-slate-400">0/{feature.taskCount} done</span>
+      <span className={`inline-flex rounded border px-2 py-0.5 text-[9px] font-medium ${status.featureBadge}`}>
+        {status.featureLabel}
+      </span>
+      <div className="mt-1.5">
+        <div className="mb-1 flex items-center justify-between text-[9px] text-slate-400">
+          <span>Progress</span>
+          <span>{status.progress}</span>
+        </div>
+        <div className="h-1 overflow-hidden rounded-full bg-gray-200">
+          <div
+            className="h-full rounded-full bg-amber-500"
+            style={{ width: status.progressWidth }}
+          />
+        </div>
+      </div>
+      <div className="mt-2 flex items-center gap-1 text-[9px] text-slate-500">
+        <ListTodo className="h-2.5 w-2.5" />
+        <span>{feature.taskCount} tasks</span>
+        <span className="ml-auto">0/{feature.taskCount} done</span>
       </div>
     </motion.div>
   );
 }
 
-function EpicGroup({ epic, epicIndex, animated }: { epic: MockEpic | null; epicIndex: number; animated: boolean }) {
-  const featureCount = epic ? epic.features.length : 2;
+function TaskStack({
+  feature,
+  epicIndex,
+  featureIndex,
+  phase,
+}: {
+  feature: MockFeature;
+  epicIndex: number;
+  featureIndex: number;
+  phase: DemoPhase;
+}) {
+  const status = STATUS_STYLES[0];
+
   return (
-    <div className="flex items-center gap-0">
-      <EpicCard epic={epic} featureCount={featureCount} animated={animated} epicIndex={epicIndex} />
-      <ConnectorLines featureCount={featureCount} />
-      <div className="flex flex-1 flex-col" style={{ gap: FEATURE_GAP }}>
-        {Array.from({ length: featureCount }).map((_, i) => (
-          <FeatureCard
-            key={epic ? epic.features[i].title : i}
-            feature={epic ? epic.features[i] : null}
-            animated={animated}
-            epicIndex={epicIndex}
-            featureIndex={i}
-          />
+    <motion.div
+      initial={phase === "done" ? { opacity: 0, x: 10 } : false}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.28, delay: featureIndex * 0.07 + 0.2 }}
+      className="absolute rounded-xl border border-gray-200 bg-white/95 p-2.5 pb-3 shadow-sm"
+      style={{
+        left: FLOW_LAYOUT.taskLeft,
+        top: getFeatureTop(epicIndex, featureIndex) + FLOW_LAYOUT.taskTopOffset,
+        width: FLOW_LAYOUT.taskWidth,
+      }}
+    >
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-[8px] font-bold uppercase tracking-wide text-slate-400">
+          Tasks - {feature.tasks.length}
+        </span>
+        <Maximize2 className="h-2.5 w-2.5 text-slate-300" />
+      </div>
+      <div className="space-y-1">
+        {feature.tasks.slice(0, 3).map((task) => (
+          <div key={task} className="flex items-center gap-1.5">
+            <span className="h-3 w-3 shrink-0 rounded-sm border-2 border-gray-300 bg-white" />
+            <span className="min-w-0 flex-1 truncate text-[8px] font-medium text-slate-700">
+              {task}
+            </span>
+            <span className={`rounded px-1.5 py-0.5 text-[7px] font-medium ${status.taskBadge}`}>
+              {status.taskLabel}
+            </span>
+          </div>
         ))}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
-function RoadmapCanvas({ roadmap, phase }: { roadmap: MockRoadmap | null; phase: DemoPhase }) {
+function RoadmapFlowCanvas({
+  roadmap,
+  phase,
+  visibleEpicCount,
+}: {
+  roadmap: MockRoadmap | null;
+  phase: DemoPhase;
+  visibleEpicCount: number;
+}) {
+  const visibleEpics = roadmap?.epics.slice(0, visibleEpicCount) ?? [];
+  const isPopulated = visibleEpics.length > 0;
+  const activeEpicIndex = Math.max(visibleEpics.length - 1, 0);
+  const panY = isPopulated ? -activeEpicIndex * 500 : 0;
+  const contentHeight =
+    FLOW_LAYOUT.epicTop +
+    Math.max(visibleEpics.length, 1) * FLOW_LAYOUT.epicGap +
+    260;
+
   return (
-    <div className="flex flex-col gap-5">
-      {[0, 1].map((epicIdx) => {
-        if (phase === "idle" || phase === "greeting" || phase === "typing") {
-          return <EpicGroup key={epicIdx} epic={null} epicIndex={epicIdx} animated={false} />;
-        }
-        if (phase === "thinking") {
-          return (
-            <motion.div
-              key={epicIdx}
-              animate={{ opacity: [0.5, 0.85, 0.5] }}
-              transition={{ duration: 1.3, repeat: Infinity, delay: epicIdx * 0.3 }}
-            >
-              <EpicGroup epic={null} epicIndex={epicIdx} animated={false} />
-            </motion.div>
-          );
-        }
-        // done: populate with animation
-        return (
-          <EpicGroup
-            key={roadmap?.epics[epicIdx]?.title ?? epicIdx}
-            epic={roadmap?.epics[epicIdx] ?? null}
-            epicIndex={epicIdx}
-            animated={true}
-          />
-        );
-      })}
+    <div
+      className="relative h-full min-h-[560px] overflow-hidden bg-slate-50"
+      style={{
+        backgroundImage:
+          "radial-gradient(circle at 1px 1px, rgba(148, 163, 184, 0.35) 1px, transparent 0)",
+        backgroundSize: "18px 18px",
+      }}
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_25%_20%,rgba(59,130,246,0.08),transparent_30%),radial-gradient(circle_at_80%_80%,rgba(16,185,129,0.08),transparent_28%)]" />
+      <div className="absolute right-3 top-3 z-20 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+        <button type="button" className="flex h-9 w-9 items-center justify-center border-b border-slate-200">
+          <Plus className="h-4 w-4 text-slate-700" />
+        </button>
+        <button type="button" className="flex h-9 w-9 items-center justify-center border-b border-slate-200">
+          <Minus className="h-4 w-4 text-slate-700" />
+        </button>
+        <button type="button" className="flex h-9 w-9 items-center justify-center">
+          <Maximize2 className="h-4 w-4 text-slate-700" />
+        </button>
+      </div>
+
+      <div className="absolute bottom-3 left-1/2 z-20 hidden -translate-x-1/2 items-center gap-2 rounded-2xl border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-600 shadow-xl xl:flex">
+        <span className="font-semibold uppercase tracking-wide text-slate-400">Drag to add</span>
+        <span className="rounded-xl border border-slate-200 px-3 py-1.5 font-medium">Epic</span>
+        <span className="rounded-xl border border-slate-200 px-3 py-1.5 font-medium">Feature</span>
+        <span className="rounded-xl border border-slate-200 px-3 py-1.5 font-medium">Task</span>
+      </div>
+
+      <div className="absolute bottom-3 right-3 z-20 rounded-lg bg-white/80 px-2 py-1 text-[10px] text-slate-400">
+        React Flow
+      </div>
+
+      <motion.div
+        className="relative"
+        animate={{ y: panY }}
+        transition={{ type: "spring", stiffness: 82, damping: 20, mass: 0.9 }}
+        style={{ minWidth: FLOW_LAYOUT.canvasMinWidth, height: contentHeight }}
+      >
+        {isPopulated ? (
+          <>
+            <svg className="absolute inset-0 h-full w-full" aria-hidden="true">
+              {visibleEpics.slice(0, -1).map((epic, index) => {
+                const nextStatus = STATUS_STYLES[(index + 1) % STATUS_STYLES.length];
+                const x = FLOW_LAYOUT.epicLeft + FLOW_LAYOUT.epicWidth / 2;
+                const fromY = getEpicTop(index) + FLOW_LAYOUT.epicHeight;
+                const toY = getEpicTop(index + 1);
+                return (
+                  <motion.path
+                    key={`${epic.title}-to-${visibleEpics[index + 1]?.title}`}
+                    initial={{ pathLength: 0, opacity: 0 }}
+                    animate={{ pathLength: 1, opacity: 1 }}
+                    transition={{ duration: 0.5, delay: 0.16 }}
+                    d={`M ${x} ${fromY} C ${x} ${fromY + 72}, ${x} ${toY - 72}, ${x} ${toY}`}
+                    fill="none"
+                    stroke={nextStatus.stroke}
+                    strokeDasharray="5 7"
+                    strokeLinecap="round"
+                    strokeWidth="2"
+                  />
+                );
+              })}
+
+              {visibleEpics.flatMap((epic, epicIndex) =>
+                epic.features.map((feature, featureIndex) => {
+                  const status = STATUS_STYLES[(epicIndex + featureIndex) % STATUS_STYLES.length];
+                  const epicY = getEpicTop(epicIndex) + FLOW_LAYOUT.epicHeight / 2;
+                  const featureY = getFeatureTop(epicIndex, featureIndex) + FLOW_LAYOUT.featureHeight / 2;
+                  return (
+                    <motion.path
+                      key={`${epic.title}-${feature.title}-edge`}
+                      initial={{ pathLength: 0, opacity: 0 }}
+                      animate={{ pathLength: 1, opacity: 1 }}
+                      transition={{ duration: 0.46, delay: featureIndex * 0.08 }}
+                      d={`M ${FLOW_LAYOUT.epicLeft + FLOW_LAYOUT.epicWidth} ${epicY} C ${FLOW_LAYOUT.featureLeft - 72} ${epicY}, ${FLOW_LAYOUT.featureLeft - 72} ${featureY}, ${FLOW_LAYOUT.featureLeft} ${featureY}`}
+                      fill="none"
+                      stroke={status.stroke}
+                      strokeLinecap="round"
+                      strokeWidth="2"
+                    />
+                  );
+                })
+              )}
+
+              {visibleEpics.flatMap((epic, epicIndex) =>
+                epic.features.map((feature, featureIndex) => {
+                  const featureY = getFeatureTop(epicIndex, featureIndex) + FLOW_LAYOUT.featureHeight / 2;
+                  return (
+                    <motion.path
+                      key={`${feature.title}-tasks-edge`}
+                      initial={{ pathLength: 0, opacity: 0 }}
+                      animate={{ pathLength: 1, opacity: 1 }}
+                      transition={{ duration: 0.36, delay: featureIndex * 0.06 + 0.08 }}
+                      d={`M ${FLOW_LAYOUT.featureLeft + FLOW_LAYOUT.featureWidth} ${featureY} C ${FLOW_LAYOUT.taskLeft - 24} ${featureY}, ${FLOW_LAYOUT.taskLeft - 18} ${featureY}, ${FLOW_LAYOUT.taskLeft} ${featureY}`}
+                      fill="none"
+                      stroke="#cbd5e1"
+                      strokeLinecap="round"
+                      strokeWidth="1.5"
+                    />
+                  );
+                })
+              )}
+            </svg>
+
+            {visibleEpics.map((epic, epicIndex) => (
+              <FlowEpicNode
+                key={epic.title}
+                epic={epic}
+                epicIndex={epicIndex}
+                phase={phase}
+              />
+            ))}
+
+            {visibleEpics.flatMap((epic, epicIndex) =>
+              epic.features.map((feature, featureIndex) => (
+                <FlowFeatureNode
+                  key={`${epic.title}-${feature.title}`}
+                  feature={feature}
+                  epicIndex={epicIndex}
+                  featureIndex={featureIndex}
+                  phase={phase}
+                />
+              ))
+            )}
+
+            {visibleEpics.flatMap((epic, epicIndex) =>
+              epic.features.map((feature, featureIndex) => (
+                <TaskStack
+                  key={`${epic.title}-${feature.title}-tasks`}
+                  feature={feature}
+                  epicIndex={epicIndex}
+                  featureIndex={featureIndex}
+                  phase={phase}
+                />
+              ))
+            )}
+
+            {visibleEpics.map((epic, epicIndex) => {
+              const status = STATUS_STYLES[epicIndex % STATUS_STYLES.length];
+              const y = getEpicTop(epicIndex) - 24;
+              return (
+                <motion.div
+                  key={`${epic.title}-phase-label`}
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.24, delay: 0.08 }}
+                  className="absolute flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500 shadow-sm"
+                  style={{
+                    left: FLOW_LAYOUT.epicLeft,
+                    top: y,
+                  }}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: status.stroke }} />
+                  Phase {epicIndex + 1}
+                </motion.div>
+              );
+            })}
+          </>
+        ) : null}
+      </motion.div>
     </div>
   );
 }
@@ -287,14 +654,15 @@ function RoadmapCanvas({ roadmap, phase }: { roadmap: MockRoadmap | null; phase:
 
 export function AIDemoSection({ isActive: _isActive }: { isActive?: boolean } = {}) {
   const sectionRef = useRef<HTMLElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const [isVisible, setIsVisible] = useState(false);
 
   const [phase, setPhase] = useState<DemoPhase>("idle");
   const [typedText, setTypedText] = useState("");
-  const [submittedInput, setSubmittedInput] = useState("");
+  const [submittedPrompts, setSubmittedPrompts] = useState<string[]>([]);
   const [activeRoadmap, setActiveRoadmap] = useState<MockRoadmap | null>(null);
-  const [aiResponse, setAiResponse] = useState("");
-  const [cycleIndex, setCycleIndex] = useState(0);
+  const [aiResponses, setAiResponses] = useState<string[]>([]);
+  const [visibleEpicCount, setVisibleEpicCount] = useState(0);
 
   useEffect(() => {
     const el = sectionRef.current;
@@ -311,11 +679,28 @@ export function AIDemoSection({ isActive: _isActive }: { isActive?: boolean } = 
     if (!isVisible) {
       setPhase("idle");
       setTypedText("");
-      setSubmittedInput("");
+      setSubmittedPrompts([]);
       setActiveRoadmap(null);
-      setAiResponse("");
+      setAiResponses([]);
+      setVisibleEpicCount(0);
     }
   }, [isVisible]);
+
+  useEffect(() => {
+    if (phase === "idle") return;
+
+    const container = chatScrollRef.current;
+    if (!container) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [phase, submittedPrompts.length, aiResponses.length]);
 
   useEffect(() => {
     if (!isVisible) return;
@@ -326,135 +711,145 @@ export function AIDemoSection({ isActive: _isActive }: { isActive?: boolean } = 
       timers.push(id);
     };
 
-    const suggestion = CYCLE_SUGGESTIONS[cycleIndex % CYCLE_SUGGESTIONS.length];
-    const roadmap = ROADMAPS[suggestion.roadmapKey];
-    const featureCount = roadmap.epics.reduce((s, e) => s + e.features.length, 0);
-
     let elapsed = 400;
 
-    // Step 1: Greeting appears
     t(elapsed, () => {
       setPhase("greeting");
     });
-    elapsed += 1000;
+    elapsed += 850;
 
-    // Step 2: User types their request
-    for (let i = 0; i < suggestion.text.length; i++) {
-      const charI = i;
-      t(elapsed + charI * 52, () => {
-        setPhase("typing");
-        setTypedText(suggestion.text.slice(0, charI + 1));
+    DEMO_TURNS.forEach((turn, turnIndex) => {
+      for (let i = 0; i < turn.prompt.length; i++) {
+        const charI = i;
+        t(elapsed + charI * 34, () => {
+          setPhase("typing");
+          setTypedText(turn.prompt.slice(0, charI + 1));
+        });
+      }
+      elapsed += turn.prompt.length * 34;
+
+      t(elapsed + 280, () => {
+        setSubmittedPrompts(DEMO_TURNS.slice(0, turnIndex + 1).map((item) => item.prompt));
+        setTypedText("");
+        setPhase("thinking");
       });
-    }
-    elapsed += suggestion.text.length * 52;
+      elapsed += 280;
 
-    // Step 3: Send — user bubble, AI thinks, canvas pulses
-    t(elapsed + 380, () => {
-      setSubmittedInput(suggestion.text);
-      setTypedText("");
-      setPhase("thinking");
-    });
-    elapsed += 380;
-
-    // Step 4: Roadmap populates, AI responds
-    t(elapsed + 1900, () => {
-      setActiveRoadmap(roadmap);
-      setAiResponse(
-        `Done! I've mapped out your ${roadmap.name} — ${roadmap.epics.length} epics, ${featureCount} features ready to execute.`
-      );
-      setPhase("done");
-    });
-    elapsed += 1900;
-
-    // Step 5: Reset for next cycle
-    t(elapsed + 3200, () => {
-      setPhase("idle");
-      setTypedText("");
-      setSubmittedInput("");
-      setActiveRoadmap(null);
-      setAiResponse("");
-      setCycleIndex((i) => (i + 1) % CYCLE_SUGGESTIONS.length);
+      t(elapsed + 1250, () => {
+        setActiveRoadmap(FULL_STACK_ROADMAP);
+        setVisibleEpicCount(turn.visibleEpicCount);
+        setAiResponses(DEMO_TURNS.slice(0, turnIndex + 1).map((item) => item.response));
+        setPhase("done");
+      });
+      elapsed += turnIndex === DEMO_TURNS.length - 1 ? 1500 : 1750;
     });
 
     return () => timers.forEach(clearTimeout);
-  }, [isVisible, cycleIndex]);
+  }, [isVisible]);
 
   return (
     <section ref={sectionRef} className="flex flex-col py-6">
-      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-10 flex flex-col">
+      <div className="mx-auto flex w-full max-w-[1500px] flex-col px-4 sm:px-6 lg:px-10">
         <div className="mb-4 text-center shrink-0">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
             Use It With AI
           </p>
           <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-            Watch Proyekto build your roadmap
+            Watch Proyekto build a full-stack roadmap
           </h2>
           <p className="mx-auto mt-3 max-w-2xl text-sm text-slate-600 sm:text-base">
-            Type your project idea and see your plan come to life in seconds.
+            Three prompts become a Phase 1, Phase 2, and Phase 3 execution plan.
           </p>
         </div>
 
         <div
-          className="flex flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_12px_40px_rgba(16,24,40,0.07)]"
-          style={{ height: "calc(100vh - 280px)", minHeight: "560px" }}
+          className="flex flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_55px_rgba(15,23,42,0.10)]"
+          style={{ height: "calc(100vh - 255px)", minHeight: "640px" }}
         >
-          {/* Chrome bar */}
-          <div className="shrink-0 flex items-center gap-3 border-b border-slate-200 bg-slate-50/60 px-5 py-3">
-            <div className="flex gap-1.5">
-              <span className="h-3 w-3 rounded-full bg-red-300" />
-              <span className="h-3 w-3 rounded-full bg-amber-300" />
-              <span className="h-3 w-3 rounded-full bg-green-300" />
+          {/* Roadmap workspace toolbar */}
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2.5">
+            <div className="flex items-center gap-6">
+              <button
+                type="button"
+                className="flex h-10 items-center gap-2 border-b-2 border-slate-950 px-1 text-sm font-semibold text-slate-950"
+              >
+                <GitBranch className="h-4 w-4" />
+                Roadmap
+              </button>
+              <button
+                type="button"
+                className="hidden h-10 items-center gap-2 px-1 text-sm font-medium text-slate-500 sm:flex"
+              >
+                <CalendarDays className="h-4 w-4" />
+                Milestones
+              </button>
             </div>
-            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500 shadow-sm">
-              <span className="h-2 w-2 rounded-full bg-blue-500" />
-              Roadmap · AI Demo
+            <div className="hidden items-center gap-2 md:flex">
+              <button
+                type="button"
+                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm"
+              >
+                <FileText className="h-4 w-4" />
+                Edit Roadmap
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm"
+              >
+                <Share2 className="h-4 w-4" />
+                Share
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm"
+              >
+                <MessageCircle className="h-4 w-4" />
+                AI Chat
+              </button>
             </div>
           </div>
 
-          <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_360px] min-h-0 overflow-hidden">
-            {/* Left: Roadmap canvas */}
-            <div className="overflow-y-auto border-b border-slate-200 p-5 lg:border-b-0 lg:border-r">
-              <div className="mb-5 flex items-center gap-1 border-b border-slate-100 pb-3">
-                <span className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 shadow-sm">
-                  Roadmap
-                </span>
-                <span className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-500">
-                  Milestones
-                </span>
-                <AnimatePresence>
-                  {activeRoadmap && (
-                    <motion.span
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="ml-auto text-[11px] font-semibold text-slate-500"
-                    >
-                      {activeRoadmap.name}
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-              </div>
+          <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[300px_minmax(0,1fr)_330px]">
+            <RoadmapStructurePanel
+              roadmap={activeRoadmap}
+              phase={phase}
+              visibleEpicCount={visibleEpicCount}
+            />
+            <RoadmapFlowCanvas
+              roadmap={activeRoadmap}
+              phase={phase}
+              visibleEpicCount={visibleEpicCount}
+            />
 
-              <RoadmapCanvas roadmap={activeRoadmap} phase={phase} />
-            </div>
-
-            {/* Right: AI Chat */}
-            <div className="flex flex-col bg-slate-50/30">
-              {/* Header */}
-              <div className="flex items-center gap-2.5 border-b border-slate-200 bg-white px-4 py-3 shrink-0">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600">
-                  <Sparkles className="h-3.5 w-3.5 text-white" />
+              <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-t border-slate-200 bg-white xl:border-l xl:border-t-0">
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Bot className="h-4 w-4 shrink-0 text-blue-500" />
+                  <span className="text-sm font-semibold text-slate-800">AI Assistant</span>
                 </div>
-                <p className="text-sm font-semibold text-slate-900">AI Assistant</p>
-                <span className="ml-auto flex items-center gap-1.5 text-[10px] font-medium text-emerald-600">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  Online
-                </span>
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700"
+                >
+                  New thread
+                </button>
               </div>
 
-              {/* Messages */}
-              <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
-                {/* 1. Greeting */}
+                <div
+                  ref={chatScrollRef}
+                  className="flex min-h-0 flex-col gap-3 overflow-y-auto bg-slate-50/40 px-4 pb-24 pt-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                >
+                {phase === "idle" && (
+                  <div className="flex h-full flex-col items-center justify-center px-4 text-center">
+                    <Bot className="mb-3 h-9 w-9 text-slate-400" />
+                    <p className="text-sm font-medium text-slate-700">
+                      Ask questions or request roadmap edits
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Example: "add an epic for onboarding improvements"
+                    </p>
+                  </div>
+                )}
                 <AnimatePresence>
                   {phase !== "idle" && (
                     <motion.div
@@ -464,34 +859,50 @@ export function AIDemoSection({ isActive: _isActive }: { isActive?: boolean } = 
                       transition={{ duration: 0.3 }}
                       className="flex items-start gap-2"
                     >
-                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-blue-600">
-                        <Sparkles className="h-3 w-3 text-white" />
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-600">
+                        <Sparkles className="h-3.5 w-3.5 text-white" />
                       </div>
                       <div className="rounded-2xl rounded-tl-sm border border-slate-200 bg-white px-3 py-2 text-sm leading-relaxed text-slate-700 shadow-sm">
-                        Hi! Tell me what you're building and I'll create a step-by-step roadmap for you. 👋
+                        Hi! Tell me what you're building and I'll create a step-by-step roadmap for you.
                       </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
 
-                {/* 2. User message */}
                 <AnimatePresence>
-                  {submittedInput && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.22 }}
-                      className="flex justify-end"
-                    >
-                      <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-blue-600 px-3 py-2 text-sm text-white shadow-sm">
-                        {submittedInput}
-                      </div>
-                    </motion.div>
-                  )}
+                  {submittedPrompts.map((prompt, index) => (
+                    <div key={`${prompt}-${index}`} className="contents">
+                      <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.22 }}
+                        className="flex justify-end"
+                      >
+                        <div className="max-w-[88%] rounded-2xl rounded-tr-sm bg-blue-600 px-3 py-2 text-sm text-white shadow-sm">
+                          {prompt}
+                        </div>
+                      </motion.div>
+                      {aiResponses[index] && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.24, delay: 0.05 }}
+                          className="flex items-start gap-2"
+                        >
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-600">
+                            <Sparkles className="h-3.5 w-3.5 text-white" />
+                          </div>
+                          <div className="rounded-2xl rounded-tl-sm border border-slate-200 bg-white px-3 py-2 text-sm leading-relaxed text-slate-700 shadow-sm">
+                            {aiResponses[index]}
+                          </div>
+                        </motion.div>
+                      )}
+                    </div>
+                  ))}
                 </AnimatePresence>
 
-                {/* Thinking / response */}
                 <AnimatePresence mode="wait">
                   {phase === "thinking" && (
                     <motion.div
@@ -501,58 +912,45 @@ export function AIDemoSection({ isActive: _isActive }: { isActive?: boolean } = 
                       exit={{ opacity: 0 }}
                       className="flex items-start gap-2"
                     >
-                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-blue-600">
-                        <Sparkles className="h-3 w-3 text-white" />
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-600">
+                        <Sparkles className="h-3.5 w-3.5 text-white" />
                       </div>
                       <div className="rounded-2xl rounded-tl-sm border border-slate-200 bg-white shadow-sm">
                         <TypingIndicator />
                       </div>
                     </motion.div>
                   )}
-                  {phase === "done" && aiResponse && (
-                    <motion.div
-                      key="response"
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="flex items-start gap-2"
-                    >
-                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-blue-600">
-                        <Sparkles className="h-3 w-3 text-white" />
-                      </div>
-                      <div className="rounded-2xl rounded-tl-sm border border-slate-200 bg-white px-3 py-2 text-sm leading-relaxed text-slate-700 shadow-sm">
-                        {aiResponse}
-                      </div>
-                    </motion.div>
-                  )}
                 </AnimatePresence>
               </div>
 
-              {/* Input */}
-              <div className="shrink-0 border-t border-slate-200 bg-white p-3">
-                <div className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm">
-                  <span className="flex-1 min-w-0 text-sm">
-                    {typedText ? (
-                      <span className="text-slate-900">
-                        {typedText}
-                        <motion.span
-                          animate={{ opacity: [1, 0, 1] }}
-                          transition={{ duration: 0.7, repeat: Infinity }}
-                          className="ml-px inline-block h-3.5 w-0.5 translate-y-px rounded-full bg-slate-700"
-                        />
-                      </span>
-                    ) : (
-                      <span className="text-slate-400">Chat or request roadmap edits...</span>
-                    )}
-                  </span>
-                  <motion.div
-                    animate={phase === "thinking" ? { scale: [1, 1.18, 1], backgroundColor: ["rgb(37,99,235)", "rgb(96,165,250)", "rgb(37,99,235)"] } : {}}
-                    transition={{ duration: 0.4 }}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-600"
-                  >
-                    <Send className="h-3.5 w-3.5 text-white" />
-                  </motion.div>
+                <div className="sticky bottom-0 z-20 shrink-0 border-t border-slate-200 bg-white p-3">
+                  <div className="mb-2 hidden text-[10px] text-slate-400 xl:block">
+                    Agent endpoint: https://proyekto-agent-demo.run.app
+                  </div>
+                  <div className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm">
+                    <span className="min-w-0 flex-1 text-sm">
+                      {typedText ? (
+                        <span className="text-slate-900">
+                          {typedText}
+                          <motion.span
+                            animate={{ opacity: [1, 0, 1] }}
+                            transition={{ duration: 0.7, repeat: Infinity }}
+                            className="ml-px inline-block h-3.5 w-0.5 translate-y-px rounded-full bg-slate-700"
+                          />
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">Chat or request roadmap edits...</span>
+                      )}
+                    </span>
+                    <motion.div
+                      animate={phase === "thinking" ? { scale: [1, 1.18, 1], backgroundColor: ["rgb(37,99,235)", "rgb(96,165,250)", "rgb(37,99,235)"] } : {}}
+                      transition={{ duration: 0.4 }}
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-600"
+                    >
+                      <Send className="h-3.5 w-3.5 text-white" />
+                    </motion.div>
+                  </div>
                 </div>
-              </div>
             </div>
           </div>
         </div>
