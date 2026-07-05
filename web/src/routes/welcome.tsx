@@ -24,6 +24,7 @@ import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { supabase } from "@/lib/supabase";
 import { apiClient } from "@/api";
 import { completeOnboarding, type OnboardingLane } from "@/lib/auth-api";
+import { getPendingProjectFromRoadmap } from "@/lib/guestRoadmapConversion";
 import { useToast } from "@/hooks/useToast";
 
 export const Route = createFileRoute("/welcome")({
@@ -110,6 +111,19 @@ function newInviteRow(): InviteRow {
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+function navigateAfterWelcome(navigate: ReturnType<typeof useNavigate>) {
+  const pending = getPendingProjectFromRoadmap();
+  if (pending?.roadmapId) {
+    navigate({
+      to: "/project/roadmap/convert/$roadmapId",
+      params: { roadmapId: pending.roadmapId },
+    });
+    return;
+  }
+
+  navigate({ to: "/dashboard" });
 }
 
 function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
@@ -229,10 +243,10 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
     } else if (valid.length > 0) {
       toast.success(`${valid.length} invite${valid.length === 1 ? "" : "s"} sent`);
     }
-    navigate({ to: "/dashboard" });
+    navigateAfterWelcome(navigate);
   };
 
-  const skipInvitesAndFinish = () => navigate({ to: "/dashboard" });
+  const skipInvitesAndFinish = () => navigateAfterWelcome(navigate);
 
   // ── Slide 1: close confirmation ──────────────────────────────────────────
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
@@ -312,7 +326,7 @@ function ClientFreelancerWelcomeDeck({ firstName }: { firstName: string }) {
           title="Skip the welcome tour?"
           description="You can always come back to set up your workspace later from your dashboard."
           onCancel={() => setShowCloseConfirm(false)}
-          onConfirm={() => navigate({ to: "/dashboard" })}
+          onConfirm={() => navigateAfterWelcome(navigate)}
         />
       )}
     </DeckShell>
@@ -355,7 +369,7 @@ function ConsultantWelcomeDeck({ firstName }: { firstName: string }) {
           Want to use Proyekto as a client first?{" "}
           <button
             type="button"
-            onClick={() => navigate({ to: "/dashboard" })}
+            onClick={() => navigateAfterWelcome(navigate)}
             className="font-semibold text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-slate-900 hover:decoration-slate-700"
           >
             Open my workspace →
@@ -396,7 +410,7 @@ function ConsultantWelcomeDeck({ firstName }: { firstName: string }) {
           description="You can pick up the application anytime from your dashboard. Your workspace is ready in the meantime."
           confirmLabel="Open workspace"
           onCancel={() => setShowCloseConfirm(false)}
-          onConfirm={() => navigate({ to: "/dashboard" })}
+          onConfirm={() => navigateAfterWelcome(navigate)}
         />
       )}
     </DeckShell>

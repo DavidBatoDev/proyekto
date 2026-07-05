@@ -17,6 +17,11 @@ import { SignupStepAccount } from "./SignupStepAccount";
 import { SignupStepPassword } from "./SignupStepPassword";
 import { SignupStepProfile } from "./SignupStepProfile";
 import { BrandMark } from "@/components/brand/BrandMark";
+import {
+  clearAuthContinuation,
+  rememberAuthContinuation,
+} from "@/lib/authContinuation";
+import { hasPendingProjectFromRoadmapIntent } from "@/lib/guestRoadmapConversion";
 import { runGuestMigrationIfNeeded } from "@/services/migration.service";
 
 interface SignupFormProps {
@@ -180,6 +185,13 @@ export function SignupForm(_props: SignupFormProps) {
       sessionStorage.setItem("signup_confirmPassword", confirmPassword);
       sessionStorage.setItem("signup_acceptedTerms", acceptedTerms.toString());
       sessionStorage.setItem("isInSignupFlow", "true");
+      rememberAuthContinuation({
+        redirectTo: search.redirect,
+        source: "signup",
+        authMethod: "password",
+        lane,
+        intent: search.intent,
+      });
 
       // 1. Create the Supabase auth user
       await signUp(email, password);
@@ -234,6 +246,7 @@ export function SignupForm(_props: SignupFormProps) {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
+      clearAuthContinuation();
       sessionStorage.removeItem("isInSignupFlow");
       sessionStorage.removeItem("signupStep");
 
@@ -322,14 +335,17 @@ export function SignupForm(_props: SignupFormProps) {
 
       const postSignupRedirect = sessionStorage.getItem("signup_redirect");
       clearSignupData();
+      clearAuthContinuation();
 
-      // Claim any guest-drafted roadmaps BEFORE navigating so a redirect
-      // back to /project/n/roadmap/:id lands on a user-owned roadmap.
-      // Best-effort: MigrationHandler in __root remains the fallback.
-      try {
-        await runGuestMigrationIfNeeded();
-      } catch {
-        /* non-blocking */
+      // If signup started from "turn roadmap into project", the conversion
+      // endpoint will claim the selected roadmap. Otherwise keep the legacy
+      // broad guest-roadmap migration as a best-effort fallback.
+      if (!hasPendingProjectFromRoadmapIntent()) {
+        try {
+          await runGuestMigrationIfNeeded();
+        } catch {
+          /* non-blocking */
+        }
       }
 
       // If the user landed here from an invite link, send them back to it.
@@ -421,6 +437,9 @@ export function SignupForm(_props: SignupFormProps) {
               setEmail={setEmail}
               onNext={handleAccountNext}
               onBack={() => setStep(1)}
+              authRedirect={search.redirect}
+              authLane={lane}
+              authIntent={search.intent}
             />
           </motion.div>
         )}

@@ -5,8 +5,13 @@ import { CircularProgress } from "@mui/material";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../stores/authStore";
 import { useToast } from "../../hooks/useToast";
-import { completeOnboarding } from "../../lib/auth-api";
+import { completeOnboarding, type OnboardingLane } from "../../lib/auth-api";
 import { fetchProfile, profileKeys } from "../../queries/profile";
+import {
+  clearAuthContinuation,
+  getAuthContinuation,
+  resolvePostAuthDestination,
+} from "@/lib/authContinuation";
 
 export const Route = createFileRoute("/auth/callback")({
   component: AuthCallbackPage,
@@ -20,6 +25,12 @@ function AuthCallbackPage() {
   useEffect(() => {
     const finalizeOAuth = async () => {
       try {
+        const continuation = getAuthContinuation();
+        const callbackRedirect =
+          typeof window === "undefined"
+            ? null
+            : new URLSearchParams(window.location.search).get("redirect");
+
         const {
           data: { session },
           error: sessionError,
@@ -101,19 +112,34 @@ function AuthCallbackPage() {
         sessionStorage.removeItem("isInSignupFlow");
         sessionStorage.removeItem("signupStep");
 
-        if (profile?.has_completed_onboarding) {
-          navigate({ to: "/dashboard", replace: true });
+        const hadCompletedOnboarding = Boolean(profile?.has_completed_onboarding);
+
+        if (hadCompletedOnboarding) {
+          const destination = resolvePostAuthDestination({
+            explicitRedirect: callbackRedirect,
+            hasCompletedOnboarding: true,
+          });
+          clearAuthContinuation();
+          navigate({ to: destination, replace: true });
         } else {
           // Google users never ran the signup-time onboarding step that the
-          // password flow runs (SignupForm). Run it now — idempotently — so the
-          // flag is set AND the personal workspace is provisioned, then show the
-          // welcome tour once. OAuth users default to the client_freelancer lane
-          // (the lane query param doesn't survive Google's roundtrip). This also
-          // self-heals existing accounts that were stuck looping on /welcome.
+          // password flow runs. Complete it idempotently, then show Welcome once.
+          // If signup started from a specific lane, the continuation preserves it.
+          const lane: OnboardingLane =
+            continuation?.lane === "consultant"
+              ? "consultant"
+              : "client_freelancer";
+
           try {
             await completeOnboarding({
-              lane: "client_freelancer",
-              intent: { client: true, freelancer: false },
+              lane,
+              intent:
+                lane === "consultant"
+                  ? { client: false, freelancer: false }
+                  : {
+                      client: continuation?.intent !== "freelancer",
+                      freelancer: continuation?.intent === "freelancer",
+                    },
             });
           } catch (err) {
             // Non-fatal: the welcome deck re-attempts completion as a backstop.
@@ -129,9 +155,15 @@ function AuthCallbackPage() {
           } catch (refetchErr) {
             console.error("Profile refetch after OAuth onboarding failed:", refetchErr);
           }
-          navigate({ to: "/welcome", replace: true });
+          const destination = resolvePostAuthDestination({
+            explicitRedirect: callbackRedirect,
+            hasCompletedOnboarding: false,
+          });
+          clearAuthContinuation();
+          navigate({ to: destination, replace: true });
         }
       } catch (error) {
+        clearAuthContinuation();
         console.error("OAuth callback error:", error);
         toast.error(
           error instanceof Error ? error.message : "Google sign-in failed",

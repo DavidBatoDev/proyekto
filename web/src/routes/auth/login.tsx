@@ -15,6 +15,11 @@ import {
 import { Eye, EyeOff } from "lucide-react";
 import { SignupLayout } from "../../components/auth/signup/SignupLayout";
 import { BrandMark } from "@/components/brand/BrandMark";
+import {
+  clearAuthContinuation,
+  rememberAuthContinuation,
+  resolvePostAuthDestination,
+} from "@/lib/authContinuation";
 
 export const Route = createFileRoute("/auth/login")({
   // Return an OPTIONAL `redirect` key (omit it entirely when absent) so that
@@ -26,11 +31,16 @@ export const Route = createFileRoute("/auth/login")({
     return typeof r === "string" && r.length > 0 ? { redirect: r } : {};
   },
   beforeLoad: ({ search }) => {
-    const { isAuthenticated, isLoading } = useAuthStore.getState();
+    const { isAuthenticated, isLoading, profile } = useAuthStore.getState();
 
     // Only redirect if auth is loaded and user is authenticated
     if (!isLoading && isAuthenticated) {
-      throw redirect({ to: (search.redirect as string) || "/dashboard" });
+      throw redirect({
+        to: resolvePostAuthDestination({
+          explicitRedirect: search.redirect,
+          hasCompletedOnboarding: profile?.has_completed_onboarding,
+        }),
+      });
     }
   },
   component: RouteComponent,
@@ -42,6 +52,7 @@ function RouteComponent() {
   const signOut = useAuthStore((state) => state.signOut);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isAuthLoading = useAuthStore((state) => state.isLoading);
+  const profile = useAuthStore((state) => state.profile);
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -53,9 +64,14 @@ function RouteComponent() {
   // Redirect if already authenticated
   useEffect(() => {
     if (!isAuthLoading && isAuthenticated) {
-      navigate({ to: redirectTo || "/dashboard" });
+      navigate({
+        to: resolvePostAuthDestination({
+          explicitRedirect: redirectTo,
+          hasCompletedOnboarding: profile?.has_completed_onboarding,
+        }),
+      });
     }
-  }, [isAuthenticated, isAuthLoading, navigate, redirectTo]);
+  }, [isAuthenticated, isAuthLoading, navigate, profile, redirectTo]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isVerifyStep, setIsVerifyStep] = useState(false);
@@ -104,6 +120,12 @@ function RouteComponent() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     try {
+      rememberAuthContinuation({
+        redirectTo,
+        source: "login",
+        authMethod: "google",
+      });
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
@@ -112,6 +134,7 @@ function RouteComponent() {
       });
       if (error) throw error;
     } catch (error) {
+      clearAuthContinuation();
       setIsLoading(false);
       toast.error(
         error instanceof Error ? error.message : "Google sign-in failed",
@@ -124,6 +147,12 @@ function RouteComponent() {
     setIsLoading(true);
 
     try {
+      rememberAuthContinuation({
+        redirectTo,
+        source: "login",
+        authMethod: "password",
+      });
+
       // Ensure any previous session is cleared before attempting login
       try {
         await signOut();
@@ -176,16 +205,21 @@ function RouteComponent() {
           return;
         }
 
-        if (!profile?.has_completed_onboarding) {
-          // Must complete onboarding first; invite will still be waiting after.
-          navigate({ to: "/welcome" });
-        } else {
-          navigate({ to: redirectTo || "/dashboard" });
-        }
+        const destination = resolvePostAuthDestination({
+          explicitRedirect: redirectTo,
+          hasCompletedOnboarding: profile?.has_completed_onboarding,
+        });
+        clearAuthContinuation();
+        navigate({ to: destination });
       } else {
-        navigate({ to: redirectTo || "/dashboard" });
+        const destination = resolvePostAuthDestination({
+          explicitRedirect: redirectTo,
+        });
+        clearAuthContinuation();
+        navigate({ to: destination });
       }
     } catch (err) {
+      clearAuthContinuation();
       console.error("Login error:", err);
 
       // Provide user-friendly error messages

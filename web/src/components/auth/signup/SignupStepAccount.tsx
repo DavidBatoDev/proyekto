@@ -5,6 +5,12 @@ import { GoogleButton } from "./SignupButtons";
 import { WizardNav } from "./WizardNav";
 import { supabase } from "../../../lib/supabase";
 import { useToast } from "../../../hooks/useToast";
+import {
+  clearAuthContinuation,
+  rememberAuthContinuation,
+  type AuthContinuationIntent,
+  type AuthContinuationLane,
+} from "@/lib/authContinuation";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -17,6 +23,9 @@ interface SignupStepAccountProps {
   setEmail: (v: string) => void;
   onNext: () => void;
   onBack?: () => void;
+  authRedirect?: string;
+  authLane?: AuthContinuationLane;
+  authIntent?: AuthContinuationIntent;
 }
 
 function GoogleIcon() {
@@ -53,6 +62,9 @@ export function SignupStepAccount({
   setEmail,
   onNext,
   onBack,
+  authRedirect,
+  authLane,
+  authIntent,
 }: SignupStepAccountProps) {
   const toast = useToast();
   const [errors, setErrors] = useState<FieldErrors>({
@@ -63,6 +75,14 @@ export function SignupStepAccount({
 
   const handleGoogleSignIn = async () => {
     try {
+      rememberAuthContinuation({
+        redirectTo: authRedirect,
+        source: "signup",
+        authMethod: "google",
+        lane: authLane,
+        intent: authIntent,
+      });
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
@@ -72,6 +92,7 @@ export function SignupStepAccount({
 
       if (error) throw error;
     } catch (error) {
+      clearAuthContinuation();
       toast.error(
         error instanceof Error ? error.message : "Google sign-in failed",
       );
@@ -235,6 +256,7 @@ export function SignupStepAccount({
         Already have an account?{" "}
         <Link
           to="/auth/login"
+          search={authRedirect ? { redirect: authRedirect } : {}}
           style={{ color: "#1E293B", fontWeight: 700, textDecoration: "none" }}
         >
           Sign in
