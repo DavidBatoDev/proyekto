@@ -6,7 +6,7 @@ import {
 	useRef,
 	type MouseEvent as ReactMouseEvent,
 } from "react";
-import { AlertTriangle, CheckCircle2, Rocket } from "lucide-react";
+import { AlertTriangle, Rocket, X } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import {
 	DndContext,
@@ -49,7 +49,10 @@ import { useShallow } from "zustand/react/shallow";
 import { findTaskById } from "@/routes/project/$projectId/work-items/workItemsOptimistic";
 import type { RoadmapPerformanceMode } from "../models/types";
 import {
+	dismissGuestRoadmapCta,
+	isGuestRoadmapCtaDismissed,
 	rememberGuestRoadmap,
+	restoreGuestRoadmapCta,
 	setPendingProjectFromRoadmap,
 } from "@/lib/guestRoadmapConversion";
 
@@ -237,6 +240,8 @@ export function RoadmapViewContent({
 	const [isJsonPanelOpen, setIsJsonPanelOpen] = useState(false);
 	const [isSavingRoadmapJson, setIsSavingRoadmapJson] = useState(false);
 	const isMobile = useIsMobile();
+	const [isGuestProjectCtaDismissed, setIsGuestProjectCtaDismissed] =
+		useState(false);
 	const [isAiChatPanelOpen, setIsAiChatPanelOpen] = useState(false);
 	const [initialAiMessage, setInitialAiMessage] = useState<string | null>(null);
 	const [isResizingChatPanel, setIsResizingChatPanel] = useState(false);
@@ -622,9 +627,14 @@ export function RoadmapViewContent({
 	// the guest session expires.
 	const user = useUser();
 	const showGuestSignupNote = projectId === "n" && !user;
+	const guestRoadmapTitle = roadmap?.name ?? "Untitled roadmap";
+
+	useEffect(() => {
+		setIsGuestProjectCtaDismissed(isGuestRoadmapCtaDismissed(roadmapId));
+	}, [roadmapId]);
 
 	const handleGuestProjectIntent = () => {
-		const title = roadmap?.name ?? "Untitled roadmap";
+		const title = guestRoadmapTitle;
 		rememberGuestRoadmap({ roadmapId, title });
 		setPendingProjectFromRoadmap({
 			roadmapId,
@@ -632,6 +642,36 @@ export function RoadmapViewContent({
 			source: "roadmap_cta",
 		});
 	};
+
+	const handleDismissGuestProjectCta = () => {
+		dismissGuestRoadmapCta(roadmapId);
+		setIsGuestProjectCtaDismissed(true);
+	};
+
+	const handleRestoreGuestProjectCta = () => {
+		restoreGuestRoadmapCta(roadmapId);
+		setIsGuestProjectCtaDismissed(false);
+	};
+
+	const guestSignupSearch = {
+		redirect: "/welcome",
+		intent: "client",
+		lane: "client_freelancer",
+	} as const;
+	const guestLoginSearch = {
+		redirect: `/project/roadmap/convert/${roadmapId}`,
+	} as const;
+	const guestTopBarProjectCta = showGuestSignupNote ? (
+		<Link
+			to="/auth/signup"
+			search={guestSignupSearch}
+			onClick={handleGuestProjectIntent}
+			className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-3.5 py-1.5 text-sm font-bold text-white shadow-sm shadow-emerald-500/20 transition hover:bg-emerald-600"
+		>
+			<Rocket className="h-4 w-4" />
+			Turn into project
+		</Link>
+	) : null;
 
 	const handleModalUpdateFormData = (
 		updates: Partial<RoadmapMetadataFormData>,
@@ -909,6 +949,7 @@ export function RoadmapViewContent({
 									return true;
 								});
 							}}
+							projectCta={guestTopBarProjectCta}
 						/>
 
 						<div className="flex-1 flex overflow-hidden">
@@ -967,6 +1008,74 @@ export function RoadmapViewContent({
 									onNodeClose={handleNodeClose}
 									performanceMode={performanceMode}
 								/>
+								{showGuestSignupNote && !isAiChatPanelOpen && (
+									<div className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex justify-end">
+										{isGuestProjectCtaDismissed ? (
+											<button
+												type="button"
+												onClick={handleRestoreGuestProjectCta}
+												className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/95 px-4 py-2 text-sm font-bold text-emerald-700 shadow-lg shadow-slate-900/10 backdrop-blur transition hover:border-emerald-300 hover:bg-emerald-50"
+											>
+												<Rocket className="h-4 w-4" />
+												Turn into project
+											</button>
+										) : (
+											<div className="pointer-events-auto w-[min(34rem,100%)] rounded-2xl border border-emerald-200 bg-white/95 p-4 shadow-[0_18px_60px_rgba(15,23,42,0.18)] backdrop-blur">
+												<div className="flex items-start gap-3">
+													<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/25">
+														<Rocket className="h-5 w-5" />
+													</div>
+													<div className="min-w-0 flex-1">
+														<div className="flex items-start gap-3">
+															<div className="min-w-0 flex-1">
+																<p className="text-sm font-black leading-tight text-slate-950">
+																	Turn this roadmap into a project
+																</p>
+																<p className="mt-1 text-sm text-slate-600">
+																	Collaborate, assign owners, and track
+																	progress.
+																</p>
+															</div>
+															<button
+																type="button"
+																onClick={handleDismissGuestProjectCta}
+																aria-label="Dismiss project conversion prompt"
+																className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+															>
+																<X className="h-4 w-4" />
+															</button>
+														</div>
+														<div className="mt-3 flex flex-col gap-2 sm:flex-row">
+															<Link
+																to="/auth/signup"
+																search={guestSignupSearch}
+																onClick={handleGuestProjectIntent}
+																className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-slate-950 px-5 py-2 text-sm font-bold text-white transition hover:bg-slate-800"
+															>
+																Create account
+															</Link>
+															<Link
+																to="/auth/login"
+																search={guestLoginSearch}
+																onClick={handleGuestProjectIntent}
+																className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-slate-300 px-5 py-2 text-sm font-bold text-slate-800 transition hover:border-slate-500 hover:bg-slate-50"
+															>
+																Log in
+															</Link>
+															<button
+																type="button"
+																onClick={handleDismissGuestProjectCta}
+																className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-4 py-2 text-sm font-bold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+															>
+																Not now
+															</button>
+														</div>
+													</div>
+												</div>
+											</div>
+										)}
+									</div>
+								)}
 							</div>
 
 							{isAiChatPanelOpen && (
@@ -1048,69 +1157,64 @@ export function RoadmapViewContent({
 					</div>
 				)}
 
-				{/* Persistent guest CTA — not dismissible; stacks above the read-only
-				    note in the (unlikely) case both render at once. */}
-				{showGuestSignupNote && (
-					<div
-						className={`fixed right-5 z-40 w-[min(26rem,calc(100vw-2.5rem))] rounded-2xl border border-emerald-200 bg-white/95 p-5 shadow-[0_18px_60px_rgba(15,23,42,0.22)] backdrop-blur ${
-							showReadOnlyPermissionNote ? "bottom-24" : "bottom-5"
-						}`}
-					>
-						<div className="flex items-start gap-3">
-							<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/25">
-								<Rocket className="h-5 w-5" />
-							</div>
-							<div>
-								<p className="text-base font-black leading-tight text-slate-950">
-									Turn this roadmap into a collaborative project
-								</p>
-								<p className="mt-1 text-sm text-slate-600">
-									Keep building with the team workspace around it.
-								</p>
-								<ul className="mt-3 space-y-1.5 text-sm text-slate-700">
-									{[
-										"Collaborate with teammates",
-										"Track progress with Kanban",
-										"Assign tasks and owners",
-										"Set due dates and milestones",
-										"Keep your roadmap synced with your project",
-									].map((benefit) => (
-										<li key={benefit} className="flex items-center gap-2">
-											<CheckCircle2 className="h-4 w-4 text-emerald-600" />
-											<span>{benefit}</span>
-										</li>
-									))}
-								</ul>
-								<p className="sr-only">
-									You're working as a guest — sign up to keep this roadmap and
-									turn it into a project.
-								</p>
-								<div className="mt-4 flex flex-col gap-2 sm:flex-row">
-									<Link
-										to="/auth/signup"
-										search={{
-											redirect: "/welcome",
-											intent: "client",
-											lane: "client_freelancer",
-										}}
-										onClick={handleGuestProjectIntent}
-										className="inline-flex items-center justify-center rounded-full bg-slate-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800"
-									>
-										Create account
-									</Link>
-									<Link
-										to="/auth/login"
-										search={{
-											redirect: `/project/roadmap/convert/${roadmapId}`,
-										}}
-										onClick={handleGuestProjectIntent}
-										className="inline-flex items-center justify-center rounded-full border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:border-slate-500 hover:bg-slate-50"
-									>
-										Log in
-									</Link>
+				{isMobile && showGuestSignupNote && !isAiChatPanelOpen && (
+					<div className="fixed inset-x-3 bottom-3 z-40">
+						{isGuestProjectCtaDismissed ? (
+							<button
+								type="button"
+								onClick={handleRestoreGuestProjectCta}
+								className="mx-auto flex items-center gap-2 rounded-full border border-emerald-200 bg-white/95 px-4 py-2 text-sm font-bold text-emerald-700 shadow-lg shadow-slate-900/10 backdrop-blur"
+							>
+								<Rocket className="h-4 w-4" />
+								Turn into project
+							</button>
+						) : (
+							<div className="rounded-2xl border border-emerald-200 bg-white/95 p-3 shadow-[0_18px_48px_rgba(15,23,42,0.22)] backdrop-blur">
+								<div className="flex items-start gap-3">
+									<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-white">
+										<Rocket className="h-4 w-4" />
+									</div>
+									<div className="min-w-0 flex-1">
+										<div className="flex items-start gap-2">
+											<div className="min-w-0 flex-1">
+												<p className="text-sm font-black leading-tight text-slate-950">
+													Turn this roadmap into a project
+												</p>
+												<p className="mt-0.5 text-xs text-slate-600">
+													Collaborate and track work after signing in.
+												</p>
+											</div>
+											<button
+												type="button"
+												onClick={handleDismissGuestProjectCta}
+												aria-label="Dismiss project conversion prompt"
+												className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400"
+											>
+												<X className="h-4 w-4" />
+											</button>
+										</div>
+										<div className="mt-3 grid grid-cols-2 gap-2">
+											<Link
+												to="/auth/signup"
+												search={guestSignupSearch}
+												onClick={handleGuestProjectIntent}
+												className="inline-flex items-center justify-center rounded-full bg-slate-950 px-3 py-2 text-sm font-bold text-white"
+											>
+												Create account
+											</Link>
+											<Link
+												to="/auth/login"
+												search={guestLoginSearch}
+												onClick={handleGuestProjectIntent}
+												className="inline-flex items-center justify-center rounded-full border border-slate-300 px-3 py-2 text-sm font-bold text-slate-800"
+											>
+												Log in
+											</Link>
+										</div>
+									</div>
 								</div>
 							</div>
-						</div>
+						)}
 					</div>
 				)}
 

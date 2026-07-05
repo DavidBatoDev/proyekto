@@ -3,6 +3,8 @@ import { getGuestSessionId } from "@/lib/guestAuth";
 export const GUEST_ROADMAP_KEY = "proyekto_guest_roadmap";
 export const PENDING_PROJECT_FROM_ROADMAP_KEY =
 	"proyekto_pending_project_from_roadmap";
+const GUEST_ROADMAP_CTA_DISMISSED_KEY_PREFIX =
+	"proyekto_guest_roadmap_cta_dismissed:";
 
 export interface GuestRoadmapMetadata {
 	roadmapId: string;
@@ -51,8 +53,7 @@ export function rememberGuestRoadmap({
 	const metadata: GuestRoadmapMetadata = {
 		roadmapId,
 		title,
-		createdAt:
-			existing?.roadmapId === roadmapId ? existing.createdAt : now,
+		createdAt: existing?.roadmapId === roadmapId ? existing.createdAt : now,
 		lastViewed: now,
 	};
 	writeJson(GUEST_ROADMAP_KEY, metadata);
@@ -103,3 +104,23 @@ export function hasPendingProjectFromRoadmapIntent(): boolean {
 	return Boolean(getPendingProjectFromRoadmap()?.roadmapId);
 }
 
+function getGuestRoadmapCtaDismissedKey(roadmapId: string): string {
+	return `${GUEST_ROADMAP_CTA_DISMISSED_KEY_PREFIX}${roadmapId}`;
+}
+
+export function isGuestRoadmapCtaDismissed(roadmapId: string): boolean {
+	if (typeof window === "undefined") return false;
+	return (
+		localStorage.getItem(getGuestRoadmapCtaDismissedKey(roadmapId)) === "1"
+	);
+}
+
+export function dismissGuestRoadmapCta(roadmapId: string): void {
+	if (typeof window === "undefined") return;
+	localStorage.setItem(getGuestRoadmapCtaDismissedKey(roadmapId), "1");
+}
+
+export function restoreGuestRoadmapCta(roadmapId: string): void {
+	if (typeof window === "undefined") return;
+	localStorage.removeItem(getGuestRoadmapCtaDismissedKey(roadmapId));
+}
