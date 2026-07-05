@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -26,6 +27,7 @@ import {
   AddProjectMemberDto,
   AssignConsultantDto,
   CreateProjectDto,
+  CreateProjectFromRoadmapDto,
   CreateProjectResourceFolderDto,
   CreateProjectResourceLinkDto,
   InviteProjectByEmailDto,
@@ -94,6 +96,17 @@ export class ProjectsController {
     @Body() dto: CreateProjectDto,
   ) {
     return this.projectsService.createProject(user.id, dto);
+  }
+
+  @Post('from-roadmap')
+  createProjectFromRoadmap(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateProjectFromRoadmapDto,
+  ) {
+    if (user.is_guest) {
+      throw new ForbiddenException('Sign in to create a project.');
+    }
+    return this.projectsService.createProjectFromRoadmap(user.id, dto);
   }
 
   @Get(':id')

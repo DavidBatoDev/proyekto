@@ -183,6 +183,15 @@ export class CreateProjectDto {
   @IsUUID() @IsOptional() primary_team_id?: string;
 }
 
+export class CreateProjectFromRoadmapDto {
+  @IsUUID()
+  roadmap_id: string;
+
+  @IsString()
+  @IsOptional()
+  guest_session_id?: string;
+}
+
 export class UpdateProjectDto {
   @IsString() @IsOptional() @MaxLength(200) title?: string;
   @IsString() @IsOptional() @MaxLength(500) brief?: string;

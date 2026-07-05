@@ -28,6 +28,7 @@ import {
 import { MissingPermissionException } from './authorization/missing-permission.exception';
 import {
   AddProjectMemberDto,
+  CreateProjectFromRoadmapDto,
   CreateProjectDto,
   CreateProjectResourceFolderDto,
   CreateProjectResourceLinkDto,
@@ -73,6 +74,14 @@ type RoadmapLinkCandidate = {
   id: string;
   title: string;
   roadmap_id: string;
+};
+
+type RoadmapForProjectConversion = {
+  id: string;
+  name: string;
+  description: string | null;
+  owner_id: string;
+  project_id: string | null;
 };
 
 @Injectable()
@@ -849,6 +858,219 @@ export class ProjectsService {
     );
     await this.invalidateDashboardCache();
     return { project, roadmap };
+  }
+
+  async createProjectFromRoadmap(
+    userId: string,
+    dto: CreateProjectFromRoadmapDto,
+  ): Promise<{ project: Project; roadmap: { id: string; name: string } }> {
+    const { data: initialRoadmap, error: roadmapError } = await this.supabase
+      .from('roadmaps')
+      .select('id, name, description, owner_id, project_id')
+      .eq('id', dto.roadmap_id)
+      .maybeSingle();
+
+    if (roadmapError || !initialRoadmap) {
+      throw new NotFoundException('Roadmap not found');
+    }
+
+    let roadmap = initialRoadmap as RoadmapForProjectConversion;
+    if (roadmap.project_id) {
+      throw new BadRequestException('Roadmap is already linked to a project.');
+    }
+
+    let claimedFromGuestId: string | null = null;
+
+    if (roadmap.owner_id !== userId) {
+      if (!dto.guest_session_id) {
+        throw new ForbiddenException('Guest session is required.');
+      }
+
+      const thirtyDaysAgo = new Date(
+        Date.now() - 30 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      const { data: guestProfile, error: guestError } = await this.supabase
+        .from('profiles')
+        .select('id')
+        .eq('guest_session_id', dto.guest_session_id)
+        .eq('is_guest', true)
+        .gt('created_at', thirtyDaysAgo)
+        .maybeSingle();
+
+      if (guestError || !guestProfile || guestProfile.id !== roadmap.owner_id) {
+        throw new ForbiddenException('Invalid guest session for roadmap.');
+      }
+
+      const { data: claimedRoadmap, error: claimError } = await this.supabase
+        .from('roadmaps')
+        .update({ owner_id: userId, updated_at: new Date().toISOString() })
+        .eq('id', roadmap.id)
+        .eq('owner_id', guestProfile.id)
+        .is('project_id', null)
+        .select('id, name, description, owner_id, project_id')
+        .single();
+
+      if (claimError || !claimedRoadmap) {
+        throw new BadRequestException('Could not claim guest roadmap.');
+      }
+
+      claimedFromGuestId = guestProfile.id as string;
+      roadmap = claimedRoadmap as RoadmapForProjectConversion;
+
+      const { error: sessionClaimError } = await this.supabase
+        .from('roadmap_ai_sessions')
+        .update({ user_id: userId })
+        .eq('roadmap_id', roadmap.id)
+        .eq('user_id', claimedFromGuestId);
+
+      if (sessionClaimError) {
+        this.logger.warn(
+          `Failed to reassign AI sessions for roadmap ${roadmap.id}: ${sessionClaimError.message}`,
+        );
+      }
+    }
+
+    const projectTitle =
+      roadmap.name && roadmap.name.trim().length > 0
+        ? roadmap.name.trim().slice(0, 200)
+        : 'Untitled project';
+    const projectDescription =
+      roadmap.description && roadmap.description.trim().length > 0
+        ? roadmap.description.trim().slice(0, 2000)
+        : undefined;
+
+    let project: Project | null = null;
+    let defaultRoadmap: { id: string; name: string } | null = null;
+
+    try {
+      project = await this.projectsRepo.create(userId, {
+        title: projectTitle,
+        description: projectDescription,
+        status: 'draft',
+        creation_mode: 'client',
+      });
+
+      await this.authorization.grant({
+        projectId: project.id,
+        userId,
+        role: 'admin',
+        origin: 'client',
+        grantedBy: userId,
+      });
+      await this.safeSync(project.id, userId);
+      await this.provisionChannelsBestEffort(project.id, userId, 'project');
+
+      defaultRoadmap = await this.attachDefaultRoadmapOrRollback(
+        project.id,
+        userId,
+        project.title,
+      );
+
+      const { error: deleteDefaultError } = await this.supabase
+        .from('roadmaps')
+        .delete()
+        .eq('id', defaultRoadmap.id)
+        .eq('project_id', project.id);
+
+      if (deleteDefaultError) {
+        throw new BadRequestException(
+          'Project created but placeholder roadmap could not be removed.',
+        );
+      }
+
+      const { data: linkedRoadmap, error: linkError } = await this.supabase
+        .from('roadmaps')
+        .update({ project_id: project.id, updated_at: new Date().toISOString() })
+        .eq('id', roadmap.id)
+        .eq('owner_id', userId)
+        .is('project_id', null)
+        .select('id, name')
+        .single();
+
+      if (linkError || !linkedRoadmap) {
+        this.logger.warn(
+          `Failed to link roadmap ${roadmap.id} to project ${project.id}: ${
+            linkError?.message ?? 'no row returned'
+          }`,
+        );
+        throw new BadRequestException('Could not link roadmap to project.');
+      }
+
+      await this.invalidateDashboardCache();
+      return {
+        project,
+        roadmap: linkedRoadmap as { id: string; name: string },
+      };
+    } catch (error) {
+      if (project) {
+        const { error: unlinkError } = await this.supabase
+          .from('roadmaps')
+          .update({ project_id: null, updated_at: new Date().toISOString() })
+          .eq('id', roadmap.id)
+          .eq('project_id', project.id);
+        if (unlinkError) {
+          this.logger.error(
+            `Failed to unlink roadmap ${roadmap.id} during project-from-roadmap rollback: ${unlinkError.message}`,
+          );
+        }
+
+        try {
+          await this.projectsRepo.deleteProject(project.id);
+        } catch (rollbackError) {
+          this.logger.error(
+            `Failed to delete project ${project.id} during project-from-roadmap rollback: ${
+              rollbackError instanceof Error
+                ? rollbackError.message
+                : String(rollbackError)
+            }`,
+          );
+        }
+      }
+
+      if (claimedFromGuestId) {
+        const { error: revertSessionClaimError } = await this.supabase
+          .from('roadmap_ai_sessions')
+          .update({ user_id: claimedFromGuestId })
+          .eq('roadmap_id', roadmap.id)
+          .eq('user_id', userId);
+
+        if (revertSessionClaimError) {
+          this.logger.error(
+            `Failed to revert AI session claim for roadmap ${roadmap.id}: ${revertSessionClaimError.message}`,
+          );
+        }
+
+        const { error: revertClaimError } = await this.supabase
+          .from('roadmaps')
+          .update({
+            owner_id: claimedFromGuestId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', roadmap.id)
+          .eq('owner_id', userId)
+          .is('project_id', null);
+
+        if (revertClaimError) {
+          this.logger.error(
+            `Failed to revert guest claim for roadmap ${roadmap.id}: ${revertClaimError.message}`,
+          );
+        }
+      }
+
+      if (
+        error instanceof BadRequestException ||
+        error instanceof ForbiddenException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
+
+      throw new BadRequestException(
+        error instanceof Error
+          ? error.message
+          : 'Could not create project from roadmap.',
+      );
+    }
   }
 
   private async attachDefaultRoadmapOrRollback(
