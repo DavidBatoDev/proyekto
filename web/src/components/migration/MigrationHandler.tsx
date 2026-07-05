@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useUser, useProfile } from "@/stores/authStore";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
 import {
@@ -6,12 +7,21 @@ import {
   type MigrationStatus,
 } from "@/services/migration.service";
 import { MigrationModal } from "./MigrationModal";
+import { clearGuestSession } from "@/lib/guestAuth";
+import {
+	clearGuestRoadmapMetadata,
+	getGuestRoadmapMetadata,
+	hasPendingProjectFromRoadmapIntent,
+	setPendingProjectFromRoadmap,
+} from "@/lib/guestRoadmapConversion";
+import type { Roadmap } from "@/types/roadmap";
 
 /**
  * MigrationHandler - Automatically detects and migrates guest roadmaps in background
  * Place this component near the root of your app (in __root.tsx or App.tsx)
  */
 export function MigrationHandler() {
+  const navigate = useNavigate();
   const user = useUser();
   const profile = useProfile();
   const { data: profileData, isLoading: isProfileLoading } = useProfileQuery();
@@ -19,11 +29,11 @@ export function MigrationHandler() {
   const [migrationStatus, setMigrationStatus] =
     useState<MigrationStatus | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isMigrating, setIsMigrating] = useState(false);
-
-  // Automatically migrate guest roadmaps in background when user authenticates
+  // Detect recoverable guest roadmaps after auth. When a project conversion
+  // intent is pending, stay silent so the transient conversion route can claim
+  // the selected roadmap without the legacy migration racing it.
   useEffect(() => {
-    const checkAndMigrate = async () => {
+    const checkForRecovery = async () => {
       const activeProfile = profileData ?? profile;
 
       if (!user) {
@@ -42,6 +52,34 @@ export function MigrationHandler() {
         return;
       }
 
+      if (hasPendingProjectFromRoadmapIntent()) {
+        setMigrationStatus(null);
+        setIsModalOpen(false);
+        return;
+      }
+
+      const cachedGuestRoadmap = getGuestRoadmapMetadata();
+      if (cachedGuestRoadmap?.roadmapId) {
+        const recoveredRoadmap: Roadmap = {
+          id: cachedGuestRoadmap.roadmapId,
+          project_id: null,
+          name: cachedGuestRoadmap.title || "Untitled roadmap",
+          owner_id: "",
+          status: "draft",
+          created_at: cachedGuestRoadmap.createdAt,
+          updated_at: cachedGuestRoadmap.lastViewed,
+        };
+        setMigrationStatus({
+          hasGuestRoadmaps: true,
+          guestUserId: null,
+          roadmaps: [recoveredRoadmap],
+          isComplete: false,
+          isSkipped: false,
+        });
+        setIsModalOpen(true);
+        return;
+      }
+
       // User is authenticated and verified, check for guest roadmaps
       try {
         const status = await migrationService.checkForGuestRoadmaps();
@@ -54,24 +92,36 @@ export function MigrationHandler() {
           !status.isSkipped
         ) {
           setMigrationStatus(status);
-          setIsMigrating(true);
           setIsModalOpen(true);
-
-          // Migrate automatically in background
-          await migrationService.migrateRoadmaps();
-
-          setIsMigrating(false);
         }
       } catch (error) {
-        console.error("Migration failed:", error);
-        setIsMigrating(false);
+        console.error("Guest roadmap recovery check failed:", error);
       }
     };
 
-    checkAndMigrate();
+    checkForRecovery();
   }, [user, profile, profileData, isProfileLoading]);
 
-  const handleClose = () => {
+  const handleCreateProject = () => {
+    const roadmap = migrationStatus?.roadmaps[0];
+    if (!roadmap) return;
+    setPendingProjectFromRoadmap({
+      roadmapId: roadmap.id,
+      title: roadmap.name,
+      source: "recovery_modal",
+    });
+    setIsModalOpen(false);
+    navigate({
+      to: "/project/roadmap/convert/$roadmapId",
+      params: { roadmapId: roadmap.id },
+    });
+  };
+
+  const handleDiscard = () => {
+    migrationService.skipMigration();
+    clearGuestRoadmapMetadata();
+    clearGuestSession();
+    setMigrationStatus(null);
     setIsModalOpen(false);
   };
 
@@ -83,8 +133,8 @@ export function MigrationHandler() {
     <MigrationModal
       isOpen={isModalOpen}
       roadmaps={migrationStatus.roadmaps}
-      isMigrating={isMigrating}
-      onClose={handleClose}
+      onCreateProject={handleCreateProject}
+      onDiscard={handleDiscard}
     />
   );
 }

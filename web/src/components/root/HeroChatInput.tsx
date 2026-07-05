@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Loader2, Send } from "lucide-react";
 import { useId, useState } from "react";
 import { getOrCreateGuestUser } from "@/lib/guestAuth";
+import { rememberGuestRoadmap } from "@/lib/guestRoadmapConversion";
 import { generateRoadmapThumbnailDataUri } from "@/lib/roadmapThumbnail";
 import { roadmapService } from "@/services/roadmap.service";
 import { useIsAuthenticated, useIsLoading } from "@/stores/authStore";
@@ -64,6 +65,10 @@ export async function submitHeroPrompt(
 		settings: {},
 		preview_url: generateRoadmapThumbnailDataUri(name, name),
 	});
+
+	if (!isAuthenticated) {
+		rememberGuestRoadmap({ roadmapId: roadmap.id, title: name });
+	}
 
 	sessionStorage.setItem(PENDING_AI_PROMPT_KEY_PREFIX + roadmap.id, message);
 

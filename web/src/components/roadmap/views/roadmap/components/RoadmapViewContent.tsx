@@ -6,7 +6,7 @@ import {
 	useRef,
 	type MouseEvent as ReactMouseEvent,
 } from "react";
-import { AlertTriangle, UserPlus } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Rocket } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import {
 	DndContext,
@@ -48,6 +48,10 @@ import { useUser } from "@/stores/authStore";
 import { useShallow } from "zustand/react/shallow";
 import { findTaskById } from "@/routes/project/$projectId/work-items/workItemsOptimistic";
 import type { RoadmapPerformanceMode } from "../models/types";
+import {
+	rememberGuestRoadmap,
+	setPendingProjectFromRoadmap,
+} from "@/lib/guestRoadmapConversion";
 
 interface PendingAssignment {
 	taskId: string;
@@ -619,6 +623,16 @@ export function RoadmapViewContent({
 	const user = useUser();
 	const showGuestSignupNote = projectId === "n" && !user;
 
+	const handleGuestProjectIntent = () => {
+		const title = roadmap?.name ?? "Untitled roadmap";
+		rememberGuestRoadmap({ roadmapId, title });
+		setPendingProjectFromRoadmap({
+			roadmapId,
+			title,
+			source: "roadmap_cta",
+		});
+	};
+
 	const handleModalUpdateFormData = (
 		updates: Partial<RoadmapMetadataFormData>,
 	) => {
@@ -1038,29 +1052,59 @@ export function RoadmapViewContent({
 				    note in the (unlikely) case both render at once. */}
 				{showGuestSignupNote && (
 					<div
-						className={`fixed right-5 z-40 max-w-sm rounded-lg border border-amber-200 bg-amber-50/95 px-4 py-3 shadow-lg backdrop-blur-sm ${
+						className={`fixed right-5 z-40 w-[min(26rem,calc(100vw-2.5rem))] rounded-2xl border border-emerald-200 bg-white/95 p-5 shadow-[0_18px_60px_rgba(15,23,42,0.22)] backdrop-blur ${
 							showReadOnlyPermissionNote ? "bottom-24" : "bottom-5"
 						}`}
 					>
-						<div className="flex items-start gap-2.5">
-							<UserPlus className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+						<div className="flex items-start gap-3">
+							<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/25">
+								<Rocket className="h-5 w-5" />
+							</div>
 							<div>
-								<p className="text-sm font-medium text-amber-900">
+								<p className="text-base font-black leading-tight text-slate-950">
+									Turn this roadmap into a collaborative project
+								</p>
+								<p className="mt-1 text-sm text-slate-600">
+									Keep building with the team workspace around it.
+								</p>
+								<ul className="mt-3 space-y-1.5 text-sm text-slate-700">
+									{[
+										"Collaborate with teammates",
+										"Track progress with Kanban",
+										"Assign tasks and owners",
+										"Set due dates and milestones",
+										"Keep your roadmap synced with your project",
+									].map((benefit) => (
+										<li key={benefit} className="flex items-center gap-2">
+											<CheckCircle2 className="h-4 w-4 text-emerald-600" />
+											<span>{benefit}</span>
+										</li>
+									))}
+								</ul>
+								<p className="sr-only">
 									You're working as a guest — sign up to keep this roadmap and
 									turn it into a project.
 								</p>
-								<div className="mt-2.5 flex items-center gap-3">
+								<div className="mt-4 flex flex-col gap-2 sm:flex-row">
 									<Link
 										to="/auth/signup"
-										search={{ redirect: `/project/n/roadmap/${roadmapId}` }}
-										className="inline-flex items-center rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-amber-700"
+										search={{
+											redirect: "/welcome",
+											intent: "client",
+											lane: "client_freelancer",
+										}}
+										onClick={handleGuestProjectIntent}
+										className="inline-flex items-center justify-center rounded-full bg-slate-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800"
 									>
-										Sign up
+										Create account
 									</Link>
 									<Link
 										to="/auth/login"
-										search={{ redirect: `/project/n/roadmap/${roadmapId}` }}
-										className="text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
+										search={{
+											redirect: `/project/roadmap/convert/${roadmapId}`,
+										}}
+										onClick={handleGuestProjectIntent}
+										className="inline-flex items-center justify-center rounded-full border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:border-slate-500 hover:bg-slate-50"
 									>
 										Log in
 									</Link>

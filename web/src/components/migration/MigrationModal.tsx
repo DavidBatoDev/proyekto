@@ -1,129 +1,105 @@
-import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle, Loader2, Sparkles } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Sparkles, Trash2 } from "lucide-react";
 import { ModalPortal } from "@/components/common/ModalPortal";
 import type { Roadmap } from "@/types/roadmap";
 
 interface MigrationModalProps {
   isOpen: boolean;
   roadmaps: Roadmap[];
-  isMigrating: boolean;
-  onClose: () => void;
+  onCreateProject: () => void;
+  onDiscard: () => void;
 }
 
 export function MigrationModal({
   isOpen,
   roadmaps,
-  isMigrating,
-  onClose,
+  onCreateProject,
+  onDiscard,
 }: MigrationModalProps) {
+  const primaryRoadmap = roadmaps[0];
+
   return (
     <ModalPortal>
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-50"
-            onClick={isMigrating ? undefined : onClose}
-          />
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/50"
+            />
 
-          {/* Modal */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
-          >
-            <div
-              className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-8 pointer-events-auto"
-              onClick={(e) => e.stopPropagation()}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4"
             >
-              {/* Header */}
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-pink-500 flex items-center justify-center">
-                  <Sparkles className="w-6 h-6 text-white" />
+              <div
+                className="pointer-events-auto w-full max-w-lg rounded-2xl bg-white p-8 shadow-2xl"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="mb-6 flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white">
+                    <Sparkles className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">
+                      We found an unfinished roadmap.
+                    </h2>
+                    <p className="text-sm text-gray-600">
+                      You created it before signing in.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">
-                    {isMigrating ? "Saving Your Work..." : "All Set! 🎉"}
-                  </h2>
-                  <p className="text-sm text-gray-600">
-                    {isMigrating
-                      ? "Please wait..."
-                      : "Your roadmaps are now in your account"}
-                  </p>
-                </div>
-              </div>
 
-              {/* Roadmap List */}
-              <div className="mb-6">
-                <p className="text-gray-700 mb-4">
-                  {isMigrating ? "Migrating" : "We migrated"}{" "}
-                  <strong>{roadmaps.length}</strong> roadmap
-                  {roadmaps.length !== 1 ? "s" : ""}{" "}
-                  {isMigrating ? "from your guest session" : "to your account"}:
+                {primaryRoadmap && (
+                  <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <p className="font-semibold text-gray-900">
+                      {primaryRoadmap.name}
+                    </p>
+                    {primaryRoadmap.description && (
+                      <p className="mt-1 line-clamp-2 text-sm text-gray-600">
+                        {primaryRoadmap.description}
+                      </p>
+                    )}
+                    {roadmaps.length > 1 && (
+                      <p className="mt-2 text-xs font-medium text-gray-500">
+                        {roadmaps.length - 1} more guest roadmap
+                        {roadmaps.length === 2 ? "" : "s"} available.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <p className="mb-6 text-sm leading-6 text-gray-700">
+                  Turn it into a collaborative project now, or discard this
+                  browser's guest recovery state.
                 </p>
 
-                <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {roadmaps.map((roadmap) => (
-                    <div
-                      key={roadmap.id}
-                      className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200"
-                    >
-                      {isMigrating ? (
-                        <Loader2 className="w-5 h-5 text-primary animate-spin flex-shrink-0 mt-0.5" />
-                      ) : (
-                        <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-900 truncate">
-                          {roadmap.name}
-                        </p>
-                        {roadmap.description && (
-                          <p className="text-sm text-gray-600 truncate">
-                            {roadmap.description}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={onCreateProject}
+                    className="inline-flex flex-1 items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+                  >
+                    Create Project
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onDiscard}
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-gray-300 px-5 py-3 text-sm font-bold text-gray-700 transition hover:border-gray-500 hover:bg-gray-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Discard
+                  </button>
                 </div>
               </div>
-
-              {/* Action */}
-              <div className="flex justify-center">
-                <button
-                  onClick={onClose}
-                  disabled={isMigrating}
-                  className="w-full px-6 py-3 bg-primary text-white font-semibold rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {isMigrating ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Migrating...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="w-5 h-5" />
-                      Sounds Good!
-                    </>
-                  )}
-                </button>
-              </div>
-
-              <p className="text-xs text-gray-500 text-center mt-4">
-                {isMigrating
-                  ? "This will only take a moment..."
-                  : "You can find all your roadmaps in your dashboard"}
-              </p>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </ModalPortal>
   );
 }

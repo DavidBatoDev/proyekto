@@ -65,6 +65,7 @@ import { Route as TeamsTeamIdSettingsTimeRouteImport } from './routes/teams/$tea
 import { Route as TeamsTeamIdSettingsProjectsRouteImport } from './routes/teams/$teamId/settings/projects'
 import { Route as TeamsTeamIdSettingsLogsRouteImport } from './routes/teams/$teamId/settings/logs'
 import { Route as TeamsTeamIdSettingsGeneralRouteImport } from './routes/teams/$teamId/settings/general'
+import { Route as ProjectRoadmapConvertRoadmapIdRouteImport } from './routes/project/roadmap/convert/$roadmapId'
 import { Route as ProjectProjectIdWorkItemsRoadmapIdRouteImport } from './routes/project/$projectId/work-items/$roadmapId'
 import { Route as ProjectProjectIdSettingsTeamsRouteImport } from './routes/project/$projectId/settings/teams'
 import { Route as ProjectProjectIdSettingsTeamRouteImport } from './routes/project/$projectId/settings/team'
@@ -365,6 +366,12 @@ const TeamsTeamIdSettingsGeneralRoute =
     path: '/settings/general',
     getParentRoute: () => TeamsTeamIdRoute,
   } as any)
+const ProjectRoadmapConvertRoadmapIdRoute =
+  ProjectRoadmapConvertRoadmapIdRouteImport.update({
+    id: '/project/roadmap/convert/$roadmapId',
+    path: '/project/roadmap/convert/$roadmapId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ProjectProjectIdWorkItemsRoadmapIdRoute =
   ProjectProjectIdWorkItemsRoadmapIdRouteImport.update({
     id: '/$roadmapId',
@@ -486,6 +493,7 @@ export interface FileRoutesByFullPath {
   '/project/$projectId/settings/team': typeof ProjectProjectIdSettingsTeamRoute
   '/project/$projectId/settings/teams': typeof ProjectProjectIdSettingsTeamsRoute
   '/project/$projectId/work-items/$roadmapId': typeof ProjectProjectIdWorkItemsRoadmapIdRoute
+  '/project/roadmap/convert/$roadmapId': typeof ProjectRoadmapConvertRoadmapIdRoute
   '/teams/$teamId/settings/general': typeof TeamsTeamIdSettingsGeneralRoute
   '/teams/$teamId/settings/logs': typeof TeamsTeamIdSettingsLogsRoute
   '/teams/$teamId/settings/projects': typeof TeamsTeamIdSettingsProjectsRoute
@@ -552,6 +560,7 @@ export interface FileRoutesByTo {
   '/project/$projectId/settings/team': typeof ProjectProjectIdSettingsTeamRoute
   '/project/$projectId/settings/teams': typeof ProjectProjectIdSettingsTeamsRoute
   '/project/$projectId/work-items/$roadmapId': typeof ProjectProjectIdWorkItemsRoadmapIdRoute
+  '/project/roadmap/convert/$roadmapId': typeof ProjectRoadmapConvertRoadmapIdRoute
   '/teams/$teamId/settings/general': typeof TeamsTeamIdSettingsGeneralRoute
   '/teams/$teamId/settings/logs': typeof TeamsTeamIdSettingsLogsRoute
   '/teams/$teamId/settings/projects': typeof TeamsTeamIdSettingsProjectsRoute
@@ -622,6 +631,7 @@ export interface FileRoutesById {
   '/project/$projectId/settings/team': typeof ProjectProjectIdSettingsTeamRoute
   '/project/$projectId/settings/teams': typeof ProjectProjectIdSettingsTeamsRoute
   '/project/$projectId/work-items/$roadmapId': typeof ProjectProjectIdWorkItemsRoadmapIdRoute
+  '/project/roadmap/convert/$roadmapId': typeof ProjectRoadmapConvertRoadmapIdRoute
   '/teams/$teamId/settings/general': typeof TeamsTeamIdSettingsGeneralRoute
   '/teams/$teamId/settings/logs': typeof TeamsTeamIdSettingsLogsRoute
   '/teams/$teamId/settings/projects': typeof TeamsTeamIdSettingsProjectsRoute
@@ -693,6 +703,7 @@ export interface FileRouteTypes {
     | '/project/$projectId/settings/team'
     | '/project/$projectId/settings/teams'
     | '/project/$projectId/work-items/$roadmapId'
+    | '/project/roadmap/convert/$roadmapId'
     | '/teams/$teamId/settings/general'
     | '/teams/$teamId/settings/logs'
     | '/teams/$teamId/settings/projects'
@@ -759,6 +770,7 @@ export interface FileRouteTypes {
     | '/project/$projectId/settings/team'
     | '/project/$projectId/settings/teams'
     | '/project/$projectId/work-items/$roadmapId'
+    | '/project/roadmap/convert/$roadmapId'
     | '/teams/$teamId/settings/general'
     | '/teams/$teamId/settings/logs'
     | '/teams/$teamId/settings/projects'
@@ -828,6 +840,7 @@ export interface FileRouteTypes {
     | '/project/$projectId/settings/team'
     | '/project/$projectId/settings/teams'
     | '/project/$projectId/work-items/$roadmapId'
+    | '/project/roadmap/convert/$roadmapId'
     | '/teams/$teamId/settings/general'
     | '/teams/$teamId/settings/logs'
     | '/teams/$teamId/settings/projects'
@@ -876,6 +889,7 @@ export interface RootRouteChildren {
   RoadmapSharedTokenRoute: typeof RoadmapSharedTokenRoute
   TeamsMeInvitesRoute: typeof TeamsMeInvitesRoute
   ProjectRoadmapIndexRoute: typeof ProjectRoadmapIndexRoute
+  ProjectRoadmapConvertRoadmapIdRoute: typeof ProjectRoadmapConvertRoadmapIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1272,6 +1286,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TeamsTeamIdSettingsGeneralRouteImport
       parentRoute: typeof TeamsTeamIdRoute
     }
+    '/project/roadmap/convert/$roadmapId': {
+      id: '/project/roadmap/convert/$roadmapId'
+      path: '/project/roadmap/convert/$roadmapId'
+      fullPath: '/project/roadmap/convert/$roadmapId'
+      preLoaderRoute: typeof ProjectRoadmapConvertRoadmapIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/project/$projectId/work-items/$roadmapId': {
       id: '/project/$projectId/work-items/$roadmapId'
       path: '/$roadmapId'
@@ -1518,6 +1539,7 @@ const rootRouteChildren: RootRouteChildren = {
   RoadmapSharedTokenRoute: RoadmapSharedTokenRoute,
   TeamsMeInvitesRoute: TeamsMeInvitesRoute,
   ProjectRoadmapIndexRoute: ProjectRoadmapIndexRoute,
+  ProjectRoadmapConvertRoadmapIdRoute: ProjectRoadmapConvertRoadmapIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -23,6 +23,11 @@ export interface CreateProjectData {
   primary_team_id?: string;
 }
 
+export interface CreateProjectFromRoadmapData {
+  roadmapId: string;
+  guestSessionId?: string | null;
+}
+
 export interface Project {
   id: string;
   title: string;
@@ -331,6 +336,46 @@ class ProjectService {
       project: Project;
       roadmap: { id: string; name: string };
     };
+  }
+
+  async createFromRoadmap(
+    data: CreateProjectFromRoadmapData,
+  ): Promise<{ project: Project; roadmap: { id: string; name: string } }> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      throw new Error("Authentication required");
+    }
+
+    const response = await fetch(
+      `${import.meta.env.VITE_API_URL}/api/projects/from-roadmap`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          roadmap_id: data.roadmapId,
+          guest_session_id: data.guestSessionId ?? undefined,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(
+        extractApiErrorMessage(error, "Failed to create project from roadmap"),
+      );
+    }
+
+    const result = await response.json();
+    return this.unwrapDataPayload<{
+      project: Project;
+      roadmap: { id: string; name: string };
+    }>(result);
   }
 
   /**

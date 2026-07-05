@@ -22,6 +22,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { useProjectDetailQuery } from "@/hooks/useProjectQueries";
 import { useUser } from "@/stores/authStore";
+import { setPendingProjectFromRoadmap } from "@/lib/guestRoadmapConversion";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
 import {
@@ -90,28 +91,39 @@ export function ProjectHeader() {
 	const handleMakeProject = () => {
 		if (!childRoadmapId) return;
 		navigate({
-			to: "/project-posting",
-			search: { roadmapId: childRoadmapId },
+			to: "/project/roadmap/convert/$roadmapId",
+			params: { roadmapId: childRoadmapId },
 		});
 	};
 
-	// Guests on the roadmap-only view get sign-up/log-in CTAs that redirect
-	// back here so MigrationHandler / post-signup migration can claim the draft.
-	const guestRedirect = childRoadmapId
-		? `/project/n/roadmap/${childRoadmapId}`
-		: undefined;
+	const rememberHeaderConversionIntent = () => {
+		if (!childRoadmapId) return;
+		setPendingProjectFromRoadmap({
+			roadmapId: childRoadmapId,
+			title: title || "Roadmap",
+			source: "roadmap_cta",
+		});
+	};
 
 	const handleGuestSignup = () => {
+		rememberHeaderConversionIntent();
 		navigate({
 			to: "/auth/signup",
-			search: guestRedirect ? { redirect: guestRedirect } : {},
+			search: {
+				redirect: "/welcome",
+				intent: "client",
+				lane: "client_freelancer",
+			},
 		});
 	};
 
 	const handleGuestLogin = () => {
+		rememberHeaderConversionIntent();
 		navigate({
 			to: "/auth/login",
-			search: guestRedirect ? { redirect: guestRedirect } : {},
+			search: childRoadmapId
+				? { redirect: `/project/roadmap/convert/${childRoadmapId}` }
+				: {},
 		});
 	};
 

@@ -6,6 +6,9 @@ import type { Roadmap } from "@/types/roadmap";
 vi.mock("@/lib/guestAuth", () => ({
 	getOrCreateGuestUser: vi.fn(),
 }));
+vi.mock("@/lib/guestRoadmapConversion", () => ({
+	rememberGuestRoadmap: vi.fn(),
+}));
 vi.mock("@/services/roadmap.service", () => ({
 	roadmapService: {
 		create: vi.fn(),
@@ -17,6 +20,7 @@ vi.mock("@/stores/authStore", () => ({
 }));
 
 import { getOrCreateGuestUser } from "@/lib/guestAuth";
+import { rememberGuestRoadmap } from "@/lib/guestRoadmapConversion";
 import { roadmapService } from "@/services/roadmap.service";
 import {
 	deriveRoadmapNameFromPrompt,
@@ -98,6 +102,10 @@ describe("submitHeroPrompt", () => {
 		expect(createArg.preview_url).toMatch(/^data:image\/svg\+xml,/);
 		// The hero always creates an UNLINKED draft — no project_id at all.
 		expect("project_id" in createArg).toBe(false);
+		expect(rememberGuestRoadmap).toHaveBeenCalledWith({
+			roadmapId: "rm-1",
+			title: "Build a booking app",
+		});
 		expect(navigate).toHaveBeenCalledTimes(1);
 		expect(navigate).toHaveBeenCalledWith({
 			to: "/project/$projectId/roadmap/$roadmapId",
@@ -117,6 +125,7 @@ describe("submitHeroPrompt", () => {
 		});
 
 		expect(getOrCreateGuestUser).not.toHaveBeenCalled();
+		expect(rememberGuestRoadmap).not.toHaveBeenCalled();
 		expect(navigate).toHaveBeenCalledWith({
 			to: "/project/$projectId/roadmap/$roadmapId",
 			params: { projectId: "n", roadmapId: "rm-2" },
