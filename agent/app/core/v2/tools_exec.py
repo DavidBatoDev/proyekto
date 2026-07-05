@@ -21,7 +21,7 @@ from app.core.tools.registry import (
     reset_active_handle_map,
     set_active_handle_map,
 )
-from app.core.uuid_utils import is_uuid_like
+from app.core.uuid_utils import is_uuid_like, is_valid_temp_ref
 
 
 @dataclass
@@ -129,7 +129,10 @@ def _normalize_mutation_ops(
     if not isinstance(operations, list):
         return args
     for op in operations:
-        if not isinstance(op, dict) or op.get('op') != 'update_node':
+        if not isinstance(op, dict):
+            continue
+        _move_temp_refs_out_of_id_fields(op)
+        if op.get('op') != 'update_node':
             continue
         if op.get('new_parent_id') or op.get('new_parent_ref'):
             op['op'] = 'move_node'
@@ -150,6 +153,25 @@ def _normalize_mutation_ops(
             ):
                 patch['assignee_id'] = actor_id
     return args
+
+
+def _move_temp_refs_out_of_id_fields(op: dict[str, Any]) -> None:
+    """Models sometimes put same-batch temp refs in *_id fields. The contract
+    reserves *_id for UUIDs and *_ref for temp refs, so normalize that common
+    slip before validation.
+    """
+
+    for id_field, ref_field in (
+        ('node_id', 'node_ref'),
+        ('parent_id', 'parent_ref'),
+        ('new_parent_id', 'new_parent_ref'),
+    ):
+        value = op.get(id_field)
+        if not (isinstance(value, str) and is_valid_temp_ref(value)):
+            continue
+        if op.get(ref_field) is None:
+            op[ref_field] = value.strip()
+            op.pop(id_field, None)
 
 
 def _strip_null_plan_args(args: Any) -> dict[str, Any]:

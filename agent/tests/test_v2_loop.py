@@ -353,6 +353,50 @@ class V2RefHandleExpansionTests(unittest.TestCase):
         self.assertIsNone(op.new_parent_ref)
 
 
+class V2TempRefIdFieldNormalizationTests(unittest.TestCase):
+    """Regression: plan-confirm batches often put temp refs in parent_id.
+
+    The operation contract reserves *_id for UUIDs and *_ref for same-batch
+    temp IDs. Normalize the common model slip before validation so confirmation
+    can stage the generated roadmap instead of falling through to chat.
+    """
+
+    def test_creation_chain_temp_parent_id_is_moved_to_parent_ref(self):
+        args = {
+            'assistant_message': 'Staged the roadmap.',
+            'operations': [
+                {
+                    'op': 'add_epic',
+                    'temp_id': 'epic_platform',
+                    'data': {'title': 'Platform foundation', 'status': 'planned'},
+                },
+                {
+                    'op': 'add_feature',
+                    'parent_id': 'epic_platform',
+                    'temp_id': 'feat_auth',
+                    'data': {'title': 'User authentication and profiles'},
+                },
+                {
+                    'op': 'add_task',
+                    'parent_id': 'feat_auth',
+                    'data': {
+                        'title': 'Sign up, sign in, and password reset',
+                        'status': 'todo',
+                    },
+                },
+            ],
+        }
+
+        result = _run(_ScriptedClient([_tool_resp('plan_roadmap_operations', args)]))
+
+        self.assertEqual(result.kind, 'edit')
+        self.assertEqual(len(result.operations), 3)
+        self.assertEqual(result.operations[1].parent_ref, 'epic_platform')
+        self.assertIsNone(result.operations[1].parent_id)
+        self.assertEqual(result.operations[2].parent_ref, 'feat_auth')
+        self.assertIsNone(result.operations[2].parent_id)
+
+
 class _FakeResp:
     def __init__(self):
         self.output = [
