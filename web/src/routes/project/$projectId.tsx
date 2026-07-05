@@ -15,7 +15,10 @@ import { useAuthStore } from "@/stores/authStore";
 import { useProjectSettingsStore } from "@/stores/projectSettingsStore";
 
 export const Route = createFileRoute("/project/$projectId")({
-  beforeLoad: () => {
+  beforeLoad: ({ params }) => {
+    // Roadmap-only view ('n' = no project) is guest-capable; the API itself
+    // authorizes via JWT or X-Guest-User-Id. Real projects stay login-gated.
+    if (params.projectId === "n") return;
     const { isAuthenticated } = useAuthStore.getState();
     if (!isAuthenticated) {
       throw redirect({ to: "/auth/login" });

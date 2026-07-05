@@ -26,6 +26,9 @@ interface MobileRoadmapViewProps {
   onShare: () => void;
   onNodeOpen: (nodeId: string) => void;
   onNodeClose: () => void;
+  /** Hero-handoff prompt threaded through to the AI panel's auto-send. */
+  initialAiMessage?: string | null;
+  onInitialAiMessageConsumed?: () => void;
 }
 
 /**
@@ -46,6 +49,8 @@ export function MobileRoadmapView({
   onShare,
   onNodeOpen,
   onNodeClose,
+  initialAiMessage,
+  onInitialAiMessageConsumed,
 }: MobileRoadmapViewProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { viewMode, setViewMode, setSelectedEpicId } = useRoadmapStore(
@@ -207,6 +212,8 @@ export function MobileRoadmapView({
                   roadmapId={roadmap.id}
                   roadmapSnapshot={roadmap}
                   isVisible={isAiChatPanelOpen}
+                  initialMessage={initialAiMessage}
+                  onInitialMessageConsumed={onInitialAiMessageConsumed}
                 />
               </div>
             </motion.div>

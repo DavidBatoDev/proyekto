@@ -52,6 +52,15 @@ export const Route = createFileRoute("/project/$projectId/roadmap")({
 
 function RoadmapPage() {
   const { projectId } = Route.useParams();
+  // Roadmap-only mode ('n' = no project, e.g. a guest/hero draft) has no
+  // project to authorize against — the roadmap itself is authorized
+  // server-side by owner/guest. Skip the project-permissions gate, which
+  // would call /projects/n/my-permissions (404 for the 'n' sentinel) and
+  // block the roadmap from ever mounting. Mirrors ProjectLayout, which
+  // already disables its project queries when projectId === 'n'.
+  if (projectId === "n") {
+    return <RoadmapPageBody />;
+  }
   return (
     <RequireProjectAccess projectId={projectId} access="roadmap">
       <RoadmapPageBody />
@@ -65,7 +74,12 @@ function RoadmapPageBody() {
   const { nodeId, taskId, view } = Route.useSearch();
   const navigate = useNavigate();
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
-  const linkedRoadmapQuery = useLinkedRoadmapQuery(projectId);
+  // Roadmap-only mode ('n') has no project, so there is no project→roadmap
+  // link to resolve; passing "" disables the query (which otherwise 500s on
+  // GET /api/roadmaps/project/n). Mirrors ProjectLayout's isRoadmapOnly gating.
+  const linkedRoadmapQuery = useLinkedRoadmapQuery(
+    projectId === "n" ? "" : projectId,
+  );
   const { invalidateLinkedRoadmap } = useInvalidateProjectQueries(projectId);
 
   useEffect(() => {

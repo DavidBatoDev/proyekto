@@ -6,7 +6,7 @@ import {
 	useRef,
 	type MouseEvent as ReactMouseEvent,
 } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, UserPlus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import {
 	DndContext,
@@ -44,6 +44,7 @@ import {
 	type DockAvatar,
 } from "@/hooks/useRecentAssignees";
 import { useRoadmapStore, type CanvasViewMode } from "@/stores/roadmapStore";
+import { useUser } from "@/stores/authStore";
 import { useShallow } from "zustand/react/shallow";
 import { findTaskById } from "@/routes/project/$projectId/work-items/workItemsOptimistic";
 import type { RoadmapPerformanceMode } from "../models/types";
@@ -76,6 +77,11 @@ const LEFT_PANEL_MAX_WIDTH = 600;
 const LEFT_PANEL_STORAGE_KEY = "roadmap.leftPanel.width";
 const CANVAS_MIN_WIDTH = 560;
 const TASK_NAVIGATE_OFFSET_X = 620;
+// Hero-prompt handoff (written by HeroChatInput on the homepage): the prompt
+// waits under this roadmap-scoped sessionStorage key and is read-and-removed
+// on mount so refresh/back can never double-send the first AI turn. Keep the
+// literal in sync with web/src/components/root/HeroChatInput.tsx.
+const PENDING_AI_PROMPT_KEY_PREFIX = "proyekto_pending_ai_prompt:";
 
 const clampPanelWidth = (value: number, maxAllowed: number) =>
 	Math.min(Math.max(value, CHAT_PANEL_MIN_WIDTH), maxAllowed);
@@ -228,6 +234,7 @@ export function RoadmapViewContent({
 	const [isSavingRoadmapJson, setIsSavingRoadmapJson] = useState(false);
 	const isMobile = useIsMobile();
 	const [isAiChatPanelOpen, setIsAiChatPanelOpen] = useState(false);
+	const [initialAiMessage, setInitialAiMessage] = useState<string | null>(null);
 	const [isResizingChatPanel, setIsResizingChatPanel] = useState(false);
 	const [chatPanelWidth, setChatPanelWidth] = useState(
 		CHAT_PANEL_DEFAULT_WIDTH,
@@ -249,6 +256,29 @@ export function RoadmapViewContent({
 	const isApplyingUrlViewRef = useRef(false);
 	const lastAppliedUrlViewRef = useRef<RoadmapUrlView | null>(null);
 	const roadmapLiveQuery = useRoadmapFullLiveQuery(roadmapId);
+
+	// Consume the homepage hero handoff exactly once per mount: if a pending
+	// AI prompt exists for this roadmap, open the assistant panel and hand the
+	// message down so it auto-sends as the first agent turn.
+	useEffect(() => {
+		let pendingPrompt: string | null = null;
+		try {
+			const key = `${PENDING_AI_PROMPT_KEY_PREFIX}${roadmapId}`;
+			pendingPrompt = window.sessionStorage.getItem(key);
+			if (pendingPrompt !== null) {
+				window.sessionStorage.removeItem(key);
+			}
+		} catch {
+			// sessionStorage unavailable — skip the handoff.
+		}
+		if (!pendingPrompt) return;
+		setInitialAiMessage(pendingPrompt);
+		setIsAiChatPanelOpen(true);
+	}, [roadmapId]);
+
+	const handleInitialAiMessageConsumed = useCallback(() => {
+		setInitialAiMessage(null);
+	}, []);
 
 	useEffect(() => {
 		if (!urlView) {
@@ -583,6 +613,11 @@ export function RoadmapViewContent({
 	const canCommentRoadmap = canEditRoadmap || currentUserRole === "commenter";
 	const showReadOnlyPermissionNote =
 		Boolean(currentUserRole) && !canEditRoadmap && !canCommentRoadmap;
+	// Guest working on an unlinked roadmap (`projectId === "n"` with no signed
+	// in user): show the persistent sign-up CTA so the roadmap isn't lost when
+	// the guest session expires.
+	const user = useUser();
+	const showGuestSignupNote = projectId === "n" && !user;
 
 	const handleModalUpdateFormData = (
 		updates: Partial<RoadmapMetadataFormData>,
@@ -844,6 +879,8 @@ export function RoadmapViewContent({
 						onShare={() => setIsShareModalOpen(true)}
 						onNodeOpen={handleNodeOpen}
 						onNodeClose={handleNodeClose}
+						initialAiMessage={initialAiMessage}
+						onInitialAiMessageConsumed={handleInitialAiMessageConsumed}
 					/>
 				) : (
 					<>
@@ -947,6 +984,8 @@ export function RoadmapViewContent({
 										roadmapId={roadmap.id}
 										roadmapSnapshot={roadmap}
 										isVisible={isAiChatPanelOpen}
+										initialMessage={initialAiMessage}
+										onInitialMessageConsumed={handleInitialAiMessageConsumed}
 									/>
 								</div>
 							)}
@@ -991,6 +1030,42 @@ export function RoadmapViewContent({
 								You have view-only access to this roadmap. Editing and
 								commenting are disabled.
 							</p>
+						</div>
+					</div>
+				)}
+
+				{/* Persistent guest CTA — not dismissible; stacks above the read-only
+				    note in the (unlikely) case both render at once. */}
+				{showGuestSignupNote && (
+					<div
+						className={`fixed right-5 z-40 max-w-sm rounded-lg border border-amber-200 bg-amber-50/95 px-4 py-3 shadow-lg backdrop-blur-sm ${
+							showReadOnlyPermissionNote ? "bottom-24" : "bottom-5"
+						}`}
+					>
+						<div className="flex items-start gap-2.5">
+							<UserPlus className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+							<div>
+								<p className="text-sm font-medium text-amber-900">
+									You're working as a guest — sign up to keep this roadmap and
+									turn it into a project.
+								</p>
+								<div className="mt-2.5 flex items-center gap-3">
+									<Link
+										to="/auth/signup"
+										search={{ redirect: `/project/n/roadmap/${roadmapId}` }}
+										className="inline-flex items-center rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-amber-700"
+									>
+										Sign up
+									</Link>
+									<Link
+										to="/auth/login"
+										search={{ redirect: `/project/n/roadmap/${roadmapId}` }}
+										className="text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
+									>
+										Log in
+									</Link>
+								</div>
+							</div>
 						</div>
 					</div>
 				)}

@@ -73,6 +73,13 @@ interface RoadmapAiAssistantPanelProps {
 	roadmapSnapshot?: Roadmap | null;
 	epicsSnapshot?: RoadmapEpic[];
 	isVisible?: boolean;
+	/**
+	 * One-shot message auto-sent as the first turn once the panel is visible
+	 * and the sessions list has loaded (homepage hero handoff).
+	 */
+	initialMessage?: string | null;
+	/** Called after `initialMessage` has been dispatched exactly once. */
+	onInitialMessageConsumed?: () => void;
 }
 
 const buildAssistantMessage = (
@@ -1044,6 +1051,25 @@ export const shouldRenderThinkingFallback = (
 	tracePollingFailed: boolean,
 ): boolean => isSending && (!hasLiveActivity || tracePollingFailed);
 
+/**
+ * Gate for the hero-handoff auto-send: dispatch the pending initial message
+ * only when the panel is visible, no turn is in flight, the sessions list has
+ * resolved (so thread hydration can't race the send), and the once-latch has
+ * not fired yet. Pure so the exactly-once behavior is unit-testable.
+ */
+export const shouldAutoSendInitialMessage = (state: {
+	isVisible: boolean;
+	initialMessage: string | null | undefined;
+	isSending: boolean;
+	threadsListReady: boolean;
+	hasAutoSentInitial: boolean;
+}): boolean =>
+	state.isVisible &&
+	Boolean(state.initialMessage && state.initialMessage.trim().length > 0) &&
+	!state.isSending &&
+	state.threadsListReady &&
+	!state.hasAutoSentInitial;
+
 const isTraceNotReadyError = (error: unknown): boolean => {
 	if (error instanceof RoadmapAgentServiceError) {
 		return error.statusCode === 404;
@@ -1109,6 +1135,8 @@ export function RoadmapAiAssistantPanel({
 	roadmapId,
 	baseRevision,
 	isVisible = true,
+	initialMessage,
+	onInitialMessageConsumed,
 }: RoadmapAiAssistantPanelProps) {
 	const queryClient = useQueryClient();
 	const activeThreadId = useActiveRoadmapAiThread(roadmapId);
@@ -1930,6 +1958,33 @@ export function RoadmapAiAssistantPanel({
 		pendingAutoSubmitDisplayRef.current = options?.displayLabel ?? null;
 		setInput(content);
 	};
+
+	// One-shot auto-send for the homepage hero handoff: the parent passes the
+	// pending prompt via `initialMessage` after opening the panel. Latched by
+	// `hasAutoSentInitialRef` (plus the parent's consume callback and the
+	// upstream sessionStorage read-and-clear) so the turn can never dispatch
+	// twice. Waits for the sessions list so thread hydration can't race the
+	// send — for a fresh roadmap the list resolves empty and handleSend's
+	// ensureThread creates the DB row + agent session.
+	const hasAutoSentInitialRef = useRef(false);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: submitProgrammaticMessage/onInitialMessageConsumed are recreated every render; the ref latch makes reruns no-ops — same pattern as the auto-dispatch effect above.
+	useEffect(() => {
+		if (!initialMessage) return;
+		if (
+			!shouldAutoSendInitialMessage({
+				isVisible,
+				initialMessage,
+				isSending,
+				threadsListReady: threadsList.isSuccess,
+				hasAutoSentInitial: hasAutoSentInitialRef.current,
+			})
+		) {
+			return;
+		}
+		hasAutoSentInitialRef.current = true;
+		submitProgrammaticMessage(initialMessage);
+		onInitialMessageConsumed?.();
+	}, [isVisible, initialMessage, isSending, threadsList.isSuccess]);
 
 	const isMessageActivityExpanded = (
 		messageId: string,
