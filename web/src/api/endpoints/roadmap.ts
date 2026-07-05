@@ -16,6 +16,7 @@ interface ApiResponse<T> {
 export interface CreateRoadmapDto {
   name: string;
   description?: string;
+  category?: string;
   project_id?: string | null;
   status?: "draft" | "active" | "paused" | "completed" | "archived";
   start_date?: string;
@@ -28,6 +29,7 @@ export interface CreateRoadmapDto {
 export interface UpdateRoadmapDto {
   name?: string;
   description?: string;
+  category?: string;
   status?: "draft" | "active" | "paused" | "completed" | "archived";
   start_date?: string;
   end_date?: string;

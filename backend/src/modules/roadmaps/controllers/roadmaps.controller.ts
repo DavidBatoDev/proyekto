@@ -24,9 +24,12 @@ import {
   RedisDataCacheService,
 } from '../../../common/cache/redis-data-cache.service';
 import { RoadmapsService } from '../services/roadmaps.service';
+import { RoadmapMetadataGeneratorService } from '../services/roadmap-metadata-generator.service';
 import {
   CreateRoadmapDto,
   ReplaceProjectRoadmapDto,
+  SuggestRoadmapIntakeStepDto,
+  SuggestRoadmapMetadataDto,
   UpdateRoadmapDto,
   UpdateRoadmapTemplateSettingsDto,
 } from '../dto/roadmaps.dto';
@@ -36,6 +39,7 @@ import {
 export class RoadmapsController {
   constructor(
     private readonly roadmapsService: RoadmapsService,
+    private readonly metadataGenerator: RoadmapMetadataGeneratorService,
     private readonly dataCache: RedisDataCacheService,
   ) {}
 
@@ -100,6 +104,16 @@ export class RoadmapsController {
   @Get('all-full')
   getAllFull(@CurrentUser() user: AuthenticatedUser) {
     return this.roadmapsService.getAllFull(user.id);
+  }
+
+  @Post('suggest-metadata')
+  suggestMetadata(@Body() dto: SuggestRoadmapMetadataDto) {
+    return this.metadataGenerator.suggest(dto);
+  }
+
+  @Post('intake/suggest')
+  suggestIntakeStep(@Body() dto: SuggestRoadmapIntakeStepDto) {
+    return this.metadataGenerator.suggestIntakeStep(dto);
   }
 
   @Get(':id')

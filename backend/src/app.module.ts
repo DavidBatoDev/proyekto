@@ -38,7 +38,12 @@ import { AppController } from './app.controller';
 @Module({
   controllers: [AppController],
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      // Support running Nest from either backend/ or the monorepo root.
+      envFilePath: ['.env', 'backend/.env'],
+      validate: validateEnv,
+    }),
     RedisModule,
     ThrottlerModule.forRootAsync({
       imports: [RedisModule],

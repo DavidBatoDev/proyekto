@@ -124,6 +124,37 @@ export interface UpdateRoadmapDto {
 	is_templatable?: boolean;
 }
 
+export interface SuggestRoadmapMetadataDto {
+	prompt: string;
+	project_id?: string | null;
+}
+
+export interface SuggestedRoadmapMetadata {
+	name: string;
+	description: string;
+	category: string;
+}
+
+export interface SuggestRoadmapIntakeStepDto {
+	step: "title" | "description";
+	prompt: string;
+	title?: string;
+	description?: string;
+	category?: string;
+	project_id?: string | null;
+}
+
+export interface SuggestedRoadmapIntakeOption {
+	key: "A" | "B" | "C";
+	value: string;
+}
+
+export interface SuggestedRoadmapIntakeStep {
+	assistant_message: string;
+	options: SuggestedRoadmapIntakeOption[];
+	category_suggestions?: string[];
+}
+
 export interface UpdateRoadmapTemplateSettingsDto {
 	is_public?: boolean;
 	is_templatable?: boolean;
@@ -439,6 +470,33 @@ export const roadmapService = {
 			return response.data.data;
 		} catch (error) {
 			throw handleServiceError(error, "Create roadmap");
+		}
+	},
+
+	async suggestMetadata(
+		data: SuggestRoadmapMetadataDto,
+	): Promise<SuggestedRoadmapMetadata> {
+		try {
+			const response = await apiClient.post<ApiResponse<SuggestedRoadmapMetadata>>(
+				"/api/roadmaps/suggest-metadata",
+				data,
+			);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(error, "Suggest roadmap metadata");
+		}
+	},
+
+	async suggestIntakeStep(
+		data: SuggestRoadmapIntakeStepDto,
+	): Promise<SuggestedRoadmapIntakeStep> {
+		try {
+			const response = await apiClient.post<
+				ApiResponse<SuggestedRoadmapIntakeStep>
+			>("/api/roadmaps/intake/suggest", data);
+			return response.data.data;
+		} catch (error) {
+			throw handleServiceError(error, "Suggest roadmap intake step");
 		}
 	},
 

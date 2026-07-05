@@ -41,6 +41,7 @@ import { RoadmapAiPreviewStoreService } from './services/roadmap-ai-preview-stor
 import { RoadmapAiSessionsService } from './services/roadmap-ai-sessions.service';
 import { RoadmapAiMemoriesService } from './services/roadmap-ai-memories.service';
 import { RoadmapAiTitleGeneratorService } from './services/roadmap-ai-title-generator.service';
+import { RoadmapMetadataGeneratorService } from './services/roadmap-metadata-generator.service';
 
 // Repository implementations
 import { RoadmapsRepositorySupabase } from './repositories/roadmaps.repository.supabase';
@@ -74,6 +75,7 @@ import { RoadmapAuthorizationService } from './services/roadmap-authorization.se
     RoadmapAiSessionsService,
     RoadmapAiMemoriesService,
     RoadmapAiTitleGeneratorService,
+    RoadmapMetadataGeneratorService,
     RoadmapPatchService,
     {
       provide: ROADMAP_PATCH_REPOSITORY,

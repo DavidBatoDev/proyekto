@@ -39,6 +39,22 @@ export class CreateRoadmapDto {
   @IsBoolean() @IsOptional() is_templatable?: boolean;
 }
 
+export class SuggestRoadmapMetadataDto {
+  @IsString() @IsNotEmpty() @MaxLength(2000) prompt: string;
+  @IsUUID() @IsOptional() project_id?: string | null;
+}
+
+export class SuggestRoadmapIntakeStepDto {
+  @IsIn(['title', 'description'])
+  step: 'title' | 'description';
+
+  @IsString() @IsNotEmpty() @MaxLength(2000) prompt: string;
+  @IsUUID() @IsOptional() project_id?: string | null;
+  @IsString() @IsOptional() @MaxLength(200) title?: string;
+  @IsString() @IsOptional() @MaxLength(1200) description?: string;
+  @IsString() @IsOptional() @MaxLength(80) category?: string;
+}
+
 export class UpdateRoadmapDto {
   @IsString() @IsOptional() @MaxLength(200) name?: string;
   @IsString() @IsOptional() description?: string;
