@@ -1,6 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { CheckCircle2, Loader2, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getGuestSessionId } from "@/lib/guestAuth";
 import {
 	clearGuestRoadmapMetadata,
@@ -63,9 +63,14 @@ function convertRoadmapOnce({
 function ConvertRoadmapToProjectPage() {
 	const { roadmapId } = Route.useParams();
 	const navigate = useNavigate();
+	const navigateRef = useRef(navigate);
 	const [activeStep, setActiveStep] = useState(0);
 	const [error, setError] = useState<string | null>(null);
 	const pending = useMemo(() => getPendingProjectFromRoadmap(), []);
+
+	useEffect(() => {
+		navigateRef.current = navigate;
+	}, [navigate]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -86,7 +91,7 @@ function ConvertRoadmapToProjectPage() {
 				clearPendingProjectFromRoadmap(roadmapId);
 				clearGuestRoadmapMetadata(roadmapId);
 
-				await navigate({
+				await navigateRef.current({
 					to: "/project/$projectId/overview",
 					params: { projectId: result.project.id },
 					replace: true,
@@ -111,7 +116,7 @@ function ConvertRoadmapToProjectPage() {
 			cancelled = true;
 			for (const timer of timers) window.clearTimeout(timer);
 		};
-	}, [navigate, pending?.guestSessionId, roadmapId]);
+	}, [pending?.guestSessionId, roadmapId]);
 
 	return (
 		<main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#dff7ec,transparent_34%),linear-gradient(135deg,#f8fafc,#eef6f1)] px-6 py-12 text-slate-950">

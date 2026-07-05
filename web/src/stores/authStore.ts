@@ -95,7 +95,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   // Set profile (called by useProfileQuery)
   setProfile: (profile) => {
-    set({ profile, isAuthenticated: !!profile });
+    set({ profile });
   },
 
   // Sign in with email and password
