@@ -58,7 +58,7 @@ export function MigrationHandler() {
           setIsModalOpen(true);
 
           // Migrate automatically in background
-          await migrationService.migrateRoadmaps(status.guestUserId, user.id);
+          await migrationService.migrateRoadmaps();
 
           setIsMigrating(false);
         }

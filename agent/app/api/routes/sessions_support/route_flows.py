@@ -116,6 +116,21 @@ def _resolve_request_trace_id(request: Request) -> str:
     return str(uuid4())
 
 
+def resolve_forward_auth(request: Request) -> str | None:
+    """Composite auth value to forward to NestJS: the raw bearer when the
+    caller is authenticated, otherwise the guest session id encoded as
+    'Guest <id>' (translated back to the X-Guest-User-Id header by
+    NestRoadmapClient's outbound header builders). Returns None when the
+    request carries neither."""
+    auth = request.headers.get('Authorization')
+    if auth:
+        return auth
+    guest = request.headers.get('X-Guest-User-Id')
+    if guest:
+        return f'Guest {guest}'
+    return None
+
+
 async def send_message_flow(
     *,
     session_id: str,
@@ -187,7 +202,7 @@ async def send_message_flow(
             session,
             payload.message,
             False,
-            request.headers.get('Authorization'),
+            resolve_forward_auth(request),
             trace_id,
         )
         _, _, staged_snapshot_operations = resolve_draft_snapshot(
@@ -205,7 +220,7 @@ async def send_message_flow(
         )
 
         if should_auto_commit:
-            auth_header = request.headers.get('Authorization')
+            auth_header = resolve_forward_auth(request)
             if auth_header:
                 if settings.agent_async_auto_commit_enabled:
                     schedule_auto_commit_task(
@@ -362,7 +377,7 @@ async def send_message_flow(
         # (pending plan created/cleared, undo log grew, recents shifted), push
         # the snapshot to the backend fire-and-forget so Redis expiry loses
         # nothing. Runs after the auto-commit block — commits mutate the log.
-        snapshot_auth = request.headers.get('Authorization')
+        snapshot_auth = resolve_forward_auth(request)
         if nest_client is not None and snapshot_auth:
             snapshot = build_agent_state_snapshot(outcome.session)
             if snapshot and snapshot_fingerprint(snapshot) != snapshot_fp_before:

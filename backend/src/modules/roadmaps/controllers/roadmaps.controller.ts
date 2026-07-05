@@ -10,6 +10,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  ForbiddenException,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
@@ -64,6 +65,13 @@ export class RoadmapsController {
     @Body('session_id') sessionId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    // A guest caller would "migrate" its roadmaps onto its own profile
+    // (no-op) while the client clears the guest session — stranding them.
+    if (user.is_guest) {
+      throw new ForbiddenException(
+        'Sign in with a full account to claim guest roadmaps.',
+      );
+    }
     return this.roadmapsService.migrateGuestRoadmaps(sessionId, user.id);
   }
 

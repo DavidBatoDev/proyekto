@@ -17,6 +17,7 @@ import { SignupStepAccount } from "./SignupStepAccount";
 import { SignupStepPassword } from "./SignupStepPassword";
 import { SignupStepProfile } from "./SignupStepProfile";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { runGuestMigrationIfNeeded } from "@/services/migration.service";
 
 interface SignupFormProps {
   redirectUrl?: string;
@@ -321,6 +322,15 @@ export function SignupForm(_props: SignupFormProps) {
 
       const postSignupRedirect = sessionStorage.getItem("signup_redirect");
       clearSignupData();
+
+      // Claim any guest-drafted roadmaps BEFORE navigating so a redirect
+      // back to /project/n/roadmap/:id lands on a user-owned roadmap.
+      // Best-effort: MigrationHandler in __root remains the fallback.
+      try {
+        await runGuestMigrationIfNeeded();
+      } catch {
+        /* non-blocking */
+      }
 
       // If the user landed here from an invite link, send them back to it.
       // Otherwise route through /welcome so onboarding runs as normal.

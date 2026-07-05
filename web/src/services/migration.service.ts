@@ -4,7 +4,12 @@
  */
 
 import { apiClient } from "@/api";
-import { getCachedGuestUserId, clearGuestSession } from "@/lib/guestAuth";
+import {
+  getCachedGuestUserId,
+  getGuestSessionId,
+  clearGuestSession,
+} from "@/lib/guestAuth";
+import { getAccessToken } from "@/lib/supabase";
 import type { Roadmap } from "@/types/roadmap";
 
 export interface MigrationStatus {
@@ -90,35 +95,30 @@ class MigrationService {
   }
 
   /**
-   * Migrate guest roadmaps to authenticated user
+   * Migrate guest roadmaps to the authenticated user. The guest session id
+   * proves guest ownership; the target user comes from the JWT server-side.
    */
-  async migrateRoadmaps(
-    guestUserId: string,
-    targetUserId: string,
-  ): Promise<{ success: boolean; migratedCount: number }> {
+  async migrateRoadmaps(): Promise<{ success: boolean; migratedCount: number }> {
     try {
-      const response = await apiClient.post<{
-        success: boolean;
-        migratedCount: number;
-      }>("/api/roadmaps/migrate", {
-        guestUserId,
-        targetUserId,
+      const response = await apiClient.post<{ data: { migrated: number } }>(
+        "/api/roadmaps/migrate",
+        { session_id: getGuestSessionId() },
+      );
+
+      const migratedCount = response.data.data?.migrated ?? 0;
+
+      // Mark migration as complete
+      this.setMigrationStatus({
+        isComplete: true,
+        isSkipped: false,
+        migratedCount,
+        completedAt: new Date().toISOString(),
       });
 
-      if (response.data.success) {
-        // Mark migration as complete
-        this.setMigrationStatus({
-          isComplete: true,
-          isSkipped: false,
-          migratedCount: response.data.migratedCount,
-          completedAt: new Date().toISOString(),
-        });
+      // Clear guest session data
+      clearGuestSession();
 
-        // Clear guest session data
-        clearGuestSession();
-      }
-
-      return response.data;
+      return { success: true, migratedCount };
     } catch (error) {
       handleError(error, "migrateRoadmaps");
     }
@@ -174,3 +174,29 @@ class MigrationService {
 }
 
 export const migrationService = new MigrationService();
+
+/**
+ * Best-effort guest-roadmap migration. Returns 0 immediately when there is
+ * no guest session to migrate; otherwise runs the migration and returns the
+ * number of migrated roadmaps (0 if it fails — callers must not block on it).
+ */
+export async function runGuestMigrationIfNeeded(): Promise<number> {
+  if (!getGuestSessionId()) {
+    return 0;
+  }
+
+  // Without an access token the axios interceptor would fall back to the
+  // X-Guest-User-Id header, authenticating this call AS the guest — the
+  // server rejects that (403), but bail here so we never even attempt it.
+  if (!(await getAccessToken())) {
+    return 0;
+  }
+
+  try {
+    const result = await migrationService.migrateRoadmaps();
+    return result.migratedCount;
+  } catch (error) {
+    console.warn("[MigrationService] Best-effort migration failed:", error);
+    return 0;
+  }
+}

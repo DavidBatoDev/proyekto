@@ -11,13 +11,12 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../config/supabase.module';
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
 import { Public } from '../../common/decorators/public.decorator';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { SetCachePolicy } from '../../common/decorators/cache-policy.decorator';
-import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
 import { CACHE_POLICY_PRESETS } from '../../common/cache/cache-policy';
 import { CreateGuestDto } from './dto/guest.dto';
 
@@ -32,7 +31,9 @@ export class GuestsService {
       session_id: dto.session_id,
     });
     if (error) throw new Error(error.message);
-    return data;
+    // Shape mirrors findBySession so the web client (createGuestProfile) reads
+    // `data.user_id` from either endpoint. The RPC returns the bare guest UUID.
+    return { user_id: data };
   }
 
   async findBySession(sessionId: string) {
@@ -41,23 +42,6 @@ export class GuestsService {
     });
     if (error || !data) throw new NotFoundException('Guest session not found');
     return { user_id: data };
-  }
-
-  async migrateRoadmaps(guestId: string, authenticatedUserId: string) {
-    const { data, error } = await this.supabase
-      .from('roadmaps')
-      .update({ owner_id: authenticatedUserId })
-      .eq('owner_id', guestId)
-      .select();
-    if (error) throw new Error(error.message);
-
-    // Update profiles to mark migration
-    await this.supabase
-      .from('profiles')
-      .update({ migrated_from_guest_id: guestId })
-      .eq('id', authenticatedUserId);
-
-    return { migrated: (data || []).length };
   }
 
   async getPending(sessionId: string) {
@@ -96,6 +80,8 @@ export class GuestsController {
 
   @Post('create')
   @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @HttpCode(HttpStatus.CREATED)
   createGuest(@Body() dto: CreateGuestDto) {
     return this.guestsService.createGuest(dto);
@@ -103,17 +89,10 @@ export class GuestsController {
 
   @Get('by-session/:sessionId')
   @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   findBySession(@Param('sessionId') sessionId: string) {
     return this.guestsService.findBySession(sessionId);
-  }
-
-  @Post('migrate')
-  @HttpCode(HttpStatus.OK)
-  migrateRoadmaps(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body('guest_id') guestId: string,
-  ) {
-    return this.guestsService.migrateRoadmaps(guestId, user.id);
   }
 
   @Get('pending/:sessionId')

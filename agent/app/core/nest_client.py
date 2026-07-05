@@ -10,6 +10,21 @@ from fastapi import HTTPException
 from app.core.config import get_settings
 from app.core.logging_utils import log_event
 
+_GUEST_PREFIX = 'Guest '
+
+
+def _apply_auth_header(headers: dict[str, str], auth_header: str | None) -> None:
+    """Translate the composite forward-auth value (see route_flows'
+    resolve_forward_auth) into the right outbound header: 'Guest <id>'
+    becomes X-Guest-User-Id, anything else (a real bearer) passes through
+    as Authorization. No-op when auth_header is falsy."""
+    if not auth_header:
+        return
+    if auth_header.startswith(_GUEST_PREFIX):
+        headers['X-Guest-User-Id'] = auth_header[len(_GUEST_PREFIX):]
+    else:
+        headers['Authorization'] = auth_header
+
 
 class NestRoadmapClient:
     def __init__(self) -> None:
@@ -374,8 +389,7 @@ class NestRoadmapClient:
         trace_id: str | None = None,
     ) -> dict[str, Any]:
         headers = {'Content-Type': 'application/json'}
-        if auth_header:
-            headers['Authorization'] = auth_header
+        _apply_auth_header(headers, auth_header)
         if trace_id:
             headers['X-Trace-Id'] = trace_id
 
@@ -444,8 +458,7 @@ class NestRoadmapClient:
         trace_id: str | None = None,
     ) -> dict[str, Any]:
         headers = {'Content-Type': 'application/json'}
-        if auth_header:
-            headers['Authorization'] = auth_header
+        _apply_auth_header(headers, auth_header)
         if trace_id:
             headers['X-Trace-Id'] = trace_id
 
@@ -566,8 +579,7 @@ class NestRoadmapClient:
         trace_id: str | None = None,
     ) -> dict[str, Any]:
         headers = {'Content-Type': 'application/json'}
-        if auth_header:
-            headers['Authorization'] = auth_header
+        _apply_auth_header(headers, auth_header)
         if trace_id:
             headers['X-Trace-Id'] = trace_id
 
