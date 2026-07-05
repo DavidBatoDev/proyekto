@@ -1,0 +1,11 @@
+[mcp_servers.supabase]
+url = "https://mcp.supabase.com/mcp"
+
+[mcp_servers.cloudflare_api]
+url = "https://mcp.cloudflare.com/mcp"
+
+[mcp_servers.cloudflare_docs]
+url = "https://docs.mcp.cloudflare.com/mcp"
+
+[mcp_servers.cloudflare_bindings]
+url = "https://bindings.mcp.cloudflare.com/mcp"
