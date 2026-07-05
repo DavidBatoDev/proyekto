@@ -88,9 +88,8 @@ function ToolbarAssigneeChip({ avatar }: { avatar: DockAvatar }) {
       {...listeners}
       title={`Drag to assign ${tooltip}`}
       aria-label={`Drag to assign ${tooltip}`}
-      className={`relative shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 transition-opacity cursor-grab active:cursor-grabbing ${
-        isDragging ? "opacity-40" : "opacity-100"
-      }`}
+      className={`relative shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 transition-opacity cursor-grab active:cursor-grabbing ${isDragging ? "opacity-40" : "opacity-100"
+        }`}
     >
       {avatar.avatarUrl ? (
         <img
@@ -270,25 +269,25 @@ const getLayoutedElements = (
     const averageFeatureHeight =
       featureHeights.length > 0
         ? featureHeights.reduce((sum, height) => sum + height, 0) /
-          featureHeights.length
+        featureHeights.length
         : BASE_FEATURE_HEIGHT;
     const featureSpacing =
       featureCount > 1
         ? Math.min(
-            MAX_FEATURE_SPACING,
-            Math.max(
-              MIN_FEATURE_SPACING,
-              Math.round(
-                averageFeatureHeight * FEATURE_SPACING_SCALE +
-                  FEATURE_SPACING_BASE,
-              ),
+          MAX_FEATURE_SPACING,
+          Math.max(
+            MIN_FEATURE_SPACING,
+            Math.round(
+              averageFeatureHeight * FEATURE_SPACING_SCALE +
+              FEATURE_SPACING_BASE,
             ),
-          )
+          ),
+        )
         : 0;
     const totalFeatureHeight =
       featureCount > 0
         ? featureHeights.reduce((sum, height) => sum + height, 0) +
-          featureSpacing * (featureCount - 1)
+        featureSpacing * (featureCount - 1)
         : 0;
     const groupHeight = Math.max(epicHeight, totalFeatureHeight);
     const groupGap = Math.max(
@@ -398,7 +397,7 @@ export const RoadmapView = ({
 
   const DEFAULT_VIEWPORT_X = -50;
   const DEFAULT_VIEWPORT_Y = 0;
-  const MAX_ZOOM = 1.0;
+  const MAX_ZOOM = 1.5;
   const runningLogQuery = useQuery({
     queryKey: ["team-time", "running-log", user?.id ?? "anonymous"],
     queryFn: () => teamTimeService.getMyRunningLog(),
@@ -614,9 +613,9 @@ export const RoadmapView = ({
       edges: positionedEdges,
       maxTaskCount: derivedMaxTaskCount,
     };
-  // layoutKey is a stable string that only changes when structure/positions
-  // change — prevents full layout recalculation for task-content-only updates.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // layoutKey is a stable string that only changes when structure/positions
+    // change — prevents full layout recalculation for task-content-only updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layoutKey]);
 
   // "Who is editing what": collapse the collaborator list into a node-id → editors
@@ -780,8 +779,8 @@ export const RoadmapView = ({
         taskId: focusTaskId,
         token:
           previous &&
-          previous.featureId === focusNodeId &&
-          previous.taskId === focusTaskId
+            previous.featureId === focusNodeId &&
+            previous.taskId === focusTaskId
             ? previous.token + 1
             : 1,
       }));
@@ -1135,14 +1134,13 @@ export const RoadmapView = ({
       const isDragged = n.id === remoteDrag.nodeId;
       return {
         ...n,
-        className: `${n.className ?? ""} ${
-          isDragged ? "remote-dragging" : "remote-drag-shift"
-        }`.trim(),
+        className: `${n.className ?? ""} ${isDragged ? "remote-dragging" : "remote-drag-shift"
+          }`.trim(),
         style: isDragged
           ? ({
-              ...(n.style ?? {}),
-              "--remote-drag-color": color,
-            } as React.CSSProperties)
+            ...(n.style ?? {}),
+            "--remote-drag-color": color,
+          } as React.CSSProperties)
           : n.style,
       };
     });
@@ -1723,11 +1721,10 @@ export const RoadmapView = ({
             draggable
             onDragStart={(event) => handleToolbarDragStart("epic", event)}
             onDragEnd={handleToolbarDragEnd}
-            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all duration-200 ${
-              toolbarDraggingType === "epic"
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all duration-200 ${toolbarDraggingType === "epic"
                 ? "border-emerald-500 bg-emerald-50 text-emerald-700 shadow-[0_0_0_3px_rgba(34,197,94,0.2)]"
                 : "border-gray-200 bg-white text-gray-700 hover:border-emerald-300 hover:bg-emerald-50/70 hover:text-emerald-700 hover:shadow-sm"
-            }`}
+              }`}
             title="Drop on an epic card to add a new epic below it"
           >
             <Layers3 className="h-3.5 w-3.5" />
@@ -1738,11 +1735,10 @@ export const RoadmapView = ({
             draggable
             onDragStart={(event) => handleToolbarDragStart("feature", event)}
             onDragEnd={handleToolbarDragEnd}
-            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all duration-200 ${
-              toolbarDraggingType === "feature"
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all duration-200 ${toolbarDraggingType === "feature"
                 ? "border-emerald-500 bg-emerald-50 text-emerald-700 shadow-[0_0_0_3px_rgba(34,197,94,0.2)]"
                 : "border-gray-200 bg-white text-gray-700 hover:border-emerald-300 hover:bg-emerald-50/70 hover:text-emerald-700 hover:shadow-sm"
-            }`}
+              }`}
             title="Drop on an epic card to add a feature"
           >
             <Layers3 className="h-3.5 w-3.5" />
@@ -1753,11 +1749,10 @@ export const RoadmapView = ({
             draggable
             onDragStart={(event) => handleToolbarDragStart("task", event)}
             onDragEnd={handleToolbarDragEnd}
-            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all duration-200 ${
-              toolbarDraggingType === "task"
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all duration-200 ${toolbarDraggingType === "task"
                 ? "border-emerald-500 bg-emerald-50 text-emerald-700 shadow-[0_0_0_3px_rgba(34,197,94,0.2)]"
                 : "border-gray-200 bg-white text-gray-700 hover:border-emerald-300 hover:bg-emerald-50/70 hover:text-emerald-700 hover:shadow-sm"
-            }`}
+              }`}
             title="Drop on a feature card to add a task"
           >
             <ListTodo className="h-3.5 w-3.5" />

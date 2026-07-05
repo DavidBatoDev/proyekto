@@ -1767,9 +1767,11 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
               return Math.max(max, Math.floor(position));
             }, -1);
             const appendPosition = maxPosition + 1;
+            // New tasks default to the top of the list (position 0); an
+            // explicit requested position is still honored.
             optimisticPosition =
               requestedPosition === null
-                ? appendPosition
+                ? 0
                 : Math.min(requestedPosition, appendPosition);
 
             const shiftedTasks = existingTasks.map((task) => {
@@ -1806,7 +1808,7 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
 
             return {
               ...feature,
-              tasks: [...shiftedTasks, optimisticTask],
+              tasks: [optimisticTask, ...shiftedTasks],
               updated_at: createdAt,
             };
           }),
@@ -1833,7 +1835,9 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
         work_type: data.work_type || "real_work",
         assignee_id: data.assignee_id,
         assignee_ids: data.assignee_ids,
-        position: optimisticPosition,
+        // Omit position on a default add so the backend prepends (shifts others
+        // down, inserts at 0); only forward an explicitly requested position.
+        position: requestedPosition ?? undefined,
         due_date: data.due_date,
         checklist: data.checklist ?? [],
       });

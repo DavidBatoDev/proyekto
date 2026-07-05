@@ -91,20 +91,24 @@ export class TasksRepositorySupabase implements ITasksRepository {
     return { added, removed };
   }
 
-  private async getNextPosition(featureId: string): Promise<number> {
-    const { data, error } = await this.db
+  /** Bumps every existing task in the feature down by one position, highest
+   * first so the (feature_id, position) unique constraint is never transiently
+   * violated. Frees position 0 so a freshly created task lands at the top. */
+  private async shiftTasksDown(featureId: string): Promise<void> {
+    const { data: rows, error } = await this.db
       .from('roadmap_tasks')
-      .select('position')
+      .select('id, position')
       .eq('feature_id', featureId)
-      .order('position', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .order('position', { ascending: false });
+    if (error) throw new Error(error.message);
 
-    if (error && error.code !== 'PGRST116') {
-      throw new Error(error.message);
+    for (const row of rows ?? []) {
+      const { error: updErr } = await this.db
+        .from('roadmap_tasks')
+        .update({ position: (row.position as number) + 1 })
+        .eq('id', row.id as string);
+      if (updErr) throw new Error(updErr.message);
     }
-
-    return typeof data?.position === 'number' ? data.position + 1 : 0;
   }
 
   async findByFeature(featureId: string): Promise<any[]> {
@@ -178,10 +182,15 @@ export class TasksRepositorySupabase implements ITasksRepository {
   }
 
   async create(dto: CreateTaskDto, userId: string): Promise<any> {
-    const resolvedPosition =
-      typeof dto.position === 'number'
-        ? dto.position
-        : await this.getNextPosition(dto.feature_id);
+    // New tasks default to the top of the list: shift existing tasks down and
+    // insert at position 0. An explicit dto.position (targeted insert) wins.
+    let resolvedPosition: number;
+    if (typeof dto.position === 'number') {
+      resolvedPosition = dto.position;
+    } else {
+      await this.shiftTasksDown(dto.feature_id);
+      resolvedPosition = 0;
+    }
 
     const assigneeIds = this.resolveAssigneeIds(dto) ?? [];
     const primaryAssignee = assigneeIds[0] ?? null;
