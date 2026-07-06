@@ -61,7 +61,7 @@ function summarize(body) {
   };
 }
 
-async function captureSend(fire) {
+async function captureSend(fire, { snap } = {}) {
   const respPromise = page
     .waitForResponse(
       (r) => /\/agent\/sessions\/.+\/messages$/.test(r.url()) && r.request().method() === "POST",
@@ -69,7 +69,19 @@ async function captureSend(fire) {
     )
     .catch(() => null);
   await fire();
+  // Optional live capture: periodic screenshots WHILE the turn runs, so the
+  // in-flight activity timeline (thought rows, streaming preview) is visible
+  // before finalize collapses it onto the message.
+  let shotCount = 0;
+  const timer = snap
+    ? setInterval(() => {
+        shotCount += 1;
+        const file = path.join(DIR, `${snap}-${String(shotCount).padStart(2, "0")}.png`);
+        page.screenshot({ path: file }).catch(() => {});
+      }, 2500)
+    : null;
   const resp = await respPromise;
+  if (timer) clearInterval(timer);
   const body = resp ? await resp.json().catch(() => ({})) : {};
   await page.waitForTimeout(250);
   const clarifierCardVisible = await page
@@ -85,6 +97,21 @@ const composer = () => panel().getByPlaceholder("Chat or request roadmap edits..
 const sidebar = () => page.locator("#roadmap-left-panel");
 
 async function init() {
+  // Log realtime-pushed AI trace frames so push (vs poll) delivery is provable.
+  page.on("websocket", (ws) => {
+    if (!ws.url().includes("/ws?room=")) return;
+    ws.on("framereceived", (frame) => {
+      try {
+        const data = JSON.parse(frame.payload);
+        if (data?.event !== "ai_trace_event") return;
+        const first = data.payload?.events?.[0];
+        fs.appendFileSync(
+          path.join(DIR, "ws-frames.jsonl"),
+          `${JSON.stringify({ t: new Date().toISOString(), seq: first?.seq, event: first?.event })}\n`,
+        );
+      } catch {}
+    });
+  });
   await page.goto(APP_URL);
   await page.getByTitle("Toggle AI chat panel").waitFor({ timeout: 30_000 });
   await page.locator(".react-flow").waitFor({ timeout: 30_000 });
@@ -119,12 +146,37 @@ async function authToken() {
 }
 
 const handlers = {
-  async send({ text }) {
-    return captureSend(async () => {
-      await composer().click();
-      await composer().fill(text);
-      await composer().press("Enter");
-    });
+  async send({ text, snap }) {
+    return captureSend(
+      async () => {
+        await composer().click();
+        await composer().fill(text);
+        await composer().press("Enter");
+      },
+      { snap },
+    );
+  },
+  // Expand (or collapse) the newest activity timeline and screenshot it.
+  async expand({ name }) {
+    const toggle = panel()
+      .getByRole("button", { name: /^Work(ed|ing)/ })
+      .last();
+    await toggle.click();
+    await page.waitForTimeout(500);
+    const file = path.join(DIR, `${name || "expanded"}.png`);
+    await page.screenshot({ path: file });
+    return { saved: file };
+  },
+  // Dump how many ai_trace_event WS frames the page received (realtime push).
+  async wsframes() {
+    const file = path.join(DIR, "ws-frames.jsonl");
+    if (!fs.existsSync(file)) return { frames: 0 };
+    const lines = fs.readFileSync(file, "utf-8").trim().split("\n").filter(Boolean);
+    return {
+      frames: lines.length,
+      first: lines[0] ? JSON.parse(lines[0]) : null,
+      last: lines.length ? JSON.parse(lines[lines.length - 1]) : null,
+    };
   },
   async clarifier({ prefer }) {
     // The clarifier is the only radio group in the panel (and renders only on
