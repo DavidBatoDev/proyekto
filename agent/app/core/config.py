@@ -69,8 +69,15 @@ class Settings(BaseSettings):
         alias='AGENT_PROGRESS_EVENTS_ALLOW_VERBOSE',
     )
     agent_cache_ttl_seconds: int = Field(default=600, alias='AGENT_CACHE_TTL_SECONDS')
+    # In-turn resolve-lookup cache lifetime. The ToolDispatcher (and its cache)
+    # is rebuilt every message turn, so this TTL only bounds staleness WITHIN a
+    # single turn — it never leaks across turns or sessions. A long multi-tool
+    # turn (up to AGENT_V2_MAX_TURNS round-trips) can exceed 30s wall-clock and
+    # re-fetch a label it already resolved; defaulting to the 300s clamp ceiling
+    # keeps a resolved node cached for the whole turn. Still capped at 300 so a
+    # misconfig can't cache a stale read for an unbounded time.
     agent_resolve_cache_ttl_seconds: int = Field(
-        default=30,
+        default=300,
         alias='AGENT_RESOLVE_CACHE_TTL_SECONDS',
     )
     agent_resolve_parallel_variants_enabled: bool = Field(
