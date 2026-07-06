@@ -43,6 +43,9 @@ export interface RoadmapAiActivityStep {
   summary: string;
   details?: Record<string, unknown>;
   titleList?: RoadmapAiActivityStepTitleList;
+  /** Raw agent tool name (e.g. resolve_node_reference) shown as a chip next
+   * to the friendly title so users can see exactly which tool ran. */
+  toolName?: string;
 }
 
 export interface RoadmapAiActivityTimeline {

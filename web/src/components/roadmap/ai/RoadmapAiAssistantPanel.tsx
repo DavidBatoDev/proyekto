@@ -233,10 +233,18 @@ const SHARED_HIDDEN_ACTIVITY_EVENTS = new Set<string>([
 	"session_staged_state",
 	"message_completed",
 	"provider_success",
-	"provider_attempt",
+	// assistant_delta feeds the streaming preview bubble, not the timeline.
+	"assistant_delta",
+	// provider_attempt stays VISIBLE ("Planning the next steps"): requests
+	// that call no read tools (plan drafts, direct answers) would otherwise
+	// show an empty "Gathering activity..." timeline for the whole run.
 ]);
 
-const FRIENDLY_MINIMAL_EXTRA_HIDDEN_ACTIVITY_EVENTS = new Set<string>([]);
+const FRIENDLY_MINIMAL_EXTRA_HIDDEN_ACTIVITY_EVENTS = new Set<string>([
+	// Curated mode shows model turns as "Planning the next steps";
+	// friendly_minimal keeps only tool steps.
+	"provider_attempt",
+]);
 
 const toRecord = (value: unknown): Record<string, unknown> | null => {
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -799,6 +807,7 @@ const normalizeActivityStep = (
 				...baseStep,
 				title: toolMessage.title,
 				summary: toolMessage.summary,
+				...(toolName ? { toolName } : {}),
 			};
 		}
 		const label = buildFriendlyMinimalToolLabel(toolName);
@@ -806,6 +815,7 @@ const normalizeActivityStep = (
 			...baseStep,
 			title: label.requested,
 			summary: "Working on this step now.",
+			...(toolName ? { toolName } : {}),
 		};
 	}
 
@@ -818,6 +828,7 @@ const normalizeActivityStep = (
 				status: "error",
 				title: label.requested,
 				summary: "A step failed; retrying.",
+				...(toolName ? { toolName } : {}),
 			};
 		}
 		if (presentationMode === "curated") {
@@ -827,6 +838,7 @@ const normalizeActivityStep = (
 				title: toolMessage.title,
 				summary: toolMessage.summary,
 				titleList: toolMessage.titleList,
+				...(toolName ? { toolName } : {}),
 			};
 		}
 		const label = buildFriendlyMinimalToolLabel(toolName);
@@ -834,6 +846,7 @@ const normalizeActivityStep = (
 			...baseStep,
 			title: label.completed,
 			summary: buildFriendlyResultSummary(extractResultCounts(rawStep)),
+			...(toolName ? { toolName } : {}),
 		};
 	}
 

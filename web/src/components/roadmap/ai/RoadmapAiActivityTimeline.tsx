@@ -235,6 +235,11 @@ export function RoadmapAiActivityTimelineView({
                           <p className={`text-[11px] font-medium ${statusColor}`}>
                             {step.title}
                           </p>
+                          {step.toolName && (
+                            <code className="shrink-0 rounded bg-gray-100 px-1 py-px font-mono text-[9px] leading-4 text-gray-500">
+                              {step.toolName}
+                            </code>
+                          )}
                           <span className="ml-auto shrink-0 text-[10px] text-gray-400">
                             {new Date(step.ts).toLocaleTimeString([], {
                               hour: "numeric",
