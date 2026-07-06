@@ -19,6 +19,7 @@ const defaultTests = [
   'tests.test_v2_brain',
   'tests.test_v2_reasoning_effort',
   'tests.test_v2_prompt_caching',
+  'tests.test_v2_streaming',
   'tests.test_operation_contracts',
   'tests.test_edit_resolver',
   'tests.test_session_store_cas',

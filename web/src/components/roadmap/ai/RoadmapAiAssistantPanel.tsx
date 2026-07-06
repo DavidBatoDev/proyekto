@@ -186,6 +186,12 @@ const formatAttachmentSize = (bytes: number): string => {
 };
 
 const TRACE_POLL_INTERVAL_MS = 1000;
+// While the send is in flight, poll faster so a short assistant_delta burst
+// (a full answer can stream in under a second) isn't missed between polls;
+// faster still once deltas are actually arriving. The endpoint is a cheap
+// in-memory read on the agent.
+const TRACE_POLL_ACTIVE_INTERVAL_MS = 500;
+const TRACE_POLL_STREAMING_INTERVAL_MS = 300;
 const TRACE_POLL_LIMIT = 25;
 const TRACE_POLL_TIMEOUT_MS = 90_000;
 const TRACE_NOT_READY_GRACE_MS = 10_000;
@@ -1172,6 +1178,14 @@ export function RoadmapAiAssistantPanel({
 		string | null
 	>(null);
 	const [tracePollingFailed, setTracePollingFailed] = useState(false);
+	// Live preview of the assistant's streamed text: accumulated from
+	// assistant_delta trace events while the send POST is in flight. The final
+	// message from the POST always replaces it.
+	const [streamingPreview, setStreamingPreview] = useState<{
+		traceId: string;
+		turn: number;
+		text: string;
+	} | null>(null);
 	const [activityExpandedByMessageId, setActivityExpandedByMessageId] =
 		useState<Record<string, boolean>>({});
 	const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1238,7 +1252,12 @@ export function RoadmapAiAssistantPanel({
 			behavior: "smooth",
 			block: "end",
 		});
-	}, [messages.length, isSending, liveActivity?.steps.length]);
+	}, [
+		messages.length,
+		isSending,
+		liveActivity?.steps.length,
+		streamingPreview?.text.length,
+	]);
 
 	useEffect(() => {
 		if (!composerRef.current) return;
@@ -1409,6 +1428,7 @@ export function RoadmapAiAssistantPanel({
 		PROGRESS_PRESENTATION_MODE;
 
 	const stopActivePollLoop = () => {
+		setStreamingPreview(null);
 		const loop = pollLoopRef.current;
 		if (!loop) return;
 		loop.cancelled = true;
@@ -1447,13 +1467,45 @@ export function RoadmapAiAssistantPanel({
 					progressPresentationMode,
 				),
 			);
+			// Accumulate streamed assistant text (chunk events, already in seq
+			// order). A higher `turn` supersedes earlier partial text — a new
+			// model call is writing now.
+			const deltaEvents = response.events.filter(
+				(event) => event.event === "assistant_delta",
+			);
+			if (deltaEvents.length > 0) {
+				setStreamingPreview((prev) => {
+					let text = prev && prev.traceId === loop.traceId ? prev.text : "";
+					let turn = prev && prev.traceId === loop.traceId ? prev.turn : 0;
+					for (const event of deltaEvents) {
+						const details = (event.details ?? {}) as {
+							text?: unknown;
+							turn?: unknown;
+						};
+						const chunk = typeof details.text === "string" ? details.text : "";
+						const eventTurn =
+							typeof details.turn === "number" ? details.turn : turn;
+						if (eventTurn > turn) {
+							text = "";
+							turn = eventTurn;
+						}
+						text += chunk;
+					}
+					return { traceId: loop.traceId, turn, text };
+				});
+			}
 			await maybeRefreshRoadmapFromTraceEvents(loop.traceId, response.events);
 			if (response.done) {
 				return;
 			}
-			loop.timerId = window.setTimeout(() => {
-				void pollTraceEvents(loop);
-			}, TRACE_POLL_INTERVAL_MS);
+			loop.timerId = window.setTimeout(
+				() => {
+					void pollTraceEvents(loop);
+				},
+				deltaEvents.length > 0
+					? TRACE_POLL_STREAMING_INTERVAL_MS
+					: TRACE_POLL_ACTIVE_INTERVAL_MS,
+			);
 		} catch (error) {
 			if (loop.cancelled) return;
 			const elapsedSinceStartMs = Date.now() - loop.startedAtMs;
@@ -1928,6 +1980,9 @@ export function RoadmapAiAssistantPanel({
 			setLiveActivityHostMessageId(null);
 		} finally {
 			setIsSending(false);
+			// The final assistant message (or error bubble) replaces the
+			// streamed preview.
+			setStreamingPreview(null);
 			if (assistantId && traceId) {
 				finalizeTraceTimeline(assistantId, traceId);
 			}
@@ -2476,6 +2531,19 @@ export function RoadmapAiAssistantPanel({
 							</article>
 						);
 					})
+				)}
+
+				{isSending && streamingPreview && streamingPreview.text.trim() && (
+					<article
+						className="px-0 py-1.5 border-0 bg-transparent ml-0 mr-4"
+						aria-live="polite"
+					>
+						<div className="mb-1 text-[10px] text-gray-500">Assistant</div>
+						<div className="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap">
+							{streamingPreview.text}
+							<span className="ml-0.5 inline-block h-3 w-[2px] translate-y-[2px] animate-pulse bg-gray-500" />
+						</div>
+					</article>
 				)}
 
 				{displayLiveTimeline &&

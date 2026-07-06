@@ -96,6 +96,9 @@ _PROGRESS_EVENT_ALLOWLIST = {
     'message_completed',
     'auto_commit_async_completed',
     'auto_commit_async_failed',
+    # Throttled chunks of streamed assistant text (details.text) — the web
+    # accumulates them in seq order into a live typing preview.
+    'assistant_delta',
 }
 
 
@@ -444,6 +447,8 @@ def _serialize_progress_trace_event(
 
 
 def _to_structured_progress_details(event: str, details: dict[str, Any]) -> dict[str, Any] | None:
+    if event == 'assistant_delta':
+        return _pick_progress_detail_fields(details, ('text', 'turn', 'delta_seq'))
     if event == 'tool_call_requested':
         return _pick_progress_detail_fields(details, ('tool_name', 'arg_keys', 'tool_args'))
     if event == 'tool_call_result':
@@ -591,6 +596,7 @@ def _progress_event_title(event: str) -> str:
         'message_completed': 'Message completed',
         'auto_commit_async_completed': 'Auto-commit completed',
         'auto_commit_async_failed': 'Auto-commit failed',
+        'assistant_delta': 'Assistant writing',
     }
     return titles.get(event, event.replace('_', ' '))
 
@@ -617,6 +623,8 @@ def _progress_event_status(event: str, payload: dict[str, Any]) -> str:
 
 
 def _progress_event_summary(event: str, payload: dict[str, Any]) -> str:
+    if event == 'assistant_delta':
+        return 'Assistant is writing…'
     if event == 'message_received':
         return f'Received user message: {_progress_message_preview(payload.get("message"))}'
     if event == 'actor_context_loaded':

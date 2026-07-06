@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 logger = logging.getLogger('app.core.v2')
 
@@ -74,6 +74,9 @@ class V2LLMClient:
         # Defensive: if a model rejects the `reasoning` param, drop it once and
         # remember for the rest of the process (no failed round-trip per turn).
         self._drop_reasoning = False
+        # Same self-heal for streaming: if a stream fails to open or dies
+        # mid-iteration, fall back to plain calls for the rest of the process.
+        self._drop_streaming = False
 
     def _ensure_client(self) -> Any:
         if self._client is None:
@@ -89,6 +92,7 @@ class V2LLMClient:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
         reasoning_effort: Any = _USE_CONFIGURED_EFFORT,
+        on_text_delta: Callable[[str], None] | None = None,
     ) -> LLMResponse:
         client = self._ensure_client()
         return self._create(
@@ -97,6 +101,7 @@ class V2LLMClient:
             tools,
             send_reasoning=not self._drop_reasoning,
             reasoning_effort=reasoning_effort,
+            on_text_delta=on_text_delta,
         )
 
     def _create(
@@ -107,6 +112,7 @@ class V2LLMClient:
         *,
         send_reasoning: bool,
         reasoning_effort: Any = _USE_CONFIGURED_EFFORT,
+        on_text_delta: Callable[[str], None] | None = None,
     ) -> LLMResponse:
         # Per-call override wins; otherwise fall back to the configured effort.
         effort = (
@@ -129,6 +135,39 @@ class V2LLMClient:
             kwargs['reasoning'] = {'effort': effort}
         if self._settings.openai_v2_temperature is not None:
             kwargs['temperature'] = self._settings.openai_v2_temperature
+
+        # Stream only when someone is listening for deltas: the summarizer and
+        # other auxiliary callers pass no callback and keep plain calls.
+        use_streaming = (
+            on_text_delta is not None
+            and bool(getattr(self._settings, 'openai_v2_streaming_enabled', False))
+            and not self._drop_streaming
+        )
+        if use_streaming:
+            try:
+                return self._create_streaming(client, kwargs, on_text_delta)
+            except Exception as exc:  # noqa: BLE001 — self-heal, then plain call
+                if send_reasoning and _is_reasoning_unsupported(exc):
+                    self._drop_reasoning = True
+                    return self._create(
+                        client,
+                        input_items,
+                        tools,
+                        send_reasoning=False,
+                        reasoning_effort=reasoning_effort,
+                        on_text_delta=on_text_delta,
+                    )
+                # Any other streaming failure (open error, mid-stream drop, no
+                # terminal event): remember and retry non-streaming below. The
+                # retry re-sends the same request; worst case is a duplicated
+                # partial preview, never a corrupted final response.
+                self._drop_streaming = True
+                logger.warning(
+                    'v2 streaming failed (%s: %s) — falling back to non-streaming',
+                    type(exc).__name__,
+                    str(exc)[:200],
+                )
+
         try:
             response = client.responses.create(**kwargs)
         except Exception as exc:  # noqa: BLE001 — narrow retry on a known 400
@@ -140,9 +179,39 @@ class V2LLMClient:
                     tools,
                     send_reasoning=False,
                     reasoning_effort=reasoning_effort,
+                    on_text_delta=on_text_delta,
                 )
             raise
         return adapt_response(response)
+
+    def _create_streaming(
+        self,
+        client: Any,
+        kwargs: dict[str, Any],
+        on_text_delta: Callable[[str], None],
+    ) -> LLMResponse:
+        """Streamed variant of the same request. Feeds text deltas to the
+        callback and adapts the terminal event's full Response object, so the
+        returned LLMResponse (content, tool calls, usage, cached tokens) is
+        byte-identical to the non-streaming path."""
+        final: Any | None = None
+        stream = client.responses.create(**kwargs, stream=True)
+        for event in stream:
+            event_type = getattr(event, 'type', None)
+            if event_type == 'response.output_text.delta':
+                delta = getattr(event, 'delta', None)
+                if isinstance(delta, str) and delta:
+                    try:
+                        on_text_delta(delta)
+                    except Exception:  # noqa: BLE001 — preview must never kill the call
+                        logger.debug('on_text_delta callback failed', exc_info=True)
+            elif event_type == 'response.completed':
+                final = getattr(event, 'response', None)
+            # Everything else (reasoning summaries, tool-arg deltas, created/
+            # in_progress markers) is intentionally ignored.
+        if final is None:
+            raise RuntimeError('response stream ended without response.completed')
+        return adapt_response(final)
 
 
 def _to_responses_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:

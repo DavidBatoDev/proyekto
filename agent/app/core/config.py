@@ -105,6 +105,14 @@ class Settings(BaseSettings):
         default=None,
         alias='OPENAI_V2_TEMPERATURE',
     )
+    # Stream v2 model calls (Responses API stream=True) so assistant text can
+    # be surfaced to the web as throttled `assistant_delta` progress events
+    # while the loop runs. The final Response object is identical either way;
+    # false = kill switch back to plain non-streaming calls.
+    openai_v2_streaming_enabled: bool = Field(
+        default=True,
+        alias='OPENAI_V2_STREAMING_ENABLED',
+    )
 
     # ------------------------------------------------------------------
     # Conversation compaction (app/core/v2/summarizer.py). When a session

@@ -23,6 +23,7 @@ from app.core.orchestration.shared.outcomes import MessagePlanningOutcome
 from app.core.v2.context import build_messages
 from app.core.v2.loop import LoopResult, run_loop
 from app.core.v2.openai_client import V2LLMClient
+from app.core.v2.progress import AssistantDeltaEmitter
 from app.core.v2.sentinels import parse_and_fold
 from app.core.v2.summarizer import apply_pending_compaction
 from app.core.v2.terminal import to_outcome
@@ -174,6 +175,14 @@ def run_v2_message(
         logger=service._logger,
         nest_client=service._nest_client,
     )
+    # Streamed assistant text → throttled assistant_delta trace events the web
+    # polls into a live typing preview. Needs a trace to attach to; the config
+    # flag is the kill switch back to plain (non-streaming) model calls.
+    delta_emitter = (
+        AssistantDeltaEmitter(settings, trace_id)
+        if trace_id and getattr(settings, 'openai_v2_streaming_enabled', False)
+        else None
+    )
 
     try:
         loop_result = run_loop(
@@ -188,6 +197,7 @@ def run_v2_message(
             pending_plan_titles=pending_plan_titles,
             actor_id=actor_id,
             reasoning_effort=reasoning_effort,
+            delta_emitter=delta_emitter,
         )
         # A save_memory/forget_memory tool ran this turn — drop the cached
         # notes so the next turn refetches the authoritative list.

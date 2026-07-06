@@ -68,6 +68,7 @@ def run_loop(
     pending_plan_titles: frozenset[str] | None = None,
     actor_id: str | None = None,
     reasoning_effort: str | None = None,
+    delta_emitter: Any = None,
 ) -> LoopResult:
     max_turns = max(1, int(settings.agent_v2_max_turns))
     # None → let the client use the configured effort. A resolved value (from
@@ -75,6 +76,11 @@ def run_loop(
     complete_kwargs: dict[str, Any] = (
         {} if reasoning_effort is None else {'reasoning_effort': reasoning_effort}
     )
+    # Stream assistant text as throttled assistant_delta progress events so the
+    # web can render a live preview. Omitted when no emitter (keeps old fakes
+    # and non-traced callers on the plain complete(messages, tools) shape).
+    if delta_emitter is not None:
+        complete_kwargs['on_text_delta'] = delta_emitter.on_delta
     max_tool_calls = max(1, int(settings.agent_v2_max_tool_calls))
     tool_calls_used = 0
     used_read_tools = False
@@ -84,7 +90,11 @@ def run_loop(
 
     for turn in range(1, max_turns + 1):
         progress.provider_attempt(settings, trace_id, turn)
+        if delta_emitter is not None:
+            delta_emitter.set_turn(turn)
         response: LLMResponse = client.complete(messages, tools, **complete_kwargs)
+        if delta_emitter is not None:
+            delta_emitter.finish()
         tok_in += int(response.tokens_input or 0)
         tok_out += int(response.tokens_output or 0)
         tok_total += int(response.tokens_total or 0)
