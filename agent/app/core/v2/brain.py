@@ -9,6 +9,7 @@ chat reply instead of a 500.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from typing import Any, Callable
 
@@ -34,20 +35,60 @@ logger = logging.getLogger('app.core.v2')
 _EFFORT_ORDER = {'minimal': 0, 'low': 1, 'medium': 2, 'high': 3}
 
 
-def _turn_reasoning_effort(session: AgentSession, settings: Any) -> str | None:
-    """Per-turn reasoning effort. Direct edits/chat run at the configured base
-    (``low`` by default); turns that confirm/revise a proposed plan or resolve a
-    previously-raised ambiguity escalate to at least ``medium`` — those are the
-    turns where the model most benefits from deliberation. Never downgrades a
+def _message_references_ambiguous_title(
+    message: str, handle_map: dict[str, Any]
+) -> bool:
+    """True when the message names a node title that more than one node shares
+    (e.g. two features both called "Login"). Such an edit is ambiguous, so the
+    turn should reason harder and raise a clarifier instead of guessing — at
+    low effort the model picks the first match roughly half the time. Escalating
+    is safe even when the user did disambiguate ("the Login under alpha"): more
+    reasoning never forces a wrong pick, it just avoids a blind one."""
+    if not message or not handle_map:
+        return False
+    counts: dict[str, int] = {}
+    for entry in handle_map.values():
+        title = entry.get('title') if isinstance(entry, dict) else None
+        if not isinstance(title, str):
+            continue
+        norm = title.strip().lower()
+        if norm:
+            counts[norm] = counts.get(norm, 0) + 1
+    lowered = message.lower()
+    for norm, count in counts.items():
+        if count < 2:
+            continue
+        # Word-boundary match so a duplicated title doesn't fire on a substring
+        # buried inside an unrelated word.
+        if re.search(rf'(?<!\w){re.escape(norm)}(?!\w)', lowered):
+            return True
+    return False
+
+
+def _hard_turn_trigger(
+    session: AgentSession, *, user_message: str, handle_map: dict[str, Any]
+) -> str:
+    """Which signal (if any) makes this a 'hard' turn warranting more reasoning:
+    a plan awaiting confirmation, a previously-raised ambiguity being resolved,
+    or a message targeting a title shared by multiple nodes. Returns 'none' for
+    ordinary direct edits/chat. First match wins (used as the reported reason)."""
+    if session.metadata.pending_plan is not None:
+        return 'pending_plan'
+    if session.metadata.pending_context_resolution is not None:
+        return 'pending_context_resolution'
+    if _message_references_ambiguous_title(user_message, handle_map):
+        return 'ambiguous_title'
+    return 'none'
+
+
+def _turn_reasoning_effort(settings: Any, trigger: str) -> str | None:
+    """Direct edits/chat run at the configured base (``low`` by default); a hard
+    turn (trigger != 'none') escalates to at least ``medium``. Never downgrades a
     higher configured base, and respects ``None`` (reasoning disabled)."""
     base = settings.openai_v2_reasoning_effort
     if base is None:
         return None
-    hard_turn = (
-        session.metadata.pending_plan is not None
-        or session.metadata.pending_context_resolution is not None
-    )
-    if not hard_turn:
+    if trigger == 'none':
         return base
     if _EFFORT_ORDER.get(base, 1) >= _EFFORT_ORDER['medium']:
         return base
@@ -99,7 +140,10 @@ def run_v2_message(
     # Only override the client's configured effort when this turn escalates it;
     # otherwise pass None so the client uses its default and the common path
     # stays byte-identical to the pre-escalation call.
-    resolved_effort = _turn_reasoning_effort(session, settings)
+    effort_trigger = _hard_turn_trigger(
+        session, user_message=user_message, handle_map=handle_map
+    )
+    resolved_effort = _turn_reasoning_effort(settings, effort_trigger)
     reasoning_effort = (
         resolved_effort
         if resolved_effort != settings.openai_v2_reasoning_effort
@@ -118,13 +162,7 @@ def run_v2_message(
         brain='v2',
         effort=resolved_effort,
         escalated=reasoning_effort is not None,
-        trigger=(
-            'pending_plan'
-            if session.metadata.pending_plan is not None
-            else 'pending_context_resolution'
-            if session.metadata.pending_context_resolution is not None
-            else 'none'
-        ),
+        trigger=effort_trigger,
     )
 
     # Pin the prompt-cache to the roadmap: every session/turn on this roadmap

@@ -15,8 +15,17 @@ from app.core.contracts.sessions import (
     PendingContextResolution,
     PendingPlan,
 )
-from app.core.v2.brain import _turn_reasoning_effort
+from app.core.v2.brain import (
+    _hard_turn_trigger,
+    _message_references_ambiguous_title,
+    _turn_reasoning_effort,
+)
 from app.core.v2.openai_client import V2LLMClient
+
+
+def _handle_map(*titles):
+    """{handle: {'id':.., 'title':..}} — the shape brain reads for duplicates."""
+    return {f'H{i}': {'id': f'id{i}', 'title': t} for i, t in enumerate(titles)}
 
 
 def _session():
@@ -28,37 +37,111 @@ def _settings(effort):
 
 
 class TurnReasoningEffortTests(unittest.TestCase):
+    """trigger → effort mapping."""
+
     def test_direct_turn_uses_configured_base(self):
-        self.assertEqual(_turn_reasoning_effort(_session(), _settings('low')), 'low')
+        self.assertEqual(_turn_reasoning_effort(_settings('low'), 'none'), 'low')
 
-    def test_pending_plan_escalates_to_medium(self):
-        session = _session()
-        session.metadata.pending_plan = PendingPlan(source_user_message='do the thing')
-        self.assertEqual(_turn_reasoning_effort(session, _settings('low')), 'medium')
-
-    def test_pending_context_resolution_escalates_to_medium(self):
-        session = _session()
-        session.metadata.pending_context_resolution = PendingContextResolution(
-            kind='features_of_epic',
-            resolution_id='r1',
-            label='Auth',
-        )
-        self.assertEqual(_turn_reasoning_effort(session, _settings('low')), 'medium')
+    def test_every_hard_trigger_escalates_to_medium(self):
+        for trigger in ('pending_plan', 'pending_context_resolution', 'ambiguous_title'):
+            self.assertEqual(
+                _turn_reasoning_effort(_settings('low'), trigger), 'medium', trigger
+            )
 
     def test_minimal_base_also_escalates_on_hard_turn(self):
-        session = _session()
-        session.metadata.pending_plan = PendingPlan(source_user_message='x')
-        self.assertEqual(_turn_reasoning_effort(session, _settings('minimal')), 'medium')
+        self.assertEqual(
+            _turn_reasoning_effort(_settings('minimal'), 'ambiguous_title'), 'medium'
+        )
 
     def test_higher_base_is_not_downgraded(self):
-        session = _session()
-        session.metadata.pending_plan = PendingPlan(source_user_message='x')
-        self.assertEqual(_turn_reasoning_effort(session, _settings('high')), 'high')
+        self.assertEqual(_turn_reasoning_effort(_settings('high'), 'pending_plan'), 'high')
 
     def test_none_base_is_respected(self):
+        self.assertIsNone(_turn_reasoning_effort(_settings(None), 'pending_plan'))
+
+
+class HardTurnTriggerTests(unittest.TestCase):
+    """Which signal marks a hard turn (priority: plan > ambiguity-resolution > dup title)."""
+
+    def test_plain_edit_is_none(self):
+        self.assertEqual(
+            _hard_turn_trigger(
+                _session(), user_message='rename the Login feature',
+                handle_map=_handle_map('Login'),
+            ),
+            'none',
+        )
+
+    def test_pending_plan_wins(self):
         session = _session()
         session.metadata.pending_plan = PendingPlan(source_user_message='x')
-        self.assertIsNone(_turn_reasoning_effort(session, _settings(None)))
+        self.assertEqual(
+            _hard_turn_trigger(session, user_message='x', handle_map={}), 'pending_plan'
+        )
+
+    def test_pending_context_resolution(self):
+        session = _session()
+        session.metadata.pending_context_resolution = PendingContextResolution(
+            kind='features_of_epic', resolution_id='r1', label='Auth'
+        )
+        self.assertEqual(
+            _hard_turn_trigger(session, user_message='the first one', handle_map={}),
+            'pending_context_resolution',
+        )
+
+    def test_ambiguous_title_detected(self):
+        self.assertEqual(
+            _hard_turn_trigger(
+                _session(),
+                user_message='rename the feature "Login" to "Auth"',
+                handle_map=_handle_map('Login', 'Login', 'Dashboard'),
+            ),
+            'ambiguous_title',
+        )
+
+
+class AmbiguousTitleTests(unittest.TestCase):
+    def test_duplicate_title_referenced(self):
+        self.assertTrue(
+            _message_references_ambiguous_title(
+                'rename the feature "Login" to "Auth"', _handle_map('Login', 'Login')
+            )
+        )
+
+    def test_unique_title_is_not_ambiguous(self):
+        self.assertFalse(
+            _message_references_ambiguous_title(
+                'rename Login to Auth', _handle_map('Login', 'Dashboard')
+            )
+        )
+
+    def test_duplicate_not_mentioned(self):
+        self.assertFalse(
+            _message_references_ambiguous_title(
+                'add a task to the Dashboard', _handle_map('Login', 'Login', 'Dashboard')
+            )
+        )
+
+    def test_case_insensitive(self):
+        self.assertTrue(
+            _message_references_ambiguous_title(
+                'please rename LOGIN', _handle_map('Login', 'login')
+            )
+        )
+
+    def test_word_boundary_avoids_substring(self):
+        # 'log' appears twice but must not fire on the substring inside 'catalog'
+        self.assertFalse(
+            _message_references_ambiguous_title(
+                'update the catalog', _handle_map('log', 'log')
+            )
+        )
+
+    def test_empty_inputs(self):
+        self.assertFalse(
+            _message_references_ambiguous_title('', _handle_map('Login', 'Login'))
+        )
+        self.assertFalse(_message_references_ambiguous_title('rename Login', {}))
 
 
 class _CapturingResponses:
