@@ -329,7 +329,7 @@ export const roadmapAgentService = {
     payload: AgentMessageRequest,
     options?: AgentSendMessageOptions,
   ): Promise<AgentMessageResponse> {
-    try {
+    const post = async () => {
       const response = await agentApiClient.post<AgentMessageResponse>(
         `/agent/sessions/${sessionId}/messages`,
         payload,
@@ -342,7 +342,26 @@ export const roadmapAgentService = {
           : undefined,
       );
       return response.data;
+    };
+    try {
+      return await post();
     } catch (error) {
+      // Plan decisions (confirm/reject clicks) are idempotent control
+      // messages the agent resolves in ~200ms — a network-level failure
+      // here is almost always a transient blip (e.g. the dev agent
+      // reloading), so retry once instead of stranding the user with a
+      // "please retry" error on a button click.
+      const isPlanDecision =
+        typeof payload.message === "string" &&
+        payload.message.startsWith("__plan_decision__");
+      if (isPlanDecision && isAgentTimeoutError(error)) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        try {
+          return await post();
+        } catch (retryError) {
+          throwAgentError(retryError, "Send AI message");
+        }
+      }
       throwAgentError(error, "Send AI message");
     }
   },
