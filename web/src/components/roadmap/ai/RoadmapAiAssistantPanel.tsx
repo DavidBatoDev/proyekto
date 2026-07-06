@@ -25,6 +25,8 @@ import remarkGfm from "remark-gfm";
 import { useRoadmapStore } from "@/stores/roadmapStore";
 import { projectKeys } from "@/queries/project";
 import type { Roadmap, RoadmapEpic } from "@/types/roadmap";
+import { featureFlags } from "@/config/featureFlags";
+import { isRealtimeConfigured, RealtimeRoom } from "@/lib/realtime";
 import roadmapAgentService, {
 	type AgentOperation,
 	type AgentTraceEvent,
@@ -32,6 +34,7 @@ import roadmapAgentService, {
 	RoadmapAgentServiceError,
 	isAgentTimeoutError,
 } from "@/services/roadmap-agent.service";
+import { useUser } from "@/stores/authStore";
 import { roadmapAiSessionsService } from "@/services/roadmap-ai-sessions.service";
 import { useToast } from "@/hooks/useToast";
 import { RoadmapAiActivityTimelineView } from "./RoadmapAiActivityTimeline";
@@ -223,6 +226,10 @@ interface PollLoopState {
 	cancelled: boolean;
 	timerId: number | null;
 	pollingFailed: boolean;
+	// assistant_delta seqs already appended to the streaming preview. Both
+	// polling and realtime push feed the preview; this prevents the same
+	// chunk from being appended twice when their windows overlap.
+	processedDeltaSeqs: Set<number>;
 }
 
 const SHARED_HIDDEN_ACTIVITY_EVENTS = new Set<string>([
@@ -1010,6 +1017,23 @@ export const toTimelineFromTraceResponse = (
 	};
 };
 
+// Filter to assistant_delta events not yet applied to the streaming preview,
+// marking them as seen. Poll and realtime push share one seen-set per loop, so
+// the same chunk arriving on both transports is appended exactly once.
+export const collectUnseenDeltaEvents = (
+	events: AgentTraceEvent[],
+	processedDeltaSeqs: Set<number>,
+): AgentTraceEvent[] => {
+	const fresh: AgentTraceEvent[] = [];
+	for (const event of events) {
+		if (event.event !== "assistant_delta") continue;
+		if (processedDeltaSeqs.has(event.seq)) continue;
+		processedDeltaSeqs.add(event.seq);
+		fresh.push(event);
+	}
+	return fresh;
+};
+
 export const normalizeTimelineForDisplay = (
 	timeline?: RoadmapAiActivityTimeline | null,
 	presentationMode: RoadmapAiActivityPresentationMode = PROGRESS_PRESENTATION_MODE,
@@ -1223,6 +1247,7 @@ export function RoadmapAiAssistantPanel({
 	const liveActivityRef = useRef<RoadmapAiActivityTimeline | null>(null);
 	const autoCommitRefreshSeqByTraceRef = useRef<Record<string, number>>({});
 
+	const currentUser = useUser();
 	const canvasViewMode = useRoadmapStore((state) => state.canvasViewMode);
 	const loadRoadmap = useRoadmapStore((state) => state.loadRoadmap);
 	const applyAiCommitImpactedItems = useRoadmapStore(
@@ -1451,6 +1476,41 @@ export function RoadmapAiAssistantPanel({
 		}
 	};
 
+	// Accumulate streamed assistant text (chunk events, already in seq order).
+	// A higher `turn` supersedes earlier partial text — a new model call is
+	// writing now. Shared by the poll loop and the realtime push handler;
+	// returns how many previously-unseen chunks were applied.
+	const applyStreamingDeltaEvents = (
+		loop: PollLoopState,
+		events: AgentTraceEvent[],
+	): number => {
+		const deltaEvents = collectUnseenDeltaEvents(
+			events,
+			loop.processedDeltaSeqs,
+		);
+		if (deltaEvents.length === 0) return 0;
+		setStreamingPreview((prev) => {
+			let text = prev && prev.traceId === loop.traceId ? prev.text : "";
+			let turn = prev && prev.traceId === loop.traceId ? prev.turn : 0;
+			for (const event of deltaEvents) {
+				const details = (event.details ?? {}) as {
+					text?: unknown;
+					turn?: unknown;
+				};
+				const chunk = typeof details.text === "string" ? details.text : "";
+				const eventTurn =
+					typeof details.turn === "number" ? details.turn : turn;
+				if (eventTurn > turn) {
+					text = "";
+					turn = eventTurn;
+				}
+				text += chunk;
+			}
+			return { traceId: loop.traceId, turn, text };
+		});
+		return deltaEvents.length;
+	};
+
 	const progressDetailMode: RoadmapAiActivityDetailMode = PROGRESS_DETAIL_MODE;
 	const progressPresentationMode: RoadmapAiActivityPresentationMode =
 		PROGRESS_PRESENTATION_MODE;
@@ -1495,33 +1555,7 @@ export function RoadmapAiAssistantPanel({
 					progressPresentationMode,
 				),
 			);
-			// Accumulate streamed assistant text (chunk events, already in seq
-			// order). A higher `turn` supersedes earlier partial text — a new
-			// model call is writing now.
-			const deltaEvents = response.events.filter(
-				(event) => event.event === "assistant_delta",
-			);
-			if (deltaEvents.length > 0) {
-				setStreamingPreview((prev) => {
-					let text = prev && prev.traceId === loop.traceId ? prev.text : "";
-					let turn = prev && prev.traceId === loop.traceId ? prev.turn : 0;
-					for (const event of deltaEvents) {
-						const details = (event.details ?? {}) as {
-							text?: unknown;
-							turn?: unknown;
-						};
-						const chunk = typeof details.text === "string" ? details.text : "";
-						const eventTurn =
-							typeof details.turn === "number" ? details.turn : turn;
-						if (eventTurn > turn) {
-							text = "";
-							turn = eventTurn;
-						}
-						text += chunk;
-					}
-					return { traceId: loop.traceId, turn, text };
-				});
-			}
+			const freshDeltaCount = applyStreamingDeltaEvents(loop, response.events);
 			await maybeRefreshRoadmapFromTraceEvents(loop.traceId, response.events);
 			if (response.done) {
 				return;
@@ -1530,7 +1564,7 @@ export function RoadmapAiAssistantPanel({
 				() => {
 					void pollTraceEvents(loop);
 				},
-				deltaEvents.length > 0
+				freshDeltaCount > 0
 					? TRACE_POLL_STREAMING_INTERVAL_MS
 					: TRACE_POLL_ACTIVE_INTERVAL_MS,
 			);
@@ -1567,6 +1601,7 @@ export function RoadmapAiAssistantPanel({
 			cancelled: false,
 			timerId: null,
 			pollingFailed: false,
+			processedDeltaSeqs: new Set<number>(),
 		};
 		pollLoopRef.current = loop;
 		setTracePollingFailed(false);
@@ -1582,6 +1617,58 @@ export function RoadmapAiAssistantPanel({
 		});
 		void pollTraceEvents(loop);
 	};
+
+	// Realtime-pushed trace events (agent → DO worker → `user:{id}` room):
+	// merged through the same seq-deduped path as polling, so push and poll
+	// coexist idempotently. Push is purely a latency reduction — it never
+	// advances loop.afterSeq, never finalizes on `done`, and never triggers
+	// the auto-commit roadmap refresh; polling stays the authoritative
+	// cursor, so a dropped publish costs latency, not events.
+	const applyPushedTraceEvents = (payload: unknown) => {
+		const loop = pollLoopRef.current;
+		if (!loop || loop.cancelled) return;
+		const record = toRecord(payload);
+		if (!record) return;
+		if (toStringValue(record.trace_id) !== loop.traceId) return;
+		const events = Array.isArray(record.events)
+			? (record.events as AgentTraceEvent[])
+			: [];
+		if (events.length === 0) return;
+		const startedAt = toStringValue(record.started_at);
+		setLiveActivity((prev) =>
+			toTimelineFromTraceResponse(
+				progressDetailMode,
+				loop.traceId,
+				{
+					trace_id: loop.traceId,
+					events,
+					next_seq: loop.afterSeq,
+					done: prev?.done ?? false,
+					...(startedAt ? { started_at: startedAt } : {}),
+				} as AgentTraceEventsResponse,
+				prev,
+				progressPresentationMode,
+			),
+		);
+		applyStreamingDeltaEvents(loop, events);
+	};
+	const applyPushedTraceEventsRef = useRef(applyPushedTraceEvents);
+	applyPushedTraceEventsRef.current = applyPushedTraceEvents;
+
+	useEffect(() => {
+		if (!featureFlags.realtimeAiTracePush) return;
+		if (!isRealtimeConfigured()) return;
+		const userId = currentUser?.id;
+		if (!userId) return;
+		const room = new RealtimeRoom(`user:${userId}`);
+		room.on("ai_trace_event", (payload: unknown) => {
+			applyPushedTraceEventsRef.current(payload);
+		});
+		room.connect();
+		return () => {
+			room.close();
+		};
+	}, [currentUser?.id]);
 
 	const finalizeTraceTimeline = (
 		assistantMessageId: string,

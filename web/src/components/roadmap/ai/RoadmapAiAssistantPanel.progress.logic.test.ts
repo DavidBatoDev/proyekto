@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  collectUnseenDeltaEvents,
   ensureTimelineCompleted,
   getDefaultTimelineExpanded,
   mergeTimelineSteps,
@@ -537,5 +538,51 @@ describe("assistant_thought timeline steps", () => {
     ]);
     expect(merged).toHaveLength(2);
     expect(merged.map((step) => step.seq)).toEqual([1, 2]);
+  });
+});
+
+describe("streaming delta dedupe across poll and push", () => {
+  const deltaEvent = (seq: number, text: string) => ({
+    seq,
+    ts: `2026-04-12T07:15:0${seq}.000Z`,
+    event: "assistant_delta",
+    title: "Assistant writing",
+    status: "running" as const,
+    summary: "Assistant is writing…",
+    details: { text, turn: 1, delta_seq: seq },
+  });
+
+  it("returns each delta seq exactly once across repeated windows", () => {
+    const seen = new Set<number>();
+    const first = collectUnseenDeltaEvents(
+      [deltaEvent(1, "Hel"), deltaEvent(2, "lo")],
+      seen,
+    );
+    expect(first.map((event) => event.seq)).toEqual([1, 2]);
+    // The same events arriving again (push replay or poll overlap) are dropped.
+    const second = collectUnseenDeltaEvents(
+      [deltaEvent(1, "Hel"), deltaEvent(2, "lo"), deltaEvent(3, "!")],
+      seen,
+    );
+    expect(second.map((event) => event.seq)).toEqual([3]);
+  });
+
+  it("ignores non-delta events", () => {
+    const seen = new Set<number>();
+    const fresh = collectUnseenDeltaEvents(
+      [
+        {
+          seq: 1,
+          ts: "2026-04-12T07:15:01.000Z",
+          event: "assistant_thought",
+          title: "Thinking",
+          status: "success",
+          summary: "A thought.",
+        },
+      ],
+      seen,
+    );
+    expect(fresh).toEqual([]);
+    expect(seen.size).toBe(0);
   });
 });

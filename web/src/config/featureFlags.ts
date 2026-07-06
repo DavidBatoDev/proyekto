@@ -32,4 +32,13 @@ export const featureFlags = {
 	 * Active on Durable Objects. Same VITE_REALTIME_URL fallback as above.
 	 */
 	realtimeChatTransport: "durable-objects" as RealtimeTransport,
+
+	/**
+	 * Push roadmap-AI trace events over the Durable Objects worker (agent →
+	 * `user:{id}` room) so activity steps appear without waiting for the next
+	 * poll. Polling stays on as the authoritative fallback either way — this
+	 * flag only adds the accelerator. Flip to true after verifying the agent
+	 * side is publishing (AGENT_REALTIME_TRACE_PUSH_ENABLED).
+	 */
+	realtimeAiTracePush: true as boolean,
 } as const;
