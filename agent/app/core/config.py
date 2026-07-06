@@ -39,13 +39,18 @@ class Settings(BaseSettings):
     # default would suggest.
     max_chat_history_messages: int = Field(default=30, alias='MAX_CHAT_HISTORY_MESSAGES')
 
-    # False = commit synchronously inside the message turn. This keeps the
-    # roadmap overview + handle-map fresh for the NEXT turn (so a follow-up
-    # rename/delete targets the just-committed node correctly) and clears
-    # staged ops before the next edit. True backgrounds the commit for a
-    # faster response but races subsequent turns against stale state.
+    # True = background the commit so the message response returns immediately
+    # (shaves the ~100-500ms commit round-trip off every edit turn). The commit
+    # still runs the exact same execute_auto_commit path, persisting the cleared
+    # staged ops + nulled overview/handle-map to Redis when it lands. The only
+    # tradeoff is a narrow freshness race: a follow-up turn fired within the
+    # commit window may hydrate pre-commit state (stale overview, uncleared
+    # staged ops). The commit is idempotency-keyed and the store is CAS-guarded,
+    # so this is a freshness tradeoff, not a correctness/duplication risk.
+    # False = commit synchronously inside the turn (slower response, but the
+    # next turn always sees the just-committed roadmap).
     agent_async_auto_commit_enabled: bool = Field(
-        default=False,
+        default=True,
         alias='AGENT_ASYNC_AUTO_COMMIT_ENABLED',
     )
 
