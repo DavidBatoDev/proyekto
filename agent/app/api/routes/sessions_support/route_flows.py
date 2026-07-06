@@ -159,6 +159,13 @@ async def send_message_flow(
         trace_id=trace_id,
         session_id=session_id,
         roadmap_id=session.roadmap_id,
+        # The Supabase user id — lets the trace store target `user:{id}` for
+        # realtime push. Guests have no actor_context → push stays off.
+        actor_id=(
+            session.metadata.actor_context.actor_id
+            if session.metadata.actor_context is not None
+            else None
+        ),
     )
     log_event_fn(
         logger,

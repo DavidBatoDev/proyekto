@@ -23,6 +23,16 @@ class Settings(BaseSettings):
     nest_api_base_url: str = Field(default='http://localhost:8001/api', alias='NEST_API_BASE_URL')
     nest_timeout_seconds: float = Field(default=20.0, alias='NEST_TIMEOUT_SECONDS')
 
+    # Realtime worker push for AI-trace progress events (app/core/realtime_push.py).
+    # Same env names as the NestJS backend's RealtimePublisher; unset = dormant
+    # (the web keeps polling — push is purely a latency reduction).
+    realtime_worker_url: str | None = Field(default=None, alias='REALTIME_WORKER_URL')
+    realtime_publish_token: str | None = Field(default=None, alias='REALTIME_PUBLISH_TOKEN')
+    agent_realtime_trace_push_enabled: bool = Field(
+        default=False,
+        alias='AGENT_REALTIME_TRACE_PUSH_ENABLED',
+    )
+
     openai_api_key: str | None = Field(default=None, alias='OPENAI_API_KEY')
 
     # 4h working-session window. Expiry is benign: the durable agent-state

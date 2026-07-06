@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import Settings, get_settings
+from app.core import realtime_push
 from app.core.trace_context import get_trace_fields
 
 _KEY_PRIORITY = (
@@ -124,6 +125,9 @@ class _ProgressTrace:
     next_seq: int = 1
     session_id: str | None = None
     roadmap_id: str | None = None
+    # Supabase user id (bound trace-context actor_id) — the `user:{id}`
+    # realtime room that receives pushed copies of this trace's events.
+    user_id: str | None = None
     started_at: str | None = None
     completed_at: str | None = None
     done: bool = False
@@ -359,6 +363,8 @@ def _capture_progress_event(payload: dict[str, Any], *, settings: Settings) -> N
 
     details = _build_progress_event_details(payload)
     now = time.monotonic()
+    publish_user_id: str | None = None
+    publish_envelope: dict[str, Any] | None = None
     with _PROGRESS_EVENT_LOCK:
         _evict_expired_progress_traces(now)
         trace = _PROGRESS_TRACES.get(trace_id)
@@ -387,6 +393,31 @@ def _capture_progress_event(payload: dict[str, Any], *, settings: Settings) -> N
             trace.events = trace.events[-_MAX_PROGRESS_EVENTS_PER_TRACE:]
         _update_progress_trace_completion(trace, event, payload)
 
+        # Realtime push: mirror this event to the user's realtime room so the
+        # web sees it without waiting for the next poll. Structured details
+        # match the web's `detail=structured` polling; the enqueue happens
+        # outside the lock.
+        if trace.user_id is not None and getattr(
+            settings, 'agent_realtime_trace_push_enabled', False
+        ):
+            publish_user_id = trace.user_id
+            publish_envelope = {
+                'trace_id': trace.trace_id,
+                'session_id': trace.session_id,
+                'roadmap_id': trace.roadmap_id,
+                'events': [
+                    _serialize_progress_trace_event(
+                        progress_event, include_verbose_details=False
+                    )
+                ],
+                'next_seq': progress_event.seq,
+                'done': trace.done,
+                'started_at': trace.started_at,
+                'completed_at': trace.completed_at,
+            }
+    if publish_envelope is not None:
+        realtime_push.publish_trace_event(settings, publish_user_id, publish_envelope)
+
 
 def _evict_expired_progress_traces(now: float) -> None:
     expired: list[str] = []
@@ -400,6 +431,7 @@ def _evict_expired_progress_traces(now: float) -> None:
 def _apply_progress_trace_metadata(trace: _ProgressTrace, payload: dict[str, Any]) -> None:
     trace.session_id = _text_or_none(payload.get('session_id')) or trace.session_id
     trace.roadmap_id = _text_or_none(payload.get('roadmap_id')) or trace.roadmap_id
+    trace.user_id = _text_or_none(payload.get('actor_id')) or trace.user_id
     payload_ts = _text_or_none(payload.get('ts'))
     if trace.started_at is None and payload_ts is not None:
         trace.started_at = payload_ts

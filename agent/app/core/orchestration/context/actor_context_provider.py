@@ -154,6 +154,10 @@ def ensure_actor_context(
         trace_id=trace_id,
         roadmap_id=session.roadmap_id,
         actor_present=True,
+        # On a session's first message the context loads mid-turn, after the
+        # route bound trace context without an actor — carrying the id here
+        # lets the progress trace learn its user (realtime push room) anyway.
+        actor_id=session.metadata.actor_context.actor_id,
         roadmap_role=session.metadata.actor_context.roadmap_role,
         actor_context_source=session.metadata.actor_context.actor_context_source,
     )
