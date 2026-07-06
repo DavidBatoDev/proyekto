@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   getTitleListOverflowCount,
   getVisibleTimelineSteps,
+  groupParallelSteps,
   toElapsedSeconds,
 } from "./RoadmapAiActivityTimeline";
-import type { RoadmapAiActivityTimeline } from "./useRoadmapAiAssistantSession";
+import type {
+  RoadmapAiActivityStep,
+  RoadmapAiActivityTimeline,
+} from "./useRoadmapAiAssistantSession";
 
 const baseTimeline = (
   overrides: Partial<RoadmapAiActivityTimeline> = {},
@@ -155,5 +159,58 @@ describe("activity timeline elapsed seconds", () => {
         hasMore: false,
       }),
     ).toBe(0);
+  });
+});
+
+describe("parallel step grouping", () => {
+  const step = (
+    seq: number,
+    overrides: Partial<RoadmapAiActivityStep> = {},
+  ): RoadmapAiActivityStep => ({
+    seq,
+    ts: `2026-04-12T07:15:0${seq}.000Z`,
+    event: "tool_call_result",
+    title: "Searched tasks",
+    status: "success",
+    summary: `step ${seq}`,
+    ...overrides,
+  });
+
+  it("merges consecutive same-title tool steps", () => {
+    const grouped = groupParallelSteps([step(1), step(2)]);
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0].seq).toBe(1);
+  });
+
+  it("never merges consecutive thought steps despite the shared title", () => {
+    const grouped = groupParallelSteps([
+      step(1, {
+        event: "assistant_thought",
+        title: "Thinking",
+        summary: "First thought.",
+      }),
+      step(2, {
+        event: "assistant_thought",
+        title: "Thinking",
+        summary: "Second thought.",
+      }),
+    ]);
+    expect(grouped).toHaveLength(2);
+    expect(grouped.map((s) => s.summary)).toEqual([
+      "First thought.",
+      "Second thought.",
+    ]);
+  });
+
+  it("keeps a thought step separate from a same-title neighbor", () => {
+    const grouped = groupParallelSteps([
+      step(1, { title: "Thinking" }),
+      step(2, {
+        event: "assistant_thought",
+        title: "Thinking",
+        summary: "Actual thought.",
+      }),
+    ]);
+    expect(grouped).toHaveLength(2);
   });
 });

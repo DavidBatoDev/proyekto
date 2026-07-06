@@ -766,6 +766,21 @@ const normalizeActivityStep = (
 		};
 	}
 
+	// Model-authored reasoning-summary lines (Linear/Cursor-style "thoughts").
+	// Visible in both presentation modes: in friendly_minimal, where
+	// provider_attempt is hidden, these are the between-tools narration.
+	if (normalizedEvent === "assistant_thought") {
+		const details = toRecord(rawStep.details);
+		const thoughtText = toStringValue(details?.text);
+		return {
+			...baseStep,
+			status: "success",
+			title: "Thinking",
+			summary:
+				thoughtText || rawStep.summary || "Thinking through the next step.",
+		};
+	}
+
 	if (normalizedEvent === "planner_summary") {
 		const details = toRecord(rawStep.details);
 		const summaryText = toStringValue(details?.summary_text);

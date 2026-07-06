@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Sparkles } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import type {
   RoadmapAiActivityStep,
@@ -58,6 +58,8 @@ export const getTimelineHeaderLabel = (
 
 // Group consecutive steps with the same title into a single display entry.
 // This silently merges parallel tool calls so the timeline stays clean.
+// Thought steps are exempt: consecutive "Thinking" rows are distinct
+// narration lines, never parallel duplicates of one another.
 export function groupParallelSteps(
   steps: RoadmapAiActivityStep[],
 ): RoadmapAiActivityStep[] {
@@ -66,7 +68,12 @@ export function groupParallelSteps(
   while (i < steps.length) {
     const current = steps[i];
     let j = i + 1;
-    while (j < steps.length && steps[j].title === current.title) {
+    while (
+      j < steps.length &&
+      steps[j].title === current.title &&
+      current.event !== "assistant_thought" &&
+      steps[j].event !== "assistant_thought"
+    ) {
       j++;
     }
     if (j - i === 1) {
@@ -211,6 +218,34 @@ export function RoadmapAiActivityTimelineView({
                     const statusColor =
                       statusClassName[step.status] ?? statusClassName.running;
                     const isStepExpanded = expandedStepSeq === step.seq;
+                    if (step.event === "assistant_thought") {
+                      // Model-authored narration line: not expandable, no
+                      // tool chip — reads as a thought between tool steps.
+                      return (
+                        <motion.div
+                          layout
+                          key={`${step.seq}-${step.event}`}
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -6 }}
+                          transition={{ duration: 0.18, ease: "easeOut" }}
+                          className="flex items-start gap-1.5"
+                        >
+                          <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-gray-400" />
+                          <p className="min-w-0 flex-1 text-[11px] italic leading-relaxed text-gray-500 line-clamp-2">
+                            {step.summary}
+                          </p>
+                          <span className="shrink-0 text-[10px] text-gray-400">
+                            {new Date(step.ts).toLocaleTimeString([], {
+                              hour: "numeric",
+                              minute: "2-digit",
+                              second: "2-digit",
+                              hour12: true,
+                            })}
+                          </span>
+                        </motion.div>
+                      );
+                    }
                     return (
                       <motion.div
                         layout

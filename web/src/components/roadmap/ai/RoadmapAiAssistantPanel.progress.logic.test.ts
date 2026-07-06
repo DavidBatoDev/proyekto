@@ -470,3 +470,72 @@ describe("assistant progress timeline logic", () => {
     expect(parseProgressPresentationMode("unknown")).toBe("curated");
   });
 });
+
+describe("assistant_thought timeline steps", () => {
+  const thoughtEvent = (seq: number, text: string) => ({
+    seq,
+    ts: `2026-04-12T07:15:0${seq}.000Z`,
+    event: "assistant_thought",
+    title: "Thinking",
+    status: "success" as const,
+    summary: text,
+    details: {
+      text,
+      turn: 1,
+      thought_seq: seq,
+    },
+  });
+
+  it("renders the thought text as a Thinking row in curated mode", () => {
+    const merged = mergeTimelineSteps(
+      [],
+      [thoughtEvent(1, "The user wants overdue items closed.")],
+      "curated",
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0].title).toBe("Thinking");
+    expect(merged[0].status).toBe("success");
+    expect(merged[0].summary).toBe("The user wants overdue items closed.");
+  });
+
+  it("stays visible in friendly_minimal mode", () => {
+    const merged = mergeTimelineSteps(
+      [],
+      [thoughtEvent(1, "Checking the Auth epic first.")],
+      "friendly_minimal",
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0].summary).toBe("Checking the Auth epic first.");
+  });
+
+  it("falls back to the wire summary when details.text is missing", () => {
+    const merged = mergeTimelineSteps(
+      [],
+      [
+        {
+          seq: 1,
+          ts: "2026-04-12T07:15:01.000Z",
+          event: "assistant_thought",
+          title: "Thinking",
+          status: "success",
+          summary: "Persisted thought text.",
+        },
+      ],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0].summary).toBe("Persisted thought text.");
+  });
+
+  it("dedupes by seq when the same thought arrives twice (push + poll)", () => {
+    const first = mergeTimelineSteps(
+      [],
+      [thoughtEvent(1, "Only once, please.")],
+    );
+    const merged = mergeTimelineSteps(first, [
+      thoughtEvent(1, "Only once, please."),
+      thoughtEvent(2, "A second thought."),
+    ]);
+    expect(merged).toHaveLength(2);
+    expect(merged.map((step) => step.seq)).toEqual([1, 2]);
+  });
+});
