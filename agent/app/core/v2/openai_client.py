@@ -49,14 +49,27 @@ class LLMResponse:
     tokens_input: int | None = None
     tokens_output: int | None = None
     tokens_total: int | None = None
+    # Cached-prefix input tokens (charged at ~10%). Read from
+    # usage.input_tokens_details.cached_tokens — the signal that OpenAI's
+    # automatic prompt caching hit our stable system-prompt + state prefix.
+    tokens_cached: int | None = None
 
 
 class V2LLMClient:
-    def __init__(self, settings: Any, model: str | None = None) -> None:
+    def __init__(
+        self,
+        settings: Any,
+        model: str | None = None,
+        prompt_cache_key: str | None = None,
+    ) -> None:
         self._settings = settings
         # Optional override so auxiliary callers (e.g. the conversation
         # summarizer) can run on a cheaper model than the main loop.
         self._model = model or settings.openai_model_v2
+        # Routes requests that share our stable system-prompt + roadmap-state
+        # prefix to the same cache node, improving prompt-cache hit rate under
+        # concurrency. OpenAI still auto-caches without it; this just pins it.
+        self._prompt_cache_key = prompt_cache_key
         self._client: Any | None = None
         # Defensive: if a model rejects the `reasoning` param, drop it once and
         # remember for the rest of the process (no failed round-trip per turn).
@@ -110,6 +123,8 @@ class V2LLMClient:
         }
         if self._settings.openai_v2_max_output_tokens is not None:
             kwargs['max_output_tokens'] = self._settings.openai_v2_max_output_tokens
+        if self._prompt_cache_key:
+            kwargs['prompt_cache_key'] = self._prompt_cache_key
         if send_reasoning and effort is not None:
             kwargs['reasoning'] = {'effort': effort}
         if self._settings.openai_v2_temperature is not None:
@@ -207,7 +222,24 @@ def adapt_response(response: Any) -> LLMResponse:
         tokens_input=getattr(usage, 'input_tokens', None) if usage is not None else None,
         tokens_output=getattr(usage, 'output_tokens', None) if usage is not None else None,
         tokens_total=getattr(usage, 'total_tokens', None) if usage is not None else None,
+        tokens_cached=_cached_tokens(usage),
     )
+
+
+def _cached_tokens(usage: Any) -> int | None:
+    """Pull cached_tokens out of usage.input_tokens_details (object or dict)."""
+    if usage is None:
+        return None
+    details = getattr(usage, 'input_tokens_details', None)
+    if details is None and isinstance(usage, dict):
+        details = usage.get('input_tokens_details')
+    if details is None:
+        return None
+    if isinstance(details, dict):
+        value = details.get('cached_tokens')
+    else:
+        value = getattr(details, 'cached_tokens', None)
+    return int(value) if isinstance(value, (int, float)) else None
 
 
 def _is_reasoning_unsupported(exc: Exception) -> bool:

@@ -36,6 +36,8 @@ def provider_success(
     tool_names: list[str],
     finish_reason: str | None,
     tokens_total: int | None,
+    tokens_input: int | None = None,
+    tokens_cached: int | None = None,
 ) -> None:
     log_event(
         logger,
@@ -47,6 +49,10 @@ def provider_success(
         tool_names=tool_names,
         finish_reason=finish_reason,
         tokens_total=tokens_total,
+        tokens_input=tokens_input,
+        # Cached-prefix input tokens on this call — grep logs.txt for
+        # `tokens_cached` to confirm prompt caching is hitting the prefix.
+        tokens_cached=tokens_cached,
     )
 
 

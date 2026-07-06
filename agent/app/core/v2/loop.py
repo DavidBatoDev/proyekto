@@ -52,6 +52,7 @@ class LoopResult:
     tokens_input: int = 0
     tokens_output: int = 0
     tokens_total: int = 0
+    tokens_cached: int = 0
 
 
 def run_loop(
@@ -78,7 +79,7 @@ def run_loop(
     tool_calls_used = 0
     used_read_tools = False
     nudged_ask_user = False
-    tok_in = tok_out = tok_total = 0
+    tok_in = tok_out = tok_total = tok_cached = 0
     live_epic_titles = _live_epic_titles(handle_map)
 
     for turn in range(1, max_turns + 1):
@@ -87,6 +88,7 @@ def run_loop(
         tok_in += int(response.tokens_input or 0)
         tok_out += int(response.tokens_output or 0)
         tok_total += int(response.tokens_total or 0)
+        tok_cached += int(response.tokens_cached or 0)
         progress.provider_success(
             settings,
             trace_id,
@@ -94,6 +96,8 @@ def run_loop(
             tool_names=[tc.name for tc in response.tool_calls],
             finish_reason=response.finish_reason,
             tokens_total=response.tokens_total,
+            tokens_input=response.tokens_input,
+            tokens_cached=response.tokens_cached,
         )
         messages.extend(_echo_items(response))
 
@@ -132,6 +136,7 @@ def run_loop(
                 tok_in,
                 tok_out,
                 tok_total,
+                tok_cached,
             )
 
         results_by_id: dict[str, Any] = {}
@@ -151,7 +156,13 @@ def run_loop(
                 if isinstance(outcome, LoopResult):
                     outcome.used_read_tools = used_read_tools
                     return _finalize(
-                        outcome, turn, tool_calls_used + 1, tok_in, tok_out, tok_total
+                        outcome,
+                        turn,
+                        tool_calls_used + 1,
+                        tok_in,
+                        tok_out,
+                        tok_total,
+                        tok_cached,
                     )
                 # Error from the edit/stage tool — feed it back to the model.
                 results_by_id[tc.id] = outcome
@@ -200,6 +211,7 @@ def run_loop(
                 tok_in,
                 tok_out,
                 tok_total,
+                tok_cached,
             )
 
     return _finalize(
@@ -213,6 +225,7 @@ def run_loop(
         tok_in,
         tok_out,
         tok_total,
+        tok_cached,
     )
 
 
@@ -567,12 +580,14 @@ def _finalize(
     tok_in: int,
     tok_out: int,
     tok_total: int,
+    tok_cached: int = 0,
 ) -> LoopResult:
     result.turns = turns
     result.tool_calls_used = tool_calls_used
     result.tokens_input = tok_in
     result.tokens_output = tok_out
     result.tokens_total = tok_total
+    result.tokens_cached = tok_cached
     if not result.termination_reason:
         result.termination_reason = result.kind
     return result

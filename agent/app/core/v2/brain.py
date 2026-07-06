@@ -106,7 +106,10 @@ def run_v2_message(
         else None
     )
 
-    client = V2LLMClient(settings)
+    # Pin the prompt-cache to the roadmap: every session/turn on this roadmap
+    # shares the same system-prompt + overview prefix, so routing them together
+    # maximizes cache hits.
+    client = V2LLMClient(settings, prompt_cache_key=f'roadmap:{session.roadmap_id}')
     dispatcher = ToolDispatcher(
         settings=settings,
         logger=service._logger,

@@ -27,10 +27,11 @@ class _MemoryStore:
 class _FakeClient:
     script = []
 
-    def __init__(self, settings):
+    def __init__(self, settings, model=None, prompt_cache_key=None):
+        # Mirror the real V2LLMClient signature (model + prompt_cache_key).
         self._queue = list(_FakeClient.script)
 
-    def complete(self, messages, tools):
+    def complete(self, messages, tools, **_kwargs):
         return self._queue.pop(0)
 
 
