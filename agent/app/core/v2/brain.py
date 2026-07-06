@@ -66,19 +66,47 @@ def _message_references_ambiguous_title(
     return False
 
 
+# Imperative plan-drafting opener ("Draft…", "Plan…", "Outline…") or a
+# plan-shaped verb+object anywhere ("create a roadmap for…", "build a plan…").
+_PLAN_REQUEST_OPENER = re.compile(
+    r'^\s*(draft|plan|design|outline|propose)\b', re.IGNORECASE
+)
+_PLAN_REQUEST_OBJECT = re.compile(
+    r'\b(creat\w*|build\w*|generat\w*|draft\w*|design\w*|propos\w*|plan\w*)\b'
+    r'.{0,60}?\b(roadmaps?|plans?|epics?|milestones?)\b',
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _message_requests_plan(message: str) -> bool:
+    """True when the user is asking the agent to draft/design a plan or
+    roadmap structure. At low effort the model tends to announce the work
+    ("I'll draft…") instead of calling propose_plan; running these turns at
+    medium makes it act on the first try."""
+    if not message:
+        return False
+    return bool(
+        _PLAN_REQUEST_OPENER.match(message)
+        or _PLAN_REQUEST_OBJECT.search(message)
+    )
+
+
 def _hard_turn_trigger(
     session: AgentSession, *, user_message: str, handle_map: dict[str, Any]
 ) -> str:
     """Which signal (if any) makes this a 'hard' turn warranting more reasoning:
     a plan awaiting confirmation, a previously-raised ambiguity being resolved,
-    or a message targeting a title shared by multiple nodes. Returns 'none' for
-    ordinary direct edits/chat. First match wins (used as the reported reason)."""
+    a message targeting a title shared by multiple nodes, or a request to draft
+    a new plan. Returns 'none' for ordinary direct edits/chat. First match wins
+    (used as the reported reason)."""
     if session.metadata.pending_plan is not None:
         return 'pending_plan'
     if session.metadata.pending_context_resolution is not None:
         return 'pending_context_resolution'
     if _message_references_ambiguous_title(user_message, handle_map):
         return 'ambiguous_title'
+    if _message_requests_plan(user_message):
+        return 'plan_request'
     return 'none'
 
 

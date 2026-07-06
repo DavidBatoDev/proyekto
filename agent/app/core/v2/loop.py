@@ -85,6 +85,7 @@ def run_loop(
     tool_calls_used = 0
     used_read_tools = False
     nudged_ask_user = False
+    nudged_act = False
     tok_in = tok_out = tok_total = tok_cached = 0
     live_epic_titles = _live_epic_titles(handle_map)
 
@@ -130,6 +131,29 @@ def run_loop(
                             'options in plain text. Re-issue that question as an '
                             'ask_user call with those options so the user can '
                             'click an answer.'
+                        ),
+                    }
+                )
+                continue
+            # Same class of contract failure: the model narrated its intent
+            # ("I'll draft a roadmap structure…") and stopped without calling
+            # any tool. Accepting that as a chat terminal strands the user
+            # with a promise instead of a result — nudge once to act.
+            if (
+                not nudged_act
+                and turn < max_turns
+                and _is_announcement_without_action(text)
+            ):
+                nudged_act = True
+                messages.append(
+                    {
+                        'role': 'system',
+                        'content': (
+                            'Your last reply announced work but made no tool '
+                            'call. Do the work now: call propose_plan for a '
+                            'multi-item plan, or the roadmap edit tool for '
+                            'direct changes. Do not reply with another '
+                            'announcement.'
                         ),
                     }
                 )
@@ -472,6 +496,28 @@ def _revert_message(selected: list[ChangeGroup]) -> str:
 
 def _looks_like_question(text: str) -> bool:
     return isinstance(text, str) and '?' in text
+
+
+_ANNOUNCE_OPENER = re.compile(
+    r"^(i['’]ll|i will|i['’]m going to|i am going to|let me)\b", re.IGNORECASE
+)
+_ANNOUNCE_ACTION_VERBS = re.compile(
+    r'\b(draft|creat\w*|add\w*|build\w*|generat\w*|propos\w*|stag\w*|updat\w*'
+    r'|renam\w*|delet\w*|mov\w*|plan\w*|outlin\w*|structur\w*|set up)\b',
+    re.IGNORECASE,
+)
+
+
+def _is_announcement_without_action(text: str) -> bool:
+    """A short reply that promises roadmap work ("I'll draft a roadmap…")
+    without doing any — the model narrated its tool plan instead of calling a
+    tool. Real answers are long or ask a question; announcements are one or
+    two clipped sentences of pure intent."""
+    if not text or '?' in text or len(text) > 240:
+        return False
+    return bool(
+        _ANNOUNCE_OPENER.match(text) and _ANNOUNCE_ACTION_VERBS.search(text)
+    )
 
 
 def _is_textual_option_question(text: str) -> bool:

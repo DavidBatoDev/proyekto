@@ -18,6 +18,7 @@ from app.core.contracts.sessions import (
 from app.core.v2.brain import (
     _hard_turn_trigger,
     _message_references_ambiguous_title,
+    _message_requests_plan,
     _turn_reasoning_effort,
 )
 from app.core.v2.openai_client import V2LLMClient
@@ -43,7 +44,12 @@ class TurnReasoningEffortTests(unittest.TestCase):
         self.assertEqual(_turn_reasoning_effort(_settings('low'), 'none'), 'low')
 
     def test_every_hard_trigger_escalates_to_medium(self):
-        for trigger in ('pending_plan', 'pending_context_resolution', 'ambiguous_title'):
+        for trigger in (
+            'pending_plan',
+            'pending_context_resolution',
+            'ambiguous_title',
+            'plan_request',
+        ):
             self.assertEqual(
                 _turn_reasoning_effort(_settings('low'), trigger), 'medium', trigger
             )
@@ -97,6 +103,47 @@ class HardTurnTriggerTests(unittest.TestCase):
                 handle_map=_handle_map('Login', 'Login', 'Dashboard'),
             ),
             'ambiguous_title',
+        )
+
+
+class PlanRequestTests(unittest.TestCase):
+    def test_imperative_draft_opener(self):
+        # The exact message that announced-and-stopped at low effort.
+        self.assertTrue(
+            _message_requests_plan(
+                'Draft SaaS for Data Scientists Development starting from '
+                'problem requirements, then technological requirements.'
+            )
+        )
+
+    def test_plan_shaped_verb_and_object(self):
+        self.assertTrue(_message_requests_plan('Can you create a roadmap for a mobile app?'))
+        self.assertTrue(_message_requests_plan('build me a plan with three milestones'))
+
+    def test_direct_edits_and_questions_do_not_match(self):
+        self.assertFalse(_message_requests_plan('Rename the feature "Login" to "Auth".'))
+        self.assertFalse(_message_requests_plan('how many epics are there?'))
+        self.assertFalse(_message_requests_plan('add a task called Setup under alpha'))
+        self.assertFalse(_message_requests_plan(''))
+
+    def test_trigger_returns_plan_request(self):
+        self.assertEqual(
+            _hard_turn_trigger(
+                _session(),
+                user_message='Draft a SaaS product roadmap',
+                handle_map=_handle_map('Login'),
+            ),
+            'plan_request',
+        )
+
+    def test_pending_plan_still_wins_over_plan_request(self):
+        session = _session()
+        session.metadata.pending_plan = PendingPlan(source_user_message='x')
+        self.assertEqual(
+            _hard_turn_trigger(
+                session, user_message='Draft another plan', handle_map={}
+            ),
+            'pending_plan',
         )
 
 

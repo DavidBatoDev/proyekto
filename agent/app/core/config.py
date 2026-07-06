@@ -89,7 +89,12 @@ class Settings(BaseSettings):
     # the org exposes (e.g. 'gpt-5', 'gpt-5.4', 'gpt-5.4-mini').
     openai_model_v2: str = Field(default='gpt-5.4-mini', alias='OPENAI_MODEL_V2')
     agent_v2_max_turns: int = Field(default=8, alias='AGENT_V2_MAX_TURNS')
-    agent_v2_max_tool_calls: int = Field(default=14, alias='AGENT_V2_MAX_TOOL_CALLS')
+    # 24 (was 14): sized so exhaustive-read Q&A ("explain every epic in
+    # detail") fits — on a ~8-feature roadmap the model fetches details per
+    # node and 14 ran out before it could write the answer (v2_budget
+    # clarifier). Edit turns still use a handful of calls; the cap remains the
+    # runaway guard.
+    agent_v2_max_tool_calls: int = Field(default=24, alias='AGENT_V2_MAX_TOOL_CALLS')
     openai_v2_max_output_tokens: int | None = Field(
         default=4000,
         alias='OPENAI_V2_MAX_OUTPUT_TOKENS',

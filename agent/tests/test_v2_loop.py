@@ -9,7 +9,7 @@ import json
 import unittest
 
 from app.core.config import get_settings
-from app.core.v2.loop import run_loop
+from app.core.v2.loop import _is_announcement_without_action, run_loop
 from app.core.v2.openai_client import LLMResponse, ToolCall, V2LLMClient
 
 
@@ -443,6 +443,66 @@ class V2ClientSelfHealTests(unittest.TestCase):
         # Subsequent calls skip reasoning up front (no failed round-trip).
         client.complete([{'role': 'user', 'content': 'again'}], [])
         self.assertNotIn('reasoning', fake.responses.calls[2])
+
+
+class V2AnnounceNudgeTests(unittest.TestCase):
+    """A plain-text reply that announces work ("I'll draft…") without a tool
+    call is nudged once to act instead of being accepted as a chat terminal."""
+
+    _ANNOUNCE = (
+        "I’ll draft a roadmap structure that starts with problem "
+        'requirements and then moves into technological requirements.'
+    )
+
+    def test_announcement_is_nudged_then_plan_lands(self):
+        args = {
+            'summary': 'SaaS for data scientists',
+            'goal': 'Draft the roadmap',
+            'proposed_hierarchy': [{'title': 'Problem requirements', 'features': []}],
+        }
+        client = _ScriptedClient([
+            _text_resp(self._ANNOUNCE),
+            _tool_resp('propose_plan', args),
+        ])
+        result = _run(client)
+        self.assertEqual(result.kind, 'plan_proposal')
+        self.assertEqual(client.call_count, 2)
+        # The nudge rode into the second call as a system message.
+        nudges = [
+            m for m in client.last_messages
+            if m.get('role') == 'system' and 'announced work' in str(m.get('content'))
+        ]
+        self.assertEqual(len(nudges), 1)
+
+    def test_nudge_fires_only_once(self):
+        # A model that keeps announcing gets one nudge, then its second
+        # announcement is accepted as the (bad) chat answer — no infinite loop.
+        client = _ScriptedClient([
+            _text_resp(self._ANNOUNCE),
+            _text_resp(self._ANNOUNCE),
+        ])
+        result = _run(client)
+        self.assertEqual(result.kind, 'chat')
+        self.assertEqual(client.call_count, 2)
+
+    def test_normal_chat_answer_is_not_nudged(self):
+        result = _run(_ScriptedClient([_text_resp('Your roadmap has two epics.')]))
+        self.assertEqual(result.kind, 'chat')
+
+    def test_detection_matches_observed_failure(self):
+        self.assertTrue(_is_announcement_without_action(self._ANNOUNCE))
+
+    def test_detection_ignores_questions_and_long_answers(self):
+        self.assertFalse(
+            _is_announcement_without_action(
+                "I'll draft it — should the plan include auth?"
+            )
+        )
+        self.assertFalse(_is_announcement_without_action('x' * 300))
+        self.assertFalse(
+            _is_announcement_without_action('Here is a summary of your roadmap.')
+        )
+        self.assertFalse(_is_announcement_without_action(''))
 
 
 if __name__ == '__main__':
