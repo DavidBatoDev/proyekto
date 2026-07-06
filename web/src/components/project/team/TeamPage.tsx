@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
+  CalendarPlus,
   ChevronDown,
   ChevronRight,
   Loader2,
@@ -67,6 +68,7 @@ function toProfileSummary(
 }
 import { InviteToProjectModal } from "./InviteToProjectModal";
 import { TeamSkeleton } from "./TeamSkeleton";
+import { BookMeetingModal } from "@/components/meetings/BookMeetingModal";
 
 export function TeamPage({ projectId }: { projectId: string }) {
   const membersQuery = useProjectMembersQuery(projectId);
@@ -78,6 +80,7 @@ export function TeamPage({ projectId }: { projectId: string }) {
   });
 
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const canManage = Boolean(permissionsQuery.data?.members.manage);
   const members = membersQuery.data ?? [];
@@ -88,6 +91,22 @@ export function TeamPage({ projectId }: { projectId: string }) {
   const callerIsOwner = isCallerOwner(members, currentUserId);
 
   const pendingInvites = invites.filter((i) => i.status === "pending");
+
+  // Distinct project members (excluding self) offered as meeting invitees.
+  const meetingMembers = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { id: string; name: string }[] = [];
+    for (const m of members) {
+      const uid = m.user_id;
+      if (!uid || uid === currentUserId || seen.has(uid)) continue;
+      seen.add(uid);
+      out.push({
+        id: uid,
+        name: m.user?.display_name || m.user?.email || "Member",
+      });
+    }
+    return out;
+  }, [members, currentUserId]);
 
   // Direct shares = users whose access row carries has_direct_grant.
   // Fall back to the legacy origin check during transition for any
@@ -209,6 +228,14 @@ export function TeamPage({ projectId }: { projectId: string }) {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setScheduleOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+          >
+            <CalendarPlus className="h-4 w-4" />
+            Schedule meeting
+          </button>
           {canManage && (
             <button
               type="button"
@@ -311,6 +338,14 @@ export function TeamPage({ projectId }: { projectId: string }) {
           onClose={() => setInviteOpen(false)}
         />
       )}
+
+      <BookMeetingModal
+        open={scheduleOpen}
+        onClose={() => setScheduleOpen(false)}
+        projectId={projectId}
+        members={meetingMembers}
+        defaultType="status_sync"
+      />
     </div>
   );
 }

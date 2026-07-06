@@ -1,7 +1,10 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/stores/authStore";
 import { getFreelancerStage } from "@/lib/freelancer-stage";
+import { meetingKeys } from "@/queries/meetings";
+import { meetingsService } from "@/services/meetings.service";
 
 type CalendarEvent = {
   id: string;
@@ -50,7 +53,29 @@ export function CalendarWidget() {
   });
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
-  const events: CalendarEvent[] = [];
+  // Real upcoming meetings for the agenda. Fetched over a stable forward window
+  // once the account is activated; while empty (or dark), the empty-state copy
+  // below is the graceful fallback.
+  const range = useMemo(() => {
+    const from = new Date();
+    from.setHours(0, 0, 0, 0);
+    const to = new Date();
+    to.setDate(to.getDate() + 45);
+    return { from: from.toISOString(), to: to.toISOString() };
+  }, []);
+  const meetingsQuery = useQuery({
+    queryKey: meetingKeys.list(range),
+    queryFn: () => meetingsService.list(range),
+    enabled: isActivated,
+    staleTime: 1000 * 60,
+  });
+  const events: CalendarEvent[] = useMemo(
+    () =>
+      (meetingsQuery.data ?? [])
+        .filter((m) => m.status === "scheduled")
+        .map((m) => ({ id: m.id, title: m.title, startsAt: m.scheduled_at })),
+    [meetingsQuery.data],
+  );
   const today = new Date();
   const todayEvents = events.filter((event) => {
     const startsAt = new Date(event.startsAt);
@@ -64,11 +89,11 @@ export function CalendarWidget() {
     .filter((event) => new Date(event.startsAt).getTime() > today.getTime())
     .slice(0, 4);
   const monthCells = useMemo(() => buildMonthGrid(currentMonth), [currentMonth]);
-  const matchingPulseDates = useMemo(() => {
-    const year = currentMonth.getFullYear();
-    const month = currentMonth.getMonth();
-    return [new Date(year, month, 8), new Date(year, month, 14), new Date(year, month, 22)];
-  }, [currentMonth]);
+  // Dot the days that actually have a scheduled meeting.
+  const matchingPulseDates = useMemo(
+    () => events.map((event) => new Date(event.startsAt)),
+    [events],
+  );
 
   const emptyState =
     persona === "freelancer"

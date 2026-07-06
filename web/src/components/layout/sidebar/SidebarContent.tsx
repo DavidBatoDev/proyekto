@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
+	CalendarDays,
 	Inbox,
 	LayoutDashboard,
 	ListChecks,
@@ -169,6 +170,12 @@ export function SidebarContent() {
 						icon={ListChecks}
 						label="Work Items"
 						active={currentPath === "/work-items"}
+					/>
+					<SidebarNavLink
+						to="/meetings"
+						icon={CalendarDays}
+						label="Meetings"
+						active={currentPath.startsWith("/meetings")}
 					/>
 				</div>
 

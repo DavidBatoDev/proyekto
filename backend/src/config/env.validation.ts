@@ -242,6 +242,13 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   OTA_PUBLISH_TOKEN?: string;
+
+  // Base URL for auto-generated no-auth video rooms (meeting scheduling). Each
+  // Jitsi meeting gets a unique room under this host. Unset = the public
+  // meet.jit.si instance, so the feature works with no secrets or config.
+  @IsOptional()
+  @IsString()
+  JITSI_BASE_URL: string = 'https://meet.jit.si';
 }
 
 export function validateEnv(config: Record<string, unknown>) {

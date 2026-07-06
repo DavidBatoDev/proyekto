@@ -14,6 +14,7 @@ import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as ProjectPostingRouteImport } from './routes/project-posting'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificationsRouteImport } from './routes/notifications'
+import { Route as MeetingsRouteImport } from './routes/meetings'
 import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AdminRouteImport } from './routes/admin'
@@ -101,6 +102,11 @@ const OnboardingRoute = OnboardingRouteImport.update({
 const NotificationsRoute = NotificationsRouteImport.update({
   id: '/notifications',
   path: '/notifications',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MeetingsRoute = MeetingsRouteImport.update({
+  id: '/meetings',
+  path: '/meetings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InboxRoute = InboxRouteImport.update({
@@ -443,6 +449,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/inbox': typeof InboxRoute
+  '/meetings': typeof MeetingsRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/project-posting': typeof ProjectPostingRoute
@@ -512,6 +519,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/inbox': typeof InboxRoute
+  '/meetings': typeof MeetingsRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/project-posting': typeof ProjectPostingRoute
@@ -581,6 +589,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/inbox': typeof InboxRoute
+  '/meetings': typeof MeetingsRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/project-posting': typeof ProjectPostingRoute
@@ -653,6 +662,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/dashboard'
     | '/inbox'
+    | '/meetings'
     | '/notifications'
     | '/onboarding'
     | '/project-posting'
@@ -722,6 +732,7 @@ export interface FileRouteTypes {
     | '/'
     | '/dashboard'
     | '/inbox'
+    | '/meetings'
     | '/notifications'
     | '/onboarding'
     | '/project-posting'
@@ -790,6 +801,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/dashboard'
     | '/inbox'
+    | '/meetings'
     | '/notifications'
     | '/onboarding'
     | '/project-posting'
@@ -861,6 +873,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   DashboardRoute: typeof DashboardRoute
   InboxRoute: typeof InboxRoute
+  MeetingsRoute: typeof MeetingsRoute
   NotificationsRoute: typeof NotificationsRoute
   OnboardingRoute: typeof OnboardingRoute
   ProjectPostingRoute: typeof ProjectPostingRoute
@@ -927,6 +940,13 @@ declare module '@tanstack/react-router' {
       path: '/notifications'
       fullPath: '/notifications'
       preLoaderRoute: typeof NotificationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/meetings': {
+      id: '/meetings'
+      path: '/meetings'
+      fullPath: '/meetings'
+      preLoaderRoute: typeof MeetingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/inbox': {
@@ -1511,6 +1531,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRouteWithChildren,
   DashboardRoute: DashboardRoute,
   InboxRoute: InboxRoute,
+  MeetingsRoute: MeetingsRoute,
   NotificationsRoute: NotificationsRoute,
   OnboardingRoute: OnboardingRoute,
   ProjectPostingRoute: ProjectPostingRoute,
