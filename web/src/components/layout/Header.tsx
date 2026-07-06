@@ -11,6 +11,7 @@ const Header = () => {
 		"/dashboard",
 		"/inbox",
 		"/work-items",
+		"/meetings",
 		"/teams",
 		"/project",
 		"/profile",

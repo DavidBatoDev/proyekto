@@ -163,7 +163,7 @@ export function BookMeetingModal({
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Kickoff call"
-                className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#ff9933]/50"
+                className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
               />
             </div>
 
@@ -175,7 +175,7 @@ export function BookMeetingModal({
                 <select
                   value={type}
                   onChange={(e) => setType(e.target.value as MeetingType)}
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#ff9933]/50"
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                 >
                   {TYPE_OPTIONS.map(([value, label]) => (
                     <option key={value} value={value}>
@@ -191,7 +191,7 @@ export function BookMeetingModal({
                 <select
                   value={durationMinutes}
                   onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#ff9933]/50"
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                 >
                   {DURATION_OPTIONS.map((mins) => (
                     <option key={mins} value={mins}>
@@ -210,7 +210,7 @@ export function BookMeetingModal({
                 type="datetime-local"
                 value={localDateTime}
                 onChange={(e) => setLocalDateTime(e.target.value)}
-                className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#ff9933]/50"
+                className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
               />
             </div>
 
@@ -236,7 +236,7 @@ export function BookMeetingModal({
                     value={meetingUrl}
                     onChange={(e) => setMeetingUrl(e.target.value)}
                     placeholder="https://meet.google.com/…"
-                    className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#ff9933]/50"
+                    className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                   />
                 )}
                 <VideoRadio
@@ -263,7 +263,7 @@ export function BookMeetingModal({
                         type="checkbox"
                         checked={selectedMembers.includes(member.id)}
                         onChange={() => toggleMember(member.id)}
-                        className="accent-[#ff9933]"
+                        className="accent-primary"
                       />
                       <span className="text-gray-800">{member.name}</span>
                     </label>
@@ -291,7 +291,7 @@ export function BookMeetingModal({
               type="button"
               disabled={bookMutation.isPending}
               onClick={submit}
-              className="px-4 py-2 text-sm rounded-xl bg-[#ff9933] text-white font-medium hover:bg-[#f28a22] disabled:opacity-60"
+              className="px-4 py-2 text-sm rounded-xl bg-primary text-white font-medium hover:bg-primary/90 disabled:opacity-60"
             >
               {bookMutation.isPending ? (
                 <span className="inline-flex items-center gap-2">
@@ -322,14 +322,14 @@ function VideoRadio({
   return (
     <label
       className={`flex items-start gap-3 rounded-xl border px-3 py-2 cursor-pointer ${
-        checked ? "border-[#ff9933] bg-[#ff9933]/5" : "border-gray-200 hover:bg-gray-50"
+        checked ? "border-primary bg-primary/5" : "border-gray-200 hover:bg-gray-50"
       }`}
     >
       <input
         type="radio"
         checked={checked}
         onChange={onSelect}
-        className="mt-1 accent-[#ff9933]"
+        className="mt-1 accent-primary"
       />
       <span>
         <span className="block text-sm font-medium text-gray-800">{label}</span>

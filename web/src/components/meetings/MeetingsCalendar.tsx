@@ -146,14 +146,14 @@ export function MeetingsCalendar({
                 onClick={() => setSelectedDate(new Date(d))}
                 className={`min-h-[70px] rounded-lg border p-1.5 text-left align-top transition-colors ${
                   isSelected
-                    ? "border-[#ff9933] bg-[#ff9933]/5"
+                    ? "border-primary bg-primary/5"
                     : "border-gray-100 hover:bg-gray-50"
                 } ${inMonth ? "" : "opacity-40"}`}
               >
                 <span
                   className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${
                     isToday
-                      ? "bg-[#ff9933] text-white font-semibold"
+                      ? "bg-primary text-white font-semibold"
                       : "text-gray-700"
                   }`}
                 >
@@ -163,7 +163,7 @@ export function MeetingsCalendar({
                   {dayMeetings.slice(0, 2).map((m) => (
                     <div
                       key={m.id}
-                      className="truncate rounded bg-[#ff9933]/10 px-1 py-0.5 text-[10px] text-[#b5641a]"
+                      className="truncate rounded bg-primary/10 px-1 py-0.5 text-[10px] text-primary"
                       title={m.title}
                     >
                       {format(new Date(m.scheduled_at), "p")} {m.title}
@@ -245,7 +245,7 @@ function MeetingRow({
             href={meeting.meeting_url}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 rounded-lg bg-[#ff9933] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#f28a22]"
+            className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-white hover:bg-primary/90"
           >
             <Video className="w-3.5 h-3.5" /> Join
           </a>

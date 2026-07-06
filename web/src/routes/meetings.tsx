@@ -45,7 +45,7 @@ function MeetingsPage() {
           <button
             type="button"
             onClick={() => setBookOpen(true)}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#ff9933] px-4 py-2 text-sm font-medium text-white hover:bg-[#f28a22]"
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
           >
             <CalendarPlus className="w-4 h-4" /> Schedule meeting
           </button>
