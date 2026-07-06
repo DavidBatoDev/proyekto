@@ -17,8 +17,8 @@ import { expect, request as pwRequest, test } from "@playwright/test";
  * clean.
  */
 
-const ROADMAP_ID = "5ebdbb85-87a6-4685-aba4-fcf7f2283afe";
-const PROJECT_ID = "69d405c9-1eee-4b0f-91b4-2e677ba10c23";
+const ROADMAP_ID = "a70b8373-55cd-415b-83da-fd69a44f5709";
+const PROJECT_ID = "e968d25a-aee4-41e6-8129-a994d11c2554";
 const AGENT_BASE = process.env.VITE_AGENT_API_URL || "http://localhost:8010";
 const APP_URL = `/project/${PROJECT_ID}/roadmap/${ROADMAP_ID}?view=roadmapView`;
 const OUT_DIR = "C:/tmp";
@@ -167,9 +167,9 @@ test("v2 agent: assessment sweep (latency + smartness)", async ({ page }) => {
     results.push(rec);
     console.log(
       `[#${step} ${label}] ${ms}ms http=${rec.http} mode=${rec.response_mode} ` +
-        `staged=${rec.staged} provider=${rec.provider} fallback=${rec.fallback} ` +
-        `lane=${rec.route_lane} turns=${rec.turns} tools=[${tools.join(",")}] ` +
-        `tokens=${rec.tokens_total}`,
+      `staged=${rec.staged} provider=${rec.provider} fallback=${rec.fallback} ` +
+      `lane=${rec.route_lane} turns=${rec.turns} tools=[${tools.join(",")}] ` +
+      `tokens=${rec.tokens_total}`,
     );
     return rec;
   }

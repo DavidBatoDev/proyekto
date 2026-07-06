@@ -105,6 +105,27 @@ def run_v2_message(
         if resolved_effort != settings.openai_v2_reasoning_effort
         else None
     )
+    # Observability for the adaptive-effort feature: records the effort this turn
+    # runs at and which signal (if any) escalated it. Grep logs for
+    # `reasoning_effort_selected` to confirm low→medium on hard turns.
+    log_event(
+        logger,
+        'reasoning_effort_selected',
+        settings=settings,
+        trace_id=trace_id,
+        session_id=session.session_id,
+        roadmap_id=session.roadmap_id,
+        brain='v2',
+        effort=resolved_effort,
+        escalated=reasoning_effort is not None,
+        trigger=(
+            'pending_plan'
+            if session.metadata.pending_plan is not None
+            else 'pending_context_resolution'
+            if session.metadata.pending_context_resolution is not None
+            else 'none'
+        ),
+    )
 
     # Pin the prompt-cache to the roadmap: every session/turn on this roadmap
     # shares the same system-prompt + overview prefix, so routing them together
