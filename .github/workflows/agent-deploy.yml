@@ -46,7 +46,27 @@ jobs:
         run: docker push "$IMAGE"
 
       - name: Deploy to Cloud Run
+        env:
+          REALTIME_WORKER_URL: ${{ vars.REALTIME_WORKER_URL }}
         run: |
+          set -euo pipefail
+
+          # ^##^ delimiter because AGENT_CORS_ORIGINS contains commas.
+          ENV_VARS="APP_ENV=production##AGENT_LOG_JSON=true##NEST_API_BASE_URL=https://api.proyekto.tech/api##AGENT_CORS_ORIGINS=https://proyekto.tech,https://www.proyekto.tech,http://localhost:3000,http://localhost:5173##AGENT_V2_MAX_TOOL_CALLS=24##AGENT_RESOLVE_CACHE_TTL_SECONDS=300##OPENAI_V2_STREAMING_ENABLED=true##OPENAI_V2_REASONING_SUMMARY_ENABLED=true"
+          SECRETS="OPENAI_API_KEY=OPENAI_API_KEY:latest,UPSTASH_REDIS_REST_URL=UPSTASH_REDIS_REST_URL:latest,UPSTASH_REDIS_REST_TOKEN=UPSTASH_REDIS_REST_TOKEN:latest"
+
+          # Realtime trace push (assistant activity → DO worker user rooms).
+          # Same gate as the backend deploy: the REALTIME_WORKER_URL repo var
+          # (the deployer SA can't describe secrets). Reuses the backend's
+          # REALTIME_PUBLISH_TOKEN Secret Manager secret.
+          if [[ -n "${REALTIME_WORKER_URL:-}" ]]; then
+            ENV_VARS="${ENV_VARS}##AGENT_REALTIME_TRACE_PUSH_ENABLED=true##REALTIME_WORKER_URL=${REALTIME_WORKER_URL}"
+            SECRETS="${SECRETS},REALTIME_PUBLISH_TOKEN=REALTIME_PUBLISH_TOKEN:latest"
+            echo "Realtime trace push enabled for this deploy."
+          else
+            echo "Realtime trace push disabled (set the REALTIME_WORKER_URL repo var to enable)."
+          fi
+
           gcloud run deploy "${{ vars.GCP_AGENT_SERVICE_NAME }}" \
             --image="$IMAGE" \
             --region="${{ vars.GCP_REGION }}" \
@@ -62,8 +82,8 @@ jobs:
             --max-instances=3 \
             --concurrency=10 \
             --timeout=300 \
-            --set-env-vars="^##^APP_ENV=production##AGENT_LOG_JSON=true##NEST_API_BASE_URL=https://api.proyekto.tech/api##AGENT_CORS_ORIGINS=https://proyekto.tech,https://www.proyekto.tech,http://localhost:3000,http://localhost:5173" \
-            --set-secrets="OPENAI_API_KEY=OPENAI_API_KEY:latest,UPSTASH_REDIS_REST_URL=UPSTASH_REDIS_REST_URL:latest,UPSTASH_REDIS_REST_TOKEN=UPSTASH_REDIS_REST_TOKEN:latest" \
+            --set-env-vars="^##^${ENV_VARS}" \
+            --set-secrets="${SECRETS}" \
             --quiet
 
       - name: Print service URL
