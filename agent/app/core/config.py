@@ -118,6 +118,15 @@ class Settings(BaseSettings):
         default=True,
         alias='OPENAI_V2_STREAMING_ENABLED',
     )
+    # Ask the Responses API for sanitized reasoning summaries
+    # (reasoning.summary='auto') and surface them as `assistant_thought`
+    # progress events — the "thought" lines between tool steps in the web
+    # activity timeline. Independent of streaming: the non-streaming path
+    # extracts summaries from the terminal response's reasoning items.
+    openai_v2_reasoning_summary_enabled: bool = Field(
+        default=False,
+        alias='OPENAI_V2_REASONING_SUMMARY_ENABLED',
+    )
 
     # ------------------------------------------------------------------
     # Conversation compaction (app/core/v2/summarizer.py). When a session

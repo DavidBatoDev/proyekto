@@ -77,6 +77,48 @@ class AssistantDeltaEmitter:
         self.flush()
 
 
+# Reasoning-summary parts are short paragraphs; cap them well under
+# logging_utils' 500-char detail truncation so the web never sees a
+# mid-sentence hard cut from the generic trimmer.
+_MAX_THOUGHT_CHARS = 400
+
+
+class ThoughtEmitter:
+    """Emits one ``assistant_thought`` progress event per completed reasoning
+    summary part (Responses API ``reasoning.summary``). A turn yields 0-4
+    parts, so no throttling — every part becomes its own timeline row."""
+
+    def __init__(self, settings: Any, trace_id: str) -> None:
+        self._settings = settings
+        self._trace_id = trace_id
+        self._turn = 0
+        self._thought_seq = 0
+
+    def set_turn(self, turn: int) -> None:
+        self._turn = turn
+        self._thought_seq = 0
+
+    def on_part(self, text: str) -> None:
+        # The web renders thoughts as plain italic text — drop the bold/code
+        # markers the model likes to open summaries with ("**Heading** ...").
+        cleaned = (text or '').replace('**', '').replace('`', '').strip()
+        if not cleaned:
+            return
+        if len(cleaned) > _MAX_THOUGHT_CHARS:
+            cleaned = cleaned[: _MAX_THOUGHT_CHARS - 1].rstrip() + '…'
+        self._thought_seq += 1
+        log_event(
+            logger,
+            'assistant_thought',
+            settings=self._settings,
+            trace_id=self._trace_id,
+            brain='v2',
+            text=cleaned,
+            turn=self._turn,
+            thought_seq=self._thought_seq,
+        )
+
+
 def provider_attempt(settings: Any, trace_id: str | None, turn: int) -> None:
     log_event(
         logger,

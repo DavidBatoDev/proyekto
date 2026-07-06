@@ -69,6 +69,7 @@ def run_loop(
     actor_id: str | None = None,
     reasoning_effort: str | None = None,
     delta_emitter: Any = None,
+    thought_emitter: Any = None,
 ) -> LoopResult:
     max_turns = max(1, int(settings.agent_v2_max_turns))
     # None → let the client use the configured effort. A resolved value (from
@@ -81,6 +82,10 @@ def run_loop(
     # and non-traced callers on the plain complete(messages, tools) shape).
     if delta_emitter is not None:
         complete_kwargs['on_text_delta'] = delta_emitter.on_delta
+    # Reasoning-summary parts → assistant_thought progress events ("thought"
+    # lines between tool steps). Same omit-when-absent contract as above.
+    if thought_emitter is not None:
+        complete_kwargs['on_reasoning_part'] = thought_emitter.on_part
     max_tool_calls = max(1, int(settings.agent_v2_max_tool_calls))
     tool_calls_used = 0
     used_read_tools = False
@@ -93,6 +98,8 @@ def run_loop(
         progress.provider_attempt(settings, trace_id, turn)
         if delta_emitter is not None:
             delta_emitter.set_turn(turn)
+        if thought_emitter is not None:
+            thought_emitter.set_turn(turn)
         response: LLMResponse = client.complete(messages, tools, **complete_kwargs)
         if delta_emitter is not None:
             delta_emitter.finish()

@@ -99,6 +99,9 @@ _PROGRESS_EVENT_ALLOWLIST = {
     # Throttled chunks of streamed assistant text (details.text) — the web
     # accumulates them in seq order into a live typing preview.
     'assistant_delta',
+    # Sanitized reasoning-summary parts (details.text) — the "thought" lines
+    # rendered between tool steps in the web activity timeline.
+    'assistant_thought',
 }
 
 
@@ -449,6 +452,8 @@ def _serialize_progress_trace_event(
 def _to_structured_progress_details(event: str, details: dict[str, Any]) -> dict[str, Any] | None:
     if event == 'assistant_delta':
         return _pick_progress_detail_fields(details, ('text', 'turn', 'delta_seq'))
+    if event == 'assistant_thought':
+        return _pick_progress_detail_fields(details, ('text', 'turn', 'thought_seq'))
     if event == 'tool_call_requested':
         return _pick_progress_detail_fields(details, ('tool_name', 'arg_keys', 'tool_args'))
     if event == 'tool_call_result':
@@ -597,6 +602,7 @@ def _progress_event_title(event: str) -> str:
         'auto_commit_async_completed': 'Auto-commit completed',
         'auto_commit_async_failed': 'Auto-commit failed',
         'assistant_delta': 'Assistant writing',
+        'assistant_thought': 'Thinking',
     }
     return titles.get(event, event.replace('_', ' '))
 
@@ -617,6 +623,7 @@ def _progress_event_status(event: str, payload: dict[str, Any]) -> str:
         'plan_generated',
         'session_staged_state',
         'auto_commit_async_completed',
+        'assistant_thought',
     }:
         return 'success'
     return 'running'
@@ -625,6 +632,11 @@ def _progress_event_status(event: str, payload: dict[str, Any]) -> str:
 def _progress_event_summary(event: str, payload: dict[str, Any]) -> str:
     if event == 'assistant_delta':
         return 'Assistant is writing…'
+    if event == 'assistant_thought':
+        text = payload.get('text')
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+        return 'Thinking through the next step.'
     if event == 'message_received':
         return f'Received user message: {_progress_message_preview(payload.get("message"))}'
     if event == 'actor_context_loaded':

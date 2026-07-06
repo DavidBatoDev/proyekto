@@ -23,7 +23,7 @@ from app.core.orchestration.shared.outcomes import MessagePlanningOutcome
 from app.core.v2.context import build_messages
 from app.core.v2.loop import LoopResult, run_loop
 from app.core.v2.openai_client import V2LLMClient
-from app.core.v2.progress import AssistantDeltaEmitter
+from app.core.v2.progress import AssistantDeltaEmitter, ThoughtEmitter
 from app.core.v2.sentinels import parse_and_fold
 from app.core.v2.summarizer import apply_pending_compaction
 from app.core.v2.terminal import to_outcome
@@ -211,6 +211,15 @@ def run_v2_message(
         if trace_id and getattr(settings, 'openai_v2_streaming_enabled', False)
         else None
     )
+    # Sanitized reasoning summaries → assistant_thought trace events (the
+    # "thought" lines in the web timeline). Deliberately not coupled to the
+    # streaming flag: non-streamed calls extract summaries from the terminal
+    # response's reasoning items.
+    thought_emitter = (
+        ThoughtEmitter(settings, trace_id)
+        if trace_id and getattr(settings, 'openai_v2_reasoning_summary_enabled', False)
+        else None
+    )
 
     try:
         loop_result = run_loop(
@@ -226,6 +235,7 @@ def run_v2_message(
             actor_id=actor_id,
             reasoning_effort=reasoning_effort,
             delta_emitter=delta_emitter,
+            thought_emitter=thought_emitter,
         )
         # A save_memory/forget_memory tool ran this turn — drop the cached
         # notes so the next turn refetches the authoritative list.

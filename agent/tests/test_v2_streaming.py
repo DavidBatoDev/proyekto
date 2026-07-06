@@ -16,11 +16,18 @@ from app.core.config import get_settings
 from app.core.logging_utils import get_progress_trace_events, log_event
 from app.core.v2 import progress as progress_mod
 from app.core.v2.openai_client import V2LLMClient
-from app.core.v2.progress import AssistantDeltaEmitter
+from app.core.v2.progress import AssistantDeltaEmitter, ThoughtEmitter
 
 
 def _delta_event(text):
     return SimpleNamespace(type='response.output_text.delta', delta=text)
+
+
+def _reasoning_part_event(text):
+    return SimpleNamespace(
+        type='response.reasoning_summary_part.done',
+        part=SimpleNamespace(text=text),
+    )
 
 
 def _completed_event(response):
@@ -70,14 +77,20 @@ class _FakeResponses:
         return _final_response()
 
 
-def _client(responses, streaming_enabled=True):
+def _client(
+    responses,
+    streaming_enabled=True,
+    reasoning_effort=None,
+    reasoning_summary_enabled=False,
+):
     settings = SimpleNamespace(
         openai_model_v2='gpt-5.4-mini',
         openai_api_key='sk-test',
         openai_v2_max_output_tokens=None,
-        openai_v2_reasoning_effort=None,
+        openai_v2_reasoning_effort=reasoning_effort,
         openai_v2_temperature=None,
         openai_v2_streaming_enabled=streaming_enabled,
+        openai_v2_reasoning_summary_enabled=reasoning_summary_enabled,
     )
     client = V2LLMClient(settings)
     client._client = SimpleNamespace(responses=responses)
@@ -152,6 +165,198 @@ class StreamingClientTests(unittest.TestCase):
         client = _client(fake, streaming_enabled=True)
         client.complete([], [])
         self.assertNotIn('stream', fake.calls[0])
+
+
+class ReasoningSummaryClientTests(unittest.TestCase):
+    def test_streamed_summary_parts_fire_callback_and_kwargs_request_summary(self):
+        fake = _FakeResponses(
+            stream_events=[
+                _reasoning_part_event('Looking for overdue tasks first.'),
+                _delta_event('Hello'),
+                _completed_event(_final_response('Hello')),
+            ]
+        )
+        client = _client(fake, reasoning_effort='low', reasoning_summary_enabled=True)
+        thoughts = []
+        result = client.complete(
+            [], [], on_text_delta=lambda _t: None, on_reasoning_part=thoughts.append
+        )
+        self.assertEqual(thoughts, ['Looking for overdue tasks first.'])
+        self.assertEqual(result.content, 'Hello')
+        self.assertEqual(
+            fake.calls[0].get('reasoning'), {'effort': 'low', 'summary': 'auto'}
+        )
+
+    def test_flag_off_omits_summary_from_kwargs(self):
+        fake = _FakeResponses(
+            stream_events=[_completed_event(_final_response())]
+        )
+        client = _client(fake, reasoning_effort='low', reasoning_summary_enabled=False)
+        client.complete(
+            [], [], on_text_delta=lambda _t: None, on_reasoning_part=lambda _t: None
+        )
+        self.assertEqual(fake.calls[0].get('reasoning'), {'effort': 'low'})
+
+    def test_no_callback_omits_summary_even_with_flag_on(self):
+        fake = _FakeResponses()
+        client = _client(fake, reasoning_effort='low', reasoning_summary_enabled=True)
+        client.complete([], [])
+        self.assertEqual(fake.calls[0].get('reasoning'), {'effort': 'low'})
+
+    def test_non_streaming_extraction_from_reasoning_items(self):
+        response = _final_response('Done.')
+        response.output.insert(
+            0,
+            {
+                'type': 'reasoning',
+                'summary': [
+                    {'type': 'summary_text', 'text': 'First thought.'},
+                    {'type': 'summary_text', 'text': 'Second thought.'},
+                ],
+            },
+        )
+
+        class _PlainResponses:
+            def __init__(self):
+                self.calls = []
+
+            def create(self, **kwargs):
+                self.calls.append(kwargs)
+                return response
+
+        fake = _PlainResponses()
+        client = _client(fake, reasoning_effort='low', reasoning_summary_enabled=True)
+        thoughts = []
+        # No on_text_delta → plain (non-streaming) path.
+        result = client.complete([], [], on_reasoning_part=thoughts.append)
+        self.assertEqual(thoughts, ['First thought.', 'Second thought.'])
+        self.assertEqual(result.content, 'Done.')
+        self.assertEqual(
+            fake.calls[0].get('reasoning'), {'effort': 'low', 'summary': 'auto'}
+        )
+
+    def test_summary_unsupported_selfheals_and_keeps_effort(self):
+        class _VerificationGate:
+            """Rejects reasoning.summary once (org-verification 400)."""
+
+            def __init__(self):
+                self.calls = []
+
+            def create(self, **kwargs):
+                self.calls.append(kwargs)
+                if 'summary' in kwargs.get('reasoning', {}):
+                    raise RuntimeError(
+                        'Your organization must be verified to generate reasoning summaries.'
+                    )
+                return _final_response()
+
+        fake = _VerificationGate()
+        client = _client(fake, reasoning_effort='low', reasoning_summary_enabled=True)
+        result = client.complete([], [], on_reasoning_part=lambda _t: None)
+        self.assertEqual(result.content, 'Hello world.')
+        self.assertEqual(
+            fake.calls[0].get('reasoning'), {'effort': 'low', 'summary': 'auto'}
+        )
+        # Retry kept reasoning effort, dropped only the summary request.
+        self.assertEqual(fake.calls[1].get('reasoning'), {'effort': 'low'})
+        self.assertTrue(client._drop_reasoning_summary)
+        # Sticky for the rest of the process.
+        client.complete([], [], on_reasoning_part=lambda _t: None)
+        self.assertEqual(fake.calls[2].get('reasoning'), {'effort': 'low'})
+
+
+class ThoughtEmitterTests(unittest.TestCase):
+    def _emitter(self):
+        emitter = ThoughtEmitter(get_settings(), trace_id='t-thought')
+        emitter.set_turn(1)
+        captured = []
+
+        def _capture(logger, event, **kwargs):
+            captured.append((event, kwargs))
+
+        return emitter, captured, _capture
+
+    def test_each_part_emits_one_event_with_turn_and_seq(self):
+        emitter, captured, capture = self._emitter()
+        with mock.patch.object(progress_mod, 'log_event', capture):
+            emitter.on_part('First thought.')
+            emitter.on_part('Second thought.')
+        self.assertEqual(len(captured), 2)
+        self.assertEqual(captured[0][0], 'assistant_thought')
+        self.assertEqual(captured[0][1]['text'], 'First thought.')
+        self.assertEqual(captured[0][1]['turn'], 1)
+        self.assertEqual(captured[0][1]['thought_seq'], 1)
+        self.assertEqual(captured[1][1]['thought_seq'], 2)
+
+    def test_new_turn_resets_thought_seq(self):
+        emitter, captured, capture = self._emitter()
+        with mock.patch.object(progress_mod, 'log_event', capture):
+            emitter.on_part('a')
+            emitter.set_turn(2)
+            emitter.on_part('b')
+        self.assertEqual(captured[1][1]['turn'], 2)
+        self.assertEqual(captured[1][1]['thought_seq'], 1)
+
+    def test_blank_text_is_skipped_and_long_text_truncated(self):
+        emitter, captured, capture = self._emitter()
+        with mock.patch.object(progress_mod, 'log_event', capture):
+            emitter.on_part('   ')
+            emitter.on_part('x' * 900)
+        self.assertEqual(len(captured), 1)
+        self.assertLessEqual(len(captured[0][1]['text']), 400)
+        self.assertTrue(captured[0][1]['text'].endswith('…'))
+
+    def test_markdown_bold_and_code_markers_are_stripped(self):
+        emitter, captured, capture = self._emitter()
+        with mock.patch.object(progress_mod, 'log_event', capture):
+            emitter.on_part('**Gathering project details** I need `get_node_details`.')
+        self.assertEqual(
+            captured[0][1]['text'],
+            'Gathering project details I need get_node_details.',
+        )
+
+
+class AssistantThoughtProgressPlumbingTests(unittest.TestCase):
+    """assistant_thought rides the real progress-trace store end to end."""
+
+    def test_captured_and_served_in_both_detail_modes(self):
+        settings = get_settings()
+        trace_id = str(uuid.uuid4())
+        log_event(
+            progress_mod.logger,
+            'assistant_thought',
+            settings=settings,
+            trace_id=trace_id,
+            brain='v2',
+            text='The user wants overdue items closed — finding them first.',
+            turn=1,
+            thought_seq=1,
+        )
+        for detail in ('verbose', 'structured'):
+            response = get_progress_trace_events(
+                session_id='any',
+                trace_id=trace_id,
+                after_seq=0,
+                detail=detail,
+                settings=settings,
+            )
+            self.assertIsNotNone(response, detail)
+            events = response['events']
+            self.assertEqual(len(events), 1, detail)
+            event = events[0]
+            self.assertEqual(event['event'], 'assistant_thought')
+            self.assertEqual(event['title'], 'Thinking')
+            self.assertEqual(event['status'], 'success')
+            self.assertEqual(
+                event['summary'],
+                'The user wants overdue items closed — finding them first.',
+            )
+            self.assertEqual(
+                event['details'].get('text'),
+                'The user wants overdue items closed — finding them first.',
+                detail,
+            )
+            self.assertEqual(event['details'].get('thought_seq'), 1, detail)
 
 
 class AssistantDeltaEmitterTests(unittest.TestCase):

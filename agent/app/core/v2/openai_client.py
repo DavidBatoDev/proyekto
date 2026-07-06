@@ -77,6 +77,10 @@ class V2LLMClient:
         # Same self-heal for streaming: if a stream fails to open or dies
         # mid-iteration, fall back to plain calls for the rest of the process.
         self._drop_streaming = False
+        # And for reasoning summaries: unverified orgs get a 400 for
+        # reasoning.summary — drop just the summary request (keep effort) and
+        # remember for the rest of the process.
+        self._drop_reasoning_summary = False
 
     def _ensure_client(self) -> Any:
         if self._client is None:
@@ -93,6 +97,7 @@ class V2LLMClient:
         tools: list[dict[str, Any]],
         reasoning_effort: Any = _USE_CONFIGURED_EFFORT,
         on_text_delta: Callable[[str], None] | None = None,
+        on_reasoning_part: Callable[[str], None] | None = None,
     ) -> LLMResponse:
         client = self._ensure_client()
         return self._create(
@@ -102,6 +107,7 @@ class V2LLMClient:
             send_reasoning=not self._drop_reasoning,
             reasoning_effort=reasoning_effort,
             on_text_delta=on_text_delta,
+            on_reasoning_part=on_reasoning_part,
         )
 
     def _create(
@@ -113,6 +119,7 @@ class V2LLMClient:
         send_reasoning: bool,
         reasoning_effort: Any = _USE_CONFIGURED_EFFORT,
         on_text_delta: Callable[[str], None] | None = None,
+        on_reasoning_part: Callable[[str], None] | None = None,
     ) -> LLMResponse:
         # Per-call override wins; otherwise fall back to the configured effort.
         effort = (
@@ -133,6 +140,15 @@ class V2LLMClient:
             kwargs['prompt_cache_key'] = self._prompt_cache_key
         if send_reasoning and effort is not None:
             kwargs['reasoning'] = {'effort': effort}
+            # Sanitized reasoning summaries → assistant_thought timeline rows.
+            # Only requested when a consumer is listening (auxiliary callers
+            # like the summarizer pass no callback and shouldn't pay for it).
+            if (
+                on_reasoning_part is not None
+                and bool(getattr(self._settings, 'openai_v2_reasoning_summary_enabled', False))
+                and not self._drop_reasoning_summary
+            ):
+                kwargs['reasoning']['summary'] = 'auto'
         if self._settings.openai_v2_temperature is not None:
             kwargs['temperature'] = self._settings.openai_v2_temperature
 
@@ -145,8 +161,21 @@ class V2LLMClient:
         )
         if use_streaming:
             try:
-                return self._create_streaming(client, kwargs, on_text_delta)
+                return self._create_streaming(client, kwargs, on_text_delta, on_reasoning_part)
             except Exception as exc:  # noqa: BLE001 — self-heal, then plain call
+                # Check summary first: the org-verification 400 mentions
+                # "reasoning summaries" and must not disable reasoning itself.
+                if 'summary' in kwargs.get('reasoning', {}) and _is_reasoning_summary_unsupported(exc):
+                    self._drop_reasoning_summary = True
+                    return self._create(
+                        client,
+                        input_items,
+                        tools,
+                        send_reasoning=send_reasoning,
+                        reasoning_effort=reasoning_effort,
+                        on_text_delta=on_text_delta,
+                        on_reasoning_part=on_reasoning_part,
+                    )
                 if send_reasoning and _is_reasoning_unsupported(exc):
                     self._drop_reasoning = True
                     return self._create(
@@ -156,6 +185,7 @@ class V2LLMClient:
                         send_reasoning=False,
                         reasoning_effort=reasoning_effort,
                         on_text_delta=on_text_delta,
+                        on_reasoning_part=on_reasoning_part,
                     )
                 # Any other streaming failure (open error, mid-stream drop, no
                 # terminal event): remember and retry non-streaming below. The
@@ -171,6 +201,17 @@ class V2LLMClient:
         try:
             response = client.responses.create(**kwargs)
         except Exception as exc:  # noqa: BLE001 — narrow retry on a known 400
+            if 'summary' in kwargs.get('reasoning', {}) and _is_reasoning_summary_unsupported(exc):
+                self._drop_reasoning_summary = True
+                return self._create(
+                    client,
+                    input_items,
+                    tools,
+                    send_reasoning=send_reasoning,
+                    reasoning_effort=reasoning_effort,
+                    on_text_delta=on_text_delta,
+                    on_reasoning_part=on_reasoning_part,
+                )
             if send_reasoning and _is_reasoning_unsupported(exc):
                 self._drop_reasoning = True
                 return self._create(
@@ -180,8 +221,15 @@ class V2LLMClient:
                     send_reasoning=False,
                     reasoning_effort=reasoning_effort,
                     on_text_delta=on_text_delta,
+                    on_reasoning_part=on_reasoning_part,
                 )
             raise
+        # Non-streaming path: reasoning summaries arrive as parts on the
+        # response's reasoning items rather than as stream events. Emit them
+        # here (not in adapt_response — the streaming terminal Response also
+        # carries the same items and would double-emit).
+        if on_reasoning_part is not None and 'summary' in kwargs.get('reasoning', {}):
+            _emit_reasoning_summary_parts(response, on_reasoning_part)
         return adapt_response(response)
 
     def _create_streaming(
@@ -189,6 +237,7 @@ class V2LLMClient:
         client: Any,
         kwargs: dict[str, Any],
         on_text_delta: Callable[[str], None],
+        on_reasoning_part: Callable[[str], None] | None = None,
     ) -> LLMResponse:
         """Streamed variant of the same request. Feeds text deltas to the
         callback and adapts the terminal event's full Response object, so the
@@ -205,9 +254,17 @@ class V2LLMClient:
                         on_text_delta(delta)
                     except Exception:  # noqa: BLE001 — preview must never kill the call
                         logger.debug('on_text_delta callback failed', exc_info=True)
+            elif event_type == 'response.reasoning_summary_part.done':
+                # One completed sanitized-reasoning paragraph → one thought.
+                text = getattr(getattr(event, 'part', None), 'text', None)
+                if on_reasoning_part is not None and isinstance(text, str) and text:
+                    try:
+                        on_reasoning_part(text)
+                    except Exception:  # noqa: BLE001 — narration must never kill the call
+                        logger.debug('on_reasoning_part callback failed', exc_info=True)
             elif event_type == 'response.completed':
                 final = getattr(event, 'response', None)
-            # Everything else (reasoning summaries, tool-arg deltas, created/
+            # Everything else (summary text deltas, tool-arg deltas, created/
             # in_progress markers) is intentionally ignored.
         if final is None:
             raise RuntimeError('response stream ended without response.completed')
@@ -314,3 +371,29 @@ def _cached_tokens(usage: Any) -> int | None:
 def _is_reasoning_unsupported(exc: Exception) -> bool:
     text = str(exc).lower()
     return 'reasoning' in text and ('not supported' in text or 'unsupported' in text)
+
+
+def _is_reasoning_summary_unsupported(exc: Exception) -> bool:
+    """The reasoning.summary param specifically was rejected — most commonly
+    OpenAI's org-verification 400 ("must be verified to generate reasoning
+    summaries"); effort itself is fine and must stay enabled."""
+    text = str(exc).lower()
+    return 'summar' in text and (
+        'not supported' in text or 'unsupported' in text or 'verif' in text
+    )
+
+
+def _emit_reasoning_summary_parts(response: Any, on_reasoning_part: Callable[[str], None]) -> None:
+    """Fire the thought callback for each summary part on a non-streamed
+    Response's reasoning items ({'type':'summary_text','text':...})."""
+    for item in (getattr(response, 'output', None) or []):
+        item_dict = _item_to_dict(item)
+        if item_dict.get('type') != 'reasoning':
+            continue
+        for part in item_dict.get('summary') or []:
+            text = part.get('text') if isinstance(part, dict) else getattr(part, 'text', None)
+            if isinstance(text, str) and text:
+                try:
+                    on_reasoning_part(text)
+                except Exception:  # noqa: BLE001 — narration must never kill the call
+                    logger.debug('on_reasoning_part callback failed', exc_info=True)
