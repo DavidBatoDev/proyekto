@@ -105,6 +105,120 @@ describe('RoadmapMetadataGeneratorService', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('asks for clarification when objective prompt is a greeting', async () => {
+    fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const service = createService(null);
+    const result = await service.suggestIntakeStep({
+      step: 'objective',
+      prompt: 'hi',
+    });
+
+    expect(result).toMatchObject({
+      objective_decision: 'clarify',
+      options: [],
+      refined_prompt: '',
+      audience: '',
+      scope: '',
+    });
+    expect(result.assistant_message).toContain('What are you building');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('cancels when clarification was already attempted and prompt is still weak', async () => {
+    fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const service = createService(null);
+    const result = await service.suggestIntakeStep({
+      step: 'objective',
+      prompt: 'still testing',
+      clarification_attempted: true,
+    });
+
+    expect(result).toMatchObject({
+      objective_decision: 'cancel',
+      options: [],
+      refined_prompt: '',
+      audience: '',
+      scope: '',
+    });
+  });
+
+  it('marks objective ready when fallback sees objective, audience, and scope', async () => {
+    fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const service = createService(null);
+    const prompt =
+      'Build a fitness web app for older adults with onboarding, workout plans, progress tracking, and reminders';
+    const result = await service.suggestIntakeStep({
+      step: 'objective',
+      prompt,
+    });
+
+    expect(result).toMatchObject({
+      objective_decision: 'ready',
+      options: [],
+      refined_prompt: prompt,
+    });
+    expect(result.audience).toContain('older adults');
+    expect(result.scope).toContain('onboarding');
+  });
+
+  it('marks objective ready when prompt has detailed scope without explicit audience', async () => {
+    fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const service = createService(null);
+    const prompt =
+      'Build a full-stack fitness platform with authentication, workout tracking, analytics dashboards, notifications, API, database, and deployment pipeline';
+    const result = await service.suggestIntakeStep({
+      step: 'objective',
+      prompt,
+    });
+
+    expect(result).toMatchObject({
+      objective_decision: 'ready',
+      options: [],
+      refined_prompt: prompt,
+      audience: 'target users',
+    });
+    expect(result.scope).toContain('authentication');
+  });
+
+  it('returns sanitized objective decision from OpenAI JSON', async () => {
+    mockFetchResponse(
+      JSON.stringify({
+        objective_decision: 'ready',
+        assistant_message: 'Great, I understand the roadmap objective.',
+        refined_prompt:
+          'Build a scheduling portal for tutoring students with booking, payments, and reminders.',
+        audience: 'tutoring students',
+        scope: 'booking, payments, and reminders',
+        options: [{ key: 'A', value: 'ignored' }],
+      }),
+    );
+
+    const service = createService();
+    const result = await service.suggestIntakeStep({
+      step: 'objective',
+      prompt:
+        'Build a portal for tutoring students with booking, payments, and reminders',
+    });
+
+    expect(result).toEqual({
+      objective_decision: 'ready',
+      assistant_message: 'Great, I understand the roadmap objective.',
+      refined_prompt:
+        'Build a scheduling portal for tutoring students with booking, payments, and reminders.',
+      audience: 'tutoring students',
+      scope: 'booking, payments, and reminders',
+      options: [],
+    });
+  });
+
   it('returns sanitized title options from OpenAI JSON', async () => {
     mockFetchResponse(
       JSON.stringify({

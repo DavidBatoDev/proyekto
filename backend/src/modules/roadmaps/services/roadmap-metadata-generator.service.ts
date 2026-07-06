@@ -14,6 +14,8 @@ const MAX_CATEGORY_CHARS = 80;
 const OPTION_KEYS = ['A', 'B', 'C'] as const;
 
 type IntakeOptionKey = (typeof OPTION_KEYS)[number];
+type IntakeStep = 'objective' | 'title' | 'description';
+type ObjectiveDecision = 'ready' | 'clarify' | 'cancel';
 
 export interface SuggestedRoadmapMetadata {
   name: string;
@@ -30,6 +32,10 @@ export interface SuggestedRoadmapIntakeStep {
   assistant_message: string;
   options: SuggestedRoadmapIntakeOption[];
   category_suggestions?: string[];
+  objective_decision?: ObjectiveDecision;
+  refined_prompt?: string;
+  audience?: string;
+  scope?: string;
 }
 
 interface ChatCompletionChoice {
@@ -78,6 +84,7 @@ export class RoadmapMetadataGeneratorService {
       title: dto.title,
       description: dto.description,
       category: dto.category,
+      clarificationAttempted: dto.clarification_attempted,
     });
     if (!prompt) return fallback;
 
@@ -90,6 +97,7 @@ export class RoadmapMetadataGeneratorService {
         title: dto.title,
         description: dto.description,
         category: dto.category,
+        clarificationAttempted: dto.clarification_attempted,
       });
       return sanitizeIntakeStep(generated, fallback, dto.step);
     } catch (error) {
@@ -152,17 +160,19 @@ export class RoadmapMetadataGeneratorService {
 
   private async callOpenAiIntake(
     apiKey: string,
-    step: 'title' | 'description',
+    step: IntakeStep,
     context: {
       prompt: string;
       title?: string;
       description?: string;
       category?: string;
+      clarificationAttempted?: boolean;
     },
   ): Promise<Partial<SuggestedRoadmapIntakeStep> | null> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     const isTitleStep = step === 'title';
+    const isObjectiveStep = step === 'objective';
     try {
       const response = await fetch(OPENAI_ENDPOINT, {
         method: 'POST',
@@ -173,20 +183,25 @@ export class RoadmapMetadataGeneratorService {
         signal: controller.signal,
         body: JSON.stringify({
           model: METADATA_MODEL,
-          temperature: isTitleStep ? 0.65 : 0.45,
-          max_tokens: isTitleStep ? 260 : 420,
+          temperature: isTitleStep ? 0.65 : isObjectiveStep ? 0.2 : 0.45,
+          max_tokens: isTitleStep ? 260 : isObjectiveStep ? 320 : 420,
           response_format: { type: 'json_object' },
           messages: [
             {
               role: 'system',
-              content: isTitleStep
-                ? 'You are an expert product strategist naming a roadmap before generation. Return only valid JSON with assistant_message and options. options must be exactly 3 objects with keys A, B, C and polished roadmap/product title values under 80 characters. Titles must be distinct, specific, and useful. Do not repeat the user prompt verbatim. Avoid lazy suffixes like "Roadmap" or "Launch Plan" unless they create a genuinely strong title. assistant_message should feel conversational and ask what the user wants to call the roadmap.'
-                : 'You are an expert product strategist shaping a roadmap brief before generation. Return only valid JSON with assistant_message, options, and category_suggestions. options must be exactly 3 objects with keys A, B, C and concise roadmap goal/description values under 260 characters. Each option must be specific to the user idea and describe a different strategic angle. category_suggestions must be 3 to 5 short product categories. assistant_message should feel conversational and ask what goal or direction the roadmap should optimize for.',
+              content: isObjectiveStep
+                ? 'You are an expert product intake strategist. Decide whether the user has provided enough information to set up a roadmap. A ready objective must include what is being built and either a clear audience/users or meaningful scope such as platform, core features, business goal, or delivery context. If the prompt already has a detailed objective or detailed scope, do not ask another question just because audience is implicit. Return only valid JSON with objective_decision ("ready", "clarify", or "cancel"), assistant_message, refined_prompt, audience, scope, and options: []. If the user is greeting, testing, joking, or not giving a project idea, use "clarify" unless clarification_attempted is true, then use "cancel". If details are too thin, ask one concise follow-up question for the missing objective, audience, or scope. If ready, write a polished refined_prompt that combines all available objective, audience, and scope context.'
+                : isTitleStep
+                  ? 'You are an expert product strategist naming a roadmap before generation. Return only valid JSON with assistant_message and options. options must be exactly 3 objects with keys A, B, C and polished roadmap/product title values under 80 characters. Titles must be distinct, specific, and useful. Do not repeat the user prompt verbatim. Avoid lazy suffixes like "Roadmap" or "Launch Plan" unless they create a genuinely strong title. assistant_message should feel conversational and ask what the user wants to call the roadmap.'
+                  : 'You are an expert product strategist shaping a roadmap brief before generation. Return only valid JSON with assistant_message, options, and category_suggestions. options must be exactly 3 objects with keys A, B, C and concise roadmap goal/description values under 260 characters. Each option must be specific to the user idea and describe a different strategic angle. category_suggestions must be 3 to 5 short product categories. assistant_message should feel conversational and ask what goal or direction the roadmap should optimize for.',
             },
             {
               role: 'user',
               content: [
                 `Project idea: ${truncate(context.prompt, 2000)}`,
+                isObjectiveStep
+                  ? `Clarification already attempted: ${context.clarificationAttempted ? 'yes' : 'no'}`
+                  : '',
                 context.title
                   ? `Selected roadmap title: ${truncate(context.title, 200)}`
                   : '',
@@ -196,9 +211,11 @@ export class RoadmapMetadataGeneratorService {
                 context.category
                   ? `Existing category: ${truncate(context.category, 80)}`
                   : '',
-                isTitleStep
-                  ? 'Generate names that sound like a real product or initiative, not a paraphrase of the prompt.'
-                  : 'Generate options that can be used directly as the roadmap description/goal.',
+                isObjectiveStep
+                  ? 'Classify if this is ready to become a roadmap intake, needs one clarifying question, or should be canceled.'
+                  : isTitleStep
+                    ? 'Generate names that sound like a real product or initiative, not a paraphrase of the prompt.'
+                    : 'Generate options that can be used directly as the roadmap description/goal.',
               ]
                 .filter(Boolean)
                 .join('\n'),
@@ -235,15 +252,43 @@ function buildFallbackMetadata(prompt: string): SuggestedRoadmapMetadata {
 }
 
 function buildFallbackIntakeStep(
-  step: 'title' | 'description',
+  step: IntakeStep,
   context: {
     prompt: string;
     title?: string;
     description?: string;
     category?: string;
+    clarificationAttempted?: boolean;
   },
 ): SuggestedRoadmapIntakeStep {
   const safePrompt = normalizeWhitespace(context.prompt);
+  if (step === 'objective') {
+    const assessment = assessObjectivePrompt(safePrompt);
+    if (!assessment.ready) {
+      const attempted = Boolean(context.clarificationAttempted);
+      return {
+        assistant_message: attempted
+          ? 'No worries, I will cancel this roadmap setup for now. Come back when you have a project idea to build.'
+          : assessment.message,
+        options: [],
+        objective_decision: attempted ? 'cancel' : 'clarify',
+        refined_prompt: '',
+        audience: '',
+        scope: '',
+      };
+    }
+
+    return {
+      assistant_message:
+        'Great, I understand the project objective. I will use this context to set up the roadmap fields.',
+      options: [],
+      objective_decision: 'ready',
+      refined_prompt: safePrompt,
+      audience: assessment.audience,
+      scope: assessment.scope,
+    };
+  }
+
   if (step === 'title') {
     const options = buildFallbackTitleOptions(safePrompt);
     return {
@@ -303,8 +348,12 @@ function sanitizeMetadata(
 function sanitizeIntakeStep(
   generated: Partial<SuggestedRoadmapIntakeStep> | null,
   fallback: SuggestedRoadmapIntakeStep,
-  step: 'title' | 'description',
+  step: IntakeStep,
 ): SuggestedRoadmapIntakeStep {
+  if (step === 'objective') {
+    return sanitizeObjectiveStep(generated, fallback);
+  }
+
   const maxOptionLength = step === 'title' ? MAX_NAME_CHARS : 260;
   const fallbackValues = fallback.options.map((option) => option.value);
   const generatedOptions = Array.isArray(generated?.options)
@@ -344,6 +393,46 @@ function sanitizeIntakeStep(
       }) || fallback.assistant_message,
     options,
     ...(categories ? { category_suggestions: categories } : {}),
+  };
+}
+
+function sanitizeObjectiveStep(
+  generated: Partial<SuggestedRoadmapIntakeStep> | null,
+  fallback: SuggestedRoadmapIntakeStep,
+): SuggestedRoadmapIntakeStep {
+  const rawDecision = generated?.objective_decision;
+  const fallbackDecision = fallback.objective_decision ?? 'clarify';
+  const decision: ObjectiveDecision =
+    rawDecision === 'ready' || rawDecision === 'clarify' || rawDecision === 'cancel'
+      ? rawDecision
+      : fallbackDecision;
+  const refinedPrompt = sanitizeText(generated?.refined_prompt, 2000, {
+    stripTerminalPunctuation: false,
+  });
+  const audience = sanitizeText(generated?.audience, 160, {
+    stripTerminalPunctuation: false,
+  });
+  const scope = sanitizeText(generated?.scope, 240, {
+    stripTerminalPunctuation: false,
+  });
+
+  if (decision === 'ready' && (!refinedPrompt || !scope)) {
+    return fallback;
+  }
+
+  return {
+    assistant_message:
+      sanitizeText(generated?.assistant_message, 260, {
+        stripTerminalPunctuation: false,
+      }) || fallback.assistant_message,
+    options: [],
+    objective_decision: decision,
+    refined_prompt:
+      decision === 'ready'
+        ? refinedPrompt || fallback.refined_prompt || ''
+        : refinedPrompt,
+    audience: decision === 'ready' ? audience || fallback.audience || 'target users' : audience,
+    scope: decision === 'ready' ? scope || fallback.scope || '' : scope,
   };
 }
 
@@ -415,6 +504,105 @@ function fallbackTitleTemplates(category: string, cleanedIdea: string): string[]
     `${base} Launch System`,
     `${base} Execution Plan`,
   ];
+}
+
+function assessObjectivePrompt(prompt: string): {
+  ready: boolean;
+  message: string;
+  audience: string;
+  scope: string;
+} {
+  const lower = prompt.toLowerCase();
+  const weakPattern =
+    /^(hi|hello|hey|test|testing|asdf|sample|demo|try|trying|roadmap|\?|\.|,|ok|okay)$/i;
+  if (!prompt || prompt.length < 12 || weakPattern.test(prompt)) {
+    return {
+      ready: false,
+      message:
+        'I need a little more before I can create a useful roadmap. What are you building, who is it for, and what should the first version include?',
+      audience: '',
+      scope: '',
+    };
+  }
+
+  const hasBuildObjective =
+    /\b(build|create|make|develop|design|launch|ship|plan|set up|setup)\b/.test(
+      lower,
+    ) &&
+    /\b(app|website|site|platform|dashboard|tool|system|service|marketplace|product|portal|roadmap|project)\b/.test(
+      lower,
+    );
+  const hasAudience =
+    /\b(for|serving|help(?:ing)?|used by|users?|customers?|clients?|teams?|admins?|students?|patients?|farmers?|creators?|businesses?|companies?|managers?)\b/.test(
+      lower,
+    );
+  const hasScope =
+    /\b(with|including|include|features?|mvp|v1|version|dashboard|auth|login|payments?|booking|scheduling|tracking|analytics|chat|notifications?|mobile|web|backend|frontend|api|database|workflow|kanban|collaboration)\b/.test(
+      lower,
+    ) || prompt.split(/[,.]/).length > 1;
+  const scopeSignalCount = countScopeSignals(lower);
+  const hasDetailedScope =
+    scopeSignalCount >= 3 ||
+    (hasScope && (prompt.length >= 90 || prompt.split(/[,;]|\band\b/i).length >= 3));
+
+  if (hasBuildObjective && hasScope && (hasAudience || hasDetailedScope)) {
+    return {
+      ready: true,
+      message: '',
+      audience: extractAudiencePhrase(prompt),
+      scope: extractScopePhrase(prompt),
+    };
+  }
+
+  const missing: string[] = [];
+  if (!hasBuildObjective) missing.push('what you want to build');
+  if (!hasAudience && !hasDetailedScope) missing.push('who it is for');
+  if (!hasScope) missing.push('what the first version should include');
+  return {
+    ready: false,
+    message: `I can help set this up, but I need ${joinReadableList(
+      missing,
+    )}. Could you add those details in one sentence?`,
+    audience: '',
+    scope: '',
+  };
+}
+
+function countScopeSignals(lower: string): number {
+  const matches = lower.match(
+    /\b(auth|login|signup|database|api|backend|frontend|dashboard|payments?|billing|booking|scheduling|tracking|analytics|notifications?|chat|messaging|admin|cms|deployment|ci|cd|testing|onboarding|search|upload|mobile|web|kanban|collaboration|reports?|integrations?)\b/g,
+  );
+  return new Set(matches ?? []).size;
+}
+
+function joinReadableList(values: string[]): string {
+  if (values.length === 0) return 'a clearer project objective';
+  if (values.length === 1) return values[0];
+  if (values.length === 2) return `${values[0]} and ${values[1]}`;
+  return `${values.slice(0, -1).join(', ')}, and ${values[values.length - 1]}`;
+}
+
+function extractAudiencePhrase(prompt: string): string {
+  const match = normalizeWhitespace(prompt).match(
+    /\b(?:for|serving|help(?:ing)?|used by)\s+([^,.]{2,120})/i,
+  );
+  return sanitizeText(match?.[1], 160, {
+    stripTerminalPunctuation: false,
+  }) || 'target users';
+}
+
+function extractScopePhrase(prompt: string): string {
+  const match = normalizeWhitespace(prompt).match(
+    /\b(?:with|including|include|that\s+(?:has|supports|lets|allows))\s+([^,.]{2,180})/i,
+  );
+  if (match?.[1]) {
+    return sanitizeText(match[1], 240, {
+      stripTerminalPunctuation: false,
+    });
+  }
+  return sanitizeText(prompt, 240, {
+    stripTerminalPunctuation: false,
+  });
 }
 
 function extractIdeaPhrase(prompt: string): string {

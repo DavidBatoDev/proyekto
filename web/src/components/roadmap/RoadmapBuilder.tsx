@@ -22,6 +22,7 @@ import {
 import { generateRoadmapThumbnailDataUri } from "@/lib/roadmapThumbnail";
 import {
 	roadmapService,
+	type RoadmapObjectiveDecision,
 	type SuggestedRoadmapIntakeOption,
 	type SuggestedRoadmapIntakeStep,
 } from "@/services/roadmap.service";
@@ -34,7 +35,13 @@ type RoadmapBuilderProps = {
 	draftId?: string;
 };
 
-type IntakeStep = "prompt" | "title" | "description" | "thumbnail";
+type IntakeStep =
+	| "prompt"
+	| "clarification"
+	| "title"
+	| "description"
+	| "thumbnail"
+	| "canceled";
 
 type ChatMessage = {
 	id: string;
@@ -122,6 +129,73 @@ function buildFallbackIntakeStep(
 				category && all.findIndex((item) => item === category) === index,
 		),
 	};
+}
+
+function buildFallbackObjectiveStep(
+	prompt: string,
+	clarificationAttempted: boolean,
+): SuggestedRoadmapIntakeStep {
+	const normalizedPrompt = prompt.trim().replace(/\s+/g, " ");
+	const lower = normalizedPrompt.toLowerCase();
+	const weakPattern =
+		/^(hi|hello|hey|test|testing|asdf|sample|demo|try|trying|roadmap|\?|\.|,|ok|okay)$/i;
+	const hasBuildObjective =
+		/\b(build|create|make|develop|design|launch|ship|plan|set up|setup)\b/.test(
+			lower,
+		) &&
+		/\b(app|website|site|platform|dashboard|tool|system|service|marketplace|product|portal|roadmap|project)\b/.test(
+			lower,
+		);
+	const hasAudience =
+		/\b(for|serving|help(?:ing)?|used by|users?|customers?|clients?|teams?|students?|farmers?|businesses?)\b/.test(
+			lower,
+		);
+	const hasScope =
+		/\b(with|including|include|features?|mvp|v1|dashboard|auth|payments?|booking|scheduling|tracking|analytics|notifications?|mobile|web|backend|frontend|api|database|workflow)\b/.test(
+			lower,
+		) || normalizedPrompt.split(/[,.]/).length > 1;
+	const scopeSignalCount = countScopeSignals(lower);
+	const hasDetailedScope =
+		scopeSignalCount >= 3 ||
+		(hasScope &&
+			(normalizedPrompt.length >= 90 ||
+				normalizedPrompt.split(/[,;]|\band\b/i).length >= 3));
+
+	if (
+		normalizedPrompt.length >= 12 &&
+		!weakPattern.test(normalizedPrompt) &&
+		hasBuildObjective &&
+		hasScope &&
+		(hasAudience || hasDetailedScope)
+	) {
+		return {
+			assistant_message:
+				"Great, I understand the project objective. I will use this context to set up the roadmap fields.",
+			options: [],
+			objective_decision: "ready",
+			refined_prompt: normalizedPrompt,
+			audience: "target users",
+			scope: normalizedPrompt,
+		};
+	}
+
+	return {
+		assistant_message: clarificationAttempted
+			? "No worries, I will cancel this roadmap setup for now. Come back when you have a project idea to build."
+			: "I need a little more before I can create a useful roadmap. What are you building, who is it for, and what should the first version include?",
+		options: [],
+		objective_decision: clarificationAttempted ? "cancel" : "clarify",
+		refined_prompt: "",
+		audience: "",
+		scope: "",
+	};
+}
+
+function countScopeSignals(lower: string): number {
+	const matches = lower.match(
+		/\b(auth|login|signup|database|api|backend|frontend|dashboard|payments?|billing|booking|scheduling|tracking|analytics|notifications?|chat|messaging|admin|cms|deployment|ci|cd|testing|onboarding|search|upload|mobile|web|kanban|collaboration|reports?|integrations?)\b/g,
+	);
+	return new Set(matches ?? []).size;
 }
 
 function buildFallbackTitleOptions(
@@ -289,6 +363,13 @@ export function RoadmapBuilder({
 
 	const [step, setStep] = useState<IntakeStep>("prompt");
 	const [prompt, setPrompt] = useState("");
+	const [refinedPrompt, setRefinedPrompt] = useState("");
+	const [objectiveDecision, setObjectiveDecision] =
+		useState<RoadmapObjectiveDecision | null>(null);
+	const [objectiveAudience, setObjectiveAudience] = useState("");
+	const [objectiveScope, setObjectiveScope] = useState("");
+	const [clarificationAttempted, setClarificationAttempted] = useState(false);
+	const [clarificationAnswer, setClarificationAnswer] = useState("");
 	const [title, setTitle] = useState("");
 	const [description, setDescription] = useState("");
 	const [categories, setCategories] = useState<string[]>([]);
@@ -336,6 +417,15 @@ export function RoadmapBuilder({
 		() => categoriesToString(categories),
 		[categories],
 	);
+	const effectivePrompt = refinedPrompt.trim() || prompt.trim();
+	const objectiveContextLabel = useMemo(() => {
+		if (objectiveDecision !== "ready") return "";
+		const parts = [
+			objectiveAudience ? `Audience: ${objectiveAudience}` : "",
+			objectiveScope ? `Scope: ${objectiveScope}` : "",
+		].filter(Boolean);
+		return parts.join(" | ");
+	}, [objectiveAudience, objectiveDecision, objectiveScope]);
 
 	const appendMessage = useCallback((role: ChatMessage["role"], content: string) => {
 		setMessages((current) => [
@@ -344,25 +434,43 @@ export function RoadmapBuilder({
 		]);
 	}, []);
 
+	const cancelIntake = useCallback(
+		async (message?: string) => {
+			if (message) appendMessage("assistant", message);
+			setObjectiveDecision("cancel");
+			setStep("canceled");
+			setError(null);
+			clearRoadmapIntakeDraft(draftId);
+			await wait(900);
+			await navigate({ to: "/" });
+		},
+		[appendMessage, draftId, navigate],
+	);
+
 	const requestIntakeStep = useCallback(
 		async (
-			requestStep: "title" | "description",
+			requestStep: "objective" | "title" | "description",
 			overrides: {
 				prompt?: string;
 				title?: string;
 				description?: string;
 				category?: string;
+				clarificationAttempted?: boolean;
 			} = {},
 		) => {
 			const resolvedPrompt = overrides.prompt ?? prompt;
 			const resolvedTitle = overrides.title ?? title;
 			const resolvedDescription = overrides.description ?? description;
 			const resolvedCategory = overrides.category ?? selectedCategoryLabel;
+			const resolvedClarificationAttempted =
+				overrides.clarificationAttempted ?? clarificationAttempted;
 			const trimmedPrompt = resolvedPrompt.trim();
 			if (!trimmedPrompt) return;
 
 			setError(null);
-			setStep(requestStep);
+			if (requestStep !== "objective") {
+				setStep(requestStep);
+			}
 			setIsSuggesting(true);
 			try {
 				const response = await roadmapService.suggestIntakeStep({
@@ -372,7 +480,45 @@ export function RoadmapBuilder({
 					description: resolvedDescription,
 					category: resolvedCategory,
 					project_id: projectId !== "n" ? projectId : null,
+					clarification_attempted: resolvedClarificationAttempted,
 				});
+
+				if (requestStep === "objective") {
+					const fallback = buildFallbackObjectiveStep(
+						trimmedPrompt,
+						resolvedClarificationAttempted,
+					);
+					const decision =
+						response.objective_decision || fallback.objective_decision || "clarify";
+					const assistantMessage =
+						response.assistant_message || fallback.assistant_message;
+					if (decision === "cancel") {
+						await cancelIntake(assistantMessage);
+						return;
+					}
+					if (decision === "clarify") {
+						setObjectiveDecision("clarify");
+						setStep("clarification");
+						appendMessage("assistant", assistantMessage);
+						return;
+					}
+
+					const nextRefinedPrompt =
+						response.refined_prompt?.trim() ||
+						fallback.refined_prompt?.trim() ||
+						trimmedPrompt;
+					setObjectiveDecision("ready");
+					setRefinedPrompt(nextRefinedPrompt);
+					setObjectiveAudience(
+						response.audience?.trim() || fallback.audience || "",
+					);
+					setObjectiveScope(response.scope?.trim() || fallback.scope || "");
+					appendMessage("assistant", assistantMessage);
+					window.setTimeout(() => {
+						void requestIntakeStep("title", { prompt: nextRefinedPrompt });
+					}, 0);
+					return;
+				}
 
 				if (requestStep === "title") {
 					const fallback = buildFallbackIntakeStep("title", trimmedPrompt);
@@ -416,6 +562,32 @@ export function RoadmapBuilder({
 				setStep("description");
 			} catch (suggestError) {
 				console.error("Failed to suggest roadmap intake step:", suggestError);
+				if (requestStep === "objective") {
+					const fallback = buildFallbackObjectiveStep(
+						trimmedPrompt,
+						resolvedClarificationAttempted,
+					);
+					if (fallback.objective_decision === "cancel") {
+						await cancelIntake(fallback.assistant_message);
+						return;
+					}
+					if (fallback.objective_decision === "ready") {
+						const nextRefinedPrompt = fallback.refined_prompt || trimmedPrompt;
+						setObjectiveDecision("ready");
+						setRefinedPrompt(nextRefinedPrompt);
+						setObjectiveAudience(fallback.audience || "");
+						setObjectiveScope(fallback.scope || "");
+						appendMessage("assistant", fallback.assistant_message);
+						window.setTimeout(() => {
+							void requestIntakeStep("title", { prompt: nextRefinedPrompt });
+						}, 0);
+						return;
+					}
+					setObjectiveDecision("clarify");
+					setStep("clarification");
+					appendMessage("assistant", fallback.assistant_message);
+					return;
+				}
 				const fallback = buildFallbackIntakeStep(
 					requestStep,
 					trimmedPrompt,
@@ -446,7 +618,16 @@ export function RoadmapBuilder({
 				setIsSuggesting(false);
 			}
 		},
-		[appendMessage, description, projectId, prompt, selectedCategoryLabel, title],
+		[
+			appendMessage,
+			cancelIntake,
+			clarificationAttempted,
+			description,
+			projectId,
+			prompt,
+			selectedCategoryLabel,
+			title,
+		],
 	);
 
 	useEffect(() => {
@@ -459,7 +640,7 @@ export function RoadmapBuilder({
 		const nextPrompt = draft.prompt.trim();
 		setPrompt(nextPrompt);
 		appendMessage("user", nextPrompt);
-		void requestIntakeStep("title", { prompt: nextPrompt });
+		void requestIntakeStep("objective", { prompt: nextPrompt });
 	}, [appendMessage, draftId, requestIntakeStep]);
 
 	useEffect(() => {
@@ -473,7 +654,21 @@ export function RoadmapBuilder({
 		const trimmedPrompt = prompt.trim();
 		if (!trimmedPrompt || isSuggesting) return;
 		appendMessage("user", trimmedPrompt);
-		void requestIntakeStep("title", { prompt: trimmedPrompt });
+		void requestIntakeStep("objective", { prompt: trimmedPrompt });
+	};
+
+	const handleClarificationSubmit = () => {
+		const trimmedAnswer = clarificationAnswer.trim();
+		if (!trimmedAnswer || isSuggesting || isLocalThinking) return;
+		const combinedPrompt = `${prompt.trim()}\nAdditional detail: ${trimmedAnswer}`;
+		setPrompt(combinedPrompt);
+		setClarificationAnswer("");
+		setClarificationAttempted(true);
+		appendMessage("user", trimmedAnswer);
+		void requestIntakeStep("objective", {
+			prompt: combinedPrompt,
+			clarificationAttempted: true,
+		});
 	};
 
 	const handleTitleAnswer = (value: string, label?: string) => {
@@ -483,7 +678,7 @@ export function RoadmapBuilder({
 		setCustomTitle("");
 		appendMessage("user", label ? `${label}: ${trimmedTitle}` : trimmedTitle);
 		void requestIntakeStep("description", {
-			prompt,
+			prompt: effectivePrompt,
 			title: trimmedTitle,
 		});
 	};
@@ -575,7 +770,7 @@ export function RoadmapBuilder({
 	};
 
 	const handleCreate = async (mode: "generated" | "uploaded") => {
-		if (isCreating || isAuthLoading || !prompt.trim() || !title.trim()) return;
+		if (isCreating || isAuthLoading || !effectivePrompt || !title.trim()) return;
 
 		setError(null);
 		setIsCreating(true);
@@ -593,7 +788,7 @@ export function RoadmapBuilder({
 					description,
 					category: selectedCategoryLabel || DEFAULT_ROADMAP_CATEGORY,
 				},
-				prompt,
+				prompt: effectivePrompt,
 				projectId,
 				isAuthenticated: Boolean(authenticatedUser),
 				previewUrl,
@@ -619,7 +814,11 @@ export function RoadmapBuilder({
 		: "min-h-screen overflow-y-auto bg-[#f7f7f8]";
 
 	const isThinking = isSuggesting || isLocalThinking || isCreating;
+	const shouldShowPromptInput =
+		step === "prompt" && !isThinking && messages.length === 0;
 	const canSubmitPrompt = Boolean(prompt.trim()) && !isThinking;
+	const canSubmitClarification =
+		Boolean(clarificationAnswer.trim()) && !isThinking;
 	const canSubmitTitle = Boolean(customTitle.trim()) && !isThinking;
 	const canContinueDescription =
 		Boolean(customDescription.trim()) &&
@@ -628,7 +827,7 @@ export function RoadmapBuilder({
 	const canCreate =
 		step === "thumbnail" &&
 		Boolean(title.trim()) &&
-		Boolean(prompt.trim()) &&
+		Boolean(effectivePrompt) &&
 		!isAuthLoading &&
 		!isCreating &&
 		!isUploadingThumbnail &&
@@ -690,7 +889,16 @@ export function RoadmapBuilder({
 
 					{isThinking && <TypingIndicator />}
 
-					{step === "prompt" && (
+					{objectiveContextLabel &&
+						step !== "prompt" &&
+						step !== "clarification" &&
+						step !== "canceled" && (
+							<div className="roadmap-chat-message rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
+								Objective locked. {objectiveContextLabel}
+							</div>
+						)}
+
+					{shouldShowPromptInput && (
 						<section className="roadmap-chat-message rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
 							<label
 								htmlFor="roadmap-initial-prompt"
@@ -718,6 +926,58 @@ export function RoadmapBuilder({
 									Send to AI
 								</button>
 							</div>
+						</section>
+					)}
+
+					{step === "clarification" && !isThinking && (
+						<section className="roadmap-chat-message rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+							<label
+								htmlFor="roadmap-objective-clarification"
+								className="block text-sm font-bold text-slate-900"
+							>
+								Add the missing project details
+							</label>
+							<p className="mt-1 text-sm leading-6 text-slate-500">
+								Tell me what you are building, who it is for, and what the first
+								version should include.
+							</p>
+							<textarea
+								id="roadmap-objective-clarification"
+								value={clarificationAnswer}
+								maxLength={MAX_PROMPT_LENGTH}
+								rows={4}
+								onChange={(event) => setClarificationAnswer(event.target.value)}
+								placeholder='Example: "A fitness web app for older adults with onboarding, workout plans, progress tracking, and reminders."'
+								className="mt-3 min-h-28 w-full resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-cyan-400 focus:bg-white focus:ring-4 focus:ring-cyan-100"
+							/>
+							<div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+								<button
+									type="button"
+									onClick={() =>
+										void cancelIntake(
+											"No problem, I will cancel this roadmap setup for now.",
+										)
+									}
+									className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-600 transition hover:text-slate-950"
+								>
+									Cancel and go home
+								</button>
+								<button
+									type="button"
+									onClick={handleClarificationSubmit}
+									disabled={!canSubmitClarification}
+									className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+								>
+									<Send className="h-4 w-4" />
+									Continue
+								</button>
+							</div>
+						</section>
+					)}
+
+					{step === "canceled" && (
+						<section className="roadmap-chat-message rounded-[1.75rem] border border-slate-200 bg-white p-5 text-sm leading-6 text-slate-600 shadow-sm">
+							Taking you back to the landing page.
 						</section>
 					)}
 

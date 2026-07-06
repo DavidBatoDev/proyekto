@@ -136,13 +136,16 @@ export interface SuggestedRoadmapMetadata {
 }
 
 export interface SuggestRoadmapIntakeStepDto {
-	step: "title" | "description";
+	step: "objective" | "title" | "description";
 	prompt: string;
 	title?: string;
 	description?: string;
 	category?: string;
 	project_id?: string | null;
+	clarification_attempted?: boolean;
 }
+
+export type RoadmapObjectiveDecision = "ready" | "clarify" | "cancel";
 
 export interface SuggestedRoadmapIntakeOption {
 	key: "A" | "B" | "C";
@@ -153,6 +156,10 @@ export interface SuggestedRoadmapIntakeStep {
 	assistant_message: string;
 	options: SuggestedRoadmapIntakeOption[];
 	category_suggestions?: string[];
+	objective_decision?: RoadmapObjectiveDecision;
+	refined_prompt?: string;
+	audience?: string;
+	scope?: string;
 }
 
 export interface UpdateRoadmapTemplateSettingsDto {
