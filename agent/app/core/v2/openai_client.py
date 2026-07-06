@@ -26,6 +26,10 @@ from typing import Any
 
 logger = logging.getLogger('app.core.v2')
 
+# Sentinel: distinguishes "caller passed no override" (fall back to the
+# configured effort) from "caller explicitly passed None" (disable reasoning).
+_USE_CONFIGURED_EFFORT: Any = object()
+
 
 @dataclass
 class ToolCall:
@@ -71,9 +75,16 @@ class V2LLMClient:
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
+        reasoning_effort: Any = _USE_CONFIGURED_EFFORT,
     ) -> LLMResponse:
         client = self._ensure_client()
-        return self._create(client, messages, tools, send_reasoning=not self._drop_reasoning)
+        return self._create(
+            client,
+            messages,
+            tools,
+            send_reasoning=not self._drop_reasoning,
+            reasoning_effort=reasoning_effort,
+        )
 
     def _create(
         self,
@@ -82,7 +93,14 @@ class V2LLMClient:
         tools: list[dict[str, Any]],
         *,
         send_reasoning: bool,
+        reasoning_effort: Any = _USE_CONFIGURED_EFFORT,
     ) -> LLMResponse:
+        # Per-call override wins; otherwise fall back to the configured effort.
+        effort = (
+            self._settings.openai_v2_reasoning_effort
+            if reasoning_effort is _USE_CONFIGURED_EFFORT
+            else reasoning_effort
+        )
         kwargs: dict[str, Any] = {
             'model': self._model,
             'input': input_items,
@@ -92,8 +110,8 @@ class V2LLMClient:
         }
         if self._settings.openai_v2_max_output_tokens is not None:
             kwargs['max_output_tokens'] = self._settings.openai_v2_max_output_tokens
-        if send_reasoning and self._settings.openai_v2_reasoning_effort is not None:
-            kwargs['reasoning'] = {'effort': self._settings.openai_v2_reasoning_effort}
+        if send_reasoning and effort is not None:
+            kwargs['reasoning'] = {'effort': effort}
         if self._settings.openai_v2_temperature is not None:
             kwargs['temperature'] = self._settings.openai_v2_temperature
         try:
@@ -101,7 +119,13 @@ class V2LLMClient:
         except Exception as exc:  # noqa: BLE001 — narrow retry on a known 400
             if send_reasoning and _is_reasoning_unsupported(exc):
                 self._drop_reasoning = True
-                return self._create(client, input_items, tools, send_reasoning=False)
+                return self._create(
+                    client,
+                    input_items,
+                    tools,
+                    send_reasoning=False,
+                    reasoning_effort=reasoning_effort,
+                )
             raise
         return adapt_response(response)
 

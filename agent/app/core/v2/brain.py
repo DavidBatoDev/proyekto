@@ -29,6 +29,30 @@ from app.core.v2.tools_spec import build_tools
 
 logger = logging.getLogger('app.core.v2')
 
+# Reasoning effort escalates on "hard" turns. Ordered so we can take a max
+# without downgrading a higher configured base.
+_EFFORT_ORDER = {'minimal': 0, 'low': 1, 'medium': 2, 'high': 3}
+
+
+def _turn_reasoning_effort(session: AgentSession, settings: Any) -> str | None:
+    """Per-turn reasoning effort. Direct edits/chat run at the configured base
+    (``low`` by default); turns that confirm/revise a proposed plan or resolve a
+    previously-raised ambiguity escalate to at least ``medium`` — those are the
+    turns where the model most benefits from deliberation. Never downgrades a
+    higher configured base, and respects ``None`` (reasoning disabled)."""
+    base = settings.openai_v2_reasoning_effort
+    if base is None:
+        return None
+    hard_turn = (
+        session.metadata.pending_plan is not None
+        or session.metadata.pending_context_resolution is not None
+    )
+    if not hard_turn:
+        return base
+    if _EFFORT_ORDER.get(base, 1) >= _EFFORT_ORDER['medium']:
+        return base
+    return 'medium'
+
 
 def run_v2_message(
     *,
@@ -72,6 +96,15 @@ def run_v2_message(
     pending_plan = session.metadata.pending_plan
     pending_plan_titles = _pending_plan_titles(pending_plan)
     tools = build_tools(has_pending_plan=pending_plan is not None)
+    # Only override the client's configured effort when this turn escalates it;
+    # otherwise pass None so the client uses its default and the common path
+    # stays byte-identical to the pre-escalation call.
+    resolved_effort = _turn_reasoning_effort(session, settings)
+    reasoning_effort = (
+        resolved_effort
+        if resolved_effort != settings.openai_v2_reasoning_effort
+        else None
+    )
 
     client = V2LLMClient(settings)
     dispatcher = ToolDispatcher(
@@ -92,6 +125,7 @@ def run_v2_message(
             trace_id=trace_id,
             pending_plan_titles=pending_plan_titles,
             actor_id=actor_id,
+            reasoning_effort=reasoning_effort,
         )
         # A save_memory/forget_memory tool ran this turn — drop the cached
         # notes so the next turn refetches the authoritative list.
