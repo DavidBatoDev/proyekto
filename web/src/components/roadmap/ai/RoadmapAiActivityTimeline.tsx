@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import type {
   RoadmapAiActivityStep,
@@ -292,8 +292,9 @@ export function RoadmapAiActivityTimelineView({
                           transition={{ duration: 0.18, ease: "easeOut" }}
                           className="flex items-start gap-1.5"
                         >
-                          <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-gray-400" />
-                          <p className="min-w-0 flex-1 text-[11px] italic leading-relaxed text-gray-500 line-clamp-2">
+                          {/* pl matches the chevron (12px) + gap (6px) of the
+                              other rows so titles stay column-aligned. */}
+                          <p className="min-w-0 flex-1 pl-[18px] text-[11px] italic leading-relaxed text-gray-500 line-clamp-2">
                             {step.summary}
                           </p>
                           <span className="shrink-0 text-[10px] text-gray-400">
