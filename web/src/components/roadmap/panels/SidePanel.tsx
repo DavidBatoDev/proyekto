@@ -291,6 +291,12 @@ export const SidePanel = ({
 	const isInteractionDisabled = isLoading || isReadOnlyPending;
 
 	useEffect(() => {
+		// Re-seed the draft only while the panel is actually open. Some hosts (e.g.
+		// the Work Items browser) keep this panel mounted with isCreating always
+		// true, so isCreateMode never toggles — keying the reset on isOpen too
+		// guarantees a blank draft on every reopen instead of carrying over the
+		// previously created task's title/description.
+		if (!isOpen) return;
 		if (isCreateMode) {
 			createSnapshotRef.current = { ...TASK_CREATE_DEFAULTS };
 			setNewTaskData({
@@ -301,6 +307,8 @@ export const SidePanel = ({
 			});
 			setDescriptionDraft("");
 			setIsEditingDescription(false);
+			setChecklistItems([]);
+			initialChecklistRef.current = [];
 		} else if (task) {
 			const normalizedTask = {
 				...task,
@@ -319,7 +327,7 @@ export const SidePanel = ({
 		// Zustand creates new task objects on every store mutation, so using `task` directly
 		// would reset the snapshot (and lose hasUnsavedChanges) on any unrelated store update.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [isCreateMode, task?.id, task?.updated_at]);
+	}, [isOpen, isCreateMode, task?.id, task?.updated_at]);
 
 	useEffect(() => {
 		if (!isOpen) {
@@ -1847,7 +1855,7 @@ export const SidePanel = ({
 							animate={{ x: 0 }}
 							exit={{ x: "100%" }}
 							transition={{ duration: 0.3, ease: "easeInOut" }}
-							className="fixed top-0 right-0 bottom-0"
+							className="fixed top-0 right-0 bottom-0 w-full max-w-lg"
 							style={{ zIndex: zIndexBase }}
 						>
 							{panelContent}
