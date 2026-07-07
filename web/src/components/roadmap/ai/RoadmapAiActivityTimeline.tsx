@@ -30,11 +30,65 @@ export const toElapsedSeconds = (
 };
 
 export const getVisibleTimelineSteps = (
-  timeline: RoadmapAiActivityTimeline,
-): RoadmapAiActivityTimeline["steps"] => {
-  if (timeline.done) return timeline.steps;
-  return timeline.steps.slice(-RUNNING_VISIBLE_STEP_COUNT);
+  steps: RoadmapAiActivityStep[],
+  done: boolean,
+): RoadmapAiActivityStep[] => {
+  if (done) return steps;
+  return steps.slice(-RUNNING_VISIBLE_STEP_COUNT);
 };
+
+// One row per tool call: a result consumes its nearest earlier unconsumed
+// requested row (matched by toolName), so an in-flight call shows its
+// requested spinner and a completed call shows only the outcome — the row
+// flips in place when the result event lands. Only named pairs collapse;
+// unnamed steps and every other event pass through untouched.
+export function collapseToolCallPairs(
+  steps: RoadmapAiActivityStep[],
+): RoadmapAiActivityStep[] {
+  const consumedSeqs = new Set<number>();
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    if (step.event !== "tool_call_result" || !step.toolName) continue;
+    for (let j = i - 1; j >= 0; j--) {
+      const candidate = steps[j];
+      if (
+        candidate.event === "tool_call_requested" &&
+        candidate.toolName === step.toolName &&
+        !consumedSeqs.has(candidate.seq)
+      ) {
+        consumedSeqs.add(candidate.seq);
+        break;
+      }
+    }
+  }
+  if (consumedSeqs.size === 0) return steps;
+  return steps.filter((step) => !consumedSeqs.has(step.seq));
+}
+
+// "Planning the next steps" (provider_attempt, one per model turn) is
+// redundant once the turn has real content — thought rows narrate the same
+// moments. Keep it only as the live trailing spinner between turns, or as
+// the sole row for no-tool turns so the timeline is never hollow (the reason
+// it stays visible in curated mode — see SHARED_HIDDEN_ACTIVITY_EVENTS in
+// RoadmapAiAssistantPanel.tsx).
+export function declutterProviderAttempts(
+  steps: RoadmapAiActivityStep[],
+  done: boolean,
+): RoadmapAiActivityStep[] {
+  const filtered = steps.filter((step, index) => {
+    if (step.event !== "provider_attempt") return true;
+    const hasLaterContent = steps
+      .slice(index + 1)
+      .some((later) => later.event !== "provider_attempt");
+    if (hasLaterContent) return false;
+    return !done && index === steps.length - 1;
+  });
+  if (filtered.length > 0) return filtered;
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (steps[i].event === "provider_attempt") return [steps[i]];
+  }
+  return filtered;
+}
 
 export const getTitleListOverflowCount = (
   titleList: RoadmapAiActivityTimeline["steps"][number]["titleList"] | undefined,
@@ -150,10 +204,17 @@ export function RoadmapAiActivityTimelineView({
     () => getTimelineHeaderLabel(timeline, seconds),
     [timeline, seconds],
   );
-  const visibleSteps = useMemo(
-    () => groupParallelSteps(getVisibleTimelineSteps(timeline)),
-    [timeline],
-  );
+  const visibleSteps = useMemo(() => {
+    // Declutter on the FULL list before the running-mode window, so a
+    // requested row and its result never both occupy the last-3 slots.
+    const decluttered = declutterProviderAttempts(
+      collapseToolCallPairs(timeline.steps),
+      timeline.done,
+    );
+    return groupParallelSteps(
+      getVisibleTimelineSteps(decluttered, timeline.done),
+    );
+  }, [timeline]);
 
   useEffect(() => {
     if (visibleSteps.length === 0) {
