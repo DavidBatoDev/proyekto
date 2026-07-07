@@ -73,6 +73,8 @@ const FEATURE_REORDER_CONFIRM_SKIP_KEY =
 const FEATURE_MOVE_CONFIRM_SKIP_KEY =
 	"roadmap.leftPanel.skipFeatureMoveConfirm";
 const EPIC_REORDER_CONFIRM_SKIP_KEY = "roadmap.leftPanel.skipEpicReorderConfirm";
+const LARGE_ROADMAP_NODE_THRESHOLD = 80;
+const LARGE_ROADMAP_TASK_THRESHOLD = 300;
 
 type PendingFeatureReorder = {
 	epicId: string;
@@ -490,6 +492,21 @@ function ExplorerPanel({
 	};
 
 	const sortedEpics = useMemo(() => getSortedEpics(epics), [epics]);
+	const isLargeRoadmap = useMemo(() => {
+		let nodeCount = 0;
+		let taskCount = 0;
+		for (const epic of sortedEpics) {
+			nodeCount += 1;
+			for (const feature of epic.features ?? []) {
+				nodeCount += 1;
+				taskCount += feature.tasks?.length ?? 0;
+			}
+		}
+		return (
+			nodeCount >= LARGE_ROADMAP_NODE_THRESHOLD ||
+			taskCount >= LARGE_ROADMAP_TASK_THRESHOLD
+		);
+	}, [sortedEpics]);
 	const collapsableEpicIds = useMemo(
 		() =>
 			sortedEpics
@@ -544,15 +561,17 @@ function ExplorerPanel({
 			const next = new Set(
 				[...prev].filter((featureId) => collapsableFeatureIdSet.has(featureId)),
 			);
-			collapsableFeatureIds.forEach((featureId) => {
-				if (!previousCollapsableFeatureIds.current.has(featureId)) {
-					next.add(featureId);
-				}
-			});
+			if (!isLargeRoadmap) {
+				collapsableFeatureIds.forEach((featureId) => {
+					if (!previousCollapsableFeatureIds.current.has(featureId)) {
+						next.add(featureId);
+					}
+				});
+			}
 			return areSetsEqual(prev, next) ? prev : next;
 		});
 		previousCollapsableFeatureIds.current = collapsableFeatureIdSet;
-	}, [collapsableFeatureIds]);
+	}, [collapsableFeatureIds, isLargeRoadmap]);
 
 	const toggleEpic = (epicId: string) => {
 		setExpandedEpics((prev) => {

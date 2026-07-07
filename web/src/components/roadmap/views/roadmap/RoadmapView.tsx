@@ -10,7 +10,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ReactFlow,
   Controls,
-  MiniMap,
   Background,
   BackgroundVariant,
   applyNodeChanges,
@@ -112,7 +111,6 @@ function ToolbarAssigneeChip({ avatar }: { avatar: DockAvatar }) {
 interface RoadmapViewProps {
   roadmap: Roadmap;
   epics: RoadmapEpic[];
-  showMiniMap?: boolean;
   minZoom?: number;
   remoteCursors?: RemoteCursor[];
   /** Collaborators present in the room; those with `editingNodeId` set render
@@ -348,7 +346,6 @@ const getLayoutedElements = (
 export const RoadmapView = ({
   roadmap,
   epics,
-  showMiniMap = true,
   minZoom = 0.4,
   remoteCursors = [],
   editors,
@@ -411,6 +408,7 @@ export const RoadmapView = ({
   const runningTaskId = runningLogQuery.data?.task_id ?? null;
   const MIN_ZOOM = minZoom;
   const isReducedMotion = performanceMode === "reducedMotion";
+  const edgeAnimationsEnabled = !isReducedMotion;
   const [toolbarDraggingType, setToolbarDraggingType] =
     useState<ToolbarItemType | null>(null);
 
@@ -465,6 +463,11 @@ export const RoadmapView = ({
   // Original node positions before any drag — used in onNodeDragStop so preview-animated
   // positions of non-dragged nodes don't contaminate the final order calculation
   const dragStartNodesRef = useRef<Node[] | null>(null);
+  const pendingDragFrameRef = useRef<number | null>(null);
+  const latestDragFrameRef = useRef<{
+    nodeId: string;
+    position: { x: number; y: number };
+  } | null>(null);
 
   const [pendingCanvasDrag, setPendingCanvasDrag] = useState<PendingCanvasDrag | null>(null);
   const [isPersistingCanvasDrag, setIsPersistingCanvasDrag] = useState(false);
@@ -574,7 +577,7 @@ export const RoadmapView = ({
         sourceHandle: "epic-right",
         target: feature.id,
         type: "simplebezier",
-        animated: derivedStatus === "in_progress",
+        animated: edgeAnimationsEnabled && derivedStatus === "in_progress",
         style: {
           stroke: getEdgeColor(derivedStatus),
           strokeWidth: 2,
@@ -616,7 +619,7 @@ export const RoadmapView = ({
     // layoutKey is a stable string that only changes when structure/positions
     // change — prevents full layout recalculation for task-content-only updates.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layoutKey]);
+  }, [layoutKey, edgeAnimationsEnabled]);
 
   // "Who is editing what": collapse the collaborator list into a node-id → editors
   // map. Keyed on a small signature so the node memo below only rebuilds when the
@@ -853,6 +856,13 @@ export const RoadmapView = ({
     ): RoadmapEpic[] => {
       const epicNodes = currentNodes.filter((n) => n.type === "epicWidget");
       const featureNodes = currentNodes.filter((n) => n.type === "featureWidget");
+      const epicById = new Map(sourceEpics.map((epic) => [epic.id, epic]));
+      const featureById = new Map(
+        sourceEpics
+          .flatMap((epic) => epic.features ?? [])
+          .map((feature) => [feature.id, feature]),
+      );
+      const featureNodeById = new Map(featureNodes.map((node) => [node.id, node]));
 
       if (!ds) return sourceEpics;
 
@@ -863,7 +873,7 @@ export const RoadmapView = ({
           .map((n) => n.id);
         const reorderedEpics: RoadmapEpic[] = [];
         for (let index = 0; index < sortedEpicIds.length; index++) {
-          const epic = sourceEpics.find((e) => e.id === sortedEpicIds[index]);
+          const epic = epicById.get(sortedEpicIds[index]);
           if (epic) reorderedEpics.push({ ...epic, position: index * 1000 });
         }
         return reorderedEpics;
@@ -877,7 +887,7 @@ export const RoadmapView = ({
       // - Insertion point within the target epic uses center-Y comparison
       //   (top-left Y is inaccurate for nodes that are 150–300 px tall).
 
-      const draggedNode = featureNodes.find((n) => n.id === ds.nodeId);
+      const draggedNode = featureNodeById.get(ds.nodeId);
       if (!draggedNode) return sourceEpics;
 
       const draggedH = (draggedNode.height as number) ?? 150;
@@ -896,8 +906,7 @@ export const RoadmapView = ({
       }
       if (!targetEpicId) return sourceEpics;
 
-      const allFeatures = sourceEpics.flatMap((e) => e.features ?? []);
-      const draggedFeature = allFeatures.find((f) => f.id === ds.nodeId);
+      const draggedFeature = featureById.get(ds.nodeId);
 
       // Epic order is derived from epic Y positions (handles epic reorder during the same session)
       const epicOrder = [...epicNodes]
@@ -908,7 +917,7 @@ export const RoadmapView = ({
       for (let index = 0; index < epicOrder.length; index++) {
         const epicId = epicOrder[index];
         if (!epicId) continue;
-        const epic = sourceEpics.find((e) => e.id === epicId);
+        const epic = epicById.get(epicId);
         if (!epic) continue;
 
         // Original features for this epic, excluding the dragged one, in original position order
@@ -929,7 +938,7 @@ export const RoadmapView = ({
         // Target epic: insert dragged feature at the right position using center-Y comparison
         let insertIndex = originalFeatures.length; // default: append at end
         for (let i = 0; i < originalFeatures.length; i++) {
-          const featureNode = featureNodes.find((n) => n.id === originalFeatures[i].id);
+          const featureNode = featureNodeById.get(originalFeatures[i].id);
           const featureCenterY = featureNode
             ? featureNode.position.y + ((featureNode.height as number) ?? 150) / 2
             : Infinity;
@@ -988,6 +997,7 @@ export const RoadmapView = ({
         edges,
         reorderedEpics,
       );
+      const previewById = new Map(previewPositioned.map((p) => [p.id, p]));
 
       if (ds.type === "epic") {
         const epicCurrentY = draggedPosition.y;
@@ -1001,7 +1011,7 @@ export const RoadmapView = ({
               position: { x: n.position.x, y: epicCurrentY + relY },
             };
           }
-          const preview = previewPositioned.find((p) => p.id === n.id);
+          const preview = previewById.get(n.id);
           return preview ? { ...n, position: preview.position } : n;
         });
         return { nodes: updated, edges };
@@ -1011,7 +1021,7 @@ export const RoadmapView = ({
       // dragged feature's edge re-points (and dashes) when crossing epics.
       const updated = current.map((n) => {
         if (n.id === ds.nodeId) return n;
-        const preview = previewPositioned.find((p) => p.id === n.id);
+        const preview = previewById.get(n.id);
         return preview ? { ...n, position: preview.position } : n;
       });
 
@@ -1028,7 +1038,7 @@ export const RoadmapView = ({
             ...e,
             id: `epic-feature-${closestEpicId}-${ds.nodeId}`,
             source: closestEpicId,
-            animated: isNewEpic,
+            animated: edgeAnimationsEnabled && isNewEpic,
             style: isNewEpic
               ? { stroke: "#f59e0b", strokeWidth: 2.5, strokeDasharray: "6,3" }
               : e.style,
@@ -1037,7 +1047,7 @@ export const RoadmapView = ({
       }
       return { nodes: updated, edges: updatedEdges };
     },
-    [computeReorderedEpics, epics, layoutedNodes, edges],
+    [computeReorderedEpics, epics, layoutedNodes, edges, edgeAnimationsEnabled],
   );
 
   // Mirror a remote collaborator's epic/feature drag by re-running the same
@@ -1069,8 +1079,9 @@ export const RoadmapView = ({
         );
         const reorderedEpics = computeReorderedEpics(nodesForOrder, ds, epics);
         const settled = getLayoutedElements(layoutedNodes, edges, reorderedEpics);
+        const settledById = new Map(settled.nodes.map((node) => [node.id, node]));
         const settledNodes = snap.nodes.map((n) => {
-          const p = settled.nodes.find((s) => s.id === n.id);
+          const p = settledById.get(n.id);
           return p ? { ...n, position: p.position } : n;
         });
         setRemoteWorkingNodes(settledNodes);
@@ -1177,7 +1188,18 @@ export const RoadmapView = ({
     return () => clearTimeout(t);
   }, [remoteDrag, remoteWorkingNodes]);
 
+  const cancelPendingDragFrame = useCallback(() => {
+    if (pendingDragFrameRef.current !== null) {
+      window.cancelAnimationFrame(pendingDragFrameRef.current);
+      pendingDragFrameRef.current = null;
+    }
+    latestDragFrameRef.current = null;
+  }, []);
+
+  useEffect(() => cancelPendingDragFrame, [cancelPendingDragFrame]);
+
   const clearDragState = useCallback(() => {
+    cancelPendingDragFrame();
     workingNodesRef.current = null;
     setWorkingNodes(null);
     workingEdgesRef.current = null;
@@ -1187,7 +1209,7 @@ export const RoadmapView = ({
     dragStateRef.current = null;
     setDragState(null);
     setPendingCanvasDrag(null);
-  }, []);
+  }, [cancelPendingDragFrame]);
 
   const persistCanvasDrag = useCallback(
     async (pending: PendingCanvasDrag) => {
@@ -1236,8 +1258,9 @@ export const RoadmapView = ({
   const applySettledPreview = useCallback(
     (reorderedEpics: RoadmapEpic[]) => {
       const settled = getLayoutedElements(layoutedNodes, edges, reorderedEpics);
+      const settledById = new Map(settled.nodes.map((node) => [node.id, node]));
       const settledNodes = nodes.map((n) => {
-        const p = settled.nodes.find((s) => s.id === n.id);
+        const p = settledById.get(n.id);
         return p ? { ...n, position: p.position } : n;
       });
       workingNodesRef.current = settledNodes;
@@ -1264,6 +1287,7 @@ export const RoadmapView = ({
   const onNodeDragStart = useCallback(
     (_event: React.MouseEvent, node: Node, _nodes: Node[]) => {
       if (!canEditRoadmap) return;
+      cancelPendingDragFrame();
       const type: "epic" | "feature" | null =
         node.type === "epicWidget"
           ? "epic"
@@ -1309,7 +1333,7 @@ export const RoadmapView = ({
 
       onBroadcastNodeDragStart?.({ nodeId: node.id, type, sourceEpicId });
     },
-    [nodes, edges, epics, canEditRoadmap, onBroadcastNodeDragStart],
+    [nodes, edges, epics, canEditRoadmap, cancelPendingDragFrame, onBroadcastNodeDragStart],
   );
 
   const onNodeDrag = useCallback(
@@ -1317,28 +1341,44 @@ export const RoadmapView = ({
       const ds = dragStateRef.current;
       if (!ds || !workingNodesRef.current) return;
 
-      const { nodes: updated, edges: updatedEdges } = computeDragPreview({
-        ds,
-        draggedPosition: node.position,
-        baseNodes: workingNodesRef.current,
-        originalNodes: dragStartNodesRef.current ?? workingNodesRef.current,
-        relativeYs: dragStartFeatureRelativeYsRef.current,
-      });
-
-      workingNodesRef.current = updated;
-      setWorkingNodes(updated);
-      if (ds.type === "feature") {
-        workingEdgesRef.current = updatedEdges;
-        setWorkingEdges(updatedEdges);
-      }
-
-      // Stream the dragged node's position so collaborators see the same reflow.
-      onBroadcastNodeDrag?.({
+      latestDragFrameRef.current = {
         nodeId: node.id,
-        type: ds.type,
-        sourceEpicId: ds.sourceEpicId,
-        x: node.position.x,
-        y: node.position.y,
+        position: { x: node.position.x, y: node.position.y },
+      };
+
+      if (pendingDragFrameRef.current !== null) return;
+
+      pendingDragFrameRef.current = window.requestAnimationFrame(() => {
+        pendingDragFrameRef.current = null;
+        const latest = latestDragFrameRef.current;
+        latestDragFrameRef.current = null;
+        const currentDragState = dragStateRef.current;
+        const baseNodes = workingNodesRef.current;
+        if (!latest || !currentDragState || !baseNodes) return;
+
+        const { nodes: updated, edges: updatedEdges } = computeDragPreview({
+          ds: currentDragState,
+          draggedPosition: latest.position,
+          baseNodes,
+          originalNodes: dragStartNodesRef.current ?? baseNodes,
+          relativeYs: dragStartFeatureRelativeYsRef.current,
+        });
+
+        workingNodesRef.current = updated;
+        setWorkingNodes(updated);
+        if (currentDragState.type === "feature") {
+          workingEdgesRef.current = updatedEdges;
+          setWorkingEdges(updatedEdges);
+        }
+
+        // Stream the dragged node's latest frame so collaborators see the same reflow.
+        onBroadcastNodeDrag?.({
+          nodeId: latest.nodeId,
+          type: currentDragState.type,
+          sourceEpicId: currentDragState.sourceEpicId,
+          x: latest.position.x,
+          y: latest.position.y,
+        });
       });
     },
     [computeDragPreview, onBroadcastNodeDrag],
@@ -1346,6 +1386,7 @@ export const RoadmapView = ({
 
   const onNodeDragStop = useCallback(
     (_event: React.MouseEvent, node: Node, _nodes: Node[]) => {
+      cancelPendingDragFrame();
       const ds = dragStateRef.current;
       if (!ds || !workingNodesRef.current) {
         onBroadcastNodeDragEnd?.(node.id, false);
@@ -1454,6 +1495,7 @@ export const RoadmapView = ({
       computeReorderedEpics,
       epics,
       clearDragState,
+      cancelPendingDragFrame,
       persistCanvasDrag,
       applySettledPreview,
       dontAskEpicReorder,
@@ -1638,26 +1680,6 @@ export const RoadmapView = ({
       >
         <Background variant={BackgroundVariant.Dots} />
         <Controls position="top-right" />
-        {showMiniMap && (
-          <MiniMap
-            position="bottom-right"
-            nodeStrokeWidth={1.5}
-            nodeStrokeColor={(node) => {
-              if (node.type === "epicWidget") return "#9ca3af";
-              if (node.type === "featureWidget") return "#f59e0b";
-              return "#9ca3af";
-            }}
-            nodeColor={(node) => {
-              if (node.type === "epicWidget") return "#f8fafc";
-              if (node.type === "featureWidget") return "#fff7ed";
-              return "#e5e7eb";
-            }}
-            nodeBorderRadius={6}
-            maskColor="rgba(0, 0, 0, 0.04)"
-            className="bg-gray-50 border border-gray-300 rounded-lg"
-            style={{ width: 200, height: 140 }}
-          />
-        )}
         {featureFlags.realtimeCursors && (
           <CollaborationCursorsOverlay remoteCursors={remoteCursors} />
         )}

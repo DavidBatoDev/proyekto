@@ -999,7 +999,6 @@ export function RoadmapViewContent({
 							<div className="flex-1 relative">
 								<RoadmapCanvas
 									roadmap={roadmap}
-									hideMiniMap={isAiChatPanelOpen}
 									onNodeOpen={handleNodeOpen}
 									onNodeClose={handleNodeClose}
 									performanceMode={performanceMode}

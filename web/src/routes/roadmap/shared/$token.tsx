@@ -229,7 +229,6 @@ function SharedRoadmapPage() {
               roadmap={roadmap}
               milestones={milestones}
               epics={epics}
-              hideMiniMap={false}
               canEditTimelineDates={canEdit}
               onUpdateRoadmap={canEdit ? () => {} : noOpHandler}
               onAddMilestone={canEdit ? () => {} : noOpHandler}

@@ -36,7 +36,6 @@ const RoadmapCanvas = ({
   onShare: _onShare,
   onExport: _onExport,
   canEditTimelineDates = true,
-  hideMiniMap = false,
   focusNodeId: focusNodeIdProp,
   focusNodeOffsetX: focusNodeOffsetXProp,
   focusTaskId: focusTaskIdProp,
@@ -65,6 +64,7 @@ const RoadmapCanvas = ({
     collaborators,
     remoteCursors,
     remoteDrag,
+    shouldTrackCursors,
     trackCursor,
     setEditingNode,
     broadcastDataChanged,
@@ -398,11 +398,10 @@ const RoadmapCanvas = ({
           <RoadmapView
             roadmap={roadmap}
             epics={epics}
-            showMiniMap={!hideMiniMap}
             performanceMode={performanceMode}
-            remoteCursors={remoteCursors}
+            remoteCursors={shouldTrackCursors ? remoteCursors : []}
             editors={collaborators}
-            onTrackCursor={trackCursor}
+            onTrackCursor={shouldTrackCursors ? trackCursor : undefined}
             remoteDrag={remoteDrag}
             onBroadcastNodeDragStart={broadcastNodeDragStart}
             onBroadcastNodeDrag={broadcastNodeDrag}

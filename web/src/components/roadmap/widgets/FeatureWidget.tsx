@@ -1,6 +1,5 @@
 import {
   memo,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -23,8 +22,6 @@ import {
 import type { FeatureStatus, RoadmapFeature, RoadmapTask } from "@/types/roadmap";
 import type { RoadmapPerformanceMode } from "../views/roadmap/models/types";
 import { TaskListModal } from "../modals/TaskListModal";
-import { SortableTaskList } from "./SortableTaskList";
-import { useRoadmapStore } from "@/stores/roadmapStore";
 import {
   calculateFeatureProgressFromTasks,
   getCompletedTaskCount,
@@ -33,6 +30,7 @@ import { deriveFeatureStatus } from "@/utils/featureStatus";
 import type { CollaboratorInfo } from "@/hooks/useRoadmapCollaboration";
 import {
   EditingAvatars,
+  EditingTaskAvatar,
   editingBorderColor,
 } from "../collaboration/EditingPresenceBadge";
 
@@ -63,6 +61,205 @@ export interface FeatureWidgetData extends Record<string, unknown> {
 
 type FeatureWidgetNode = Node<FeatureWidgetData>;
 
+const getTaskStatusColor = (status: RoadmapTask["status"]) => {
+  switch (status) {
+    case "done":
+      return "bg-green-100 text-green-800";
+    case "in_progress":
+      return "bg-blue-100 text-blue-800";
+    case "in_review":
+      return "bg-purple-100 text-purple-800";
+    case "blocked":
+      return "bg-red-100 text-red-800";
+    default:
+      return "bg-gray-100 text-gray-800";
+  }
+};
+
+const getAssigneeName = (
+  assignee: NonNullable<RoadmapTask["assignee"]>,
+): string =>
+  assignee.display_name?.trim() ||
+  [assignee.first_name, assignee.last_name].filter(Boolean).join(" ").trim() ||
+  assignee.email ||
+  "Assignee";
+
+const getInitials = (name: string) =>
+  name
+    .split(/\s+/)
+    .map((part) => part[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "?";
+
+const getTaskAssignees = (
+  task: RoadmapTask,
+): NonNullable<RoadmapTask["assignee"]>[] => {
+  if (task.assignees?.length) return task.assignees;
+  return task.assignee ? [task.assignee] : [];
+};
+
+function CanvasTaskAssignees({ task }: { task: RoadmapTask }) {
+  const assignees = getTaskAssignees(task);
+  if (assignees.length === 0) return null;
+
+  return (
+    <span className="shrink-0 flex items-center">
+      {assignees.slice(0, 3).map((assignee, index) => {
+        const name = getAssigneeName(assignee);
+        return assignee.avatar_url ? (
+          <img
+            key={assignee.id}
+            src={assignee.avatar_url}
+            alt=""
+            draggable={false}
+            title={name}
+            className={`w-5 h-5 rounded-full object-cover ring-1 ring-white shadow-sm ${
+              index > 0 ? "-ml-1.5" : ""
+            }`}
+          />
+        ) : (
+          <span
+            key={assignee.id}
+            title={name}
+            className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-semibold bg-linear-to-br from-slate-200 to-slate-300 text-slate-700 ring-1 ring-white shadow-sm ${
+              index > 0 ? "-ml-1.5" : ""
+            }`}
+          >
+            {getInitials(name)}
+          </span>
+        );
+      })}
+      {assignees.length > 3 && (
+        <span className="-ml-1.5 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-semibold bg-gray-100 text-gray-600 ring-1 ring-white shadow-sm">
+          +{assignees.length - 3}
+        </span>
+      )}
+    </span>
+  );
+}
+
+type CanvasTaskRowProps = {
+  task: RoadmapTask;
+  editors?: CollaboratorInfo[];
+  isRunning: boolean;
+  pulseToken?: number;
+  onClick?: (task: RoadmapTask) => void;
+  onToggleComplete?: (task: RoadmapTask) => void;
+};
+
+const CanvasTaskRow = memo(
+  ({
+    task,
+    editors,
+    isRunning,
+    pulseToken,
+    onClick,
+    onToggleComplete,
+  }: CanvasTaskRowProps) => {
+    const [isPulsing, setIsPulsing] = useState(false);
+    const isDone = task.status === "done";
+
+    useEffect(() => {
+      if (!pulseToken) return;
+      setIsPulsing(true);
+      const timeoutId = window.setTimeout(() => setIsPulsing(false), 2100);
+      return () => window.clearTimeout(timeoutId);
+    }, [pulseToken]);
+
+    return (
+      <div
+        data-task-id={task.id}
+        className={`nodrag flex items-center gap-2 border border-transparent px-2 py-1 transition-colors hover:border-gray-200 hover:bg-gray-50 ${
+          isRunning ? "border-emerald-300 bg-emerald-50/70 ring-1 ring-emerald-200" : ""
+        } ${isPulsing ? "roadmap-task-row-pulse" : ""}`}
+      >
+        {onToggleComplete && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleComplete(task);
+            }}
+            className={`shrink-0 rounded border-2 flex h-4 w-4 items-center justify-center transition-colors ${
+              isDone
+                ? "border-emerald-500 bg-emerald-500 text-white"
+                : "border-gray-300 bg-white text-transparent hover:border-emerald-400 hover:text-emerald-500"
+            }`}
+            title={isDone ? "Mark as incomplete" : "Mark as complete"}
+            aria-label={isDone ? "Mark as incomplete" : "Mark as complete"}
+          >
+            <CheckCircle2 className="h-3 w-3" />
+          </button>
+        )}
+
+        <button
+          type="button"
+          disabled={!onClick}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-default"
+          onClick={() => onClick?.(task)}
+        >
+          <span
+            className={`min-w-0 flex-1 truncate text-xs font-medium ${
+              isDone ? "text-gray-400 line-through" : "text-gray-900"
+            }`}
+            title={task.title}
+          >
+            {task.title}
+          </span>
+
+          <span
+            className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${getTaskStatusColor(
+              task.status,
+            )}`}
+          >
+            {task.status.replace(/_/g, " ")}
+          </span>
+
+          <EditingTaskAvatar editors={editors} />
+          <CanvasTaskAssignees task={task} />
+        </button>
+      </div>
+    );
+  },
+);
+
+CanvasTaskRow.displayName = "CanvasTaskRow";
+
+function CanvasTaskList({
+  tasks,
+  runningTaskId,
+  pulseTaskId,
+  pulseTaskToken,
+  taskEditorsByNodeId,
+  onSelectTask,
+  onToggleComplete,
+}: {
+  tasks: RoadmapTask[];
+  runningTaskId?: string | null;
+  pulseTaskId?: string | null;
+  pulseTaskToken?: number;
+  taskEditorsByNodeId?: Map<string, CollaboratorInfo[]>;
+  onSelectTask?: (task: RoadmapTask) => void;
+  onToggleComplete?: (task: RoadmapTask) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-0 px-2 pb-1">
+      {tasks.map((task) => (
+        <CanvasTaskRow
+          key={task.id}
+          task={task}
+          isRunning={runningTaskId === task.id}
+          pulseToken={pulseTaskId === task.id ? pulseTaskToken : undefined}
+          editors={taskEditorsByNodeId?.get(task.id)}
+          onClick={onSelectTask}
+          onToggleComplete={onToggleComplete}
+        />
+      ))}
+    </div>
+  );
+}
+
 export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   const {
     feature,
@@ -84,17 +281,10 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
     taskEditorsByNodeId,
   } = data;
   const isReducedMotion = performanceMode === "reducedMotion";
-  const reorderTasksInFeature = useRoadmapStore((s) => s.reorderTasksInFeature);
   const safelyUpdateTask = (task: RoadmapTask) => {
     if (!onUpdateTask) return;
     void Promise.resolve(onUpdateTask(task)).catch(() => undefined);
   };
-  const handleReorderTasks = useCallback(
-    (fId: string, orderedIds: string[]) => {
-      void reorderTasksInFeature(fId, orderedIds);
-    },
-    [reorderTasksInFeature],
-  );
   const descriptionRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const taskListRef = useRef<HTMLDivElement>(null);
@@ -117,7 +307,6 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
         return "border-purple-500 hover:border-purple-600";
       case "blocked":
         return "border-red-500 hover:border-red-600";
-      case "not_started":
       default:
         return "border-transparent hover:border-gray-200";
     }
@@ -254,7 +443,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
   };
 
   return (
-    <>
+    <div className="relative w-[500px]">
       <motion.div
         ref={cardRef}
         className={`relative group bg-white border-2 rounded-4xl shadow-md hover:shadow-lg transition-all duration-200 w-[500px] max-h-80 flex flex-col ${canEditRoadmap ? "cursor-pointer active:cursor-grabbing" : "cursor-pointer"} ${isPulsing && !isReducedMotion ? "roadmap-widget-light-pulse" : ""
@@ -377,6 +566,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
             <div className="flex items-center gap-1 shrink-0">
               {onEdit && (
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     onEdit(feature);
@@ -389,6 +579,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
               )}
               {onDelete && (
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     onDelete(feature.id);
@@ -523,49 +714,59 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
             const allTasks = feature.tasks ?? [];
             return (
               <div
-                className="absolute top-1/2 -translate-y-1/2 left-[540px] w-[290px] rounded-xl border border-gray-200 bg-white shadow-sm"
+                role="presentation"
+                className="absolute inset-y-0 left-[540px] flex w-[460px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
               >
                 {/* Header */}
-                <div
-                  className="flex items-center justify-between px-2.5 pt-2 pb-1 hover:bg-gray-50 transition-colors cursor-pointer"
-                  onClick={(e) => { e.stopPropagation(); setIsTaskListModalOpen(true); }}
+                <button
+                  type="button"
+                  className="flex w-full shrink-0 items-center justify-between px-2.5 pt-2 pb-1 text-left transition-colors hover:bg-gray-50 cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsTaskListModalOpen(true);
+                  }}
                 >
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                    Tasks · {allTasks.length}
+                    Tasks - {allTasks.length}
                   </span>
                   <Maximize2 className="w-3 h-3 text-gray-500" />
-                </div>
+                </button>
 
-                {/* Sortable task list */}
+                {/* Canvas task list: visible task rows without per-row DnD/menu/query cost. */}
                 <div
+                  role="presentation"
                   ref={taskListRef}
-                  className={`nowheel max-h-[240px] overflow-y-auto ${taskListHasScroll ? "pl-2.5" : ""} [scrollbar-width:thin] [scrollbar-color:transparent_transparent] hover:[scrollbar-color:theme(colors.gray.300)_white] [&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar-track]:bg-white [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-white [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:transition-colors [&:hover::-webkit-scrollbar-thumb]:bg-gray-300 [&:hover::-webkit-scrollbar-thumb:hover]:bg-gray-400`}
+                  className={`nowheel min-h-0 flex-1 overflow-y-auto ${taskListHasScroll ? "pl-2.5" : ""} [scrollbar-width:thin] [scrollbar-color:transparent_transparent] hover:[scrollbar-color:theme(colors.gray.300)_white] [&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar-track]:bg-white [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-white [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:transition-colors [&:hover::-webkit-scrollbar-thumb]:bg-gray-300 [&:hover::-webkit-scrollbar-thumb:hover]:bg-gray-400`}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <SortableTaskList
+                  <CanvasTaskList
                     tasks={allTasks}
-                    featureId={feature.id}
-                    density="compact"
-                    onReorder={handleReorderTasks}
-                    onClick={onSelectTask}
                     pulseTaskId={pulseTaskId}
                     pulseTaskToken={pulseTaskToken}
                     runningTaskId={runningTaskId}
                     taskEditorsByNodeId={taskEditorsByNodeId}
-                    onToggleComplete={(taskId) => {
-                      const t = feature.tasks?.find((t) => t.id === taskId);
-                      if (!t) return;
-                      safelyUpdateTask({ ...t, status: t.status === "done" ? "todo" : "done" });
-                    }}
-                    onUpdateStatus={(taskId, status) => {
-                      const t = feature.tasks?.find((t) => t.id === taskId);
-                      if (!t) return;
-                      safelyUpdateTask({ ...t, status });
-                    }}
+                    onSelectTask={onSelectTask}
+                    onToggleComplete={onUpdateTask ? (task) => {
+                      safelyUpdateTask({
+                        ...task,
+                        status: task.status === "done" ? "todo" : "done",
+                      });
+                    } : undefined}
                   />
                 </div>
+                <button
+                  type="button"
+                  className="flex w-full shrink-0 items-center justify-center gap-1 border-t border-gray-100 px-2 py-1.5 text-[11px] font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setIsTaskListModalOpen(true);
+                  }}
+                >
+                  <Maximize2 className="h-3 w-3" />
+                  Full task controls
+                </button>
               </div>
             );
           })()}
@@ -583,7 +784,7 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
           )}
         </>
       )}
-    </>
+    </div>
   );
 });
 

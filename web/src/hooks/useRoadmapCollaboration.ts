@@ -21,7 +21,7 @@ const COLLAB_COLORS = [
 export function collaborationColor(userId: string): string {
 	let hash = 0;
 	for (const c of userId) hash ^= c.charCodeAt(0);
-	return COLLAB_COLORS[Math.abs(hash) % COLLAB_COLORS.length]!;
+	return COLLAB_COLORS[Math.abs(hash) % COLLAB_COLORS.length] ?? "#6366f1";
 }
 
 export interface CollaboratorInfo {
@@ -531,10 +531,15 @@ export function useRoadmapCollaboration({
 		[sendBroadcast],
 	);
 
+	const hasCollaborators = collaborators.length > 0;
+	const shouldTrackCursors = featureFlags.realtimeCursors && hasCollaborators;
+
 	return {
 		collaborators,
 		remoteCursors,
 		remoteDrag,
+		hasCollaborators,
+		shouldTrackCursors,
 		trackCursor,
 		setEditingNode,
 		broadcastDataChanged,
