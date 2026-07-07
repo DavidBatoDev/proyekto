@@ -119,14 +119,16 @@ def to_outcome(
             "I couldn't finish that within the available steps. "
             'Could you rephrase or narrow the request?'
         )
-        clarifier_card = {
-            'lane': 'edit',
-            'question_id': str(uuid4()),
-            'question': assistant_message,
-            'options': [],
-            'allow_custom': True,
-            'reason': 'budget_exhausted',
-        }
+        clarifier_card = _build_clarifier_card(
+            {
+                'lane': 'edit',
+                'question': assistant_message,
+                'options': [],
+                'allow_custom': True,
+            }
+        )
+        if clarifier_card is not None:
+            clarifier_card['reason'] = 'budget_exhausted'
 
     else:  # chat
         response_mode = 'chat'
@@ -217,20 +219,46 @@ def to_outcome(
 def _build_clarifier_card(clarifier: dict[str, Any] | None) -> dict[str, Any] | None:
     if not clarifier:
         return None
-    options = [o for o in (clarifier.get('options') or []) if isinstance(o, str) and o.strip()]
-    question = str(clarifier.get('question') or '').strip()
-    allow_custom = bool(clarifier.get('allow_custom', True))
-    if not question and not options:
-        return None
+    # New multi-question shape (pre-normalized by the loop's ask_user branch).
+    # Defensively drop entries without question text; fall back to the legacy
+    # flat keys (implicit edit-tool and budget clarifiers) when none survive.
+    questions = [
+        q
+        for q in (clarifier.get('questions') or [])
+        if isinstance(q, dict) and str(q.get('question') or '').strip()
+    ]
+    if not questions:
+        options = [
+            o for o in (clarifier.get('options') or []) if isinstance(o, str) and o.strip()
+        ]
+        question = str(clarifier.get('question') or '').strip()
+        allow_custom = bool(clarifier.get('allow_custom', True))
+        if not question and not options:
+            return None
+        if not options:
+            allow_custom = True
+        questions = [
+            {
+                'id': str(uuid4()),
+                'header': None,
+                'question': question,
+                'multi_select': False,
+                'allow_custom': allow_custom,
+                'options': [{'label': o, 'description': None} for o in options],
+            }
+        ]
     lane = clarifier.get('lane')
     if lane not in {'edit', 'query', 'plan'}:
         lane = 'edit'
+    first = questions[0]
     return {
         'lane': lane,
         'question_id': str(uuid4()),
-        'question': question,
-        'options': options,
-        'allow_custom': allow_custom,
+        # Legacy mirror of questions[0] for web bundles that predate `questions`.
+        'question': first['question'],
+        'options': [o['label'] for o in first['options']],
+        'allow_custom': first['allow_custom'],
+        'questions': questions,
         'reason': 'agent_clarifier',
     }
 

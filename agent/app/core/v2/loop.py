@@ -20,6 +20,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import uuid4
 
 from app.core.contracts.sessions import ChangeGroup
 from app.core.tools.registry import PLANNING_TOOL_NAME
@@ -371,36 +372,123 @@ def _handle_terminal(
         )
 
     if tc.name == ASK_USER_TOOL_NAME:
-        question = str(tc.arguments.get('question') or '').strip()
-        if not question:
+        questions = _normalize_ask_user_questions(tc.arguments)
+        if not questions:
             return {
                 'error': {
                     'code': 'MISSING_QUESTION',
-                    'message': 'ask_user requires a non-empty question.',
+                    'message': (
+                        'ask_user requires `questions` with at least one entry, '
+                        'each with a non-empty question.'
+                    ),
                 }
             }
         lane = tc.arguments.get('lane')
         if lane not in {'edit', 'query', 'plan'}:
             lane = 'edit'
-        options = [
-            o for o in (tc.arguments.get('options') or []) if isinstance(o, str) and o.strip()
-        ]
-        allow_custom = tc.arguments.get('allow_custom')
-        allow_custom = True if allow_custom is None else bool(allow_custom)
+        first = questions[0]
         return LoopResult(
             kind='clarifier',
-            assistant_message=question,
+            assistant_message='\n'.join(q['question'] for q in questions),
             clarifier={
                 'lane': lane,
-                'question': question,
-                'options': options,
-                'allow_custom': allow_custom,
+                'questions': questions,
+                # Legacy mirror of questions[0] — old web bundles render these.
+                'question': first['question'],
+                'options': [o['label'] for o in first['options']],
+                'allow_custom': first['allow_custom'],
             },
             terminal_tool=tc.name,
             termination_reason='clarifier',
         )
 
     return {'error': {'code': 'UNKNOWN_TERMINAL', 'message': f'Unknown terminal {tc.name}.'}}
+
+
+_MAX_CLARIFIER_QUESTIONS = 4
+_MAX_CLARIFIER_OPTIONS = 6
+
+
+def _normalize_ask_user_questions(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Coerce ask_user arguments (new `questions` array or legacy flat
+    question/options) into a canonical question list. Lenient by design:
+    models mix shapes under prompt pressure, so trim/dedupe/cap instead of
+    erroring wherever a usable question survives.
+    """
+    normalized: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    raw_questions = arguments.get('questions')
+    if isinstance(raw_questions, list):
+        for entry in raw_questions:
+            if not isinstance(entry, dict):
+                continue
+            question = str(entry.get('question') or '').strip()
+            if not question:
+                continue
+            entry_id = entry.get('id')
+            entry_id = entry_id.strip() if isinstance(entry_id, str) else ''
+            if not entry_id or entry_id in seen_ids:
+                entry_id = str(uuid4())
+            seen_ids.add(entry_id)
+            header = str(entry.get('header') or '').strip()[:32] or None
+            options: list[dict[str, Any]] = []
+            seen_labels: set[str] = set()
+            for opt in entry.get('options') or []:
+                if isinstance(opt, str):
+                    label, description = opt.strip()[:120], None
+                elif isinstance(opt, dict):
+                    label = str(opt.get('label') or '').strip()[:120]
+                    description = str(opt.get('description') or '').strip()[:200] or None
+                else:
+                    continue
+                if not label or label in seen_labels:
+                    continue
+                seen_labels.add(label)
+                options.append({'label': label, 'description': description})
+                if len(options) >= _MAX_CLARIFIER_OPTIONS:
+                    break
+            allow_custom = entry.get('allow_custom')
+            allow_custom = True if allow_custom is None else bool(allow_custom)
+            if not options:
+                allow_custom = True  # otherwise the question is unanswerable
+            normalized.append(
+                {
+                    'id': entry_id,
+                    'header': header,
+                    'question': question,
+                    'multi_select': bool(entry.get('multi_select', False)),
+                    'allow_custom': allow_custom,
+                    'options': options,
+                }
+            )
+            if len(normalized) >= _MAX_CLARIFIER_QUESTIONS:
+                break
+    if normalized:
+        return normalized
+
+    # Legacy flat shorthand: single question + string options.
+    question = str(arguments.get('question') or '').strip()
+    if not question:
+        return []
+    options = [
+        {'label': o.strip()[:120], 'description': None}
+        for o in (arguments.get('options') or [])
+        if isinstance(o, str) and o.strip()
+    ][:_MAX_CLARIFIER_OPTIONS]
+    allow_custom = arguments.get('allow_custom')
+    allow_custom = True if allow_custom is None else bool(allow_custom)
+    if not options:
+        allow_custom = True
+    return [
+        {
+            'id': str(uuid4()),
+            'header': None,
+            'question': question,
+            'multi_select': False,
+            'allow_custom': allow_custom,
+            'options': options,
+        }
+    ]
 
 
 def _handle_revert(

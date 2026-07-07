@@ -320,6 +320,28 @@ class PendingPlanAnswer(BaseModel):
     answered_at: datetime = Field(default_factory=_utcnow)
 
 
+class ClarifierOption(BaseModel):
+    """One selectable answer inside a `ClarifierQuestion`."""
+
+    label: str
+    description: str | None = None
+
+
+class ClarifierQuestion(BaseModel):
+    """One question inside a multi-question `ClarifierCard`.
+
+    `multi_select` renders checkboxes (pick several) instead of radios.
+    `allow_custom` keeps the free-form "Other..." input available.
+    """
+
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    header: str | None = None
+    question: str
+    multi_select: bool = False
+    allow_custom: bool = True
+    options: list[ClarifierOption] = Field(default_factory=list)
+
+
 class ClarifierCard(BaseModel):
     """Lane-agnostic structured clarifier payload surfaced to the web.
 
@@ -328,6 +350,10 @@ class ClarifierCard(BaseModel):
     input. Submit replays the selection via the `__clarifier_answer__`
     sentinel, and the pre-dispatcher routes the answer to the lane's
     pending-state machine based on `lane`.
+
+    `question`/`options`/`allow_custom` mirror `questions[0]` so web bundles
+    that predate the multi-question `questions` array still render a working
+    single-question card (mobile OTA bundles lag behind the agent).
     """
 
     lane: Literal['edit', 'query', 'plan']
@@ -336,6 +362,7 @@ class ClarifierCard(BaseModel):
     options: list[str] = Field(default_factory=list)
     allow_custom: bool = True
     reason: str | None = None
+    questions: list[ClarifierQuestion] = Field(default_factory=list)
 
 
 class ProposedTask(BaseModel):

@@ -104,12 +104,70 @@ class V2OutcomeTests(unittest.TestCase):
         self.assertEqual(outcome.clarifier_card['question'], 'Which one?')
         self.assertIn('question_id', outcome.clarifier_card)
         self.assertEqual(outcome.clarifier_card['options'], ['A', 'B'])
+        # Legacy-only dict (implicit edit-tool path) synthesizes `questions`.
+        questions = outcome.clarifier_card['questions']
+        self.assertEqual(len(questions), 1)
+        self.assertEqual(questions[0]['question'], 'Which one?')
+        self.assertEqual([o['label'] for o in questions[0]['options']], ['A', 'B'])
+        self._assert_card_survives_contract(outcome.clarifier_card)
+
+    def test_clarifier_card_carries_multi_questions_with_legacy_mirror(self):
+        questions = [
+            {
+                'id': 'q1',
+                'header': 'Target epic',
+                'question': 'Which epic?',
+                'multi_select': False,
+                'allow_custom': True,
+                'options': [{'label': 'Growth', 'description': 'has 3 features'}],
+            },
+            {
+                'id': 'q2',
+                'header': None,
+                'question': 'Which fields?',
+                'multi_select': True,
+                'allow_custom': True,
+                'options': [{'label': 'Status', 'description': None}],
+            },
+        ]
+        result = LoopResult(
+            kind='clarifier',
+            clarifier={'lane': 'edit', 'questions': questions,
+                       'question': 'Which epic?', 'options': ['Growth'], 'allow_custom': True},
+        )
+        outcome = _outcome(result)
+        card = outcome.clarifier_card
+        self.assertEqual(len(card['questions']), 2)
+        self.assertTrue(card['questions'][1]['multi_select'])
+        # Legacy mirror = questions[0].
+        self.assertEqual(card['question'], 'Which epic?')
+        self.assertEqual(card['options'], ['Growth'])
+        self._assert_card_survives_contract(card)
 
     def test_budget_emits_graceful_clarifier(self):
         outcome = _outcome(LoopResult(kind='budget', termination_reason='max_turns'))
         self.assertEqual(outcome.response_mode, 'chat')
         self.assertIsNotNone(outcome.clarifier_card)
         self.assertEqual(outcome.clarifier_card['reason'], 'budget_exhausted')
+        # The budget card is a 0-option question — must stay answerable via
+        # the free-form input, and must carry a synthesized `questions` entry.
+        questions = outcome.clarifier_card['questions']
+        self.assertEqual(len(questions), 1)
+        self.assertTrue(questions[0]['allow_custom'])
+        self.assertEqual(questions[0]['options'], [])
+        self._assert_card_survives_contract(outcome.clarifier_card)
+
+    def _assert_card_survives_contract(self, card):
+        # MessageResponse.clarifier is typed ClarifierCard — pydantic silently
+        # strips unknown keys, so `questions` must exist on the model or the
+        # whole feature no-ops on the wire.
+        from app.core.contracts.sessions import ClarifierCard
+
+        dumped = ClarifierCard.model_validate(card).model_dump()
+        self.assertEqual(
+            [q['question'] for q in dumped['questions']],
+            [q['question'] for q in card['questions']],
+        )
 
     def test_outcome_persists_user_and_assistant_messages(self):
         session = _session()

@@ -16,6 +16,7 @@ loadEnvFiles();
 const defaultTests = [
   'tests.test_v2_loop',
   'tests.test_v2_outcome',
+  'tests.test_v2_sentinels',
   'tests.test_v2_brain',
   'tests.test_v2_reasoning_effort',
   'tests.test_v2_prompt_caching',

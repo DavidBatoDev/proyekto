@@ -140,6 +140,99 @@ class V2LoopTests(unittest.TestCase):
         self.assertEqual(result.kind, 'clarifier')
         self.assertEqual(result.clarifier['question'], 'Which epic?')
         self.assertEqual(result.clarifier['options'], ['Growth', 'Retention'])
+        # Legacy args synthesize a single canonical question.
+        questions = result.clarifier['questions']
+        self.assertEqual(len(questions), 1)
+        self.assertEqual(questions[0]['question'], 'Which epic?')
+        self.assertFalse(questions[0]['multi_select'])
+        self.assertEqual(
+            [o['label'] for o in questions[0]['options']], ['Growth', 'Retention']
+        )
+
+    def test_ask_user_multi_question_terminal(self):
+        args = {
+            'lane': 'edit',
+            'questions': [
+                {
+                    'header': 'Target epic',
+                    'question': 'Which epic?',
+                    'options': [
+                        {'label': 'Growth', 'description': 'has 3 features'},
+                        {'label': 'Retention'},
+                    ],
+                },
+                {
+                    'question': 'Which fields should I update?',
+                    'multi_select': True,
+                    'options': ['Status', 'Assignee', 'Due date'],  # bare strings coerce
+                },
+            ],
+        }
+        result = _run(_ScriptedClient([_tool_resp('ask_user', args)]))
+        self.assertEqual(result.kind, 'clarifier')
+        questions = result.clarifier['questions']
+        self.assertEqual(len(questions), 2)
+        self.assertEqual(questions[0]['header'], 'Target epic')
+        self.assertEqual(questions[0]['options'][0]['description'], 'has 3 features')
+        self.assertTrue(questions[1]['multi_select'])
+        self.assertEqual(
+            [o['label'] for o in questions[1]['options']],
+            ['Status', 'Assignee', 'Due date'],
+        )
+        self.assertTrue(all(q['id'] for q in questions))
+        # Legacy mirror = questions[0]; assistant message carries every question.
+        self.assertEqual(result.clarifier['question'], 'Which epic?')
+        self.assertEqual(result.clarifier['options'], ['Growth', 'Retention'])
+        self.assertIn('Which fields should I update?', result.assistant_message)
+
+    def test_ask_user_questions_wins_over_legacy_args(self):
+        args = {
+            'question': 'Legacy question?',
+            'options': ['Old'],
+            'questions': [{'question': 'New question?', 'options': [{'label': 'New'}]}],
+        }
+        result = _run(_ScriptedClient([_tool_resp('ask_user', args)]))
+        self.assertEqual(result.clarifier['question'], 'New question?')
+        self.assertEqual(result.clarifier['options'], ['New'])
+
+    def test_ask_user_caps_and_dedupes(self):
+        args = {
+            'questions': [
+                {
+                    'question': f'Question {i}?',
+                    'options': [{'label': 'A'}, {'label': 'A'}]  # duplicate label
+                    + [{'label': f'opt{j}'} for j in range(8)],  # over the cap
+                }
+                for i in range(5)  # over the cap
+            ],
+        }
+        result = _run(_ScriptedClient([_tool_resp('ask_user', args)]))
+        questions = result.clarifier['questions']
+        self.assertEqual(len(questions), 4)
+        labels = [o['label'] for o in questions[0]['options']]
+        self.assertEqual(len(labels), 6)
+        self.assertEqual(labels.count('A'), 1)
+
+    def test_ask_user_zero_options_forces_allow_custom(self):
+        args = {
+            'questions': [
+                {'question': 'What deadline?', 'allow_custom': False, 'options': []}
+            ],
+        }
+        result = _run(_ScriptedClient([_tool_resp('ask_user', args)]))
+        self.assertTrue(result.clarifier['questions'][0]['allow_custom'])
+        self.assertTrue(result.clarifier['allow_custom'])
+
+    def test_ask_user_all_invalid_is_fed_back_then_self_corrects(self):
+        client = _ScriptedClient([
+            _tool_resp('ask_user', {'questions': [{'question': '   '}]}),
+            _tool_resp('ask_user', {'question': 'Which epic?', 'options': ['Growth']}),
+        ])
+        result = _run(client)
+        self.assertEqual(result.kind, 'clarifier')
+        self.assertEqual(client.call_count, 2)
+        outputs = [m for m in client.last_messages if m.get('type') == 'function_call_output']
+        self.assertTrue(any('MISSING_QUESTION' in (m.get('output') or '') for m in outputs))
 
     def test_textual_option_question_is_nudged_to_ask_user(self):
         # A plain-text question listing choices strands the user (nothing to

@@ -59,6 +59,40 @@ def _fold_clarifier_answer(stripped: str) -> str:
     parsed = _body(stripped, _CLARIFIER_ANSWER_SENTINEL)
     if not isinstance(parsed, dict):
         return stripped
+
+    # New multi-question payload: {"answers": [{question, selected_options,
+    # custom_answer}, ...]}. A single question with a single value folds to
+    # the bare answer string (matching the legacy behavior the model already
+    # expects); multiple answers fold to a readable Q/A replay.
+    entries = parsed.get('answers')
+    if isinstance(entries, list) and entries:
+        answered: list[tuple[str, str]] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            values = [
+                v.strip()
+                for v in (entry.get('selected_options') or [])
+                if isinstance(v, str) and v.strip()
+            ]
+            custom = entry.get('custom_answer')
+            if isinstance(custom, str) and custom.strip():
+                values.append(custom.strip())
+            if not values:
+                continue
+            question = str(entry.get('question') or entry.get('question_text') or '').strip()
+            answered.append((question, ', '.join(values)))
+        if len(answered) == 1:
+            return answered[0][1]
+        if answered:
+            lines = [f'- {q}: {a}' if q else f'- {a}' for q, a in answered]
+            return (
+                'My answers to your questions:\n'
+                + '\n'.join(lines)
+                + '\nPlease continue with these answers.'
+            )
+
+    # Legacy single-answer payload (old web bundles).
     answer = _answer_text(parsed)
     return answer or stripped
 

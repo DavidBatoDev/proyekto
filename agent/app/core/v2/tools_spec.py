@@ -287,28 +287,102 @@ def ask_user_tool() -> dict[str, Any]:
         'function': {
             'name': ASK_USER_TOOL_NAME,
             'description': (
-                'Ask the user ONE question when you genuinely cannot proceed '
-                'without their decision (ambiguous target, a required choice you '
-                'cannot infer). Provide concrete answer options the user can '
-                'click. Do not use this for questions you can answer yourself '
-                'from the roadmap or read tools.'
+                'Ask the user 1-4 structured questions when you genuinely '
+                'cannot proceed without their decision (ambiguous target, a '
+                'required choice you cannot infer). Batch every question '
+                'blocking the same decision into ONE call via `questions` — '
+                'never ask them across separate turns. Provide concrete '
+                'answer options the user can click. Do not use this for '
+                'questions you can answer yourself from the roadmap or read '
+                'tools.'
             ),
             'parameters': {
                 'type': 'object',
-                'required': ['question'],
+                'required': [],
                 'properties': {
                     'lane': {
                         'type': 'string',
                         'enum': ['edit', 'query', 'plan'],
                         'description': 'Which workflow the question belongs to.',
                     },
-                    'question': {'type': 'string'},
+                    'questions': {
+                        'type': 'array',
+                        'minItems': 1,
+                        'maxItems': 4,
+                        'description': (
+                            'PREFERRED. All questions blocking this decision, '
+                            'asked together (max 4). Each renders as its own '
+                            'group on one card.'
+                        ),
+                        'items': {
+                            'type': 'object',
+                            'required': ['question', 'options'],
+                            'properties': {
+                                'header': {
+                                    'type': 'string',
+                                    'maxLength': 32,
+                                    'description': (
+                                        'Very short topic chip, 1-3 words, '
+                                        'e.g. "Target epic".'
+                                    ),
+                                },
+                                'question': {'type': 'string'},
+                                'multi_select': {
+                                    'type': 'boolean',
+                                    'description': (
+                                        'true = checkboxes, the user may pick '
+                                        'several options. Default false = '
+                                        'radio, pick exactly one.'
+                                    ),
+                                },
+                                'allow_custom': {
+                                    'type': 'boolean',
+                                    'description': (
+                                        'Also offer a free-form "Other" '
+                                        'answer. Default true.'
+                                    ),
+                                },
+                                'options': {
+                                    'type': 'array',
+                                    'minItems': 2,
+                                    'maxItems': 6,
+                                    'items': {
+                                        'type': 'object',
+                                        'required': ['label'],
+                                        'properties': {
+                                            'label': {
+                                                'type': 'string',
+                                                'minLength': 1,
+                                                'maxLength': 120,
+                                                'description': (
+                                                    'A full answer the user '
+                                                    'can select as-is.'
+                                                ),
+                                            },
+                                            'description': {
+                                                'type': 'string',
+                                                'maxLength': 200,
+                                                'description': (
+                                                    'Optional one-line '
+                                                    'context/consequence for '
+                                                    'this option.'
+                                                ),
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    'question': {
+                        'type': 'string',
+                        'description': (
+                            'Legacy single-question shorthand. Prefer `questions`.'
+                        ),
+                    },
                     'options': {
                         'type': 'array',
-                        'description': (
-                            'Concrete full-answer strings the user can select '
-                            'as-is (candidate titles, valid values, etc.).'
-                        ),
+                        'description': 'Options for the legacy shorthand.',
                         'items': {'type': 'string', 'minLength': 1, 'maxLength': 120},
                         'maxItems': 6,
                     },
