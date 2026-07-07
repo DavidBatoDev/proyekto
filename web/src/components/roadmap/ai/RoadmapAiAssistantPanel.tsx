@@ -57,6 +57,10 @@ import {
 	type RoadmapAiCommitImpactedItemKind,
 } from "./useRoadmapAiAssistantSession";
 import { RoadmapAiClarifierCard } from "./RoadmapAiClarifierCard";
+import {
+	buildClarifierDisplayLabel,
+	buildClarifierSentinelPayload,
+} from "./RoadmapAiClarifierCard.logic";
 import { RoadmapAiPlanProposalCard } from "./RoadmapAiPlanProposalCard";
 import { RoadmapAiPlanQuestionCard } from "./RoadmapAiPlanQuestionCard";
 import { RoadmapAiThreadList } from "./RoadmapAiThreadList";
@@ -2536,20 +2540,19 @@ export function RoadmapAiAssistantPanel({
 										<RoadmapAiClarifierCard
 											card={message.clarifier}
 											disabled={isSending}
-											onSubmit={(answer) => {
-												const lane = message.clarifier!.lane;
-												const friendly =
-													(answer as { custom_answer?: string | null })
-														.custom_answer ||
-													(answer as { selected_option?: string | null })
-														.selected_option ||
-													"Submitted answer.";
+											onSubmit={(answers) => {
+												const clarifierCard = message.clarifier!;
 												submitProgrammaticMessage(
-													`__clarifier_answer__\n${JSON.stringify({
-														lane,
-														...answer,
-													})}`,
-													{ displayLabel: friendly },
+													`__clarifier_answer__\n${JSON.stringify(
+														buildClarifierSentinelPayload(
+															clarifierCard.lane,
+															clarifierCard,
+															answers,
+														),
+													)}`,
+													{
+														displayLabel: buildClarifierDisplayLabel(answers),
+													},
 												);
 											}}
 										/>

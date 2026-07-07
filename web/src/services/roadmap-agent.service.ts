@@ -171,13 +171,38 @@ export interface AgentPlanProposal {
   answers?: AgentPlanProposalAnswer[];
 }
 
+export interface AgentClarifierOption {
+  label: string;
+  description?: string | null;
+}
+
+export interface AgentClarifierQuestion {
+  id: string;
+  header?: string | null;
+  question: string;
+  multi_select: boolean;
+  allow_custom: boolean;
+  options: AgentClarifierOption[];
+}
+
+export interface AgentClarifierAnswerEntry {
+  question_id: string;
+  question?: string;
+  selected_options: string[];
+  custom_answer?: string;
+}
+
 export interface AgentClarifierCard {
   lane: "edit" | "query" | "plan";
   question_id: string;
+  /** Legacy mirror of `questions[0].question` — kept for old persisted rows. */
   question: string;
+  /** Legacy mirror of `questions[0]` option labels. */
   options: string[];
   allow_custom: boolean;
   reason?: string | null;
+  /** 1–4 structured questions; absent on cards from older agents. */
+  questions?: AgentClarifierQuestion[];
 }
 
 export type AgentTraceEventStatus = "running" | "success" | "error";
