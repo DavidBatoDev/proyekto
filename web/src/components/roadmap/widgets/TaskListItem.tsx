@@ -516,7 +516,7 @@ export const TaskListItem = memo(
 					createPortal(
 						<div
 							ref={checkboxMenuRef}
-							className="fixed z-80 bg-white border border-gray-300 rounded-md shadow-lg py-1 min-w-[150px]"
+							className="fixed z-300 bg-white border border-gray-300 rounded-md shadow-lg py-1 min-w-[150px]"
 							style={{
 								top: checkboxMenuPosition.top,
 								left: checkboxMenuPosition.left,
