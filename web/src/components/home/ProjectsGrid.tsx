@@ -1,7 +1,14 @@
 ﻿import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, Calendar, Clock, Inbox, Plus } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import {
+	ArrowRight,
+	Calendar,
+	ChevronDown,
+	Clock,
+	Inbox,
+	Plus,
+} from "lucide-react";
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { openProjectInviteModal } from "@/components/invites/projectInviteModalEvents";
 import { supabase } from "@/lib/supabase";
 import {
@@ -56,6 +63,10 @@ const PRIMARY_EMPTY_COPY = {
 	description:
 		"Your projects will appear here once you create one or accept an invitation.",
 };
+
+// Dashboard shows this many project/invite cards before the "View more" toggle
+// reveals the rest with a staggered slide-up.
+const INITIAL_VISIBLE_CARDS = 6;
 
 function formatInviteSentLabel(value: string): string {
 	const parsed = new Date(value);
@@ -224,6 +235,10 @@ function ProjectsSection({
 	emptyTitle: string;
 	emptyDescription: string;
 }) {
+	const [showAll, setShowAll] = useState(false);
+	const hasMore = cards.length > INITIAL_VISIBLE_CARDS;
+	const visibleCards = showAll ? cards : cards.slice(0, INITIAL_VISIBLE_CARDS);
+
 	return (
 		<section>
 			<div className="grid grid-cols-2 gap-3 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -240,13 +255,26 @@ function ProjectsSection({
 						className="col-span-full"
 					/>
 				) : (
-					cards.slice(0, 6).map((card, index) => {
+					visibleCards.map((card, index) => {
+						// Cards past the initial fold slide up in a gentle stagger when
+						// "View more" is expanded; the first page renders without it so
+						// the section's own entrance animation stays clean on load.
+						const isExtra = index >= INITIAL_VISIBLE_CARDS;
+						const revealClassName = isExtra ? "app-slide-up" : undefined;
+						const revealStyle: CSSProperties | undefined = isExtra
+							? {
+									animationDelay: `${(index - INITIAL_VISIBLE_CARDS) * 60}ms`,
+								}
+							: undefined;
+
 						if (card.kind === "invite") {
 							return (
 								<InviteCard
 									key={card.invite.id}
 									invite={card.invite}
 									number={index + 1}
+									className={revealClassName}
+									style={revealStyle}
 								/>
 							);
 						}
@@ -281,11 +309,36 @@ function ProjectsSection({
 									card.project.start_date ||
 									null
 								}
+								className={revealClassName}
+								style={revealStyle}
 							/>
 						);
 					})
 				)}
 			</div>
+
+			{!isLoading && hasMore ? (
+				<div className="mt-6 flex justify-center">
+					<button
+						type="button"
+						onClick={() => setShowAll((prev) => !prev)}
+						aria-expanded={showAll}
+						data-testid="projects-view-more"
+						className="group inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-[13px] font-semibold text-slate-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:text-slate-900 hover:shadow-md"
+					>
+						<span>
+							{showAll
+								? "Show less"
+								: `View more (${cards.length - INITIAL_VISIBLE_CARDS})`}
+						</span>
+						<ChevronDown
+							className={`h-4 w-4 text-slate-500 transition-transform duration-300 group-hover:text-slate-700 ${
+								showAll ? "rotate-180" : ""
+							}`}
+						/>
+					</button>
+				</div>
+			) : null}
 		</section>
 	);
 }
@@ -293,15 +346,22 @@ function ProjectsSection({
 function InviteCard({
 	invite,
 	number,
+	className,
+	style,
 }: {
 	invite: ProjectInvite;
 	number: number;
+	className?: string;
+	style?: CSSProperties;
 }) {
 	return (
 		<button
 			type="button"
 			onClick={() => openProjectInviteModal(invite.id)}
-			className="group flex h-auto flex-col sm:h-[385px] rounded-2xl border border-slate-900 bg-slate-900 p-4 text-left text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-lg"
+			className={`group flex h-auto flex-col sm:h-[385px] rounded-2xl border border-slate-900 bg-slate-900 p-4 text-left text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-lg ${
+				className ?? ""
+			}`}
+			style={style}
 		>
 			<div className="flex-1 space-y-4 sm:space-y-6">
 				<div>
@@ -394,6 +454,8 @@ export function ProjectCard({
 	progressColor,
 	nextUp,
 	dueDate,
+	className,
+	style,
 }: {
 	number: number;
 	projectId: string;
@@ -406,14 +468,19 @@ export function ProjectCard({
 	progressColor: string;
 	nextUp: string;
 	dueDate: string | null;
+	className?: string;
+	style?: CSSProperties;
 }) {
 	const isDraft = status.toLowerCase() === "draft";
 
 	return (
 		<div
-			className="group flex h-auto flex-col sm:h-[385px] rounded-2xl border border-slate-200 bg-linear-to-b from-white from-95% to-transparent p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg"
+			className={`group flex h-auto flex-col sm:h-[385px] rounded-2xl border border-slate-200 bg-linear-to-b from-white from-95% to-transparent p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg ${
+				className ?? ""
+			}`}
 			style={{
 				backgroundImage: `linear-gradient(to bottom, white 98%, ${statusColor}20)`,
+				...style,
 			}}
 		>
 			<div className="flex-1 space-y-4 sm:space-y-6">

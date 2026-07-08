@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import {
 	Briefcase,
 	CheckCircle2,
+	ChevronDown,
 	Ellipsis,
 	Inbox,
 	Loader,
@@ -19,6 +20,10 @@ const ROADMAP_TAG_CLASS: Record<string, string> = {
 	Completed: "bg-sky-100 text-sky-700",
 	Draft: "bg-amber-100 text-amber-700",
 };
+
+// Dashboard shows this many roadmap cards before the "View more" toggle reveals
+// the rest with a staggered slide-up.
+const INITIAL_VISIBLE_ROADMAPS = 6;
 
 const EpicOverview = ({ preview }: { preview: RoadmapPreview }) => {
 	const MAX_EPICS = 5;
@@ -95,6 +100,7 @@ export function RoadmapsGrid() {
 	const [deletingRoadmapId, setDeletingRoadmapId] = useState<string | null>(
 		null,
 	);
+	const [showAllRoadmaps, setShowAllRoadmaps] = useState(false);
 
 	useEffect(() => {
 		const handleOutsideClick = (event: MouseEvent) => {
@@ -184,6 +190,10 @@ export function RoadmapsGrid() {
 			),
 		[roadmapsQuery.data],
 	);
+	const hasMoreRoadmaps = templates.length > INITIAL_VISIBLE_ROADMAPS;
+	const visibleTemplates = showAllRoadmaps
+		? templates
+		: templates.slice(0, INITIAL_VISIBLE_ROADMAPS);
 
 	return (
 		<div
@@ -199,13 +209,6 @@ export function RoadmapsGrid() {
 							MY ROADMAPS
 						</h2>
 					</div>
-					<button
-						type="button"
-						className="inline-flex shrink-0 items-center gap-1 text-[13px] font-semibold text-slate-700 hover:text-slate-900"
-					>
-						View All
-						<ArrowRight className="h-3.5 w-3.5" />
-					</button>
 				</div>
 				<p className="mt-1 text-xs text-slate-600">
 					Each matched project unlocks a consultant-led roadmap for structured execution
@@ -243,11 +246,21 @@ export function RoadmapsGrid() {
 					</Link>
 				</div>
 			) : (
+				<>
 				<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 items-stretch">
-					{templates.map((template) => (
+					{visibleTemplates.map((template, index) => (
 						<div
 							key={template.id}
-							className="group relative flex h-auto flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg sm:h-[420px]"
+							className={`group relative flex h-auto flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-lg sm:h-[420px] ${
+								index >= INITIAL_VISIBLE_ROADMAPS ? "app-slide-up" : ""
+							}`}
+							style={
+								index >= INITIAL_VISIBLE_ROADMAPS
+									? {
+											animationDelay: `${(index - INITIAL_VISIBLE_ROADMAPS) * 60}ms`,
+										}
+									: undefined
+							}
 						>
 							<div className="absolute top-3 right-3 z-20" data-roadmap-menu>
 								<button
@@ -348,6 +361,29 @@ export function RoadmapsGrid() {
 						</div>
 					))}
 				</div>
+				{hasMoreRoadmaps ? (
+					<div className="mt-6 flex justify-center">
+						<button
+							type="button"
+							onClick={() => setShowAllRoadmaps((prev) => !prev)}
+							aria-expanded={showAllRoadmaps}
+							data-testid="roadmaps-view-more"
+							className="group inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-[13px] font-semibold text-slate-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:text-slate-900 hover:shadow-md"
+						>
+							<span>
+								{showAllRoadmaps
+									? "Show less"
+									: `View more (${templates.length - INITIAL_VISIBLE_ROADMAPS})`}
+							</span>
+							<ChevronDown
+								className={`h-4 w-4 text-slate-500 transition-transform duration-300 group-hover:text-slate-700 ${
+									showAllRoadmaps ? "rotate-180" : ""
+								}`}
+							/>
+						</button>
+					</div>
+				) : null}
+				</>
 			)}
 		</div>
 	);
