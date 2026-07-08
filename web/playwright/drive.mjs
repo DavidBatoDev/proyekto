@@ -8,6 +8,8 @@
  * Commands:
  *   {seq, action: "send",      text}            -> send a chat message
  *   {seq, action: "clarifier", prefer}          -> answer the visible clarifier card
+ *                                                  (prefer: string, or array with
+ *                                                  one entry per question)
  *   {seq, action: "probe",     text}            -> sidebar-search for text (visible?)
  *   {seq, action: "epics"}                      -> backend epic list
  *   {seq, action: "shot",      name}            -> full-page screenshot
@@ -54,7 +56,16 @@ function summarize(body) {
       (i) => `${i.impact}:${i.node_type}:${i.title}`,
     ),
     clarifier: body.clarifier
-      ? { q: trim(body.clarifier.question, 160), options: body.clarifier.options }
+      ? {
+          q: trim(body.clarifier.question, 160),
+          options: body.clarifier.options,
+          questions: (body.clarifier.questions ?? []).map((q) => ({
+            header: q.header,
+            q: trim(q.question, 80),
+            multi: q.multi_select,
+            options: (q.options ?? []).map((o) => o.label),
+          })),
+        }
       : null,
     plan: body.plan_proposal ? "plan_proposal_present" : null,
     staged: body.staged_operations_count,
@@ -84,11 +95,18 @@ async function captureSend(fire, { snap } = {}) {
   if (timer) clearInterval(timer);
   const body = resp ? await resp.json().catch(() => ({})) : {};
   await page.waitForTimeout(250);
-  const clarifierCardVisible = await page
-    .getByRole("button", { name: "Submit answer" })
-    .last()
-    .isVisible()
-    .catch(() => false);
+  // New builds expose a stable testid; the role query keeps old builds working.
+  const clarifierCardVisible =
+    (await page
+      .getByTestId("clarifier-submit")
+      .last()
+      .isVisible()
+      .catch(() => false)) ||
+    (await page
+      .getByRole("button", { name: "Submit answer" })
+      .last()
+      .isVisible()
+      .catch(() => false));
   return { ...summarize(body), clarifier_card_visible: clarifierCardVisible };
 }
 
@@ -179,8 +197,45 @@ const handlers = {
     };
   },
   async clarifier({ prefer }) {
-    // The clarifier is the only radio group in the panel (and renders only on
-    // the newest message), so target labels/radios directly.
+    // `prefer` is a string, or an array with one entry per question for
+    // multi-question cards. Per question: click the matching option label,
+    // else fall back to Other + free text, else the first option. Advance
+    // with Next until Submit appears (paginated card, max 4 questions).
+    const card = page.getByTestId("clarifier-card").last();
+    if ((await card.count()) > 0) {
+      const prefs = Array.isArray(prefer) ? prefer : [prefer];
+      for (let i = 0; i < 4; i += 1) {
+        const want = prefs[Math.min(i, prefs.length - 1)];
+        const labels = card
+          .locator('[data-testid="clarifier-option"]')
+          .filter({ hasText: want ?? "" });
+        const other = card.getByTestId("clarifier-other");
+        if (want && (await labels.count()) > 0) {
+          await labels.first().click();
+        } else if (want && (await other.count()) > 0) {
+          await other.click();
+          await card.getByTestId("clarifier-other-input").fill(want);
+        } else {
+          const inputs = card.locator('[data-testid="clarifier-option"] input');
+          if ((await inputs.count()) > 0) {
+            await inputs.first().check();
+          } else if ((await other.count()) > 0) {
+            await other.click();
+            await card
+              .getByTestId("clarifier-other-input")
+              .fill("Proceed as you see fit.");
+          }
+        }
+        const next = card.getByTestId("clarifier-next");
+        if (!(await next.isVisible().catch(() => false))) break;
+        await next.click();
+      }
+      return captureSend(async () => {
+        await card.getByTestId("clarifier-submit").click();
+      });
+    }
+    // Old builds: the clarifier is the only radio group in the panel (and
+    // renders only on the newest message), so target labels/radios directly.
     const labels = panel().locator("label").filter({ hasText: prefer ?? "" });
     if (prefer && (await labels.count()) > 0) await labels.first().click();
     else await panel().locator('input[type="radio"]').first().check();
