@@ -15,9 +15,9 @@ import type { ParticipantResponse } from '../dto/meeting.dto';
 const MEETING_COLUMNS =
   'id, project_id, host_id, created_by, title, description, type, ' +
   'scheduled_at, ends_at, duration_minutes, status, video_provider, ' +
-  'meeting_url, timezone, location, reminder_minutes, guest_email, ' +
-  'guest_name, reschedule_of, series_id, recurrence_id, original_start, ' +
-  'is_exception, created_at, updated_at';
+  'meeting_url, timezone, location, reminder_minutes, reminder_sent_at, ' +
+  'guest_email, guest_name, reschedule_of, series_id, recurrence_id, ' +
+  'original_start, is_exception, created_at, updated_at';
 
 const SERIES_COLUMNS =
   'id, project_id, created_by, host_id, title, description, type, ' +
@@ -342,6 +342,35 @@ export class SupabaseMeetingsRepository implements MeetingsRepository {
       .eq('status', 'scheduled')
       .gte('scheduled_at', fromIso);
     if (error) throw new Error(error.message);
+  }
+
+  async findReminderCandidates(
+    nowIso: string,
+    maxAheadIso: string,
+  ): Promise<Meeting[]> {
+    const { data, error } = await this.supabase
+      .from('meetings')
+      .select(MEETING_WITH_PARTICIPANTS)
+      .eq('status', 'scheduled')
+      .not('reminder_minutes', 'is', null)
+      .is('reminder_sent_at', null)
+      .gt('scheduled_at', nowIso)
+      .lte('scheduled_at', maxAheadIso)
+      .order('scheduled_at', { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data as unknown as Meeting[]) || [];
+  }
+
+  async claimReminders(ids: string[], sentAtIso: string): Promise<string[]> {
+    if (!ids.length) return [];
+    const { data, error } = await this.supabase
+      .from('meetings')
+      .update({ reminder_sent_at: sentAtIso })
+      .in('id', ids)
+      .is('reminder_sent_at', null)
+      .select('id');
+    if (error) throw new Error(error.message);
+    return ((data as { id: string }[]) || []).map((r) => r.id);
   }
 
   private async getParticipantMeetingIds(userId: string): Promise<string[]> {

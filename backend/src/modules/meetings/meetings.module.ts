@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MeetingsController } from './meetings.controller';
 import { MeetingsService, MEETINGS_REPOSITORY } from './meetings.service';
 import { SupabaseMeetingsRepository } from './repositories/meetings.repository.supabase';
+import { CronSecretGuard } from '../../common/guards/cron-secret.guard';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuthorizationModule } from '../projects/authorization/authorization.module';
 
@@ -10,6 +11,7 @@ import { AuthorizationModule } from '../projects/authorization/authorization.mod
   controllers: [MeetingsController],
   providers: [
     MeetingsService,
+    CronSecretGuard,
     {
       provide: MEETINGS_REPOSITORY,
       useClass: SupabaseMeetingsRepository,

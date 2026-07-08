@@ -249,6 +249,13 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   JITSI_BASE_URL: string = 'https://meet.jit.si';
+
+  // Shared secret guarding the scheduler-triggered meeting reminder endpoint
+  // (POST /api/meetings/cron/reminders, sent as the `x-cron-secret` header).
+  // Unset = the endpoint denies all callers (reminders simply aren't delivered).
+  @IsOptional()
+  @IsString()
+  MEETINGS_CRON_SECRET?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

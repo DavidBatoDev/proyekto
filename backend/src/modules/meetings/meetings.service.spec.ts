@@ -28,6 +28,8 @@ function makeRepo(): jest.Mocked<MeetingsRepository> {
     cancelSeriesInstances: jest.fn().mockResolvedValue(undefined),
     deleteFutureNonExceptionInstances: jest.fn().mockResolvedValue(undefined),
     updateFutureNonExceptionInstances: jest.fn().mockResolvedValue(undefined),
+    findReminderCandidates: jest.fn().mockResolvedValue([]),
+    claimReminders: jest.fn().mockResolvedValue([]),
   };
 }
 
@@ -64,6 +66,7 @@ function baseMeeting(overrides: Partial<Meeting> = {}): Meeting {
     timezone: null,
     location: null,
     reminder_minutes: null,
+    reminder_sent_at: null,
     guest_email: null,
     guest_name: null,
     reschedule_of: null,
@@ -246,5 +249,164 @@ describe('MeetingsService', () => {
       service.updateDetails('intruder', 'm1', { title: 'Hijack' }),
     ).rejects.toMatchObject({ status: 403 });
     expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('creates a recurring series and materializes its occurrences', async () => {
+    const series = {
+      id: 's1',
+      project_id: null,
+      created_by: 'user-1',
+      host_id: 'user-1',
+      title: 'Standup',
+      description: null,
+      type: 'status_sync' as const,
+      duration_minutes: 30,
+      timezone: 'UTC',
+      video_provider: 'jitsi' as const,
+      meeting_url: 'https://meet.jit.si/proyekto-x',
+      location: null,
+      reminder_minutes: null,
+      rrule: 'FREQ=DAILY;COUNT=3',
+      dtstart_wall: '2026-07-10T10:00:00',
+      dtstart: '2026-07-10T10:00:00.000Z',
+      until: null,
+      count: 3,
+      status: 'active',
+      materialized_until: null,
+      created_at: '',
+      updated_at: '',
+    };
+    repo.createSeries.mockResolvedValue(series);
+    repo.insertInstanceIgnoreConflict.mockImplementation((row) =>
+      Promise.resolve(
+        baseMeeting({
+          id: `inst-${row.recurrence_id}`,
+          series_id: 's1',
+          scheduled_at: row.scheduled_at as string,
+        }),
+      ),
+    );
+
+    const result = await service.create('user-1', {
+      title: 'Standup',
+      type: 'status_sync',
+      scheduled_at: '2026-07-10T10:00:00.000Z',
+      timezone: 'UTC',
+      recurrence: 'FREQ=DAILY;COUNT=3',
+      participant_ids: ['user-2'],
+    });
+
+    expect(repo.createSeries).toHaveBeenCalledTimes(1);
+    // Three daily occurrences materialized.
+    expect(repo.insertInstanceIgnoreConflict).toHaveBeenCalledTimes(3);
+    // Bulk participants: (host + one invitee) × 3 instances.
+    const rows = repo.insertParticipantRows.mock.calls[0][0];
+    expect(rows).toHaveLength(6);
+    // Exactly one invite notification (per invitee, not per instance).
+    expect(notifications.createNotification).toHaveBeenCalledTimes(1);
+    expect(notifications.createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: 'user-2', type_name: 'meeting_invited' }),
+    );
+    expect(result.series_id).toBe('s1');
+  });
+
+  it('cancel scope=all retires the series and all its instances', async () => {
+    repo.findById.mockResolvedValue(baseMeeting({ series_id: 's1' }));
+
+    await service.cancel('user-1', 'm1', 'all');
+
+    expect(repo.updateSeries).toHaveBeenCalledWith('s1', { status: 'cancelled' });
+    expect(repo.cancelSeriesInstances).toHaveBeenCalledWith('s1');
+  });
+
+  it('cancel scope=following truncates the series from the occurrence', async () => {
+    const occ = baseMeeting({
+      series_id: 's1',
+      scheduled_at: '2026-07-20T10:00:00.000Z',
+    });
+    repo.findById.mockResolvedValue(occ);
+
+    await service.cancel('user-1', 'm1', 'following');
+
+    expect(repo.cancelSeriesInstances).toHaveBeenCalledWith(
+      's1',
+      '2026-07-20T10:00:00.000Z',
+    );
+    expect(repo.updateSeries).toHaveBeenCalledWith(
+      's1',
+      expect.objectContaining({ until: '2026-07-20T10:00:00.000Z' }),
+    );
+  });
+
+  const participant = (over: Record<string, unknown>) => ({
+    id: 'p',
+    user_id: null,
+    guest_email: null,
+    guest_name: null,
+    role: 'attendee',
+    response: 'pending' as const,
+    ...over,
+  });
+
+  it('dispatchReminders notifies each participant of a due meeting once (guests skipped)', async () => {
+    const due = baseMeeting({
+      id: 'm1',
+      reminder_minutes: 30,
+      // 10 min out with a 30-min reminder → the lead time has passed.
+      scheduled_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+      participants: [
+        participant({ id: 'p1', user_id: 'user-1', role: 'host', response: 'accepted' }),
+        participant({ id: 'p2', user_id: 'user-2' }),
+        participant({ id: 'p3', guest_email: 'guest@example.com' }), // no user_id
+      ],
+    });
+    repo.findReminderCandidates.mockResolvedValue([due]);
+    repo.claimReminders.mockResolvedValue(['m1']);
+
+    const res = await service.dispatchReminders();
+
+    expect(repo.claimReminders).toHaveBeenCalledWith(['m1'], expect.any(String));
+    // Host + attendee-with-account notified; the email-only guest is skipped.
+    expect(notifications.createNotification).toHaveBeenCalledTimes(2);
+    expect(notifications.createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: 'user-1', type_name: 'meeting_reminder' }),
+    );
+    expect(notifications.createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: 'user-2', type_name: 'meeting_reminder' }),
+    );
+    expect(res).toEqual({ due: 1, notified: 2 });
+  });
+
+  it('dispatchReminders skips a meeting whose reminder lead time is not yet reached', async () => {
+    const notYet = baseMeeting({
+      id: 'm9',
+      reminder_minutes: 15,
+      // 60 min out with a 15-min reminder → not due for another 45 min.
+      scheduled_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      participants: [participant({ id: 'p1', user_id: 'user-1', role: 'host' })],
+    });
+    repo.findReminderCandidates.mockResolvedValue([notYet]);
+
+    const res = await service.dispatchReminders();
+
+    expect(repo.claimReminders).not.toHaveBeenCalled();
+    expect(notifications.createNotification).not.toHaveBeenCalled();
+    expect(res).toEqual({ due: 0, notified: 0 });
+  });
+
+  it('dispatchReminders does not notify a meeting another run already claimed', async () => {
+    const due = baseMeeting({
+      id: 'm1',
+      reminder_minutes: 30,
+      scheduled_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+      participants: [participant({ id: 'p1', user_id: 'user-1', role: 'host' })],
+    });
+    repo.findReminderCandidates.mockResolvedValue([due]);
+    repo.claimReminders.mockResolvedValue([]); // lost the claim race
+
+    const res = await service.dispatchReminders();
+
+    expect(notifications.createNotification).not.toHaveBeenCalled();
+    expect(res).toEqual({ due: 0, notified: 0 });
   });
 });

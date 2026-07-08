@@ -36,6 +36,10 @@ export const MEETINGS_REPOSITORY = Symbol('MEETINGS_REPOSITORY');
 
 const DEFAULT_DURATION_MINUTES = 30;
 
+// Upper bound for the reminder-scan fetch — matches the max reminder offset
+// (4 weeks). No meeting further out can be due for a reminder yet.
+const REMINDER_SCAN_AHEAD_MS = 40320 * 60_000;
+
 @Injectable()
 export class MeetingsService {
   constructor(
@@ -557,7 +561,11 @@ export class MeetingsService {
     return (await this.repo.findById(created.id)) ?? created;
   }
 
-  async cancel(userId: string, id: string): Promise<Meeting> {
+  async cancel(
+    userId: string,
+    id: string,
+    scope?: MeetingEditScope,
+  ): Promise<Meeting> {
     const meeting = await this.repo.findById(id);
     if (!meeting) throw new NotFoundException('Meeting not found.');
 
@@ -572,7 +580,26 @@ export class MeetingsService {
     }
     if (meeting.status === 'cancelled') return meeting;
 
-    const updated = await this.repo.update(id, { status: 'cancelled' });
+    // Series-wide cancellation. 'all' retires the template + every scheduled
+    // instance; 'following' cancels this occurrence onward and truncates the
+    // series so it won't re-materialize past the split.
+    if (meeting.series_id && scope && scope !== 'this') {
+      if (scope === 'all') {
+        await this.repo.updateSeries(meeting.series_id, { status: 'cancelled' });
+        await this.repo.cancelSeriesInstances(meeting.series_id);
+      } else {
+        await this.repo.cancelSeriesInstances(
+          meeting.series_id,
+          meeting.scheduled_at,
+        );
+        await this.repo.updateSeries(meeting.series_id, {
+          until: meeting.scheduled_at,
+          materialized_until: meeting.scheduled_at,
+        });
+      }
+    } else {
+      await this.repo.update(id, { status: 'cancelled' });
+    }
 
     const notifyIds = (meeting.participants ?? [])
       .map((p) => p.user_id)
@@ -586,7 +613,7 @@ export class MeetingsService {
       link_url: this.linkFor(meeting),
     });
 
-    return updated;
+    return (await this.repo.findById(id)) ?? meeting;
   }
 
   async respond(userId: string, id: string, dto: RespondMeetingDto) {
@@ -646,6 +673,14 @@ export class MeetingsService {
     }
     if (meeting.status !== 'scheduled') {
       throw new BadRequestException(`Cannot edit a ${meeting.status} meeting.`);
+    }
+
+    // Series-wide / this-and-following edits fan out to the template.
+    if (meeting.series_id && dto.scope === 'all') {
+      return this.updateSeriesAll(userId, meeting, dto);
+    }
+    if (meeting.series_id && dto.scope === 'following') {
+      return this.updateSeriesFollowing(userId, meeting, dto);
     }
 
     const patch: Partial<Meeting> = {};
@@ -708,6 +743,15 @@ export class MeetingsService {
       meeting.video_provider === 'external_link'
     ) {
       patch.meeting_url = dto.meeting_url;
+    }
+
+    // Editing a single occurrence of a series detaches it as an override so a
+    // later series-wide re-materialization won't clobber it.
+    if (meeting.series_id) {
+      patch.is_exception = true;
+      if (timeChanged && meeting.recurrence_id && !meeting.original_start) {
+        patch.original_start = meeting.recurrence_id;
+      }
     }
 
     if (Object.keys(patch).length) {
@@ -900,6 +944,69 @@ export class MeetingsService {
         );
       }
     }
+  }
+
+  // ── reminders ─────────────────────────────────────────────────────────────
+
+  /**
+   * Scan for meetings whose reminder is now due and emit a `meeting_reminder`
+   * notification to each participant, exactly once. Meant to be polled by an
+   * external scheduler (Cloud Scheduler / pg_cron) via the guarded cron endpoint.
+   *
+   * Idempotent + race-safe: candidates are claimed with an atomic
+   * `reminder_sent_at` stamp, and only the rows this run wins are notified, so
+   * overlapping ticks never double-send.
+   */
+  async dispatchReminders(): Promise<{ due: number; notified: number }> {
+    const now = Date.now();
+    const nowIso = new Date(now).toISOString();
+    const maxAheadIso = new Date(now + REMINDER_SCAN_AHEAD_MS).toISOString();
+
+    const candidates = await this.repo.findReminderCandidates(
+      nowIso,
+      maxAheadIso,
+    );
+    // A meeting is due when its reminder lead time has been reached.
+    const due = candidates.filter(
+      (m) =>
+        m.reminder_minutes != null &&
+        Date.parse(m.scheduled_at) - m.reminder_minutes * 60_000 <= now,
+    );
+    if (!due.length) return { due: 0, notified: 0 };
+
+    const claimed = new Set(
+      await this.repo.claimReminders(
+        due.map((m) => m.id),
+        nowIso,
+      ),
+    );
+
+    let notified = 0;
+    for (const meeting of due) {
+      if (!claimed.has(meeting.id)) continue; // another run got it
+      const recipientIds = Array.from(
+        new Set(
+          (meeting.participants ?? [])
+            .map((p) => p.user_id)
+            .filter((id): id is string => !!id),
+        ),
+      );
+      if (!recipientIds.length) continue;
+      await this.notifyMany(recipientIds, {
+        user_id: '',
+        type_name: 'meeting_reminder',
+        actor_id: meeting.host_id ?? undefined,
+        project_id: meeting.project_id ?? undefined,
+        content: {
+          ...this.meetingContent(meeting),
+          reminder_minutes: meeting.reminder_minutes,
+        },
+        link_url: this.linkFor(meeting),
+      });
+      notified += recipientIds.length;
+    }
+
+    return { due: claimed.size, notified };
   }
 
   private meetingContent(meeting: Meeting): Record<string, unknown> {

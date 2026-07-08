@@ -12,10 +12,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
+import { CronSecretGuard } from '../../common/guards/cron-secret.guard';
+import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-request.interface';
 import { MeetingsService } from './meetings.service';
 import {
+  CancelMeetingDto,
   CreateMeetingDto,
   ListMeetingsQueryDto,
   RescheduleMeetingDto,
@@ -34,6 +37,16 @@ export class MeetingsController {
     @Body() dto: CreateMeetingDto,
   ) {
     return this.meetingsService.create(user.id, dto);
+  }
+
+  // Scheduler-triggered (no user session): emit due reminders. Auth is the
+  // shared cron secret; @Public skips the Supabase JWT guard for this route.
+  @Post('cron/reminders')
+  @Public()
+  @UseGuards(CronSecretGuard)
+  @HttpCode(HttpStatus.OK)
+  dispatchReminders() {
+    return this.meetingsService.dispatchReminders();
   }
 
   @Get()
@@ -84,8 +97,9 @@ export class MeetingsController {
   cancel(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: CancelMeetingDto,
   ) {
-    return this.meetingsService.cancel(user.id, id);
+    return this.meetingsService.cancel(user.id, id, dto.scope);
   }
 
   @Post(':id/respond')

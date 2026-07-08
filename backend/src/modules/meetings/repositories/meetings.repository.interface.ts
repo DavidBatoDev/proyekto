@@ -32,6 +32,7 @@ export interface Meeting {
   timezone: string | null;
   location: string | null;
   reminder_minutes: number | null;
+  reminder_sent_at: string | null;
   guest_email: string | null;
   guest_name: string | null;
   reschedule_of: string | null;
@@ -146,4 +147,14 @@ export interface MeetingsRepository {
     fromIso: string,
     patch: Partial<Meeting>,
   ): Promise<void>;
+
+  // ── reminders ─────────────────────────────────────────────────────────────
+  // Upcoming, not-yet-reminded scheduled meetings (with participants) whose
+  // scheduled_at falls in (nowIso, maxAheadIso]; the caller narrows to those
+  // actually due by reminder_minutes.
+  findReminderCandidates(nowIso: string, maxAheadIso: string): Promise<Meeting[]>;
+  // Atomically claim reminders: stamp reminder_sent_at for the given ids that are
+  // still unsent, returning the ids this call won (race-safe against overlapping
+  // cron runs).
+  claimReminders(ids: string[], sentAtIso: string): Promise<string[]>;
 }

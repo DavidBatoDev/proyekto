@@ -32,6 +32,7 @@ jobs:
       FCM_PUSH_ENABLED: ${{ vars.FCM_PUSH_ENABLED }}
       FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
       OTA_PUBLISH_ENABLED: ${{ vars.OTA_PUBLISH_ENABLED }}
+      MEETINGS_REMINDERS_ENABLED: ${{ vars.MEETINGS_REMINDERS_ENABLED }}
 
     steps:
       - name: Checkout
@@ -109,6 +110,19 @@ jobs:
             echo "OTA publish endpoint enabled for this deploy."
           else
             echo "OTA publish disabled (create OTA_PUBLISH_TOKEN secret, then set the OTA_PUBLISH_ENABLED repo var to enable)."
+          fi
+
+          # Meeting reminder cron secret. Gated on the MEETINGS_REMINDERS_ENABLED
+          # repo var. Cloud Scheduler POSTs /api/meetings/cron/reminders with this
+          # shared secret as the x-cron-secret header; until it's set the endpoint
+          # denies all callers (reminders simply aren't delivered). To enable:
+          # create the MEETINGS_CRON_SECRET secret in Secret Manager, then set the
+          # MEETINGS_REMINDERS_ENABLED repo var.
+          if [[ -n "${MEETINGS_REMINDERS_ENABLED:-}" ]]; then
+            SECRETS="${SECRETS},MEETINGS_CRON_SECRET=MEETINGS_CRON_SECRET:latest"
+            echo "Meeting reminder cron secret enabled for this deploy."
+          else
+            echo "Meeting reminders disabled (create MEETINGS_CRON_SECRET secret, then set the MEETINGS_REMINDERS_ENABLED repo var to enable)."
           fi
 
           gcloud run deploy "${{ vars.GCP_SERVICE_NAME }}" \
