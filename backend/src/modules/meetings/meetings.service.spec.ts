@@ -15,10 +15,19 @@ function makeRepo(): jest.Mocked<MeetingsRepository> {
     listForProject: jest.fn(),
     update: jest.fn(),
     addParticipants: jest.fn().mockResolvedValue(undefined),
+    removeParticipants: jest.fn().mockResolvedValue(undefined),
     getParticipants: jest.fn(),
     setParticipantResponse: jest.fn(),
     findOverlappingForHost: jest.fn().mockResolvedValue([]),
     getUserProjectIds: jest.fn().mockResolvedValue([]),
+    createSeries: jest.fn(),
+    findSeriesById: jest.fn(),
+    updateSeries: jest.fn(),
+    insertInstanceIgnoreConflict: jest.fn(),
+    insertParticipantRows: jest.fn().mockResolvedValue(undefined),
+    cancelSeriesInstances: jest.fn().mockResolvedValue(undefined),
+    deleteFutureNonExceptionInstances: jest.fn().mockResolvedValue(undefined),
+    updateFutureNonExceptionInstances: jest.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -53,9 +62,15 @@ function baseMeeting(overrides: Partial<Meeting> = {}): Meeting {
     video_provider: 'jitsi',
     meeting_url: 'https://meet.jit.si/proyekto-x',
     timezone: null,
+    location: null,
+    reminder_minutes: null,
     guest_email: null,
     guest_name: null,
     reschedule_of: null,
+    series_id: null,
+    recurrence_id: null,
+    original_start: null,
+    is_exception: false,
     created_at: '2026-07-06T00:00:00.000Z',
     updated_at: '2026-07-06T00:00:00.000Z',
     ...overrides,
@@ -172,5 +187,64 @@ describe('MeetingsService', () => {
     expect(notifications.createNotification).toHaveBeenCalledWith(
       expect.objectContaining({ user_id: 'user-2', type_name: 'meeting_rescheduled' }),
     );
+  });
+
+  it('updateDetails edits scalar fields and reconciles attendees', async () => {
+    const existing = baseMeeting({
+      participants: [
+        {
+          id: 'p1',
+          user_id: 'user-1',
+          guest_email: null,
+          guest_name: null,
+          role: 'host',
+          response: 'accepted',
+        },
+        {
+          id: 'p2',
+          user_id: 'user-2',
+          guest_email: null,
+          guest_name: null,
+          role: 'attendee',
+          response: 'accepted',
+        },
+      ],
+    });
+    repo.findById.mockResolvedValue(existing);
+
+    await service.updateDetails('user-1', 'm1', {
+      title: 'Renamed',
+      location: 'Room 4',
+      reminder_minutes: 15,
+      participant_ids: ['user-3'], // drop user-2, add user-3
+    });
+
+    // Scalar fields patched.
+    expect(repo.update).toHaveBeenCalledWith(
+      'm1',
+      expect.objectContaining({
+        title: 'Renamed',
+        location: 'Room 4',
+        reminder_minutes: 15,
+      }),
+    );
+    // Attendee diff: user-2 removed, user-3 added + notified.
+    expect(repo.removeParticipants).toHaveBeenCalledWith('m1', ['user-2']);
+    expect(repo.addParticipants).toHaveBeenCalledWith('m1', [
+      expect.objectContaining({ user_id: 'user-3', role: 'attendee' }),
+    ]);
+    expect(notifications.createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: 'user-3', type_name: 'meeting_invited' }),
+    );
+  });
+
+  it('updateDetails refuses a non-manager', async () => {
+    repo.findById.mockResolvedValue(baseMeeting());
+    authorization.getUserProjectRole.mockResolvedValueOnce(null);
+
+    await expect(
+      service.updateDetails('intruder', 'm1', { title: 'Hijack' }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(repo.update).not.toHaveBeenCalled();
   });
 });

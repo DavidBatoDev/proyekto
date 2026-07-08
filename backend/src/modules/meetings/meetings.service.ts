@@ -13,15 +13,24 @@ import { ProjectAuthorizationService } from '../projects/authorization/project-a
 import {
   CreateMeetingDto,
   ListMeetingsQueryDto,
+  MeetingEditScope,
   RescheduleMeetingDto,
   RespondMeetingDto,
+  UpdateMeetingDto,
   VideoOption,
 } from './dto/meeting.dto';
 import type {
   Meeting,
+  MeetingSeries,
   MeetingsRepository,
   NewParticipant,
+  NewParticipantRow,
 } from './repositories/meetings.repository.interface';
+import {
+  expandOccurrences,
+  parseUntilCount,
+  wallFromUtc,
+} from './recurrence';
 
 export const MEETINGS_REPOSITORY = Symbol('MEETINGS_REPOSITORY');
 
@@ -38,6 +47,9 @@ export class MeetingsService {
   ) {}
 
   async create(userId: string, dto: CreateMeetingDto): Promise<Meeting> {
+    if (dto.recurrence) {
+      return this.createSeries(userId, dto);
+    }
     const startMs = Date.parse(dto.scheduled_at);
     if (Number.isNaN(startMs)) {
       throw new BadRequestException('Invalid scheduled_at timestamp.');
@@ -70,13 +82,22 @@ export class MeetingsService {
       video_provider: videoProvider,
       meeting_url: meetingUrl,
       timezone: dto.timezone ?? null,
+      location: dto.location ?? null,
+      reminder_minutes: dto.reminder_minutes ?? null,
     });
 
     const inviteeIds = this.uniqueInvitees(dto.participant_ids, userId);
+    const guestEmails = this.uniqueGuestEmails(dto.guest_emails);
     const participants: NewParticipant[] = [
       { user_id: userId, role: 'host', response: 'accepted' },
       ...inviteeIds.map((id) => ({
         user_id: id,
+        role: 'attendee',
+        response: 'pending' as const,
+      })),
+      ...guestEmails.map((email) => ({
+        user_id: null,
+        guest_email: email,
         role: 'attendee',
         response: 'pending' as const,
       })),
@@ -93,6 +114,340 @@ export class MeetingsService {
     });
 
     return (await this.repo.findById(meeting.id)) ?? meeting;
+  }
+
+  // ── recurring series ────────────────────────────────────────────────────────
+
+  /** Create a recurring series + materialize its instances within the horizon. */
+  private async createSeries(
+    userId: string,
+    dto: CreateMeetingDto,
+  ): Promise<Meeting> {
+    const startMs = Date.parse(dto.scheduled_at);
+    if (Number.isNaN(startMs)) {
+      throw new BadRequestException('Invalid scheduled_at timestamp.');
+    }
+    if (dto.project_id) {
+      await this.authorization.assertRole(userId, dto.project_id, 'viewer');
+    }
+    const durationMinutes = dto.duration_minutes ?? DEFAULT_DURATION_MINUTES;
+    const timezone = dto.timezone ?? 'UTC';
+    const dtstart = new Date(startMs).toISOString();
+    const dtstartWall = wallFromUtc(dtstart, timezone);
+    const rrule = dto.recurrence as string;
+    const { videoProvider, meetingUrl } = this.resolveVideo(dto);
+    const { until, count } = parseUntilCount(rrule);
+
+    const series = await this.repo.createSeries({
+      project_id: dto.project_id ?? null,
+      created_by: userId,
+      host_id: userId,
+      title: dto.title,
+      description: dto.description ?? null,
+      type: dto.type,
+      duration_minutes: durationMinutes,
+      timezone,
+      video_provider: videoProvider,
+      meeting_url: meetingUrl,
+      location: dto.location ?? null,
+      reminder_minutes: dto.reminder_minutes ?? null,
+      rrule,
+      dtstart_wall: dtstartWall,
+      dtstart,
+      until,
+      count,
+      status: 'active',
+    });
+
+    const inviteeIds = this.uniqueInvitees(dto.participant_ids, userId);
+    const guestEmails = this.uniqueGuestEmails(dto.guest_emails);
+    const first = await this.materializeSeries(series, {
+      inviteeIds,
+      guestEmails,
+      fromWall: dtstartWall,
+    });
+    if (!first) {
+      throw new ConflictException(
+        'None of the recurring occurrences could be scheduled — the time slots are taken.',
+      );
+    }
+
+    await this.notifyMany(inviteeIds, {
+      user_id: '',
+      type_name: 'meeting_invited',
+      actor_id: userId,
+      project_id: series.project_id ?? undefined,
+      content: this.meetingContent(first),
+      link_url: this.linkFor(first),
+    });
+
+    return first;
+  }
+
+  /**
+   * Expand a series and insert its instances (+ participants) with per-slot
+   * conflict tolerance, returning the earliest created instance. Occurrences are
+   * clamped to the series `until` so a truncated series never over-materializes.
+   */
+  private async materializeSeries(
+    series: MeetingSeries,
+    opts: { inviteeIds: string[]; guestEmails: string[]; fromWall?: string },
+  ): Promise<Meeting | null> {
+    let occurrences = expandOccurrences(
+      series.rrule,
+      series.dtstart_wall,
+      series.timezone,
+      { fromWall: opts.fromWall },
+    );
+    if (series.until) {
+      const untilMs = Date.parse(series.until);
+      occurrences = occurrences.filter(
+        (o) => Date.parse(o.scheduledAt) <= untilMs,
+      );
+    }
+    if (!occurrences.length) return null;
+
+    const participantRows: NewParticipantRow[] = [];
+    let earliest: Meeting | null = null;
+
+    for (const occ of occurrences) {
+      const endsAt = new Date(
+        Date.parse(occ.scheduledAt) + series.duration_minutes * 60_000,
+      ).toISOString();
+      const instance = await this.repo.insertInstanceIgnoreConflict({
+        project_id: series.project_id,
+        host_id: series.host_id,
+        created_by: series.created_by,
+        title: series.title,
+        description: series.description,
+        type: series.type,
+        scheduled_at: occ.scheduledAt,
+        ends_at: endsAt,
+        duration_minutes: series.duration_minutes,
+        status: 'scheduled',
+        video_provider: series.video_provider,
+        meeting_url: series.meeting_url,
+        timezone: series.timezone,
+        location: series.location,
+        reminder_minutes: series.reminder_minutes,
+        series_id: series.id,
+        recurrence_id: occ.recurrenceId,
+        is_exception: false,
+      });
+      if (!instance) continue; // slot already taken — skip
+
+      if (!earliest) earliest = instance;
+      participantRows.push({
+        meeting_id: instance.id,
+        user_id: series.host_id,
+        role: 'host',
+        response: 'accepted',
+      });
+      for (const uid of opts.inviteeIds) {
+        participantRows.push({
+          meeting_id: instance.id,
+          user_id: uid,
+          role: 'attendee',
+          response: 'pending',
+        });
+      }
+      for (const email of opts.guestEmails) {
+        participantRows.push({
+          meeting_id: instance.id,
+          user_id: null,
+          guest_email: email,
+          role: 'attendee',
+          response: 'pending',
+        });
+      }
+    }
+
+    await this.repo.insertParticipantRows(participantRows);
+    await this.repo.updateSeries(series.id, {
+      materialized_until: occurrences[occurrences.length - 1].scheduledAt,
+    });
+    return earliest;
+  }
+
+  /** Edit the whole series: update the template + re-materialize future instances. */
+  private async updateSeriesAll(
+    userId: string,
+    meeting: Meeting,
+    dto: UpdateMeetingDto,
+  ): Promise<Meeting> {
+    const seriesId = meeting.series_id as string;
+    const series = await this.repo.findSeriesById(seriesId);
+    if (!series) throw new NotFoundException('Meeting series not found.');
+
+    const timezone = dto.timezone ?? series.timezone;
+    const dtstart = dto.scheduled_at ?? series.dtstart;
+    const rrule = dto.recurrence ?? series.rrule;
+    const { until, count } = parseUntilCount(rrule);
+    const video = this.resolveSeriesVideo(series, dto);
+
+    const updated = await this.repo.updateSeries(series.id, {
+      title: dto.title ?? series.title,
+      description:
+        dto.description !== undefined
+          ? (dto.description ?? null)
+          : series.description,
+      type: dto.type ?? series.type,
+      duration_minutes: dto.duration_minutes ?? series.duration_minutes,
+      timezone,
+      location:
+        dto.location !== undefined ? (dto.location ?? null) : series.location,
+      reminder_minutes:
+        dto.reminder_minutes !== undefined
+          ? (dto.reminder_minutes ?? null)
+          : series.reminder_minutes,
+      video_provider: video.videoProvider,
+      meeting_url: video.meetingUrl,
+      rrule,
+      dtstart,
+      dtstart_wall: wallFromUtc(dtstart, timezone),
+      until,
+      count,
+    });
+
+    // Re-materialize from now — never disturb past occurrences or overrides.
+    const cutoffIso = new Date(
+      Math.max(Date.now(), Date.parse(updated.dtstart)),
+    ).toISOString();
+    await this.repo.deleteFutureNonExceptionInstances(series.id, cutoffIso);
+    const first = await this.materializeSeries(updated, {
+      inviteeIds: this.seriesInviteeIds(meeting, dto),
+      guestEmails: this.seriesGuestEmails(meeting, dto),
+      fromWall: wallFromUtc(cutoffIso, timezone),
+    });
+
+    await this.notifySeriesChange(userId, meeting, updated.title);
+    return first ?? (await this.repo.findById(meeting.id)) ?? meeting;
+  }
+
+  /** Edit this-and-following: truncate the old series and start a new one. */
+  private async updateSeriesFollowing(
+    userId: string,
+    meeting: Meeting,
+    dto: UpdateMeetingDto,
+  ): Promise<Meeting> {
+    const oldSeries = await this.repo.findSeriesById(meeting.series_id as string);
+    if (!oldSeries) throw new NotFoundException('Meeting series not found.');
+    const splitIso = meeting.scheduled_at;
+
+    // Truncate the old series at the split.
+    await this.repo.deleteFutureNonExceptionInstances(oldSeries.id, splitIso);
+    await this.repo.updateSeries(oldSeries.id, {
+      until: splitIso,
+      materialized_until: splitIso,
+    });
+
+    // Start a new series from the split occurrence with the edited template.
+    const timezone = dto.timezone ?? oldSeries.timezone;
+    const dtstart = dto.scheduled_at ?? splitIso;
+    const rrule = dto.recurrence ?? oldSeries.rrule;
+    const { until, count } = parseUntilCount(rrule);
+    const video = this.resolveSeriesVideo(oldSeries, dto);
+
+    const newSeries = await this.repo.createSeries({
+      project_id: oldSeries.project_id,
+      created_by: userId,
+      host_id: oldSeries.host_id,
+      title: dto.title ?? oldSeries.title,
+      description:
+        dto.description !== undefined
+          ? (dto.description ?? null)
+          : oldSeries.description,
+      type: dto.type ?? oldSeries.type,
+      duration_minutes: dto.duration_minutes ?? oldSeries.duration_minutes,
+      timezone,
+      video_provider: video.videoProvider,
+      meeting_url: video.meetingUrl,
+      location:
+        dto.location !== undefined
+          ? (dto.location ?? null)
+          : oldSeries.location,
+      reminder_minutes:
+        dto.reminder_minutes !== undefined
+          ? (dto.reminder_minutes ?? null)
+          : oldSeries.reminder_minutes,
+      rrule,
+      dtstart_wall: wallFromUtc(dtstart, timezone),
+      dtstart,
+      until,
+      count,
+      status: 'active',
+    });
+
+    const first = await this.materializeSeries(newSeries, {
+      inviteeIds: this.seriesInviteeIds(meeting, dto),
+      guestEmails: this.seriesGuestEmails(meeting, dto),
+      fromWall: wallFromUtc(dtstart, timezone),
+    });
+
+    await this.notifySeriesChange(userId, meeting, newSeries.title);
+    return first ?? meeting;
+  }
+
+  private resolveSeriesVideo(
+    series: MeetingSeries,
+    dto: UpdateMeetingDto,
+  ): { videoProvider: VideoOption; meetingUrl: string | null } {
+    if (dto.video_option === undefined) {
+      return {
+        videoProvider: series.video_provider as VideoOption,
+        meetingUrl: series.meeting_url,
+      };
+    }
+    const keepJitsi =
+      dto.video_option === 'jitsi' &&
+      series.video_provider === 'jitsi' &&
+      !!series.meeting_url;
+    if (keepJitsi) {
+      return { videoProvider: 'jitsi', meetingUrl: series.meeting_url };
+    }
+    return this.resolveVideo({
+      video_option: dto.video_option,
+      meeting_url: dto.meeting_url,
+    });
+  }
+
+  private seriesInviteeIds(meeting: Meeting, dto: UpdateMeetingDto): string[] {
+    if (dto.participant_ids !== undefined) {
+      return this.uniqueInvitees(
+        dto.participant_ids,
+        meeting.host_id ?? meeting.created_by ?? '',
+      );
+    }
+    return (meeting.participants ?? [])
+      .filter((p) => p.user_id && p.role !== 'host')
+      .map((p) => p.user_id as string);
+  }
+
+  private seriesGuestEmails(meeting: Meeting, dto: UpdateMeetingDto): string[] {
+    if (dto.guest_emails !== undefined) {
+      return this.uniqueGuestEmails(dto.guest_emails);
+    }
+    return (meeting.participants ?? [])
+      .filter((p) => !p.user_id && p.guest_email)
+      .map((p) => p.guest_email as string);
+  }
+
+  private async notifySeriesChange(
+    userId: string,
+    meeting: Meeting,
+    newTitle: string,
+  ): Promise<void> {
+    const notifyIds = (meeting.participants ?? [])
+      .map((p) => p.user_id)
+      .filter((uid): uid is string => !!uid && uid !== userId);
+    await this.notifyMany(notifyIds, {
+      user_id: '',
+      type_name: 'meeting_rescheduled',
+      actor_id: userId,
+      project_id: meeting.project_id ?? undefined,
+      content: this.meetingContent({ ...meeting, title: newTitle }),
+      link_url: this.linkFor(meeting),
+    });
   }
 
   async getById(userId: string, id: string): Promise<Meeting> {
@@ -266,22 +621,139 @@ export class MeetingsService {
     return updated;
   }
 
+  /**
+   * General field edit (title/type/time/guests/location/reminder/video). Only
+   * the organizer, host, or a project admin may edit, and only while the meeting
+   * is still scheduled. Time changes recompute ends_at and re-check the host's
+   * availability. The `scope` on the DTO is reserved for recurring series.
+   */
+  async updateDetails(
+    userId: string,
+    id: string,
+    dto: UpdateMeetingDto,
+  ): Promise<Meeting> {
+    const meeting = await this.repo.findById(id);
+    if (!meeting) throw new NotFoundException('Meeting not found.');
+
+    const canManage =
+      meeting.created_by === userId ||
+      meeting.host_id === userId ||
+      (await this.hasProjectAdmin(userId, meeting.project_id));
+    if (!canManage) {
+      throw new ForbiddenException(
+        'Only the organizer, host, or a project admin can edit this meeting.',
+      );
+    }
+    if (meeting.status !== 'scheduled') {
+      throw new BadRequestException(`Cannot edit a ${meeting.status} meeting.`);
+    }
+
+    const patch: Partial<Meeting> = {};
+    if (dto.title !== undefined) patch.title = dto.title;
+    if (dto.description !== undefined) patch.description = dto.description ?? null;
+    if (dto.type !== undefined) patch.type = dto.type;
+    if (dto.timezone !== undefined) patch.timezone = dto.timezone ?? null;
+    if (dto.location !== undefined) patch.location = dto.location ?? null;
+    if (dto.reminder_minutes !== undefined) {
+      patch.reminder_minutes = dto.reminder_minutes ?? null;
+    }
+
+    // A time or duration change recomputes ends_at and re-checks host availability.
+    let timeChanged = false;
+    if (dto.scheduled_at !== undefined || dto.duration_minutes !== undefined) {
+      const startMs =
+        dto.scheduled_at !== undefined
+          ? Date.parse(dto.scheduled_at)
+          : Date.parse(meeting.scheduled_at);
+      if (Number.isNaN(startMs)) {
+        throw new BadRequestException('Invalid scheduled_at timestamp.');
+      }
+      const durationMinutes =
+        dto.duration_minutes ??
+        meeting.duration_minutes ??
+        DEFAULT_DURATION_MINUTES;
+      const scheduledAt = new Date(startMs).toISOString();
+      const endsAt = new Date(startMs + durationMinutes * 60_000).toISOString();
+      if (meeting.host_id) {
+        await this.assertHostFree(
+          meeting.host_id,
+          scheduledAt,
+          endsAt,
+          meeting.id,
+        );
+      }
+      patch.scheduled_at = scheduledAt;
+      patch.ends_at = endsAt;
+      patch.duration_minutes = durationMinutes;
+      timeChanged = true;
+    }
+
+    // Video option change. Keep an existing Jitsi room when the provider is
+    // unchanged; otherwise resolve fresh (a new Jitsi room / pasted link).
+    if (dto.video_option !== undefined) {
+      const keepJitsi =
+        dto.video_option === 'jitsi' &&
+        meeting.video_provider === 'jitsi' &&
+        !!meeting.meeting_url;
+      if (!keepJitsi) {
+        const { videoProvider, meetingUrl } = this.resolveVideo({
+          video_option: dto.video_option,
+          meeting_url: dto.meeting_url,
+        });
+        patch.video_provider = videoProvider;
+        patch.meeting_url = meetingUrl;
+      }
+    } else if (
+      dto.meeting_url !== undefined &&
+      meeting.video_provider === 'external_link'
+    ) {
+      patch.meeting_url = dto.meeting_url;
+    }
+
+    if (Object.keys(patch).length) {
+      await this.repo.update(id, patch);
+    }
+
+    await this.syncParticipants(meeting, dto, userId);
+
+    const updated = (await this.repo.findById(id)) ?? meeting;
+
+    if (timeChanged) {
+      const notifyIds = (meeting.participants ?? [])
+        .map((p) => p.user_id)
+        .filter((uid): uid is string => !!uid && uid !== userId);
+      await this.notifyMany(notifyIds, {
+        user_id: '',
+        type_name: 'meeting_rescheduled',
+        actor_id: userId,
+        project_id: updated.project_id ?? undefined,
+        content: this.meetingContent(updated),
+        link_url: this.linkFor(updated),
+      });
+    }
+
+    return updated;
+  }
+
   // ── helpers ────────────────────────────────────────────────────────────────
 
-  private resolveVideo(dto: CreateMeetingDto): {
+  private resolveVideo(input: {
+    video_option?: VideoOption;
+    meeting_url?: string;
+  }): {
     videoProvider: VideoOption;
     meetingUrl: string | null;
   } {
     const option: VideoOption =
-      dto.video_option ?? (dto.meeting_url ? 'external_link' : 'jitsi');
+      input.video_option ?? (input.meeting_url ? 'external_link' : 'jitsi');
 
     if (option === 'external_link') {
-      if (!dto.meeting_url) {
+      if (!input.meeting_url) {
         throw new BadRequestException(
           'A meeting link is required when using an external video link.',
         );
       }
-      return { videoProvider: 'external_link', meetingUrl: dto.meeting_url };
+      return { videoProvider: 'external_link', meetingUrl: input.meeting_url };
     }
     if (option === 'none') {
       return { videoProvider: 'none', meetingUrl: null };
@@ -346,6 +818,88 @@ export class MeetingsService {
         (participantIds ?? []).filter((id) => !!id && id !== creatorId),
       ),
     ];
+  }
+
+  private uniqueGuestEmails(emails: string[] | undefined): string[] {
+    return [
+      ...new Set(
+        (emails ?? [])
+          .map((e) => e.trim().toLowerCase())
+          .filter((e) => e.length > 0),
+      ),
+    ];
+  }
+
+  /**
+   * Reconcile the attendee set on edit. User attendees are diffed (added +
+   * removed, new ones notified); guest emails are add-only in this phase (never
+   * the host row is touched).
+   */
+  private async syncParticipants(
+    meeting: Meeting,
+    dto: UpdateMeetingDto,
+    actorId: string,
+  ): Promise<void> {
+    const existing =
+      meeting.participants ?? (await this.repo.getParticipants(meeting.id));
+
+    if (dto.participant_ids !== undefined) {
+      const anchor = meeting.host_id ?? actorId;
+      const desired = new Set(this.uniqueInvitees(dto.participant_ids, anchor));
+      const currentIds = new Set(
+        existing
+          .filter((p) => p.user_id && p.role !== 'host')
+          .map((p) => p.user_id as string),
+      );
+      const toRemove = [...currentIds].filter((id) => !desired.has(id));
+      const toAdd = [...desired].filter((id) => !currentIds.has(id));
+
+      if (toRemove.length) {
+        await this.repo.removeParticipants(meeting.id, toRemove);
+      }
+      if (toAdd.length) {
+        await this.repo.addParticipants(
+          meeting.id,
+          toAdd.map((id) => ({
+            user_id: id,
+            role: 'attendee',
+            response: 'pending' as const,
+          })),
+        );
+        await this.notifyMany(
+          toAdd.filter((id) => id !== actorId),
+          {
+            user_id: '',
+            type_name: 'meeting_invited',
+            actor_id: actorId,
+            project_id: meeting.project_id ?? undefined,
+            content: this.meetingContent(meeting),
+            link_url: this.linkFor(meeting),
+          },
+        );
+      }
+    }
+
+    if (dto.guest_emails !== undefined) {
+      const desired = new Set(this.uniqueGuestEmails(dto.guest_emails));
+      const currentEmails = new Set(
+        existing
+          .filter((p) => !p.user_id && p.guest_email)
+          .map((p) => (p.guest_email as string).toLowerCase()),
+      );
+      const toAdd = [...desired].filter((e) => !currentEmails.has(e));
+      if (toAdd.length) {
+        await this.repo.addParticipants(
+          meeting.id,
+          toAdd.map((email) => ({
+            user_id: null,
+            guest_email: email,
+            role: 'attendee',
+            response: 'pending' as const,
+          })),
+        );
+      }
+    }
   }
 
   private meetingContent(meeting: Meeting): Record<string, unknown> {

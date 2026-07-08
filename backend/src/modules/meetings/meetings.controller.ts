@@ -20,6 +20,7 @@ import {
   ListMeetingsQueryDto,
   RescheduleMeetingDto,
   RespondMeetingDto,
+  UpdateMeetingDto,
 } from './dto/meeting.dto';
 
 @Controller('meetings')
@@ -67,6 +68,15 @@ export class MeetingsController {
     @Body() dto: RescheduleMeetingDto,
   ) {
     return this.meetingsService.reschedule(user.id, id, dto);
+  }
+
+  @Patch(':id/details')
+  updateDetails(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: UpdateMeetingDto,
+  ) {
+    return this.meetingsService.updateDetails(user.id, id, dto);
   }
 
   @Post(':id/cancel')

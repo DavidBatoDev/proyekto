@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsEmail,
   IsIn,
   IsISO8601,
   IsInt,
@@ -49,6 +50,14 @@ export const PARTICIPANT_RESPONSES = [
 ] as const;
 export type ParticipantResponse = (typeof PARTICIPANT_RESPONSES)[number];
 
+// Edit scope for a (future) recurring series. Only 'this' is meaningful for a
+// standalone meeting; the series scopes ('following'/'all') land with recurrence.
+export const MEETING_EDIT_SCOPES = ['this', 'following', 'all'] as const;
+export type MeetingEditScope = (typeof MEETING_EDIT_SCOPES)[number];
+
+// Reminder offset is capped at 4 weeks (40320 minutes).
+const MAX_REMINDER_MINUTES = 40320;
+
 export class CreateMeetingDto {
   @IsOptional() @IsUUID() project_id?: string;
 
@@ -72,12 +81,54 @@ export class CreateMeetingDto {
   // Other project members to invite (the creator is added automatically as host).
   @IsOptional() @IsArray() @IsUUID('all', { each: true })
   participant_ids?: string[];
+
+  // External (non-user) guests to invite by email.
+  @IsOptional() @IsArray() @IsEmail({}, { each: true })
+  guest_emails?: string[];
+
+  @IsOptional() @IsString() @MaxLength(300) location?: string;
+
+  @IsOptional() @IsInt() @Min(0) @Max(MAX_REMINDER_MINUTES)
+  reminder_minutes?: number;
+
+  // RFC-5545 rule body (no DTSTART) — when present, a recurring series is created.
+  @IsOptional() @IsString() @MaxLength(2000) recurrence?: string;
 }
 
 export class RescheduleMeetingDto {
   @IsISO8601() scheduled_at: string;
   @IsOptional() @IsInt() @Min(5) @Max(1440) duration_minutes?: number;
   @IsOptional() @IsString() @MaxLength(64) timezone?: string;
+}
+
+// General field edit (title/type/time/guests/etc.) — closes the gap where a
+// meeting was immutable after creation. All fields optional; only provided ones
+// change. `scope` is accepted for forward-compatibility with recurring series.
+export class UpdateMeetingDto {
+  @IsOptional() @IsString() @MaxLength(200) title?: string;
+  @IsOptional() @IsString() @MaxLength(2000) description?: string;
+  @IsOptional() @IsIn(MEETING_TYPES) type?: MeetingType;
+  @IsOptional() @IsISO8601() scheduled_at?: string;
+  @IsOptional() @IsInt() @Min(5) @Max(1440) duration_minutes?: number;
+  @IsOptional() @IsString() @MaxLength(64) timezone?: string;
+  @IsOptional() @IsString() @MaxLength(300) location?: string;
+  @IsOptional() @IsInt() @Min(0) @Max(MAX_REMINDER_MINUTES)
+  reminder_minutes?: number;
+  @IsOptional() @IsIn(VIDEO_OPTIONS) video_option?: VideoOption;
+  @IsOptional() @IsUrl({ require_tld: false }) meeting_url?: string;
+  @IsOptional() @IsArray() @IsUUID('all', { each: true })
+  participant_ids?: string[];
+  @IsOptional() @IsArray() @IsEmail({}, { each: true })
+  guest_emails?: string[];
+  // New pattern when editing a series with scope 'all' / 'following'.
+  @IsOptional() @IsString() @MaxLength(2000) recurrence?: string;
+  @IsOptional() @IsIn(MEETING_EDIT_SCOPES) scope?: MeetingEditScope;
+}
+
+// Body for cancelling — `scope` cancels one occurrence, this-and-following, or
+// the whole series (ignored for non-recurring meetings).
+export class CancelMeetingDto {
+  @IsOptional() @IsIn(MEETING_EDIT_SCOPES) scope?: MeetingEditScope;
 }
 
 export class RespondMeetingDto {
