@@ -1,5 +1,5 @@
-import { Loader2, Plus, Save, Search, Trash2, X, XCircle, Folder, Layers, Layout, CheckCircle2, ChevronRight, Play } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Check, Loader2, Plus, Save, Search, Trash2, X, XCircle, Folder, Layers, Layout, CheckCircle2, ChevronRight, Play } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { createPortal } from "react-dom";
 import type {
@@ -907,6 +907,72 @@ export function DeleteTimeLogModal({
 
 // ───────────────────────── Add Log (Project → Epic → Feature → Task) ─────────────────────────
 
+// Lightweight inline text-entry row used to name a new epic or feature straight
+// inside the picker column (Enter to confirm, Escape to cancel).
+function InlineCreateRow({
+	value,
+	placeholder,
+	busy,
+	onChange,
+	onSubmit,
+	onCancel,
+}: {
+	value: string;
+	placeholder: string;
+	busy: boolean;
+	onChange: (value: string) => void;
+	onSubmit: () => void;
+	onCancel: () => void;
+}) {
+	const inputRef = useRef<HTMLInputElement>(null);
+	useEffect(() => {
+		inputRef.current?.focus();
+	}, []);
+
+	return (
+		<div className="flex items-center gap-1.5 p-1.5 mb-1 rounded-xl border border-slate-300 bg-white shadow-sm">
+			<input
+				ref={inputRef}
+				type="text"
+				value={value}
+				disabled={busy}
+				placeholder={placeholder}
+				onChange={(event) => onChange(event.target.value)}
+				onKeyDown={(event) => {
+					if (event.key === "Enter") {
+						event.preventDefault();
+						onSubmit();
+					} else if (event.key === "Escape") {
+						event.preventDefault();
+						onCancel();
+					}
+				}}
+				className="flex-1 min-w-0 bg-transparent px-2 py-1 text-sm outline-none placeholder:text-slate-400 text-slate-700 disabled:opacity-60"
+			/>
+			<button
+				type="button"
+				onClick={onSubmit}
+				disabled={busy || value.trim().length === 0}
+				className="inline-flex items-center justify-center rounded-md bg-slate-900 text-white w-6 h-6 hover:bg-slate-800 disabled:opacity-50 shrink-0"
+			>
+				{busy ? (
+					<Loader2 className="w-3.5 h-3.5 animate-spin" />
+				) : (
+					<Check className="w-3.5 h-3.5" />
+				)}
+			</button>
+			<button
+				type="button"
+				onClick={onCancel}
+				disabled={busy}
+				className="inline-flex items-center justify-center rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 w-6 h-6 disabled:opacity-50 shrink-0"
+			>
+				<X className="w-3.5 h-3.5" />
+			</button>
+		</div>
+	);
+}
+
 interface AddLogModalProps {
 	isOpen: boolean;
 	projects: TeamLogProject[];
@@ -928,6 +994,25 @@ interface AddLogModalProps {
 		featureTitle: string | null;
 	}) => void;
 	creatingTask?: boolean;
+	// Epics/features created in-session that have no tasks yet, so the picker can
+	// still surface them (the tree is otherwise derived purely from tasks).
+	pendingEpics?: Array<{ id: string; title: string }>;
+	pendingFeatures?: Array<{
+		id: string;
+		epicId: string | null;
+		epicTitle: string;
+		title: string;
+	}>;
+	onCreateEpic?: (
+		title: string,
+	) => Promise<{ id: string; title: string } | void>;
+	onCreateFeature?: (input: {
+		epicId: string | null;
+		epicTitle: string;
+		title: string;
+	}) => Promise<{ id: string; title: string } | void>;
+	creatingEpic?: boolean;
+	creatingFeature?: boolean;
 }
 
 export function AddLogModal({
@@ -947,11 +1032,20 @@ export function AddLogModal({
 	onChangeTaskId,
 	onRequestCreateTask,
 	creatingTask = false,
+	pendingEpics,
+	pendingFeatures,
+	onCreateEpic,
+	onCreateFeature,
+	creatingEpic = false,
+	creatingFeature = false,
 }: AddLogModalProps) {
 	const [selectedEpic, setSelectedEpic] = useState<string | null>(null);
 	const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
 	const [searchText, setSearchText] = useState("");
 	const [debouncedSearchText, setDebouncedSearchText] = useState("");
+	// Inline-create draft text for the Epic / Feature columns (null = row closed).
+	const [epicDraft, setEpicDraft] = useState<string | null>(null);
+	const [featureDraft, setFeatureDraft] = useState<string | null>(null);
 
 	useEffect(() => {
 		const timeout = window.setTimeout(() => {
@@ -966,36 +1060,72 @@ export function AddLogModal({
 		const epicMap = new Map<
 			string,
 			{
-				features: Map<string, { tasks: ProjectTaskOption[] }>;
+				epicId: string | null;
+				features: Map<
+					string,
+					{ featureId: string | null; tasks: ProjectTaskOption[] }
+				>;
 			}
 		>();
 
+		const ensureEpic = (rawTitle: string | null, id: string | null) => {
+			const epicTitle = (rawTitle || "Untitled epic").trim() || "Untitled epic";
+			let entry = epicMap.get(epicTitle);
+			if (!entry) {
+				entry = { epicId: id ?? null, features: new Map() };
+				epicMap.set(epicTitle, entry);
+			} else if (!entry.epicId && id) {
+				entry.epicId = id;
+			}
+			return entry;
+		};
+		const ensureFeature = (
+			epicEntry: { features: Map<string, { featureId: string | null; tasks: ProjectTaskOption[] }> },
+			rawTitle: string | null,
+			id: string | null,
+		) => {
+			const featureTitle =
+				(rawTitle || "Untitled feature").trim() || "Untitled feature";
+			let entry = epicEntry.features.get(featureTitle);
+			if (!entry) {
+				entry = { featureId: id ?? null, tasks: [] };
+				epicEntry.features.set(featureTitle, entry);
+			} else if (!entry.featureId && id) {
+				entry.featureId = id;
+			}
+			return entry;
+		};
+
 		for (const task of tasks) {
-			const epicTitle = (task.epic_title || "Untitled epic").trim() || "Untitled epic";
-			const featureTitle = (task.feature_title || "Untitled feature").trim() || "Untitled feature";
-
-			if (!epicMap.has(epicTitle)) {
-				epicMap.set(epicTitle, { features: new Map() });
-			}
-			const epicEntry = epicMap.get(epicTitle);
-			if (!epicEntry) continue;
-
-			if (!epicEntry.features.has(featureTitle)) {
-				epicEntry.features.set(featureTitle, { tasks: [] });
-			}
-			const featureEntry = epicEntry.features.get(featureTitle);
-			if (!featureEntry) continue;
+			const epicEntry = ensureEpic(task.epic_title, task.epic_id);
+			const featureEntry = ensureFeature(
+				epicEntry,
+				task.feature_title,
+				task.feature_id,
+			);
 			featureEntry.tasks.push(task);
+		}
+
+		// Merge in epics/features created this session so freshly-made (still
+		// task-less) nodes stay visible and selectable in the picker.
+		for (const pending of pendingEpics ?? []) {
+			ensureEpic(pending.title, pending.id);
+		}
+		for (const pending of pendingFeatures ?? []) {
+			const epicEntry = ensureEpic(pending.epicTitle, pending.epicId);
+			ensureFeature(epicEntry, pending.title, pending.id);
 		}
 
 		return Array.from(epicMap.entries())
 			.sort(([aTitle], [bTitle]) => aTitle.localeCompare(bTitle))
 			.map(([epicTitle, epicEntry]) => ({
 				epicTitle,
+				epicId: epicEntry.epicId,
 				features: Array.from(epicEntry.features.entries())
 					.sort(([aTitle], [bTitle]) => aTitle.localeCompare(bTitle))
 					.map(([featureTitle, featureEntry]) => ({
 						featureTitle,
+						featureId: featureEntry.featureId,
 						tasks: [...featureEntry.tasks].sort((a, b) =>
 							(a.title || "Untitled task").localeCompare(
 								b.title || "Untitled task",
@@ -1003,7 +1133,7 @@ export function AddLogModal({
 						),
 					})),
 			}));
-	}, [tasks]);
+	}, [tasks, pendingEpics, pendingFeatures]);
 
 	const filteredEpics = useMemo(() => {
 		if (!normalizedSearch) return epicGroups;
@@ -1047,9 +1177,15 @@ export function AddLogModal({
 		);
 	}, [selectedFeatureEntry, normalizedSearch]);
 
+	const selectedEpicIdForCreate = useMemo(
+		() => selectedEpicEntry?.epicId ?? filteredEpics[0]?.epicId ?? null,
+		[selectedEpicEntry, filteredEpics],
+	);
 	const selectedFeatureIdForCreate = useMemo(
 		() =>
+			selectedFeatureEntry?.featureId ??
 			selectedFeatureEntry?.tasks[0]?.feature_id ??
+			filteredFeatures[0]?.featureId ??
 			filteredFeatures[0]?.tasks[0]?.feature_id ??
 			"",
 		[selectedFeatureEntry, filteredFeatures],
@@ -1063,21 +1199,31 @@ export function AddLogModal({
 		[selectedFeatureEntry, selectedFeature, filteredFeatures],
 	);
 
+	// Sync the epic/feature columns to an explicitly selected task (used when the
+	// modal is opened on an existing log or right after a task is created).
 	useEffect(() => {
-		if (!isOpen) return;
-
+		if (!isOpen || !selectedTaskId) return;
 		const selectedTask = tasks.find((task) => task.id === selectedTaskId);
-		if (selectedTask) {
-			setSelectedEpic((selectedTask.epic_title || "Untitled epic").trim() || "Untitled epic");
-			setSelectedFeature((selectedTask.feature_title || "Untitled feature").trim() || "Untitled feature");
-			return;
-		}
+		if (!selectedTask) return;
+		setSelectedEpic(
+			(selectedTask.epic_title || "Untitled epic").trim() || "Untitled epic",
+		);
+		setSelectedFeature(
+			(selectedTask.feature_title || "Untitled feature").trim() ||
+				"Untitled feature",
+		);
+	}, [isOpen, tasks, selectedTaskId]);
 
+	// Fall back to the first epic only when nothing is selected yet, so a
+	// selection the user just made (e.g. an epic they created that has no tasks)
+	// is never clobbered when the tree re-derives.
+	useEffect(() => {
+		if (!isOpen || selectedEpic || selectedTaskId) return;
 		const firstEpic = epicGroups[0]?.epicTitle ?? null;
-		const firstFeature = epicGroups[0]?.features[0]?.featureTitle ?? null;
+		if (!firstEpic) return;
 		setSelectedEpic(firstEpic);
-		setSelectedFeature(firstFeature);
-	}, [isOpen, tasks, selectedTaskId, epicGroups]);
+		setSelectedFeature(epicGroups[0]?.features[0]?.featureTitle ?? null);
+	}, [isOpen, selectedEpic, selectedTaskId, epicGroups]);
 
 	useEffect(() => {
 		if (!selectedEpicEntry) {
@@ -1091,6 +1237,51 @@ export function AddLogModal({
 			setSelectedFeature(selectedEpicEntry.features[0]?.featureTitle ?? null);
 		}
 	}, [selectedEpicEntry, selectedFeature]);
+
+	const submitEpicDraft = async () => {
+		const value = (epicDraft ?? "").trim();
+		if (!value || !onCreateEpic) {
+			setEpicDraft(null);
+			return;
+		}
+		try {
+			const created = await onCreateEpic(value);
+			setEpicDraft(null);
+			const nextTitle = (created?.title ?? value).trim() || "Untitled epic";
+			setSelectedEpic(nextTitle);
+			setSelectedFeature(null);
+			onChangeTaskId("");
+		} catch {
+			// Parent surfaces the error toast; keep the draft open so the user can retry.
+		}
+	};
+
+	const submitFeatureDraft = async () => {
+		const value = (featureDraft ?? "").trim();
+		const epicTitle =
+			selectedEpic ??
+			selectedEpicEntry?.epicTitle ??
+			filteredEpics[0]?.epicTitle ??
+			null;
+		if (!value || !onCreateFeature || !epicTitle) {
+			setFeatureDraft(null);
+			return;
+		}
+		try {
+			const created = await onCreateFeature({
+				epicId: selectedEpicIdForCreate,
+				epicTitle,
+				title: value,
+			});
+			setFeatureDraft(null);
+			const nextTitle =
+				(created?.title ?? value).trim() || "Untitled feature";
+			setSelectedFeature(nextTitle);
+			onChangeTaskId("");
+		} catch {
+			// Parent surfaces the error toast; keep the draft open so the user can retry.
+		}
+	};
 
 	if (!isOpen) return null;
 
@@ -1176,11 +1367,39 @@ export function AddLogModal({
 
 								{/* Epic Column */}
 								<div className="flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-									<div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50/80">
-										<Layers className="w-4 h-4 text-slate-400" />
-										<span className="text-xs font-bold uppercase tracking-wider text-slate-600">Epic</span>
+									<div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/80">
+										<div className="flex items-center gap-2">
+											<Layers className="w-4 h-4 text-slate-400" />
+											<span className="text-xs font-bold uppercase tracking-wider text-slate-600">Epic</span>
+										</div>
+										{onCreateEpic && (
+											<button
+												type="button"
+												onClick={() => setEpicDraft("")}
+												disabled={
+													!selectedProjectId ||
+													loadingTasks ||
+													creatingEpic ||
+													epicDraft !== null
+												}
+												className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+											>
+												<Plus className="w-3 h-3" />
+												Add epic
+											</button>
+										)}
 									</div>
 									<div className="flex-1 overflow-y-auto p-2 space-y-1 [scrollbar-width:thin] scrollbar-thumb-slate-200">
+										{epicDraft !== null && (
+											<InlineCreateRow
+												value={epicDraft}
+												placeholder="New epic name"
+												busy={creatingEpic}
+												onChange={setEpicDraft}
+												onSubmit={() => void submitEpicDraft()}
+												onCancel={() => setEpicDraft(null)}
+											/>
+										)}
 										{!selectedProjectId ? (
 											<div className="p-4 text-center text-sm text-slate-500">Select a project first</div>
 										) : loadingTasks ? (
@@ -1226,11 +1445,41 @@ export function AddLogModal({
 
 								{/* Feature Column */}
 								<div className="flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-									<div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50/80">
-										<Layout className="w-4 h-4 text-slate-400" />
-										<span className="text-xs font-bold uppercase tracking-wider text-slate-600">Feature</span>
+									<div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/80">
+										<div className="flex items-center gap-2">
+											<Layout className="w-4 h-4 text-slate-400" />
+											<span className="text-xs font-bold uppercase tracking-wider text-slate-600">Feature</span>
+										</div>
+										{onCreateFeature && (
+											<button
+												type="button"
+												onClick={() => setFeatureDraft("")}
+												disabled={
+													!selectedProjectId ||
+													loadingTasks ||
+													creatingFeature ||
+													featureDraft !== null ||
+													!selectedEpic ||
+													!selectedEpicIdForCreate
+												}
+												className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+											>
+												<Plus className="w-3 h-3" />
+												Add feature
+											</button>
+										)}
 									</div>
 									<div className="flex-1 overflow-y-auto p-2 space-y-1 [scrollbar-width:thin] scrollbar-thumb-slate-200">
+										{featureDraft !== null && (
+											<InlineCreateRow
+												value={featureDraft}
+												placeholder="New feature name"
+												busy={creatingFeature}
+												onChange={setFeatureDraft}
+												onSubmit={() => void submitFeatureDraft()}
+												onCancel={() => setFeatureDraft(null)}
+											/>
+										)}
 										{!selectedProjectId ? (
 											<div className="p-4 text-center text-sm text-slate-500">Select a project first</div>
 										) : loadingTasks ? (

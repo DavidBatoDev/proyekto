@@ -38,7 +38,12 @@ import {
 	toLocalDateTimeInput,
 } from "@/components/team-time/time-utils";
 import { useToast } from "@/hooks/useToast";
-import { roadmapService, taskService } from "@/services/roadmap.service";
+import {
+	epicService,
+	featureService,
+	roadmapService,
+	taskService,
+} from "@/services/roadmap.service";
 import {
 	type TaskTimeLog,
 	teamTimeService,
@@ -133,6 +138,19 @@ function MyLogsTab() {
 		epicTitle: string | null;
 		featureTitle: string | null;
 	} | null>(null);
+	// Epics/features created from the timer modal that have no tasks yet, so the
+	// picker can keep showing them (its tree is otherwise derived from tasks).
+	const [pendingEpics, setPendingEpics] = useState<
+		Array<{ id: string; title: string }>
+	>([]);
+	const [pendingFeatures, setPendingFeatures] = useState<
+		Array<{
+			id: string;
+			epicId: string | null;
+			epicTitle: string;
+			title: string;
+		}>
+	>([]);
 	const [editingLog, setEditingLog] = useState<TaskTimeLog | null>(null);
 	const [editStartedAt, setEditStartedAt] = useState("");
 	const [editEndedAt, setEditEndedAt] = useState("");
@@ -340,6 +358,80 @@ function MyLogsTab() {
 			.replace(/[^a-z0-9]+/g, " ")
 			.trim();
 
+	const createEpicMutation = useMutation({
+		mutationFn: async (title: string) => {
+			if (!addProjectId) throw new Error("Select a project first.");
+			const roadmap = await roadmapService.getByProjectId(addProjectId);
+			if (!roadmap?.id)
+				throw new Error("This project has no roadmap to add an epic to.");
+			return epicService.create({
+				roadmap_id: roadmap.id,
+				title: title.trim() || "Untitled epic",
+			});
+		},
+		onSuccess: (created) => {
+			toast.success("Epic created");
+			setPendingEpics((prev) =>
+				prev.some((e) => e.id === created.id)
+					? prev
+					: [...prev, { id: created.id, title: created.title }],
+			);
+			void qc.invalidateQueries({
+				queryKey: ["team-time", teamId, "project-tasks", addProjectId],
+			});
+		},
+		onError: (e: Error) => toast.error(e.message),
+	});
+
+	const createFeatureMutation = useMutation({
+		mutationFn: async (input: {
+			epicId: string | null;
+			epicTitle: string;
+			title: string;
+		}) => {
+			if (!addProjectId) throw new Error("Select a project first.");
+			const roadmap = await roadmapService.getByProjectId(addProjectId);
+			if (!roadmap?.id)
+				throw new Error("This project has no roadmap to add a feature to.");
+			let epicId = input.epicId?.trim() ?? "";
+			if (!epicId) {
+				// The picker only knows the epic by title — resolve it to an id.
+				const full = await roadmapService.getFull(roadmap.id);
+				const nEt = normalizePathLabel(input.epicTitle);
+				epicId =
+					(full.epics ?? []).find(
+						(epic) => normalizePathLabel(epic.title) === nEt,
+					)?.id ?? "";
+			}
+			if (!epicId) throw new Error("Select an epic before creating a feature.");
+			return featureService.create({
+				roadmap_id: roadmap.id,
+				epic_id: epicId,
+				title: input.title.trim() || "Untitled feature",
+			});
+		},
+		onSuccess: (created, variables) => {
+			toast.success("Feature created");
+			setPendingFeatures((prev) =>
+				prev.some((f) => f.id === created.id)
+					? prev
+					: [
+							...prev,
+							{
+								id: created.id,
+								epicId: variables.epicId,
+								epicTitle: variables.epicTitle,
+								title: created.title,
+							},
+						],
+			);
+			void qc.invalidateQueries({
+				queryKey: ["team-time", teamId, "project-tasks", addProjectId],
+			});
+		},
+		onError: (e: Error) => toast.error(e.message),
+	});
+
 	const createTaskMutation = useMutation({
 		mutationFn: async (input: {
 			taskData: Partial<RoadmapTask>;
@@ -478,6 +570,23 @@ function MyLogsTab() {
 		},
 		[addProjectId, createTaskContext, createTaskFeatureId, createTaskMutation],
 	);
+	const handleCreateEpicFromTimer = useCallback(
+		(title: string) => createEpicMutation.mutateAsync(title),
+		[createEpicMutation],
+	);
+	const handleCreateFeatureFromTimer = useCallback(
+		(input: { epicId: string | null; epicTitle: string; title: string }) =>
+			createFeatureMutation.mutateAsync(input),
+		[createFeatureMutation],
+	);
+
+	// New epics/features are scoped to the selected project; drop them when the
+	// project changes so a different project never shows another's pending nodes.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: addProjectId is a trigger-only dep — the body just clears state on project switch.
+	useEffect(() => {
+		setPendingEpics([]);
+		setPendingFeatures([]);
+	}, [addProjectId]);
 
 	const rowPendingById = useMemo<Record<string, boolean>>(() => {
 		const map: Record<string, boolean> = {};
@@ -621,6 +730,12 @@ function MyLogsTab() {
 				onChangeTaskId={(v) => setAddTaskId(v)}
 				onRequestCreateTask={handleOpenCreateTaskPanel}
 				creatingTask={createTaskMutation.isPending}
+				pendingEpics={pendingEpics}
+				pendingFeatures={pendingFeatures}
+				onCreateEpic={handleCreateEpicFromTimer}
+				onCreateFeature={handleCreateFeatureFromTimer}
+				creatingEpic={createEpicMutation.isPending}
+				creatingFeature={createFeatureMutation.isPending}
 			/>
 
 			{/* Create task panel */}
