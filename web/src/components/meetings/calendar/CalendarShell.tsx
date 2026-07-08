@@ -86,6 +86,10 @@ export function CalendarShell({
 			year: dir === 1 ? addYears : subYears,
 		}[view];
 		setAnchor((a) => move(a, 1));
+		// Keep the agenda's selected day in step with navigation — otherwise
+		// paging (esp. in Day view) moves the grid but leaves the agenda on the
+		// previously-selected day.
+		setSelectedDay((d) => move(d, 1));
 	};
 
 	const goToday = () => {
