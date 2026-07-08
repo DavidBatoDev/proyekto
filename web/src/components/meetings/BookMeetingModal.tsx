@@ -156,14 +156,11 @@ export function BookMeetingModal({
 
           <div className="p-5 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Title
-              </label>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Kickoff call"
-                className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                placeholder="Add title"
+                className="w-full border-0 border-b border-gray-300 bg-transparent px-0 py-2 text-lg focus:border-primary focus:outline-none focus:ring-0 placeholder:text-gray-400"
               />
             </div>
 
@@ -175,7 +172,7 @@ export function BookMeetingModal({
                 <select
                   value={type}
                   onChange={(e) => setType(e.target.value as MeetingType)}
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  className="w-full border-0 border-b border-gray-300 bg-transparent px-0 py-2 text-sm focus:border-primary focus:outline-none focus:ring-0"
                 >
                   {TYPE_OPTIONS.map(([value, label]) => (
                     <option key={value} value={value}>
@@ -191,7 +188,7 @@ export function BookMeetingModal({
                 <select
                   value={durationMinutes}
                   onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  className="w-full border-0 border-b border-gray-300 bg-transparent px-0 py-2 text-sm focus:border-primary focus:outline-none focus:ring-0"
                 >
                   {DURATION_OPTIONS.map((mins) => (
                     <option key={mins} value={mins}>
@@ -210,7 +207,7 @@ export function BookMeetingModal({
                 type="datetime-local"
                 value={localDateTime}
                 onChange={(e) => setLocalDateTime(e.target.value)}
-                className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                className="w-full border-0 border-b border-gray-300 bg-transparent px-0 py-2 text-sm focus:border-primary focus:outline-none focus:ring-0"
               />
             </div>
 
@@ -236,7 +233,7 @@ export function BookMeetingModal({
                     value={meetingUrl}
                     onChange={(e) => setMeetingUrl(e.target.value)}
                     placeholder="https://meet.google.com/…"
-                    className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    className="w-full border-0 border-b border-gray-300 bg-transparent px-0 py-2 text-sm focus:border-primary focus:outline-none focus:ring-0"
                   />
                 )}
                 <VideoRadio
