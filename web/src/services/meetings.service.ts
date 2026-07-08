@@ -55,6 +55,10 @@ export interface Meeting {
 	location: string | null;
 	reminder_minutes: number | null;
 	reschedule_of: string | null;
+	series_id: string | null;
+	recurrence_id: string | null;
+	original_start: string | null;
+	is_exception: boolean;
 	created_at: string;
 	updated_at: string;
 	participants?: MeetingParticipant[];
@@ -81,6 +85,8 @@ export interface CreateMeetingPayload {
 	guest_emails?: string[];
 	location?: string;
 	reminder_minutes?: number;
+	// RFC-5545 rule body (no DTSTART) — when set, creates a recurring series.
+	recurrence?: string;
 }
 
 export interface RescheduleMeetingPayload {
@@ -105,6 +111,8 @@ export interface UpdateMeetingPayload {
 	meeting_url?: string;
 	participant_ids?: string[];
 	guest_emails?: string[];
+	// New pattern when editing a series with scope 'all' / 'following'.
+	recurrence?: string;
 	scope?: MeetingEditScope;
 }
 
@@ -222,10 +230,11 @@ export const meetingsService = {
 		}
 	},
 
-	async cancel(id: string): Promise<Meeting> {
+	async cancel(id: string, scope?: MeetingEditScope): Promise<Meeting> {
 		try {
 			const res = await apiClient.post<ApiResponse<Meeting>>(
 				`/api/meetings/${id}/cancel`,
+				scope ? { scope } : {},
 			);
 			return res.data.data;
 		} catch (e) {

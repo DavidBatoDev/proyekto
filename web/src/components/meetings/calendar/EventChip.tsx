@@ -2,6 +2,7 @@
  * A compact one-line event pill for the Month grid (and other dense contexts).
  */
 import { format } from "date-fns";
+import { Repeat } from "lucide-react";
 import type { Meeting } from "@/services/meetings.service";
 
 interface EventChipProps {
@@ -24,6 +25,7 @@ export function EventChip({ meeting, onClick }: EventChipProps) {
 			<span className="truncate font-medium">
 				{format(new Date(meeting.scheduled_at), "p")}
 			</span>
+			{meeting.series_id && <Repeat className="h-2.5 w-2.5 shrink-0" />}
 			<span className="truncate">{meeting.title}</span>
 		</button>
 	);

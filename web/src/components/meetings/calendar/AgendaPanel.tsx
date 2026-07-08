@@ -4,7 +4,9 @@
  * MeetingsCalendar so behavior (who can manage vs. respond) is unchanged.
  */
 import { format } from "date-fns";
-import { CalendarDays, Loader2, Pencil, Video } from "lucide-react";
+import { CalendarDays, Loader2, Pencil, Repeat, Video } from "lucide-react";
+import { useState } from "react";
+import { ScopeDialog } from "@/components/meetings/editor/ScopeDialog";
 import { useCancelMeeting, useRespondMeeting } from "@/hooks/useMeetings";
 import { MEETING_TYPE_LABELS, type Meeting } from "@/services/meetings.service";
 import { meetingsOnDay } from "./model";
@@ -61,6 +63,7 @@ function MeetingRow({
 }) {
 	const cancelMutation = useCancelMeeting();
 	const respondMutation = useRespondMeeting();
+	const [cancelScopeOpen, setCancelScopeOpen] = useState(false);
 
 	const canManage =
 		!!currentUserId &&
@@ -70,12 +73,23 @@ function MeetingRow({
 	);
 	const canRespond =
 		!!myParticipation && myParticipation.role !== "host" && !canManage;
+	const isRecurring = !!meeting.series_id;
+
+	const cancel = () => {
+		if (isRecurring) setCancelScopeOpen(true);
+		else cancelMutation.mutate(meeting.id);
+	};
 
 	return (
 		<div className="rounded-xl border border-gray-100 p-3">
 			<div className="flex items-start justify-between gap-2">
 				<div>
-					<p className="text-sm font-medium text-gray-900">{meeting.title}</p>
+					<p className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
+						{isRecurring && (
+							<Repeat className="h-3 w-3 shrink-0 text-gray-400" />
+						)}
+						{meeting.title}
+					</p>
 					<p className="text-xs text-gray-500">
 						{format(new Date(meeting.scheduled_at), "p")}
 						{meeting.ends_at
@@ -141,7 +155,7 @@ function MeetingRow({
 						<button
 							type="button"
 							disabled={cancelMutation.isPending}
-							onClick={() => cancelMutation.mutate(meeting.id)}
+							onClick={cancel}
 							className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
 						>
 							{cancelMutation.isPending && (
@@ -157,6 +171,16 @@ function MeetingRow({
 					)}
 				</div>
 			)}
+
+			<ScopeDialog
+				open={cancelScopeOpen}
+				action="cancel"
+				onClose={() => setCancelScopeOpen(false)}
+				onPick={(scope) => {
+					setCancelScopeOpen(false);
+					cancelMutation.mutate({ id: meeting.id, scope });
+				}}
+			/>
 		</div>
 	);
 }

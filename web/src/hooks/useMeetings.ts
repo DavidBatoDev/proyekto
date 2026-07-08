@@ -3,6 +3,7 @@ import { meetingKeys } from "@/queries/meetings";
 import {
 	type CreateMeetingPayload,
 	type ListMeetingsParams,
+	type MeetingEditScope,
 	meetingsService,
 	type ParticipantResponse,
 	type RescheduleMeetingPayload,
@@ -56,7 +57,10 @@ export function useBookMeeting() {
 export function useCancelMeeting() {
 	const invalidate = useInvalidateMeetings();
 	return useMutation({
-		mutationFn: (id: string) => meetingsService.cancel(id),
+		mutationFn: (args: string | { id: string; scope?: MeetingEditScope }) =>
+			typeof args === "string"
+				? meetingsService.cancel(args)
+				: meetingsService.cancel(args.id, args.scope),
 		onSuccess: invalidate,
 	});
 }

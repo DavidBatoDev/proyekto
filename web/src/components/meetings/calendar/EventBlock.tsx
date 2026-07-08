@@ -3,7 +3,7 @@
  * left/width) comes from the overlap layout as percentages of its day column.
  */
 import { format } from "date-fns";
-import { Video } from "lucide-react";
+import { Repeat, Video } from "lucide-react";
 import type { Meeting } from "@/services/meetings.service";
 import type { LayoutBox } from "./overlap/layout";
 
@@ -31,6 +31,7 @@ export function EventBlock({ meeting, box, onClick }: EventBlockProps) {
 		>
 			<span className="flex items-center gap-1 truncate text-[11px] font-semibold leading-tight">
 				{meeting.meeting_url && <Video className="h-3 w-3 shrink-0" />}
+				{meeting.series_id && <Repeat className="h-3 w-3 shrink-0" />}
 				<span className="truncate">{meeting.title}</span>
 			</span>
 			<span className="truncate text-[10px] leading-tight opacity-90">

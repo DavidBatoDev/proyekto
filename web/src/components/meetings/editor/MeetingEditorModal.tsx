@@ -15,11 +15,12 @@ import {
 	Clock,
 	Loader2,
 	MapPin,
+	Repeat,
 	Users,
 	Video,
 	X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ModalPortal } from "@/components/common/ModalPortal";
 import { useBookMeeting, useUpdateMeeting } from "@/hooks/useMeetings";
 import {
@@ -32,11 +33,14 @@ import {
 	type CreateMeetingPayload,
 	MEETING_TYPE_LABELS,
 	type Meeting,
+	type MeetingEditScope,
 	type MeetingType,
 	type UpdateMeetingPayload,
 	type VideoOption,
 } from "@/services/meetings.service";
 import { DatePickerField } from "./DatePickerField";
+import { RepeatDropdown } from "./RepeatDropdown";
+import { ScopeDialog } from "./ScopeDialog";
 import { TimePicker } from "./TimePicker";
 import { TimezoneSelect } from "./TimezoneSelect";
 import { VideoProviderPicker } from "./VideoProviderPicker";
@@ -98,6 +102,7 @@ interface FormState {
 	location: string;
 	description: string;
 	reminderMinutes: number | null;
+	recurrence: string | null; // rrule body, or null for no repeat (create only)
 }
 
 function initialState(
@@ -138,6 +143,7 @@ function initialState(
 			location: meeting.location ?? "",
 			description: meeting.description ?? "",
 			reminderMinutes: meeting.reminder_minutes ?? null,
+			recurrence: null,
 		};
 	}
 	const start = defaultStart ?? nextHalfHour();
@@ -155,6 +161,7 @@ function initialState(
 		location: "",
 		description: "",
 		reminderMinutes: 30,
+		recurrence: null,
 	};
 }
 
@@ -174,6 +181,8 @@ export function MeetingEditorModal({
 	);
 	const [emailDraft, setEmailDraft] = useState("");
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);
+	const [scopeOpen, setScopeOpen] = useState(false);
+	const pendingPayload = useRef<UpdateMeetingPayload | null>(null);
 
 	const bookMutation = useBookMeeting();
 	const updateMutation = useUpdateMeeting();
@@ -221,6 +230,30 @@ export function MeetingEditorModal({
 
 	if (!open) return null;
 
+	const doUpdate = (id: string, payload: UpdateMeetingPayload) => {
+		updateMutation.mutate(
+			{ id, payload },
+			{
+				onSuccess: (m) => {
+					onSaved?.(m);
+					onClose();
+				},
+				onError: (err: unknown) =>
+					setErrorMessage(
+						err instanceof Error ? err.message : "Failed to save meeting.",
+					),
+			},
+		);
+	};
+
+	const pickScope = (scope: MeetingEditScope) => {
+		setScopeOpen(false);
+		if (meeting && pendingPayload.current) {
+			doUpdate(meeting.id, { ...pendingPayload.current, scope });
+			pendingPayload.current = null;
+		}
+	};
+
 	const submit = () => {
 		setErrorMessage(null);
 		if (!form.title.trim()) {
@@ -261,19 +294,13 @@ export function MeetingEditorModal({
 				participant_ids: participantIds,
 				guest_emails: guestEmails,
 			};
-			updateMutation.mutate(
-				{ id: meeting.id, payload },
-				{
-					onSuccess: (m) => {
-						onSaved?.(m);
-						onClose();
-					},
-					onError: (err: unknown) =>
-						setErrorMessage(
-							err instanceof Error ? err.message : "Failed to save meeting.",
-						),
-				},
-			);
+			// A recurring occurrence prompts for scope (this / following / all).
+			if (meeting.series_id) {
+				pendingPayload.current = payload;
+				setScopeOpen(true);
+				return;
+			}
+			doUpdate(meeting.id, payload);
 			return;
 		}
 
@@ -291,6 +318,7 @@ export function MeetingEditorModal({
 			description: form.description.trim() || undefined,
 			participant_ids: participantIds,
 			guest_emails: guestEmails,
+			recurrence: form.recurrence ?? undefined,
 		};
 		bookMutation.mutate(payload, {
 			onSuccess: (m) => {
@@ -381,6 +409,24 @@ export function MeetingEditorModal({
 								at={dateObj}
 							/>
 						</Row>
+
+						{/* Repeat — editable on create; a static badge for a recurring
+						    occurrence (pattern changes beyond fields land in a later phase). */}
+						{!isEdit ? (
+							<Row icon={<Repeat className="h-4 w-4" />}>
+								<RepeatDropdown
+									startDate={dateObj}
+									value={form.recurrence}
+									onChange={(r) => set("recurrence", r)}
+								/>
+							</Row>
+						) : meeting?.series_id ? (
+							<Row icon={<Repeat className="h-4 w-4" />}>
+								<span className="py-2 text-sm text-gray-600">
+									Recurring event
+								</span>
+							</Row>
+						) : null}
 
 						{/* Video */}
 						<Row icon={<Video className="h-4 w-4" />}>
@@ -531,6 +577,13 @@ export function MeetingEditorModal({
 					</div>
 				</div>
 			</div>
+
+			<ScopeDialog
+				open={scopeOpen}
+				action="edit"
+				onClose={() => setScopeOpen(false)}
+				onPick={pickScope}
+			/>
 		</ModalPortal>
 	);
 }
