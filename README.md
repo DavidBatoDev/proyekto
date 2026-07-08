@@ -87,6 +87,6 @@ Each project acts as a structured container for delivery:
 - `web/`: React + TanStack application
 - `backend/`: NestJS API and domain services
 - `infra/`: Infrastructure-as-code definitions
-- `documentation/`: Product, backend, and architecture references
+- `docs/`: Product, backend, and architecture references
 
 
