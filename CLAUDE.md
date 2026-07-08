@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Layout
 
-Proyekto is a monorepo with four deployable units. Note: SETUP.md refers to an api/ directory â€” the backend now lives in backend/. Treat SETUP.md as partially stale for paths.
+Proyekto is a monorepo with six deployable units. Note: SETUP.md refers to an api/ directory â€” the backend now lives in backend/. Treat SETUP.md as partially stale for paths. See docs/02-architecture/ for the authoritative, source-verified architecture.
 
 - web/ â€” React 19 + Vite + TanStack Router/Query/Table, MUI + Tailwind, Zustand, Lexical, XYFlow/dagre (roadmap canvas), Supabase client. Dev port 3000, path alias @/* â†’ web/src/*.
-- backend/ â€” NestJS 11 API. Supabase (data/auth) + Upstash Redis (throttler storage, agent caches). Deployed to Vercel (backend/vercel.json, backend/src/lambda.ts). Feature modules under backend/src/modules/ (auth, users, profile, projects, roadmaps, roadmap-shares, payments, admin, consultants, applications, uploads, guests, marketplace, notifications, project-time, chat).
-- agent/ â€” Python 3 FastAPI AI agent (LangChain/LangGraph + OpenAI) powering roadmap AI. Entry: agent/run.py â†’ app.main:app. Orchestration lives in agent/app/core/orchestration/ (planning, react, edits, context). Session state via Upstash Redis.
+- backend/ â€” NestJS 11 API. Supabase (data/auth) + Upstash Redis (throttler storage, agent caches). Deployed to Cloud Run as a Docker image (backend/Dockerfile; container starts backend/src/server.ts). backend/src/lambda.ts is an orphaned Vercel/serverless adapter, not used by any pipeline. Feature modules under backend/src/modules/ (see docs/03-backend/ for the current list of 24).
+- agent/ â€” Python 3 FastAPI AI agent (LangChain/LangGraph + OpenAI) powering roadmap AI. Entry: agent/run.py â†’ app.main:app. Orchestration lives in agent/app/core/orchestration/ (planning, react, edits, context). Session state via Upstash Redis. Deployed to Cloud Run.
+- realtime/ â€” Cloudflare Worker + Durable Objects carrying collaborative realtime (roadmap canvas + chat), replacing Supabase Realtime. Shipped dormant behind transport flags. Buckets: R2 proyekto-media / proyekto-private.
 - supabase/ â€” migrations/ (source of truth for DB schema) and edge functions/ (password reset, signup email).
 - infra/ â€” Terraform for Supabase storage buckets / provisioning.
 - scripts/ â€” Node .mjs benchmarks and a wrapper for agent Python tests.
@@ -70,7 +71,7 @@ NestJS is wired in backend/src/app.module.ts. Each feature module is self-contai
 - config/env.validation.ts validates env via validateEnv at boot.
 - config/supabase.module.ts provides Supabase clients (anon + service role).
 - ThrottlerModule uses a custom ThrottlerStorageRedisService backed by Upstash.
-- backend/src/lambda.ts is the Vercel serverless entry; main.ts is the standalone entry.
+- backend/src/server.ts is the Cloud Run container entry (wraps main.ts with tracing); main.ts is the standalone Nest bootstrap. backend/src/lambda.ts is a leftover Vercel/serverless adapter and is not deployed.
 
 ### Web routing
 TanStack Router with file-based routes under web/src/routes/. routeTree.gen.ts is generated â€” don't hand-edit. Route trees split per persona (admin/, client/, consultant/, freelancer/, profile/, project/, roadmap/).
