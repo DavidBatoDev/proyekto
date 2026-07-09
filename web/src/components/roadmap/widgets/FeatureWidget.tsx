@@ -6,12 +6,14 @@ import {
   useState,
   type DragEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { motion } from "framer-motion";
 import {
   Edit2,
   Trash2,
   CheckCircle2,
+  ChevronDown,
   Clock,
   AlertCircle,
   List,
@@ -75,6 +77,14 @@ const getTaskStatusColor = (status: RoadmapTask["status"]) => {
       return "bg-gray-100 text-gray-800";
   }
 };
+
+const CANVAS_TASK_STATUS_OPTIONS: RoadmapTask["status"][] = [
+  "todo",
+  "in_progress",
+  "in_review",
+  "done",
+  "blocked",
+];
 
 const getAssigneeName = (
   assignee: NonNullable<RoadmapTask["assignee"]>,
@@ -146,7 +156,10 @@ type CanvasTaskRowProps = {
   pulseToken?: number;
   onClick?: (task: RoadmapTask) => void;
   onToggleComplete?: (task: RoadmapTask) => void;
+  onUpdateStatus?: (task: RoadmapTask, status: RoadmapTask["status"]) => void;
 };
+
+const CANVAS_STATUS_MENU_WIDTH = 140;
 
 const CanvasTaskRow = memo(
   ({
@@ -156,9 +169,17 @@ const CanvasTaskRow = memo(
     pulseToken,
     onClick,
     onToggleComplete,
+    onUpdateStatus,
   }: CanvasTaskRowProps) => {
     const [isPulsing, setIsPulsing] = useState(false);
     const isDone = task.status === "done";
+    const [isStatusOpen, setIsStatusOpen] = useState(false);
+    const statusTriggerRef = useRef<HTMLButtonElement>(null);
+    const statusMenuRef = useRef<HTMLDivElement>(null);
+    const [statusMenuPosition, setStatusMenuPosition] = useState({
+      top: 0,
+      left: 0,
+    });
 
     useEffect(() => {
       if (!pulseToken) return;
@@ -167,12 +188,56 @@ const CanvasTaskRow = memo(
       return () => window.clearTimeout(timeoutId);
     }, [pulseToken]);
 
+    const updateStatusMenuPosition = () => {
+      const rect = statusTriggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const clampedLeft = Math.max(
+        8,
+        Math.min(
+          rect.right - CANVAS_STATUS_MENU_WIDTH,
+          window.innerWidth - CANVAS_STATUS_MENU_WIDTH - 8,
+        ),
+      );
+      setStatusMenuPosition({ top: rect.bottom + 4, left: clampedLeft });
+    };
+
+    useEffect(() => {
+      if (!isStatusOpen) return;
+      updateStatusMenuPosition();
+
+      const handlePointerDown = (event: MouseEvent) => {
+        const target = event.target as globalThis.Node;
+        if (
+          !statusTriggerRef.current?.contains(target) &&
+          !statusMenuRef.current?.contains(target)
+        ) {
+          setIsStatusOpen(false);
+        }
+      };
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key === "Escape") setIsStatusOpen(false);
+      };
+      const handleReposition = () => updateStatusMenuPosition();
+
+      document.addEventListener("mousedown", handlePointerDown);
+      document.addEventListener("keydown", handleKeyDown);
+      window.addEventListener("scroll", handleReposition, true);
+      window.addEventListener("resize", handleReposition);
+      return () => {
+        document.removeEventListener("mousedown", handlePointerDown);
+        document.removeEventListener("keydown", handleKeyDown);
+        window.removeEventListener("scroll", handleReposition, true);
+        window.removeEventListener("resize", handleReposition);
+      };
+    }, [isStatusOpen]);
+
     return (
       <div
         data-task-id={task.id}
         className={`nodrag flex items-center gap-2 border border-transparent px-2 py-1 transition-colors hover:border-gray-200 hover:bg-gray-50 ${
           isRunning ? "border-emerald-300 bg-emerald-50/70 ring-1 ring-emerald-200" : ""
-        } ${isPulsing ? "roadmap-task-row-pulse" : ""}`}
+        } ${isPulsing ? "roadmap-task-row-pulse" : ""} ${onClick ? "cursor-pointer" : ""}`}
+        onClick={() => onClick?.(task)}
       >
         {onToggleComplete && (
           <button
@@ -193,21 +258,63 @@ const CanvasTaskRow = memo(
           </button>
         )}
 
-        <button
-          type="button"
-          disabled={!onClick}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-default"
-          onClick={() => onClick?.(task)}
+        <span
+          className={`min-w-0 flex-1 truncate text-xs font-medium ${
+            isDone ? "text-gray-400 line-through" : "text-gray-900"
+          }`}
+          title={task.title}
         >
-          <span
-            className={`min-w-0 flex-1 truncate text-xs font-medium ${
-              isDone ? "text-gray-400 line-through" : "text-gray-900"
-            }`}
-            title={task.title}
-          >
-            {task.title}
-          </span>
+          {task.title}
+        </span>
 
+        {onUpdateStatus ? (
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              ref={statusTriggerRef}
+              onClick={(event) => {
+                event.stopPropagation();
+                setIsStatusOpen((prev) => !prev);
+              }}
+              className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors hover:opacity-80 ${getTaskStatusColor(
+                task.status,
+              )}`}
+            >
+              {task.status.replace(/_/g, " ")}
+              <ChevronDown className="h-2.5 w-2.5" />
+            </button>
+
+            {isStatusOpen &&
+              createPortal(
+                <div
+                  ref={statusMenuRef}
+                  className="fixed z-300 min-w-[140px] rounded-md border border-gray-200 bg-white py-1 shadow-lg"
+                  style={{
+                    top: statusMenuPosition.top,
+                    left: statusMenuPosition.left,
+                  }}
+                >
+                  {CANVAS_TASK_STATUS_OPTIONS.map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onUpdateStatus(task, status);
+                        setIsStatusOpen(false);
+                      }}
+                      className={`block w-full px-3 py-1.5 text-left text-xs capitalize transition-colors hover:bg-gray-100 ${
+                        task.status === status ? "bg-gray-50 font-semibold" : ""
+                      }`}
+                    >
+                      {status.replace(/_/g, " ")}
+                    </button>
+                  ))}
+                </div>,
+                document.body,
+              )}
+          </div>
+        ) : (
           <span
             className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${getTaskStatusColor(
               task.status,
@@ -215,10 +322,10 @@ const CanvasTaskRow = memo(
           >
             {task.status.replace(/_/g, " ")}
           </span>
+        )}
 
-          <EditingTaskAvatar editors={editors} />
-          <CanvasTaskAssignees task={task} />
-        </button>
+        <EditingTaskAvatar editors={editors} />
+        <CanvasTaskAssignees task={task} />
       </div>
     );
   },
@@ -234,6 +341,7 @@ function CanvasTaskList({
   taskEditorsByNodeId,
   onSelectTask,
   onToggleComplete,
+  onUpdateStatus,
 }: {
   tasks: RoadmapTask[];
   runningTaskId?: string | null;
@@ -242,6 +350,7 @@ function CanvasTaskList({
   taskEditorsByNodeId?: Map<string, CollaboratorInfo[]>;
   onSelectTask?: (task: RoadmapTask) => void;
   onToggleComplete?: (task: RoadmapTask) => void;
+  onUpdateStatus?: (task: RoadmapTask, status: RoadmapTask["status"]) => void;
 }) {
   return (
     <div className="flex flex-col gap-0 px-2 pb-1">
@@ -254,6 +363,7 @@ function CanvasTaskList({
           editors={taskEditorsByNodeId?.get(task.id)}
           onClick={onSelectTask}
           onToggleComplete={onToggleComplete}
+          onUpdateStatus={onUpdateStatus}
         />
       ))}
     </div>
@@ -754,6 +864,9 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
                         status: task.status === "done" ? "todo" : "done",
                       });
                     } : undefined}
+                    onUpdateStatus={onUpdateTask ? (task, status) => {
+                      safelyUpdateTask({ ...task, status });
+                    } : undefined}
                   />
                 </div>
                 <button
@@ -779,6 +892,10 @@ export const FeatureWidget = memo(({ data }: NodeProps<FeatureWidgetNode>) => {
               onSelectTask={onSelectTask ? (task) => {
                 setIsTaskListModalOpen(false);
                 onSelectTask(task);
+              } : undefined}
+              onAddTask={onAddTask ? () => {
+                setIsTaskListModalOpen(false);
+                onAddTask(feature.id);
               } : undefined}
             />
           )}
