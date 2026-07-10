@@ -27,7 +27,7 @@ site, so links are relative filesystem paths. Every page carries a
 
 | # | Section | What's in it | Status |
 | --- | --- | --- | --- |
-| 00 | [Getting Started](./00-getting-started/README.md) | Setup, local development, environment variables | stub |
+| 00 | [Getting Started](./00-getting-started/README.md) | Setup, local development, environment variables | **current** |
 | 01 | [Product & Concepts](./01-product/README.md) | Personas, project lifecycle, roadmap model, glossary | **current** |
 | 02 | [Architecture](./02-architecture/README.md) | The six units, deploy topology, cross-service flows | **current** |
 | 03 | [Backend](./03-backend/README.md) | NestJS API — modules, guards, patterns, API reference | **current** |
