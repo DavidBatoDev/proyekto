@@ -167,6 +167,11 @@ Project checkpoints (`GET /payments/project/:projectId`, `POST /payments`,
 (`GET /payments/wallet[/transactions]`), and `POST /payments/wallet/admin/deposit`
 (`+AdminGuard`).
 
+> **⚠️** The checkpoint/escrow routes query the **dropped** `payment_checkpoints` /
+> `transactions` tables and are effectively dead. Live money flows through
+> [`payouts`](#payouts--payout-methods--payouts) and [`invoices`](#invoices--invoices).
+> See [Data → schema overview](../07-data-and-db/schema-overview.md).
+
 ## payouts · `payout-methods` / `payouts`
 
 Payout methods CRUD + set-default under `/payout-methods`; payouts under `/payouts`

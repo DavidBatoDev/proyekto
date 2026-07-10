@@ -27,7 +27,7 @@ R2**, not Supabase Storage.
 | `marketplace` | Freelancer discovery + hiring invites | `profiles`, `user_*`, `project_invites` |
 | `guests` | Anonymous guest sessions | `profiles`, `roadmaps` |
 | `admin` | Admin console — vetting, roles, matchmaking | `admin_profiles`, `consultant_applications`, `user_*` |
-| `payments` | Milestone/escrow payments + wallet ledger | `payment_checkpoints`, `wallets`, `transactions` |
+| `payments` | Wallet + **legacy** escrow/checkpoints (partly dead) | `wallets` (+ dropped `payment_checkpoints`, `transactions`) |
 | `payouts` | Payout methods + payout requests | `payout_methods`, `payouts` |
 | `invoices` | Invoice generation with line items | `invoices`, `invoice_line_items`, `invoice_documents` |
 | `meetings` | Meetings + recurring series + reminders | `meetings`, `meeting_series`, `meeting_participants` |
@@ -97,8 +97,11 @@ whole graph atomically via the RPC `upsert_full_roadmap` (no `.from()`). See
 **`team-time`** — task time logs (`task_time_logs`) + `time_log_comments`, with
 rate resolution for billing.
 
-**`payments`** — milestone/checkpoint payments plus an internal wallet ledger
-(`payment_checkpoints`, `wallets`, `transactions`) — fund/release/refund escrow.
+**`payments`** — an internal wallet (`wallets`) plus a **vestigial** escrow/checkpoint
+path. Its `payment_checkpoints` and `transactions` tables were dropped on 2026-01-11
+and never recreated, so the fund/release/refund routes are dead code against missing
+tables; only the wallet reads work. The live money flow is `payouts` + `invoices`.
+See [Data → schema overview](../07-data-and-db/schema-overview.md).
 
 **`payouts`** — freelancer payout methods (`payout_methods`) and payout requests
 (`payouts`) aggregating billable time; proof documents go to the **private R2
