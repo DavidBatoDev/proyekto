@@ -1,5 +1,7 @@
 # Meetings & Scheduling
 
+> **Last updated:** 2026-07-09 · **Status:** current
+
 Native meeting scheduling for Proyekto — a Google‑Calendar‑style calendar with a
 rich event editor, **recurring RRULE series**, **DST‑correct timezones**, branded
 video links, guest invites, and **scheduled reminder delivery**.

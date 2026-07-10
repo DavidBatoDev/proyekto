@@ -1,5 +1,7 @@
 # Architecture
 
+> **Last updated:** 2026-07-09 · **Status:** current
+
 The meetings feature spans three runtimes plus one external scheduler:
 
 ```

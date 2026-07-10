@@ -1,5 +1,7 @@
 # Backend API
 
+> **Last updated:** 2026-07-09 · **Status:** current
+
 NestJS module at [`backend/src/modules/meetings/`](../../../backend/src/modules/meetings/).
 Controller → Service → Repository. Every repository call runs as the Supabase
 **service role**; authorization is enforced in the service.

@@ -43,13 +43,15 @@ system. The reference exemplar is the [Meetings docs](./11-domains/meetings/READ
 
 ## Links
 
-There is no docs-site build, so all links are **relative filesystem paths**:
+There is no docs-site build, so all links are **relative filesystem paths**. Write a
+normal markdown link — a bracketed label followed by the target in parentheses — where
+the target is:
 
-- Sibling doc: `[data-model.md](./data-model.md)` or deep-linked
-  `[…](./recurrence-and-timezones.md#scoped-edits)`.
-- Source code: repo-relative from the doc's location, e.g. from a section folder
-  `[backend/src/modules/meetings/](../../backend/src/modules/meetings/)`. A page one
-  level deeper (e.g. `11-domains/meetings/`) uses `../../../`.
+- **Sibling doc** — a same-folder path `./file.md`, optionally deep-linked to a
+  heading `./file.md#anchor`.
+- **Source code** — repo-relative from the doc's location. From a section folder,
+  `../../` reaches the repo root (e.g. `../../backend/src/...`); a page one level
+  deeper (like `11-domains/meetings/`) needs `../../../`.
 - Each section README's index table links to every page in the section.
 
 ## Accuracy & encoding

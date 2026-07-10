@@ -1,5 +1,7 @@
 # Operations & runbook
 
+> **Last updated:** 2026-07-09 · **Status:** current
+
 Migrations, deploy, secrets, QA, and troubleshooting for the meetings feature.
 
 ## Environment

@@ -1,5 +1,7 @@
 # Recurrence & timezones
 
+> **Last updated:** 2026-07-09 · **Status:** current
+
 This is the correctness core of the feature. Two rules govern everything:
 
 1. **A meeting's stored `scheduled_at` is a UTC instant**, computed from a

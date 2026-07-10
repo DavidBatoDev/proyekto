@@ -1,5 +1,7 @@
 # Data model
 
+> **Last updated:** 2026-07-09 · **Status:** current
+
 All schema lives in [`supabase/migrations/`](../../../supabase/migrations/). The
 meetings tables were introduced/extended by:
 

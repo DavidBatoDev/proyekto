@@ -1,5 +1,7 @@
 # Reminders
 
+> **Last updated:** 2026-07-09 · **Status:** current
+
 Deliver a `meeting_reminder` notification to every participant of a meeting,
 **once**, at the meeting's `reminder_minutes`‑before offset.
 

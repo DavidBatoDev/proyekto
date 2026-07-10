@@ -1,6 +1,6 @@
 # Proyekto Documentation
 
-> **Last updated:** 2026-07-09 · **Status:** rebuilding (section by section)
+> **Last updated:** 2026-07-09 · **Status:** current (all 13 sections written)
 
 The source of truth for how **Proyekto** is built and operated — a managed
 work-delivery platform with a Consultant layer between Clients and Freelancers,
@@ -19,9 +19,9 @@ site, so links are relative filesystem paths. Every page carries a
 `Last updated` date and a `Status`. The writing conventions are in
 [STYLE.md](./STYLE.md).
 
-> **Status:** this knowledge base is being rebuilt one section at a time. Sections
-> marked _stub_ are scaffolded but not yet written; their pages are listed in the
-> section README as plain text until filled.
+> Every claim here is written from the current source (code, migrations, workflows),
+> not carried over from older docs — so where this contradicts a stale note
+> elsewhere (e.g. an out-of-date `CLAUDE.md` or `infra/README.md` line), trust this.
 
 ## Sections
 

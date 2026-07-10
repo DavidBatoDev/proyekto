@@ -1,5 +1,7 @@
 # Frontend
 
+> **Last updated:** 2026-07-09 · **Status:** current
+
 React 19 + TanStack Router/Query + Tailwind. Everything lives under
 [`web/src/components/meetings/`](../../../web/src/components/meetings/) plus the pure
 libs in [`web/src/lib/`](../../../web/src/lib/) and the data layer in
