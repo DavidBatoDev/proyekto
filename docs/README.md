@@ -30,11 +30,11 @@ site, so links are relative filesystem paths. Every page carries a
 | 00 | [Getting Started](./00-getting-started/README.md) | Setup, local development, environment variables | stub |
 | 01 | [Product & Concepts](./01-product/README.md) | Personas, project lifecycle, roadmap model, glossary | stub |
 | 02 | [Architecture](./02-architecture/README.md) | The six units, deploy topology, cross-service flows | **current** |
-| 03 | [Backend](./03-backend/README.md) | NestJS API — modules, guards, patterns, API reference | stub → next |
+| 03 | [Backend](./03-backend/README.md) | NestJS API — modules, guards, patterns, API reference | **current** |
 | 04 | [Web](./04-web/README.md) | React frontend — routing, state, services, roadmap canvas | stub |
 | 05 | [Agent & Roadmap AI](./05-agent-ai/README.md) | The v2 loop, memory, the shared operations contract | stub |
 | 06 | [Realtime](./06-realtime/README.md) | Cloudflare Worker + Durable Objects | stub |
-| 07 | [Data & Database](./07-data-and-db/README.md) | Schema, migrations, identity model, RLS | stub |
+| 07 | [Data & Database](./07-data-and-db/README.md) | Schema, migrations, identity model, RLS | stub → next |
 | 08 | [Storage & Media](./08-storage-media/README.md) | R2 buckets, upload paths, Supabase→R2 migration | stub |
 | 09 | [Mobile](./09-mobile/README.md) | Capacitor apps, FCM push, OTA updates | stub |
 | 10 | [Infrastructure & Deployment](./10-infra-deploy/README.md) | CI/CD, Cloud Run, Terraform, Cloudflare | stub |
