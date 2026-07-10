@@ -36,7 +36,7 @@ site, so links are relative filesystem paths. Every page carries a
 | 06 | [Realtime](./06-realtime/README.md) | Cloudflare Worker + Durable Objects | **current** |
 | 07 | [Data & Database](./07-data-and-db/README.md) | Schema, migrations, identity model, RLS | **current** |
 | 08 | [Storage & Media](./08-storage-media/README.md) | R2 buckets, upload paths, Supabase→R2 migration | **current** |
-| 09 | [Mobile](./09-mobile/README.md) | Capacitor apps, FCM push, OTA updates | stub |
+| 09 | [Mobile](./09-mobile/README.md) | Capacitor apps, FCM push, OTA updates | **current** |
 | 10 | [Infrastructure & Deployment](./10-infra-deploy/README.md) | CI/CD, Cloud Run, Terraform, Cloudflare | **current** |
 | 11 | [Feature Domains](./11-domains/README.md) | Per-feature deep dives — incl. the [Meetings](./11-domains/meetings/README.md) set | **current** |
 | 12 | [Runbooks & Ops](./12-runbooks/README.md) | Secret rotation, cache purge, vetting, benchmarks | stub |
