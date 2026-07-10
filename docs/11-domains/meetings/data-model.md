@@ -1,6 +1,6 @@
 # Data model
 
-All schema lives in [`supabase/migrations/`](../../supabase/migrations/). The
+All schema lives in [`supabase/migrations/`](../../../supabase/migrations/). The
 meetings tables were introduced/extended by:
 
 | Migration | What it adds |
@@ -163,8 +163,8 @@ Both `meetings` and `meeting_series` enable RLS with parallel policies:
 - `meeting_participants` — readable if you're the row or can see the parent
   meeting; you may UPDATE only **your own** RSVP.
 
-Full policy SQL: [`20260706120000_revive_meetings_scheduling.sql`](../../supabase/migrations/20260706120000_revive_meetings_scheduling.sql)
-and [`20260708140000_meetings_recurrence.sql`](../../supabase/migrations/20260708140000_meetings_recurrence.sql).
+Full policy SQL: [`20260706120000_revive_meetings_scheduling.sql`](../../../supabase/migrations/20260706120000_revive_meetings_scheduling.sql)
+and [`20260708140000_meetings_recurrence.sql`](../../../supabase/migrations/20260708140000_meetings_recurrence.sql).
 
 ## Notification types
 

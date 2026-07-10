@@ -71,7 +71,7 @@ America/New_York                       ← meeting_series.timezone
 
 Weekday integers follow **rrule's convention: `0=Mon … 6=Sun`** (note: *not* JS's
 `0=Sun`). Conversion helper: `rruleWeekdayOf(date)` in
-[`web/src/lib/recurrence.ts`](../../web/src/lib/recurrence.ts).
+[`web/src/lib/recurrence.ts`](../../../web/src/lib/recurrence.ts).
 
 ### Client rule helpers (`web/src/lib/recurrence.ts`)
 
@@ -104,7 +104,7 @@ interface RecurrenceRule {
 
 ## 3. DST‑correct expansion (server)
 
-[`backend/src/modules/meetings/recurrence.ts`](../../backend/src/modules/meetings/recurrence.ts)
+[`backend/src/modules/meetings/recurrence.ts`](../../../backend/src/modules/meetings/recurrence.ts)
 is the authoritative expander. The trick is **floating expansion + per‑occurrence
 UTC conversion**:
 

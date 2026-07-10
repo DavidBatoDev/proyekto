@@ -38,7 +38,7 @@ site, so links are relative filesystem paths. Every page carries a
 | 08 | [Storage & Media](./08-storage-media/README.md) | R2 buckets, upload paths, Supabase→R2 migration | stub |
 | 09 | [Mobile](./09-mobile/README.md) | Capacitor apps, FCM push, OTA updates | stub |
 | 10 | [Infrastructure & Deployment](./10-infra-deploy/README.md) | CI/CD, Cloud Run, Terraform, Cloudflare | stub |
-| 11 | [Feature Domains](./11-domains/README.md) | Per-feature deep dives — incl. the existing [Meetings](./meetings/README.md) set | stub |
+| 11 | [Feature Domains](./11-domains/README.md) | Per-feature deep dives — incl. the [Meetings](./11-domains/meetings/README.md) set | **current** |
 | 12 | [Runbooks & Ops](./12-runbooks/README.md) | Secret rotation, cache purge, vetting, benchmarks | stub |
 
 ## Also at the repo root

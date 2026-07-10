@@ -13,7 +13,7 @@ Migrations, deploy, secrets, QA, and troubleshooting for the meetings feature.
 
 ## Migrations
 
-Source of truth: [`supabase/migrations/`](../../supabase/migrations/) (repo root).
+Source of truth: [`supabase/migrations/`](../../../supabase/migrations/) (repo root).
 Apply to prod SG via the **Supabase MCP `apply_migration`** — `supabase db push`
 fails SASL auth because the local `backend/.env` password is the old Mumbai DB's,
 not SG's.
@@ -63,7 +63,7 @@ Push to `main` → GitHub Actions:
 | `SUPABASE_*`, `GMAIL_*`, `R2_*`, … | Secret Manager | general backend |
 
 `MEETINGS_CRON_SECRET` and `MEETINGS_REMINDERS_ENABLED` are validated in
-[`env.validation.ts`](../../backend/src/config/env.validation.ts) (optional).
+[`env.validation.ts`](../../../backend/src/config/env.validation.ts) (optional).
 
 ## Reminder cron runbook
 
@@ -86,7 +86,7 @@ printf '%s' "$NEW" | gcloud secrets versions add MEETINGS_CRON_SECRET --data-fil
 
 ## QA driver
 
-[`web/playwright/meetings-qa.mjs`](../../web/playwright/meetings-qa.mjs) — a headed
+[`web/playwright/meetings-qa.mjs`](../../../web/playwright/meetings-qa.mjs) — a headed
 Playwright driver that exercises every Phase 0–3 capability end‑to‑end and asserts
 the correctness‑critical bits against the backend API (not just the DOM).
 

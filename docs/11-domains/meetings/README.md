@@ -56,11 +56,11 @@ only read one page, read [architecture.md](./architecture.md).
 
 ## Code locations
 
-- **Web:** [`web/src/components/meetings/`](../../web/src/components/meetings/),
-  [`web/src/routes/meetings.tsx`](../../web/src/routes/meetings.tsx),
-  [`web/src/lib/{recurrence,datetime}.ts`](../../web/src/lib/),
-  [`web/src/services/meetings.service.ts`](../../web/src/services/meetings.service.ts),
-  [`web/src/hooks/useMeetings.ts`](../../web/src/hooks/useMeetings.ts)
-- **Backend:** [`backend/src/modules/meetings/`](../../backend/src/modules/meetings/)
-- **DB:** [`supabase/migrations/2026070612*`, `2026070813*`, `2026070814*`, `2026070815*`](../../supabase/migrations/)
-- **QA driver:** [`web/playwright/meetings-qa.mjs`](../../web/playwright/meetings-qa.mjs)
+- **Web:** [`web/src/components/meetings/`](../../../web/src/components/meetings/),
+  [`web/src/routes/meetings.tsx`](../../../web/src/routes/meetings.tsx),
+  [`web/src/lib/{recurrence,datetime}.ts`](../../../web/src/lib/),
+  [`web/src/services/meetings.service.ts`](../../../web/src/services/meetings.service.ts),
+  [`web/src/hooks/useMeetings.ts`](../../../web/src/hooks/useMeetings.ts)
+- **Backend:** [`backend/src/modules/meetings/`](../../../backend/src/modules/meetings/)
+- **DB:** [`supabase/migrations/2026070612*`, `2026070813*`, `2026070814*`, `2026070815*`](../../../supabase/migrations/)
+- **QA driver:** [`web/playwright/meetings-qa.mjs`](../../../web/playwright/meetings-qa.mjs)

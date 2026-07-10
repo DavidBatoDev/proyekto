@@ -3,9 +3,8 @@
 > **Last updated:** 2026-07-09 · **Status:** current
 
 How to write and organize pages in this knowledge base so everything reads as one
-system. The reference exemplar is the [Meetings docs](./meetings/README.md) (they
-move under [`11-domains/`](./11-domains/README.md) in a later phase) — when in
-doubt, mirror them.
+system. The reference exemplar is the [Meetings docs](./11-domains/meetings/README.md)
+— when in doubt, mirror them.
 
 ## Structure
 

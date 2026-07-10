@@ -1,8 +1,8 @@
 # Frontend
 
 React 19 + TanStack Router/Query + Tailwind. Everything lives under
-[`web/src/components/meetings/`](../../web/src/components/meetings/) plus the pure
-libs in [`web/src/lib/`](../../web/src/lib/) and the data layer in
+[`web/src/components/meetings/`](../../../web/src/components/meetings/) plus the pure
+libs in [`web/src/lib/`](../../../web/src/lib/) and the data layer in
 `web/src/services` / `web/src/hooks`.
 
 Built **custom on date‑fns** (no FullCalendar/react‑big‑calendar — a library's CSS
@@ -11,7 +11,7 @@ fights Tailwind v4 tokens). Token classes only (`bg-primary`, `text-primary`,
 
 ## Route & top‑level state
 
-[`web/src/routes/meetings.tsx`](../../web/src/routes/meetings.tsx) (`/meetings`,
+[`web/src/routes/meetings.tsx`](../../../web/src/routes/meetings.tsx) (`/meetings`,
 auth‑gated) owns just the editor open/close state and renders `CalendarShell` +
 one `MeetingEditorModal`:
 

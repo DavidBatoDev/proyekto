@@ -1,23 +1,34 @@
 # Feature Domains
 
-> **Last updated:** 2026-07-09 · **Status:** planned (stub)
+> **Last updated:** 2026-07-09 · **Status:** current
 
-One page (or sub-folder) per user-facing feature domain — the deep-dive companions
-to the [Architecture](../02-architecture/README.md) overview. The Meetings set is
-already written and will move here.
+One deep dive per user-facing feature domain — the companions to the
+[Architecture](../02-architecture/README.md) overview and the
+[Backend module list](../03-backend/modules.md). Each page covers what the feature
+does, its data model, its HTTP surface, and where the code lives.
 
-## Planned contents
+## Documentation index
 
 | Doc | What's in it |
 | --- | --- |
-| `meetings/` | Meeting scheduling — calendar, RRULE recurrence, timezones, reminders (existing set, to be moved here) |
-| `chat.md` | Channels, DMs, and the activity feed |
-| `notifications-and-push.md` | In-app notifications and FCM push fan-out |
-| `payments-payouts-invoices.md` | Client payments, freelancer payouts, invoices |
-| `marketplace-and-applications.md` | Marketplace browse and consultant/freelancer applications |
-| `teams-and-time.md` | Project teams, membership, per-project rates, time tracking |
-| `roadmap-sharing.md` | Public/tokenized roadmap sharing |
-| `guests.md` | Anonymous guest sessions and guest→user migration |
+| [meetings/](./meetings/README.md) | Meeting scheduling — calendar, RRULE recurrence, timezones, reminders (a full sub-set) |
+| [chat.md](./chat.md) | Project channels, DMs, reactions, stars, the activity feed |
+| [notifications-and-push.md](./notifications-and-push.md) | In-app notifications and the FCM push fan-out |
+| [payments-payouts-invoices.md](./payments-payouts-invoices.md) | The money domain — live payouts + invoices, and the retired escrow |
+| [marketplace-and-applications.md](./marketplace-and-applications.md) | Consultant applications/vetting and freelancer discovery/hiring |
+| [teams-and-time.md](./teams-and-time.md) | Reusable teams, project curation → access, billable time logs |
+| [roadmap-sharing.md](./roadmap-sharing.md) | Tokenized read/comment sharing of a roadmap |
+| [guests.md](./guests.md) | Anonymous guest sessions and the guest→user migration |
 
-_Scaffolded during the docs revamp; content lands in a later phase. See the
-[docs index](../README.md) for build order._
+## How these relate
+
+Most domains hang off a **project** and reuse the same spine: `project_access` for
+authorization, `NotificationsModule` for alerts, and the realtime Worker for live
+updates. The roadmap itself has its own sections
+([Product → roadmap](../01-product/roadmap-and-milestones.md),
+[Agent & Roadmap AI](../05-agent-ai/README.md)).
+
+## Code locations
+
+- **Backend modules:** [`backend/src/modules/`](../../backend/src/modules/) — see [Backend → modules](../03-backend/modules.md)
+- **Web components:** [`web/src/components/`](../../web/src/components/)

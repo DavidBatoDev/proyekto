@@ -102,7 +102,7 @@ consumed by both NestJS validation and the agent's contract tests. See
 ## Flow 2 — Meetings scheduling
 
 Fully documented in the [Meetings](../11-domains/README.md) domain set (currently at
-[`docs/meetings/`](../meetings/architecture.md)). The cross-service summary:
+[`docs/11-domains/meetings/`](../11-domains/meetings/architecture.md)). The cross-service summary:
 
 1. **web collects wall-clock + IANA timezone**, converts to a UTC instant
    (`wallTimeToUtcISO`), and `POST /api/meetings { scheduled_at, timezone, … }`.

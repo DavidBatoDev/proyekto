@@ -50,15 +50,15 @@ The meetings feature spans three runtimes plus one external scheduler:
 
 | Area | Files |
 | --- | --- |
-| Route | [`routes/meetings.tsx`](../../web/src/routes/meetings.tsx) — owns editor open/close state |
-| Calendar shell | [`components/meetings/calendar/CalendarShell.tsx`](../../web/src/components/meetings/calendar/CalendarShell.tsx) — toolbar, view state, fetch window |
+| Route | [`routes/meetings.tsx`](../../../web/src/routes/meetings.tsx) — owns editor open/close state |
+| Calendar shell | [`components/meetings/calendar/CalendarShell.tsx`](../../../web/src/components/meetings/calendar/CalendarShell.tsx) — toolbar, view state, fetch window |
 | Views | `calendar/views/{Day,Week,Month,Year}View.tsx`, `TimeGrid.tsx`, `CurrentTimeLine.tsx`, `MiniMonth.tsx`, `AgendaPanel.tsx` |
 | Event render | `calendar/EventBlock.tsx` (time grid), `calendar/EventChip.tsx` (month) |
 | Layout math | `calendar/overlap/layout.ts` (+ `.test.ts`) — greedy column packing |
 | Range | `calendar/useCalendarRange.ts`, `calendar/model.ts` (group/filter by local day) |
-| Editor | [`components/meetings/editor/MeetingEditorModal.tsx`](../../web/src/components/meetings/editor/MeetingEditorModal.tsx) + `DatePickerField`, `TimePicker`, `TimezoneSelect`, `RepeatDropdown`, `RecurrenceBuilderDialog`, `ScopeDialog`, `VideoProviderPicker`, `ProviderLogos`, `providers.ts` |
-| Pure libs | [`lib/recurrence.ts`](../../web/src/lib/recurrence.ts), [`lib/datetime.ts`](../../web/src/lib/datetime.ts) (+ tests) |
-| Data layer | [`services/meetings.service.ts`](../../web/src/services/meetings.service.ts), [`hooks/useMeetings.ts`](../../web/src/hooks/useMeetings.ts), `queries/meetings.ts` |
+| Editor | [`components/meetings/editor/MeetingEditorModal.tsx`](../../../web/src/components/meetings/editor/MeetingEditorModal.tsx) + `DatePickerField`, `TimePicker`, `TimezoneSelect`, `RepeatDropdown`, `RecurrenceBuilderDialog`, `ScopeDialog`, `VideoProviderPicker`, `ProviderLogos`, `providers.ts` |
+| Pure libs | [`lib/recurrence.ts`](../../../web/src/lib/recurrence.ts), [`lib/datetime.ts`](../../../web/src/lib/datetime.ts) (+ tests) |
+| Data layer | [`services/meetings.service.ts`](../../../web/src/services/meetings.service.ts), [`hooks/useMeetings.ts`](../../../web/src/hooks/useMeetings.ts), `queries/meetings.ts` |
 | Shared | `components/common/{AnchoredPopover,ModalPortal}.tsx` |
 
 ### Backend (`backend/src/modules/meetings/`)

@@ -42,7 +42,7 @@ MeetingsService.dispatchReminders()
 ## Idempotency marker
 
 Migration
-[`20260708150000_meetings_reminder_delivery.sql`](../../supabase/migrations/20260708150000_meetings_reminder_delivery.sql):
+[`20260708150000_meetings_reminder_delivery.sql`](../../../supabase/migrations/20260708150000_meetings_reminder_delivery.sql):
 
 ```sql
 alter table public.meetings add column if not exists reminder_sent_at timestamptz;
@@ -60,7 +60,7 @@ reminder‑configured rows are indexed).
 `POST /api/meetings/cron/reminders` — `@Public()` (skips the Supabase JWT guard) +
 `@UseGuards(CronSecretGuard)`.
 
-[`CronSecretGuard`](../../backend/src/common/guards/cron-secret.guard.ts) reads the
+[`CronSecretGuard`](../../../backend/src/common/guards/cron-secret.guard.ts) reads the
 `x-cron-secret` header and compares it (constant‑time) to the
 `MEETINGS_CRON_SECRET` env var:
 
@@ -91,7 +91,7 @@ echo "MEETINGS_CRON_SECRET=$SECRET" >> backend/.env
 
 ### 2. Mount on Cloud Run (durable)
 
-The deploy workflow ([`backend-deploy.yml`](../../.github/workflows/backend-deploy.yml))
+The deploy workflow ([`backend-deploy.yml`](../../../.github/workflows/backend-deploy.yml))
 adds the secret to `--set-secrets` **gated on a repo variable**, mirroring the
 OTA/Realtime pattern (so a deploy never fails if the secret isn't created yet):
 
