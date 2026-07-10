@@ -252,6 +252,7 @@ export const SidePanel = ({
 	>([]);
 	const [showUnsavedChangesConfirm, setShowUnsavedChangesConfirm] =
 		useState(false);
+	const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
 	// Description editing state
 	const [isEditingDescription, setIsEditingDescription] = useState(false);
@@ -336,6 +337,7 @@ export const SidePanel = ({
 			setComments([]);
 			setIsLoadingComments(false);
 			setShowUnsavedChangesConfirm(false);
+			setIsDeleteConfirmOpen(false);
 			setIsEditingDescription(false);
 			setAttachments([]);
 			setChecklistItems([]);
@@ -1796,11 +1798,8 @@ export const SidePanel = ({
 						</Button>
 						<Button
 							onClick={() => {
-								if (task) {
-									if (isReadOnlyPending) return;
-									onDeleteTask(task.id);
-									onClose();
-								}
+								if (!task || isReadOnlyPending) return;
+								setIsDeleteConfirmOpen(true);
 							}}
 							variant="outlined"
 							colorScheme="destructive"
@@ -1877,6 +1876,62 @@ export const SidePanel = ({
 				onDiscard={closeImmediately}
 				onSave={handleSaveBeforeClose}
 			/>
+
+			{createPortal(
+				<AnimatePresence>
+					{isOpen && isDeleteConfirmOpen && task && (
+						<motion.div
+							className="fixed inset-0 flex items-center justify-center p-4"
+							style={{ zIndex: zIndexBase + 60 }}
+							initial={{ opacity: 0 }}
+							animate={{ opacity: 1 }}
+							exit={{ opacity: 0 }}
+							transition={{ duration: 0.18, ease: "easeOut" }}
+						>
+							<div
+								className="absolute inset-0 bg-black/40"
+								onClick={() => setIsDeleteConfirmOpen(false)}
+							/>
+							<motion.div
+								className="relative z-10 w-full max-w-md mx-4 rounded-xl bg-white shadow-2xl p-6"
+								initial={{ opacity: 0, scale: 0.96, y: 8 }}
+								animate={{ opacity: 1, scale: 1, y: 0 }}
+								exit={{ opacity: 0, scale: 0.96, y: 8 }}
+								transition={{ duration: 0.18, ease: "easeOut" }}
+							>
+								<h3 className="text-lg font-semibold text-gray-900">
+									Delete Task?
+								</h3>
+								<p className="text-sm text-gray-600 mt-2">
+									This will permanently remove "{task.title}" and cannot be
+									undone.
+								</p>
+								<div className="mt-6 flex justify-end gap-3">
+									<button
+										type="button"
+										onClick={() => setIsDeleteConfirmOpen(false)}
+										className="px-4 py-2 text-sm rounded-md border border-gray-300 bg-white hover:bg-gray-50"
+									>
+										Cancel
+									</button>
+									<button
+										type="button"
+										onClick={() => {
+											setIsDeleteConfirmOpen(false);
+											onDeleteTask(task.id);
+											onClose();
+										}}
+										className="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700"
+									>
+										Delete
+									</button>
+								</div>
+							</motion.div>
+						</motion.div>
+					)}
+				</AnimatePresence>,
+				document.body,
+			)}
 		</>
 	);
 };

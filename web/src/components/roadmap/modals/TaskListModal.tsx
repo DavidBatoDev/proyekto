@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { RoadmapFeature, RoadmapTask, TaskStatus } from "@/types/roadmap";
 import { SortableTaskList } from "../widgets/SortableTaskList";
@@ -11,6 +11,7 @@ interface TaskListModalProps {
   onClose: () => void;
   onSelectTask?: (task: RoadmapTask) => void;
   onUpdateTask?: (task: RoadmapTask) => void;
+  onAddTask?: (featureId: string) => void;
 }
 
 export function TaskListModal({
@@ -18,6 +19,7 @@ export function TaskListModal({
   onClose,
   onSelectTask,
   onUpdateTask,
+  onAddTask,
 }: TaskListModalProps) {
   const tasks = feature.tasks ?? [];
   const doneCount = tasks.filter((t) => t.status === "done").length;
@@ -97,6 +99,20 @@ export function TaskListModal({
               />
             )}
           </div>
+
+          {/* Add task — pinned outside the scroll area so it stays reachable in long lists */}
+          {onAddTask && (
+            <div className="shrink-0 border-t border-gray-100 px-6 py-3">
+              <button
+                type="button"
+                onClick={() => onAddTask(feature.id)}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg font-medium text-sm transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Add Task
+              </button>
+            </div>
+          )}
         </motion.div>
       </motion.div>
     </AnimatePresence>,

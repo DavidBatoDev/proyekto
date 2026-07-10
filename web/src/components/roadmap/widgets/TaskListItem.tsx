@@ -569,6 +569,58 @@ export const TaskListItem = memo(
 				{/* Live "editing" indicator (a collaborator has this task open) */}
 				<EditingTaskAvatar editors={editors} />
 
+				{/* Status Dropdown */}
+				<div className="relative shrink-0" ref={statusDropdownRef}>
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							setIsStatusOpen(!isStatusOpen);
+						}}
+						className={`inline-flex items-center gap-1 font-medium rounded transition-colors ${
+							isCompact ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-0.5 text-xs"
+						} ${getStatusColor(task.status)} hover:opacity-80 cursor-pointer`}
+					>
+						{task.status.replace(/_/g, " ")}
+						<ChevronDown className={isCompact ? "w-2.5 h-2.5" : "w-3 h-3"} />
+					</button>
+
+					{/* Dropdown Menu - Rendered via Portal */}
+					{isStatusOpen &&
+						statusDropdownRef.current &&
+						createPortal(
+							<div
+								ref={dropdownMenuRef}
+								className="fixed bg-white border border-gray-300 rounded shadow-lg z-200"
+								style={{
+									top: dropdownPosition.top,
+									left: dropdownPosition.left,
+									width: "160px",
+								}}
+							>
+								{STATUS_OPTIONS.map((status) => (
+									<button
+										key={status}
+										type="button"
+										onClick={(e) => {
+											e.stopPropagation();
+											onUpdateStatus?.(task.id, status);
+											setIsStatusOpen(false);
+										}}
+										className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
+											task.status === status
+												? "bg-gray-200 text-black font-semibold"
+												: "hover:bg-gray-100"
+										}`}
+									>
+										{status.replace(/_/g, " ")}
+									</button>
+								))}
+							</div>,
+							document.body,
+						)}
+				</div>
+
 				{/* Assignee avatar (click to open picker) */}
 				<button
 					ref={assigneeTriggerRef}
@@ -738,58 +790,6 @@ export const TaskListItem = memo(
 						</div>,
 						document.body,
 					)}
-
-				{/* Status Dropdown */}
-				<div className="relative shrink-0" ref={statusDropdownRef}>
-					<button
-						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							setIsStatusOpen(!isStatusOpen);
-						}}
-						className={`inline-flex items-center gap-1 font-medium rounded transition-colors ${
-							isCompact ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-0.5 text-xs"
-						} ${getStatusColor(task.status)} hover:opacity-80 cursor-pointer`}
-					>
-						{task.status.replace(/_/g, " ")}
-						<ChevronDown className={isCompact ? "w-2.5 h-2.5" : "w-3 h-3"} />
-					</button>
-
-					{/* Dropdown Menu - Rendered via Portal */}
-					{isStatusOpen &&
-						statusDropdownRef.current &&
-						createPortal(
-							<div
-								ref={dropdownMenuRef}
-								className="fixed bg-white border border-gray-300 rounded shadow-lg z-200"
-								style={{
-									top: dropdownPosition.top,
-									left: dropdownPosition.left,
-									width: "160px",
-								}}
-							>
-								{STATUS_OPTIONS.map((status) => (
-									<button
-										key={status}
-										type="button"
-										onClick={(e) => {
-											e.stopPropagation();
-											onUpdateStatus?.(task.id, status);
-											setIsStatusOpen(false);
-										}}
-										className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
-											task.status === status
-												? "bg-gray-200 text-black font-semibold"
-												: "hover:bg-gray-100"
-										}`}
-									>
-										{status.replace(/_/g, " ")}
-									</button>
-								))}
-							</div>,
-							document.body,
-						)}
-				</div>
 
 				{/* Actions (shown on hover) */}
 				<div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
