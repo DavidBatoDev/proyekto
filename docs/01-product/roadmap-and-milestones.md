@@ -67,8 +67,8 @@ Progress rolls further up to milestones and the roadmap; Postgres progress funct
 
 ## How it's built and edited
 
-- The web canvas renders the tree with **XYFlow + dagre** and supports optimistic
-  epic/feature/task edits. See [Web → roadmap canvas](../04-web/README.md).
+- The web canvas renders the tree with **XYFlow** (React Flow, custom layout) and
+  supports optimistic epic/feature/task edits. See [Web → roadmap canvas](../04-web/roadmap-canvas.md).
 - The **AI assistant** can plan and apply edits conversationally; every AI commit is
   persisted atomically through the `upsert_full_roadmap` RPC. See
   [Agent & Roadmap AI](../05-agent-ai/README.md).

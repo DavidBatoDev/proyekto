@@ -16,7 +16,7 @@ touch; everything else is a backend service it talks to over HTTP or WebSocket.
 
 | Unit | Stack | Entry point | Runs on |
 | --- | --- | --- | --- |
-| **web** | React 19 + Vite, TanStack Router/Query/Table, MUI + Tailwind, Zustand, Lexical, XYFlow/dagre; Capacitor for Android/iOS | `web/src/main.tsx` | Vercel (`www.proyekto.tech`) + mobile bundles |
+| **web** | React 19 + Vite, TanStack Router/Query/Table, MUI + Tailwind, Zustand, Lexical, XYFlow (React Flow); Capacitor for Android/iOS | `web/src/main.tsx` | Vercel (`www.proyekto.tech`) + mobile bundles |
 | **backend** | NestJS 11 (TypeScript) | `backend/src/server.ts` → `main.ts` | Cloud Run (`api.proyekto.tech`) |
 | **agent** | Python 3.12 FastAPI, LangChain/LangGraph + OpenAI Responses API | `agent/run.py` → `app.main:app` | Cloud Run |
 | **realtime** | Cloudflare Worker + Durable Objects (SQLite-backed), R2 bindings | `realtime/src/index.ts` | Cloudflare Workers (`proyekto-realtime`) |
