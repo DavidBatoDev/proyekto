@@ -859,7 +859,7 @@ export function AIDemoSection({ isActive: _isActive }: { isActive?: boolean } = 
                       transition={{ duration: 0.3 }}
                       className="flex items-start gap-2"
                     >
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-600">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary">
                         <Sparkles className="h-3.5 w-3.5 text-white" />
                       </div>
                       <div className="rounded-2xl rounded-tl-sm border border-slate-200 bg-white px-3 py-2 text-sm leading-relaxed text-slate-700 shadow-sm">
@@ -879,7 +879,7 @@ export function AIDemoSection({ isActive: _isActive }: { isActive?: boolean } = 
                         transition={{ duration: 0.22 }}
                         className="flex justify-end"
                       >
-                        <div className="max-w-[88%] rounded-2xl rounded-tr-sm bg-blue-600 px-3 py-2 text-sm text-white shadow-sm">
+                        <div className="max-w-[88%] rounded-2xl rounded-tr-sm bg-primary px-3 py-2 text-sm text-white shadow-sm">
                           {prompt}
                         </div>
                       </motion.div>
@@ -891,7 +891,7 @@ export function AIDemoSection({ isActive: _isActive }: { isActive?: boolean } = 
                           transition={{ duration: 0.24, delay: 0.05 }}
                           className="flex items-start gap-2"
                         >
-                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-600">
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary">
                             <Sparkles className="h-3.5 w-3.5 text-white" />
                           </div>
                           <div className="rounded-2xl rounded-tl-sm border border-slate-200 bg-white px-3 py-2 text-sm leading-relaxed text-slate-700 shadow-sm">
@@ -912,7 +912,7 @@ export function AIDemoSection({ isActive: _isActive }: { isActive?: boolean } = 
                       exit={{ opacity: 0 }}
                       className="flex items-start gap-2"
                     >
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-600">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary">
                         <Sparkles className="h-3.5 w-3.5 text-white" />
                       </div>
                       <div className="rounded-2xl rounded-tl-sm border border-slate-200 bg-white shadow-sm">
@@ -943,9 +943,9 @@ export function AIDemoSection({ isActive: _isActive }: { isActive?: boolean } = 
                       )}
                     </span>
                     <motion.div
-                      animate={phase === "thinking" ? { scale: [1, 1.18, 1], backgroundColor: ["rgb(37,99,235)", "rgb(96,165,250)", "rgb(37,99,235)"] } : {}}
+                      animate={phase === "thinking" ? { scale: [1, 1.18, 1], backgroundColor: ["#5E6AD2", "#8B93E2", "#5E6AD2"] } : {}}
                       transition={{ duration: 0.4 }}
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-600"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary"
                     >
                       <Send className="h-3.5 w-3.5 text-white" />
                     </motion.div>

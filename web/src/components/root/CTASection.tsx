@@ -5,7 +5,7 @@ import { Sparkles } from "lucide-react";
 export const CTASection = () => {
   return (
     <section className="mt-20">
-      <div className="relative overflow-hidden rounded-3xl bg-[#2f5cff] p-6 [box-shadow:inset_0_0_140px_rgba(255,255,255,0.34),inset_0_0_56px_rgba(255,255,255,0.26),0_18px_40px_rgba(47,92,255,0.3)] sm:p-8 lg:p-10">
+      <div className="relative overflow-hidden rounded-3xl bg-primary p-6 [box-shadow:inset_0_0_140px_rgba(255,255,255,0.34),inset_0_0_56px_rgba(255,255,255,0.26),0_18px_40px_rgba(94,106,210,0.3)] sm:p-8 lg:p-10">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_16%_28%,rgba(255,255,255,0.52),transparent_35%),radial-gradient(circle_at_86%_70%,rgba(255,255,255,0.36),transparent_42%),linear-gradient(120deg,rgba(255,255,255,0.12)_0%,rgba(255,255,255,0)_36%,rgba(255,255,255,0.12)_100%)]" />
         <div className="pointer-events-none absolute inset-[1px] rounded-[calc(theme(borderRadius.3xl)-1px)] border border-white/28" />
         <div className="pointer-events-none absolute left-28 top-0 h-6 w-24 border border-white/35 bg-white/10 backdrop-blur-[1px] [clip-path:polygon(8%_0,92%_0,84%_100%,16%_100%)]" />

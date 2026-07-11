@@ -78,7 +78,7 @@ export function WhyProyektoSection({ isActive: _isActive = true }: { isActive?: 
           {/* Card 1 — the throne, always blue */}
           <div
             className="relative overflow-hidden rounded-3xl p-8 text-white lg:col-span-5 lg:flex lg:min-h-[300px] lg:flex-col"
-            style={{ background: "linear-gradient(135deg, rgb(37,99,235), rgb(67,56,202))" }}
+            style={{ background: "#5E6AD2" }}
           >
             {/* Decorative circles */}
             <motion.div

@@ -148,7 +148,7 @@ export function HowItWorksAIDemo({ compact = false }: { compact?: boolean }) {
                     <div className="mt-1.5 space-y-1.5">
                       {/* Epic */}
                       <div className="flex items-start gap-1.5">
-                        <span className="mt-0.5 shrink-0 rounded bg-blue-600 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">
+                        <span className="mt-0.5 shrink-0 rounded bg-primary px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">
                           Epic
                         </span>
                         <div>
@@ -180,7 +180,7 @@ export function HowItWorksAIDemo({ compact = false }: { compact?: boolean }) {
                         className={`rounded-lg px-2 py-1 text-[10px] font-semibold text-white transition-colors ${
                           planApplied
                             ? "cursor-default bg-slate-300"
-                            : "cursor-pointer bg-blue-600 hover:bg-blue-500"
+                            : "cursor-pointer bg-primary hover:bg-primary/90"
                         }`}
                       >
                         {planApplied ? "Applied ✓" : "Apply this plan"}
@@ -227,7 +227,7 @@ export function HowItWorksAIDemo({ compact = false }: { compact?: boolean }) {
               disabled={phase !== 0}
               className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-colors ${
                 phase === 0
-                  ? "cursor-pointer bg-blue-600 text-white hover:bg-blue-500"
+                  ? "cursor-pointer bg-primary text-white hover:bg-primary/90"
                   : "cursor-not-allowed bg-slate-200 text-slate-400"
               }`}
             >

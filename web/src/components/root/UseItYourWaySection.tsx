@@ -99,7 +99,7 @@ export function UseItYourWaySection() {
             whileHover={{ y: -4 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
             className="relative h-full overflow-hidden rounded-3xl p-6"
-            style={{ background: "linear-gradient(135deg, rgb(37,99,235), rgb(67,56,202))" }}
+            style={{ background: "#5E6AD2" }}
           >
             <motion.div
               animate={{ scale: [1, 1.12, 1], x: [0, 6, 0], y: [0, -8, 0] }}
