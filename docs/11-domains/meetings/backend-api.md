@@ -24,6 +24,16 @@ which is `@Public()` + `CronSecretGuard`.
 | `POST /:id/cancel` | `CancelMeetingDto` | Cancel — with optional series `scope` |
 | `POST /:id/respond` | `RespondMeetingDto` | RSVP (accept / decline / tentative) |
 
+**Google connection** (separate `GoogleController` under `/api/meetings/google`,
+Phase 5 — see [google-integration.md](./google-integration.md)):
+
+| Method & path | Guard | Purpose |
+| --- | --- | --- |
+| `GET /google/status` | JWT | `{ enabled, connected, googleEmail? }` |
+| `GET /google/connect` | JWT | `{ url }` Google consent URL |
+| `GET /google/callback` | `@Public()` | OAuth redirect target → 302 to `${CLIENT_URL}/meetings?google=…` |
+| `DELETE /google/connection` | JWT | Revoke + delete the connection |
+
 Responses are wrapped `{ data: … }`. List queries take `from`, `to` (ISO8601),
 `status`, `project_id` — all optional; note the list returns **all** statuses
 unless `status` is passed (cancelled rows are included).

@@ -96,12 +96,20 @@ Submit derives `duration_minutes = end − start`, validates (`title` present,
 
 ### Video provider picker
 
-Three options: **Generate a video room** (jitsi, auto), **Paste a meeting link**
-(`external_link`), **No video link** (`none`). When a link is pasted,
-`providers.ts#detectProvider` derives the brand from the URL host and shows
-`Detected: Zoom / Google Meet / Microsoft Teams / …` with an inline SVG logo
-(`ProviderLogos.tsx`). The brand is **display‑only** — the backend stores only
-`jitsi | external_link | none` + the URL.
+Options: **Generate a video room** (jitsi, auto), **Google Meet** (only when the
+integration is enabled — see below), **Paste a meeting link** (`external_link`),
+**No video link** (`none`). When a link is pasted, `providers.ts#detectProvider`
+derives the brand from the URL host and shows `Detected: Zoom / Google Meet /
+Microsoft Teams / …` with an inline SVG logo (`ProviderLogos.tsx`) — that brand is
+**display‑only**.
+
+The **Google Meet** option is rendered only when `useGoogleCalendarStatus()`
+reports `enabled`. If the organizer isn't connected it shows an inline **Connect
+Google Calendar** button (`googleCalendarService.connectUrl()` → full‑page
+redirect to consent); if connected it shows "Connected as {email}", and submit
+provisions a real Meet link + calendar invite backend‑side. The `/meetings` route
+turns the `?google=connected|error` callback return into a toast. Full detail in
+[google-integration.md](./google-integration.md).
 
 ## Data layer
 
@@ -112,13 +120,15 @@ Typed wrappers over `/api/meetings*` (axios; envelope `{ data }`). Key types:
 `guest_emails`, `reminder_minutes`), `UpdateMeetingPayload` (all optional +
 `scope?`), `MeetingEditScope = 'this'|'following'|'all'`. Methods: `list`,
 `listForProject`, `get`, `create`, `update(id,payload)`, `reschedule`,
-`cancel(id, scope?)`, `respond`.
+`cancel(id, scope?)`, `respond`. A separate `googleCalendarService` exposes
+`status()`, `connectUrl()`, `disconnect()` for the Google integration.
 
 ### `hooks/useMeetings.ts`
 
 TanStack Query hooks: `useMeetingsRange`, `useProjectMeetings`, `useMeeting`,
 `useBookMeeting`, `useUpdateMeeting`, `useCancelMeeting` (accepts `string` or
-`{id, scope}`), `useRescheduleMeeting`, `useRespondMeeting`. All mutations
+`{id, scope}`), `useRescheduleMeeting`, `useRespondMeeting`, plus
+`useGoogleCalendarStatus` / `useDisconnectGoogleCalendar`. All meeting mutations
 `invalidateQueries({ queryKey: meetingKeys.all })` so calendars + the dashboard
 widget refresh.
 

@@ -21,6 +21,9 @@ only read one page, read [architecture.md](./architecture.md).
   _this_ / _this‑and‑following_ / _all_**, detached overrides, and cancelled‑as‑EXDATE.
 - **Reminders** — a `meeting_reminder` notification to every participant, once,
   at the configured offset, delivered by an external scheduler.
+- **Google Calendar / Meet** (optional, flag‑gated) — a user connects their
+  Google account; choosing **Google Meet** creates a real Calendar event with a
+  Meet link + attendee invites, kept in sync on edit / cancel.
 
 ## How the pieces fit (one‑liner)
 
@@ -40,6 +43,7 @@ only read one page, read [architecture.md](./architecture.md).
 | [frontend.md](./frontend.md) | Web calendar views, the editor, components, state model, hooks & queries |
 | [backend-api.md](./backend-api.md) | HTTP endpoints, DTOs, service methods, authorization, the repository |
 | [reminders.md](./reminders.md) | Reminder delivery scheduler + the guarded cron endpoint + GCP wiring |
+| [google-integration.md](./google-integration.md) | Per‑user Google Calendar / Meet OAuth (Phase 5): connect flow, event sync, token storage, GCP setup |
 | [operations.md](./operations.md) | Migrations, deploy, secrets, cron runbook, QA driver, troubleshooting |
 
 ## Glossary
@@ -64,5 +68,6 @@ only read one page, read [architecture.md](./architecture.md).
   [`web/src/services/meetings.service.ts`](../../../web/src/services/meetings.service.ts),
   [`web/src/hooks/useMeetings.ts`](../../../web/src/hooks/useMeetings.ts)
 - **Backend:** [`backend/src/modules/meetings/`](../../../backend/src/modules/meetings/)
-- **DB:** [`supabase/migrations/2026070612*`, `2026070813*`, `2026070814*`, `2026070815*`](../../../supabase/migrations/)
+  (Google OAuth / Calendar in [`meetings/google/`](../../../backend/src/modules/meetings/google/))
+- **DB:** [`supabase/migrations/2026070612*`, `2026070813*`, `2026070814*`, `2026070815*`, `2026071110*`](../../../supabase/migrations/)
 - **QA driver:** [`web/playwright/meetings-qa.mjs`](../../../web/playwright/meetings-qa.mjs)

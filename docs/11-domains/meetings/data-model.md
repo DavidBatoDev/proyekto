@@ -12,6 +12,7 @@ meetings tables were introduced/extended by:
 | `20260708130000_meetings_location_reminder.sql` | `meetings.location`, `meetings.reminder_minutes` |
 | `20260708140000_meetings_recurrence.sql` | `meeting_series` table + recurrence columns/indexes/RLS on `meetings` |
 | `20260708150000_meetings_reminder_delivery.sql` | `meetings.reminder_sent_at` + partial index |
+| `20260711100000_google_calendar_connections.sql` | `google_calendar_connections` table + RLS; `meeting_series.google_event_id` (Phase 5) |
 
 > **Authorization note:** every backend repository call runs as the Supabase
 > **service role** and bypasses RLS. Primary authz is in the NestJS service layer
@@ -44,8 +45,11 @@ meeting_type           : kickoff | status_sync | design_review | qa |
                          consultant_freelancer | consultation
 ```
 
-`google_meet` is reserved for the future OAuth phase; the branded picker stores
-`external_link` and derives the brand from the URL host (display‑only — see
+`google_meet` is produced by the **Phase 5** Google integration (a connected
+organizer picking Google Meet — see
+[google-integration.md](./google-integration.md)); the branded picker still
+stores `external_link` for a *pasted* Meet/Zoom/Teams URL and derives the brand
+from the host (display‑only — see
 [frontend.md](./frontend.md#video-provider-picker)).
 
 ## `meetings`
@@ -67,7 +71,7 @@ The instance / one‑off table. Key columns:
 | `reminder_sent_at` | timestamptz, nullable | reminder idempotency marker (Phase 4) |
 | `guest_email`, `guest_name`, `guest_session_id` | | guest bookings |
 | `reschedule_of` | uuid → meetings | retire‑and‑recreate chain for one‑off reschedules |
-| `google_event_id` | text | reserved (Phase 5) |
+| `google_event_id` | text | Google Calendar event backing a `google_meet` meeting (for a series instance, the shared master id) — Phase 5 |
 | **`series_id`** | uuid → meeting_series, CASCADE | null = standalone |
 | **`recurrence_id`** | timestamptz | nominal UTC slot — stable identity in a series |
 | **`original_start`** | timestamptz | original nominal start if a single occurrence was moved |
@@ -137,6 +141,26 @@ Per‑attendee RSVP + notification fan‑out.
 - `uq_meeting_participants_user UNIQUE (meeting_id, user_id) WHERE user_id IS NOT NULL`
   — one row per user per meeting.
 - The host is always added as a participant (`role='host'`, `response='accepted'`).
+
+## `google_calendar_connections` (Phase 5)
+
+One row per user who has connected their Google account. The backend writes as
+the service role and stores the long‑lived OAuth **refresh token encrypted at
+rest** (AES‑256‑GCM). See [google-integration.md](./google-integration.md).
+
+| Column | Notes |
+| --- | --- |
+| `id` uuid PK | |
+| `user_id` uuid → profiles, CASCADE | `UNIQUE` — one connection per user (upsert `onConflict: user_id`) |
+| `google_email` | the connected account's email (not a secret) — shown as "Connected as …" |
+| `refresh_token` | **encrypted** `gcmv1:<iv>:<tag>:<ciphertext>` — service‑role only |
+| `scope`, `token_type` | granted scope string / `Bearer` |
+| `connected_at`, `updated_at` | trigger‑maintained |
+
+**RLS** — enabled with **no SELECT policy** (the encrypted token must never be
+readable via PostgREST; status is served only by `GET /google/status`);
+INSERT/UPDATE/DELETE are owner‑scoped defensive parity. `meeting_series` gains a
+`google_event_id text` column holding the shared master event id.
 
 ## The hybrid recurrence model (CalDAV‑style)
 

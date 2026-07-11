@@ -28,6 +28,7 @@ Meeting migrations, in order:
 20260708130000_meetings_location_reminder.sql      location + reminder_minutes
 20260708140000_meetings_recurrence.sql             meeting_series + recurrence cols/indexes/RLS
 20260708150000_meetings_reminder_delivery.sql      reminder_sent_at + partial index
+20260711100000_google_calendar_connections.sql     google_calendar_connections + meeting_series.google_event_id
 ```
 
 All are **applied to prod SG**. Verify a column/index:
@@ -62,10 +63,13 @@ Push to `main` → GitHub Actions:
 | --- | --- | --- |
 | `MEETINGS_CRON_SECRET` | Secret Manager + Cloud Run + `backend/.env` | reminder cron auth; see [reminders.md](./reminders.md#provisioning-gcp) |
 | `JITSI_BASE_URL` | env (default `https://meet.jit.si`) | auto‑generated video rooms |
+| `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET` / `GOOGLE_TOKEN_ENC_KEY` | Secret Manager (gated on `GOOGLE_OAUTH_ENABLED`) | Google Calendar OAuth (Phase 5); see [google-integration.md](./google-integration.md) |
 | `SUPABASE_*`, `GMAIL_*`, `R2_*`, … | Secret Manager | general backend |
 
-`MEETINGS_CRON_SECRET` and `MEETINGS_REMINDERS_ENABLED` are validated in
-[`env.validation.ts`](../../../backend/src/config/env.validation.ts) (optional).
+`MEETINGS_CRON_SECRET`, `MEETINGS_REMINDERS_ENABLED`, and the `GOOGLE_OAUTH_*` /
+`GOOGLE_TOKEN_ENC_KEY` vars are all validated (optional) in
+[`env.validation.ts`](../../../backend/src/config/env.validation.ts). Reuse of the
+Gmail‑sender `GOOGLE_CLIENT_*` names is deliberately avoided.
 
 ## Reminder cron runbook
 
@@ -153,6 +157,9 @@ cd web     && npm test                                # recurrence, datetime, ov
   edits change fields/time, not the rule; a recurring occurrence shows a static
   "Recurring event".
 - **Guest email delivery** — external `guest_emails` are recorded and invited
-  in‑app to accounts, but not emailed.
-- **Real Google Calendar/Meet OAuth** (Phase 5) — `google_meet` provider +
-  `google_event_id` are reserved; the branded picker is display‑only for now.
+  in‑app to accounts, but not emailed (except via the Google path, which sends
+  real Calendar invites with `sendUpdates=all`).
+- **Real Google Calendar/Meet OAuth** (Phase 5) — **shipped**, dark behind
+  `GOOGLE_OAUTH_ENABLED`; see [google-integration.md](./google-integration.md).
+  Not‑yet‑wired within it: two‑way sync from Google, a divergence‑reconciliation
+  cron, and OIDC‑signed scheduling.
