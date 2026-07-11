@@ -286,6 +286,10 @@ describe('ProjectsService (permissions)', () => {
         invitee_id: null,
         invited_position: 'Backend Developer',
       }),
+      getInviterProfile: jest.fn().mockResolvedValue({
+        displayName: 'Client Owner',
+        avatarUrl: null,
+      }),
       getProfileDisplayName: jest.fn().mockResolvedValue('Client Owner'),
     };
     // Post-refactor: client has admin role on the project (granted at

@@ -3,6 +3,10 @@ export const USERS_REPOSITORY = Symbol('USERS_REPOSITORY');
 import type { UsersRepository } from './repositories/users.repository.interface';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Profile } from '../../common/entities';
+import {
+  normalizeAppearancePreferences,
+  UpdateAppearancePreferencesDto,
+} from './dto/appearance-preferences.dto';
 
 @Injectable()
 export class UsersService {
@@ -18,6 +22,14 @@ export class UsersService {
 
   async updateMe(userId: string, dto: UpdateUserDto): Promise<Profile> {
     return this.usersRepo.update(userId, dto);
+  }
+
+  async updateAppearancePreferences(
+    userId: string,
+    dto: UpdateAppearancePreferencesDto,
+  ) {
+    const appearance = normalizeAppearancePreferences(dto);
+    return this.usersRepo.updateAppearancePreferences(userId, appearance);
   }
 
   async getPublicProfile(id: string): Promise<Partial<Profile>> {
